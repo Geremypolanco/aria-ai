@@ -672,3 +672,111 @@ if __name__ == "__main__":
         log_level="info",
         access_log=False,
     )
+            await send_telegram(report)
+        await db.log_info("Reporte diario enviado al Señor Polanco", "orchestrator")
+    except Exception as e:
+        logger.error("Error al generar reporte diario: %s", e)
+
+
+# ── SISTEMA DE CONTEO DE CICLOS ───────────────────────────
+_cycle_count = 0
+
+def _get_cycle_count() -> int:
+    global _cycle_count
+    _cycle_count += 1
+    return _cycle_count
+
+
+# ── LIFECYCLE DE FASTAPI ──────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manejo del ciclo de vida de la aplicación (Arranque y Apagado)."""
+    logger.info("Iniciando secuencia de arranque de Aria OS...")
+    
+    # 1. Verificar conexiones críticas al arrancar
+    connections = await verify_connections()
+    
+    # 2. Enviar señal de vida inicial al Señor Polanco
+    startup_details = f"{STARTUP_MESSAGE}\n\n🔍 Estado de Conexiones:\n• Supabase: {connections.get('supabase')}\n• Redis: {connections.get('redis')}\n• AI Client: {connections.get('ai')}"
+    await send_telegram(startup_details)
+    
+    # 3. Configurar y encender el planificador de tareas (Scheduler)
+    scheduler.add_job(
+        autonomous_cycle_job,
+        IntervalTrigger(minutes=int(os.getenv("CYCLE_INTERVAL_MINUTES", "60"))),
+        id="autonomous_cycle",
+        replace_existing=True
+    )
+    scheduler.add_job(
+        heartbeat_job,
+        IntervalTrigger(seconds=30),
+        id="heartbeat_job",
+        replace_existing=True
+    )
+    scheduler.add_job(
+        daily_report_job,
+        IntervalTrigger(hours=24),
+        id="daily_report_job",
+        replace_existing=True
+    )
+    
+    scheduler.start()
+    logger.info("Scheduler: ✅ activado con 3 tareas en paralelo")
+    
+    yield
+    
+    # Secuencia de Apagado Seguro (Graceful Shutdown)
+    logger.info("Iniciando secuencia de apagado seguro...")
+    scheduler.shutdown()
+    logger.info("Aria OS apagado correctamente.")
+
+
+# ── INSTANCIACIÓN DE LA API ───────────────────────────────
+app = FastAPI(
+    title="Aria AI Core",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── ENDPOINTS DE CONTROL ──────────────────────────────────
+@app.get("/")
+async def root():
+    """Endpoint de salud pública para Fly.io (Health Check)."""
+    return JSONResponse(
+        content={
+            "status": "online",
+            "system": "Aria OS",
+            "version": "1.0.0",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        },
+        status_code=200
+    )
+
+
+@app.get("/health")
+async def health():
+    """Verificación profunda del estado del holding."""
+    connections = await verify_connections()
+    return JSONResponse(content={"status": "healthy", "connections": connections}, status_code=200)
+
+
+# ── PUNTO DE ARRANQUE EJECUTABLE ──────────────────────────
+if __name__ == "__main__":
+    import os
+    uvicorn.run(
+        "apps.core.main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8000")),
+        reload=False,
+        workers=1
+    )
+
