@@ -1,0 +1,73 @@
+name: Deploy Aria Core to Fly.io
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/core/**'
+      - 'fly.toml'
+      - '.github/workflows/deploy-core.yml'
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Crear app en Fly.io si no existe
+        run: |
+          flyctl apps list | grep -q "aria-ai-core" || \
+          flyctl apps create aria-ai-core --machines
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Configurar secrets en Fly.io
+        run: |
+          flyctl secrets set \
+            HF_TOKEN="${{ secrets.HF_TOKEN }}" \
+            GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
+            SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            SUPABASE_KEY="${{ secrets.SUPABASE_KEY }}" \
+            UPSTASH_REDIS_REST_URL="${{ secrets.UPSTASH_REDIS_REST_URL }}" \
+            UPSTASH_REDIS_REST_TOKEN="${{ secrets.UPSTASH_REDIS_REST_TOKEN }}" \
+            GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN_ARIA }}" \
+            GITHUB_USERNAME="Geremypolanco" \
+            VERCEL_TOKEN="${{ secrets.VERCEL_TOKEN }}" \
+            STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
+            PAYPAL_CLIENT_ID="${{ secrets.PAYPAL_CLIENT_ID }}" \
+            PAYPAL_SECRET="${{ secrets.PAYPAL_SECRET }}" \
+            GUMROAD_TOKEN="${{ secrets.GUMROAD_TOKEN }}" \
+            PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}" \
+            NEWS_API_KEY="${{ secrets.NEWS_API_KEY }}" \
+            SERP_API_KEY="${{ secrets.SERP_API_KEY }}" \
+            TELEGRAM_TOKEN="${{ secrets.TELEGRAM_TOKEN }}" \
+            TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            OWNER_NAME="Señor Polanco" \
+            ENVIRONMENT="production" \
+            CYCLE_INTERVAL_MINUTES="60" \
+            REQUIRE_APPROVAL_FOR_PAYMENTS="true" \
+            REQUIRE_APPROVAL_FOR_DEPLOYS="false" \
+            MAX_SPEND_WITHOUT_APPROVAL_USD="0.0" \
+            --app aria-ai-core
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy a Fly.io
+        run: flyctl deploy --remote-only --app aria-ai-core
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verificar deploy
+        run: |
+          echo "✅ Deploy completado"
+          flyctl status --app aria-ai-core
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
