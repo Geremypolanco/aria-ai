@@ -2,4 +2,5 @@
 Aria AI — Autonomous Business System
 
 Aria AI - Sistema iniciado por el Señor Polanco
-Aria Cobra vida
+Despliegue final con configuración tolerante a fallos activa.
+
