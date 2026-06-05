@@ -121,7 +121,12 @@ class Settings(BaseSettings):
     TWILIO_ACCOUNT_SID: Optional[str] = None
     TWILIO_AUTH_TOKEN: Optional[str] = None
 
-    model_config = SettingsConfigDict(
+    @property
+      def hf_key(self) -> Optional[str]:
+          """Compatibilidad con ai_client.py: devuelve el HF token disponible."""
+          return self.HF_TOKEN or self.HF_API_KEY or self.HUGGING_FACE_TOKEN
+
+      model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
