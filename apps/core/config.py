@@ -1,9 +1,7 @@
 """
-Settings centralizados para Aria AI.
-Todos los secrets se cargan desde variables de entorno o Fly.io secrets.
-HuggingFace es el motor principal. Groq y OpenAI son respaldo.
+Settings centralizados para Aria AI — v2 Gobernador Económico.
 """
-from typing import Optional
+from typing import Optional, Any
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,6 +17,13 @@ class Settings(BaseSettings):
     REQUIRE_APPROVAL_FOR_DEPLOYS: bool = False
     MAX_SPEND_WITHOUT_APPROVAL_USD: float = 0.0
 
+    # ── SECTORES HABILITADOS ──────────────────────────────
+    ENABLED_SECTORS: str = "digital"
+
+    @property
+    def enabled_sectors_list(self) -> list[str]:
+        return [s.strip() for s in self.ENABLED_SECTORS.split(",") if s.strip()]
+
     # ── NOTIFICACIONES ────────────────────────────────────
     TELEGRAM_TOKEN: str = ""
     TELEGRAM_BOT_TOKEN: str = ""
@@ -26,7 +31,6 @@ class Settings(BaseSettings):
 
     @property
     def telegram_token(self) -> str:
-        """Devuelve el token de Telegram disponible."""
         return self.TELEGRAM_TOKEN or self.TELEGRAM_BOT_TOKEN
 
     # ── BASE DE DATOS ─────────────────────────────────────
@@ -39,7 +43,6 @@ class Settings(BaseSettings):
     @field_validator("SUPABASE_URL", mode="before")
     @classmethod
     def fix_supabase_url(cls, v: str) -> str:
-        """Corrige URL del dashboard a URL REST del proyecto."""
         if not v:
             return v
         if "supabase.com/dashboard/project/" in v:
@@ -54,72 +57,116 @@ class Settings(BaseSettings):
 
     @property
     def hf_key(self) -> Optional[str]:
-        """Compatibilidad con ai_client.py: devuelve el HF token."""
         return self.HF_TOKEN or self.HF_API_KEY or self.HUGGING_FACE_TOKEN
 
-    # ── Modelos HF primarios ───────────────────────────────
     HF_MODEL_STRATEGY: str = "Qwen/Qwen2.5-72B-Instruct"
     HF_MODEL_CODE: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
     HF_MODEL_FAST: str = "microsoft/Phi-3-mini-4k-instruct"
     HF_MODEL_CREATIVE: str = "HuggingFaceH4/zephyr-7b-beta"
-
-    # ── Modelos HF de respaldo ────────────────────────────
     HF_MODEL_STRATEGY_FB: str = "mistralai/Mistral-7B-Instruct-v0.3"
     HF_MODEL_CODE_FB: str = "microsoft/Phi-3.5-mini-instruct"
     HF_MODEL_FAST_FB: str = "google/flan-t5-large"
 
-    # ── Respaldo 1: Groq ──────────────────────────────────
+    # ── Groq (respaldo 1) ─────────────────────────────────
     GROQ_API_KEY: Optional[str] = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
-    GROQ_MODEL_FAST: str = "llama-3.1-8b-instant"
-    GROQ_MODEL_CODE: str = "llama-3.3-70b-versatile"
 
-    # ── Respaldo 2: OpenAI ────────────────────────────────
+    # ── OpenAI (respaldo 2) ───────────────────────────────
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o-mini"
 
-    # ── IA Adicional ──────────────────────────────────────
+    # ── Anthropic ─────────────────────────────────────────
     ANTHROPIC_API_KEY: Optional[str] = None
-    GOOGLE_API_KEY: Optional[str] = None
-    COHERE_API_KEY: Optional[str] = None
 
-    # ── CONTENIDO / SEO ───────────────────────────────────
-    NEWS_API_KEY: Optional[str] = None
-    SERP_API_KEY: Optional[str] = None
-    PEXELS_API_KEY: Optional[str] = None
-    ELEVENLABS_API_KEY: Optional[str] = None
+    # ── CHLOE API (IA de economía circular) ───────────────
+    CHLOE_API: Optional[str] = None
+    CHLOE_API_URL: str = "https://api.chloe.ai/v1"
 
-    # ── COMERCIO ──────────────────────────────────────────
-    GUMROAD_TOKEN: Optional[str] = None
-    STRIPE_SECRET_KEY: Optional[str] = None
-    PAYPAL_CLIENT_ID: Optional[str] = None
-    PAYPAL_SECRET: Optional[str] = None
-    SHOPIFY_URL: Optional[str] = None
-    SHOPIFY_API_KEY: Optional[str] = None
-    SHOPIFY_ADMIN_TOKEN: Optional[str] = None
-    SHOPIFY_AUTOMATION_TOKEN: Optional[str] = None
-
-    # ── REDES SOCIALES ────────────────────────────────────
-    BUFFER_TOKEN: Optional[str] = None
-    AIRTABLE_TOKEN: Optional[str] = None
-    MAILCHIMP_API_KEY: Optional[str] = None
-
-    # ── MULTIMEDIA ────────────────────────────────────────
+    # ── Cloudinary (gestión de media assets) ─────────────
     CLOUDINARY_CLOUD_NAME: Optional[str] = None
     CLOUDINARY_API_KEY: Optional[str] = None
     CLOUDINARY_API_SECRET: Optional[str] = None
+    CLOUDINARY_URL: Optional[str] = None
 
-    # ── DESARROLLO ────────────────────────────────────────
+    @property
+    def cloudinary_configured(self) -> bool:
+        return bool(self.CLOUDINARY_CLOUD_NAME and self.CLOUDINARY_API_KEY and self.CLOUDINARY_API_SECRET)
+
+    # ── GitHub ────────────────────────────────────────────
     GITHUB_TOKEN: Optional[str] = None
-    GITHUB_USERNAME: str = "Geremypolanco"
-    VERCEL_TOKEN: Optional[str] = None
-    DID_API_KEY: Optional[str] = None
-    CANVA_CLIENT_ID: Optional[str] = None
-    CANVA_CLIENT_SECRET: Optional[str] = None
+    GITHUB_REPO: str = "Geremypolanco/aria-ai"
 
-    # ── COMUNICACIÓN ──────────────────────────────────────
-    TWILIO_ACCOUNT_SID: Optional[str] = None
-    TWILIO_AUTH_TOKEN: Optional[str] = None
+    # ── Pagos ─────────────────────────────────────────────
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
+    GUMROAD_TOKEN: Optional[str] = None
+
+    # ── Email marketing ───────────────────────────────────
+    MAILCHIMP_API_KEY: Optional[str] = None
+    MAILCHIMP_SERVER_PREFIX: str = "us1"
+    MAILCHIMP_LIST_ID: Optional[str] = None
+    RESEND_API_KEY: Optional[str] = None
+    SENDGRID_API_KEY: Optional[str] = None
+
+    # ── Redes sociales ────────────────────────────────────
+    BUFFER_TOKEN: Optional[str] = None
+    TWITTER_BEARER_TOKEN: Optional[str] = None
+    TWITTER_API_KEY: Optional[str] = None
+    TWITTER_API_SECRET: Optional[str] = None
+    TWITTER_ACCESS_TOKEN: Optional[str] = None
+    TWITTER_ACCESS_SECRET: Optional[str] = None
+    LINKEDIN_CLIENT_ID: Optional[str] = None
+    LINKEDIN_CLIENT_SECRET: Optional[str] = None
+    LINKEDIN_ACCESS_TOKEN: Optional[str] = None
+
+    # ── Google ────────────────────────────────────────────
+    GOOGLE_API_KEY: Optional[str] = None
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REFRESH_TOKEN: Optional[str] = None
+
+    # ── Canva ─────────────────────────────────────────────
+    CANVA_API_KEY: Optional[str] = None
+
+    # ── Airtable ──────────────────────────────────────────
+    AIRTABLE_API_KEY: Optional[str] = None
+    AIRTABLE_BASE_ID: Optional[str] = None
+
+    # ── ElevenLabs ────────────────────────────────────────
+    ELEVENLABS_API_KEY: Optional[str] = None
+
+    # ── Shopify ───────────────────────────────────────────
+    SHOPIFY_URL: Optional[str] = None
+    SHOPIFY_API_KEY: Optional[str] = None
+    SHOPIFY_PASSWORD: Optional[str] = None
+
+    # ── Fly.io ────────────────────────────────────────────
+    FLY_API_TOKEN: Optional[str] = None
+
+    # ── AWS S3 ────────────────────────────────────────────
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_S3_BUCKET: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+
+    # ── ECONOMÍA CIRCULAR ─────────────────────────────────
+    # Tasas de distribución del capital (deben sumar <= 1.0)
+    CIRCULAR_ECONOMY_REINVEST_RATE: float = 0.40
+    CIRCULAR_ECONOMY_RESERVE_RATE: float = 0.30
+    CIRCULAR_ECONOMY_COMMUNITY_RATE: float = 0.15
+    # Varianza máxima aceptable en precios (5%)
+    PRICE_STABILITY_TARGET_VARIANCE: float = 0.05
+
+    # ── SECTORES ──────────────────────────────────────────
+    SECTOR_CONFIGS: dict = {}
+
+    def get_sector_credentials(self, sector: str) -> dict[str, Any]:
+        base = self.SECTOR_CONFIGS.get(sector, {})
+        if sector == "banking":
+            return {**base, "stripe": self.STRIPE_SECRET_KEY}
+        if sector == "digital":
+            return {**base, "github": self.GITHUB_TOKEN, "cloudinary": self.CLOUDINARY_API_KEY}
+        return base
 
     model_config = SettingsConfigDict(
         env_file=".env",

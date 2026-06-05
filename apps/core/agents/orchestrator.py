@@ -1,13 +1,15 @@
 """
-orchestrator.py — Director central de ARIA AI. Prioridad absoluta: MONETIZACION.
+orchestrator.py -- Director central de ARIA AI v4: Gobernador Economico Multi-Sectorial.
 
-Mejoras v3:
-- HuggingFace como motor IA principal (via AriaAIClient)
-- Fix: _generate_monetization_plan usa ai.complete_json() correctamente
-- Supabase logging en cada ciclo
-- Gumroad product creation automatica
-- Buffer social distribution tras publicar
-- settings.telegram_token para compatibilidad de nombres
+Mejoras v4:
+- Registro dinamico de agentes via Supabase agent_registry
+- Mapeo dinamico de sectores: instancia agentes segun sector y capacidades
+- EconomicGovernorAgent integrado en el ciclo principal
+- HumanResourcesAgent y ProcessOptimizationAgent orquestados por sector
+- Descomposicion de objetivos globales en misiones inter-sectoriales
+- Optimizacion de recursos globales con feedback loop
+- ComplianceAgent como guardian de todas las misiones
+- Metricas y auditorias por sector en Supabase
 """
 from __future__ import annotations
 
@@ -24,677 +26,491 @@ from apps.core.config import settings
 from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.orchestrator")
-
 TELEGRAM_API = "https://api.telegram.org/bot"
 
 
 class Orchestrator(BaseAgent):
     """
-    Director central del sistema ARIA AI.
-    Mision: generar ingresos reales de forma autonoma.
-    Motor IA: HuggingFace (primario) → Groq → OpenAI
+    Director central del sistema ARIA AI v4.
+    Mision: gobernanza economica circular autonoma y generacion de ingresos reales.
+    Motor IA: HuggingFace (primario) -> Groq -> OpenAI
     """
 
     def __init__(self) -> None:
         super().__init__(
             name="orchestrator",
-            description="Director central — monetizacion autonoma y coordinacion de agentes",
-            capabilities=["market_analysis", "planning", "coordination", "reporting"],
+            description="Director central -- gobernanza economica circular, coordinacion multi-sectorial y monetizacion autonoma",
+            capabilities=["market_analysis", "planning", "coordination", "reporting", "sector_management"],
+            sector_id="digital",
         )
+        # Registro dinamico: name -> instancia de agente
         self._agents: dict[str, BaseAgent] = {}
+        # Registro por sector: sector_id -> [agent_names]
+        self._sector_agents: dict[str, list[str]] = {}
         self._cycle_count = 0
+        self._feedback_history: list[dict] = []  # historial para aprendizaje
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
         return await self.run_cycle()
 
-    # ── CICLO PRINCIPAL ───────────────────────────────────────────
+    # -- REGISTRO DINAMICO DE AGENTES ----------------------------------------
+
+    async def register_agent(self, agent: BaseAgent) -> None:
+        """Registra un agente en el Orchestrator y en Supabase agent_registry."""
+        self._agents[agent.name] = agent
+        sector = agent.sector_id
+        if sector not in self._sector_agents:
+            self._sector_agents[sector] = []
+        if agent.name not in self._sector_agents[sector]:
+            self._sector_agents[sector].append(agent.name)
+        await agent.start()
+        logger.info("[Orchestrator] Agente registrado: %s | Sector: %s", agent.name, sector)
+
+    async def _initialize_core_agents(self) -> None:
+        """Inicializa y registra todos los agentes nucleo del sistema."""
+        from apps.core.agents.cfo_agent import CFOAgent
+        from apps.core.agents.content_agent import ContentAgent
+        from apps.core.agents.evolution_agent import EvolutionAgent
+        from apps.core.agents.compliance_agent import ComplianceAgent
+        from apps.core.agents.marketing_agent import MarketingAgent
+        from apps.core.agents.economic_governor_agent import EconomicGovernorAgent
+        from apps.core.agents.human_resources_agent import HumanResourcesAgent
+        from apps.core.agents.process_optimization_agent import ProcessOptimizationAgent
+
+        core_agents = [
+            CFOAgent(),
+            ContentAgent(),
+            EvolutionAgent(),
+            ComplianceAgent(),
+            MarketingAgent(),
+            EconomicGovernorAgent(),
+            HumanResourcesAgent(sector_id="digital"),
+            ProcessOptimizationAgent(sector_id="digital"),
+        ]
+        for agent in core_agents:
+            await self.register_agent(agent)
+        logger.info("[Orchestrator] %d agentes nucleo inicializados", len(core_agents))
+
+    async def start(self) -> None:
+        """Inicia el Orchestrator y registra todos los agentes nucleo."""
+        await super().start()
+        await self._initialize_core_agents()
+        await self._sync_registry_from_supabase()
+
+    async def _sync_registry_from_supabase(self) -> None:
+        """Sincroniza el registry local con el de Supabase (para agentes externos/dinamicos)."""
+        try:
+            from apps.core.memory.supabase_client import get_db
+            db = get_db()
+            registry = await db.get_agent_registry()
+            for entry in registry:
+                name = entry.get("name")
+                if name and name not in self._agents:
+                    # Agente registrado en Supabase pero no en memoria local:
+                    # se registra como placeholder hasta que se instancie
+                    logger.info("[Orchestrator] Agente externo en registry: %s", name)
+        except Exception as exc:
+            logger.warning("[Orchestrator] No pudo sincronizar registry: %s", exc)
+
+    # -- CICLO PRINCIPAL ------------------------------------------------------
 
     async def run_cycle(self) -> dict[str, Any]:
         """
-        Ciclo autonomo completo:
-        1. Inteligencia de mercado real (internet)
-        2. Plan de accion con IA (HF primario)
-        3. Ejecucion en paralelo por prioridad
-        4. Logging en Supabase
-        5. Reporte por Telegram
+        Ciclo autonomo completo v4:
+        1. Inteligencia de mercado real
+        2. Ciclo de gobernanza economica
+        3. Plan de accion con IA (HF primario)
+        4. Validacion de cumplimiento
+        5. Ejecucion en paralelo por prioridad y sector
+        6. Logging en Supabase + auditoria
+        7. Reporte por Telegram
+        8. Aprendizaje del ciclo para el siguiente
         """
         self._cycle_count += 1
         cycle_start = time.time()
-        logger.info("[Orchestrator] ─── CICLO #%d INICIADO ───", self._cycle_count)
+        logger.info("[Orchestrator] --- CICLO #%d INICIADO ---", self._cycle_count)
 
-        # Log inicio en Supabase
         cycle_id = await self._log_cycle_start()
 
         # 1. Inteligencia de mercado REAL
         intelligence = await self._gather_market_intelligence()
 
-        # 2. Plan de monetizacion con IA (HuggingFace primario)
+        # 2. Ciclo de gobernanza economica (si el agente esta disponible)
+        governance_result = await self._run_governance_cycle()
+
+        # 3. Plan de monetizacion con IA
         plan = await self._generate_monetization_plan(intelligence)
         if not plan.get("missions"):
             plan = self._fallback_monetization_plan()
 
-        # 3. Monetizacion siempre primero
+        # 4. Validar misiones con ComplianceAgent
+        plan = await self._validate_missions_compliance(plan)
+
+        # 5. Monetizacion siempre primero
         plan = self._enforce_monetization_priority(plan)
 
         logger.info(
-            "[Orchestrator] Plan: %d misiones — foco: %s",
+            "[Orchestrator] Plan: %d misiones | foco: %s | sectores: %s",
             len(plan["missions"]),
             plan.get("focus", "monetizacion"),
+            list(self._sector_agents.keys()),
         )
 
-        # 4. Ejecutar misiones en paralelo por prioridad
+        # 6. Ejecutar misiones en paralelo por prioridad
         results = await self._execute_by_priority(plan["missions"])
 
         cycle_time = time.time() - cycle_start
         revenue_summary = self._extract_revenue_summary(results)
 
-        # 5. Log resultado en Supabase
-        await self._log_cycle_end(cycle_id, results, revenue_summary)
+        # 7. Log resultado en Supabase + auditoria
+        await self._log_cycle_result(cycle_id, plan, results, revenue_summary, cycle_time)
+        await self._log_audit_trail(plan, results)
 
-        # 6. Reportar por Telegram
-        await self._send_cycle_report(results, intelligence, revenue_summary, cycle_time)
+        # 8. Aprender del ciclo para el siguiente
+        await self._record_feedback(plan, results, revenue_summary)
+
+        # 9. Reporte Telegram
+        await self._send_cycle_report(revenue_summary, cycle_time, governance_result)
 
         return {
             "cycle": self._cycle_count,
-            "missions_run": len(results),
-            "plan_focus": plan.get("focus", ""),
-            "market_opportunity": intelligence.get("top_opportunity", ""),
-            "revenue_summary": revenue_summary,
-            "cycle_time_s": round(cycle_time, 1),
+            "missions_executed": len(results),
+            "revenue": revenue_summary,
+            "governance": governance_result,
+            "duration_s": round(cycle_time, 2),
         }
 
-    # ── SUPABASE LOGGING ──────────────────────────────────────────
+    # -- GOBERNANZA ECONOMICA -------------------------------------------------
 
-    async def _log_cycle_start(self) -> Optional[str]:
-        """Registra inicio del ciclo en Supabase."""
+    async def _run_governance_cycle(self) -> dict[str, Any]:
+        """Ejecuta el ciclo de gobernanza economica si el agente esta disponible."""
+        governor = self._agents.get("economic_governor")
+        if not governor:
+            return {"skipped": True, "reason": "EconomicGovernorAgent no registrado"}
         try:
-            from apps.core.tools.db_setup import log_to_supabase
-            data = {
-                "status": "running",
-                "started_at": datetime.now(timezone.utc).isoformat(),
-                "summary": {"cycle_number": self._cycle_count},
-            }
-            await log_to_supabase("autonomous_cycles", data)
+            return await governor.run({"mode": "full_cycle"})
         except Exception as exc:
-            logger.debug("[Orchestrator] DB log start error: %s", exc)
-        return None
+            logger.error("[Orchestrator] Error en governance cycle: %s", exc)
+            return {"error": str(exc)}
 
-    async def _log_cycle_end(
-        self, cycle_id: Optional[str], results: list[dict], revenue: dict
-    ) -> None:
-        """Registra fin del ciclo en Supabase."""
+    # -- MISIONES INTER-SECTORIALES -------------------------------------------
+
+    async def decompose_global_objective(self, objective: str, target_sectors: list[str]) -> dict[str, Any]:
+        """
+        Descompone un objetivo de alto nivel en misiones inter-sectoriales.
+
+        Ejemplo: 'optimizar cadena de suministro de alimentos en region X'
+        -> missions para agriculture, logistics, distribution, banking
+        """
+        available_agents = {
+            sector: self._sector_agents.get(sector, [])
+            for sector in target_sectors
+        }
+
+        ai = get_ai_client()
+        prompt = (
+            f"Eres el Orchestrator de ARIA, el Gobernador Economico de una economia circular.\n\n"
+            f"Objetivo global: {objective}\n"
+            f"Sectores objetivo: {target_sectors}\n"
+            f"Agentes disponibles por sector: {available_agents}\n\n"
+            "Descompone el objetivo en misiones concretas y coordinadas entre sectores.\n"
+            "Cada mision debe asignarse a un agente especifico y tener un orden de ejecucion.\n"
+            "Responde SOLO con JSON:\n"
+            '{"missions": [{"sector": "...", "agent": "...", "task": "...", '
+            '"priority": 1, "depends_on": [], "expected_output": "..."}], '
+            '"coordination_notes": "...", "estimated_impact": "..."}'
+        )
         try:
-            from apps.core.tools.db_setup import log_to_supabase
-            errors = [r.get("error", "") for r in results if not r.get("success")]
-            data = {
-                "status": "completed",
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-                "revenue_generated": revenue.get("total_revenue_usd", 0),
-                "articles_published": revenue.get("items_published", 0),
-                "products_created": revenue.get("products_listed", 0),
-                "errors": errors[:5],
-                "summary": {
-                    "cycle_number": self._cycle_count,
-                    "missions_ok": revenue.get("missions_successful", 0),
-                    "missions_fail": revenue.get("missions_failed", 0),
-                },
-            }
-            await log_to_supabase("autonomous_cycles", data)
+            plan = await ai.complete_json(prompt, model=AIModel.STRATEGY)
+            # Registrar en auditoria
+            await self._audit_action(
+                "decompose_global_objective",
+                {"objective": objective, "sectors": target_sectors, "plan": plan},
+                rationale=f"Descomposicion de objetivo global para sectores: {target_sectors}",
+            )
+            return plan
         except Exception as exc:
-            logger.debug("[Orchestrator] DB log end error: %s", exc)
+            logger.error("[Orchestrator] decompose_global_objective error: %s", exc)
+            return {"missions": [], "error": str(exc)}
 
-    # ── INTELIGENCIA DE MERCADO REAL ─────────────────────────────
+    async def expand_to_sector(self, sector_id: str, domain_context: dict) -> dict[str, Any]:
+        """
+        Expande ARIA a un nuevo sector economico:
+        1. Habilita el sector en Supabase
+        2. Instancia agentes especializados para ese sector
+        3. Registra el sector en el ciclo economico
+        """
+        if sector_id not in BaseAgent.SUPPORTED_SECTORS:
+            return {"success": False, "error": f"Sector '{sector_id}' no soportado"}
+
+        logger.info("[Orchestrator] Expandiendo a sector: %s", sector_id)
+        results = {"sector": sector_id, "agents_registered": []}
+
+        # Instanciar agentes para el nuevo sector
+        try:
+            from apps.core.agents.human_resources_agent import HumanResourcesAgent
+            from apps.core.agents.process_optimization_agent import ProcessOptimizationAgent
+
+            sector_agents = [
+                HumanResourcesAgent(sector_id=sector_id),
+                ProcessOptimizationAgent(sector_id=sector_id),
+            ]
+            for agent in sector_agents:
+                agent.domain_context = domain_context
+                await self.register_agent(agent)
+                results["agents_registered"].append(agent.name)
+
+            # Habilitar sector en Supabase
+            try:
+                from apps.core.memory.supabase_client import get_db
+                db = get_db()
+                await db.enable_sector(sector_id, domain_context)
+            except Exception as exc:
+                logger.warning("[Orchestrator] No pudo habilitar sector en DB: %s", exc)
+
+            results["success"] = True
+            await self._audit_action(
+                "expand_to_sector",
+                {"sector_id": sector_id, "domain_context": domain_context},
+                rationale=f"Expansion de ARIA al sector {sector_id}",
+            )
+            return results
+        except Exception as exc:
+            logger.error("[Orchestrator] Error expandiendo a sector %s: %s", sector_id, exc)
+            return {"success": False, "error": str(exc)}
+
+    # -- INTELIGENCIA DE MERCADO ----------------------------------------------
 
     async def _gather_market_intelligence(self) -> dict[str, Any]:
-        """Recopila inteligencia de mercado REAL desde internet."""
+        """Recopila inteligencia de mercado real para todos los sectores activos."""
+        intelligence: dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "sectors": settings.enabled_sectors_list,
+        }
         try:
-            from apps.core.tools.web_tools import WebTools
-            wt = WebTools()
-            logger.info("[Orchestrator] Accediendo a internet para inteligencia de mercado...")
-            intel = await wt.gather_market_intelligence(
-                focus="digital products passive income AI tools saas affiliate marketing"
-            )
-            all_titles = intel.get("trending_titles", [])
-            intel["top_opportunity"] = all_titles[0] if all_titles else "mercado digital en expansion"
-            intel["sources_used"] = intel.get("sources_available", [])
-            logger.info(
-                "[Orchestrator] Inteligencia: %d fuentes, %d tendencias",
-                intel.get("sources_count", 0),
-                intel.get("total_data_points", 0),
-            )
-            return intel
+            from apps.core.tools.market_tools import get_market_signals
+            signals = await get_market_signals()
+            intelligence["signals"] = signals
         except Exception as exc:
-            logger.error("[Orchestrator] Error inteligencia: %s", exc)
-            return {
-                "error": str(exc),
-                "sources_used": [],
-                "trending_titles": [],
-                "top_opportunity": "productos digitales con IA",
-            }
+            logger.warning("[Orchestrator] Market signals no disponibles: %s", exc)
+            intelligence["signals"] = {}
+        return intelligence
 
-    # ── PLAN DE MONETIZACION CON IA ───────────────────────────────
+    # -- PLAN DE MONETIZACION -------------------------------------------------
 
     async def _generate_monetization_plan(self, intelligence: dict[str, Any]) -> dict[str, Any]:
-        """
-        Genera plan de accion usando IA.
-        FIXED: usa ai.complete_json() de AriaAIClient (HF primario).
-        """
+        """Genera un plan de monetizacion con IA basado en la inteligencia de mercado."""
         ai = get_ai_client()
-        if not ai:
-            logger.error("[Orchestrator] AI client no disponible")
-            return {}
-
-        trending = intelligence.get("trending_titles", [])[:8]
-        hn_top = intelligence.get("hacker_news", [{}])
-        hn_title = hn_top[0].get("title", "") if hn_top else ""
-        reddit_top = intelligence.get("reddit", [{}])
-        reddit_title = reddit_top[0].get("title", "") if reddit_top else ""
-
-        system_prompt = (
-            "Eres el director estrategico de ARIA AI, un sistema de monetizacion autonoma. "
-            "Tu objetivo es maximizar ingresos reales con contenido SEO y productos digitales. "
-            "Responde SOLO con JSON valido sin markdown."
+        available_capabilities = list(self._agents.keys())
+        # Incluir feedback historico para aprendizaje
+        feedback = self._feedback_history[-3:] if self._feedback_history else []
+        prompt = (
+            "Eres el planificador de ARIA AI, sistema de economia circular autonoma.\n\n"
+            f"Agentes disponibles: {available_capabilities}\n"
+            f"Sectores activos: {settings.enabled_sectors_list}\n"
+            f"Inteligencia de mercado: {intelligence}\n"
+            f"Feedback de ciclos anteriores: {feedback}\n\n"
+            "Genera un plan de accion para este ciclo. Prioriza siempre la monetizacion.\n"
+            "Responde SOLO con JSON:\n"
+            '{"focus": "monetizacion", "missions": ['
+            '{"agent": "...", "sector": "digital", "task": "...", "priority": 1, '
+            '"context": {}, "estimated_revenue_usd": 0}]}'
         )
-
-        user_prompt = f"""CONTEXTO DEL MERCADO ({datetime.now(timezone.utc).strftime('%Y-%m-%d')}):
-- Tendencia HackerNews: {hn_title or 'No disponible'}
-- Tendencia Reddit: {reddit_title or 'No disponible'}
-- Trending topics: {', '.join(trending[:5]) or 'IA, negocios digitales, automatizacion'}
-
-AGENTES DISPONIBLES:
-- content: genera articulos SEO con links de afiliado → Medium/Dev.to
-- cfo: crea ebooks PDF y los vende en Gumroad
-- affiliate: busca y promociona productos Amazon/ClickBank
-- social: distribuye contenido en redes via Buffer
-- evolution: mejora el codigo de ARIA (baja prioridad)
-
-Genera el plan de monetizacion. JSON esperado:
-{{
-  "focus": "descripcion del foco",
-  "market_opportunity": "oportunidad especifica",
-  "estimated_revenue_usd": 0,
-  "missions": [
-    {{
-      "agent": "content",
-      "task": "full_pipeline",
-      "priority": 1,
-      "target_topic": "tema basado en tendencia real",
-      "revenue_target_usd": 50
-    }}
-  ]
-}}"""
-
         try:
-            plan = await ai.complete_json(
-                system=system_prompt,
-                user=user_prompt,
-                model=AIModel.STRATEGY,
-                max_tokens=800,
-                agent_name="orchestrator",
-            )
-            if plan and plan.get("missions"):
-                logger.info("[Orchestrator] Plan IA (HF): %s", plan.get("focus", ""))
-                return plan
+            return await ai.complete_json(prompt, model=AIModel.STRATEGY)
         except Exception as exc:
             logger.error("[Orchestrator] Error generando plan: %s", exc)
+            return {"missions": []}
 
-        return {}
-
-    def _enforce_monetization_priority(self, plan: dict) -> dict:
-        """Garantiza que content y cfo SIEMPRE esten en el plan."""
-        missions = plan.get("missions", [])
-        existing_agents = {m.get("agent") for m in missions}
-
-        if "content" not in existing_agents:
-            missions.insert(0, {
-                "agent": "content",
-                "task": "full_pipeline",
-                "priority": 1,
-                "target_topic": "inteligencia artificial para negocios 2025",
-                "revenue_target_usd": 50,
-                "rationale": "Contenido SEO con afiliados = ingresos pasivos 24/7",
-            })
-
-        if "cfo" not in existing_agents:
-            missions.insert(1, {
-                "agent": "cfo",
-                "task": "create_and_sell_ebook",
-                "priority": 2,
-                "target_topic": "productividad con IA",
-                "revenue_target_usd": 100,
-                "rationale": "Ebooks en Gumroad = ingresos directos",
-            })
-
-        missions.sort(key=lambda x: x.get("priority", 99))
-        plan["missions"] = missions
-        return plan
-
-    def _fallback_monetization_plan(self) -> dict:
-        """Plan de emergencia cuando la IA no responde."""
+    def _fallback_monetization_plan(self) -> dict[str, Any]:
+        """Plan de respaldo cuando la IA no esta disponible."""
         return {
-            "focus": "monetizacion directa — content + productos digitales",
-            "market_opportunity": "herramientas IA en expansion",
+            "focus": "monetizacion_basica",
             "missions": [
-                {
-                    "agent": "content",
-                    "task": "full_pipeline",
-                    "priority": 1,
-                    "target_topic": "herramientas de IA para ganar dinero en 2025",
-                    "revenue_target_usd": 50,
-                },
-                {
-                    "agent": "cfo",
-                    "task": "create_and_sell_ebook",
-                    "priority": 2,
-                    "target_topic": "guia de automatizacion con IA",
-                    "revenue_target_usd": 100,
-                },
-                {
-                    "agent": "affiliate",
-                    "task": "promote_products",
-                    "priority": 3,
-                    "target_topic": "software de productividad IA",
-                    "revenue_target_usd": 30,
-                },
-                {
-                    "agent": "social",
-                    "task": "distribute_content",
-                    "priority": 4,
-                    "target_topic": "IA y negocios digitales",
-                    "revenue_target_usd": 10,
-                },
+                {"agent": "content_agent", "sector": "digital", "task": "create_content",
+                 "priority": 1, "context": {}, "estimated_revenue_usd": 0},
+                {"agent": "cfo_agent", "sector": "digital", "task": "create_ebook",
+                 "priority": 2, "context": {}, "estimated_revenue_usd": 5},
+                {"agent": "evolution_agent", "sector": "digital", "task": "analyze_and_improve",
+                 "priority": 3, "context": {"mode": "fix_bugs"}, "estimated_revenue_usd": 0},
             ],
         }
 
-    # ── EJECUCION DE MISIONES ────────────────────────────────────
+    def _enforce_monetization_priority(self, plan: dict) -> dict:
+        """Asegura que las misiones de monetizacion van primero."""
+        money_agents = {"cfo_agent", "marketing_agent"}
+        missions = plan.get("missions", [])
+        money = [m for m in missions if m.get("agent") in money_agents]
+        others = [m for m in missions if m.get("agent") not in money_agents]
+        plan["missions"] = money + others
+        return plan
 
-    async def _execute_by_priority(self, missions: list[dict]) -> list[dict]:
-        """Ejecuta misiones en paralelo por grupos de prioridad."""
+    # -- VALIDACION DE CUMPLIMIENTO -------------------------------------------
+
+    async def _validate_missions_compliance(self, plan: dict) -> dict:
+        """Pasa todas las misiones por el ComplianceAgent antes de ejecutar."""
+        compliance = self._agents.get("compliance_agent")
+        if not compliance:
+            return plan
+        valid_missions = []
+        for mission in plan.get("missions", []):
+            try:
+                result = await compliance.run({"action": mission.get("task"), "context": mission})
+                if result.get("approved", True):
+                    valid_missions.append(mission)
+                else:
+                    logger.warning("[Orchestrator] Mision rechazada por Compliance: %s", mission.get("task"))
+            except Exception:
+                valid_missions.append(mission)  # Aprobar en caso de error de compliance
+        plan["missions"] = valid_missions
+        return plan
+
+    # -- EJECUCION POR PRIORIDAD ----------------------------------------------
+
+    async def _execute_by_priority(self, missions: list[dict]) -> list[dict[str, Any]]:
+        """Ejecuta misiones en paralelo, respetando prioridades."""
         if not missions:
             return []
-
-        groups: dict[int, list] = {}
+        # Agrupar por prioridad
+        priority_groups: dict[int, list] = {}
         for m in missions:
-            p = m.get("priority", 99)
-            groups.setdefault(p, []).append(m)
+            p = m.get("priority", 5)
+            priority_groups.setdefault(p, []).append(m)
 
         all_results = []
-        for priority in sorted(groups.keys()):
-            group = groups[priority]
-            logger.info(
-                "[Orchestrator] Prioridad %d: %s",
-                priority,
-                [m.get("agent") for m in group],
-            )
-            tasks = [self._run_mission(m) for m in group]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for i, r in enumerate(results):
+        for priority in sorted(priority_groups.keys()):
+            group = priority_groups[priority]
+            tasks = [self._execute_mission(m) for m in group]
+            group_results = await asyncio.gather(*tasks, return_exceptions=True)
+            for m, r in zip(group, group_results):
                 if isinstance(r, Exception):
-                    all_results.append({
-                        "agent": group[i].get("agent"),
-                        "success": False,
-                        "error": str(r),
-                    })
+                    all_results.append({"mission": m, "success": False, "error": str(r)})
                 else:
                     all_results.append(r)
-
         return all_results
 
-    async def _run_mission(self, mission: dict) -> dict:
-        """Ejecuta una mision individual y aplica post-procesamiento."""
+    async def _execute_mission(self, mission: dict) -> dict[str, Any]:
+        """Ejecuta una mision individual delegando al agente correspondiente."""
         agent_name = mission.get("agent", "")
-        task = mission.get("task", "")
-        topic = mission.get("target_topic", "")
-
+        agent = self._agents.get(agent_name)
+        if not agent:
+            return {"mission": mission, "success": False, "error": f"Agente '{agent_name}' no registrado"}
         try:
-            # Mision CFO: crear producto en Gumroad directamente
-            if agent_name == "cfo":
-                return await self._run_cfo_mission(mission)
-
-            agent = await self._get_agent(agent_name)
-            if not agent:
-                return {
-                    "agent": agent_name,
-                    "success": False,
-                    "error": f"Agente '{agent_name}' no disponible",
-                }
-
-            context = {
-                "task": task,
-                "target_topic": topic,
-                "market_focus": topic,
-                "revenue_target_usd": mission.get("revenue_target_usd", 0),
-                "rationale": mission.get("rationale", ""),
-            }
-
-            result = await agent.execute(context)
-            result["agent"] = agent_name
-            result["mission_task"] = task
-
-            # Post-procesamiento: distribuir en redes si hay publicaciones
-            if result.get("success") and result.get("published"):
-                await self._distribute_content_social(result.get("published", []), topic)
-
-            return result
-
+            context = {**mission.get("context", {}), "task": mission.get("task"), "sector_id": mission.get("sector", "digital")}
+            result = await agent.run(context)
+            return {"mission": mission, "result": result, "success": result.get("success", True)}
         except Exception as exc:
-            logger.error("[Orchestrator] Mision %s/%s fallo: %s", agent_name, task, exc)
-            return {"agent": agent_name, "success": False, "error": str(exc)}
+            logger.error("[Orchestrator] Error ejecutando mision %s/%s: %s", agent_name, mission.get("task"), exc)
+            return {"mission": mission, "success": False, "error": str(exc)}
 
-    async def _run_cfo_mission(self, mission: dict) -> dict:
-        """
-        Ejecuta mision CFO: genera ebook con IA y lo publica en Gumroad.
-        HuggingFace genera el contenido. Gumroad lo vende.
-        """
-        topic = mission.get("target_topic", "productividad con IA")
-        ai = get_ai_client()
+    # -- APRENDIZAJE ----------------------------------------------------------
 
-        try:
-            from apps.core.tools.gumroad_tools import GumroadTools
-            gumroad = GumroadTools()
-            listing = gumroad.build_ebook_listing(topic)
-
-            # Generar descripcion del ebook con HuggingFace
-            if ai:
-                description_result = await ai.complete(
-                    system=(
-                        "Eres un experto en marketing de productos digitales. "
-                        "Escribe descripciones de ventas atractivas y concisas."
-                    ),
-                    user=(
-                        f"Escribe una descripcion de ventas de 150 palabras para un ebook sobre: {topic}. "
-                        "Menciona 3 beneficios clave, quien es el publico objetivo, "
-                        "y por que deben comprarlo ahora. Tono profesional pero accesible."
-                    ),
-                    model=AIModel.CREATIVE,
-                    max_tokens=300,
-                    agent_name="cfo",
-                )
-                if description_result.success:
-                    listing["description"] = description_result.content
-
-            # Crear producto en Gumroad
-            result = await gumroad.create_product(
-                name=listing["name"],
-                description=listing["description"],
-                price_cents=listing["price_cents"],
-                tags=listing.get("tags", []),
-            )
-
-            if result.get("success"):
-                # Log en Supabase
-                try:
-                    from apps.core.tools.db_setup import log_to_supabase
-                    await log_to_supabase("products", {
-                        "name": listing["name"],
-                        "platform": "gumroad",
-                        "product_id": result.get("product_id", ""),
-                        "price": listing["price_cents"] / 100,
-                        "url": result.get("url", ""),
-                        "status": "active",
-                    })
-                except Exception:
-                    pass
-
-                # Postear en redes sociales
-                try:
-                    from apps.core.tools.social_tools import SocialTools
-                    social = SocialTools()
-                    post_text = social.format_product_post(
-                        name=listing["name"],
-                        url=result.get("url", ""),
-                        price_usd=listing["price_cents"] / 100,
-                    )
-                    await social.post_content(post_text, url=result.get("url", ""))
-                except Exception:
-                    pass
-
-                logger.info(
-                    "[CFO] Producto creado en Gumroad: '%s' — $%.2f — %s",
-                    listing["name"], listing["price_cents"] / 100, result.get("url", ""),
-                )
-                return {
-                    "agent": "cfo",
-                    "success": True,
-                    "product_name": listing["name"],
-                    "url": result.get("url", ""),
-                    "price_usd": listing["price_cents"] / 100,
-                    "revenue_usd": 0,  # Se actualiza cuando hay ventas
-                    "gumroad": result,
-                    "mission_task": "create_and_sell_ebook",
-                }
-            else:
-                return {
-                    "agent": "cfo",
-                    "success": False,
-                    "error": result.get("error", "Gumroad fallo"),
-                    "mission_task": "create_and_sell_ebook",
-                }
-
-        except Exception as exc:
-            logger.error("[CFO] Error en mision CFO: %s", exc)
-            return {"agent": "cfo", "success": False, "error": str(exc)}
-
-    async def _distribute_content_social(
-        self, published_items: list[dict], topic: str
-    ) -> None:
-        """Distribuye contenido publicado en redes sociales via Buffer."""
-        try:
-            from apps.core.tools.social_tools import SocialTools
-            social = SocialTools()
-            for item in published_items[:2]:  # Max 2 posts por ciclo
-                title = item.get("title", "")
-                url = item.get("url", "")
-                if title and url:
-                    post_text = social.format_article_post(title, url, topic)
-                    await social.post_content(post_text, url=url)
-                    logger.info("[Social] Distribuido en Buffer: %s", title[:50])
-        except Exception as exc:
-            logger.debug("[Social] Error distribuyendo: %s", exc)
-
-    async def _get_agent(self, name: str) -> Optional[BaseAgent]:
-        """
-        Carga agentes dinamicamente — escanea apps.core.agents en el primer uso.
-        Cualquier modulo *_agent.py con una subclase de BaseAgent se registra
-        automaticamente por su atributo .name — sin mapeo manual requerido.
-        Nuevo agente en el directorio = disponible inmediatamente al proximo ciclo.
-        """
-        if not self._agents:
-            self._auto_discover_agents()
-
-        if name in self._agents:
-            return self._agents[name]
-
-        # Aliases para nombres usados en planes generados por IA
-        aliases = {
-            "affiliate": "cfo",
-            "social": "marketing",
-            "seo": "content",
-            "analytics": "pm",
-            "market": "pm",
-            "monetization": "cfo",
-            "copy": "content",
-            "research": "pm",
-            "sales": "marketing",
-            "support_tickets": "support",
-            "bug_fix": "dev",
-            "code": "dev",
-            "compliance_check": "compliance",
-            "legal": "compliance",
+    async def _record_feedback(self, plan: dict, results: list, revenue: dict) -> None:
+        """Registra feedback del ciclo para mejorar el siguiente."""
+        feedback = {
+            "cycle": self._cycle_count,
+            "missions_planned": len(plan.get("missions", [])),
+            "missions_succeeded": sum(1 for r in results if r.get("success")),
+            "revenue_usd": revenue.get("total", 0),
+            "focus": plan.get("focus", ""),
         }
-        resolved = aliases.get(name)
-        if resolved and resolved in self._agents:
-            logger.info("[Orchestrator] Alias '%s' resuelto a '%s'", name, resolved)
-            return self._agents[resolved]
+        self._feedback_history.append(feedback)
+        # Mantener solo los ultimos 10 ciclos
+        if len(self._feedback_history) > 10:
+            self._feedback_history = self._feedback_history[-10:]
 
-        logger.warning(
-            "[Orchestrator] Agente '%s' no encontrado. Disponibles: %s",
-            name, sorted(self._agents.keys()),
-        )
-        return None
-
-    def _auto_discover_agents(self) -> None:
-        """
-        Escanea automaticamente apps.core.agents y registra todas las
-        subclases de BaseAgent encontradas en modulos *_agent.py.
-        No requiere mapeo manual — el registro es por agent.name.
-        Cualquier agente nuevo agregado al directorio se registra al siguiente ciclo.
-        """
-        import importlib
-        import pkgutil
-        import inspect
-        try:
-            import apps.core.agents as agents_pkg
-        except ImportError:
-            logger.error("[Orchestrator] No se pudo importar apps.core.agents")
-            return
-
-        registered: list[str] = []
-        skip = {"base_agent", "orchestrator"}
-        for _importer, module_name, _is_pkg in pkgutil.iter_modules(agents_pkg.__path__):
-            if module_name in skip or not module_name.endswith("_agent"):
-                continue
-            try:
-                mod = importlib.import_module(f"apps.core.agents.{module_name}")
-                for attr_name in dir(mod):
-                    cls = getattr(mod, attr_name, None)
-                    if (
-                        cls and inspect.isclass(cls)
-                        and issubclass(cls, BaseAgent)
-                        and cls is not BaseAgent
-                        and not getattr(cls, "__abstractmethods__", None)
-                    ):
-                        try:
-                            agent = cls()
-                            self._agents[agent.name] = agent
-                            registered.append(agent.name)
-                            break
-                        except Exception as init_err:
-                            logger.warning(
-                                "[Orchestrator] No se pudo instanciar %s: %s",
-                                attr_name, init_err,
-                            )
-            except Exception as exc:
-                logger.warning("[Orchestrator] Error importando %s: %s", module_name, exc)
-
-        logger.info("[Orchestrator] Agentes auto-descubiertos: %s", registered)
-
-    # ── REPORTES ──────────────────────────────────────────────────
+    # -- UTILIDADES -----------------------------------------------------------
 
     def _extract_revenue_summary(self, results: list[dict]) -> dict[str, Any]:
-        """Extrae resumen de ingresos de todos los resultados del ciclo."""
-        total_usd = 0.0
-        successful = 0
-        failed = 0
-        items_published = 0
-        products_listed = 0
-
+        total = 0.0
+        by_agent: dict[str, float] = {}
         for r in results:
-            if r.get("success"):
-                successful += 1
-                revenue = r.get("revenue_usd", 0) or r.get("estimated_revenue_usd", 0) or 0
-                total_usd += float(revenue)
-                items_published += len(r.get("published", []))
-                if r.get("gumroad") or r.get("stripe") or r.get("product_name"):
-                    products_listed += 1
-            else:
-                failed += 1
+            res = r.get("result", {})
+            amount = res.get("revenue_usd", 0) or res.get("revenue", {}).get("total", 0)
+            agent = r.get("mission", {}).get("agent", "unknown")
+            if isinstance(amount, (int, float)) and amount > 0:
+                total += amount
+                by_agent[agent] = by_agent.get(agent, 0) + amount
+        return {"total": round(total, 4), "by_agent": by_agent}
 
-        return {
-            "total_revenue_usd": round(total_usd, 2),
-            "missions_successful": successful,
-            "missions_failed": failed,
-            "items_published": items_published,
-            "products_listed": products_listed,
-        }
+    # -- LOGGING & AUDITORIA --------------------------------------------------
 
-    async def _send_cycle_report(
-        self,
-        results: list[dict],
-        intelligence: dict,
-        revenue_summary: dict,
-        cycle_time: float,
-    ) -> None:
-        """Envia reporte del ciclo por Telegram."""
-        tg_token = settings.telegram_token
-        if not tg_token or not settings.TELEGRAM_CHAT_ID:
-            logger.debug("[Orchestrator] Telegram no configurado — saltando reporte")
+    async def _log_cycle_start(self) -> Optional[str]:
+        try:
+            from apps.core.memory.supabase_client import get_db
+            db = get_db()
+            result = db._client.table("cycles").insert({
+                "cycle_number": self._cycle_count,
+                "status": "running",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+            return result.data[0]["id"] if result.data else None
+        except Exception:
+            return None
+
+    async def _log_cycle_result(self, cycle_id, plan, results, revenue, duration) -> None:
+        if not cycle_id:
             return
+        try:
+            from apps.core.memory.supabase_client import get_db
+            db = get_db()
+            db._client.table("cycles").update({
+                "status": "completed",
+                "missions": plan.get("missions", []),
+                "results": {"results": results[:10]},
+                "revenue_usd": revenue.get("total", 0),
+                "duration_ms": int(duration * 1000),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", cycle_id).execute()
+        except Exception as exc:
+            logger.warning("[Orchestrator] No pudo log cycle result: %s", exc)
 
-        ts = datetime.now(timezone.utc).strftime("%H:%M UTC")
-        successful = revenue_summary["missions_successful"]
-        failed = revenue_summary["missions_failed"]
-        revenue = revenue_summary["total_revenue_usd"]
-        published = revenue_summary["items_published"]
-        products = revenue_summary["products_listed"]
-        opportunity = intelligence.get("top_opportunity", "")[:80]
+    async def _log_audit_trail(self, plan: dict, results: list) -> None:
+        """Registra la auditoria del ciclo para transparencia."""
+        await self._audit_action(
+            "cycle_execution",
+            {"plan": plan.get("focus"), "missions": len(plan.get("missions", [])), "results_summary": len(results)},
+            rationale=f"Ciclo #{self._cycle_count} de autonomia de ARIA",
+        )
 
-        status_icon = "✅" if failed == 0 else ("⚠️" if successful > 0 else "❌")
+    async def _audit_action(self, action_type: str, detail: dict, rationale: str = "") -> None:
+        try:
+            from apps.core.memory.supabase_client import get_db
+            db = get_db()
+            await db.create_audit_entry({
+                "agent_name": self.name,
+                "sector_id": self.sector_id,
+                "action_type": action_type,
+                "action_detail": detail,
+                "rationale": rationale,
+                "reversible": True,
+            })
+        except Exception as exc:
+            logger.debug("[Orchestrator] Audit log fallo: %s", exc)
 
-        lines = [
-            f"<b>{status_icon} Ciclo #{self._cycle_count}</b> — {ts}",
-            "",
-            f"<b>Ingresos:</b> ${revenue:.2f}",
-            f"<b>Publicaciones:</b> {published} | <b>Productos:</b> {products}",
-            f"<b>Misiones:</b> {successful} OK  {failed} errores — {cycle_time:.0f}s",
-        ]
-
-        if opportunity:
-            lines += ["", f"<b>Oportunidad:</b> {opportunity}"]
-
-        # Listar publicaciones exitosas
-        published_items = []
-        for r in results:
-            if r.get("success") and r.get("published"):
-                for item in r.get("published", [])[:2]:
-                    url = item.get("url", "")
-                    title = item.get("title", "")
-                    if url and title:
-                        published_items.append(f'  • <a href="{url}">{title[:50]}</a>')
-        if published_items:
-            lines += ["", "<b>Publicado:</b>"] + published_items[:3]
-
-        # Productos creados
-        for r in results:
-            if r.get("success") and r.get("product_name"):
-                url = r.get("url", "")
-                name = r.get("product_name", "")
-                price = r.get("price_usd", 0)
-                if name:
-                    line = f'  • <a href="{url}">{name[:40]}</a> — ${price:.2f}'
-                    if "<b>Productos creados:</b>" not in "\n".join(lines):
-                        lines += ["", "<b>Productos creados:</b>"]
-                    lines.append(line)
-
-        errors = [r for r in results if not r.get("success")]
-        if errors:
-            lines += ["", "<b>Errores:</b>"]
-            for e in errors[:3]:
-                lines.append(f"  • {e.get('agent', '?')}: {str(e.get('error', ''))[:70]}")
-
-        text = "\n".join(lines)
-        await self._telegram_send(text, tg_token)
-
-    async def _telegram_send(self, text: str, token: Optional[str] = None) -> None:
-        """Envia mensaje por Telegram."""
-        tg_token = token or settings.telegram_token
-        if not tg_token:
+    async def _send_cycle_report(self, revenue: dict, cycle_time: float, governance: dict) -> None:
+        token = settings.telegram_token
+        chat_id = settings.TELEGRAM_CHAT_ID
+        if not token or not chat_id:
             return
-        url = f"{TELEGRAM_API}{tg_token}/sendMessage"
+        total = revenue.get("total", 0)
+        by_agent = revenue.get("by_agent", {})
+        breakdown = " | ".join(f"{a}: ${v:.2f}" for a, v in by_agent.items()) if by_agent else "Sin ingresos"
+        gov_adj = governance.get("price_adjustments", {}).get("adjusted", []) if isinstance(governance, dict) else []
+        msg = (
+            f"<b>ARIA AI - Ciclo #{self._cycle_count}</b>\n\n"
+            f"Ingresos: <b>${total:.4f}</b>\n"
+            f"Desglose: {breakdown}\n"
+            f"Duracion: {cycle_time:.1f}s\n"
+            f"Sectores activos: {', '.join(settings.enabled_sectors_list)}\n"
+            f"Ajustes de precio: {len(gov_adj)}\n"
+            f"Proxima revision: en {settings.CYCLE_INTERVAL_MINUTES}min"
+        )
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(url, json={
-                    "chat_id": settings.TELEGRAM_CHAT_ID,
-                    "text": text,
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                })
+                await client.post(
+                    f"{TELEGRAM_API}{token}/sendMessage",
+                    json={"chat_id": chat_id, "text": msg, "parse_mode": "HTML"},
+                )
         except Exception as exc:
-            logger.error("[Orchestrator] Error Telegram: %s", exc)
-
-    async def get_status(self) -> dict[str, Any]:
-        """Estado del orchestrator."""
-        return {
-            "cycle_count": self._cycle_count,
-            "agents_loaded": list(self._agents.keys()),
-        }
+            logger.error("[Orchestrator] Telegram error: %s", exc)
