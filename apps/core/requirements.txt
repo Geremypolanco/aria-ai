@@ -1,30 +1,41 @@
-# Framework principal
+# ── Framework principal ──────────────────────────────────
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 
-# Configuración
+# ── Configuración ─────────────────────────────────────────
 pydantic==2.8.2
 pydantic-settings==2.4.0
+python-dotenv==1.0.1
 
-# IA
+# ── IA ────────────────────────────────────────────────────
 httpx==0.27.2
 groq==0.11.0
 openai==1.51.0
+Pillow==10.4.0
 
-# Base de datos
+# ── Base de datos ─────────────────────────────────────────
 supabase==2.7.4
 
-# Scheduler
+# ── Scheduler ─────────────────────────────────────────────
 apscheduler==3.10.4
 
-# GitHub
+# ── GitHub ────────────────────────────────────────────────
 PyGithub==2.4.0
 
-# Pagos
+# ── Pagos ─────────────────────────────────────────────────
 stripe==10.6.0
 
-# Shopify
+# ── Email marketing ───────────────────────────────────────
+mailchimp-marketing==3.0.75
+
+# ── Shopify ───────────────────────────────────────────────
 ShopifyAPI==12.6.0
 
-# Utilidades
-python-dotenv==1.0.1
+# ── Contenido multimedia ──────────────────────────────────
+cloudinary==1.41.0
+requests==2.32.3
+aiofiles==24.1.0
+
+# ── Utilidades ────────────────────────────────────────────
+python-multipart==0.0.12
+tenacity==9.0.0
