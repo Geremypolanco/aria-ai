@@ -75,6 +75,11 @@ class AriaTelegramBot:
         "/codigo &lt;tarea&gt; — Generar código\n"
         "/clasificar &lt;texto&gt; — Zero-shot classification\n"
         "/capacidades — Ver todas las capacidades\n\n"
+        "<b>🧬 AUTO-EVOLUCIÓN</b>\n"
+        "/evolve — Ciclo completo (mejora código + APIs)\n"
+        "/mejorar [n] — Mejorar N archivos de código\n"
+        "/apis — Descubrir e integrar nuevas APIs\n"
+        "/score — Score de salud del sistema\n\n"
         "/ayuda — Este menú"
     )
 
@@ -100,6 +105,9 @@ class AriaTelegramBot:
         {"keywords": ["genera código", "escribe código", "programa", "crea un script", "hazme un programa"], "action": "codigo"},
         {"keywords": ["analiza sentimiento", "cómo suena esto", "es positivo o negativo", "qué sentimiento tiene"], "action": "sentimiento"},
         {"keywords": ["qué puedes hacer", "cuáles son tus capacidades", "qué funciones tienes", "muéstrame tus poderes"], "action": "capacidades"},
+        {"keywords": ["mejora tu código", "optimízate", "evoluciona", "mejórate", "auto-mejora", "actualízate"], "action": "mejorar"},
+        {"keywords": ["busca apis", "agrega api", "integra api", "añade api", "descubre nuevas herramientas"], "action": "apis"},
+        {"keywords": ["score", "tu puntuación", "cómo estás de salud", "estado del sistema", "health check"], "action": "score"},
     ]
 
     ACTION_DESCRIPTIONS = {
@@ -124,6 +132,9 @@ class AriaTelegramBot:
         "codigo": "generar código con HuggingFace Qwen2.5",
         "sentimiento": "analizar el sentimiento del texto",
         "capacidades": "mostrar todas las capacidades de ARIA",
+        "mejorar": "mejorar el código del sistema autónomamente",
+        "apis": "descubrir e integrar nuevas APIs",
+        "score": "ver el score de salud del sistema",
     }
 
     def __init__(self) -> None:
@@ -186,6 +197,10 @@ class AriaTelegramBot:
                 "revenue": lambda: self.cmd_revenue(chat_id),
                 "pendientes": lambda: self.cmd_pendientes(chat_id),
                 "evolve": lambda: self.cmd_evolve(chat_id),
+                "evolve_full": lambda: asyncio.ensure_future(self._run_evolve_async(chat_id, "full", 2, 1)),
+                "mejorar": lambda: self.cmd_mejorar(chat_id, "2"),
+                "apis": lambda: self.cmd_apis(chat_id, "1"),
+                "score": lambda: self.cmd_score(chat_id),
             }
             if cmd in actions:
                 await actions[cmd]()
@@ -318,6 +333,9 @@ class AriaTelegramBot:
             "codigo":     lambda: self.cmd_codigo(chat_id, original),
             "sentimiento":lambda: self.cmd_sentimiento(chat_id, original),
             "capacidades":lambda: self.cmd_capacidades(chat_id),
+            "mejorar":    lambda: self.cmd_mejorar(chat_id, "2"),
+            "apis":       lambda: self.cmd_apis(chat_id, "2"),
+            "score":      lambda: self.cmd_score(chat_id),
         }
         handler = mapping.get(action)
         if handler:
@@ -390,6 +408,9 @@ class AriaTelegramBot:
             "/pagespeed":  lambda: self.cmd_pagespeed(chat_id, args),
             "/ocr":        lambda: self.cmd_ocr(chat_id, args),
             "/capacidades":lambda: self.cmd_capacidades(chat_id),
+            "/mejorar":    lambda: self.cmd_mejorar(chat_id, args),
+            "/apis":       lambda: self.cmd_apis(chat_id, args),
+            "/score":      lambda: self.cmd_score(chat_id),
         }
         h = handlers.get(cmd)
         if h:
@@ -497,18 +518,112 @@ class AriaTelegramBot:
             await self.send(chat_id, f"❌ Error: {exc}")
 
     async def cmd_evolve(self, chat_id: str) -> None:
-        await self.send(chat_id, "🧠 <b>Iniciando auto-evolución...</b>")
-        asyncio.create_task(self._run_evolve_async(chat_id))
+        kb = {"inline_keyboard": [[
+            {"text": "💻 Solo código", "callback_data": "cmd:mejorar"},
+            {"text": "🔌 Solo APIs", "callback_data": "cmd:apis"},
+            {"text": "🧬 Todo", "callback_data": "cmd:evolve_full"},
+        ]]}
+        await self.send(chat_id,
+            "🧬 <b>Auto-Evolución de ARIA</b>\n\n"
+            "Selecciona el modo de evolución:\n"
+            "• <b>Solo código</b> — Mejora archivos existentes\n"
+            "• <b>Solo APIs</b> — Descubre e integra nuevas APIs\n"
+            "• <b>Todo</b> — Ciclo completo (recomendado)\n\n"
+            "⚠️ Los cambios se pushean a GitHub y se deploya automáticamente a Fly.io.",
+            reply_markup=kb)
 
-    async def _run_evolve_async(self, chat_id: str) -> None:
+    async def _run_evolve_async(self, chat_id: str, mode: str = "full", max_files: int = 2, max_apis: int = 1) -> None:
         try:
             from apps.core.agents.evolution_agent import EvolutionAgent
             agent = EvolutionAgent()
             await agent.start()
-            result = await agent.run({})
-            recs = result.get("recommendations", [])
-            recs_txt = "\n".join(f"  • {r}" for r in recs[:3]) or "  Sin recomendaciones"
-            await self.send(chat_id, f"✅ <b>Evolución completada</b>\n\n<b>Recomendaciones:</b>\n{recs_txt}")
+            result = await agent.run({
+                "mode": mode,
+                "max_files": max_files,
+                "max_apis": max_apis,
+                "notify_telegram": False,  # We notify here directly
+            })
+            ok = result.get("success", False)
+            imps = result.get("improvements", [])
+            apis = result.get("new_apis", [])
+            score = result.get("system_score", 0)
+            new_score = result.get("new_system_score", 0)
+            delta = result.get("score_delta", 0)
+
+            lines = [f"{'✅' if ok else '❌'} <b>Evolución completa</b>\n"]
+            lines.append(f"📈 Score: {score} → {new_score} ({'+'if delta>=0 else ''}{delta})")
+
+            if imps:
+                lines.append(f"\n<b>💻 Archivos mejorados ({len(imps)}):</b>")
+                for i in imps[:3]:
+                    f = i.get("file","").split("/")[-1]
+                    d = i.get("lines_delta", 0)
+                    lines.append(f"  • {f} ({'+' if d>=0 else ''}{d} líneas) → commit {i.get('commit','')}")
+
+            if apis:
+                lines.append(f"\n<b>🔌 APIs integradas ({len(apis)}):</b>")
+                for a in apis[:3]:
+                    lines.append(f"  • {a.get('api','?')}")
+                    if a.get("env_var"):
+                        lines.append(f"    ⚙️ Agrega en Fly.io Secrets: <code>{a['env_var']}</code>")
+
+            arch = result.get("architecture_insights", {})
+            if arch.get("missing_systems"):
+                lines.append("\n<b>🏗 Mejoras propuestas (requieren aprobación):</b>")
+                for s in arch["missing_systems"][:2]:
+                    lines.append(f"  • {s[:80]}")
+
+            lessons = result.get("lessons_learned", {})
+            if lessons.get("recommendations"):
+                lines.append("\n<b>📚 Aprendizajes:</b>")
+                for r in lessons["recommendations"][:2]:
+                    lines.append(f"  • {r[:80]}")
+
+            lines.append("\n🚀 Cambios en GitHub — Fly.io deploying...")
+            await self.send(chat_id, "\n".join(lines))
+        except Exception as exc:
+            logger.error("[TelegramBot] evolve error: %s", exc)
+            await self.send(chat_id, f"❌ Error en evolución: {exc}")
+
+    async def cmd_mejorar(self, chat_id: str, args: str) -> None:
+        n = int(args.strip()) if args.strip().isdigit() else 2
+        n = min(n, 5)
+        await self.send(chat_id, f"💻 <b>Mejorando {n} archivo(s) de código...</b>\n⏳ Analizando, generando mejoras y pusheando a GitHub.")
+        asyncio.create_task(self._run_evolve_async(chat_id, mode="improve_only", max_files=n))
+
+    async def cmd_apis(self, chat_id: str, args: str) -> None:
+        n = int(args.strip()) if args.strip().isdigit() else 1
+        n = min(n, 3)
+        await self.send(chat_id, f"🔌 <b>Descubriendo e integrando {n} API(s) nueva(s)...</b>\n⏳ Evaluando candidatas, generando código de integración y deploying.")
+        asyncio.create_task(self._run_evolve_async(chat_id, mode="discover_only", max_apis=n))
+
+    async def cmd_score(self, chat_id: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.agents.evolution_agent import EvolutionAgent
+            from apps.core.tools.self_improvement import SelfImprovementEngine
+            from apps.core.tools.api_discovery import APIDiscoveryEngine
+            agent = EvolutionAgent()
+            await agent.start()
+            score = await agent._calculate_system_score()
+            imp_engine = SelfImprovementEngine()
+            imp_stats = await imp_engine.get_improvement_stats()
+            api_engine = APIDiscoveryEngine()
+            integrated_apis = await api_engine.get_integrated_apis()
+
+            bar_filled = int(score / 10)
+            bar = "█" * bar_filled + "░" * (10 - bar_filled)
+
+            await self.send(chat_id,
+                f"📊 <b>Score de Salud del Sistema</b>\n\n"
+                f"<b>{score}/100</b> [{bar}]\n\n"
+                f"💻 Mejoras de código aplicadas: {imp_stats.get('total_improvements', 0)}\n"
+                f"🔌 APIs integradas autónomamente: {len(integrated_apis)}\n\n"
+                f"<b>Últimas mejoras:</b>\n"
+                + "\n".join(f"  • {i.get('file','').split('/')[-1]} — {i.get('message','')[:60]}"
+                             for i in imp_stats.get("recent_improvements", [])[:3])
+                + (f"\n\n<b>APIs integradas:</b>\n" + "\n".join(f"  • {a.get('api','')}" for a in integrated_apis[-3:]) if integrated_apis else "")
+            )
         except Exception as exc:
             await self.send(chat_id, f"❌ Error: {exc}")
 
