@@ -189,6 +189,7 @@ class AriaTelegramBot:
             "/aprobar": self._cmd_aprobar,
             "/rechazar": self._cmd_rechazar,
             "/agentes": self._cmd_agentes,
+            "/sesion": self._cmd_sesion,
         }
         handler = handlers.get(cmd, self._cmd_unknown)
         await handler(chat_id, args)
@@ -452,6 +453,40 @@ class AriaTelegramBot:
     async def _cmd_agentes(self, chat_id: str, _: str) -> None:
         await self._cmd_status(chat_id, _)
 
+    async def _cmd_sesion(self, chat_id: str, platform: str) -> None:
+        """Inicia el flujo para conectar una sesión sin API (cookies)."""
+        from apps.core.tools.social_session import SUPPORTED_PLATFORMS, PLATFORM_CONFIG
+        platform = platform.lower().strip()
+        if not platform:
+            msg = "<b>Conectar sesión sin API</b>\n\nUsa: <code>/sesion [plataforma]</code>\n\nPlataformas:\n"
+            msg += "\n".join([f"• {PLATFORM_CONFIG[p]['emoji']} {p}" for p in SUPPORTED_PLATFORMS])
+            await self._send(chat_id, msg)
+            return
+
+        if platform not in SUPPORTED_PLATFORMS:
+            await self._send(chat_id, f"Plataforma '{platform}' no soportada aún.")
+            return
+
+        cfg = PLATFORM_CONFIG[platform]
+        connect_url = f"{settings.ARIA_BASE_URL}/social/connect?platform={platform}&token={settings.SOCIAL_CONNECT_TOKEN or 'aria'}"
+        
+        msg = (
+            f"{cfg['emoji']} <b>Conectar {cfg['display_name']}</b>\n\n"
+            f"{cfg['instructions']}\n\n"
+            f"🔗 <b>Enlace de conexión rápida:</b>\n{connect_url}\n\n"
+            f"<i>O simplemente pega el JSON de Cookie-Editor aquí mismo.</i>"
+        )
+        # Guardar que este usuario está intentando conectar esta plataforma
+        mc = self._get_memory()
+        if mc:
+            from apps.core.tools.social_session import SocialSessionManager
+            key = SocialSessionManager.PENDING_KEY.format(chat_id=chat_id)
+            await asyncio.get_event_loop().run_in_executor(
+                None, lambda: mc.setex(key, SocialSessionManager.PENDING_TTL, platform)
+            )
+        
+        await self._send(chat_id, msg)
+
     async def _cmd_unknown(self, chat_id: str, _: str) -> None:
         await self._send(chat_id, "No conozco ese comando. /help para ver los disponibles.")
 
@@ -462,6 +497,29 @@ class AriaTelegramBot:
         Conversación libre con ARIA.
         Usa contexto del sistema + historial para responder como humano.
         """
+        # 1. ¿Es un JSON de cookies?
+        if text.startswith("[") and "name" in text and "value" in text:
+            from apps.core.tools.social_session import SocialSessionManager, get_social_session_manager
+            mc = self._get_memory()
+            if mc:
+                key = SocialSessionManager.PENDING_KEY.format(chat_id=chat_id)
+                platform = await asyncio.get_event_loop().run_in_executor(None, mc.get, key)
+                if platform:
+                    if isinstance(platform, bytes): platform = platform.decode()
+                    await self._send(chat_id, f"Procesando cookies para {platform}...")
+                    ssm = get_social_session_manager()
+                    cookies = ssm.parse_cookies_json(text)
+                    if cookies:
+                        res = await ssm.save_session(platform, cookies)
+                        if res.get("success"):
+                            await self._send(chat_id, f"✅ ¡Sesión de {platform} conectada con éxito!")
+                            await asyncio.get_event_loop().run_in_executor(None, mc.delete, key)
+                            return
+                        else:
+                            await self._send(chat_id, f"❌ Error guardando sesión: {res.get('error')}")
+                    else:
+                        await self._send(chat_id, "❌ El JSON de cookies no parece válido.")
+
         history = await self._get_history(chat_id)
         context = await self._get_system_context()
 

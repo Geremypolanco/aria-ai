@@ -149,6 +149,40 @@ PLATFORM_CONFIG: dict[str, dict] = {
         ),
         "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
     },
+    "shopify": {
+        "display_name": "Shopify Admin",
+        "emoji": "🛍️",
+        "required_cookies": ["_admin_session"],
+        "optional_cookies": ["_secure_admin_session_id", "shopify_pay_session_id"],
+        "domain": "myshopify.com",
+        "api_base": "https://{shop_name}.myshopify.com/admin/api/unstable",
+        "test_endpoint": "https://{shop_name}.myshopify.com/admin/shop.json",
+        "test_headers": {},
+        "instructions": (
+            "1. Abre tu panel de <b>Shopify Admin</b> en Chrome\n"
+            "2. Instala <b>Cookie-Editor</b>\n"
+            "3. Export → JSON y pega aquí\n\n"
+            "Cookie clave: <code>_admin_session</code>"
+        ),
+        "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
+    },
+    "tiktok_shop": {
+        "display_name": "TikTok Shop Seller",
+        "emoji": "📦",
+        "required_cookies": ["sessionid"],
+        "optional_cookies": ["ttwid", "tt_csrf_token", "msToken"],
+        "domain": "tiktok.com",
+        "api_base": "https://seller-us.tiktok.com/api/v1",
+        "test_endpoint": "https://seller-us.tiktok.com/api/v1/seller/info",
+        "test_headers": {},
+        "instructions": (
+            "1. Abre <b>TikTok Shop Seller Center</b> en Chrome\n"
+            "2. Instala <b>Cookie-Editor</b>\n"
+            "3. Export → JSON y pega aquí\n\n"
+            "Cookie clave: <code>sessionid</code>"
+        ),
+        "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
+    },
 }
 
 SUPPORTED_PLATFORMS = list(PLATFORM_CONFIG.keys())
