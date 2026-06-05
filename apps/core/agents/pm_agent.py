@@ -1,16 +1,11 @@
 """
-PMAgent — Product Manager Agent
-Analiza mercados, identifica nichos rentables y score de oportunidades.
+pm_agent.py — Project Manager Agent con Google Suite + HuggingFace Suite.
+Investigación de mercado completa: web, YouTube, libros, tendencias, NLP, imágenes.
 """
 from __future__ import annotations
-
 import logging
 from typing import Any
-
-import httpx
-
 from apps.core.agents.base_agent import BaseAgent
-from apps.core.config import settings
 from apps.core.tools.ai_client import AIModel
 
 logger = logging.getLogger("aria.pm_agent")
@@ -20,185 +15,194 @@ class PMAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
             name="pm_agent",
-            description="Analista de mercado y gestor de producto",
+            description="Investigación de mercado y gestión de proyectos — análisis completo con Google + HuggingFace",
             capabilities=[
-                "niche_analysis", "opportunity_scoring",
-                "affiliate_research", "keyword_research",
+                "market_research", "competitor_analysis", "niche_validation",
+                "trend_analysis", "product_ideation", "content_strategy",
+                "sentiment_analysis", "image_analysis", "multilingual_research",
             ],
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
         task = context.get("task", "")
-        market_focus = context.get("market_focus", "digital products")
-        language = context.get("primary_language", "en")
+        niche = context.get("niche", "digital products")
+        language = context.get("language", "es")
+        deep_research = context.get("deep_research", True)
 
-        keywords = await self.get_trending_keywords(market_focus, language)
-        niche_data = await self.analyze_niche(market_focus, language, keywords)
-        affiliates = await self.find_affiliate_programs(market_focus)
-        score = await self.score_opportunity(niche_data)
+        results: dict[str, Any] = {"success": True, "agent": "pm_agent", "niche": niche}
 
-        result = {
-            "success": True,
-            "agent": "pm_agent",
-            "niche": market_focus,
-            "score": score,
-            "keywords": keywords[:10],
-            "affiliates": affiliates[:5],
-            "niche_data": niche_data,
+        # ── 1. Investigación de mercado completa con Google Suite
+        market_data = await self._deep_market_research(niche, language)
+        results["market_research"] = market_data
+
+        # ── 2. Análisis de sentimiento del mercado con HuggingFace
+        if deep_research:
+            sentiment_data = await self._analyze_market_sentiment(market_data, niche)
+            results["market_sentiment"] = sentiment_data
+
+        # ── 3. Oportunidades de nicho con YouTube + NER
+        opportunities = await self._find_opportunities(niche, market_data)
+        results["opportunities"] = opportunities
+
+        # ── 4. Síntesis final con IA
+        strategy = await self._generate_strategy(niche, task, results)
+        results["strategy"] = strategy
+
+        # ── 5. Guardar en Supabase
+        await self._save_research(niche, results)
+        await self._log("market_research_complete", f"Nicho: {niche} | Tendencias: {len(market_data.get('trending_topics',[]))}")
+
+        return results
+
+    async def _deep_market_research(self, niche: str, language: str) -> dict[str, Any]:
+        """Investigación completa usando TODAS las APIs de Google."""
+        import asyncio
+        try:
+            from apps.core.tools.google_suite import GoogleSuite
+            google = GoogleSuite()
+
+            # Ejecutar todas las búsquedas en paralelo
+            market_task   = google.full_market_research(niche, language)
+            trends_rt     = google.trends_realtime("US")
+            kg_task       = google.knowledge_graph_search(niche)
+            books_task    = google.books_search(f"{niche} business", max_results=5)
+            yt_trending   = google.youtube_trending("US")
+
+            market, trends_rt_r, kg, books, yt_trend = await asyncio.gather(
+                market_task, trends_rt, kg_task, books_task, yt_trending,
+                return_exceptions=True,
+            )
+
+            # Enriquecer con NLP si hay datos web
+            web_text = " ".join([r.get("snippet","") for r in (market.get("web_results",[]) if isinstance(market,dict) else [])[:5]])
+            nlp = {}
+            if web_text:
+                nlp = await google.nlp_analyze(web_text[:3000])
+
+            return {
+                "market_overview": market if isinstance(market, dict) else {},
+                "realtime_trends": trends_rt_r.get("realtime_trends",[])[:10] if isinstance(trends_rt_r,dict) else [],
+                "trending_topics": market.get("trending_topics",[]) if isinstance(market,dict) else [],
+                "knowledge_graph": kg.get("entities",[]) if isinstance(kg,dict) else [],
+                "relevant_books": books.get("books",[])[:3] if isinstance(books,dict) else [],
+                "trending_videos": yt_trend.get("trending",[])[:10] if isinstance(yt_trend,dict) else [],
+                "nlp_entities": nlp.get("entities",[]) if isinstance(nlp,dict) else [],
+                "nlp_categories": nlp.get("categories",[]) if isinstance(nlp,dict) else [],
+                "nlp_sentiment": nlp.get("sentiment",{}) if isinstance(nlp,dict) else {},
+            }
+        except Exception as exc:
+            logger.error("[PMAgent] market research error: %s", exc)
+            return {"error": str(exc)}
+
+    async def _analyze_market_sentiment(self, market_data: dict, niche: str) -> dict[str, Any]:
+        """Analiza el sentimiento del mercado con HuggingFace."""
+        try:
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            hf = HuggingFaceSuite()
+
+            # Recopilar textos del mercado
+            texts = []
+            for item in market_data.get("market_overview",{}).get("web_results",[])[:5]:
+                if item.get("snippet"):
+                    texts.append(item["snippet"])
+            for video in market_data.get("trending_videos",[])[:3]:
+                if video.get("title"):
+                    texts.append(video["title"])
+
+            if not texts:
+                return {"error": "Sin textos para analizar"}
+
+            return await hf.analyze_market_sentiment(niche, texts)
+        except Exception as exc:
+            logger.error("[PMAgent] sentiment error: %s", exc)
+            return {"error": str(exc)}
+
+    async def _find_opportunities(self, niche: str, market_data: dict) -> list[dict]:
+        """Encuentra oportunidades de productos usando clasificación zero-shot + YouTube."""
+        import asyncio
+        opportunities = []
+        try:
+            from apps.core.tools.google_suite import GoogleSuite
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            google = GoogleSuite()
+            hf = HuggingFaceSuite()
+
+            # Buscar videos de alto rendimiento sobre el nicho
+            yt_search = await google.youtube_search(
+                f"best {niche} products 2025 review", max_results=10, order="viewCount"
+            )
+
+            if yt_search.get("success") and yt_search.get("results"):
+                # Obtener stats de los top videos
+                video_ids = [v["id"] for v in yt_search["results"][:5] if v.get("id")]
+                if video_ids:
+                    video_stats = await google.youtube_video_details(video_ids)
+                    if video_stats.get("success"):
+                        for v in video_stats.get("videos",[])[:5]:
+                            # Clasificar si es oportunidad real
+                            cls = await hf.classify_zero_shot(
+                                v.get("title",""),
+                                ["high demand product", "tutorial only", "review comparison", "affiliate marketing", "low demand"],
+                            )
+                            opportunities.append({
+                                "source": "youtube",
+                                "title": v.get("title",""),
+                                "views": v.get("views",0),
+                                "tags": v.get("tags",[])[:5],
+                                "opportunity_type": cls.get("best_label","") if isinstance(cls,dict) else "",
+                                "opportunity_score": cls.get("best_score",0) if isinstance(cls,dict) else 0,
+                            })
+        except Exception as exc:
+            logger.error("[PMAgent] find_opportunities error: %s", exc)
+
+        return opportunities[:10]
+
+    async def _generate_strategy(self, niche: str, task: str, data: dict) -> dict[str, Any]:
+        """Genera estrategia final con todos los datos recopilados."""
+        context_summary = {
+            "trending_topics": data.get("market_research",{}).get("trending_topics",[])[:5],
+            "sentiment": data.get("market_sentiment",{}).get("overall",""),
+            "top_opportunities": data.get("opportunities",[])[:3],
+            "nlp_entities": data.get("market_research",{}).get("nlp_entities",[])[:5],
         }
 
-        # Guardar en Supabase
-        if score.get("opportunity_score", 0) >= 6:
-            await self._save_intelligence(market_focus, language, niche_data, score)
-
-        await self._log("niche_analysis", f"Nicho: {market_focus} | Score: {score}")
-        return result
-
-    async def analyze_niche(
-        self, niche: str, language: str, keywords: list[str]
-    ) -> dict[str, Any]:
-        """Analiza un nicho de mercado usando IA + APIs."""
-        news_context = await self._fetch_niche_news(niche)
-        serp_context = await self._fetch_serp_data(niche)
-
-        analysis = await self.think(
-            system=(
-                "Eres un analista de mercado experto en negocios digitales globales. "
-                "Analiza nichos con enfoque en monetización inmediata y escalabilidad."
-            ),
-            user=(
-                f"Nicho: {niche}\nIdioma objetivo: {language}\n"
-                f"Keywords trending: {', '.join(keywords[:5])}\n"
-                f"Noticias: {news_context[:500]}\n"
-                f"SERP data: {serp_context[:500]}\n\n"
-                "Devuelve JSON con:\n"
-                '{"demand_score": 1-10, "competition_score": 1-10, '
-                '"monetization_potential": "alto|medio|bajo", '
-                '"recommended_products": ["producto1", "producto2"], '
-                '"target_audience": "descripción", '
-                '"entry_barriers": "descripción", '
-                '"quick_win_strategy": "descripción"}'
-            ),
-            model=AIModel.STRATEGY,
-            json_mode=True,
+        strategy_prompt = (
+            f"Como PM experto en productos digitales, analiza estos datos de mercado y genera una estrategia:\n"
+            f"Nicho: {niche}\n"
+            f"Tarea: {task}\n"
+            f"Datos: {context_summary}\n\n"
+            "Genera un JSON con:\n"
+            "- top_3_products: [3 ideas de productos digitales para crear]\n"
+            "- target_audience: descripción del público objetivo\n"
+            "- pricing_strategy: rango de precios recomendado\n"
+            "- content_angles: [3 ángulos de contenido únicos]\n"
+            "- risk_level: bajo/medio/alto\n"
+            "- expected_revenue_month1: estimación primer mes en USD"
         )
-        return analysis or {}
 
-    async def find_affiliate_programs(self, niche: str) -> list[dict[str, Any]]:
-        """Identifica programas de afiliados relevantes para el nicho."""
-        result = await self.think(
-            system="Eres experto en marketing de afiliados con conocimiento profundo de programas de comisiones altas.",
-            user=(
-                f"Nicho: {niche}\n\n"
-                "Lista los 5 mejores programas de afiliados para este nicho. JSON:\n"
-                '[{"name": "...", "commission_pct": 0, "cookie_days": 0, '
-                '"url": "...", "payment_method": "...", "notes": "..."}]'
-            ),
-            model=AIModel.FAST,
-            json_mode=True,
+        response = await self.think(
+            system="Eres un PM experto en productos digitales. Responde SOLO con JSON válido.",
+            user=strategy_prompt,
+            model=AIModel.ANALYTICAL,
         )
-        return result if isinstance(result, list) else []
 
-    async def score_opportunity(self, niche_data: dict[str, Any]) -> dict[str, Any]:
-        """Calcula el score de oportunidad compuesto."""
-        demand = niche_data.get("demand_score", 5)
-        competition = niche_data.get("competition_score", 5)
-        # Fórmula: demanda alta + competencia baja = score alto
-        opportunity_score = round((demand * 0.6) + ((10 - competition) * 0.4), 1)
-        return {
-            "opportunity_score": min(10, opportunity_score),
-            "demand_score": demand,
-            "competition_score": competition,
-            "recommendation": "GO" if opportunity_score >= 6 else "SKIP",
-        }
-
-    async def get_trending_keywords(self, niche: str, language: str) -> list[str]:
-        """Obtiene keywords trending para el nicho."""
-        if settings.SERP_API_KEY:
-            try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    res = await client.get(
-                        "https://serpapi.com/search",
-                        params={
-                            "api_key": settings.SERP_API_KEY,
-                            "engine": "google_autocomplete",
-                            "q": niche,
-                            "gl": "us",
-                            "hl": language,
-                        },
-                    )
-                    if res.status_code == 200:
-                        suggestions = res.json().get("suggestions", [])
-                        return [s.get("value", "") for s in suggestions[:10]]
-            except Exception as exc:
-                logger.warning("[PMAgent] SERP keywords error: %s", exc)
-
-        # Fallback: IA
-        result = await self.think(
-            system="Eres experto en SEO y keyword research.",
-            user=f"Lista 10 keywords long-tail trending para el nicho '{niche}' en idioma '{language}'. Devuelve JSON: [\"keyword1\", \"keyword2\"]",
-            model=AIModel.FAST,
-            json_mode=True,
-        )
-        return result if isinstance(result, list) else [niche]
-
-    async def _fetch_niche_news(self, niche: str) -> str:
-        if not settings.NEWS_API_KEY:
-            return ""
         try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                res = await client.get(
-                    "https://newsapi.org/v2/everything",
-                    params={
-                        "apiKey": settings.NEWS_API_KEY,
-                        "q": niche,
-                        "language": "en",
-                        "sortBy": "publishedAt",
-                        "pageSize": 5,
-                    },
-                )
-                if res.status_code == 200:
-                    articles = res.json().get("articles", [])
-                    return " | ".join([a.get("title", "") for a in articles])
+            import json, re
+            match = re.search(r"\{.*\}", response or "", re.DOTALL)
+            if match:
+                return json.loads(match.group())
         except Exception:
             pass
-        return ""
+        return {"raw": response}
 
-    async def _fetch_serp_data(self, niche: str) -> str:
-        if not settings.SERP_API_KEY:
-            return ""
-        try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                res = await client.get(
-                    "https://serpapi.com/search",
-                    params={
-                        "api_key": settings.SERP_API_KEY,
-                        "engine": "google",
-                        "q": f"{niche} buy online",
-                        "num": 5,
-                    },
-                )
-                if res.status_code == 200:
-                    results = res.json().get("organic_results", [])
-                    return " | ".join([r.get("title", "") for r in results[:5]])
-        except Exception:
-            pass
-        return ""
-
-    async def _save_intelligence(
-        self, niche: str, language: str, data: dict, score: dict
-    ) -> None:
+    async def _save_research(self, niche: str, data: dict) -> None:
         try:
             from apps.core.memory.supabase_client import get_db
             db = get_db()
-            await db.save_market_intelligence(
+            await db.save_niche_analysis(
                 niche=niche,
-                market="global",
-                language=language,
-                trend_score=int(data.get("demand_score", 5)),
-                competition_score=int(data.get("competition_score", 5)),
-                opportunity_score=int(score.get("opportunity_score", 5)),
-                data=data,
+                score=75,
+                metadata={k: str(v)[:500] for k, v in data.items() if k != "strategy"},
             )
         except Exception as exc:
-            logger.warning("[PMAgent] No se pudo guardar inteligencia: %s", exc)
+            logger.warning("[PMAgent] Error guardando: %s", exc)
