@@ -15,6 +15,7 @@ from apps.core.tools.api_discovery import APIDiscoveryEngine, KNOWN_FREE_APIS
 from apps.core.tools.canva_tools import CanvaTools
 from apps.core.tools.airtable_tools import AirtableTools
 from apps.core.tools.telegram_bot import AriaTelegramBot, get_bot
+from apps.core.tools.social_media import SocialMediaManager
 
 __all__ = [
     "AIModel", "AIProvider", "AIResponse", "get_ai_client",
@@ -25,4 +26,5 @@ __all__ = [
     "SelfImprovementEngine", "APIDiscoveryEngine", "KNOWN_FREE_APIS",
     "CanvaTools", "AirtableTools",
     "AriaTelegramBot", "get_bot",
+    "SocialMediaManager",
 ]
