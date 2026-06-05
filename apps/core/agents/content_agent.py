@@ -115,6 +115,83 @@ class ContentAgent(BaseAgent):
         result = await tools.auto_create_digital_product(topic, category)
         return result
 
+
+    # ── CAPACIDADES HF (siempre disponibles con HF_TOKEN) ────────────────────
+
+    async def _translate_with_hf(self, text: str, source: str = "en", target: str = "es") -> str:
+        """Traduce texto usando HuggingFace Helsinki-NLP."""
+        try:
+            from apps.core.tools.hf_discovery import get_hf
+            result = await get_hf().translate(text, source_lang=source, target_lang=target)
+            if result.get("success") and result.get("translation"):
+                return result["translation"]
+        except Exception as exc:
+            logger.warning("[ContentAgent] HF translate failed: %s", exc)
+        return text  # fallback: texto original
+
+    async def _analyze_content_sentiment(self, text: str) -> dict:
+        """Analiza el sentimiento de un texto con HuggingFace."""
+        try:
+            from apps.core.tools.hf_discovery import get_hf
+            return await get_hf().analyze_sentiment(text[:500])
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    async def _classify_topic(self, text: str, topics: list) -> dict:
+        """Clasifica el tema de un texto sin entrenamiento previo."""
+        try:
+            from apps.core.tools.hf_discovery import get_hf
+            return await get_hf().classify_text(text[:400], topics)
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    async def _generate_cover_image(self, title: str) -> dict:
+        """Genera imagen de portada para un artículo usando FLUX/SDXL."""
+        try:
+            from apps.core.tools.hf_discovery import get_hf
+            prompt = f"Professional blog cover image for article: {title}. Modern, clean design, tech aesthetic."
+            return await get_hf().generate_image(prompt)
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    async def _summarize_for_social(self, article_text: str, max_length: int = 150) -> str:
+        """Resume artículo largo para posts de redes sociales."""
+        try:
+            from apps.core.tools.hf_discovery import get_hf
+            result = await get_hf().summarize(article_text[:2000], max_length=max_length)
+            if result.get("success") and result.get("summary"):
+                return result["summary"]
+        except Exception as exc:
+            logger.warning("[ContentAgent] HF summarize failed: %s", exc)
+        return article_text[:max_length]
+
+    async def _extract_article_entities(self, text: str) -> dict:
+        """Extrae personas, empresas y temas de un artículo para SEO y targeting."""
+        try:
+            from apps.core.tools.hf_discovery import get_hf
+            return await get_hf().extract_entities(text[:512])
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    async def get_hf_capabilities(self) -> dict:
+        """Reporta qué capacidades HF están disponibles para este agente."""
+        try:
+            from apps.core.tools.hf_discovery import get_hf
+            report = await get_hf().capability_report()
+            return {
+                "available": report.get("available", False),
+                "tasks_count": report.get("tasks_count", 0),
+                "content_relevant": [
+                    t for t in report.get("supported_tasks", [])
+                    if t in ["translation", "summarization", "sentiment-analysis",
+                             "image-generation", "text-to-speech", "zero-shot-classification",
+                             "named-entity-recognition"]
+                ],
+            }
+        except Exception as exc:
+            return {"available": False, "error": str(exc)}
+
+
     async def _send_newsletter_digest(self) -> dict:
         """Envía digest de los últimos artículos publicados."""
         try:
