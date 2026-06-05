@@ -354,7 +354,7 @@ class EvolutionAgent(BaseAgent):
                 '"critical_path": [str]}\n\n'
                 f"ARCHIVOS ACTUALES:\n{file_summary}"
             ),
-            model=AIModel.STANDARD,
+            model=AIModel.STRATEGY,
             json_mode=True,
         )
 
