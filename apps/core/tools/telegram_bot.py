@@ -1363,13 +1363,13 @@ class AriaTelegramBot:
         )
 
 
-  # ── SINGLETON ─────────────────────────────────────────────
+# ── SINGLETON ─────────────────────────────────────────────
 
-  _bot_instance: Optional[AriaTelegramBot] = None
+_bot_instance: Optional[AriaTelegramBot] = None
 
 
-  def get_bot() -> AriaTelegramBot:
-    global _bot_instance
-    if _bot_instance is None:
-        _bot_instance = AriaTelegramBot()
-    return _bot_instance
+def get_bot() -> AriaTelegramBot:
+  global _bot_instance
+  if _bot_instance is None:
+      _bot_instance = AriaTelegramBot()
+  return _bot_instance
