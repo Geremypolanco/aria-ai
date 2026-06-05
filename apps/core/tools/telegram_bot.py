@@ -61,6 +61,20 @@ class AriaTelegramBot:
         "la intención y ejecuta la acción.\n"
         "/ia &lt;pregunta&gt; — Pregunta a la IA\n"
         "/limpiar — Borra historial\n\n"
+        "<b>🔍 GOOGLE SUITE</b>\n"
+        "/buscar &lt;query&gt; — Búsqueda web\n"
+        "/youtube &lt;query&gt; — Buscar en YouTube\n"
+        "/tendencias — Trending topics en tiempo real\n"
+        "/pagespeed &lt;url&gt; — Analizar velocidad SEO\n"
+        "/traducir &lt;lang&gt; &lt;texto&gt; — Traducir (ej: en Hola)\n"
+        "/ocr &lt;url&gt; — Extraer texto de imagen\n\n"
+        "<b>🤗 HUGGINGFACE</b>\n"
+        "/imagen &lt;prompt&gt; — Generar imagen con FLUX.1\n"
+        "/resumir &lt;texto&gt; — Resumir texto\n"
+        "/sentimiento &lt;texto&gt; — Análisis de sentimiento\n"
+        "/codigo &lt;tarea&gt; — Generar código\n"
+        "/clasificar &lt;texto&gt; — Zero-shot classification\n"
+        "/capacidades — Ver todas las capacidades\n\n"
         "/ayuda — Este menú"
     )
 
@@ -77,6 +91,15 @@ class AriaTelegramBot:
         {"keywords": ["desarrolla", "construye", "programa", "crea código", "lanza web", "crea una web"], "action": "dev"},
         {"keywords": ["marketing", "publica en redes", "twittea", "postea", "campaña de email", "crea contenido"], "action": "marketing"},
         {"keywords": ["logs", "errores", "qué pasó", "historial", "últimos eventos"], "action": "logs"},
+        {"keywords": ["busca en google", "busca en internet", "googlea", "busca información sobre", "qué es", "quién es", "investiga sobre"], "action": "buscar"},
+        {"keywords": ["busca en youtube", "busca video", "encuentra video de", "muéstrame videos de"], "action": "youtube"},
+        {"keywords": ["genera imagen", "crea imagen", "imagina", "dibuja", "genera una foto de", "crea una imagen de"], "action": "imagen"},
+        {"keywords": ["traduce", "tradúceme", "en inglés", "en francés", "en alemán", "en portugués", "en japonés", "en chino"], "action": "traducir"},
+        {"keywords": ["resume", "resumir", "hazme un resumen de", "sintetiza"], "action": "resumir"},
+        {"keywords": ["tendencias", "trending", "qué es viral", "qué está en tendencia", "qué busca la gente"], "action": "tendencias"},
+        {"keywords": ["genera código", "escribe código", "programa", "crea un script", "hazme un programa"], "action": "codigo"},
+        {"keywords": ["analiza sentimiento", "cómo suena esto", "es positivo o negativo", "qué sentimiento tiene"], "action": "sentimiento"},
+        {"keywords": ["qué puedes hacer", "cuáles son tus capacidades", "qué funciones tienes", "muéstrame tus poderes"], "action": "capacidades"},
     ]
 
     ACTION_DESCRIPTIONS = {
@@ -92,6 +115,15 @@ class AriaTelegramBot:
         "dev": "desarrollar un producto",
         "marketing": "ejecutar marketing",
         "logs": "ver los logs del sistema",
+        "buscar": "buscar información en Google",
+        "youtube": "buscar videos en YouTube",
+        "imagen": "generar una imagen con FLUX.1",
+        "traducir": "traducir el texto",
+        "resumir": "resumir el texto",
+        "tendencias": "ver trending topics en tiempo real",
+        "codigo": "generar código con HuggingFace Qwen2.5",
+        "sentimiento": "analizar el sentimiento del texto",
+        "capacidades": "mostrar todas las capacidades de ARIA",
     }
 
     def __init__(self) -> None:
@@ -277,6 +309,15 @@ class AriaTelegramBot:
             "cfo":        lambda: self.cmd_agent_run(chat_id, "cfo", original),
             "dev":        lambda: self.cmd_agent_run(chat_id, "dev", original),
             "marketing":  lambda: self.cmd_agent_run(chat_id, "marketing", original),
+            "buscar":     lambda: self.cmd_buscar(chat_id, original),
+            "youtube":    lambda: self.cmd_youtube(chat_id, original),
+            "imagen":     lambda: self.cmd_imagen(chat_id, original),
+            "traducir":   lambda: self.cmd_traducir(chat_id, original),
+            "resumir":    lambda: self.cmd_resumir(chat_id, original),
+            "tendencias": lambda: self.cmd_tendencias(chat_id),
+            "codigo":     lambda: self.cmd_codigo(chat_id, original),
+            "sentimiento":lambda: self.cmd_sentimiento(chat_id, original),
+            "capacidades":lambda: self.cmd_capacidades(chat_id),
         }
         handler = mapping.get(action)
         if handler:
@@ -338,6 +379,17 @@ class AriaTelegramBot:
             "/dev":        lambda: self.cmd_agent_run(chat_id, "dev", args or "construye una landing page monetizada"),
             "/marketing":  lambda: self.cmd_agent_run(chat_id, "marketing", args or "crea contenido y publica en redes sociales"),
             "/soporte":    lambda: self.cmd_agent_run(chat_id, "support", args or "revisa consultas de clientes"),
+            "/buscar":     lambda: self.cmd_buscar(chat_id, args),
+            "/youtube":    lambda: self.cmd_youtube(chat_id, args),
+            "/imagen":     lambda: self.cmd_imagen(chat_id, args),
+            "/traducir":   lambda: self.cmd_traducir(chat_id, args),
+            "/resumir":    lambda: self.cmd_resumir(chat_id, args),
+            "/tendencias": lambda: self.cmd_tendencias(chat_id),
+            "/codigo":     lambda: self.cmd_codigo(chat_id, args),
+            "/sentimiento":lambda: self.cmd_sentimiento(chat_id, args),
+            "/pagespeed":  lambda: self.cmd_pagespeed(chat_id, args),
+            "/ocr":        lambda: self.cmd_ocr(chat_id, args),
+            "/capacidades":lambda: self.cmd_capacidades(chat_id),
         }
         h = handlers.get(cmd)
         if h:
@@ -595,6 +647,293 @@ class AriaTelegramBot:
         except Exception as exc:
             logger.error("[TelegramBot] Agent error %s: %s", agent_key, exc)
             await self.send(chat_id, f"❌ Error: {exc}")
+
+
+    # ── GOOGLE SUITE COMMANDS ─────────────────────────────
+
+    async def cmd_buscar(self, chat_id: str, query: str) -> None:
+        if not query or query.strip() in ("", "busca"):
+            await self.send(chat_id, "❓ Uso: /buscar <término>\nEjemplo: /buscar mejores nichos digitales 2025")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.google_suite import GoogleSuite
+            g = GoogleSuite()
+            # Extraer término limpio del lenguaje natural
+            import re
+            clean = re.sub(r"(busca|busca en google|googlea|busca información sobre|qué es|quién es|investiga sobre)\s*", "", query.lower(), flags=re.IGNORECASE).strip() or query
+            result = await g.web_search(clean, num=5)
+            if result.get("success") and result.get("results"):
+                lines = [f"🔍 <b>Resultados para:</b> <i>{clean}</i>\n"]
+                for i, r in enumerate(result["results"][:5], 1):
+                    lines.append(f"{i}. <b>{r['title'][:70]}</b>\n   <a href=\"{r['url']}\">{r['domain']}</a>\n   <i>{r['snippet'][:120]}</i>\n")
+                await self.send(chat_id, "\n".join(lines))
+            else:
+                await self.send(chat_id, f"❌ Sin resultados para: {clean}")
+        except Exception as exc:
+            await self.send(chat_id, f"❌ Error en búsqueda: {exc}")
+
+    async def cmd_youtube(self, chat_id: str, query: str) -> None:
+        if not query or query.strip() in ("", "busca"):
+            await self.send(chat_id, "❓ Uso: /youtube <búsqueda>\nEjemplo: /youtube how to make money online")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.google_suite import GoogleSuite
+            g = GoogleSuite()
+            import re
+            clean = re.sub(r"(busca en youtube|busca video|encuentra video de|muéstrame videos de)\s*", "", query.lower(), flags=re.IGNORECASE).strip() or query
+            result = await g.youtube_search(clean, max_results=5, order="viewCount")
+            if result.get("success") and result.get("results"):
+                lines = [f"📺 <b>YouTube:</b> <i>{clean}</i>\n"]
+                for v in result["results"][:5]:
+                    vid_id = v.get("id","")
+                    url = f"https://youtu.be/{vid_id}" if vid_id else ""
+                    lines.append(
+                        f"• <b>{v['title'][:70]}</b>\n"
+                        f"  📺 {v.get('channel','?')} | {url}\n"
+                    )
+                await self.send(chat_id, "\n".join(lines))
+            else:
+                await self.send(chat_id, "❌ Sin resultados de YouTube")
+        except Exception as exc:
+            await self.send(chat_id, f"❌ Error: {exc}")
+
+    async def cmd_tendencias(self, chat_id: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.google_suite import GoogleSuite
+            import asyncio
+            g = GoogleSuite()
+            daily, realtime = await asyncio.gather(g.trends_daily("US"), g.trends_realtime("US"), return_exceptions=True)
+            lines = ["📈 <b>Trending Topics — Google</b>\n"]
+            if isinstance(realtime, dict) and realtime.get("realtime_trends"):
+                lines.append("<b>🔴 En tiempo real:</b>")
+                for t in realtime["realtime_trends"][:8]:
+                    lines.append(f"  • {t.get('title','')[:60]}")
+                lines.append("")
+            if isinstance(daily, dict) and daily.get("trends"):
+                lines.append("<b>📅 Tendencias del día:</b>")
+                for t in daily["trends"][:8]:
+                    lines.append(f"  • {t.get('topic','')[:50]} ({t.get('traffic','')} búsquedas)")
+            await self.send(chat_id, "\n".join(lines) if len(lines) > 1 else "❌ Sin tendencias disponibles")
+        except Exception as exc:
+            await self.send(chat_id, f"❌ Error: {exc}")
+
+    async def cmd_traducir(self, chat_id: str, args: str) -> None:
+        if not args:
+            await self.send(chat_id, "❓ Uso: /traducir <idioma> <texto>\nEjemplo: /traducir en Hola mundo\nIdiomas: en, fr, de, pt, ja, zh, ar, it, ru, ko")
+            return
+        await self._send_typing(chat_id)
+        try:
+            parts = args.strip().split(maxsplit=1)
+            if len(parts) < 2:
+                await self.send(chat_id, "❓ Uso: /traducir <idioma> <texto>\nEjemplo: /traducir en Buenos días")
+                return
+            target_lang = parts[0].lower()[:2]
+            text = parts[1]
+            from apps.core.tools.google_suite import GoogleSuite
+            g = GoogleSuite()
+            detect = await g.detect_language(text[:200])
+            source = detect.get("language", "es")[:2] if detect.get("success") else "es"
+            result = await g.translate(text, target=target_lang, source=source)
+            if result.get("success"):
+                lang_names = {"en":"inglés","fr":"francés","de":"alemán","pt":"portugués","ja":"japonés",
+                              "zh":"chino","ar":"árabe","it":"italiano","ru":"ruso","ko":"coreano","es":"español"}
+                await self.send(chat_id,
+                    f"🌐 <b>Traducción</b> ({lang_names.get(source,source)} → {lang_names.get(target_lang,target_lang)})\n\n"
+                    f"<i>Original:</i> {text[:200]}\n\n"
+                    f"<b>Traducción:</b> {result['translated']}")
+            else:
+                await self.send(chat_id, f"❌ Error traduciendo: {result.get('error','')}")
+        except Exception as exc:
+            await self.send(chat_id, f"❌ Error: {exc}")
+
+    async def cmd_pagespeed(self, chat_id: str, url: str) -> None:
+        if not url or not url.startswith("http"):
+            await self.send(chat_id, "❓ Uso: /pagespeed <url>\nEjemplo: /pagespeed https://example.com")
+            return
+        await self.send(chat_id, f"⏳ Analizando velocidad de {url}...")
+        try:
+            from apps.core.tools.google_suite import GoogleSuite
+            import asyncio
+            g = GoogleSuite()
+            mobile, desktop = await asyncio.gather(g.pagespeed_analyze(url, "mobile"), g.pagespeed_analyze(url, "desktop"), return_exceptions=True)
+            lines = [f"⚡ <b>PageSpeed:</b> {url}\n"]
+            for label, data in [("📱 Móvil", mobile), ("🖥 Desktop", desktop)]:
+                if isinstance(data, dict) and data.get("success"):
+                    s = data.get("scores",{})
+                    m = data.get("metrics",{})
+                    lines.append(f"<b>{label}:</b>")
+                    lines.append(f"  Performance: {s.get('performance',0)}/100 | SEO: {s.get('seo',0)}/100")
+                    lines.append(f"  LCP: {m.get('lcp','')} | FCP: {m.get('fcp','')} | CLS: {m.get('cls','')}\n")
+            await self.send(chat_id, "\n".join(lines))
+        except Exception as exc:
+            await self.send(chat_id, f"❌ Error: {exc}")
+
+    async def cmd_ocr(self, chat_id: str, url: str) -> None:
+        if not url:
+            await self.send(chat_id, "❓ Uso: /ocr <url_imagen>\nExtrae texto de cualquier imagen.")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.google_suite import GoogleSuite
+            g = GoogleSuite()
+            result = await g.vision_ocr(image_url=url)
+            if result.get("success") and result.get("text"):
+                await self.send(chat_id, f"📝 <b>Texto extraído:</b>\n\n<code>{result['text'][:3000]}</code>")
+            else:
+                await self.send(chat_id, "❌ No se encontró texto en la imagen.")
+        except Exception as exc:
+            await self.send(chat_id, f"❌ Error: {exc}")
+
+    # ── HUGGINGFACE SUITE COMMANDS ────────────────────────
+
+    async def cmd_imagen(self, chat_id: str, prompt: str) -> None:
+        if not prompt or prompt.strip() in ("imagen", "genera", "dibuja"):
+            await self.send(chat_id, "❓ Uso: /imagen <descripción>\nEjemplo: /imagen professional product photo of a digital course about fitness")
+            return
+        await self.send(chat_id, f"🎨 <b>Generando imagen con FLUX.1...</b>\n<i>{prompt[:80]}</i>\n\n⏳ Puede tomar 15-30 segundos.")
+        try:
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            import io
+            hf = HuggingFaceSuite()
+            result = await hf.generate_image(prompt, model="black-forest-labs/FLUX.1-schnell")
+            if result.get("success") and result.get("image_bytes"):
+                photo_file = io.BytesIO(result["image_bytes"])
+                photo_file.name = "aria_generated.png"
+                files = {"photo": ("aria_generated.png", photo_file, "image/png")}
+                payload = {"chat_id": chat_id, "caption": f"🎨 <b>ARIA generó:</b> {prompt[:100]}"}
+                res = await self._http.post(f"{self._base_url}/sendPhoto", data=payload, files=files)
+                if res.status_code != 200:
+                    await self.send(chat_id, f"❌ Error enviando imagen: {res.text[:200]}")
+            else:
+                await self.send(chat_id, "❌ No se pudo generar la imagen. Verifica que HF_TOKEN esté configurado.")
+        except Exception as exc:
+            logger.error("[TelegramBot] cmd_imagen error: %s", exc)
+            await self.send(chat_id, f"❌ Error generando imagen: {exc}")
+
+    async def cmd_resumir(self, chat_id: str, text: str) -> None:
+        if not text or len(text) < 10:
+            await self.send(chat_id, "❓ Uso: /resumir <texto largo>\nEjemplo: /resumir <artículo o contenido>")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            hf = HuggingFaceSuite()
+            # Detectar idioma para usar modelo correcto
+            from apps.core.tools.google_suite import GoogleSuite
+            g = GoogleSuite()
+            lang_res = await g.detect_language(text[:100])
+            lang = lang_res.get("language","es")[:2] if lang_res.get("success") else "es"
+            result = await hf.summarize(text, max_length=200, min_length=50, language=lang)
+            if result.get("success"):
+                await self.send(chat_id,
+                    f"📄 <b>Resumen</b> ({len(text)} → {len(result['summary'])} chars)\n\n"
+                    f"{result['summary']}")
+            else:
+                await self.send(chat_id, f"❌ Error: {result.get('error','No se pudo resumir')}")
+        except Exception as exc:
+            await self.send(chat_id, f"❌ Error: {exc}")
+
+    async def cmd_sentimiento(self, chat_id: str, text: str) -> None:
+        if not text:
+            await self.send(chat_id, "❓ Uso: /sentimiento <texto>\nEjemplo: /sentimiento Este producto es increíble")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            hf = HuggingFaceSuite()
+            result = await hf.analyze_sentiment(text, multilingual=True)
+            if result.get("success"):
+                icons = {"positivo": "😊 POSITIVO", "negativo": "😠 NEGATIVO", "neutro": "😐 NEUTRO"}
+                label = icons.get(result.get("sentiment","neutro"), result.get("sentiment",""))
+                conf = result.get("confidence", 0)
+                scores = result.get("all_scores", {})
+                scores_txt = " | ".join(f"{k}: {v}" for k, v in scores.items())
+                await self.send(chat_id,
+                    f"🧠 <b>Análisis de Sentimiento</b>\n\n"
+                    f"Texto: <i>{text[:150]}</i>\n\n"
+                    f"Resultado: <b>{label}</b>\n"
+                    f"Confianza: {conf*100:.1f}%\n"
+                    f"Scores: <code>{scores_txt}</code>")
+            else:
+                await self.send(chat_id, f"❌ Error: {result.get('error','')}")
+        except Exception as exc:
+            await self.send(chat_id, f"❌ Error: {exc}")
+
+    async def cmd_codigo(self, chat_id: str, args: str) -> None:
+        if not args:
+            await self.send(chat_id, "❓ Uso: /codigo <descripción de lo que necesitas>\nEjemplo: /codigo función Python que convierte CSV a JSON")
+            return
+        await self.send(chat_id, f"💻 <b>Generando código con Qwen2.5-Coder...</b>\n<i>{args[:80]}</i>")
+        try:
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            hf = HuggingFaceSuite()
+            # Detectar lenguaje de programación del args
+            lang_map = {"python":"python","javascript":"javascript","js":"javascript","java":"java",
+                        "typescript":"typescript","ts":"typescript","rust":"rust","go":"go","sql":"sql",
+                        "html":"html","css":"css","bash":"bash","shell":"bash","php":"php","ruby":"ruby"}
+            detected_lang = "python"
+            for kw, lang in lang_map.items():
+                if kw in args.lower():
+                    detected_lang = lang
+                    break
+            result = await hf.generate_code(args, language=detected_lang)
+            if result.get("success") and result.get("code"):
+                code = result["code"][:3500]
+                await self.send(chat_id,
+                    f"💻 <b>Código generado ({detected_lang}):</b>\n\n"
+                    f"<pre><code>{code}</code></pre>")
+            else:
+                await self.send(chat_id, f"❌ Error generando código: {result.get('error','')}")
+        except Exception as exc:
+            await self.send(chat_id, f"❌ Error: {exc}")
+
+    async def cmd_capacidades(self, chat_id: str) -> None:
+        msg = (
+            "⚡ <b>ARIA AI — Capacidades Completas</b>\n\n"
+            "<b>🔍 GOOGLE SUITE (11 APIs)</b>\n"
+            "  • Búsqueda web (Custom Search)\n"
+            "  • Búsqueda de imágenes\n"
+            "  • Vision AI (OCR, objetos, logos, colores)\n"
+            "  • NLP (sentimiento, entidades, categorías)\n"
+            "  • Traducción (133 idiomas)\n"
+            "  • Text-to-Speech (400+ voces)\n"
+            "  • Speech-to-Text (99 idiomas)\n"
+            "  • YouTube completo (search, stats, trending, comments)\n"
+            "  • Knowledge Graph\n"
+            "  • PageSpeed Insights (SEO)\n"
+            "  • Google Trends en tiempo real\n\n"
+            "<b>🤗 HUGGINGFACE (19 capacidades)</b>\n"
+            "  • Generación de imágenes FLUX.1-schnell / SDXL\n"
+            "  • Traducción (Helsinki-NLP, 1000+ pares)\n"
+            "  • Resumen automático (BART, Pegasus, mT5)\n"
+            "  • Análisis de sentimiento multilingüe\n"
+            "  • Clasificación zero-shot (cualquier categoría)\n"
+            "  • Reconocimiento de entidades (NER)\n"
+            "  • Question Answering extractivo\n"
+            "  • Embeddings + búsqueda semántica\n"
+            "  • Text-to-Speech Bark (voces realistas)\n"
+            "  • Speech-to-Text Whisper large-v3\n"
+            "  • Image Captioning (BLIP-2)\n"
+            "  • Detección de objetos (DETR, YOLO)\n"
+            "  • Clasificación de imágenes (ViT)\n"
+            "  • Generación de código (Qwen2.5-Coder)\n"
+            "  • Detección de idioma (176 idiomas)\n"
+            "  • Clasificación de audio / emociones\n"
+            "  • Estimación de profundidad\n"
+            "  • Embeddings semánticos\n"
+            "  • Fill-mask / completar texto\n\n"
+            "<b>🤖 AGENTES INTEGRADOS</b>\n"
+            "  • PMAgent: investigación mercado completa\n"
+            "  • MarketingAgent: Buffer + Mailchimp + Google\n"
+            "  • DevAgent: código con Qwen2.5-Coder\n"
+            "  • SupportAgent: soporte 133 idiomas\n"
+            "  • CFOAgent: ingresos y finanzas\n"
+            "  • EvolutionAgent: auto-mejora continua"
+        )
+        await self.send(chat_id, msg)
 
     # ── MEMORIA ───────────────────────────────────────────
 
