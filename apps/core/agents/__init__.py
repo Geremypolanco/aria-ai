@@ -1,2 +1,18 @@
-# Aria AI
+"""Agentes de Aria AI — exportaciones públicas."""
+from apps.core.agents.base_agent import BaseAgent
+from apps.core.agents.orchestrator import Orchestrator
+from apps.core.agents.pm_agent import PMAgent
+from apps.core.agents.cfo_agent import CFOAgent
+from apps.core.agents.dev_agent import DevAgent
+from apps.core.agents.marketing_agent import MarketingAgent
+from apps.core.agents.support_agent import SupportAgent
 
+__all__ = [
+    "BaseAgent",
+    "Orchestrator",
+    "PMAgent",
+    "CFOAgent",
+    "DevAgent",
+    "MarketingAgent",
+    "SupportAgent",
+]
