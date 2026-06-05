@@ -1,6 +1,6 @@
 """
 Aria AI — Sistema Operativo Núcleo
-FastAPI + APScheduler + 4 jobs autónomos
+FastAPI + APScheduler + Telegram Webhook bidireccional + 4 jobs autónomos
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -51,6 +51,7 @@ async def get_orchestrator() -> Any:
 # ── TELEGRAM ──────────────────────────────────────────────
 
 async def send_telegram(message: str) -> bool:
+    """Envía un mensaje de texto al propietario via Telegram."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.post(
@@ -59,12 +60,34 @@ async def send_telegram(message: str) -> bool:
                     "chat_id": settings.TELEGRAM_CHAT_ID,
                     "text": message,
                     "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
                 },
             )
             return res.status_code == 200
     except Exception as exc:
         logger.error("Telegram error: %s", exc)
         return False
+
+
+async def set_telegram_webhook() -> None:
+    """Registra el webhook de Telegram al iniciar la app."""
+    webhook_url = f"https://aria-ai.fly.dev/telegram/webhook"
+    try:
+        from apps.core.tools.telegram_bot import get_bot
+        bot = get_bot()
+        ok = await bot.set_webhook(webhook_url)
+        if ok:
+            logger.info("Telegram webhook registrado: %s", webhook_url)
+            await send_telegram(
+                f"🤖 <b>ARIA AI — Online</b>\n\n"
+                f"Sistema iniciado correctamente.\n"
+                f"Webhook activo en: <code>{webhook_url}</code>\n\n"
+                f"Usa /ayuda para ver todos los comandos disponibles."
+            )
+        else:
+            logger.warning("No se pudo registrar el webhook de Telegram")
+    except Exception as exc:
+        logger.error("Error registrando webhook de Telegram: %s", exc)
 
 
 # ── SCHEDULER JOBS ────────────────────────────────────────
@@ -104,8 +127,11 @@ async def daily_report_job() -> None:
 
 async def auto_evolve_job() -> None:
     try:
-        orch = await get_orchestrator()
-        await orch.auto_evolve()
+        from apps.core.agents.evolution_agent import EvolutionAgent
+        agent = EvolutionAgent()
+        await agent.start()
+        await agent.run({"task": "auto_evolve", "market_focus": "all", "primary_language": "es"})
+        await agent.stop()
     except Exception as exc:
         logger.error("Error en auto-evolución: %s", exc)
 
@@ -122,28 +148,31 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(daily_report_job, CronTrigger(hour=9, minute=0), id="daily_report", replace_existing=True)
     scheduler.add_job(auto_evolve_job, IntervalTrigger(hours=6), id="auto_evolve", replace_existing=True)
     scheduler.start()
-    logger.info("Scheduler: 4 jobs activos (ciclo=%dmin, heartbeat=30s, reporte=9am, evolución=6h)", interval)
 
-    await send_telegram(
-        "⚡ <b>SISTEMA OPERATIVO ARIA ONLINE</b>\n"
-        "Bienvenido, Señor Polanco. Lista para iniciar la Fase 1.\n\n"
-        f"🕐 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
-    )
+    # Registrar webhook de Telegram
+    await set_telegram_webhook()
 
+    logger.info("Aria OS activo. Scheduler corriendo con %d jobs.", len(scheduler.get_jobs()))
     yield
-
     scheduler.shutdown()
-    logger.info("Aria OS detenido")
+    logger.info("Aria OS apagado.")
 
 
-app = FastAPI(title="Aria AI Core", version="1.0.0", lifespan=lifespan)
+# ── APP ───────────────────────────────────────────────────
+
+app = FastAPI(
+    title="Aria AI — Core OS",
+    description="Sistema autónomo de generación de ingresos",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 
 
-# ── MODELOS DE REQUEST ────────────────────────────────────
+# ── MODELOS PYDANTIC ──────────────────────────────────────
 
 class ChatRequest(BaseModel):
     message: str
-    model: str = "strategy"
+    model: Optional[str] = "fast"
 
 
 class ApprovalDecision(BaseModel):
@@ -151,7 +180,7 @@ class ApprovalDecision(BaseModel):
     decision: str  # "approved" | "rejected"
 
 
-# ── ENDPOINTS ─────────────────────────────────────────────
+# ── ENDPOINTS PÚBLICOS ────────────────────────────────────
 
 @app.get("/")
 async def root() -> JSONResponse:
@@ -160,58 +189,101 @@ async def root() -> JSONResponse:
 
 @app.get("/health")
 async def health() -> JSONResponse:
-    """Estado completo del sistema."""
+    """Health check completo para Fly.io."""
     try:
-        cache = get_cache()
-        redis_ok = await cache.exists("__health_check__") or True
-
-        ai = await get_ai_client()
-        ai_health = ai.get_health_report()
-
-        jobs = [
+        jobs = scheduler.get_jobs()
+        job_info = [
             {
                 "id": job.id,
                 "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
             }
-            for job in scheduler.get_jobs()
+            for job in jobs
         ]
+
+        ai = await get_ai_client()
+        ai_report = ai.get_health_report()
 
         return JSONResponse({
             "status": "healthy",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "scheduler": {"running": scheduler.running, "jobs": jobs},
-            "ai_providers": ai_health,
-            "redis": "connected" if redis_ok else "error",
+            "scheduler": {"running": scheduler.running, "jobs": job_info},
+            "ai_providers": ai_report,
         })
     except Exception as exc:
-        return JSONResponse({"status": "degraded", "error": str(exc)}, status_code=503)
+        return JSONResponse({"status": "degraded", "error": str(exc)}, status_code=200)
 
+
+# ── TELEGRAM WEBHOOK ──────────────────────────────────────
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request) -> JSONResponse:
+    """
+    Webhook de Telegram. Recibe todos los updates del bot y los procesa.
+    Telegram requiere respuesta HTTP 200 inmediata — el procesamiento es async.
+    """
+    try:
+        update = await request.json()
+        logger.debug("[Webhook] Update recibido: %s", str(update)[:200])
+
+        from apps.core.tools.telegram_bot import get_bot
+        import asyncio
+        bot = get_bot()
+        # Procesamos el update de forma asíncrona sin bloquear el webhook
+        asyncio.create_task(bot.handle_update(update))
+
+        return JSONResponse({"ok": True})
+    except Exception as exc:
+        logger.error("[Webhook] Error procesando update: %s", exc)
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=200)
+
+
+@app.get("/telegram/status")
+async def telegram_status() -> JSONResponse:
+    """Verifica el estado del webhook de Telegram."""
+    try:
+        from apps.core.tools.telegram_bot import get_bot
+        bot = get_bot()
+        info = await bot.get_webhook_info()
+        return JSONResponse({"ok": True, "webhook": info})
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)})
+
+
+@app.post("/telegram/reset-webhook")
+async def reset_webhook() -> JSONResponse:
+    """Re-registra el webhook de Telegram manualmente."""
+    try:
+        await set_telegram_webhook()
+        return JSONResponse({"ok": True, "message": "Webhook re-registrado"})
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)})
+
+
+# ── CHAT DIRECTO (API) ────────────────────────────────────
 
 @app.post("/chat")
 async def chat(request: ChatRequest) -> JSONResponse:
-    """Conversación directa con Aria."""
+    """Chat directo con ARIA via REST API."""
+    model_map = {
+        "fast": AIModel.FAST,
+        "strategy": AIModel.STRATEGY,
+        "code": AIModel.CODE,
+        "creative": AIModel.CREATIVE,
+    }
+    ai_model = model_map.get(request.model or "fast", AIModel.FAST)
     try:
-        model_map = {
-            "strategy": AIModel.STRATEGY,
-            "code": AIModel.CODE,
-            "fast": AIModel.FAST,
-            "creative": AIModel.CREATIVE,
-        }
-        ai_model = model_map.get(request.model, AIModel.STRATEGY)
         ai = await get_ai_client()
         response = await ai.complete(
             system=(
-                "Eres Aria, la IA de negocios digitales del Señor Geremy Polanco. "
-                "Eres directa, inteligente y orientada a resultados reales. "
-                "Nunca dices que no puedes hacer algo — propones alternativas."
+                f"Eres ARIA, sistema autónomo de IA que genera ingresos para {settings.OWNER_NAME}. "
+                "Eres directa, eficiente y orientada a resultados. Responde en español."
             ),
             user=request.message,
             model=ai_model,
-            agent_name="aria_chat",
         )
         return JSONResponse({
             "response": response.content,
-            "provider": response.provider,
+            "provider": response.provider.value if response.provider else None,
             "model": response.model,
             "latency_ms": response.latency_ms,
             "success": response.success,
@@ -219,6 +291,8 @@ async def chat(request: ChatRequest) -> JSONResponse:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+
+# ── DASHBOARD ─────────────────────────────────────────────
 
 @app.get("/status")
 async def status() -> JSONResponse:
@@ -287,6 +361,8 @@ async def decide_approval(decision: ApprovalDecision) -> JSONResponse:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── CONTROL DEL SCHEDULER ─────────────────────────────────
+
 @app.post("/cycle/trigger")
 async def trigger_cycle() -> JSONResponse:
     """Dispara un ciclo autónomo manualmente."""
@@ -319,6 +395,8 @@ async def resume_cycle() -> JSONResponse:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+
+# ── DATOS ─────────────────────────────────────────────────
 
 @app.get("/logs")
 async def get_logs(limit: int = 50) -> JSONResponse:
@@ -354,6 +432,58 @@ async def get_ai_metrics() -> JSONResponse:
     try:
         ai = await get_ai_client()
         return JSONResponse(ai.get_health_report())
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/market/opportunities")
+async def get_opportunities(limit: int = 10) -> JSONResponse:
+    """Mejores oportunidades de mercado detectadas."""
+    try:
+        db = get_db()
+        opportunities = await db.get_best_opportunities(limit=limit)
+        return JSONResponse({"opportunities": opportunities, "count": len(opportunities)})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/products")
+async def get_products(limit: int = 20) -> JSONResponse:
+    """Lista de productos creados por ARIA."""
+    try:
+        db = get_db()
+        result = db._client.table("products").select("*").order("created_at", desc=True).limit(limit).execute()
+        return JSONResponse({"products": result.data or [], "count": len(result.data or [])})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/websites")
+async def get_websites(limit: int = 20) -> JSONResponse:
+    """Lista de sitios web creados por ARIA."""
+    try:
+        db = get_db()
+        result = db._client.table("websites").select("*").order("created_at", desc=True).limit(limit).execute()
+        return JSONResponse({"websites": result.data or [], "count": len(result.data or [])})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/evolve")
+async def trigger_evolution() -> JSONResponse:
+    """Dispara el ciclo de auto-evolución manualmente."""
+    try:
+        import asyncio
+        async def _run():
+            from apps.core.agents.evolution_agent import EvolutionAgent
+            agent = EvolutionAgent()
+            await agent.start()
+            result = await agent.run({"task": "manual_evolve"})
+            await agent.stop()
+            return result
+        asyncio.create_task(_run())
+        await send_telegram("🧬 <b>Auto-evolución disparada</b> manualmente.")
+        return JSONResponse({"success": True, "message": "Evolución en progreso"})
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
