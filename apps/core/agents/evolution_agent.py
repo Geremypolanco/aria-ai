@@ -94,6 +94,14 @@ class EvolutionAgent(BaseAgent):
 
             # 5. Analisis de arquitectura y propuesta de mejoras
             arch_analysis = await self._analyze_architecture()
+
+            # 5b. Descubrimiento de herramientas HuggingFace para gaps
+            logger.info("[EvolutionAgent] Buscando herramientas HF para capacidades faltantes...")
+            hf_discoveries = await self._discover_hf_tools_for_gaps()
+            results["hf_discoveries"] = hf_discoveries
+            if hf_discoveries.get("discoveries"):
+                n_found = sum(1 for d in hf_discoveries["discoveries"] if d.get("can_use_now"))
+                logger.info("[EvolutionAgent] HF: %d herramientas disponibles para gaps detectados", n_found)
             results["architecture_analysis"] = arch_analysis
 
             # 6. Notificacion Telegram con resumen completo
@@ -251,6 +259,78 @@ class EvolutionAgent(BaseAgent):
     # ══════════════════════════════════════════════════════════════
     # ANALISIS DE ARQUITECTURA
     # ══════════════════════════════════════════════════════════════
+
+
+    async def _discover_hf_tools_for_gaps(self) -> dict:
+        """
+        ARIA identifica capacidades que le faltan y busca en HuggingFace Hub
+        los mejores modelos para cubrirlas. Integra lo que encuentra.
+
+        Flujo:
+          1. Revisa qué APIs no están configuradas (check_capabilities)
+          2. Para cada gap, busca modelos HF que puedan suplirla
+          3. Reporta hallazgos y actualiza el uso de HF en el codebase
+        """
+        from apps.core.tools.hf_discovery import get_hf
+        hf = get_hf()
+        hf_report = await hf.capability_report()
+        if not hf_report.get("available"):
+            return {
+                "success": False,
+                "error": hf_report.get("error", "HF_TOKEN no configurado"),
+            }
+
+        caps = await self.check_capabilities()
+        gaps = [k for k, v in caps.items() if not v]
+        logger.info("[EvolutionAgent] Gaps detectados: %s", gaps)
+
+        # Mapeo de capacidades ARIA -> tareas HF
+        gap_to_hf_task = {
+            "image_generation": "image-generation",
+            "canva": "image-generation",
+            "audio": "automatic-speech-recognition",
+            "translation": "translation",
+            "sentiment": "sentiment-analysis",
+            "classification": "zero-shot-classification",
+            "ocr": "image-to-text",
+            "speech": "text-to-speech",
+            "embeddings": "feature-extraction",
+            "summarization": "summarization",
+        }
+
+        discoveries = []
+        for gap in gaps[:5]:  # máximo 5 búsquedas por ciclo
+            gap_lower = gap.lower()
+            matched_task = next(
+                (task for key, task in gap_to_hf_task.items() if key in gap_lower),
+                None,
+            )
+            if not matched_task:
+                # Búsqueda libre por keyword
+                result = await hf.find_tool_for_capability(gap_lower)
+            else:
+                result = await hf.search_models_for_task(matched_task, limit=3)
+
+            if result.get("success"):
+                discoveries.append({
+                    "gap": gap,
+                    "hf_task": matched_task or "auto",
+                    "models_found": result.get("models", result.get("hub_models", []))[:2],
+                    "can_use_now": True,
+                    "how_to_use": f"from apps.core.tools.hf_discovery import get_hf; hf = get_hf(); await hf.discover_and_run('{matched_task or "text-generation"}',...)",
+                })
+                logger.info("[EvolutionAgent] HF tool para '%s': %s", gap, matched_task)
+            else:
+                discoveries.append({"gap": gap, "error": result.get("error", "no encontrado")})
+
+        return {
+            "success": True,
+            "gaps_analyzed": len(gaps),
+            "discoveries": discoveries,
+            "hf_tasks_available": hf_report.get("tasks_count", 0),
+            "note": "ARIA puede usar hf_discovery.discover_and_run() para cualquier tarea de ML sin API key adicional",
+        }
+
 
     async def _analyze_architecture(self) -> dict[str, Any]:
         """
