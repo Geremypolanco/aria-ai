@@ -1,3 +1,7 @@
+"""
+Settings centralizados para Aria AI.
+Todos los secrets se cargan desde variables de entorno o Fly.io secrets.
+"""
 import os
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,11 +28,10 @@ class Settings(BaseSettings):
     UPSTASH_REDIS_REST_TOKEN: str
 
     # ── INTELIGENCIA ARTIFICIAL ───────────────────────────
-    HF_TOKEN: Optional[str] = "not_provided"
-    GROQ_API_KEY: Optional[str] = "not_provided"
+    HF_TOKEN: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
 
-    # Modelos por proveedor
     HF_MODEL_STRATEGY: str = "Qwen/Qwen2.5-72B-Instruct"
     HF_MODEL_CODE: str = "Qwen/Qwen2.5-Coder-32B-Instruct"
     HF_MODEL_FAST: str = "mistralai/Mistral-7B-Instruct-v0.3"
@@ -62,7 +65,7 @@ class Settings(BaseSettings):
 
     # ── MARKETING ─────────────────────────────────────────
     MAILCHIMP_API_KEY: Optional[str] = None
-    MAILCHIMP_DC: Optional[str] = None
+    MAILCHIMP_DC: Optional[str] = "us1"
     BUFFER_TOKEN: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
     AIRTABLE_TOKEN: Optional[str] = None
@@ -71,10 +74,7 @@ class Settings(BaseSettings):
     NEWS_API_KEY: Optional[str] = None
     SERP_API_KEY: Optional[str] = None
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        extra="ignore",
-    )
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 def get_settings() -> Settings:
