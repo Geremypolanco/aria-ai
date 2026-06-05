@@ -75,6 +75,16 @@ class Settings(BaseSettings):
     NEWS_API_KEY: Optional[str] = None
     SERP_API_KEY: Optional[str] = None
 
+
+      # ── REDES SOCIALES (OAuth) ─────────────────────────────
+      ARIA_BASE_URL: str = "https://aria-ai.fly.dev"
+      FACEBOOK_APP_ID: Optional[str] = None
+      FACEBOOK_APP_SECRET: Optional[str] = None
+      TIKTOK_CLIENT_KEY: Optional[str] = None
+      TIKTOK_CLIENT_SECRET: Optional[str] = None
+      LINKEDIN_CLIENT_ID: Optional[str] = None
+      LINKEDIN_CLIENT_SECRET: Optional[str] = None
+  
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
