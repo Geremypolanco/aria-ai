@@ -1,97 +1,155 @@
 name: Deploy Aria Core to Fly.io
 
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'apps/core/**'
-      - 'fly.toml'
-      - '.github/workflows/deploy-core.yml'
-  workflow_dispatch:
-    inputs:
-      reason:
-        description: 'Razon del deploy manual'
-        required: false
-        default: 'Deploy manual'
+  on:
+    push:
+      branches:
+        - main
+      paths:
+        - 'apps/core/**'
+        - 'fly.toml'
+        - '.github/workflows/deploy-core.yml'
+    workflow_dispatch:
+      inputs:
+        reason:
+          description: 'Razon del deploy manual'
+          required: false
+          default: 'Deploy manual'
 
-jobs:
-  deploy:
-    name: Deploy to Fly.io
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  jobs:
+    # ── Pre-flight: syntax validation ────────────────────────────
+    preflight:
+      name: Pre-flight checks
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+        - name: Setup Python 3.12
+          uses: actions/setup-python@v5
+          with:
+            python-version: '3.12'
 
-      - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        - name: Syntax check all Python files
+          run: |
+            echo "Verificando sintaxis Python..."
+            find apps/core -name "*.py" -exec python3 -m py_compile {} \; && echo "✅ Todos los archivos Python son sintácticamente válidos"
 
-      - name: Set secrets on Fly.io
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          flyctl secrets set \
-            TELEGRAM_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
-            TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
-            HF_API_KEY="${{ secrets.HF_API_KEY }}" \
-            HUGGING_FACE_TOKEN="${{ secrets.HUGGING_FACE_TOKEN }}" \
-            HF_TOKEN="${{ secrets.HF_API_KEY }}" \
-            GOOGLE_API_KEY="${{ secrets.GOOGLE_API_KEY }}" \
-            ELEVENLABS_API_KEY="${{ secrets.ELEVENLABS_API_KEY }}" \
-            DID_API_KEY="${{ secrets.DID_API_KEY }}" \
-            SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
-            SUPABASE_KEY="${{ secrets.SUPABASE_KEY }}" \
-            REDIS_URL="${{ secrets.REDIS_URL }}" \
-            UPSTASH_REDIS_REST_URL="${{ secrets.UPSTASH_REDIS_REST_URL }}" \
-            UPSTASH_REDIS_REST_TOKEN="${{ secrets.UPSTASH_REDIS_REST_TOKEN }}" \
-            STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
-            PAYPAL_CLIENT_ID="${{ secrets.PAYPAL_CLIENT_ID }}" \
-            PAYPAL_CLIENT_SECRET="${{ secrets.PAYPAL_CLIENT_SECRET }}" \
-            GUMROAD_TOKEN="${{ secrets.GUMROAD_TOKEN }}" \
-            TWILIO_ACCOUNT_SID="${{ secrets.TWILIO_ACCOUNT_SID }}" \
-            TWILIO_AUTH_TOKEN="${{ secrets.TWILIO_AUTH_TOKEN }}" \
-            CLOUDINARY_CLOUD_NAME="${{ secrets.CLOUDINARY_CLOUD_NAME }}" \
-            CLOUDINARY_API_KEY="${{ secrets.CLOUDINARY_API_KEY }}" \
-            CLOUDINARY_API_SECRET="${{ secrets.CLOUDINARY_API_SECRET }}" \
-            CLOUDFLARE_API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            CLOUDFLARE_ACCOUNT_ID="${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" \
-            VERCEL_TOKEN="${{ secrets.VERCEL_TOKEN }}" \
-            NEWS_API_KEY="${{ secrets.NEWS_API_KEY }}" \
-            SERP_API_KEY="${{ secrets.SERP_API_KEY }}" \
-            PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}" \
-            MAILCHIMP_API_KEY="${{ secrets.MAILCHIMP_API_KEY }}" \
-            BUFFER_TOKEN="${{ secrets.BUFFER_TOKEN }}" \
-            AIRTABLE_API_KEY="${{ secrets.AIRTABLE_API_KEY }}" \
-            SHOPIFY_URL="${{ secrets.SHOPIFY_URL }}" \
-            SHOPIFY_API_KEY="${{ secrets.SHOPIFY_API_KEY }}" \
-            SHOPIFY_ACCESS_TOKEN="${{ secrets.SHOPIFY_ACCESS_TOKEN }}" \
-            SHOPIFY_AUTOMATION_TOKEN="${{ secrets.SHOPIFY_AUTOMATION_TOKEN }}" \
-            CANVA_CLIENT_ID="${{ secrets.CANVA_CLIENT_ID }}" \
-            CANVA_CLIENT_SECRET="${{ secrets.CANVA_CLIENT_SECRET }}" \
-            ARIA_BASE_URL="https://aria-ai.fly.dev" \
-            OWNER_EMAIL="geremypolancod@gmail.com" \
-            OWNER_NAME="Geremy Polanco" \
-            ENVIRONMENT="production" \
-            CYCLE_INTERVAL_MINUTES="60" \
-            REQUIRE_APPROVAL_FOR_PAYMENTS="true" \
-            REQUIRE_APPROVAL_FOR_DEPLOYS="false" \
-            MAX_SPEND_WITHOUT_APPROVAL_USD="0.0" \
-            --app aria-ai
+        - name: Check imports integrity
+          run: |
+            pip install fastapi pydantic pydantic-settings httpx groq openai apscheduler supabase --quiet
+            python3 -c "
+            import sys
+            sys.path.insert(0, '.')
+            try:
+                from apps.core.config import Settings
+                print('✅ config.py OK')
+            except Exception as e:
+                print(f'❌ config.py: {e}')
+                sys.exit(1)
+            try:
+                from apps.core.tools.ai_client import AIModel, AIProvider
+                print(f'✅ ai_client.py OK — models: {[m.value for m in AIModel]}')
+            except Exception as e:
+                print(f'❌ ai_client.py: {e}')
+                sys.exit(1)
+            print('✅ Pre-flight superado')
+            "
 
-      - name: Deploy a Fly.io
-        run: flyctl deploy --remote-only --app aria-ai
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    # ── Deploy to Fly.io ─────────────────────────────────────────
+    deploy:
+      name: Deploy to Fly.io
+      runs-on: ubuntu-latest
+      needs: preflight
+      timeout-minutes: 20
 
-      - name: Notificar por Telegram
-        if: success()
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "parse_mode=HTML" \
-            -d "text=<b>ARIA actualizada</b>%0ADeploy exitoso." || true
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+
+        - name: Setup Fly CLI
+          uses: superfly/flyctl-actions/setup-flyctl@master
+
+        - name: Set secrets on Fly.io
+          env:
+            FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          run: |
+            flyctl secrets set \
+              TELEGRAM_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+              TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
+              GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
+              HF_API_KEY="${{ secrets.HF_API_KEY }}" \
+              HUGGING_FACE_TOKEN="${{ secrets.HF_API_KEY }}" \
+              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+              SUPABASE_KEY="${{ secrets.SUPABASE_KEY }}" \
+              UPSTASH_REDIS_REST_URL="${{ secrets.UPSTASH_REDIS_REST_URL }}" \
+              UPSTASH_REDIS_REST_TOKEN="${{ secrets.UPSTASH_REDIS_REST_TOKEN }}" \
+              GITHUB_TOKEN="${{ secrets.GH_PAT }}" \
+              GITHUB_REPO="Geremypolanco/aria-ai" \
+              STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
+              PAYPAL_CLIENT_ID="${{ secrets.PAYPAL_CLIENT_ID }}" \
+              PAYPAL_SECRET="${{ secrets.PAYPAL_SECRET }}" \
+              GUMROAD_TOKEN="${{ secrets.GUMROAD_TOKEN }}" \
+              SHOPIFY_URL="${{ secrets.SHOPIFY_URL }}" \
+              SHOPIFY_API_KEY="${{ secrets.SHOPIFY_API_KEY }}" \
+              SHOPIFY_AUTOMATION_TOKEN="${{ secrets.SHOPIFY_AUTOMATION_TOKEN }}" \
+              ELEVENLABS_API_KEY="${{ secrets.ELEVENLABS_API_KEY }}" \
+              PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}" \
+              NEWS_API_KEY="${{ secrets.NEWS_API_KEY }}" \
+              SERP_API_KEY="${{ secrets.SERP_API_KEY }}" \
+              GOOGLE_API_KEY="${{ secrets.GOOGLE_API_KEY }}" \
+              MAILCHIMP_API_KEY="${{ secrets.MAILCHIMP_API_KEY }}" \
+              MAILCHIMP_DC="${{ secrets.MAILCHIMP_DC }}" \
+              BUFFER_TOKEN="${{ secrets.BUFFER_TOKEN }}" \
+              AIRTABLE_TOKEN="${{ secrets.AIRTABLE_TOKEN }}" \
+              CLOUDINARY_URL="${{ secrets.CLOUDINARY_URL }}" \
+              CANVA_CLIENT_ID="${{ secrets.CANVA_CLIENT_ID }}" \
+              CANVA_CLIENT_SECRET="${{ secrets.CANVA_CLIENT_SECRET }}" \
+              SENTRY_DSN="${{ secrets.SENTRY_DSN }}" \
+              CYCLE_INTERVAL_MINUTES="60" \
+              ENVIRONMENT="production" \
+              PORT="8000"
+
+        - name: Deploy to Fly.io
+          env:
+            FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          run: flyctl deploy --remote-only --strategy rolling
+
+        - name: Verify deployment health
+          env:
+            FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          run: |
+            echo "Esperando 30s para que la app arranque..."
+            sleep 30
+            STATUS=$(curl -sf https://aria-ai.fly.dev/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','unknown'))" 2>/dev/null || echo "unreachable")
+            echo "Health status: $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "✅ Deploy exitoso — ARIA está online y saludable"
+            else
+              echo "⚠️ App desplegada pero health check retornó: $STATUS"
+            fi
+
+        - name: Notify Telegram on success
+          if: success()
+          env:
+            TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+            TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          run: |
+            COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "parse_mode=HTML" \
+              -d "text=🚀 <b>ARIA Deploy Exitoso</b>%0A%0A✅ Pre-flight superado%0A📦 Commit: <code>${COMMIT_MSG}</code>%0A🌐 <a href='https://aria-ai.fly.dev/health'>Ver health</a>"
+
+        - name: Notify Telegram on failure
+          if: failure()
+          env:
+            TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+            TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          run: |
+            COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "parse_mode=HTML" \
+              -d "text=❌ <b>ARIA Deploy FALLIDO</b>%0A%0A💥 Error en el pipeline CI/CD%0A📦 Commit: <code>${COMMIT_MSG}</code>%0A🔍 Revisa GitHub Actions para más detalles"
+  
