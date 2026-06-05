@@ -85,7 +85,115 @@ class Settings(BaseSettings):
       LINKEDIN_CLIENT_ID: Optional[str] = None
       LINKEDIN_CLIENT_SECRET: Optional[str] = None
   
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+      # ── IA ADICIONAL ─────────────────────────────────────────
+      ANTHROPIC_API_KEY: Optional[str] = None
+      GEMINI_API_KEY: Optional[str] = None
+      MISTRAL_API_KEY: Optional[str] = None
+      COHERE_API_KEY: Optional[str] = None
+      TOGETHER_AI_API_KEY: Optional[str] = None
+      ELEVENLABS_API_KEY: Optional[str] = None
+      DEEPGRAM_API_KEY: Optional[str] = None
+      ASSEMBLYAI_API_KEY: Optional[str] = None
+      DID_API_KEY: Optional[str] = None
+
+      # ── MONETIZACIÓN ADICIONAL ────────────────────────────────
+      PAYPAL_CLIENT_ID: Optional[str] = None
+      PAYPAL_CLIENT_SECRET: Optional[str] = None
+      GUMROAD_TOKEN: Optional[str] = None
+      LEMONSQUEEZY_API_KEY: Optional[str] = None
+      LEMONSQUEEZY_STORE_ID: Optional[str] = None
+      COINBASE_COMMERCE_API_KEY: Optional[str] = None
+      WISE_API_KEY: Optional[str] = None
+
+      # ── AFILIADOS ────────────────────────────────────────────
+      AMAZON_ASSOCIATE_TAG: Optional[str] = None
+      AMAZON_PA_ACCESS_KEY: Optional[str] = None
+      AMAZON_PA_SECRET_KEY: Optional[str] = None
+      AMAZON_PA_PARTNER_TAG: Optional[str] = None
+      CLICKBANK_AFFILIATE_ID: Optional[str] = None
+      CLICKBANK_API_KEY: Optional[str] = None
+      HOTMART_BASIC_TOKEN: Optional[str] = None
+      HOTMART_CLIENT_ID: Optional[str] = None
+      HOTMART_CLIENT_SECRET: Optional[str] = None
+
+      # ── PUBLICACIÓN DE CONTENIDO ─────────────────────────────
+      MEDIUM_TOKEN: Optional[str] = None
+      DEVTO_API_KEY: Optional[str] = None
+      HASHNODE_TOKEN: Optional[str] = None
+      HASHNODE_PUBLICATION_ID: Optional[str] = None
+
+      # ── REDES SOCIALES ADICIONALES ───────────────────────────
+      TWITTER_API_KEY: Optional[str] = None
+      TWITTER_API_SECRET: Optional[str] = None
+      TWITTER_ACCESS_TOKEN: Optional[str] = None
+      TWITTER_ACCESS_TOKEN_SECRET: Optional[str] = None
+      TWITTER_BEARER_TOKEN: Optional[str] = None
+      REDDIT_CLIENT_ID: Optional[str] = None
+      REDDIT_CLIENT_SECRET: Optional[str] = None
+      REDDIT_USERNAME: Optional[str] = None
+      REDDIT_PASSWORD: Optional[str] = None
+      REDDIT_TARGET_SUBREDDIT: Optional[str] = None
+      PINTEREST_ACCESS_TOKEN: Optional[str] = None
+      PINTEREST_BOARD_ID: Optional[str] = None
+      PINTEREST_DEFAULT_IMAGE_URL: Optional[str] = None
+      DISCORD_WEBHOOK_URL: Optional[str] = None
+      DISCORD_BOT_TOKEN: Optional[str] = None
+      YOUTUBE_API_KEY: Optional[str] = None
+      WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
+      WHATSAPP_BUSINESS_TOKEN: Optional[str] = None
+      PRODUCT_HUNT_TOKEN: Optional[str] = None
+
+      # ── EMAIL MARKETING ──────────────────────────────────────
+      RESEND_API_KEY: Optional[str] = None
+      SENDGRID_API_KEY: Optional[str] = None
+      MAILGUN_API_KEY: Optional[str] = None
+      MAILGUN_DOMAIN: Optional[str] = None
+      CONVERTKIT_API_KEY: Optional[str] = None
+      CONVERTKIT_FORM_ID: Optional[str] = None
+      KLAVIYO_API_KEY: Optional[str] = None
+      BREVO_API_KEY: Optional[str] = None
+      EMAIL_FROM: Optional[str] = None
+      NEWSLETTER_LIST_EMAIL: Optional[str] = None
+      OWNER_EMAIL: Optional[str] = None
+
+      # ── E-COMMERCE ───────────────────────────────────────────
+      PRINTFUL_API_KEY: Optional[str] = None
+      PRINTIFY_API_KEY: Optional[str] = None
+      ETSY_API_KEY: Optional[str] = None
+      ETSY_SHOP_ID: Optional[str] = None
+
+      # ── SEO E INTELIGENCIA ───────────────────────────────────
+      GOOGLE_SEARCH_CONSOLE_KEY: Optional[str] = None
+      SCRAPER_API_KEY: Optional[str] = None
+      DATA_FOR_SEO_LOGIN: Optional[str] = None
+      DATA_FOR_SEO_PASSWORD: Optional[str] = None
+
+      # ── ANALÍTICAS ───────────────────────────────────────────
+      GA4_MEASUREMENT_ID: Optional[str] = None
+      GA4_API_SECRET: Optional[str] = None
+      POSTHOG_API_KEY: Optional[str] = None
+      SENTRY_DSN: Optional[str] = None
+
+      # ── CRM ──────────────────────────────────────────────────
+      HUBSPOT_API_KEY: Optional[str] = None
+      ZOHO_CRM_CLIENT_ID: Optional[str] = None
+      ZOHO_CRM_CLIENT_SECRET: Optional[str] = None
+
+      # ── INFRAESTRUCTURA ──────────────────────────────────────
+      CLOUDFLARE_API_TOKEN: Optional[str] = None
+      CLOUDFLARE_ACCOUNT_ID: Optional[str] = None
+      CLOUDFLARE_R2_ACCESS_KEY: Optional[str] = None
+      CLOUDFLARE_R2_SECRET_KEY: Optional[str] = None
+      CLOUDINARY_API_KEY: Optional[str] = None
+      CLOUDINARY_API_SECRET: Optional[str] = None
+      CLOUDINARY_CLOUD_NAME: Optional[str] = None
+
+      # ── LOGÍSTICA ────────────────────────────────────────────
+      EASYPOST_API_KEY: Optional[str] = None
+      SHIPPO_API_KEY: Optional[str] = None
+
+      model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 def get_settings() -> Settings:

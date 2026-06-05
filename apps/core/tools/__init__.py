@@ -16,6 +16,10 @@ from apps.core.tools.canva_tools import CanvaTools
 from apps.core.tools.airtable_tools import AirtableTools
 from apps.core.tools.telegram_bot import AriaTelegramBot, get_bot
 from apps.core.tools.social_media import SocialMediaManager
+  from apps.core.tools.content_pipeline import ContentPipeline
+  from apps.core.tools.publishing_tools import PublishingTools
+  from apps.core.tools.social_content_tools import SocialContentTools
+  from apps.core.tools.affiliate_tools import AffiliateTools
 
 __all__ = [
     "AIModel", "AIProvider", "AIResponse", "get_ai_client",
@@ -27,4 +31,5 @@ __all__ = [
     "CanvaTools", "AirtableTools",
     "AriaTelegramBot", "get_bot",
     "SocialMediaManager",
+      "ContentPipeline", "PublishingTools", "SocialContentTools", "AffiliateTools",
 ]

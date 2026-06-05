@@ -48,7 +48,22 @@ class Orchestrator(BaseAgent):
 
     # ── CICLO PRINCIPAL ───────────────────────────────────
 
-    async def run_cycle(self) -> dict[str, Any]:
+
+      async def _inject_content_mission(self, plan: dict) -> dict:
+          """Asegura que siempre haya una misión de contenido en el plan."""
+          missions = plan.get("missions", [])
+          has_content = any(m.get("agent") == "content" for m in missions)
+          if not has_content:
+              missions.insert(0, {
+                  "agent": "content",
+                  "task": "full_pipeline",
+                  "priority": 1,
+                  "description": "Generar y publicar contenido monetizable",
+              })
+              plan["missions"] = missions
+          return plan
+
+      async def run_cycle(self) -> dict[str, Any]:
         """
         Ciclo autónomo completo:
         1. Inteligencia de mercado
@@ -73,8 +88,10 @@ class Orchestrator(BaseAgent):
 
             # 2. Plan con IA
             plan = await self._generate_action_plan(intelligence)
-            if not plan:
-                logger.warning("[Orchestrator] Plan de IA vacío — abortando ciclo")
+            if plan:
+                  plan = await self._inject_content_mission(plan)
+              if not plan:
+                  logger.warning("[Orchestrator] Plan de IA vacío — abortando ciclo")
                 return results
 
             # 3. Ejecutar misiones en paralelo
@@ -122,8 +139,10 @@ class Orchestrator(BaseAgent):
                 if isinstance(r, dict):
                     intelligence.update(r)
 
-        logger.info(
-            "[Orchestrator] Inteligencia recopilada: %d noticias, %d tendencias",
+        # Siempre ejecutar content agent para monetización continua
+          intelligence["_force_content_mission"] = True
+          logger.info(
+              "[Orchestrator] Inteligencia recopilada: %d noticias, %d tendencias",
             len(intelligence.get("news", [])),
             len(intelligence.get("trends", [])),
         )
@@ -282,8 +301,11 @@ class Orchestrator(BaseAgent):
                 from apps.core.agents.marketing_agent import MarketingAgent
                 agent = MarketingAgent()
             elif key == "support":
-                from apps.core.agents.support_agent import SupportAgent
-                agent = SupportAgent()
+                  from apps.core.agents.support_agent import SupportAgent
+                  agent = SupportAgent()
+              elif key == "content":
+                  from apps.core.agents.content_agent import ContentAgent
+                  agent = ContentAgent()
             if agent:
                 await agent.start()
                 self._agents[key] = agent
