@@ -826,8 +826,7 @@ class GoogleSuite:
             url = f"https://trends.google.com/trends/api/realtimetrends?hl=en-US&tz=-360&cat={category}&geo={geo}&fi=0&fs=0&ri=300&rs=20&sort=0"
             res = await self._http.get(url, timeout=15.0)
             if res.status_code == 200:
-                raw = res.text.lstrip(")]}',
-")
+                raw = res.text.lstrip(")]}',\n")
                 data = json.loads(raw)
                 stories = data.get("storySummaries", {}).get("trendingStories", [])
                 return {
