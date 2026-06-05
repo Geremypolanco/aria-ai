@@ -6,7 +6,7 @@ ARIA puede:
   2. Evaluar el potencial de cada API con IA
   3. Generar codigo de integracion real con Qwen2.5-Coder
   4. Agregar la integracion a su propio codebase via GitHub
-  5. Solo APIs gratuitas — no gasta dinero sin aprobacion
+  5. APIs gratuitas y de pago — evalua ROI y solicita aprobacion CFO para APIs con costo
 
 Principio: Si no puede integrar una API, lo dice explicitamente.
 """
@@ -50,6 +50,25 @@ KNOWN_FREE_APIS: list[dict] = [
     {"name": "Tally Forms",        "category": "forms",        "url": "https://tally.so",                       "free_tier": True,  "requires_key": True,   "benefit": "Formularios + webhooks para leads"},
 ]
 
+# APIs de alto valor con posible costo mensual — evaluadas por ROI antes de incluirlas
+# Aquellas con monthly_cost_usd > MAX_SPEND_WITHOUT_APPROVAL_USD requieren aprobacion CFO
+KNOWN_PAID_APIS: list[dict] = [
+    {"name": "Stripe Payments",    "category": "payments",     "url": "https://stripe.com/docs/api",         "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 10.0, "benefit": "Pagos online — max conversion, 2.9%+0.30 por tx"},
+    {"name": "Apollo.io Leads",    "category": "leads",        "url": "https://apolloio.com",                "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 8.0,  "benefit": "50 leads/mes gratis — base de 260M contactos B2B"},
+    {"name": "Paddle Payments",    "category": "payments",     "url": "https://paddle.com",                  "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 9.0,  "benefit": "Pagos SaaS + gestion fiscal global automatica"},
+    {"name": "ElevenLabs TTS",     "category": "audio",        "url": "https://elevenlabs.io",               "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 5.0,  "benefit": "Text-to-speech premium para podcasts/videos"},
+    {"name": "Hotjar Analytics",   "category": "analytics",    "url": "https://hotjar.com",                  "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 4.0,  "benefit": "Heatmaps y grabacion — optimiza conversion"},
+    {"name": "Mixpanel",           "category": "analytics",    "url": "https://mixpanel.com",                "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 4.0,  "benefit": "Analytics de producto — 100k events/mes gratis"},
+    {"name": "Klaviyo Email",      "category": "email",        "url": "https://klaviyo.com",                 "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 7.0,  "benefit": "Email marketing avanzado — free hasta 500 contactos"},
+    {"name": "Phantombuster",      "category": "automation",   "url": "https://phantombuster.com",           "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 6.0,  "benefit": "Automatizacion LinkedIn/Twitter — scraping leads cualificados"},
+    {"name": "Make Automation",    "category": "automation",   "url": "https://make.com",                    "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 5.0,  "benefit": "1000 operaciones/mes — conecta cualquier herramienta"},
+    {"name": "Webflow CMS",        "category": "publishing",   "url": "https://webflow.com",                 "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 4.0,  "benefit": "CMS headless + hosting — landing pages sin deploy"},
+    {"name": "Twilio SMS",         "category": "messaging",    "url": "https://twilio.com",                  "free_tier": False, "monthly_cost_usd": 10,  "requires_key": True,  "roi_multiplier": 8.0,  "benefit": "SMS/WhatsApp recuperacion de carritos — ROI 800%+"},
+    {"name": "Semrush API",        "category": "seo",          "url": "https://www.semrush.com/api/",        "free_tier": False, "monthly_cost_usd": 120, "requires_key": True,  "roi_multiplier": 3.0,  "benefit": "SEO avanzado — keywords, backlinks, competidores"},
+    {"name": "Ahrefs API",         "category": "seo",          "url": "https://ahrefs.com/api",              "free_tier": False, "monthly_cost_usd": 99,  "requires_key": True,  "roi_multiplier": 3.0,  "benefit": "SEO research profundo — necesita aprobacion CFO"},
+    {"name": "Descript Video",     "category": "video",        "url": "https://descript.com",                "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 5.0,  "benefit": "Edicion video/podcasts con IA — contenido multimedia auto"},
+]
+
 
 class APIDiscovery:
     """
@@ -83,34 +102,77 @@ class APIDiscovery:
     # 1. DESCUBRIMIENTO DE APIS
     # ══════════════════════════════════════════════════════════════
 
-    async def find_relevant_apis(self, mission: str, limit: int = 10) -> list[dict]:
+    async def find_relevant_apis(
+        self,
+        mission: str,
+        limit: int = 10,
+        include_paid: bool = True,
+        max_monthly_cost_usd: float = 50.0,
+    ) -> list[dict]:
         """
         Encuentra APIs relevantes para la mision de ARIA.
-        Busca en catalogo local + publicapis.org + GitHub public-apis.
+        Incluye APIs gratuitas y de pago (con filtro ROI).
+        Las APIs de pago > max_monthly_cost_usd se marcan para aprobacion CFO.
         """
-        # Filtrar catalogo local con IA
+        # Filtrar catalogo gratuito con IA
         local_apis = await self._filter_catalog_by_mission(mission)
+
+        # Incluir APIs de pago con ROI justificado
+        if include_paid:
+            paid_filtered = await self._filter_paid_apis_by_roi(
+                [a for a in KNOWN_PAID_APIS if a.get("monthly_cost_usd", 0) <= max_monthly_cost_usd],
+                mission,
+            )
+            seen_names = {a["name"].lower() for a in local_apis}
+            for api in paid_filtered:
+                if api["name"].lower() not in seen_names:
+                    local_apis.append(api)
+                    seen_names.add(api["name"].lower())
 
         # Buscar en publicapis.org (sin auth)
         public_apis = await self._fetch_public_apis(limit=20)
-
-        # Combinar y deduplicar
-        all_apis = local_apis.copy()
-        seen_names = {a["name"].lower() for a in all_apis}
+        seen_names = {a["name"].lower() for a in local_apis}
         for api in public_apis:
             if api["name"].lower() not in seen_names:
-                all_apis.append(api)
+                local_apis.append(api)
                 seen_names.add(api["name"].lower())
 
         # Evaluar relevancia con IA y ordenar
-        ranked = await self._rank_apis_by_relevance(all_apis, mission)
+        ranked = await self._rank_apis_by_relevance(local_apis, mission)
         return ranked[:limit]
+
+    async def _filter_paid_apis_by_roi(
+        self,
+        paid_apis: list[dict],
+        mission: str,
+    ) -> list[dict]:
+        """
+        Filtra APIs de pago por ROI estimado.
+        Solo incluye las con roi_multiplier >= 3.0 o costo cero.
+        Marca con needs_cfo_approval=True las que superan el umbral de gasto.
+        """
+        max_auto = getattr(settings, "MAX_SPEND_WITHOUT_APPROVAL_USD", 20.0)
+        qualified = []
+        for api in paid_apis:
+            cost = api.get("monthly_cost_usd", 0)
+            roi = api.get("roi_multiplier", 1.0)
+            if cost == 0:
+                qualified.append({**api, "needs_cfo_approval": False})
+            elif roi >= 3.0:
+                needs_approval = cost > max_auto
+                qualified.append({**api, "needs_cfo_approval": needs_approval})
+                if needs_approval:
+                    logger.info(
+                        "[APIDiscovery] '%s' requiere aprobacion CFO (costo: $%.0f/mes, ROI: %.1fx)",
+                        api["name"], cost, roi,
+                    )
+        return qualified
 
     async def _filter_catalog_by_mission(self, mission: str) -> list[dict]:
         """Filtra el catalogo local con IA para la mision actual."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
-            ai = await get_ai_client()
+            ai = get_ai_client()
             catalog_text = "\n".join(f"- {a['name']}: {a['benefit']}" for a in KNOWN_FREE_APIS)
             resp = await ai.complete(
                 system="Selecciona las APIs mas relevantes para la mision. Responde JSON array de nombres exactos.",
@@ -158,7 +220,7 @@ class APIDiscovery:
             return []
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
-            ai = await get_ai_client()
+            ai = get_ai_client()
             apis_text = "\n".join(f"{i}. {a['name']}: {a.get('benefit', a.get('description', ''))}"
                                   for i, a in enumerate(apis))
             resp = await ai.complete(
@@ -196,7 +258,7 @@ class APIDiscovery:
 
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
-            ai = await get_ai_client()
+            ai = get_ai_client()
 
             env_var_name = re.sub(r"[^A-Z0-9]", "_", api_name.upper()) + "_API_KEY"
 

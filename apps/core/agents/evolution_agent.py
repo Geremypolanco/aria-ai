@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import json
 import re
 from typing import Any
 from apps.core.agents.base_agent import BaseAgent
@@ -44,6 +45,10 @@ class EvolutionAgent(BaseAgent):
         max_apis = context.get("max_apis", 1)
         mission = context.get("mission", "maximize autonomous digital revenue")
         notify = context.get("notify_telegram", True)
+
+        # Modo creacion de features — genera nuevas capacidades proactivamente
+        if mode == "create_feature":
+            return await self._create_new_feature(mission=mission, context=context, notify=notify)
 
         results: dict[str, Any] = {
             "success": True,
@@ -116,6 +121,141 @@ class EvolutionAgent(BaseAgent):
             results["error"] = str(exc)
 
         return results
+
+
+    # ══════════════════════════════════════════════════════════════
+    # CREACION PROACTIVA DE NUEVAS FUNCIONALIDADES
+    # ══════════════════════════════════════════════════════════════
+
+    async def _create_new_feature(self, mission: str, context: dict, notify: bool = True) -> dict:
+        """
+        Genera y pushea nuevas funcionalidades basadas en analisis de brechas y mercado.
+        Activar con mode='create_feature' desde el scheduler o el orchestrator.
+        """
+        from apps.core.tools.self_improvement import SelfImprovementEngine
+        engine = SelfImprovementEngine()
+        results: dict = {
+            "success": False, "agent": "evolution_agent",
+            "mode": "create_feature", "features_created": [], "features_proposed": [],
+        }
+        caps = await self.check_capabilities()
+        gaps = [k for k, v in caps.items() if not v]
+        logger.info("[EvolutionAgent] Gaps para feature creation: %s", gaps)
+        proposals = await self._propose_features_with_ai(gaps=gaps, mission=mission)
+        results["features_proposed"] = proposals
+        if not proposals:
+            results["error"] = "No se generaron propuestas de features"
+            return results
+        top = proposals[0]
+        logger.info("[EvolutionAgent] Implementando feature: %s", top.get("name"))
+        impl = await self._implement_feature_code(engine, top)
+        results["features_created"].append(impl)
+        results["success"] = impl.get("success", False)
+        if notify:
+            await self._notify_feature_result(results, top)
+        return results
+
+    async def _propose_features_with_ai(self, gaps: list, mission: str) -> list:
+        """Propone features de alto impacto economico usando IA estrategica."""
+        try:
+            gaps_text = ", ".join(gaps[:8]) or "ninguna brecha critica"
+            analysis = await self.think(
+                system=(
+                    "Arquitecto de IA autonoma de monetizacion. "
+                    "Propones features Python reales e implementables. "
+                    "Responde SOLO con JSON array valido."
+                ),
+                user=(
+                    f"Mision: {mission}\nBrechas: {gaps_text}\n\n"
+                    "Propone 3 features Python para ARIA AI.\n"
+                    'JSON: [{"name": str, "description": str, "file_to_create": "apps/core/tools/xxx.py",'
+                    '"impact_usd_monthly": int, "implementation_hint": str, "priority": int}]\n'
+                    "Criterios: real, no duplica existentes, impacto economico medible."
+                ),
+                model=AIModel.STRATEGY,
+                json_mode=True,
+            )
+            if not analysis:
+                return []
+            data = analysis
+            if isinstance(data, str):
+                import re as _re
+                m = _re.search(r"\[.*\]", data, _re.DOTALL)
+                data = json.loads(m.group()) if m else []
+            if isinstance(data, list):
+                return sorted(data, key=lambda x: x.get("priority", 99))[:3]
+        except Exception as exc:
+            logger.error("[EvolutionAgent] propose_features error: %s", exc)
+        return []
+
+    async def _implement_feature_code(self, engine, proposal: dict) -> dict:
+        """Genera codigo con IA, valida sintaxis y pushea a GitHub."""
+        import ast, re
+        name = proposal.get("name", "Feature")
+        description = proposal.get("description", "")
+        file_path = proposal.get("file_to_create", "")
+        hint = proposal.get("implementation_hint", "")
+        if not file_path:
+            slug = re.sub(r"[^a-z0-9]", "_", name.lower()).strip("_")
+            file_path = f"apps/core/tools/{slug}.py"
+        try:
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "error": "IA no disponible", "feature": name}
+            resp = await ai.complete(
+                system="Senior Python developer. Genera modulos completos. Solo codigo Python sin fences.",
+                user=(
+                    f"Feature: {name}\nDescripcion: {description}\nHint: {hint}\n\n"
+                    "Requisitos: clase principal con async execute(**kwargs)->dict, "
+                    "is_available()->bool, from apps.core.config import settings, "
+                    "errores explicitos (nunca simula), minimo 40 lineas, docstring."
+                ),
+                model=AIModel.CODE,
+                max_tokens=3000,
+            )
+            if not resp or not resp.success:
+                return {"success": False, "error": "IA no genero codigo", "feature": name}
+            code = resp.content.strip()
+            # Strip markdown fences
+            lines = code.split("\n")
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            code = "\n".join(lines).rstrip("`").strip()
+            try:
+                ast.parse(code)
+            except SyntaxError as se:
+                return {"success": False, "error": f"Sintaxis invalida: {se}", "feature": name}
+            if len(code.splitlines()) < 20:
+                return {"success": False, "error": "Codigo corto", "feature": name}
+            push = await engine._push_file(
+                file_path=file_path,
+                content=code,
+                commit_message=f"feat: {name}\n\n{description[:200]}\n\nGenerado por ARIA EvolutionAgent.",
+            )
+            return {
+                "success": push.get("success", False), "feature": name, "file": file_path,
+                "commit_sha": push.get("commit_sha"),
+                "impact_usd_monthly": proposal.get("impact_usd_monthly", 0),
+                "error": push.get("error"),
+            }
+        except Exception as exc:
+            logger.error("[EvolutionAgent] implement_feature_code error: %s", exc)
+            return {"success": False, "error": str(exc), "feature": name}
+
+    async def _notify_feature_result(self, results: dict, top: dict) -> None:
+        """Notifica por Telegram el feature creado y el impacto estimado."""
+        created = [f for f in results.get("features_created", []) if f.get("success")]
+        proposed = results.get("features_proposed", [])
+        name = top.get("name", "?")
+        impact = top.get("impact_usd_monthly", 0)
+        lines = [f"Feature Creation: {name}", f"Impacto estimado: {impact} USD/mes"]
+        if created:
+            lines.append("Implementado: " + ", ".join(f["feature"] for f in created))
+        if len(proposed) > 1:
+            lines.append("Siguiente: " + proposed[1].get("name", "?"))
+        await self._send_telegram("\n".join(lines))
+
 
     # ══════════════════════════════════════════════════════════════
     # LECTURA DE LOGS DE PRODUCCION

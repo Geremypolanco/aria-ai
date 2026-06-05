@@ -493,35 +493,91 @@ Genera el plan de monetizacion. JSON esperado:
             logger.debug("[Social] Error distribuyendo: %s", exc)
 
     async def _get_agent(self, name: str) -> Optional[BaseAgent]:
-        """Lazy loading de agentes."""
+        """
+        Carga agentes dinamicamente — escanea apps.core.agents en el primer uso.
+        Cualquier modulo *_agent.py con una subclase de BaseAgent se registra
+        automaticamente por su atributo .name — sin mapeo manual requerido.
+        Nuevo agente en el directorio = disponible inmediatamente al proximo ciclo.
+        """
+        if not self._agents:
+            self._auto_discover_agents()
+
         if name in self._agents:
             return self._agents[name]
 
-        agent_map = {
-            "content": "apps.core.agents.content_agent.ContentAgent",
-            "affiliate": "apps.core.agents.cfo_agent.CFOAgent",
-            "social": "apps.core.agents.marketing_agent.MarketingAgent",
-            "seo": "apps.core.agents.content_agent.ContentAgent",
-            "analytics": "apps.core.agents.pm_agent.PMAgent",
-            "evolution": "apps.core.agents.evolution_agent.EvolutionAgent",
-            "market": "apps.core.agents.pm_agent.PMAgent",
+        # Aliases para nombres usados en planes generados por IA
+        aliases = {
+            "affiliate": "cfo",
+            "social": "marketing",
+            "seo": "content",
+            "analytics": "pm",
+            "market": "pm",
+            "monetization": "cfo",
+            "copy": "content",
+            "research": "pm",
+            "sales": "marketing",
+            "support_tickets": "support",
+            "bug_fix": "dev",
+            "code": "dev",
+            "compliance_check": "compliance",
+            "legal": "compliance",
         }
+        resolved = aliases.get(name)
+        if resolved and resolved in self._agents:
+            logger.info("[Orchestrator] Alias '%s' resuelto a '%s'", name, resolved)
+            return self._agents[resolved]
 
-        module_path = agent_map.get(name)
-        if not module_path:
-            logger.warning("[Orchestrator] Agente '%s' no mapeado", name)
-            return None
+        logger.warning(
+            "[Orchestrator] Agente '%s' no encontrado. Disponibles: %s",
+            name, sorted(self._agents.keys()),
+        )
+        return None
 
+    def _auto_discover_agents(self) -> None:
+        """
+        Escanea automaticamente apps.core.agents y registra todas las
+        subclases de BaseAgent encontradas en modulos *_agent.py.
+        No requiere mapeo manual — el registro es por agent.name.
+        Cualquier agente nuevo agregado al directorio se registra al siguiente ciclo.
+        """
+        import importlib
+        import pkgutil
+        import inspect
         try:
-            mod_name, cls_name = module_path.rsplit(".", 1)
-            mod = __import__(mod_name, fromlist=[cls_name])
-            cls = getattr(mod, cls_name)
-            agent = cls()
-            self._agents[name] = agent
-            return agent
-        except Exception as exc:
-            logger.error("[Orchestrator] No se pudo cargar '%s': %s", name, exc)
-            return None
+            import apps.core.agents as agents_pkg
+        except ImportError:
+            logger.error("[Orchestrator] No se pudo importar apps.core.agents")
+            return
+
+        registered: list[str] = []
+        skip = {"base_agent", "orchestrator"}
+        for _importer, module_name, _is_pkg in pkgutil.iter_modules(agents_pkg.__path__):
+            if module_name in skip or not module_name.endswith("_agent"):
+                continue
+            try:
+                mod = importlib.import_module(f"apps.core.agents.{module_name}")
+                for attr_name in dir(mod):
+                    cls = getattr(mod, attr_name, None)
+                    if (
+                        cls and inspect.isclass(cls)
+                        and issubclass(cls, BaseAgent)
+                        and cls is not BaseAgent
+                        and not getattr(cls, "__abstractmethods__", None)
+                    ):
+                        try:
+                            agent = cls()
+                            self._agents[agent.name] = agent
+                            registered.append(agent.name)
+                            break
+                        except Exception as init_err:
+                            logger.warning(
+                                "[Orchestrator] No se pudo instanciar %s: %s",
+                                attr_name, init_err,
+                            )
+            except Exception as exc:
+                logger.warning("[Orchestrator] Error importando %s: %s", module_name, exc)
+
+        logger.info("[Orchestrator] Agentes auto-descubiertos: %s", registered)
 
     # ── REPORTES ──────────────────────────────────────────────────
 
