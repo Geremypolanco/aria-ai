@@ -860,516 +860,516 @@ class AriaTelegramBot:
             ]]},
         )
 
-    # ── ESTADO Y CONTROL ──────────────────────────────────
+      # ── ESTADO Y CONTROL ──────────────────────────────────
 
-  async def cmd_status(self, chat_id: str) -> None:
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.memory.supabase_client import get_db
-          from apps.core.memory.redis_client import get_cache
-          db = get_db()
-          cache = get_cache()
-          rev = await db.get_total_revenue()
-          cycles = await cache.get("aria:cycle_count") or 0
-          paused = await cache.get("aria:scheduler_paused")
+    async def cmd_status(self, chat_id: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.memory.supabase_client import get_db
+            from apps.core.memory.redis_client import get_cache
+            db = get_db()
+            cache = get_cache()
+            rev = await db.get_total_revenue()
+            cycles = await cache.get("aria:cycle_count") or 0
+            paused = await cache.get("aria:scheduler_paused")
 
-          try:
-              from apps.core.tools.social_media import SocialMediaManager
-              sm = SocialMediaManager()
-              accounts = await sm.list_connected_accounts()
-              redes_str = ", ".join(a["platform"].title() for a in accounts) if accounts else "ninguna"
-          except Exception:
-              redes_str = "no disponible"
+            try:
+                from apps.core.tools.social_media import SocialMediaManager
+                sm = SocialMediaManager()
+                accounts = await sm.list_connected_accounts()
+                redes_str = ", ".join(a["platform"].title() for a in accounts) if accounts else "ninguna"
+            except Exception:
+                redes_str = "no disponible"
 
-          msg = (
-              f"<b>ARIA — Estado del Sistema</b>\n\n"
-              f"Revenue total: <b>${rev:.2f} USD</b>\n"
-              f"Ciclos ejecutados: {cycles}\n"
-              f"Scheduler: {'⏸ PAUSADO' if paused else '▶️ ACTIVO'}\n"
-              f"Redes conectadas: {redes_str}\n"
-          )
-          await self.send(chat_id, msg, reply_markup={"inline_keyboard": [[
-              {"text": "🚀 Ciclo", "callback_data": "cmd:ciclo"},
-              {"text": "💰 Revenue", "callback_data": "cmd:revenue"},
-              {"text": "✅ Pendientes", "callback_data": "cmd:pendientes"},
-          ]]})
-      except Exception as exc:
-          await self.send(chat_id, f"No pude obtener el estado: {exc}")
+            msg = (
+                f"<b>ARIA — Estado del Sistema</b>\n\n"
+                f"Revenue total: <b>${rev:.2f} USD</b>\n"
+                f"Ciclos ejecutados: {cycles}\n"
+                f"Scheduler: {'⏸ PAUSADO' if paused else '▶️ ACTIVO'}\n"
+                f"Redes conectadas: {redes_str}\n"
+            )
+            await self.send(chat_id, msg, reply_markup={"inline_keyboard": [[
+                {"text": "🚀 Ciclo", "callback_data": "cmd:ciclo"},
+                {"text": "💰 Revenue", "callback_data": "cmd:revenue"},
+                {"text": "✅ Pendientes", "callback_data": "cmd:pendientes"},
+            ]]})
+        except Exception as exc:
+            await self.send(chat_id, f"No pude obtener el estado: {exc}")
 
-  async def cmd_agentes(self, chat_id: str) -> None:
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.agents.orchestrator import Orchestrator
-          orch = Orchestrator()
-          statuses = orch.get_all_agent_statuses()
-          lines = ["<b>Estado de Agentes</b>\n"]
-          for name, info in statuses.items():
-              s = info.get("status", "unknown")
-              icon = "✅" if s == "idle" else "🔄" if s == "running" else "❌"
-              lines.append(f"{icon} <b>{name}</b> — {s}")
-          await self.send(chat_id, "\n".join(lines))
-      except Exception as exc:
-          await self.send(chat_id, f"Error obteniendo agentes: {exc}")
+    async def cmd_agentes(self, chat_id: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.agents.orchestrator import Orchestrator
+            orch = Orchestrator()
+            statuses = orch.get_all_agent_statuses()
+            lines = ["<b>Estado de Agentes</b>\n"]
+            for name, info in statuses.items():
+                s = info.get("status", "unknown")
+                icon = "✅" if s == "idle" else "🔄" if s == "running" else "❌"
+                lines.append(f"{icon} <b>{name}</b> — {s}")
+            await self.send(chat_id, "\n".join(lines))
+        except Exception as exc:
+            await self.send(chat_id, f"Error obteniendo agentes: {exc}")
 
-  async def cmd_revenue(self, chat_id: str) -> None:
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.memory.supabase_client import get_db
-          db = get_db()
-          total = await db.get_total_revenue()
-          by_platform = await db.get_revenue_by_platform()
-          lines = [f"<b>Revenue — ARIA</b>\n\nTotal: <b>${total:.2f} USD</b>\n"]
-          for platform, amount in (by_platform or {}).items():
-              lines.append(f"  {platform}: ${amount:.2f}")
-          await self.send(chat_id, "\n".join(lines))
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_revenue(self, chat_id: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.memory.supabase_client import get_db
+            db = get_db()
+            total = await db.get_total_revenue()
+            by_platform = await db.get_revenue_by_platform()
+            lines = [f"<b>Revenue — ARIA</b>\n\nTotal: <b>${total:.2f} USD</b>\n"]
+            for platform, amount in (by_platform or {}).items():
+                lines.append(f"  {platform}: ${amount:.2f}")
+            await self.send(chat_id, "\n".join(lines))
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_ciclo(self, chat_id: str) -> None:
-      await self._send_typing(chat_id)
-      try:
-          async with httpx.AsyncClient(timeout=10.0) as c:
-              res = await c.post("http://localhost:8000/cycle/trigger")
-              ok = res.json().get("success", False)
-          if ok:
-              await self.send(chat_id, "Ciclo autonomo iniciado.")
-          else:
-              await self.send(chat_id, "No pude iniciar el ciclo. Revisa los logs.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_ciclo(self, chat_id: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                res = await c.post("http://localhost:8000/cycle/trigger")
+                ok = res.json().get("success", False)
+            if ok:
+                await self.send(chat_id, "Ciclo autonomo iniciado.")
+            else:
+                await self.send(chat_id, "No pude iniciar el ciclo. Revisa los logs.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_pausa(self, chat_id: str) -> None:
-      try:
-          from apps.core.memory.redis_client import get_cache
-          cache = get_cache()
-          await cache.set("aria:scheduler_paused", True, ttl_seconds=86400)
-          async with httpx.AsyncClient(timeout=5.0) as c:
-              await c.post("http://localhost:8000/cycle/pause")
-          await self.send(chat_id, "Scheduler pausado.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_pausa(self, chat_id: str) -> None:
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            await cache.set("aria:scheduler_paused", True, ttl_seconds=86400)
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                await c.post("http://localhost:8000/cycle/pause")
+            await self.send(chat_id, "Scheduler pausado.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_reanudar(self, chat_id: str) -> None:
-      try:
-          from apps.core.memory.redis_client import get_cache
-          cache = get_cache()
-          await cache.delete("aria:scheduler_paused")
-          async with httpx.AsyncClient(timeout=5.0) as c:
-              await c.post("http://localhost:8000/cycle/resume")
-          await self.send(chat_id, "Scheduler activo.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_reanudar(self, chat_id: str) -> None:
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            await cache.delete("aria:scheduler_paused")
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                await c.post("http://localhost:8000/cycle/resume")
+            await self.send(chat_id, "Scheduler activo.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_pendientes(self, chat_id: str) -> None:
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.memory.supabase_client import get_db
-          db = get_db()
-          result = db._client.table("approvals").select("*").eq("status", "pending").order("created_at", desc=True).limit(5).execute()
-          approvals = result.data or []
-          if not approvals:
-              await self.send(chat_id, "No hay aprobaciones pendientes.")
-              return
-          for a in approvals:
-              keyboard = {"inline_keyboard": [[
-                  {"text": "✅ Aprobar", "callback_data": f"aprobar:{a['id']}"},
-                  {"text": "❌ Rechazar", "callback_data": f"rechazar:{a['id']}"},
-              ]]}
-              await self.send(
-                  chat_id,
-                  f"<b>{a.get('action_type', 'Accion')}</b>\n"
-                  f"{a.get('description', '')}\n"
-                  f"<code>{a['id']}</code>",
-                  reply_markup=keyboard,
-              )
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_pendientes(self, chat_id: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.memory.supabase_client import get_db
+            db = get_db()
+            result = db._client.table("approvals").select("*").eq("status", "pending").order("created_at", desc=True).limit(5).execute()
+            approvals = result.data or []
+            if not approvals:
+                await self.send(chat_id, "No hay aprobaciones pendientes.")
+                return
+            for a in approvals:
+                keyboard = {"inline_keyboard": [[
+                    {"text": "✅ Aprobar", "callback_data": f"aprobar:{a['id']}"},
+                    {"text": "❌ Rechazar", "callback_data": f"rechazar:{a['id']}"},
+                ]]}
+                await self.send(
+                    chat_id,
+                    f"<b>{a.get('action_type', 'Accion')}</b>\n"
+                    f"{a.get('description', '')}\n"
+                    f"<code>{a['id']}</code>",
+                    reply_markup=keyboard,
+                )
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def _do_approval(self, chat_id: str, approval_id: str, decision: str) -> None:
-      try:
-          async with httpx.AsyncClient(timeout=10.0) as c:
-              res = await c.post(
-                  "http://localhost:8000/approvals/decide",
-                  json={"approval_id": approval_id, "decision": decision},
-              )
-              ok = res.json().get("success", False)
-          emoji = "✅" if decision == "approved" else "❌"
-          text = "Aprobado" if decision == "approved" else "Rechazado"
-          await self.send(chat_id, f"{emoji} {text}.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error procesando aprobacion: {exc}")
+    async def _do_approval(self, chat_id: str, approval_id: str, decision: str) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                res = await c.post(
+                    "http://localhost:8000/approvals/decide",
+                    json={"approval_id": approval_id, "decision": decision},
+                )
+                ok = res.json().get("success", False)
+            emoji = "✅" if decision == "approved" else "❌"
+            text = "Aprobado" if decision == "approved" else "Rechazado"
+            await self.send(chat_id, f"{emoji} {text}.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error procesando aprobacion: {exc}")
 
-  async def cmd_aprobar(self, chat_id: str, approval_id: str) -> None:
-      if not approval_id:
-          await self.send(chat_id, "Especifica el ID: /aprobar &lt;id&gt;")
-          return
-      await self._do_approval(chat_id, approval_id.strip(), "approved")
+    async def cmd_aprobar(self, chat_id: str, approval_id: str) -> None:
+        if not approval_id:
+            await self.send(chat_id, "Especifica el ID: /aprobar &lt;id&gt;")
+            return
+        await self._do_approval(chat_id, approval_id.strip(), "approved")
 
-  async def cmd_rechazar(self, chat_id: str, approval_id: str) -> None:
-      if not approval_id:
-          await self.send(chat_id, "Especifica el ID: /rechazar &lt;id&gt;")
-          return
-      await self._do_approval(chat_id, approval_id.strip(), "rejected")
+    async def cmd_rechazar(self, chat_id: str, approval_id: str) -> None:
+        if not approval_id:
+            await self.send(chat_id, "Especifica el ID: /rechazar &lt;id&gt;")
+            return
+        await self._do_approval(chat_id, approval_id.strip(), "rejected")
 
-  async def cmd_logs(self, chat_id: str, args: str) -> None:
-      await self._send_typing(chat_id)
-      try:
-          n = int(args.strip()) if args.strip().isdigit() else 10
-          n = min(n, 50)
-          from apps.core.memory.supabase_client import get_db
-          db = get_db()
-          result = db._client.table("system_logs").select("*").order("created_at", desc=True).limit(n).execute()
-          logs = result.data or []
-          if not logs:
-              await self.send(chat_id, "Sin logs recientes.")
-              return
-          lines = [f"<b>Ultimos {n} logs</b>\n"]
-          for log in logs:
-              level = log.get("level", "INFO")
-              icon = "❌" if level == "ERROR" else "⚠️" if level == "WARNING" else "ℹ️"
-              ts = log.get("created_at", "")[:16]
-              lines.append(f"{icon} [{ts}] {log.get('message', '')[:100]}")
-          await self.send(chat_id, "\n".join(lines))
-      except Exception as exc:
-          await self.send(chat_id, f"Error obteniendo logs: {exc}")
+    async def cmd_logs(self, chat_id: str, args: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            n = int(args.strip()) if args.strip().isdigit() else 10
+            n = min(n, 50)
+            from apps.core.memory.supabase_client import get_db
+            db = get_db()
+            result = db._client.table("system_logs").select("*").order("created_at", desc=True).limit(n).execute()
+            logs = result.data or []
+            if not logs:
+                await self.send(chat_id, "Sin logs recientes.")
+                return
+            lines = [f"<b>Ultimos {n} logs</b>\n"]
+            for log in logs:
+                level = log.get("level", "INFO")
+                icon = "❌" if level == "ERROR" else "⚠️" if level == "WARNING" else "ℹ️"
+                ts = log.get("created_at", "")[:16]
+                lines.append(f"{icon} [{ts}] {log.get('message', '')[:100]}")
+            await self.send(chat_id, "\n".join(lines))
+        except Exception as exc:
+            await self.send(chat_id, f"Error obteniendo logs: {exc}")
 
-  # ── AGENTES ───────────────────────────────────────────
+    # ── AGENTES ───────────────────────────────────────────
 
-  async def cmd_agent_run(self, chat_id: str, agent_name: str, task: str) -> None:
-      await self._send_typing(chat_id)
-      try:
-          agent_map = {
-              "pm":        ("apps.core.agents.pm_agent", "PMAgent"),
-              "cfo":       ("apps.core.agents.cfo_agent", "CFOAgent"),
-              "dev":       ("apps.core.agents.dev_agent", "DevAgent"),
-              "marketing": ("apps.core.agents.marketing_agent", "MarketingAgent"),
-              "support":   ("apps.core.agents.support_agent", "SupportAgent"),
-          }
-          if agent_name not in agent_map:
-              await self.send(chat_id, f"Agente desconocido: {agent_name}")
-              return
-          module_path, class_name = agent_map[agent_name]
-          import importlib
-          module = importlib.import_module(module_path)
-          AgentClass = getattr(module, class_name)
-          agent = AgentClass()
-          await agent.start()
-          result = await agent.run({"task": task})
-          await agent.stop()
-          output = result.get("summary") or result.get("result") or str(result)[:300]
-          await self.send(chat_id, f"<b>{class_name}</b>\n\n{output}")
-      except Exception as exc:
-          logger.error("[TelegramBot] Agent error: %s", exc)
-          await self.send(chat_id, f"Error ejecutando {agent_name}: {str(exc)[:200]}")
+    async def cmd_agent_run(self, chat_id: str, agent_name: str, task: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            agent_map = {
+                "pm":        ("apps.core.agents.pm_agent", "PMAgent"),
+                "cfo":       ("apps.core.agents.cfo_agent", "CFOAgent"),
+                "dev":       ("apps.core.agents.dev_agent", "DevAgent"),
+                "marketing": ("apps.core.agents.marketing_agent", "MarketingAgent"),
+                "support":   ("apps.core.agents.support_agent", "SupportAgent"),
+            }
+            if agent_name not in agent_map:
+                await self.send(chat_id, f"Agente desconocido: {agent_name}")
+                return
+            module_path, class_name = agent_map[agent_name]
+            import importlib
+            module = importlib.import_module(module_path)
+            AgentClass = getattr(module, class_name)
+            agent = AgentClass()
+            await agent.start()
+            result = await agent.run({"task": task})
+            await agent.stop()
+            output = result.get("summary") or result.get("result") or str(result)[:300]
+            await self.send(chat_id, f"<b>{class_name}</b>\n\n{output}")
+        except Exception as exc:
+            logger.error("[TelegramBot] Agent error: %s", exc)
+            await self.send(chat_id, f"Error ejecutando {agent_name}: {str(exc)[:200]}")
 
-  # ── HERRAMIENTAS ──────────────────────────────────────
+    # ── HERRAMIENTAS ──────────────────────────────────────
 
-  async def cmd_buscar(self, chat_id: str, query: str) -> None:
-      if not query:
-          await self.send(chat_id, "Escribe que busco: /buscar &lt;consulta&gt;")
-          return
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.tools.google_suite import GoogleSuiteTools
-          g = GoogleSuiteTools()
-          results = await g.web_search(query)
-          if not results:
-              await self.send(chat_id, "Sin resultados.")
-              return
-          lines = [f"<b>Resultados para: {query}</b>\n"]
-          for r in results[:5]:
-              title = r.get("title", "Sin titulo")
-              url = r.get("link", "")
-              snippet = r.get("snippet", "")[:100]
-              lines.append(f'• <a href="{url}">{title}</a>\n  {snippet}\n')
-          await self.send(chat_id, "\n".join(lines), disable_web_page_preview=True)
-      except Exception as exc:
-          await self.send(chat_id, f"Error en busqueda: {exc}")
+    async def cmd_buscar(self, chat_id: str, query: str) -> None:
+        if not query:
+            await self.send(chat_id, "Escribe que busco: /buscar &lt;consulta&gt;")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.google_suite import GoogleSuiteTools
+            g = GoogleSuiteTools()
+            results = await g.web_search(query)
+            if not results:
+                await self.send(chat_id, "Sin resultados.")
+                return
+            lines = [f"<b>Resultados para: {query}</b>\n"]
+            for r in results[:5]:
+                title = r.get("title", "Sin titulo")
+                url = r.get("link", "")
+                snippet = r.get("snippet", "")[:100]
+                lines.append(f'• <a href="{url}">{title}</a>\n  {snippet}\n')
+            await self.send(chat_id, "\n".join(lines), disable_web_page_preview=True)
+        except Exception as exc:
+            await self.send(chat_id, f"Error en busqueda: {exc}")
 
-  async def cmd_youtube(self, chat_id: str, query: str) -> None:
-      if not query:
-          await self.send(chat_id, "/youtube &lt;consulta&gt;")
-          return
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.tools.google_suite import GoogleSuiteTools
-          g = GoogleSuiteTools()
-          results = await g.youtube_search(query)
-          if not results:
-              await self.send(chat_id, "Sin resultados en YouTube.")
-              return
-          lines = [f"<b>YouTube: {query}</b>\n"]
-          for r in results[:5]:
-              title = r.get("title", "")
-              vid_id = r.get("videoId") or r.get("id", {}).get("videoId", "")
-              if vid_id:
-                  lines.append(f'• <a href="https://youtu.be/{vid_id}">{title}</a>')
-          await self.send(chat_id, "\n".join(lines))
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_youtube(self, chat_id: str, query: str) -> None:
+        if not query:
+            await self.send(chat_id, "/youtube &lt;consulta&gt;")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.google_suite import GoogleSuiteTools
+            g = GoogleSuiteTools()
+            results = await g.youtube_search(query)
+            if not results:
+                await self.send(chat_id, "Sin resultados en YouTube.")
+                return
+            lines = [f"<b>YouTube: {query}</b>\n"]
+            for r in results[:5]:
+                title = r.get("title", "")
+                vid_id = r.get("videoId") or r.get("id", {}).get("videoId", "")
+                if vid_id:
+                    lines.append(f'• <a href="https://youtu.be/{vid_id}">{title}</a>')
+            await self.send(chat_id, "\n".join(lines))
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_imagen(self, chat_id: str, prompt: str) -> None:
-      if not prompt:
-          await self.send(chat_id, "/imagen &lt;descripcion&gt;")
-          return
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.tools.huggingface_suite import HuggingFaceSuite
-          hf = HuggingFaceSuite()
-          image_data = await hf.generate_image(prompt)
-          if image_data:
-              files = {"photo": ("image.png", image_data, "image/png")}
-              await self._http.post(
-                  f"{self._base_url}/sendPhoto",
-                  data={"chat_id": chat_id, "caption": prompt[:1000]},
-                  files=files,
-              )
-          else:
-              await self.send(chat_id, "No pude generar la imagen.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_imagen(self, chat_id: str, prompt: str) -> None:
+        if not prompt:
+            await self.send(chat_id, "/imagen &lt;descripcion&gt;")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            hf = HuggingFaceSuite()
+            image_data = await hf.generate_image(prompt)
+            if image_data:
+                files = {"photo": ("image.png", image_data, "image/png")}
+                await self._http.post(
+                    f"{self._base_url}/sendPhoto",
+                    data={"chat_id": chat_id, "caption": prompt[:1000]},
+                    files=files,
+                )
+            else:
+                await self.send(chat_id, "No pude generar la imagen.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_traducir(self, chat_id: str, args: str) -> None:
-      if not args:
-          await self.send(chat_id, "/traducir &lt;idioma&gt; &lt;texto&gt; — ej: /traducir en Hola mundo")
-          return
-      await self._send_typing(chat_id)
-      parts = args.split(maxsplit=1)
-      lang = parts[0] if len(parts) > 0 else "en"
-      text_to_translate = parts[1] if len(parts) > 1 else args
-      try:
-          from apps.core.tools.google_suite import GoogleSuiteTools
-          g = GoogleSuiteTools()
-          result = await g.translate_text(text_to_translate, target_language=lang)
-          await self.send(chat_id, result or "No pude traducir.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_traducir(self, chat_id: str, args: str) -> None:
+        if not args:
+            await self.send(chat_id, "/traducir &lt;idioma&gt; &lt;texto&gt; — ej: /traducir en Hola mundo")
+            return
+        await self._send_typing(chat_id)
+        parts = args.split(maxsplit=1)
+        lang = parts[0] if len(parts) > 0 else "en"
+        text_to_translate = parts[1] if len(parts) > 1 else args
+        try:
+            from apps.core.tools.google_suite import GoogleSuiteTools
+            g = GoogleSuiteTools()
+            result = await g.translate_text(text_to_translate, target_language=lang)
+            await self.send(chat_id, result or "No pude traducir.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_resumir(self, chat_id: str, text: str) -> None:
-      if not text:
-          await self.send(chat_id, "/resumir &lt;texto&gt;")
-          return
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.tools.huggingface_suite import HuggingFaceSuite
-          hf = HuggingFaceSuite()
-          result = await hf.summarize(text)
-          await self.send(chat_id, result or "No pude resumir.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_resumir(self, chat_id: str, text: str) -> None:
+        if not text:
+            await self.send(chat_id, "/resumir &lt;texto&gt;")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            hf = HuggingFaceSuite()
+            result = await hf.summarize(text)
+            await self.send(chat_id, result or "No pude resumir.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_tendencias(self, chat_id: str) -> None:
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.tools.google_suite import GoogleSuiteTools
-          g = GoogleSuiteTools()
-          trends = await g.get_trending_topics()
-          if not trends:
-              await self.send(chat_id, "No pude obtener tendencias ahora.")
-              return
-          lines = ["<b>Trending ahora:</b>\n"]
-          for i, trend in enumerate(trends[:10], 1):
-              t = trend if isinstance(trend, str) else trend.get("title", str(trend))
-              lines.append(f"{i}. {t}")
-          await self.send(chat_id, "\n".join(lines))
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_tendencias(self, chat_id: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.google_suite import GoogleSuiteTools
+            g = GoogleSuiteTools()
+            trends = await g.get_trending_topics()
+            if not trends:
+                await self.send(chat_id, "No pude obtener tendencias ahora.")
+                return
+            lines = ["<b>Trending ahora:</b>\n"]
+            for i, trend in enumerate(trends[:10], 1):
+                t = trend if isinstance(trend, str) else trend.get("title", str(trend))
+                lines.append(f"{i}. {t}")
+            await self.send(chat_id, "\n".join(lines))
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_codigo(self, chat_id: str, task: str) -> None:
-      if not task:
-          await self.send(chat_id, "/codigo &lt;descripcion de lo que necesitas&gt;")
-          return
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.tools.ai_client import AIModel, get_ai_client
-          ai = await get_ai_client()
-          resp = await ai.complete(
-              system="Eres un experto en programacion. Genera codigo limpio, funcional y bien comentado. Solo codigo, sin explicaciones largas.",
-              user=task,
-              model=AIModel.CODE,
-              max_tokens=2000,
-          )
-          if resp and resp.success:
-              code = resp.content
-              if len(code) > 4000:
-                  code = code[:4000] + "...\n[cortado por longitud]"
-              await self.send(chat_id, f"<pre>{code}</pre>")
-          else:
-              await self.send(chat_id, "No pude generar el codigo.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_codigo(self, chat_id: str, task: str) -> None:
+        if not task:
+            await self.send(chat_id, "/codigo &lt;descripcion de lo que necesitas&gt;")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            ai = await get_ai_client()
+            resp = await ai.complete(
+                system="Eres un experto en programacion. Genera codigo limpio, funcional y bien comentado. Solo codigo, sin explicaciones largas.",
+                user=task,
+                model=AIModel.CODE,
+                max_tokens=2000,
+            )
+            if resp and resp.success:
+                code = resp.content
+                if len(code) > 4000:
+                    code = code[:4000] + "...\n[cortado por longitud]"
+                await self.send(chat_id, f"<pre>{code}</pre>")
+            else:
+                await self.send(chat_id, "No pude generar el codigo.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_sentimiento(self, chat_id: str, text: str) -> None:
-      if not text:
-          await self.send(chat_id, "/sentimiento &lt;texto&gt;")
-          return
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.tools.huggingface_suite import HuggingFaceSuite
-          hf = HuggingFaceSuite()
-          result = await hf.analyze_sentiment(text)
-          await self.send(chat_id, str(result) if result else "No pude analizar.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error: {exc}")
+    async def cmd_sentimiento(self, chat_id: str, text: str) -> None:
+        if not text:
+            await self.send(chat_id, "/sentimiento &lt;texto&gt;")
+            return
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            hf = HuggingFaceSuite()
+            result = await hf.analyze_sentiment(text)
+            await self.send(chat_id, str(result) if result else "No pude analizar.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error: {exc}")
 
-  async def cmd_capacidades(self, chat_id: str) -> None:
-      await self.send(chat_id, self.HELP_TEXT)
+    async def cmd_capacidades(self, chat_id: str) -> None:
+        await self.send(chat_id, self.HELP_TEXT)
 
-  # ── AUTO-EVOLUCION ────────────────────────────────────
+    # ── AUTO-EVOLUCION ────────────────────────────────────
 
-  async def cmd_evolve(self, chat_id: str) -> None:
-      await self.send(
-          chat_id,
-          "<b>Auto-evolucion</b>\n\nElige que quieres que haga:",
-          reply_markup={"inline_keyboard": [
-              [{"text": "⚙️ Todo (codigo + APIs)", "callback_data": "cmd:evolve_full"},
-               {"text": "🔧 Solo codigo", "callback_data": "cmd:mejorar"}],
-              [{"text": "🔌 Solo APIs", "callback_data": "cmd:apis"},
-               {"text": "📊 Ver score", "callback_data": "cmd:score"}],
-          ]}
-      )
+    async def cmd_evolve(self, chat_id: str) -> None:
+        await self.send(
+            chat_id,
+            "<b>Auto-evolucion</b>\n\nElige que quieres que haga:",
+            reply_markup={"inline_keyboard": [
+                [{"text": "⚙️ Todo (codigo + APIs)", "callback_data": "cmd:evolve_full"},
+                 {"text": "🔧 Solo codigo", "callback_data": "cmd:mejorar"}],
+                [{"text": "🔌 Solo APIs", "callback_data": "cmd:apis"},
+                 {"text": "📊 Ver score", "callback_data": "cmd:score"}],
+            ]}
+        )
 
-  async def cmd_mejorar(self, chat_id: str, args: str) -> None:
-      n = int(args.strip()) if args.strip().isdigit() else 2
-      await self.send(chat_id, f"Analizando y mejorando {n} archivos...")
-      asyncio.create_task(self._run_improvement_async(chat_id, n))
+    async def cmd_mejorar(self, chat_id: str, args: str) -> None:
+        n = int(args.strip()) if args.strip().isdigit() else 2
+        await self.send(chat_id, f"Analizando y mejorando {n} archivos...")
+        asyncio.create_task(self._run_improvement_async(chat_id, n))
 
-  async def _run_improvement_async(self, chat_id: str, n: int) -> None:
-      try:
-          from apps.core.tools.self_improvement import SelfImprovementEngine
-          engine = SelfImprovementEngine()
-          result = await engine.improve_files(n)
-          improved = result.get("improved", [])
-          if improved:
-              await self.send(chat_id, f"Mejore {len(improved)} archivos: {', '.join(improved)}")
-          else:
-              await self.send(chat_id, "Sin mejoras significativas en este ciclo.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error en auto-mejora: {exc}")
+    async def _run_improvement_async(self, chat_id: str, n: int) -> None:
+        try:
+            from apps.core.tools.self_improvement import SelfImprovementEngine
+            engine = SelfImprovementEngine()
+            result = await engine.improve_files(n)
+            improved = result.get("improved", [])
+            if improved:
+                await self.send(chat_id, f"Mejore {len(improved)} archivos: {', '.join(improved)}")
+            else:
+                await self.send(chat_id, "Sin mejoras significativas en este ciclo.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error en auto-mejora: {exc}")
 
-  async def cmd_apis(self, chat_id: str, args: str) -> None:
-      n = int(args.strip()) if args.strip().isdigit() else 1
-      await self.send(chat_id, f"Buscando e integrando {n} API(s) nuevas...")
-      asyncio.create_task(self._run_api_discovery_async(chat_id, n))
+    async def cmd_apis(self, chat_id: str, args: str) -> None:
+        n = int(args.strip()) if args.strip().isdigit() else 1
+        await self.send(chat_id, f"Buscando e integrando {n} API(s) nuevas...")
+        asyncio.create_task(self._run_api_discovery_async(chat_id, n))
 
-  async def _run_api_discovery_async(self, chat_id: str, n: int) -> None:
-      try:
-          from apps.core.tools.api_discovery import APIDiscoveryEngine
-          engine = APIDiscoveryEngine()
-          result = await engine.discover_and_integrate(n)
-          integrated = result.get("integrated", [])
-          if integrated:
-              await self.send(chat_id, f"Integre {len(integrated)} API(s): {', '.join(integrated)}")
-          else:
-              await self.send(chat_id, "No encontre APIs nuevas valiosas ahora.")
-      except Exception as exc:
-          await self.send(chat_id, f"Error en descubrimiento de APIs: {exc}")
+    async def _run_api_discovery_async(self, chat_id: str, n: int) -> None:
+        try:
+            from apps.core.tools.api_discovery import APIDiscoveryEngine
+            engine = APIDiscoveryEngine()
+            result = await engine.discover_and_integrate(n)
+            integrated = result.get("integrated", [])
+            if integrated:
+                await self.send(chat_id, f"Integre {len(integrated)} API(s): {', '.join(integrated)}")
+            else:
+                await self.send(chat_id, "No encontre APIs nuevas valiosas ahora.")
+        except Exception as exc:
+            await self.send(chat_id, f"Error en descubrimiento de APIs: {exc}")
 
-  async def cmd_score(self, chat_id: str) -> None:
-      await self._send_typing(chat_id)
-      try:
-          from apps.core.agents.evolution_agent import EvolutionAgent
-          agent = EvolutionAgent()
-          await agent.start()
-          score_data = await agent.get_health_score()
-          await agent.stop()
-          score = score_data.get("score", 0)
-          details = score_data.get("details", {})
-          icon = "🟢" if score >= 70 else "🟡" if score >= 40 else "🔴"
-          lines = [f"{icon} <b>Score del sistema: {score}/100</b>\n"]
-          for k, v in details.items():
-              lines.append(f"  {k}: {v}")
-          await self.send(chat_id, "\n".join(lines))
-      except Exception as exc:
-          await self.send(chat_id, f"No pude calcular el score: {exc}")
+    async def cmd_score(self, chat_id: str) -> None:
+        await self._send_typing(chat_id)
+        try:
+            from apps.core.agents.evolution_agent import EvolutionAgent
+            agent = EvolutionAgent()
+            await agent.start()
+            score_data = await agent.get_health_score()
+            await agent.stop()
+            score = score_data.get("score", 0)
+            details = score_data.get("details", {})
+            icon = "🟢" if score >= 70 else "🟡" if score >= 40 else "🔴"
+            lines = [f"{icon} <b>Score del sistema: {score}/100</b>\n"]
+            for k, v in details.items():
+                lines.append(f"  {k}: {v}")
+            await self.send(chat_id, "\n".join(lines))
+        except Exception as exc:
+            await self.send(chat_id, f"No pude calcular el score: {exc}")
 
-  async def _run_evolve_async(self, chat_id: str, mode: str, improve_n: int, api_n: int) -> None:
-      try:
-          from apps.core.agents.evolution_agent import EvolutionAgent
-          agent = EvolutionAgent()
-          await agent.start()
-          result = await agent.run({"task": "auto_evolve", "mode": mode, "improve_n": improve_n, "api_n": api_n})
-          await agent.stop()
-          summary = result.get("summary", "Evolucion completada.")
-          await self.send(chat_id, summary)
-      except Exception as exc:
-          await self.send(chat_id, f"Error en evolucion: {exc}")
+    async def _run_evolve_async(self, chat_id: str, mode: str, improve_n: int, api_n: int) -> None:
+        try:
+            from apps.core.agents.evolution_agent import EvolutionAgent
+            agent = EvolutionAgent()
+            await agent.start()
+            result = await agent.run({"task": "auto_evolve", "mode": mode, "improve_n": improve_n, "api_n": api_n})
+            await agent.stop()
+            summary = result.get("summary", "Evolucion completada.")
+            await self.send(chat_id, summary)
+        except Exception as exc:
+            await self.send(chat_id, f"Error en evolucion: {exc}")
 
-  # ── ENVIO Y UTILIDADES ────────────────────────────────
+    # ── ENVIO Y UTILIDADES ────────────────────────────────
 
-  async def send(
-      self,
-      chat_id: str,
-      text: str,
-      reply_markup: Optional[dict] = None,
-      disable_web_page_preview: bool = True,
-  ) -> bool:
-      try:
-          payload: dict[str, Any] = {
-              "chat_id": chat_id,
-              "text": text,
-              "parse_mode": "HTML",
-              "disable_web_page_preview": disable_web_page_preview,
-          }
-          if reply_markup:
-              payload["reply_markup"] = reply_markup
-          res = await self._http.post(f"{self._base_url}/sendMessage", json=payload)
-          if res.status_code != 200:
-              logger.warning("[TelegramBot] send fallo: %d — %s", res.status_code, res.text[:200])
-          return res.status_code == 200
-      except Exception as exc:
-          logger.error("[TelegramBot] send error: %s", exc)
-          return False
+    async def send(
+        self,
+        chat_id: str,
+        text: str,
+        reply_markup: Optional[dict] = None,
+        disable_web_page_preview: bool = True,
+    ) -> bool:
+        try:
+            payload: dict[str, Any] = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": disable_web_page_preview,
+            }
+            if reply_markup:
+                payload["reply_markup"] = reply_markup
+            res = await self._http.post(f"{self._base_url}/sendMessage", json=payload)
+            if res.status_code != 200:
+                logger.warning("[TelegramBot] send fallo: %d — %s", res.status_code, res.text[:200])
+            return res.status_code == 200
+        except Exception as exc:
+            logger.error("[TelegramBot] send error: %s", exc)
+            return False
 
-  async def _send_typing(self, chat_id: str) -> None:
-      try:
-          await self._http.post(
-              f"{self._base_url}/sendChatAction",
-              json={"chat_id": chat_id, "action": "typing"},
-          )
-      except Exception:
-          pass
+    async def _send_typing(self, chat_id: str) -> None:
+        try:
+            await self._http.post(
+                f"{self._base_url}/sendChatAction",
+                json={"chat_id": chat_id, "action": "typing"},
+            )
+        except Exception:
+            pass
 
-  async def set_webhook(self, url: str) -> bool:
-      try:
-          res = await self._http.post(
-              f"{self._base_url}/setWebhook",
-              json={"url": url, "allowed_updates": ["message", "callback_query", "edited_message"]},
-          )
-          return res.json().get("ok", False)
-      except Exception as exc:
-          logger.error("[TelegramBot] set_webhook error: %s", exc)
-          return False
+    async def set_webhook(self, url: str) -> bool:
+        try:
+            res = await self._http.post(
+                f"{self._base_url}/setWebhook",
+                json={"url": url, "allowed_updates": ["message", "callback_query", "edited_message"]},
+            )
+            return res.json().get("ok", False)
+        except Exception as exc:
+            logger.error("[TelegramBot] set_webhook error: %s", exc)
+            return False
 
-  async def get_webhook_info(self) -> dict:
-      try:
-          res = await self._http.get(f"{self._base_url}/getWebhookInfo")
-          return res.json().get("result", {})
-      except Exception:
-          return {}
+    async def get_webhook_info(self) -> dict:
+        try:
+            res = await self._http.get(f"{self._base_url}/getWebhookInfo")
+            return res.json().get("result", {})
+        except Exception:
+            return {}
 
-  async def notify_approval_request(self, action_type: str, description: str, approval_id: str) -> None:
-      keyboard = {"inline_keyboard": [[
-          {"text": "✅ Aprobar", "callback_data": f"aprobar:{approval_id}"},
-          {"text": "❌ Rechazar", "callback_data": f"rechazar:{approval_id}"},
-      ]]}
-      await self.send(
-          self._owner_id,
-          f"<b>Aprobacion requerida</b>\n\n"
-          f"Tipo: {action_type}\n"
-          f"{description}\n"
-          f"ID: <code>{approval_id}</code>",
-          reply_markup=keyboard,
-      )
-
-
-# ── SINGLETON ─────────────────────────────────────────────
-
-_bot_instance: Optional[AriaTelegramBot] = None
+    async def notify_approval_request(self, action_type: str, description: str, approval_id: str) -> None:
+        keyboard = {"inline_keyboard": [[
+            {"text": "✅ Aprobar", "callback_data": f"aprobar:{approval_id}"},
+            {"text": "❌ Rechazar", "callback_data": f"rechazar:{approval_id}"},
+        ]]}
+        await self.send(
+            self._owner_id,
+            f"<b>Aprobacion requerida</b>\n\n"
+            f"Tipo: {action_type}\n"
+            f"{description}\n"
+            f"ID: <code>{approval_id}</code>",
+            reply_markup=keyboard,
+        )
 
 
-def get_bot() -> AriaTelegramBot:
-  global _bot_instance
-  if _bot_instance is None:
-      _bot_instance = AriaTelegramBot()
-  return _bot_instance
+  # ── SINGLETON ─────────────────────────────────────────────
+
+  _bot_instance: Optional[AriaTelegramBot] = None
+
+
+  def get_bot() -> AriaTelegramBot:
+    global _bot_instance
+    if _bot_instance is None:
+        _bot_instance = AriaTelegramBot()
+    return _bot_instance
