@@ -8,6 +8,12 @@ on:
       - 'apps/core/**'
       - 'fly.toml'
       - '.github/workflows/deploy-core.yml'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Razón del deploy manual'
+        required: false
+        default: 'Deploy manual desde GitHub'
 
 jobs:
   deploy:
@@ -75,7 +81,7 @@ jobs:
 
       - name: Verificar deploy
         run: |
-          echo "✅ Deploy completado"
+          echo "✅ Deploy completado — versión $(flyctl status --app aria-ai --json | jq .Version)"
           flyctl status --app aria-ai
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
