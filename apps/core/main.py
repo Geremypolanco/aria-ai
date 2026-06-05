@@ -148,7 +148,7 @@ async def lifespan(app: FastAPI):
         scheduler.add_job(autonomous_cycle_job, IntervalTrigger(minutes=interval), id="autonomous_cycle", replace_existing=True)
         scheduler.add_job(agent_heartbeat_job, IntervalTrigger(seconds=30), id="heartbeat", replace_existing=True)
         scheduler.add_job(daily_report_job, CronTrigger(hour=9, minute=0), id="daily_report", replace_existing=True)
-        scheduler.add_job(auto_evolve_job, IntervalTrigger(hours=6), id="auto_evolve", replace_existing=True)
+        scheduler.add_job(auto_evolve_job, IntervalTrigger(hours=4), id="auto_evolve", replace_existing=True)
         scheduler.start()
         logger.info("Scheduler iniciado con %d jobs.", len(scheduler.get_jobs()))
     except Exception as exc:
