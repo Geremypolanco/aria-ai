@@ -55,7 +55,7 @@ async def send_telegram(message: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.post(
-                f"{TELEGRAM_API}{settings.TELEGRAM_TOKEN}/sendMessage",
+                f"{TELEGRAM_API}{settings.telegram_token}/sendMessage",
                 json={
                     "chat_id": settings.TELEGRAM_CHAT_ID,
                     "text": message,

@@ -184,7 +184,7 @@ class HFDiscovery:
     """
 
     def __init__(self) -> None:
-        self._token = getattr(settings, "HF_TOKEN", None)
+        self._token = settings.hf_key
         self._http = httpx.AsyncClient(timeout=120.0)
         self._model_cache: dict[str, str] = {}  # task -> mejor modelo probado
         self._failure_cache: dict[str, set] = {}  # task -> modelos fallidos
@@ -651,6 +651,12 @@ class HFDiscovery:
             (["embedding", "similitud", "semantic"], "feature-extraction"),
             (["código", "code", "programar", "script"], "text-generation"),
             (["texto a voz", "text to speech", "hablar", "voz"], "text-to-speech"),
+            (["finanza", "financ", "banc", "dinero", "stock", "mercado"], "text-classification"),
+            (["legal", "jurid", "contrato", "ley", "norma"], "text-classification"),
+            (["logistica", "logistic", "transporte", "ruta", "entrega"], "text-classification"),
+            (["manufactura", "industria", "fabrica", "maquina"], "image-classification"),
+            (["agricultura", "cultivo", "campo", "suelo", "planta"], "image-classification"),
+            (["bioquimica", "proteina", "biologia", "medicina", "molecula"], "text-classification"),
         ]
 
         cap_lower = capability_description.lower()
@@ -712,6 +718,7 @@ class HFDiscovery:
                 "audio": ["automatic-speech-recognition", "text-to-speech", "audio-classification"],
                 "embeddings": ["feature-extraction"],
                 "codigo": ["text-generation"],
+                "sectores_economia_circular": ["finanzas", "legal", "logística", "manufactura", "agricultura", "bioquímica"],
             },
         }
 

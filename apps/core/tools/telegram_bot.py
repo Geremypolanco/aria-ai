@@ -105,7 +105,7 @@ class AriaTelegramBot:
 
     async def start_polling(self) -> None:
         """Arranca el polling de Telegram."""
-        if not settings.TELEGRAM_BOT_TOKEN:
+        if not settings.telegram_token:
             logger.error("[TelegramBot] TELEGRAM_BOT_TOKEN no configurado — bot inactivo")
             return
         self._running = True
@@ -120,7 +120,7 @@ class AriaTelegramBot:
             await asyncio.sleep(1)
 
     async def _poll(self) -> None:
-        url = f"{TELEGRAM_API}{settings.TELEGRAM_BOT_TOKEN}/getUpdates"
+        url = f"{TELEGRAM_API}{settings.telegram_token}/getUpdates"
         params = {"timeout": 10, "offset": self._offset, "allowed_updates": ["message"]}
         res = await self._http.get(url, params=params, timeout=15.0)
         if res.status_code != 200:
@@ -135,6 +135,12 @@ class AriaTelegramBot:
                 asyncio.create_task(self._handle_message(msg))
 
     # ── MANEJO DE MENSAJES ───────────────────────────────────────
+
+    async def handle_update(self, update: dict) -> None:
+        """Punto de entrada para el webhook."""
+        msg = update.get("message")
+        if msg:
+            await self._handle_message(msg)
 
     async def _handle_message(self, msg: dict) -> None:
         chat_id = str(msg["chat"]["id"])
@@ -617,9 +623,9 @@ class AriaTelegramBot:
         return self._memory_client
 
     async def _send(self, chat_id: str, text: str, parse_mode: str = "HTML") -> None:
-        if not settings.TELEGRAM_BOT_TOKEN:
+        if not settings.telegram_token:
             return
-        url = f"{TELEGRAM_API}{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+        url = f"{TELEGRAM_API}{settings.telegram_token}/sendMessage"
         try:
             await self._http.post(url, json={
                 "chat_id": chat_id,
