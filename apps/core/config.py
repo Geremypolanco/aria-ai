@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     # ── DESPLIEGUE ────────────────────────────────────────
     GITHUB_TOKEN: Optional[str] = None
     GITHUB_USERNAME: Optional[str] = None
+    GITHUB_REPO: Optional[str] = "Geremypolanco/aria-ai"
     VERCEL_TOKEN: Optional[str] = None
 
     # ── PAGOS Y MONETIZACIÓN ──────────────────────────────
