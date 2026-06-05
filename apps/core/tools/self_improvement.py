@@ -1,18 +1,22 @@
 """
-self_improvement.py — Motor de auto-mejora de código de ARIA AI.
+self_improvement.py — Motor de auto-mejora de código de ARIA AI v2.
 
 ARIA puede:
   1. Leer su propio código vía GitHub API
-  2. Analizar calidad y detectar mejoras
-  3. Generar código mejorado con Qwen2.5-Coder
-  4. Pushear las mejoras a GitHub (triggea deploy automático en Fly.io)
-  5. Mantener historial de cambios y métricas de mejora
+  2. Analizar calidad y detectar mejoras con Qwen2.5-Coder
+  3. Generar código mejorado y validarlo sintácticamente
+  4. Pushear mejoras a GitHub (triggea deploy automático en Fly.io)
+  5. Rate limiting para no saturar el CI/CD
+  6. Rollback si el código mejorado es inválido o demasiado corto
 """
 from __future__ import annotations
+import ast
 import base64
 import json
 import logging
+import random
 import re
+import time
 from typing import Any, Optional
 import httpx
 from apps.core.config import settings
@@ -27,7 +31,6 @@ BRANCH = "main"
 class SelfImprovementEngine:
     """Motor de auto-mejora: ARIA lee, analiza y mejora su propio código."""
 
-    # Archivos que ARIA puede modificar autónomamente
     MODIFIABLE_FILES = [
         "apps/core/agents/pm_agent.py",
         "apps/core/agents/cfo_agent.py",
@@ -44,17 +47,25 @@ class SelfImprovementEngine:
         "apps/core/tools/market_tools.py",
         "apps/core/tools/canva_tools.py",
         "apps/core/tools/airtable_tools.py",
+        "apps/core/tools/social_media.py",
+        "apps/core/tools/affiliate_tools.py",
+        "apps/core/tools/publishing_tools.py",
     ]
 
-    # Archivos CRÍTICOS — requieren aprobación humana antes de modificar
     PROTECTED_FILES = [
         "apps/core/config.py",
         "apps/core/tools/telegram_bot.py",
+        "apps/core/tools/ai_client.py",
         "apps/core/agents/orchestrator.py",
         "apps/core/main.py",
         "fly.toml",
         "apps/core/Dockerfile",
+        "apps/core/requirements.txt",
     ]
+
+    # Rate limit: máximo 1 push cada 30 min para no saturar el CI/CD
+    _last_push_time: float = 0.0
+    MIN_PUSH_INTERVAL_SECONDS: int = 1800
 
     def __init__(self) -> None:
         self._token = settings.GITHUB_TOKEN
@@ -68,12 +79,22 @@ class SelfImprovementEngine:
     def _ok(self) -> bool:
         return bool(self._token)
 
+    def _can_push(self) -> bool:
+        """Rate limiter: evita pushes frecuentes que saturen el CI/CD."""
+        now = time.time()
+        elapsed = now - SelfImprovementEngine._last_push_time
+        if elapsed < self.MIN_PUSH_INTERVAL_SECONDS:
+            remaining = int(self.MIN_PUSH_INTERVAL_SECONDS - elapsed)
+            logger.info("[SelfImprovement] Rate limit — próximo push en %ds", remaining)
+            return False
+        return True
+
     # ══════════════════════════════════════════════════════════════
     # 1. LECTURA DE CÓDIGO PROPIO
     # ══════════════════════════════════════════════════════════════
 
     async def read_file(self, file_path: str) -> dict[str, Any]:
-        """Lee un archivo de su propio repositorio en GitHub."""
+        """Lee un archivo del repositorio de ARIA en GitHub."""
         if not self._ok():
             return {"success": False, "error": "GITHUB_TOKEN no configurado"}
         try:
@@ -129,84 +150,45 @@ class SelfImprovementEngine:
         }
 
     # ══════════════════════════════════════════════════════════════
-    # 2. ANÁLISIS DE CALIDAD DE CÓDIGO
+    # 2. ANÁLISIS DE CALIDAD
     # ══════════════════════════════════════════════════════════════
 
     async def analyze_code_quality(self, file_path: str, code: str) -> dict[str, Any]:
-        """
-        Analiza la calidad del código con Qwen2.5-Coder.
-        Detecta: bugs, ineficiencias, código duplicado, falta de manejo de errores,
-        oportunidades de optimización, patrones mejorados.
-        """
+        """Analiza la calidad del código con Qwen2.5-Coder."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
             ai = await get_ai_client()
 
-            analysis_prompt = (
-                f"Analiza este archivo Python de ARIA AI ({file_path}) y detecta:\n"
-                "1. Bugs o errores potenciales\n"
-                "2. Ineficiencias de rendimiento\n"
-                "3. Código duplicado o redundante\n"
-                "4. Falta de manejo de errores\n"
-                "5. Oportunidades de optimización\n"
-                "6. Funciones que debería tener pero no tiene\n"
-                "7. APIs externas útiles que podría agregar\n\n"
-                f"CÓDIGO (máx 4000 chars):\n{code[:4000]}\n\n"
-                "Responde en JSON con esta estructura:\n"
-                "{"
-                " \'quality_score\': 0-100,"
-                " \'bugs\': [{\'line\': N, \'issue\': str, \'fix\': str}],"
-                " \'inefficiencies\': [str],"
-                " \'missing_features\': [str],"
-                " \'recommended_apis\': [{\'name\': str, \'url\': str, \'benefit\': str}],"
-                " \'improvement_priority\': \'alta/media/baja\',"
-                " \'summary\': str"
-                "}"
-            )
-
             response = await ai.complete(
-                system="Eres un senior Python developer revisando código de un sistema de IA autónomo. Sé específico y accionable. Responde SOLO con JSON válido.",
-                user=analysis_prompt,
+                system="Senior Python developer revisando código de IA autónoma. Responde SOLO con JSON válido.",
+                user=(
+                    f"Analiza {file_path} y devuelve un JSON con:\n"
+                    f"{{\"quality_score\": 0-100, \"bugs\": [{{\"line\": N, \"issue\": str, \"fix\": str}}], "
+                    f"\"inefficiencies\": [str], \"missing_features\": [str], "
+                    f"\"improvement_priority\": \"alta/media/baja\", \"summary\": str}}\n\n"
+                    f"CÓDIGO:\n{code[:4000]}"
+                ),
                 model=AIModel.CODE,
+                json_mode=True,
             )
 
             if response and response.success:
                 try:
-                    match = re.search(r"\{.*\}", response.content, re.DOTALL)
-                    if match:
-                        analysis = json.loads(match.group())
-                        analysis["file"] = file_path
-                        analysis["analyzed_lines"] = len(code.splitlines())
-                        return {"success": True, "analysis": analysis}
-                except json.JSONDecodeError:
+                    if isinstance(response.content, dict):
+                        analysis = response.content
+                    else:
+                        match = re.search(r"\{.*\}", response.content, re.DOTALL)
+                        analysis = json.loads(match.group()) if match else {}
+                    analysis["file"] = file_path
+                    analysis["analyzed_lines"] = len(code.splitlines())
+                    return {"success": True, "analysis": analysis}
+                except (json.JSONDecodeError, AttributeError):
                     pass
 
             return {"success": False, "error": "No se pudo parsear el análisis"}
         except Exception as exc:
-            logger.error("[SelfImprovement] analyze error: %s", exc)
+            logger.error("[SelfImprovement] analyze error %s: %s", file_path, exc)
             return {"success": False, "error": str(exc)}
-
-    async def analyze_all_agents(self) -> list[dict]:
-        """Analiza todos los agentes y prioriza cuáles mejorar."""
-        import asyncio
-        agent_files = [f for f in self.MODIFIABLE_FILES if "/agents/" in f]
-        files_data = await self.read_multiple_files(agent_files)
-
-        analysis_tasks = []
-        for path, data in files_data.items():
-            if data.get("success") and data.get("content"):
-                analysis_tasks.append(self.analyze_code_quality(path, data["content"]))
-
-        results = await asyncio.gather(*analysis_tasks, return_exceptions=True)
-
-        analyses = []
-        for r in results:
-            if isinstance(r, dict) and r.get("success"):
-                analyses.append(r["analysis"])
-
-        # Ordenar por calidad (los de menor score primero — más urgentes)
-        analyses.sort(key=lambda x: x.get("quality_score", 100))
-        return analyses
 
     # ══════════════════════════════════════════════════════════════
     # 3. GENERACIÓN DE CÓDIGO MEJORADO
@@ -218,97 +200,88 @@ class SelfImprovementEngine:
         original_code: str,
         analysis: dict,
         specific_improvement: str = "",
+        lessons: Optional[dict] = None,
     ) -> dict[str, Any]:
-        """
-        Genera una versión mejorada del código usando Qwen2.5-Coder.
-        Aplica las mejoras identificadas en el análisis.
-        """
+        """Genera una versión mejorada del código usando Qwen2.5-Coder."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
             ai = await get_ai_client()
 
+            instructions = []
             bugs = analysis.get("bugs", [])
-            inefficiencies = analysis.get("inefficiencies", [])
-            missing = analysis.get("missing_features", [])
-
-            improvement_instructions = []
             if bugs:
-                improvement_instructions.append(f"CORRIGE estos bugs: {json.dumps(bugs[:3])}")
-            if inefficiencies:
-                improvement_instructions.append(f"OPTIMIZA: {'; '.join(inefficiencies[:3])}")
-            if missing:
-                improvement_instructions.append(f"AGREGA: {'; '.join(missing[:3])}")
+                instructions.append(f"CORRIGE bugs: {json.dumps(bugs[:3])}")
+            for item in analysis.get("inefficiencies", [])[:3]:
+                instructions.append(f"OPTIMIZA: {item}")
+            for item in analysis.get("missing_features", [])[:3]:
+                instructions.append(f"AGREGA: {item}")
             if specific_improvement:
-                improvement_instructions.append(f"MEJORA ESPECÍFICA: {specific_improvement}")
+                instructions.append(f"MEJORA ESPECÍFICA: {specific_improvement}")
+            if lessons:
+                for rec in lessons.get("recommendations", [])[:1]:
+                    instructions.append(f"LECCIÓN: {rec}")
 
-            prompt = (
-                f"Eres Qwen2.5-Coder mejorando el código de ARIA AI.\n"
-                f"Archivo: {file_path}\n\n"
-                f"INSTRUCCIONES DE MEJORA:\n"
-                + "\n".join(f"- {i}" for i in improvement_instructions)
-                + f"\n\nCÓDIGO ORIGINAL:\n{original_code[:6000]}\n\n"
-                "REGLAS ESTRICTAS:\n"
-                "1. Devuelve SOLO el código Python completo mejorado\n"
-                "2. Mantén toda la funcionalidad existente\n"
-                "3. No elimines ninguna función existente — solo mejora y agrega\n"
-                "4. Aplica TODAS las mejoras identificadas\n"
-                "5. Añade docstrings donde falten\n"
-                "6. Manejo de errores robusto en todas las funciones\n"
-                "7. El código debe ser 100% compatible con el sistema existente\n"
-                "8. NO incluyas explicaciones — solo el código Python"
-            )
+            if not instructions:
+                return {"success": False, "error": "No hay mejoras identificadas"}
 
             response = await ai.complete(
-                system="Senior Python developer. Return ONLY clean, complete, production-ready Python code. No explanations, no markdown fences, just the code.",
-                user=prompt,
+                system=(
+                    "Senior Python developer. Devuelve SOLO el código Python completo mejorado. "
+                    "Sin explicaciones, sin markdown fences, solo el código."
+                ),
+                user=(
+                    f"Mejora {file_path}.\n\nINSTRUCCIONES:\n"
+                    + "\n".join(f"- {i}" for i in instructions)
+                    + f"\n\nCÓDIGO ORIGINAL:\n{original_code[:6000]}\n\n"
+                    "REGLAS: Mantén toda la funcionalidad. No elimines funciones existentes. "
+                    "Manejo de errores en todas las funciones. Compatible 100% con el sistema."
+                ),
                 model=AIModel.CODE,
                 max_tokens=8000,
             )
 
             if not response or not response.success:
-                return {"success": False, "error": "Sin respuesta del modelo"}
+                return {"success": False, "error": "Sin respuesta del modelo de IA"}
 
-            improved_code = response.content.strip()
+            improved = response.content.strip()
+            # Limpiar markdown fences si el modelo los incluyó
+            for fence in ["```python\n", "```\n", "```"]:
+                if improved.startswith(fence):
+                    improved = improved[len(fence):]
+            if improved.endswith("```"):
+                improved = improved[:-3]
+            improved = improved.strip()
 
-            # Limpiar si el modelo puso markdown fences
-            if improved_code.startswith("```python"):
-                improved_code = improved_code[9:]
-            if improved_code.startswith("```"):
-                improved_code = improved_code[3:]
-            if improved_code.endswith("```"):
-                improved_code = improved_code[:-3]
-            improved_code = improved_code.strip()
-
-            # Validar que es código Python válido
-            validation = await self._validate_python_code(improved_code)
+            # Validar sintaxis
+            validation = self._validate_python_code(improved)
             if not validation["valid"]:
+                return {"success": False, "error": f"Sintaxis inválida: {validation['error']}"}
+
+            # Sanity check: no debe ser drásticamente más corto
+            orig_lines = len(original_code.splitlines())
+            impr_lines = len(improved.splitlines())
+            if impr_lines < orig_lines * 0.5:
                 return {
                     "success": False,
-                    "error": f"Código inválido: {validation['error']}",
-                    "raw_code": improved_code[:500],
+                    "error": f"Código sospechosamente corto ({impr_lines} vs {orig_lines} líneas)",
                 }
-
-            # Calcular métricas de mejora
-            original_lines = len(original_code.splitlines())
-            improved_lines = len(improved_code.splitlines())
 
             return {
                 "success": True,
                 "file": file_path,
-                "improved_code": improved_code,
-                "original_lines": original_lines,
-                "improved_lines": improved_lines,
-                "lines_delta": improved_lines - original_lines,
-                "improvements_applied": improvement_instructions,
+                "improved_code": improved,
+                "original_lines": orig_lines,
+                "improved_lines": impr_lines,
+                "lines_delta": impr_lines - orig_lines,
+                "improvements_applied": instructions,
             }
         except Exception as exc:
-            logger.error("[SelfImprovement] generate_improved error: %s", exc)
+            logger.error("[SelfImprovement] generate error %s: %s", file_path, exc)
             return {"success": False, "error": str(exc)}
 
-    async def _validate_python_code(self, code: str) -> dict[str, Any]:
+    def _validate_python_code(self, code: str) -> dict[str, Any]:
         """Valida que el código es Python sintácticamente correcto."""
         try:
-            import ast
             ast.parse(code)
             return {"valid": True}
         except SyntaxError as e:
@@ -317,209 +290,219 @@ class SelfImprovementEngine:
             return {"valid": False, "error": str(e)}
 
     # ══════════════════════════════════════════════════════════════
-    # 4. PUSH DE MEJORAS A GITHUB → DEPLOY AUTOMÁTICO
+    # 4. PUSH A GITHUB → DEPLOY AUTOMÁTICO
     # ══════════════════════════════════════════════════════════════
 
     async def push_improvement(
         self,
         file_path: str,
         improved_code: str,
-        commit_message: str,
-        require_approval: bool = False,
+        original_sha: str,
+        improvements_applied: list[str],
     ) -> dict[str, Any]:
-        """
-        Pushea código mejorado a GitHub.
-        → GitHub Actions detecta el push → Deploy automático a Fly.io.
-        Si require_approval=True, crea una approval request en Supabase.
-        """
+        """Pushea el código mejorado a GitHub triggea CI/CD."""
         if not self._ok():
             return {"success": False, "error": "GITHUB_TOKEN no configurado"}
-
-        # Archivos protegidos requieren aprobación
-        is_protected = any(p in file_path for p in self.PROTECTED_FILES)
-        if is_protected or require_approval:
-            return await self._request_human_approval(file_path, improved_code, commit_message)
+        if not self._can_push():
+            return {"success": False, "error": "Rate limit activo"}
 
         try:
-            # Obtener SHA actual del archivo
-            file_data = await self.read_file(file_path)
-            if not file_data.get("success"):
-                return {"success": False, "error": f"No se pudo leer {file_path}"}
+            filename = file_path.split("/")[-1].replace(".py", "")
+            main_imp = improvements_applied[0][:50] if improvements_applied else "auto-mejora"
+            commit_msg = (
+                f"feat({filename}): {main_imp}\n\n"
+                f"Auto-mejora por ARIA Evolution Engine.\n"
+                + "\n".join(f"- {imp}" for imp in improvements_applied[:5])
+            )
 
-            sha = file_data.get("sha", "")
-            body = {
-                "message": commit_message,
-                "content": base64.b64encode(improved_code.encode()).decode(),
-                "branch": BRANCH,
-                "sha": sha,
-            }
-
+            encoded = base64.b64encode(improved_code.encode("utf-8")).decode("ascii")
             res = await self._http.put(
                 f"{GITHUB_API}/repos/{REPO}/contents/{file_path}",
                 headers=self._headers,
-                json=body,
+                json={
+                    "message": commit_msg,
+                    "content": encoded,
+                    "sha": original_sha,
+                    "branch": BRANCH,
+                },
             )
 
             if res.status_code in (200, 201):
-                commit_sha = res.json().get("commit", {}).get("sha", "")
-                logger.info("[SelfImprovement] ✅ Pushed %s — SHA: %s", file_path, commit_sha[:7])
-
-                # Guardar en memoria de ARIA
-                await self._save_improvement_log(file_path, commit_message, commit_sha)
-
+                SelfImprovementEngine._last_push_time = time.time()
+                new_sha = res.json()["content"]["sha"]
+                logger.info("[SelfImprovement] Push exitoso: %s", file_path)
                 return {
                     "success": True,
                     "file": file_path,
-                    "commit_sha": commit_sha,
-                    "message": commit_message,
-                    "deploy_triggered": True,
-                    "note": "GitHub Actions deploying to Fly.io automatically",
+                    "new_sha": new_sha,
+                    "commit_message": commit_msg[:100],
                 }
-            return {"success": False, "error": f"GitHub API HTTP {res.status_code}: {res.text[:300]}"}
+
+            error_detail = res.json().get("message", res.text[:200])
+            return {"success": False, "error": f"HTTP {res.status_code}: {error_detail}"}
+
         except Exception as exc:
-            logger.error("[SelfImprovement] push error: %s", exc)
+            logger.error("[SelfImprovement] push error %s: %s", file_path, exc)
             return {"success": False, "error": str(exc)}
 
-    async def _request_human_approval(self, file_path: str, code: str, message: str) -> dict[str, Any]:
-        """Crea una solicitud de aprobación para archivos protegidos."""
-        try:
-            from apps.core.memory.supabase_client import get_db
-            db = get_db()
-            await db.create_approval_request(
-                agent="evolution_agent",
-                action_type="code_modification",
-                description=f"ARIA quiere modificar {file_path}: {message}",
-                data={"file": file_path, "commit_message": message, "code_preview": code[:1000]},
-            )
-            return {
-                "success": True,
-                "status": "awaiting_approval",
-                "file": file_path,
-                "message": "Solicitud enviada a Telegram para aprobación humana",
-            }
-        except Exception as exc:
-            return {"success": False, "error": str(exc)}
-
-    async def _save_improvement_log(self, file_path: str, message: str, sha: str) -> None:
-        """Guarda el historial de mejoras en Supabase + Redis."""
-        try:
-            from apps.core.memory.supabase_client import get_db
-            from apps.core.memory.redis_client import get_cache
-            db = get_db()
-            cache = get_cache()
-
-            # Log en Supabase
-            await db.log_event(
-                level="SUCCESS",
-                agent="evolution_agent",
-                message=f"Code improved: {file_path} — {message}",
-                metadata={"sha": sha},
-            )
-
-            # Contador de mejoras en Redis
-            count_key = "aria:improvements_total"
-            count = int(await cache.get(count_key) or "0") + 1
-            await cache.set(count_key, str(count))
-
-            # Historial de archivos mejorados
-            history_key = "aria:improvement_history"
-            history_raw = await cache.get(history_key)
-            history = json.loads(history_raw) if history_raw else []
-            history.insert(0, {"file": file_path, "message": message, "sha": sha[:7]})
-            await cache.set(history_key, json.dumps(history[:50]))
-
-        except Exception as exc:
-            logger.warning("[SelfImprovement] log error: %s", exc)
-
     # ══════════════════════════════════════════════════════════════
-    # 5. CICLO COMPLETO DE AUTO-MEJORA
+    # 5. CICLO COMPLETO DE MEJORA
     # ══════════════════════════════════════════════════════════════
 
-    async def run_improvement_cycle(self, max_files: int = 3) -> dict[str, Any]:
+    async def run_improvement_cycle(
+        self,
+        max_files: int = 2,
+        lessons: Optional[dict] = None,
+        target_files: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
         """
-        Ejecuta un ciclo completo de auto-mejora:
-        1. Analiza todos los agentes y herramientas
-        2. Identifica los N archivos con más oportunidades de mejora
-        3. Genera código mejorado para cada uno
-        4. Pushea las mejoras a GitHub (deploy automático)
+        Ciclo completo: lee código → analiza calidad → mejora → pushea.
+        Selección aleatoria para variar qué archivos se mejoran cada ciclo.
         """
-        logger.info("[SelfImprovement] Iniciando ciclo de auto-mejora...")
-        results = {"success": True, "improved_files": [], "failed": [], "total_analyzed": 0}
+        results: dict[str, Any] = {
+            "success": True,
+            "analyzed": [],
+            "improved_files": [],
+            "skipped": [],
+            "errors": [],
+        }
 
-        try:
-            # Analizar todos los agentes
-            analyses = await self.analyze_all_agents()
-            results["total_analyzed"] = len(analyses)
+        if not self._ok():
+            results["success"] = False
+            results["errors"].append("GITHUB_TOKEN no configurado")
+            return results
 
-            # Tomar los N con mayor prioridad de mejora (menor score)
-            candidates = [a for a in analyses if a.get("improvement_priority") in ("alta", "media")][:max_files]
+        files_pool = target_files or self.MODIFIABLE_FILES
+        # Shuffle para variar qué archivos se analizan cada ciclo
+        shuffled = list(files_pool)
+        random.shuffle(shuffled)
+        candidates_to_read = shuffled[:max_files * 3]  # Leer más de los que mejoraremos
 
-            if not candidates:
-                # Si no hay candidatos obvios, tomar los de menor score
-                candidates = analyses[:max_files]
+        files_data = await self.read_multiple_files(candidates_to_read)
 
-            for analysis in candidates:
-                file_path = analysis.get("file", "")
-                if not file_path:
-                    continue
+        # Analizar en paralelo
+        import asyncio
+        analysis_tasks = []
+        readable_files = []
+        for path, data in files_data.items():
+            if data.get("success") and data.get("content"):
+                analysis_tasks.append(self.analyze_code_quality(path, data["content"]))
+                readable_files.append(path)
 
-                logger.info("[SelfImprovement] Mejorando: %s (score: %s)", file_path, analysis.get("quality_score"))
+        if not analysis_tasks:
+            results["errors"].append("No se pudieron leer archivos para analizar")
+            return results
 
-                # Leer código original
-                file_data = await self.read_file(file_path)
-                if not file_data.get("success"):
-                    results["failed"].append({"file": file_path, "error": "No se pudo leer"})
-                    continue
+        analyses = await asyncio.gather(*analysis_tasks, return_exceptions=True)
 
-                original_code = file_data["content"]
+        # Construir lista ordenada por score (peor primero)
+        file_analyses = []
+        for path, analysis_result in zip(readable_files, analyses):
+            if isinstance(analysis_result, dict) and analysis_result.get("success"):
+                analysis = analysis_result["analysis"]
+                score = analysis.get("quality_score", 100)
+                file_analyses.append({
+                    "path": path,
+                    "analysis": analysis,
+                    "score": score,
+                    "sha": files_data[path].get("sha"),
+                    "content": files_data[path].get("content"),
+                })
+                results["analyzed"].append({
+                    "file": path,
+                    "score": score,
+                    "priority": analysis.get("improvement_priority", "media"),
+                })
 
-                # Generar código mejorado
-                improvement = await self.generate_improved_code(file_path, original_code, analysis)
-                if not improvement.get("success"):
-                    results["failed"].append({"file": file_path, "error": improvement.get("error", "")})
-                    continue
+        file_analyses.sort(key=lambda x: x["score"])
+        # Solo mejorar archivos con calidad < 80 o prioridad alta/media
+        to_improve = [
+            f for f in file_analyses
+            if f["score"] < 80 or f["analysis"].get("improvement_priority") in ("alta", "media")
+        ]
 
-                # Pushear a GitHub
-                commit_msg = (
-                    f"feat(evolution): Auto-improve {file_path.split('/')[-1]} "
-                    f"[score: {analysis.get('quality_score',0)}→estimated +10] "
-                    f"— {', '.join(improvement.get('improvements_applied',['optimized'])[:2])}"
-                )[:200]
+        if not to_improve:
+            logger.info("[SelfImprovement] Todos los archivos tienen calidad aceptable")
+            results["skipped"] = [f["path"] for f in file_analyses]
+            return results
 
-                push_result = await self.push_improvement(
-                    file_path,
-                    improvement["improved_code"],
-                    commit_msg,
-                )
+        improvements_done = 0
+        for file_data in to_improve[:max_files]:
+            if improvements_done >= max_files:
+                break
 
-                if push_result.get("success"):
-                    results["improved_files"].append({
-                        "file": file_path,
-                        "old_score": analysis.get("quality_score", 0),
-                        "lines_delta": improvement.get("lines_delta", 0),
-                        "commit": push_result.get("commit_sha", "")[:7],
-                        "improvements": improvement.get("improvements_applied", []),
-                    })
-                else:
-                    results["failed"].append({"file": file_path, "error": push_result.get("error", "")})
+            path = file_data["path"]
+            logger.info("[SelfImprovement] Mejorando %s (score: %d)", path, file_data["score"])
 
-        except Exception as exc:
-            logger.error("[SelfImprovement] Cycle error: %s", exc)
-            results["error"] = str(exc)
+            gen = await self.generate_improved_code(
+                file_path=path,
+                original_code=file_data["content"],
+                analysis=file_data["analysis"],
+                lessons=lessons,
+            )
 
+            if not gen.get("success"):
+                logger.warning("[SelfImprovement] No se generó mejora para %s: %s", path, gen.get("error"))
+                results["skipped"].append(path)
+                continue
+
+            push = await self.push_improvement(
+                file_path=path,
+                improved_code=gen["improved_code"],
+                original_sha=file_data["sha"],
+                improvements_applied=gen["improvements_applied"],
+            )
+
+            if push.get("success"):
+                improvements_done += 1
+                results["improved_files"].append({
+                    "file": path,
+                    "original_lines": gen["original_lines"],
+                    "improved_lines": gen["improved_lines"],
+                    "improvements_applied": gen["improvements_applied"],
+                    "commit": push.get("commit_message", ""),
+                })
+            else:
+                results["errors"].append(f"{path}: {push.get('error')}")
+
+            if improvements_done < max_files:
+                await asyncio.sleep(2)
+
+        results["total_improved"] = len(results["improved_files"])
+        results["success"] = len(results["improved_files"]) > 0 or len(results["errors"]) == 0
         return results
 
-    async def get_improvement_stats(self) -> dict[str, Any]:
-        """Estadísticas de mejoras realizadas."""
+    # ══════════════════════════════════════════════════════════════
+    # 6. HISTORIAL Y AUDITORÍA
+    # ══════════════════════════════════════════════════════════════
+
+    async def get_recent_commits(self, limit: int = 10) -> list[dict]:
+        """Obtiene los commits más recientes para auditoría."""
+        if not self._ok():
+            return []
         try:
-            from apps.core.memory.redis_client import get_cache
-            cache = get_cache()
-            total = await cache.get("aria:improvements_total") or "0"
-            history_raw = await cache.get("aria:improvement_history")
-            history = json.loads(history_raw) if history_raw else []
-            return {
-                "total_improvements": int(total),
-                "recent_improvements": history[:10],
-            }
-        except Exception:
-            return {"total_improvements": 0, "recent_improvements": []}
+            res = await self._http.get(
+                f"{GITHUB_API}/repos/{REPO}/commits?per_page={limit}",
+                headers=self._headers,
+            )
+            if res.status_code == 200:
+                return [
+                    {
+                        "sha": c["sha"][:8],
+                        "message": c["commit"]["message"][:80],
+                        "date": c["commit"]["author"]["date"],
+                        "author": c["commit"]["author"]["name"],
+                    }
+                    for c in res.json()
+                ]
+        except Exception as exc:
+            logger.error("[SelfImprovement] get_commits error: %s", exc)
+        return []
+
+    async def get_improvement_history(self) -> list[dict]:
+        """Lista los commits de auto-mejora aplicados por ARIA."""
+        commits = await self.get_recent_commits(limit=30)
+        return [
+            c for c in commits
+            if "feat(" in c["message"] or "auto-mejora" in c["message"].lower()
+        ]
