@@ -271,109 +271,109 @@ async def reset_webhook() -> JSONResponse:
 
 
 
-  # ── SOCIAL SESSION (COOKIES SIN API) ─────────────────────
+# ── SOCIAL SESSION (COOKIES SIN API) ─────────────────────
 
-  @app.get("/social/connect", response_class=HTMLResponse)
-  async def social_connect_form(platform: str = "", token: str = ""):
-      """Pagina web para importar cookies de redes sociales sin API."""
-      from apps.core.tools.social_session import PLATFORM_CONFIG, SUPPORTED_PLATFORMS
-      valid_token = settings.SOCIAL_CONNECT_TOKEN or "aria"
-      if token != valid_token:
-          return HTMLResponse("<h1>Token invalido</h1>", status_code=403)
-      cfg = PLATFORM_CONFIG.get(platform, {})
-      display = cfg.get("display_name", platform or "Red Social")
-      emoji = cfg.get("emoji", "🌐") if platform else "🌐"
-      instructions = cfg.get("instructions", "Exporta las cookies con Cookie-Editor -> Export as JSON.") if platform else ""
-      help_url = cfg.get("help_url", "") if platform else ""
-      platform_options = "".join(
-          f'<option value="{p}" {"selected" if p == platform else ""}>{PLATFORM_CONFIG[p]["emoji"]} {PLATFORM_CONFIG[p]["display_name"]}</option>'
-          for p in SUPPORTED_PLATFORMS
-      )
-      instr_html = instructions.replace("<b>","<strong>").replace("</b>","</strong>") if instructions else "Selecciona una plataforma."
-      html = f"""<!DOCTYPE html>
-  <html lang="es">
-  <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>ARIA - Conectar {display}</title>
-  <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:-apple-system,system-ui,sans-serif;background:#0f0f0f;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}}.card{{background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:40px;max-width:600px;width:100%}}h1{{font-size:1.6rem;margin-bottom:8px;color:#fff}}.sub{{color:#888;margin-bottom:28px;font-size:.95rem}}label{{display:block;font-size:.85rem;color:#aaa;margin-bottom:6px;margin-top:20px}}select,textarea{{width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:12px;color:#e0e0e0;font-size:.95rem;font-family:inherit}}select{{height:48px}}textarea{{height:220px;resize:vertical;font-family:'Courier New',monospace;font-size:.8rem}}.instr{{background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:16px;margin-top:16px;font-size:.88rem;line-height:1.7;color:#ccc}}.btn{{display:block;width:100%;background:#6c63ff;color:#fff;border:none;border-radius:8px;padding:14px;font-size:1rem;font-weight:600;cursor:pointer;margin-top:24px}}.btn:hover{{background:#5a52d5}}.ok{{background:#0d2b0d;border:1px solid #2a5e2a;color:#4caf50;border-radius:8px;padding:16px;margin-top:16px;display:none}}.err{{background:#2b0d0d;border:1px solid #5e2a2a;color:#f44336;border-radius:8px;padding:16px;margin-top:16px;display:none}}.hl{{display:inline-block;margin-top:12px;color:#6c63ff;text-decoration:none;font-size:.85rem}}</style>
-  </head>
-  <body><div class="card">
-  <h1>🤖 ARIA — Conectar Red Social</h1>
-  <p class="sub">Sin API keys. Solo exporta las cookies de tu navegador.</p>
-  <form id="f">
-  <label>Plataforma</label>
-  <select name="platform" id="ps" onchange="upd()">{platform_options}</select>
-  <div class="instr" id="instr">{instr_html}</div>
-  {"<a class='hl' href='" + help_url + "' target='_blank'>⬇️ Descargar Cookie-Editor para Chrome</a>" if help_url else ""}
-  <label>JSON de Cookies (pegalo aqui)</label>
-  <textarea name="cj" id="cj" placeholder='[{{"name":"auth_token","value":"..."}},...]' required></textarea>
-  <input type="hidden" name="token" value="{valid_token}">
-  <button type="submit" class="btn">✅ Guardar Sesion</button>
-  </form>
-  <div class="ok" id="ok"></div>
-  <div class="err" id="err"></div>
-  </div>
-  <script>
-  async function upd(){{const p=document.getElementById('ps').value;const r=await fetch('/social/platform-info?platform='+p);const d=await r.json();document.getElementById('instr').innerHTML=d.instructions||'';}}
-  document.getElementById('f').addEventListener('submit',async(e)=>{{e.preventDefault();const btn=e.target.querySelector('.btn');btn.textContent='⏳...';btn.disabled=true;const fd=new FormData(e.target);const r=await fetch('/social/connect',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{platform:fd.get('platform'),cookies_json:fd.get('cj'),token:fd.get('token')}})}});const d=await r.json();if(d.success){{document.getElementById('ok').textContent='✅ '+d.message;document.getElementById('ok').style.display='block';document.getElementById('err').style.display='none';btn.textContent='✅ Guardado';}}else{{document.getElementById('err').textContent='❌ '+d.error;document.getElementById('err').style.display='block';btn.textContent='✅ Guardar Sesion';btn.disabled=false;}}}});
-  </script></body></html>"""
-      return HTMLResponse(html)
-
-
-  @app.post("/social/connect")
-  async def social_connect_save(request: Request) -> JSONResponse:
-      """Guarda cookies de sesion enviadas desde el formulario web o Telegram."""
-      try:
-          body = await request.json()
-      except Exception:
-          return JSONResponse({"success": False, "error": "JSON invalido"}, status_code=400)
-      token = body.get("token", "")
-      valid_token = settings.SOCIAL_CONNECT_TOKEN or "aria"
-      if token != valid_token:
-          return JSONResponse({"success": False, "error": "Token invalido"}, status_code=403)
-      platform = body.get("platform", "").lower().strip()
-      cookies_json_raw = body.get("cookies_json", "")
-      from apps.core.tools.social_session import get_social_session_manager, SUPPORTED_PLATFORMS
-      if platform not in SUPPORTED_PLATFORMS:
-          return JSONResponse({"success": False, "error": f"Plataforma no soportada: {platform}"})
-      mgr = get_social_session_manager()
-      cookies = mgr.parse_cookies_json(cookies_json_raw)
-      if not cookies:
-          return JSONResponse({"success": False, "error": "No se pudo parsear el JSON. Usa Cookie-Editor -> Export as JSON."})
-      validation = mgr.validate_cookies_for_platform(cookies, platform)
-      if not validation.get("valid"):
-          return JSONResponse({"success": False, "error": validation.get("error", "Cookies invalidas")})
-      save_result = await mgr.save_session(platform, cookies)
-      if not save_result.get("success"):
-          return JSONResponse({"success": False, "error": save_result.get("error")})
-      test = await mgr.test_session(platform)
-      user_info = test.get("user_info", {}) if test.get("success") else {}
-      user_str = ""
-      if user_info:
-          un = user_info.get("username") or user_info.get("firstName", "")
-          if un:
-              user_str = f" como @{un}"
-      return JSONResponse({"success": True, "platform": platform, "message": f"Sesion de {platform.title()} guardada{user_str}.", "session_valid": test.get("success", False), "cookies_count": len(cookies)})
+@app.get("/social/connect", response_class=HTMLResponse)
+async def social_connect_form(platform: str = "", token: str = ""):
+    """Pagina web para importar cookies de redes sociales sin API."""
+    from apps.core.tools.social_session import PLATFORM_CONFIG, SUPPORTED_PLATFORMS
+    valid_token = settings.SOCIAL_CONNECT_TOKEN or "aria"
+    if token != valid_token:
+        return HTMLResponse("<h1>Token invalido</h1>", status_code=403)
+    cfg = PLATFORM_CONFIG.get(platform, {})
+    display = cfg.get("display_name", platform or "Red Social")
+    emoji = cfg.get("emoji", "🌐") if platform else "🌐"
+    instructions = cfg.get("instructions", "Exporta las cookies con Cookie-Editor -> Export as JSON.") if platform else ""
+    help_url = cfg.get("help_url", "") if platform else ""
+    platform_options = "".join(
+        f'<option value="{p}" {"selected" if p == platform else ""}>{PLATFORM_CONFIG[p]["emoji"]} {PLATFORM_CONFIG[p]["display_name"]}</option>'
+        for p in SUPPORTED_PLATFORMS
+    )
+    instr_html = instructions.replace("<b>","<strong>").replace("</b>","</strong>") if instructions else "Selecciona una plataforma."
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ARIA - Conectar {display}</title>
+<style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:-apple-system,system-ui,sans-serif;background:#0f0f0f;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}}.card{{background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:40px;max-width:600px;width:100%}}h1{{font-size:1.6rem;margin-bottom:8px;color:#fff}}.sub{{color:#888;margin-bottom:28px;font-size:.95rem}}label{{display:block;font-size:.85rem;color:#aaa;margin-bottom:6px;margin-top:20px}}select,textarea{{width:100%;background:#111;border:1px solid #333;border-radius:8px;padding:12px;color:#e0e0e0;font-size:.95rem;font-family:inherit}}select{{height:48px}}textarea{{height:220px;resize:vertical;font-family:'Courier New',monospace;font-size:.8rem}}.instr{{background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:16px;margin-top:16px;font-size:.88rem;line-height:1.7;color:#ccc}}.btn{{display:block;width:100%;background:#6c63ff;color:#fff;border:none;border-radius:8px;padding:14px;font-size:1rem;font-weight:600;cursor:pointer;margin-top:24px}}.btn:hover{{background:#5a52d5}}.ok{{background:#0d2b0d;border:1px solid #2a5e2a;color:#4caf50;border-radius:8px;padding:16px;margin-top:16px;display:none}}.err{{background:#2b0d0d;border:1px solid #5e2a2a;color:#f44336;border-radius:8px;padding:16px;margin-top:16px;display:none}}.hl{{display:inline-block;margin-top:12px;color:#6c63ff;text-decoration:none;font-size:.85rem}}</style>
+</head>
+<body><div class="card">
+<h1>🤖 ARIA — Conectar Red Social</h1>
+<p class="sub">Sin API keys. Solo exporta las cookies de tu navegador.</p>
+<form id="f">
+<label>Plataforma</label>
+<select name="platform" id="ps" onchange="upd()">{platform_options}</select>
+<div class="instr" id="instr">{instr_html}</div>
+{"<a class='hl' href='" + help_url + "' target='_blank'>⬇️ Descargar Cookie-Editor para Chrome</a>" if help_url else ""}
+<label>JSON de Cookies (pegalo aqui)</label>
+<textarea name="cj" id="cj" placeholder='[{{"name":"auth_token","value":"..."}},...]' required></textarea>
+<input type="hidden" name="token" value="{valid_token}">
+<button type="submit" class="btn">✅ Guardar Sesion</button>
+</form>
+<div class="ok" id="ok"></div>
+<div class="err" id="err"></div>
+</div>
+<script>
+async function upd(){{const p=document.getElementById('ps').value;const r=await fetch('/social/platform-info?platform='+p);const d=await r.json();document.getElementById('instr').innerHTML=d.instructions||'';}}
+document.getElementById('f').addEventListener('submit',async(e)=>{{e.preventDefault();const btn=e.target.querySelector('.btn');btn.textContent='⏳...';btn.disabled=true;const fd=new FormData(e.target);const r=await fetch('/social/connect',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{platform:fd.get('platform'),cookies_json:fd.get('cj'),token:fd.get('token')}})}});const d=await r.json();if(d.success){{document.getElementById('ok').textContent='✅ '+d.message;document.getElementById('ok').style.display='block';document.getElementById('err').style.display='none';btn.textContent='✅ Guardado';}}else{{document.getElementById('err').textContent='❌ '+d.error;document.getElementById('err').style.display='block';btn.textContent='✅ Guardar Sesion';btn.disabled=false;}}}});
+</script></body></html>"""
+    return HTMLResponse(html)
 
 
-  @app.get("/social/platform-info")
-  async def social_platform_info(platform: str = "") -> JSONResponse:
-      """Info de una plataforma para el formulario web."""
-      from apps.core.tools.social_session import PLATFORM_CONFIG
-      cfg = PLATFORM_CONFIG.get(platform, {})
-      if not cfg:
-          return JSONResponse({"error": "Plataforma no encontrada"}, status_code=404)
-      return JSONResponse({"platform": platform, "display_name": cfg["display_name"], "emoji": cfg["emoji"], "instructions": cfg.get("instructions","").replace("<b>","<strong>").replace("</b>","</strong>"), "required_cookies": cfg["required_cookies"], "help_url": cfg.get("help_url","")})
+@app.post("/social/connect")
+async def social_connect_save(request: Request) -> JSONResponse:
+    """Guarda cookies de sesion enviadas desde el formulario web o Telegram."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"success": False, "error": "JSON invalido"}, status_code=400)
+    token = body.get("token", "")
+    valid_token = settings.SOCIAL_CONNECT_TOKEN or "aria"
+    if token != valid_token:
+        return JSONResponse({"success": False, "error": "Token invalido"}, status_code=403)
+    platform = body.get("platform", "").lower().strip()
+    cookies_json_raw = body.get("cookies_json", "")
+    from apps.core.tools.social_session import get_social_session_manager, SUPPORTED_PLATFORMS
+    if platform not in SUPPORTED_PLATFORMS:
+        return JSONResponse({"success": False, "error": f"Plataforma no soportada: {platform}"})
+    mgr = get_social_session_manager()
+    cookies = mgr.parse_cookies_json(cookies_json_raw)
+    if not cookies:
+        return JSONResponse({"success": False, "error": "No se pudo parsear el JSON. Usa Cookie-Editor -> Export as JSON."})
+    validation = mgr.validate_cookies_for_platform(cookies, platform)
+    if not validation.get("valid"):
+        return JSONResponse({"success": False, "error": validation.get("error", "Cookies invalidas")})
+    save_result = await mgr.save_session(platform, cookies)
+    if not save_result.get("success"):
+        return JSONResponse({"success": False, "error": save_result.get("error")})
+    test = await mgr.test_session(platform)
+    user_info = test.get("user_info", {}) if test.get("success") else {}
+    user_str = ""
+    if user_info:
+        un = user_info.get("username") or user_info.get("firstName", "")
+        if un:
+            user_str = f" como @{un}"
+    return JSONResponse({"success": True, "platform": platform, "message": f"Sesion de {platform.title()} guardada{user_str}.", "session_valid": test.get("success", False), "cookies_count": len(cookies)})
 
 
-  @app.get("/social/sessions")
-  async def social_sessions_list() -> JSONResponse:
-      """Lista todas las sesiones activas de redes sociales."""
-      from apps.core.tools.social_session import get_social_session_manager
-      mgr = get_social_session_manager()
-      sessions = await mgr.list_active_sessions()
-      return JSONResponse({"success": True, "sessions": sessions, "total": len(sessions)})
+@app.get("/social/platform-info")
+async def social_platform_info(platform: str = "") -> JSONResponse:
+    """Info de una plataforma para el formulario web."""
+    from apps.core.tools.social_session import PLATFORM_CONFIG
+    cfg = PLATFORM_CONFIG.get(platform, {})
+    if not cfg:
+        return JSONResponse({"error": "Plataforma no encontrada"}, status_code=404)
+    return JSONResponse({"platform": platform, "display_name": cfg["display_name"], "emoji": cfg["emoji"], "instructions": cfg.get("instructions","").replace("<b>","<strong>").replace("</b>","</strong>"), "required_cookies": cfg["required_cookies"], "help_url": cfg.get("help_url","")})
 
-  
+
+@app.get("/social/sessions")
+async def social_sessions_list() -> JSONResponse:
+    """Lista todas las sesiones activas de redes sociales."""
+    from apps.core.tools.social_session import get_social_session_manager
+    mgr = get_social_session_manager()
+    sessions = await mgr.list_active_sessions()
+    return JSONResponse({"success": True, "sessions": sessions, "total": len(sessions)})
+
+
 # ── CHAT DIRECTO (API) ────────────────────────────────────
 
 @app.post("/chat")
