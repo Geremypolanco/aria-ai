@@ -1,370 +1,335 @@
 """
-BaseAgent — Clase base para todos los agentes de Aria AI.
+  BaseAgent — Clase base universal para todos los agentes de Aria AI.
 
-Principio fundamental: ARIA nunca simula. Si no puede realizar una acción
-porque le falta una API key o un servicio, lo declara explícitamente.
-"""
-from __future__ import annotations
+  v2 — Gobernador Económico Multi-Sectorial:
+  - domain_context / sector_id para operar en cualquier sector económico
+  - Auto-registro en Supabase agent_registry
+  - Capacidades parametrizables y genéricas
+  - Métricas extendidas por sector
+  - Ningún método retorna datos falsos o simulados.
+  """
+  from __future__ import annotations
 
-import asyncio
-import logging
-import time
-import uuid
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Callable, Coroutine, Optional
+  import asyncio
+  import logging
+  import time
+  import uuid
+  from abc import ABC, abstractmethod
+  from dataclasses import dataclass, field
+  from typing import Any, Callable, Coroutine, Optional
 
-import httpx
+  import httpx
 
-from apps.core.config import settings
-from apps.core.tools.ai_client import AIModel, get_ai_client
+  from apps.core.config import settings
+  from apps.core.tools.ai_client import AIModel, get_ai_client
 
-logger = logging.getLogger("aria.base_agent")
-TELEGRAM_API = "https://api.telegram.org/bot"
-
-
-@dataclass
-class AgentMetrics:
-    tasks_attempted: int = 0
-    tasks_succeeded: int = 0
-    tasks_failed: int = 0
-    total_latency_ms: int = 0
-    revenue_generated: float = 0.0
-
-    @property
-    def success_rate(self) -> float:
-        if self.tasks_attempted == 0:
-            return 100.0
-        return round(self.tasks_succeeded / self.tasks_attempted * 100, 1)
-
-    @property
-    def avg_latency_ms(self) -> int:
-        if self.tasks_succeeded == 0:
-            return 0
-        return self.total_latency_ms // self.tasks_succeeded
+  logger = logging.getLogger("aria.base_agent")
+  TELEGRAM_API = "https://api.telegram.org/bot"
 
 
-class BaseAgent(ABC):
-    """
-    Clase base para todos los agentes de Aria AI.
-    Politica: ningun metodo retorna datos falsos o simulados.
-    Si falta una API key o servicio, se retorna error explicito.
-    """
+  @dataclass
+  class AgentMetrics:
+      tasks_attempted: int = 0
+      tasks_succeeded: int = 0
+      tasks_failed: int = 0
+      total_latency_ms: int = 0
+      revenue_generated: float = 0.0
+      cost_saved: float = 0.0
+      sector_impact: dict = field(default_factory=dict)
 
-    APPROVAL_THRESHOLD_USD: float = float(
-        getattr(settings, "MAX_SPEND_WITHOUT_APPROVAL_USD", 0.0)
-    )
-    REQUIRE_APPROVAL_FOR_PAYMENTS: bool = True
+      @property
+      def success_rate(self) -> float:
+          if self.tasks_attempted == 0:
+              return 100.0
+          return round(self.tasks_succeeded / self.tasks_attempted * 100, 1)
 
-    # Mapa global: nombre_capacidad -> env_var requerida
-    CAPABILITY_ENV_MAP: dict[str, str] = {
-        "gumroad": "GUMROAD_TOKEN",
-        "stripe": "STRIPE_SECRET_KEY",
-        "paypal": "PAYPAL_CLIENT_ID",
-        "shopify": "SHOPIFY_URL",
-        "mailchimp": "MAILCHIMP_API_KEY",
-        "buffer": "BUFFER_TOKEN",
-        "google": "GOOGLE_API_KEY",
-        "youtube": "GOOGLE_API_KEY",
-        "elevenlabs": "ELEVENLABS_API_KEY",
-        "pexels": "PEXELS_API_KEY",
-        "cloudinary": "CLOUDINARY_CLOUD_NAME",
-        "canva": "CANVA_CLIENT_ID",
-        "airtable": "AIRTABLE_TOKEN",
-        "news": "NEWS_API_KEY",
-        "serp": "SERP_API_KEY",
-        "telegram": "TELEGRAM_TOKEN",
-        "github": "GITHUB_TOKEN",
-        "huggingface": "HF_TOKEN",
-        "groq": "GROQ_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "supabase": "SUPABASE_URL",
-        "redis": "UPSTASH_REDIS_REST_URL",
-        "medium": "MEDIUM_TOKEN",
-        "devto": "DEVTO_API_KEY",
-        "hashnode": "HASHNODE_TOKEN",
-        "amazon": "AMAZON_ASSOCIATE_TAG",
-        "affiliate": "AMAZON_ASSOCIATE_TAG",
-    }
+      @property
+      def avg_latency_ms(self) -> int:
+          if self.tasks_succeeded == 0:
+              return 0
+          return self.total_latency_ms // self.tasks_succeeded
 
-    def __init__(self, name: str, description: str, capabilities: list[str]) -> None:
-        self.name = name
-        self.description = description
-        self.capabilities = capabilities
-        self.agent_id = str(uuid.uuid4())
-        self.metrics = AgentMetrics()
-        self._http = httpx.AsyncClient(timeout=15.0)
-        self._consecutive_failures = 0
-        self._circuit_open = False
-        self._circuit_open_until: float = 0.0
-        logger.info("[%s] Agente inicializado", self.name)
-
-    # ── CICLO DE VIDA ─────────────────────────────────────
-
-    async def start(self) -> None:
-        await self._register_in_supabase()
-        logger.info("[%s] Agente listo", self.name)
-
-    async def stop(self) -> None:
-        await self._http.aclose()
-        logger.info("[%s] Agente detenido", self.name)
-
-    # ── EJECUCIÓN PRINCIPAL ───────────────────────────────
-
-    async def run(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Punto de entrada principal con circuit breaker."""
-        if not self._is_circuit_available():
-            wait_secs = int(self._circuit_open_until - time.monotonic())
-            return {
-                "success": False,
-                "error": (
-                    f"{self.name}: circuit breaker abierto — demasiados fallos consecutivos. "
-                    f"Vuelve a intentar en ~{wait_secs}s."
-                ),
-                "circuit_open": True,
-            }
-
-        self.metrics.tasks_attempted += 1
-        start_ts = time.monotonic()
-        try:
-            result = await self._execute(context)
-            elapsed_ms = int((time.monotonic() - start_ts) * 1000)
-            if result.get("success", False):
-                self.metrics.tasks_succeeded += 1
-                self.metrics.total_latency_ms += elapsed_ms
-                self._consecutive_failures = 0
-                if rev := result.get("revenue_generated"):
-                    self.metrics.revenue_generated += rev
-            else:
-                self.metrics.tasks_failed += 1
-                self._consecutive_failures += 1
-                self._check_circuit_breaker()
-                logger.warning("[%s] Tarea fallida: %s", self.name, result.get("error", "sin detalle"))
-            result["agent_metrics"] = {
-                "tasks_attempted": self.metrics.tasks_attempted,
-                "success_rate": self.metrics.success_rate,
-                "avg_latency_ms": self.metrics.avg_latency_ms,
-            }
-            return result
-        except Exception as exc:
-            self.metrics.tasks_failed += 1
-            self._consecutive_failures += 1
-            self._check_circuit_breaker()
-            logger.error("[%s] Excepcion en _execute: %s", self.name, exc, exc_info=True)
-            return {"success": False, "error": str(exc), "agent": self.name}
-
-    @abstractmethod
-    async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Implementar en cada agente concreto."""
-
-    # ── CAPABILITY CHECK ──────────────────────────────────
-
-    def check_capabilities(self) -> dict[str, Any]:
-        """
-        Verifica en tiempo real que puede y que NO puede hacer este agente.
-        Nunca simula — reporta el estado real de cada dependencia de API.
-        Llamar desde Telegram con /agentes para ver estado completo.
-        """
-        available: list[str] = []
-        unavailable: list[str] = []
-
-        for cap in self.capabilities:
-            cap_lower = cap.lower()
-            required_env: Optional[str] = None
-            for keyword, env_var in self.CAPABILITY_ENV_MAP.items():
-                if keyword in cap_lower:
-                    required_env = env_var
-                    break
-
-            if required_env:
-                val = getattr(settings, required_env, None)
-                if val:
-                    available.append(cap)
-                else:
-                    unavailable.append(f"{cap} [requiere {required_env}]")
-            else:
-                # Capacidad sin dependencia externa (ej: planificacion, IA base)
-                available.append(cap)
-
-        return {
-            "agent": self.name,
-            "description": self.description,
-            "available": available,
-            "unavailable": unavailable,
-            "fully_operational": len(unavailable) == 0,
-            "operational_pct": round(len(available) / max(len(self.capabilities), 1) * 100),
-        }
-
-    # ── PENSAMIENTO CON IA ────────────────────────────────
-
-    async def think(
-        self,
-        system: str,
-        user: str,
-        model: AIModel = AIModel.FAST,
-        json_mode: bool = False,
-        max_tokens: int = 2000,
-    ) -> Optional[str]:
-        """
-        Llama a la IA y retorna texto.
-        Retorna None si la IA no esta disponible — el agente debe manejar None.
-        """
-        try:
-            ai = await get_ai_client()
-            response = await ai.complete(
-                system=system,
-                user=user,
-                model=model,
-                json_mode=json_mode,
-                max_tokens=max_tokens,
-            )
-            if response and response.success:
-                return response.content if isinstance(response.content, str) else str(response.content)
-            logger.warning("[%s] think() sin respuesta de IA — proveedor no disponible", self.name)
-            return None
-        except Exception as exc:
-            logger.error("[%s] think() error: %s", self.name, exc)
-            return None
-
-    # ── APROBACIÓN HUMANA ─────────────────────────────────
-
-    async def request_human_approval(
-        self,
-        action: str,
-        details: str,
-        amount_usd: float = 0.0,
-    ) -> dict[str, Any]:
-        """
-        Solicita aprobacion del supervisor via Telegram.
-        ERROR EXPLICITO si Telegram no esta configurado — nunca aprueba automaticamente.
-        """
-        if not settings.TELEGRAM_TOKEN or not settings.TELEGRAM_CHAT_ID:
-            return {
-                "success": False,
-                "error": (
-                    "Aprobacion humana requerida pero TELEGRAM_TOKEN o TELEGRAM_CHAT_ID "
-                    "no estan configurados. Accion bloqueada por seguridad."
-                ),
-                "action_blocked": True,
-            }
-        try:
-            db = _get_db()
-            approval_id = str(uuid.uuid4())[:8]
-            db.table("approvals").insert({
-                "id": approval_id,
-                "agent": self.name,
-                "action": action,
-                "details": details,
-                "amount_usd": amount_usd,
-                "status": "pending",
-            }).execute()
-
-            msg = (
-                f"⚠️ <b>Aprobacion requerida</b>\n\n"
-                f"<b>Agente:</b> {self.name}\n"
-                f"<b>Accion:</b> {action}\n"
-                f"<b>Detalles:</b> {details}\n"
-                + (f"<b>Monto:</b> ${amount_usd:.2f}\n" if amount_usd > 0 else "")
-                + f"\n<b>ID:</b> <code>{approval_id}</code>\n\n"
-                f"/aprobar {approval_id}  |  /rechazar {approval_id}"
-            )
-            await self._send_telegram(msg)
-            return {
-                "success": True,
-                "approval_id": approval_id,
-                "status": "pending",
-                "message": f"Aprobacion solicitada al supervisor (ID: {approval_id})",
-            }
-        except Exception as exc:
-            logger.error("[%s] request_approval error: %s", self.name, exc)
-            return {"success": False, "error": str(exc)}
-
-    async def execute_with_approval(
-        self,
-        action: str,
-        details: str,
-        fn: Callable[[], Coroutine],
-        amount_usd: float = 0.0,
-    ) -> dict[str, Any]:
-        """Ejecuta fn() directamente o solicita aprobacion segun el monto."""
-        if amount_usd <= self.APPROVAL_THRESHOLD_USD and not self.REQUIRE_APPROVAL_FOR_PAYMENTS:
-            return await fn()
-        return await self.request_human_approval(action, details, amount_usd)
-
-    # ── SUPABASE / LOGGING ────────────────────────────────
-
-    async def _register_in_supabase(self) -> None:
-        try:
-            db = _get_db()
-            db.table("agents").upsert({
-                "name": self.name,
-                "description": self.description,
-                "capabilities": self.capabilities,
-                "status": "active",
-                "agent_id": self.agent_id,
-            }).execute()
-        except Exception as exc:
-            logger.warning("[%s] No se pudo registrar en Supabase: %s", self.name, exc)
-
-    async def _log(self, event: str, message: str, metadata: Optional[dict] = None) -> None:
-        try:
-            db = _get_db()
-            db.table("system_logs").insert({
-                "agent": self.name,
-                "event": event,
-                "message": message,
-                "metadata": metadata or {},
-            }).execute()
-        except Exception as exc:
-            logger.debug("[%s] _log error (no critico): %s", self.name, exc)
-
-    # ── TELEGRAM ──────────────────────────────────────────
-
-    async def _send_telegram(self, message: str) -> bool:
-        """Envia mensaje Telegram. Retorna False (no excepcion) si no esta configurado."""
-        if not settings.TELEGRAM_TOKEN or not settings.TELEGRAM_CHAT_ID:
-            logger.warning("[%s] Telegram no configurado — mensaje no enviado", self.name)
-            return False
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                res = await client.post(
-                    f"{TELEGRAM_API}{settings.TELEGRAM_TOKEN}/sendMessage",
-                    json={
-                        "chat_id": settings.TELEGRAM_CHAT_ID,
-                        "text": message,
-                        "parse_mode": "HTML",
-                        "disable_web_page_preview": True,
-                    },
-                )
-                return res.status_code == 200
-        except Exception as exc:
-            logger.error("[%s] Telegram error: %s", self.name, exc)
-            return False
-
-    # ── CIRCUIT BREAKER ───────────────────────────────────
-
-    def _is_circuit_available(self) -> bool:
-        if not self._circuit_open:
-            return True
-        if time.monotonic() > self._circuit_open_until:
-            self._circuit_open = False
-            self._consecutive_failures = 0
-            logger.info("[%s] Circuit breaker cerrado — reiniciando", self.name)
-            return True
-        return False
-
-    def _check_circuit_breaker(self) -> None:
-        if self._consecutive_failures >= 5:
-            cooldown = min(300, 60 * self._consecutive_failures)
-            self._circuit_open = True
-            self._circuit_open_until = time.monotonic() + cooldown
-            logger.error(
-                "[%s] Circuit breaker ABIERTO por %ds (%d fallos consecutivos)",
-                self.name, cooldown, self._consecutive_failures,
-            )
+      def record_sector_action(self, sector: str, action: str, value: float = 0.0) -> None:
+          if sector not in self.sector_impact:
+              self.sector_impact[sector] = {"actions": 0, "value": 0.0}
+          self.sector_impact[sector]["actions"] += 1
+          self.sector_impact[sector]["value"] += value
 
 
-def _get_db():
-    """Helper para obtener cliente Supabase."""
-    from apps.core.memory.supabase_client import AriaDatabase
-    return AriaDatabase()._client
+  class BaseAgent(ABC):
+      """
+      Clase base universal para todos los agentes de Aria AI.
+
+      Cada agente puede operar en uno o múltiples sectores económicos gracias
+      a domain_context y sector_id. El Orchestrator usa estos campos para
+      instanciar y dirigir agentes al sector correcto.
+
+      Política: ningún método retorna datos falsos o simulados.
+      Si falta una API key o servicio, se retorna error explícito.
+      """
+
+      APPROVAL_THRESHOLD_USD: float = float(
+          getattr(settings, "MAX_SPEND_WITHOUT_APPROVAL_USD", 0.0)
+      )
+      REQUIRE_APPROVAL_FOR_PAYMENTS: bool = True
+
+      # Mapa global: nombre_capacidad -> env_var requerida
+      CAPABILITY_ENV_MAP: dict[str, str] = {
+          # ── Pagos & Comercio ──
+          "gumroad": "GUMROAD_TOKEN",
+          "stripe": "STRIPE_SECRET_KEY",
+          "paypal": "PAYPAL_CLIENT_ID",
+          "shopify": "SHOPIFY_URL",
+          # ── Marketing ──
+          "mailchimp": "MAILCHIMP_API_KEY",
+          "buffer": "BUFFER_TOKEN",
+          "google": "GOOGLE_API_KEY",
+          "youtube": "GOOGLE_API_KEY",
+          # ── Creación de contenido ──
+          "elevenlabs": "ELEVENLABS_API_KEY",
+          "pexels": "PEXELS_API_KEY",
+          "cloudinary": "CLOUDINARY_CLOUD_NAME",
+          "canva": "CANVA_CLIENT_ID",
+          # ── Datos & Investigación ──
+          "airtable": "AIRTABLE_TOKEN",
+          "news": "NEWS_API_KEY",
+          "serp": "SERP_API_KEY",
+          # ── Infraestructura ──
+          "telegram": "TELEGRAM_TOKEN",
+          "github": "GITHUB_TOKEN",
+          "huggingface": "HF_TOKEN",
+          "groq": "GROQ_API_KEY",
+          "openai": "OPENAI_API_KEY",
+          "supabase": "SUPABASE_URL",
+          "redis": "UPSTASH_REDIS_REST_URL",
+          # ── Publicación ──
+          "medium": "MEDIUM_TOKEN",
+          "devto": "DEVTO_API_KEY",
+          "hashnode": "HASHNODE_TOKEN",
+          # ── Afiliados ──
+          "amazon": "AMAZON_ASSOCIATE_TAG",
+          "affiliate": "AMAZON_ASSOCIATE_TAG",
+          # ── Sectores físicos / industriales ──
+          "banking": "BANKING_API_KEY",
+          "logistics": "LOGISTICS_API_KEY",
+          "iot": "IOT_API_KEY",
+          "erp": "ERP_API_KEY",
+          "legal_db": "LEGAL_DB_API_KEY",
+          "hr_system": "HR_SYSTEM_API_KEY",
+          "market_data": "MARKET_DATA_API_KEY",
+      }
+
+      # Sectores económicos que ARIA puede gestionar
+      SUPPORTED_SECTORS: list[str] = [
+          "digital",        # Productos y servicios digitales (sector origen)
+          "banking",        # Banca, microcréditos, inversiones
+          "legal",          # Bufetes, contratos, asesoría
+          "logistics",      # Cadena de suministro, transporte
+          "manufacturing",  # Manufactura, producción
+          "distribution",   # Distribución, mayoristas
+          "agriculture",    # Agricultura, alimentos
+          "engineering",    # Ingeniería civil/industrial
+          "biochemistry",   # Bioquímica, farmacia
+          "education",      # Capacitación, e-learning
+          "healthcare",     # Salud, telemedicina
+          "energy",         # Energía, renovables
+          "real_estate",    # Bienes raíces
+          "retail",         # Comercio minorista
+      ]
+
+      def __init__(
+          self,
+          name: str,
+          description: str,
+          capabilities: list[str],
+          sector_id: str = "digital",
+          domain_context: Optional[dict[str, Any]] = None,
+      ) -> None:
+          self.name = name
+          self.description = description
+          self.capabilities = capabilities
+          self.agent_id = str(uuid.uuid4())
+          self.metrics = AgentMetrics()
+          self._http = httpx.AsyncClient(timeout=15.0)
+
+          # ── Multi-sector fields ──────────────────────────────────
+          self.sector_id: str = sector_id if sector_id in self.SUPPORTED_SECTORS else "digital"
+          self.domain_context: dict[str, Any] = domain_context or {}
+          self._registered: bool = False  # True tras auto-registro en Supabase
+
+      # ── CICLO DE VIDA ─────────────────────────────────────────────
+
+      async def start(self) -> None:
+          """Inicia el agente y lo registra en el registry de Supabase."""
+          await self._auto_register()
+          logger.info("[%s] Iniciado | Sector: %s", self.name, self.sector_id)
+
+      async def stop(self) -> None:
+          """Detiene el agente y actualiza su estado en Supabase."""
+          await self._update_registry_status("stopped")
+          await self._http.aclose()
+
+      # ── AUTO-REGISTRO ─────────────────────────────────────────────
+
+      async def _auto_register(self) -> None:
+          """Registra este agente en la tabla agent_registry de Supabase."""
+          try:
+              from apps.core.memory.supabase_client import get_db
+              db = get_db()
+              await db.upsert_agent_registry({
+                  "agent_id": self.agent_id,
+                  "name": self.name,
+                  "description": self.description,
+                  "capabilities": self.capabilities,
+                  "sector_id": self.sector_id,
+                  "domain_context": self.domain_context,
+                  "status": "active",
+              })
+              self._registered = True
+          except Exception as exc:
+              logger.warning("[%s] No pudo registrarse: %s", self.name, exc)
+
+      async def _update_registry_status(self, status: str) -> None:
+          try:
+              from apps.core.memory.supabase_client import get_db
+              db = get_db()
+              await db.update_agent_status(self.agent_id, status)
+          except Exception:
+              pass
+
+      # ── EJECUCIÓN PRINCIPAL ───────────────────────────────────────
+
+      @abstractmethod
+      async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
+          """Implementación específica de cada agente."""
+
+      async def run(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
+          """Punto de entrada unificado con métricas y manejo de errores."""
+          ctx = context or {}
+          # Inyectar sector_id si el contexto no lo especifica
+          ctx.setdefault("sector_id", self.sector_id)
+          ctx.setdefault("domain_context", self.domain_context)
+
+          start = time.time()
+          self.metrics.tasks_attempted += 1
+          try:
+              result = await self._execute(ctx)
+              self.metrics.tasks_succeeded += 1
+              self.metrics.total_latency_ms += int((time.time() - start) * 1000)
+              # Acumular ingresos / ahorros por sector
+              revenue = result.get("revenue_usd", 0.0)
+              savings = result.get("cost_saved_usd", 0.0)
+              self.metrics.revenue_generated += revenue
+              self.metrics.cost_saved += savings
+              if revenue or savings:
+                  self.metrics.record_sector_action(self.sector_id, "value_generated", revenue + savings)
+              return result
+          except Exception as exc:
+              self.metrics.tasks_failed += 1
+              logger.error("[%s] Error en _execute: %s", self.name, exc, exc_info=True)
+              return {"success": False, "error": str(exc), "agent": self.name, "sector": self.sector_id}
+
+      # ── APROBACIÓN HUMANA ─────────────────────────────────────────
+
+      async def execute_with_approval(
+          self,
+          action: str,
+          details: str,
+          fn: Callable[[], Coroutine],
+          amount_usd: float = 0.0,
+          sector: Optional[str] = None,
+      ) -> dict[str, Any]:
+          """Solicita aprobación humana vía Telegram antes de ejecutar acciones críticas."""
+          effective_sector = sector or self.sector_id
+          needs_approval = (
+              self.REQUIRE_APPROVAL_FOR_PAYMENTS
+              and amount_usd > self.APPROVAL_THRESHOLD_USD
+          )
+          if needs_approval:
+              await self._request_telegram_approval(action, details, amount_usd, effective_sector)
+              return {"status": "pending_approval", "action": action, "amount_usd": amount_usd, "sector": effective_sector}
+          return await fn()
+
+      async def _request_telegram_approval(
+          self, action: str, details: str, amount_usd: float, sector: str
+      ) -> None:
+          token = settings.telegram_token
+          chat_id = settings.TELEGRAM_CHAT_ID
+          if not token or not chat_id:
+              logger.warning("[%s] Aprobación requerida pero Telegram no configurado", self.name)
+              return
+          msg = (
+              f"⚠️ <b>ARIA AI — Aprobación Requerida</b>\n\n"
+              f"🏭 <b>Sector:</b> {sector}\n"
+              f"🤖 <b>Agente:</b> {self.name}\n"
+              f"📋 <b>Acción:</b> {action}\n"
+              f"💬 <b>Detalle:</b> {details}\n"
+              f"💰 <b>Monto:</b> USD {amount_usd:.2f}\n\n"
+              f"Responde /aprobar o /rechazar en el bot."
+          )
+          try:
+              async with httpx.AsyncClient(timeout=10.0) as client:
+                  await client.post(
+                      f"{TELEGRAM_API}{token}/sendMessage",
+                      json={"chat_id": chat_id, "text": msg, "parse_mode": "HTML"},
+                  )
+          except Exception as exc:
+              logger.error("Telegram approval request failed: %s", exc)
+
+      # ── VERIFICACIÓN DE CAPACIDADES ───────────────────────────────
+
+      def check_capabilities(self, required: list[str]) -> dict[str, bool]:
+          """Verifica si las env vars necesarias están disponibles."""
+          result = {}
+          for cap in required:
+              env_var = self.CAPABILITY_ENV_MAP.get(cap)
+              if env_var:
+                  result[cap] = bool(getattr(settings, env_var, None))
+              else:
+                  result[cap] = True  # Sin requisito conocido → asumir disponible
+          return result
+
+      def available_capabilities(self) -> list[str]:
+          """Retorna las capacidades disponibles según env vars configuradas."""
+          available = []
+          for cap in self.capabilities:
+              status = self.check_capabilities([cap])
+              if status.get(cap, False):
+                  available.append(cap)
+          return available
+
+      # ── UTILIDADES IA ─────────────────────────────────────────────
+
+      async def ai_complete(self, prompt: str, model: AIModel = AIModel.STRATEGY) -> str:
+          """Llama al motor IA con el prompt dado."""
+          ai = get_ai_client()
+          return await ai.complete(prompt, model=model)
+
+      async def ai_complete_json(self, prompt: str, model: AIModel = AIModel.STRATEGY) -> dict:
+          """Llama al motor IA y parsea la respuesta como JSON."""
+          ai = get_ai_client()
+          return await ai.complete_json(prompt, model=model)
+
+      # ── REPRESENTACIÓN ────────────────────────────────────────────
+
+      def to_registry_dict(self) -> dict[str, Any]:
+          """Serializa el agente para el registry de Supabase."""
+          return {
+              "agent_id": self.agent_id,
+              "name": self.name,
+              "description": self.description,
+              "capabilities": self.capabilities,
+              "sector_id": self.sector_id,
+              "domain_context": self.domain_context,
+              "status": "active",
+              "metrics": {
+                  "success_rate": self.metrics.success_rate,
+                  "tasks_attempted": self.metrics.tasks_attempted,
+                  "revenue_generated": self.metrics.revenue_generated,
+                  "cost_saved": self.metrics.cost_saved,
+              },
+          }
+
+      def __repr__(self) -> str:
+          return f"<{self.__class__.__name__} name={self.name!r} sector={self.sector_id!r}>"
+  
