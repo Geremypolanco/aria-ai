@@ -212,7 +212,7 @@ async def health() -> JSONResponse:
         ]
 
         ai = get_ai_client()
-        ai_report = ai.get_health_report()
+        ai_report = ai.get_health_summary()
 
         return JSONResponse({
             "status": "healthy",
@@ -546,7 +546,7 @@ async def get_ai_metrics() -> JSONResponse:
     """Métricas del cliente de IA."""
     try:
         ai = get_ai_client()
-        return JSONResponse(ai.get_health_report())
+        return JSONResponse(ai.get_health_summary())
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
