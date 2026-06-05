@@ -51,6 +51,7 @@ class Settings(BaseSettings):
 
     # ── DESPLIEGUE ────────────────────────────────────────
     GITHUB_TOKEN: Optional[str] = None
+    SOCIAL_CONNECT_TOKEN: str = Field(default="aria", description="Token para el formulario web de conexion social")
     GITHUB_USERNAME: Optional[str] = None
     GITHUB_REPO: Optional[str] = "Geremypolanco/aria-ai"
     VERCEL_TOKEN: Optional[str] = None
