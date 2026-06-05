@@ -488,6 +488,107 @@ async def trigger_evolution() -> JSONResponse:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+
+
+  # ── OAUTH REDES SOCIALES ─────────────────────────────────
+
+  @app.get("/auth/callback/{platform}")
+  async def social_auth_callback(platform: str, request: Request) -> JSONResponse:
+      """
+      Callback OAuth de redes sociales.
+      Telegram envia al usuario el enlace, usuario autoriza, plataforma redirige aqui.
+      """
+      SUPPORTED = {"facebook", "instagram", "tiktok", "linkedin"}
+      if platform not in SUPPORTED:
+          return JSONResponse({"ok": False, "error": "Plataforma no soportada"}, status_code=400)
+
+      code = request.query_params.get("code")
+      error = request.query_params.get("error")
+
+      if error:
+          msg = request.query_params.get("error_description", error)
+          await send_telegram(f"No pude conectar {platform.title()}. Error: {msg}")
+          return JSONResponse({"ok": False, "error": msg})
+
+      if not code:
+          return JSONResponse({"ok": False, "error": "No se recibio codigo de autorizacion"}, status_code=400)
+
+      try:
+          from apps.core.tools.social_media import SocialMediaManager
+          sm = SocialMediaManager()
+
+          token_data = await sm.exchange_code_for_token(platform, code)
+          if not token_data:
+              await send_telegram(f"No pude obtener tokens de {platform.title()}")
+              return JSONResponse({"ok": False, "error": "Token exchange failed"})
+
+          access_token = token_data.get("access_token")
+          refresh_token = token_data.get("refresh_token")
+          expires_in = token_data.get("expires_in")
+
+          profile = await sm.get_user_profile(platform, access_token) or {}
+          saved = await sm.save_account(platform, access_token, refresh_token, expires_in, profile)
+
+          username = profile.get("username", "cuenta")
+
+          if saved:
+              await send_telegram(
+                  f"\u2705 <b>{platform.title()} conectado</b>\n\n"
+                  f"Cuenta: @{username}\n"
+                  f"Ya tengo acceso completo.\n\n"
+                  f"Usa /publicar {platform} &lt;mensaje&gt; para publicar."
+              )
+              html = (
+                  f"<html><body style='font-family:sans-serif;text-align:center;padding:40px;background:#f8f9fa'>"
+                  f"<h2 style='color:#28a745'>\u2705 {platform.title()} conectado</h2>"
+                  f"<p>Cuenta <strong>@{username}</strong> vinculada a ARIA.</p>"
+                  f"<p style='color:#6c757d'>Puedes cerrar esta ventana.</p>"
+                  f"</body></html>"
+              )
+              from fastapi.responses import HTMLResponse
+              return HTMLResponse(content=html)
+          else:
+              await send_telegram(f"\u26a0\ufe0f Obtuve tokens de {platform.title()} pero no pude guardarlos.")
+              return JSONResponse({"ok": False, "error": "Error saving account"})
+
+      except Exception as exc:
+          logger.error("OAuth callback error for %s: %s", platform, exc)
+          await send_telegram(f"Error en callback OAuth de {platform.title()}: {str(exc)[:100]}")
+          return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+  @app.get("/social/accounts")
+  async def list_social_accounts() -> JSONResponse:
+      """Lista las cuentas de redes sociales conectadas."""
+      try:
+          from apps.core.tools.social_media import SocialMediaManager
+          sm = SocialMediaManager()
+          accounts = await sm.list_connected_accounts()
+          return JSONResponse({"accounts": accounts, "count": len(accounts)})
+      except Exception as exc:
+          raise HTTPException(status_code=500, detail=str(exc))
+
+
+  @app.post("/social/post")
+  async def social_post(request: Request) -> JSONResponse:
+      """Publica contenido en una red social."""
+      try:
+          data = await request.json()
+          platform = data.get("platform")
+          content = data.get("content")
+          image_url = data.get("image_url")
+          if not platform or not content:
+              raise HTTPException(status_code=400, detail="platform y content son requeridos")
+          from apps.core.tools.social_media import SocialMediaManager
+          sm = SocialMediaManager()
+          result = await sm.post_content(platform, content, image_url)
+          return JSONResponse(result)
+      except HTTPException:
+          raise
+      except Exception as exc:
+          raise HTTPException(status_code=500, detail=str(exc))
+
+  
 # ── ENTRY POINT ───────────────────────────────────────────
 
 if __name__ == "__main__":
