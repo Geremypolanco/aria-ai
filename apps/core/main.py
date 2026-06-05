@@ -142,19 +142,30 @@ async def auto_evolve_job() -> None:
 async def lifespan(app: FastAPI):
     logger.info("Aria OS iniciando...")
 
-    interval = int(os.getenv("CYCLE_INTERVAL_MINUTES", "60"))
-    scheduler.add_job(autonomous_cycle_job, IntervalTrigger(minutes=interval), id="autonomous_cycle", replace_existing=True)
-    scheduler.add_job(agent_heartbeat_job, IntervalTrigger(seconds=30), id="heartbeat", replace_existing=True)
-    scheduler.add_job(daily_report_job, CronTrigger(hour=9, minute=0), id="daily_report", replace_existing=True)
-    scheduler.add_job(auto_evolve_job, IntervalTrigger(hours=6), id="auto_evolve", replace_existing=True)
-    scheduler.start()
+    try:
+        raw = os.getenv("CYCLE_INTERVAL_MINUTES", "60").strip()
+        interval = int(raw) if raw.isdigit() and int(raw) > 0 else 60
+        scheduler.add_job(autonomous_cycle_job, IntervalTrigger(minutes=interval), id="autonomous_cycle", replace_existing=True)
+        scheduler.add_job(agent_heartbeat_job, IntervalTrigger(seconds=30), id="heartbeat", replace_existing=True)
+        scheduler.add_job(daily_report_job, CronTrigger(hour=9, minute=0), id="daily_report", replace_existing=True)
+        scheduler.add_job(auto_evolve_job, IntervalTrigger(hours=6), id="auto_evolve", replace_existing=True)
+        scheduler.start()
+        logger.info("Scheduler iniciado con %d jobs.", len(scheduler.get_jobs()))
+    except Exception as exc:
+        logger.error("CRITICO: Error iniciando scheduler: %s", exc, exc_info=True)
 
-    # Registrar webhook de Telegram
-    await set_telegram_webhook()
+    try:
+        await set_telegram_webhook()
+    except Exception as exc:
+        logger.error("Error en setup de Telegram: %s", exc)
 
-    logger.info("Aria OS activo. Scheduler corriendo con %d jobs.", len(scheduler.get_jobs()))
+    logger.info("Aria OS activo.")
     yield
-    scheduler.shutdown()
+
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception:
+        pass
     logger.info("Aria OS apagado.")
 
 
