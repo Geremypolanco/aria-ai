@@ -20,6 +20,11 @@ apscheduler==3.10.4
 # GitHub
 PyGithub==2.4.0
 
+# Pagos
+stripe==10.6.0
+
+# Shopify
+ShopifyAPI==12.6.0
+
 # Utilidades
 python-dotenv==1.0.1
-
