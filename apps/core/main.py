@@ -211,7 +211,7 @@ async def health() -> JSONResponse:
             for job in jobs
         ]
 
-        ai = await get_ai_client()
+        ai = get_ai_client()
         ai_report = ai.get_health_report()
 
         return JSONResponse({
@@ -387,7 +387,7 @@ async def chat(request: ChatRequest) -> JSONResponse:
     }
     ai_model = model_map.get(request.model or "fast", AIModel.FAST)
     try:
-        ai = await get_ai_client()
+        ai = get_ai_client()
         response = await ai.complete(
             system=(
                 f"Eres ARIA, sistema autónomo de IA que genera ingresos para {settings.OWNER_NAME}. "
@@ -545,7 +545,7 @@ async def get_revenue() -> JSONResponse:
 async def get_ai_metrics() -> JSONResponse:
     """Métricas del cliente de IA."""
     try:
-        ai = await get_ai_client()
+        ai = get_ai_client()
         return JSONResponse(ai.get_health_report())
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
