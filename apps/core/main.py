@@ -706,6 +706,227 @@ async def social_post(request: Request) -> JSONResponse:
 
 # ── ENTRY POINT ───────────────────────────────────────────
 
+
+
+# ── LINKEDIN OAUTH ────────────────────────────────────────
+
+LINKEDIN_AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization"
+LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
+LINKEDIN_REDIRECT = "https://aria-ai.fly.dev/auth/linkedin/callback"
+LINKEDIN_SCOPES = "openid profile email w_member_social"
+
+
+@app.get("/auth/linkedin", response_class=HTMLResponse)
+async def linkedin_auth_start() -> HTMLResponse:
+    """
+    Genera la URL de OAuth de LinkedIn.
+    El usuario visita esta página y hace click para conectar su LinkedIn.
+    """
+    client_id = getattr(settings, "LINKEDIN_CLIENT_ID", None)
+    if not client_id:
+        return HTMLResponse(
+            content="""<!DOCTYPE html><html><head><meta charset="UTF-8">
+            <title>ARIA — LinkedIn</title>
+            <style>body{font-family:system-ui;background:#0f0f0f;color:#e0e0e0;
+            display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+            .card{background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:40px;max-width:520px;text-align:center}
+            h2{color:#f44336;margin-bottom:16px}p{color:#aaa;line-height:1.7}
+            code{background:#111;padding:4px 8px;border-radius:4px;font-family:monospace;color:#6c63ff}
+            a{color:#6c63ff}</style></head>
+            <body><div class="card">
+            <h2>⚠️ LinkedIn no configurado</h2>
+            <p>Para conectar LinkedIn necesitas crear una app en el portal de desarrolladores:</p>
+            <p>1. Ve a <a href="https://www.linkedin.com/developers/apps" target="_blank">linkedin.com/developers/apps</a><br>
+            2. Crea una nueva aplicación<br>
+            3. En "Auth" agrega el callback: <code>https://aria-ai.fly.dev/auth/linkedin/callback</code><br>
+            4. Copia el <b>Client ID</b> y <b>Client Secret</b><br>
+            5. Configúralos en Fly.io:<br>
+            <code>fly secrets set LINKEDIN_CLIENT_ID=xxx LINKEDIN_CLIENT_SECRET=yyy -a aria-ai</code><br>
+            6. Vuelve a esta página</p>
+            </div></body></html>""",
+            status_code=200,
+        )
+
+    import urllib.parse
+    params = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": LINKEDIN_REDIRECT,
+        "scope": LINKEDIN_SCOPES,
+        "state": "aria_linkedin_connect",
+    }
+    auth_url = f"{LINKEDIN_AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>ARIA — Conectar LinkedIn</title>
+<style>*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,system-ui,sans-serif;background:#0f0f0f;color:#e0e0e0;
+min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}}
+.card{{background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:48px;max-width:520px;width:100%;text-align:center}}
+h1{{font-size:1.8rem;margin-bottom:12px;color:#fff}}
+.sub{{color:#888;margin-bottom:32px;font-size:.95rem;line-height:1.6}}
+.btn{{display:inline-block;background:#0a66c2;color:#fff;border-radius:8px;
+padding:16px 36px;font-size:1rem;font-weight:700;text-decoration:none;
+transition:background .2s;margin-top:8px}}
+.btn:hover{{background:#004182}}
+.url{{margin-top:24px;font-size:.78rem;color:#555;word-break:break-all}}
+.perms{{background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:16px;
+margin:24px 0;text-align:left}}
+.perms li{{color:#aaa;font-size:.88rem;margin:6px 0;list-style:none}}
+.perms li::before{{content:"✓ ";color:#4caf50}}
+</style></head>
+<body><div class="card">
+<div style="font-size:3rem;margin-bottom:16px">💼</div>
+<h1>Conectar LinkedIn</h1>
+<p class="sub">ARIA podrá publicar artículos, conectar con profesionales y distribuir contenido automáticamente.</p>
+<ul class="perms">
+  <li>Publicar artículos y posts en tu perfil</li>
+  <li>Ver tu información de perfil</li>
+  <li>Acceder a tu email de LinkedIn</li>
+</ul>
+<a href="{auth_url}" class="btn">🔗 Conectar con LinkedIn</a>
+<p class="url">{auth_url[:80]}...</p>
+</div></body></html>"""
+    return HTMLResponse(content=html)
+
+
+@app.get("/auth/linkedin/callback")
+async def linkedin_auth_callback(code: str = "", error: str = "", state: str = "") -> HTMLResponse:
+    """
+    Callback de LinkedIn OAuth.
+    Intercambia el código por un access token y lo guarda como secret en Fly.io.
+    """
+    if error:
+        return HTMLResponse(
+            f"<h2>Error de autorización</h2><p>{error}</p>",
+            status_code=400,
+        )
+    if not code:
+        return HTMLResponse("<h2>Código faltante</h2>", status_code=400)
+
+    client_id = getattr(settings, "LINKEDIN_CLIENT_ID", None)
+    client_secret = getattr(settings, "LINKEDIN_CLIENT_SECRET", None)
+
+    if not client_id or not client_secret:
+        return HTMLResponse("<h2>LINKEDIN_CLIENT_ID/SECRET no configurados</h2>", status_code=500)
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Intercambiar código por token
+            token_res = await client.post(
+                LINKEDIN_TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": LINKEDIN_REDIRECT,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            if token_res.status_code != 200:
+                return HTMLResponse(
+                    f"<h2>Error obteniendo token</h2><pre>{token_res.text[:300]}</pre>",
+                    status_code=500,
+                )
+            token_data = token_res.json()
+            access_token = token_data.get("access_token", "")
+            expires_in = token_data.get("expires_in", 0)
+
+            # Obtener info del perfil para confirmar
+            profile_res = await client.get(
+                "https://api.linkedin.com/v2/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            profile = profile_res.json() if profile_res.status_code == 200 else {}
+            name = profile.get("name", "") or profile.get("localizedFirstName", "Usuario")
+
+            # Guardar token en Fly.io secrets via GraphQL
+            fly_token = getattr(settings, "FLY_API_TOKEN", None)
+            saved_to_fly = False
+            if fly_token:
+                try:
+                    mutation = """mutation {
+                      setSecrets(input: {
+                        appId: "aria-ai",
+                        secrets: [{ key: "LINKEDIN_ACCESS_TOKEN", value: "%s" }],
+                        replaceAll: false
+                      }) { release { id } }
+                    }""" % access_token
+                    fly_res = await client.post(
+                        "https://api.fly.io/graphql",
+                        json={"query": mutation},
+                        headers={"Authorization": fly_token},
+                    )
+                    saved_to_fly = fly_res.status_code == 200
+                except Exception:
+                    pass
+
+            days = expires_in // 86400
+            saved_note = "y guardado en Fly.io secrets automáticamente" if saved_to_fly else                 f"<br><br><strong>Guárdalo en Fly.io:</strong><br><code>fly secrets set LINKEDIN_ACCESS_TOKEN={access_token[:20]}... -a aria-ai</code>"
+
+            logger.info("LinkedIn OAuth completado para: %s", name)
+            await send_telegram(
+                f"✅ <b>LinkedIn conectado</b>\n\nCuenta: {name}\nToken válido por {days} días"
+            )
+
+            return HTMLResponse(f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>LinkedIn Conectado</title>
+<style>body{{font-family:system-ui;background:#0f0f0f;color:#e0e0e0;
+display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
+.card{{background:#1a1a1a;border:1px solid #2a5e2a;border-radius:16px;padding:48px;
+max-width:520px;text-align:center}}
+h1{{color:#4caf50;margin-bottom:16px}}p{{color:#aaa;line-height:1.7}}
+code{{background:#111;padding:4px 8px;border-radius:4px;font-size:.8rem;word-break:break-all}}</style>
+</head><body><div class="card">
+<div style="font-size:3rem">✅</div>
+<h1>LinkedIn Conectado</h1>
+<p>Bienvenido, <strong>{name}</strong>.<br>
+ARIA ya puede publicar en tu LinkedIn automáticamente.<br>
+Token válido por <strong>{days} días</strong> {saved_note}.</p>
+<p style="margin-top:24px;font-size:.85rem;color:#666">
+Puedes cerrar esta ventana. ARIA ya recibió la notificación.</p>
+</div></body></html>""")
+
+    except Exception as exc:
+        logger.error("LinkedIn OAuth callback error: %s", exc)
+        return HTMLResponse(f"<h2>Error interno</h2><p>{exc}</p>", status_code=500)
+
+
+@app.get("/auth/linkedin/status")
+async def linkedin_status() -> JSONResponse:
+    """Verifica si LinkedIn está conectado y el token es válido."""
+    token = getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
+    if not token:
+        return JSONResponse({
+            "connected": False,
+            "message": "LinkedIn no conectado",
+            "connect_url": "https://aria-ai.fly.dev/auth/linkedin",
+        })
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(
+                "https://api.linkedin.com/v2/userinfo",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if res.status_code == 200:
+                profile = res.json()
+                return JSONResponse({
+                    "connected": True,
+                    "name": profile.get("name", ""),
+                    "email": profile.get("email", ""),
+                    "profile_picture": profile.get("picture", ""),
+                })
+            return JSONResponse({
+                "connected": False,
+                "error": f"Token inválido o expirado (HTTP {res.status_code})",
+                "connect_url": "https://aria-ai.fly.dev/auth/linkedin",
+            })
+    except Exception as exc:
+        return JSONResponse({"connected": False, "error": str(exc)})
+
+
 if __name__ == "__main__":
     uvicorn.run(
         "apps.core.main:app",
