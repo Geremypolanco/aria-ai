@@ -1,22 +1,38 @@
 """
-Cliente de IA dinámico con fallback automático.
-Primario: HuggingFace (gratis)
-Secundario: Groq (gratis, ultra rápido)
-Fallback: OpenAI (pago, último recurso)
+Aria AI — Cliente de IA con Failover Automático y Circuit Breaker
+Primario:    HuggingFace Inference API (gratis)
+Secundario:  Groq API (gratis, ultra rápido)
+Fallback:    OpenAI (pago, último recurso)
+
+Diseñado para Replit Free — asíncrono puro, sin estado local.
+Correcciones aplicadas:
+  - Circuit breaker con cooldown automático (no se queda bloqueado para siempre)
+  - Timeouts por proveedor con asyncio.wait_for (HF: 25s, Groq: 10s, OAI: 15s)
+  - Singleton async-safe con asyncio.Lock
+  - Eliminado doble conteo de errores
+  - Añadido AIModel.CREATIVE y campo attempts en AIResponse
+  - Logging estructurado
 """
+from __future__ import annotations
+
 import asyncio
-import time
 import json
+import logging
 import re
-from enum import Enum
-from typing import Optional, Any
+import time
 from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Optional
+
 import httpx
 from groq import AsyncGroq
+
 from apps.core.config import settings
 
+logger = logging.getLogger("aria.ai_client")
 
-# ── TIPOS ─────────────────────────────────────────────────
+
+# ── ENUMERACIONES ─────────────────────────────────────────
 class AIProvider(str, Enum):
     HUGGINGFACE = "huggingface"
     GROQ = "groq"
@@ -24,11 +40,45 @@ class AIProvider(str, Enum):
 
 
 class AIModel(str, Enum):
-    STRATEGY = "strategy"
-    CODE = "code"
-    FAST = "fast"
+    STRATEGY = "strategy"    # Razonamiento profundo
+    CODE = "code"            # Generación de código
+    FAST = "fast"            # Respuestas rápidas
+    CREATIVE = "creative"    # Contenido creativo
 
 
+# ── MODELOS POR PROVEEDOR ─────────────────────────────────
+MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
+    AIModel.STRATEGY: {
+        AIProvider.HUGGINGFACE: settings.HF_MODEL_STRATEGY,
+        AIProvider.GROQ:        settings.GROQ_MODEL,
+        AIProvider.OPENAI:      settings.OPENAI_MODEL,
+    },
+    AIModel.CODE: {
+        AIProvider.HUGGINGFACE: settings.HF_MODEL_CODE,
+        AIProvider.GROQ:        "llama-3.3-70b-versatile",
+        AIProvider.OPENAI:      settings.OPENAI_MODEL,
+    },
+    AIModel.FAST: {
+        AIProvider.HUGGINGFACE: settings.HF_MODEL_FAST,
+        AIProvider.GROQ:        "llama-3.1-8b-instant",
+        AIProvider.OPENAI:      settings.OPENAI_MODEL,
+    },
+    AIModel.CREATIVE: {
+        AIProvider.HUGGINGFACE: settings.HF_MODEL_STRATEGY,
+        AIProvider.GROQ:        settings.GROQ_MODEL,
+        AIProvider.OPENAI:      settings.OPENAI_MODEL,
+    },
+}
+
+# Timeouts agresivos por proveedor — evita bloquear el event loop
+PROVIDER_TIMEOUTS: dict[AIProvider, float] = {
+    AIProvider.HUGGINGFACE: 25.0,  # HF puede estar en cold start
+    AIProvider.GROQ:        10.0,  # Groq es ultra rápido
+    AIProvider.OPENAI:      15.0,
+}
+
+
+# ── TIPOS DE RESPUESTA ────────────────────────────────────
 @dataclass
 class AIResponse:
     content: str
@@ -38,78 +88,85 @@ class AIResponse:
     latency_ms: int = 0
     success: bool = True
     error: Optional[str] = None
+    attempts: int = 1
 
 
 @dataclass
-class AIMetrics:
-    hf_calls: int = 0
-    hf_errors: int = 0
-    groq_calls: int = 0
-    groq_errors: int = 0
-    openai_calls: int = 0
-    openai_errors: int = 0
-    total_tokens: int = 0
-    fallbacks_triggered: int = 0
-    provider_history: list = field(default_factory=list)
+class ProviderHealth:
+    """
+    Circuit breaker por proveedor con cooldown automático.
+    Después del cooldown el proveedor vuelve a intentarse — no se queda
+    bloqueado permanentemente como en la versión anterior.
+    """
+    consecutive_failures: int = 0
+    total_calls: int = 0
+    total_errors: int = 0
+    last_success_ts: float = field(default_factory=time.time)
+    circuit_open: bool = False
+    circuit_open_until: float = 0.0
+    _break_after: int = 3
+    _cooldown: float = 60.0
 
-    def success_rate(self, provider: AIProvider) -> float:
-        if provider == AIProvider.HUGGINGFACE:
-            total = self.hf_calls
-            errors = self.hf_errors
-        elif provider == AIProvider.GROQ:
-            total = self.groq_calls
-            errors = self.groq_errors
-        else:
-            total = self.openai_calls
-            errors = self.openai_errors
-        if total == 0:
+    @property
+    def success_rate(self) -> float:
+        if self.total_calls == 0:
             return 100.0
-        return round((total - errors) / total * 100, 2)
+        return round((self.total_calls - self.total_errors) / self.total_calls * 100, 1)
 
+    def is_available(self) -> bool:
+        if not self.circuit_open:
+            return True
+        # Auto-reset tras el cooldown
+        if time.time() >= self.circuit_open_until:
+            self.circuit_open = False
+            self.consecutive_failures = 0
+            logger.info("Circuit breaker CERRADO — proveedor disponible de nuevo")
+            return True
+        return False
 
-# ── MAPA DE MODELOS ───────────────────────────────────────
-MODEL_MAP = {
-    AIModel.STRATEGY: {
-        AIProvider.HUGGINGFACE: settings.HF_MODEL_STRATEGY,
-        AIProvider.GROQ: settings.GROQ_MODEL,
-        AIProvider.OPENAI: settings.OPENAI_MODEL,
-    },
-    AIModel.CODE: {
-        AIProvider.HUGGINGFACE: settings.HF_MODEL_CODE,
-        AIProvider.GROQ: "llama-3.3-70b-versatile",
-        AIProvider.OPENAI: "gpt-4o-mini",
-    },
-    AIModel.FAST: {
-        AIProvider.HUGGINGFACE: settings.HF_MODEL_FAST,
-        AIProvider.GROQ: "llama-3.1-8b-instant",
-        AIProvider.OPENAI: "gpt-4o-mini",
-    },
-}
+    def record_success(self) -> None:
+        self.total_calls += 1
+        self.consecutive_failures = 0
+        self.circuit_open = False
+        self.last_success_ts = time.time()
+
+    def record_failure(self) -> None:
+        self.total_calls += 1
+        self.total_errors += 1
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= self._break_after:
+            self.circuit_open = True
+            self.circuit_open_until = time.time() + self._cooldown
+            logger.warning(
+                "Circuit breaker ABIERTO — cooldown %.0fs",
+                self._cooldown,
+            )
+
 
 # ── CLIENTE PRINCIPAL ─────────────────────────────────────
 class AriaAIClient:
     """
-    Cliente de IA con fallback automático entre proveedores.
-    Detecta errores y cambia de proveedor sin interrumpir la operación.
+    Cliente de IA con circuit breaker y failover automático.
+    Stateless — seguro para Replit Free y entornos serverless.
     """
 
-    def __init__(self):
-        self.metrics = AIMetrics()
+    _HF_ENDPOINT = "https://api-inference.huggingface.co/v1/chat/completions"
+    _OAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
+
+    def __init__(self) -> None:
+        self._health: dict[AIProvider, ProviderHealth] = {
+            p: ProviderHealth() for p in AIProvider
+        }
         self._groq = AsyncGroq(api_key=settings.GROQ_API_KEY)
-        self._hf_base = "https://api-inference.huggingface.co/v1/chat/completions"
-        self._openai_base = "https://api.openai.com/v1/chat/completions"
-        self._http = httpx.AsyncClient(timeout=120.0)
-        self._provider_health = {
-            AIProvider.HUGGINGFACE: True,
-            AIProvider.GROQ: True,
-            AIProvider.OPENAI: True,
-        }
-        self._provider_fail_count = {
-            AIProvider.HUGGINGFACE: 0,
-            AIProvider.GROQ: 0,
-            AIProvider.OPENAI: 0,
-        }
-        self.MAX_FAILS_BEFORE_SKIP = 3
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=5.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+        self._total_tokens = 0
+        self._total_fallbacks = 0
+        logger.info("AriaAIClient inicializado — HF → Groq → OpenAI")
+
+    # ── API PÚBLICA ───────────────────────────────────────
 
     async def complete(
         self,
@@ -122,52 +179,70 @@ class AriaAIClient:
         agent_name: str = "aria",
     ) -> AIResponse:
         """
-        Ejecuta una llamada de IA con fallback automático.
-        Intenta HF → Groq → OpenAI en ese orden.
+        Ejecuta una llamada de IA con failover automático.
+        Orden: HuggingFace → Groq → OpenAI
         """
         if json_mode:
             user = (
-                user
-                + "\n\nResponde ÚNICAMENTE con JSON válido. "
-                "Sin markdown, sin explicaciones, solo el JSON."
+                f"{user}\n\n"
+                "Responde ÚNICAMENTE con JSON válido y bien formado. "
+                "Sin markdown, sin bloques de código, sin explicaciones. "
+                "Solo el objeto JSON."
             )
 
-        providers = self._get_provider_order()
+        providers = self._get_available_providers()
+        last_error: Optional[str] = None
+        attempts = 0
 
         for provider in providers:
-            if not self._is_healthy(provider):
-                continue
+            attempts += 1
             try:
-                response = await self._call_provider(
-                    provider=provider,
-                    model=model,
-                    system=system,
-                    user=user,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
+                response = await asyncio.wait_for(
+                    self._dispatch(provider, model, system, user, max_tokens, temperature),
+                    timeout=PROVIDER_TIMEOUTS[provider] + 2.0,
                 )
-                if response.success:
-                    self._reset_fail_count(provider)
-                    self._record_metric(provider, success=True)
-                    self.metrics.provider_history.append(
-                        {"provider": provider, "agent": agent_name, "model": model}
-                    )
-                    if json_mode:
-                        response.content = self._extract_json(response.content)
-                    return response
+                self._health[provider].record_success()
+                response.attempts = attempts
 
-            except Exception as e:
-                self._record_metric(provider, success=False)
-                self._increment_fail_count(provider)
-                self.metrics.fallbacks_triggered += 1
-                continue
+                if json_mode:
+                    response.content = self._extract_json_safe(response.content)
 
+                logger.info(
+                    "[%s] ✅ %s via %s — %dms — %d tokens",
+                    agent_name, model.value, provider.value,
+                    response.latency_ms, response.tokens_used,
+                )
+                return response
+
+            except asyncio.TimeoutError:
+                self._health[provider].record_failure()
+                last_error = f"{provider.value}: timeout tras {PROVIDER_TIMEOUTS[provider]:.0f}s"
+                logger.warning(
+                    "[%s] ⏱ Timeout en %s — intentando siguiente",
+                    agent_name, provider.value
+                )
+                self._total_fallbacks += 1
+
+            except Exception as exc:
+                self._health[provider].record_failure()
+                last_error = f"{provider.value}: {str(exc)[:120]}"
+                logger.warning(
+                    "[%s] ❌ Error en %s: %s — intentando siguiente",
+                    agent_name, provider.value, last_error
+                )
+                self._total_fallbacks += 1
+
+        logger.error(
+            "[%s] 💀 Todos los proveedores fallaron. Último error: %s",
+            agent_name, last_error
+        )
         return AIResponse(
             content="",
             provider=AIProvider.HUGGINGFACE,
             model="none",
             success=False,
-            error="Todos los proveedores de IA fallaron",
+            error=last_error or "Todos los proveedores de IA fallaron",
+            attempts=attempts,
         )
 
     async def complete_json(
@@ -178,7 +253,7 @@ class AriaAIClient:
         max_tokens: int = 2000,
         agent_name: str = "aria",
     ) -> Optional[dict]:
-        """Atajo para obtener JSON directamente."""
+        """Atajo tipado para obtener dict directamente."""
         response = await self.complete(
             system=system,
             user=user,
@@ -187,16 +262,20 @@ class AriaAIClient:
             json_mode=True,
             agent_name=agent_name,
         )
-        if not response.success:
+        if not response.success or not response.content:
             return None
         try:
             return json.loads(response.content)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.error(
+                "JSON inválido tras extracción: %s | contenido: %s",
+                exc, response.content[:200]
+            )
             return None
 
-    # ── PROVEEDORES ───────────────────────────────────────
+    # ── DISPATCH POR PROVEEDOR ────────────────────────────
 
-    async def _call_provider(
+    async def _dispatch(
         self,
         provider: AIProvider,
         model: AIModel,
@@ -205,25 +284,27 @@ class AriaAIClient:
         max_tokens: int,
         temperature: float,
     ) -> AIResponse:
-        start = time.time()
-        model_id = MODEL_MAP[model][provider]
+        model_id = MODEL_REGISTRY[model][provider]
+        t0 = time.time()
 
         if provider == AIProvider.HUGGINGFACE:
-            result = await self._call_huggingface(
-                model_id, system, user, max_tokens, temperature
-            )
+            content, tokens = await self._call_huggingface(model_id, system, user, max_tokens, temperature)
         elif provider == AIProvider.GROQ:
-            result = await self._call_groq(
-                model_id, system, user, max_tokens, temperature
-            )
+            content, tokens = await self._call_groq(model_id, system, user, max_tokens, temperature)
         else:
-            result = await self._call_openai(
-                model_id, system, user, max_tokens, temperature
-            )
+            content, tokens = await self._call_openai(model_id, system, user, max_tokens, temperature)
 
-        latency = int((time.time() - start) * 1000)
-        result.latency_ms = latency
-        return result
+        latency = int((time.time() - t0) * 1000)
+        self._total_tokens += tokens
+
+        return AIResponse(
+            content=content,
+            provider=provider,
+            model=model_id,
+            tokens_used=tokens,
+            latency_ms=latency,
+            success=True,
+        )
 
     async def _call_huggingface(
         self,
@@ -232,10 +313,9 @@ class AriaAIClient:
         user: str,
         max_tokens: int,
         temperature: float,
-    ) -> AIResponse:
-        self.metrics.hf_calls += 1
+    ) -> tuple[str, int]:
         response = await self._http.post(
-            self._hf_base,
+            self._HF_ENDPOINT,
             headers={
                 "Authorization": f"Bearer {settings.HF_TOKEN}",
                 "Content-Type": "application/json",
@@ -248,24 +328,19 @@ class AriaAIClient:
                 ],
                 "max_tokens": max_tokens,
                 "temperature": temperature,
+                "stream": False,
             },
+            timeout=PROVIDER_TIMEOUTS[AIProvider.HUGGINGFACE],
         )
+        if response.status_code == 503:
+            raise RuntimeError(f"HuggingFace modelo en cold start (503) — {model_id}")
         if response.status_code != 200:
-            self.metrics.hf_errors += 1
-            raise Exception(f"HuggingFace error {response.status_code}: {response.text[:200]}")
+            raise RuntimeError(f"HuggingFace HTTP {response.status_code}: {response.text[:200]}")
 
         data = response.json()
-        content = data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"] or ""
         tokens = data.get("usage", {}).get("total_tokens", 0)
-        self.metrics.total_tokens += tokens
-
-        return AIResponse(
-            content=content,
-            provider=AIProvider.HUGGINGFACE,
-            model=model_id,
-            tokens_used=tokens,
-            success=True,
-        )
+        return content, tokens
 
     async def _call_groq(
         self,
@@ -274,8 +349,7 @@ class AriaAIClient:
         user: str,
         max_tokens: int,
         temperature: float,
-    ) -> AIResponse:
-        self.metrics.groq_calls += 1
+    ) -> tuple[str, int]:
         completion = await self._groq.chat.completions.create(
             model=model_id,
             messages=[
@@ -285,17 +359,9 @@ class AriaAIClient:
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        content = completion.choices[0].message.content
+        content = completion.choices[0].message.content or ""
         tokens = completion.usage.total_tokens if completion.usage else 0
-        self.metrics.total_tokens += tokens
-
-        return AIResponse(
-            content=content,
-            provider=AIProvider.GROQ,
-            model=model_id,
-            tokens_used=tokens,
-            success=True,
-        )
+        return content, tokens
 
     async def _call_openai(
         self,
@@ -304,13 +370,12 @@ class AriaAIClient:
         user: str,
         max_tokens: int,
         temperature: float,
-    ) -> AIResponse:
+    ) -> tuple[str, int]:
         if not settings.OPENAI_API_KEY:
-            raise Exception("OpenAI API key no configurada")
+            raise RuntimeError("OpenAI API key no configurada — saltando fallback")
 
-        self.metrics.openai_calls += 1
         response = await self._http.post(
-            self._openai_base,
+            self._OAI_ENDPOINT,
             headers={
                 "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
                 "Content-Type": "application/json",
@@ -324,106 +389,77 @@ class AriaAIClient:
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             },
+            timeout=PROVIDER_TIMEOUTS[AIProvider.OPENAI],
         )
         if response.status_code != 200:
-            self.metrics.openai_errors += 1
-            raise Exception(f"OpenAI error {response.status_code}")
+            raise RuntimeError(f"OpenAI HTTP {response.status_code}: {response.text[:200]}")
 
         data = response.json()
-        content = data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"] or ""
         tokens = data.get("usage", {}).get("total_tokens", 0)
-        self.metrics.total_tokens += tokens
-
-        return AIResponse(
-            content=content,
-            provider=AIProvider.OPENAI,
-            model=model_id,
-            tokens_used=tokens,
-            success=True,
-        )
+        return content, tokens
 
     # ── UTILIDADES ────────────────────────────────────────
 
-    def _get_provider_order(self) -> list[AIProvider]:
-        """Ordena proveedores por salud y tasa de éxito."""
+    def _get_available_providers(self) -> list[AIProvider]:
+        """Retorna proveedores disponibles ordenados por prioridad."""
         order = [AIProvider.HUGGINGFACE, AIProvider.GROQ, AIProvider.OPENAI]
-        return [p for p in order if self._provider_health[p]]
+        available = [p for p in order if self._health[p].is_available()]
+        if not available:
+            logger.error("Todos los circuit breakers abiertos — forzando reset")
+            for p in order:
+                self._health[p].circuit_open = False
+                self._health[p].consecutive_failures = 0
+            return order
+        return available
 
-    def _is_healthy(self, provider: AIProvider) -> bool:
-        if self._provider_fail_count[provider] >= self.MAX_FAILS_BEFORE_SKIP:
-            self._provider_health[provider] = False
-            return False
-        return True
-
-    def _reset_fail_count(self, provider: AIProvider):
-        self._provider_fail_count[provider] = 0
-        self._provider_health[provider] = True
-
-    def _increment_fail_count(self, provider: AIProvider):
-        self._provider_fail_count[provider] += 1
-
-    def _record_metric(self, provider: AIProvider, success: bool):
-        if provider == AIProvider.HUGGINGFACE:
-            if not success:
-                self.metrics.hf_errors += 1
-        elif provider == AIProvider.GROQ:
-            if not success:
-                self.metrics.groq_errors += 1
-        else:
-            if not success:
-                self.metrics.openai_errors += 1
-
-    def _extract_json(self, text: str) -> str:
-        """Extrae JSON limpio de una respuesta de texto."""
+    def _extract_json_safe(self, text: str) -> str:
+        """Extrae JSON limpio de cualquier respuesta de texto."""
         text = text.strip()
         for pattern in [r"```json\s*([\s\S]*?)\s*```", r"```\s*([\s\S]*?)\s*```"]:
             match = re.search(pattern, text)
             if match:
                 return match.group(1).strip()
-        if text.startswith("{") or text.startswith("["):
+        if text.startswith(("{", "[")):
             return text
-        start = text.find("{")
-        if start == -1:
-            start = text.find("[")
-        if start != -1:
-            return text[start:]
+        start_brace = text.find("{")
+        start_bracket = text.find("[")
+        starts = [s for s in [start_brace, start_bracket] if s != -1]
+        if starts:
+            return text[min(starts):]
         return text
 
-    def get_metrics_summary(self) -> dict:
+    def get_health_report(self) -> dict[str, Any]:
         return {
-            "huggingface": {
-                "calls": self.metrics.hf_calls,
-                "errors": self.metrics.hf_errors,
-                "success_rate": self.metrics.success_rate(AIProvider.HUGGINGFACE),
-                "healthy": self._provider_health[AIProvider.HUGGINGFACE],
-            },
-            "groq": {
-                "calls": self.metrics.groq_calls,
-                "errors": self.metrics.groq_errors,
-                "success_rate": self.metrics.success_rate(AIProvider.GROQ),
-                "healthy": self._provider_health[AIProvider.GROQ],
-            },
-            "openai": {
-                "calls": self.metrics.openai_calls,
-                "errors": self.metrics.openai_errors,
-                "success_rate": self.metrics.success_rate(AIProvider.OPENAI),
-                "healthy": self._provider_health[AIProvider.OPENAI],
-            },
-            "total_tokens": self.metrics.total_tokens,
-            "fallbacks_triggered": self.metrics.fallbacks_triggered,
+            provider.value: {
+                "available": health.is_available(),
+                "circuit_open": health.circuit_open,
+                "success_rate_pct": health.success_rate,
+                "total_calls": health.total_calls,
+                "consecutive_failures": health.consecutive_failures,
+            }
+            for provider, health in self._health.items()
+        } | {
+            "_totals": {
+                "tokens_used": self._total_tokens,
+                "fallbacks_triggered": self._total_fallbacks,
+            }
         }
 
-    async def close(self):
+    async def close(self) -> None:
         await self._http.aclose()
 
 
-# ── SINGLETON ─────────────────────────────────────────────
-_ai_client: Optional[AriaAIClient] = None
+# ── SINGLETON ASYNC-SAFE ──────────────────────────────────
+_client_instance: Optional[AriaAIClient] = None
+_client_lock = asyncio.Lock()
 
 
-def get_ai_client() -> AriaAIClient:
-    global _ai_client
-    if _ai_client is None:
-        _ai_client = AriaAIClient()
-    return _ai_client
-
+async def get_ai_client() -> AriaAIClient:
+    """Retorna el singleton del cliente de IA — async-safe."""
+    global _client_instance
+    if _client_instance is None:
+        async with _client_lock:
+            if _client_instance is None:
+                _client_instance = AriaAIClient()
+    return _client_instance
