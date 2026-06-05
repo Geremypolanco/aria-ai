@@ -499,12 +499,12 @@ Genera el plan de monetizacion. JSON esperado:
 
         agent_map = {
             "content": "apps.core.agents.content_agent.ContentAgent",
-            "affiliate": "apps.core.agents.affiliate_agent.AffiliateAgent",
-            "social": "apps.core.agents.social_agent.SocialAgent",
-            "seo": "apps.core.agents.seo_agent.SEOAgent",
-            "analytics": "apps.core.agents.analytics_agent.AnalyticsAgent",
+            "affiliate": "apps.core.agents.cfo_agent.CFOAgent",
+            "social": "apps.core.agents.marketing_agent.MarketingAgent",
+            "seo": "apps.core.agents.content_agent.ContentAgent",
+            "analytics": "apps.core.agents.pm_agent.PMAgent",
             "evolution": "apps.core.agents.evolution_agent.EvolutionAgent",
-            "market": "apps.core.agents.market_agent.MarketAgent",
+            "market": "apps.core.agents.pm_agent.PMAgent",
         }
 
         module_path = agent_map.get(name)
