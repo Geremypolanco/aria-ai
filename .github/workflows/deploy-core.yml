@@ -33,14 +33,15 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           flyctl secrets set \
+            TELEGRAM_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
             GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
             HF_API_KEY="${{ secrets.HF_API_KEY }}" \
             HUGGING_FACE_TOKEN="${{ secrets.HUGGING_FACE_TOKEN }}" \
+            HF_TOKEN="${{ secrets.HF_API_KEY }}" \
             GOOGLE_API_KEY="${{ secrets.GOOGLE_API_KEY }}" \
             ELEVENLABS_API_KEY="${{ secrets.ELEVENLABS_API_KEY }}" \
             DID_API_KEY="${{ secrets.DID_API_KEY }}" \
-            TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
-            TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
             SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             SUPABASE_KEY="${{ secrets.SUPABASE_KEY }}" \
             REDIS_URL="${{ secrets.REDIS_URL }}" \
@@ -91,6 +92,6 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             -d "parse_mode=HTML" \
-            -d "text=<b>ARIA actualizada</b>%0ADeploy exitoso en Fly.io." || true
+            -d "text=<b>ARIA actualizada</b>%0ADeploy exitoso." || true
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
