@@ -195,9 +195,9 @@ class SelfImprovementEngine:
         try:
             app_name = getattr(settings, "FLY_APP_NAME", "aria-ai")
             res = await self._http.get(
-                f"{FLY_API}/v1/apps/{app_name}/logs",
+                f"https://api.machines.dev/v1/apps/{app_name}/logs",
                 headers={
-                    "Authorization": f"Bearer {self._fly_token}",
+                    "Authorization": self._fly_token if self._fly_token.startswith("FlyV1") else f"Bearer {self._fly_token}",
                     "Accept": "application/json",
                 },
                 params={"limit": lines},
@@ -220,7 +220,7 @@ class SelfImprovementEngine:
             return {"success": False, "error": "No hay logs para analizar"}
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
-            ai = await get_ai_client()
+            ai = get_ai_client()
             response = await ai.complete(
                 system="Analista de sistemas Python. Responde SOLO con JSON valido.",
                 user=(
@@ -255,7 +255,7 @@ class SelfImprovementEngine:
         """Analiza la calidad del codigo con Qwen2.5-Coder. Sin simulaciones."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
-            ai = await get_ai_client()
+            ai = get_ai_client()
             response = await ai.complete(
                 system="Senior Python developer revisando codigo de IA autonoma. Responde SOLO con JSON valido.",
                 user=(
@@ -306,7 +306,7 @@ class SelfImprovementEngine:
         """Genera una version mejorada del codigo con Qwen2.5-Coder."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
-            ai = await get_ai_client()
+            ai = get_ai_client()
 
             instructions = []
             for bug in analysis.get("bugs", [])[:3]:
