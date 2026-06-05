@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     GITHUB_USERNAME: Optional[str] = None
     GITHUB_REPO: Optional[str] = "Geremypolanco/aria-ai"
     VERCEL_TOKEN: Optional[str] = None
+    # ── FLY.IO (para logs de produccion y monitoring) ────
+    FLY_API_TOKEN: Optional[str] = None
+    FLY_APP_NAME: str = "aria-ai"
+
+    # ── AFILIADOS ADICIONALES ────────────────────────────
+    HOTMART_AFFILIATE_ID: Optional[str] = None
+
 
     # ── PAGOS Y MONETIZACIÓN ──────────────────────────────
     STRIPE_SECRET_KEY: Optional[str] = None
