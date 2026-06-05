@@ -18,15 +18,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s]: %(m
 logger = logging.getLogger("aria.core")
 scheduler = AsyncIOScheduler(timezone="UTC")
 
-TELEGRAM_API = "https://telegram.org"
-ADMIN_CHAT_ID = "8687503210"
+TELEGRAM_API = "https://api.telegram.org/bot"
 
 async def send_telegram(message: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.post(
                 f"{TELEGRAM_API}{settings.TELEGRAM_TOKEN}/sendMessage",
-                json={"chat_id": ADMIN_CHAT_ID, "text": message, "parse_mode": "HTML"}
+                json={"chat_id": settings.TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
             )
             return res.status_code == 200
     except Exception as e:
@@ -37,13 +36,13 @@ async def autonomous_cycle_job():
     logger.info("Aria: Iniciando ciclo de ejecucion autonomo...")
     cache = get_cache()
     db = get_db()
-    
+
     locked = await cache.acquire_lock("autonomous_cycle", ttl_seconds=300)
     if not locked: return
 
     try:
         await cache.set_agent_heartbeat("orchestrator")
-        ai = get_ai_client()
+        ai = await get_ai_client()
         response = await ai.complete(
             system="Eres Aria, IA de negocios del Señor Polanco. Encuentra la accion de mayor ROI actual.",
             user="Analiza tendencias globales y sugiere el mejor nicho electronico para monetizar hoy.",
@@ -62,7 +61,7 @@ async def autonomous_cycle_job():
 async def lifespan(app: FastAPI):
     logger.info("Aria OS encendiendo...")
     await send_telegram("⚡ <b>SISTEMA OPERATIVO ARIA ONLINE</b>\nBienvenido, Señor Polanco. Núcleo optimizado y listo.")
-    
+
     interval = int(os.getenv("CYCLE_INTERVAL_MINUTES", "60"))
     scheduler.add_job(autonomous_cycle_job, IntervalTrigger(minutes=interval), id="cycle")
     scheduler.start()
