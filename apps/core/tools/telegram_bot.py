@@ -75,8 +75,9 @@ class AriaTelegramBot:
         "<b>Evolucion</b>\n"
         "/evolve · /mejorar [n] · /apis [n] · /score\n\n"
         "<b>Redes sociales</b>\n"
-        "/conectar &lt;facebook|instagram|tiktok|linkedin&gt;\n"
-        "/redes — Ver cuentas conectadas\n"
+        "/sesion &lt;twitter|instagram|linkedin|tiktok&gt; — Conectar sin API\n"
+        "/conectar &lt;facebook|instagram|tiktok|linkedin&gt; — Conectar via OAuth\n"
+        "/redes — Ver todas las cuentas conectadas\n"
         "/publicar &lt;red&gt; &lt;mensaje&gt; — Publicar ahora\n\n"
         "<b>Conversacion</b>\n"
         "Escribe en lenguaje natural — ARIA entiende y actua.\n"
@@ -155,6 +156,8 @@ class AriaTelegramBot:
         logger.info("[TelegramBot] Msg from %s: %s", chat_id, text[:80])
         if text.startswith("/"):
             await self._parse_command(text, chat_id)
+        elif await self._maybe_handle_cookie_import(text, chat_id):
+            pass  # cookie import handled
         else:
             await self._handle_natural_language(text, chat_id)
 
@@ -171,6 +174,10 @@ class AriaTelegramBot:
         elif data.startswith("cmd:"):
             cmd = data[4:]
             # Social media connect callbacks
+            if cmd.startswith("sesion_"):
+                platform = cmd.replace("sesion_", "")
+                await self.cmd_sesion(chat_id, platform)
+                return
             if cmd.startswith("conectar_"):
                 platform = cmd.replace("conectar_", "")
                 await self.cmd_conectar(chat_id, platform)
@@ -185,7 +192,8 @@ class AriaTelegramBot:
                 "mejorar":     lambda: self.cmd_mejorar(chat_id, "2"),
                 "apis":        lambda: self.cmd_apis(chat_id, "1"),
                 "score":       lambda: self.cmd_score(chat_id),
-                "redes":       lambda: self.cmd_redes(chat_id),
+                "redes":       lambda: self.cmd_redes_all(chat_id),
+                "sesion":      lambda: self.cmd_sesion(chat_id, ""),
             }
             if cmd in actions:
                 await actions[cmd]()
@@ -471,8 +479,9 @@ class AriaTelegramBot:
             "/apis":        lambda: self.cmd_apis(chat_id, args),
             "/score":       lambda: self.cmd_score(chat_id),
             # Redes sociales
+            "/sesion":      lambda: self.cmd_sesion(chat_id, args),
             "/conectar":    lambda: self.cmd_conectar(chat_id, args),
-            "/redes":       lambda: self.cmd_redes(chat_id),
+            "/redes":       lambda: self.cmd_redes_all(chat_id),
             "/publicar":    lambda: self.cmd_publicar_red(chat_id, args),
             "/desconectar": lambda: self.cmd_desconectar(chat_id, args),
         }
@@ -656,7 +665,202 @@ class AriaTelegramBot:
         except Exception as exc:
             await self.send(chat_id, f"Error: {exc}")
 
-    # ── ESTADO Y CONTROL ──────────────────────────────────
+
+      # ── SESION (COOKIES SIN API) ──────────────────────────
+
+      async def cmd_sesion(self, chat_id: str, platform_raw: str) -> None:
+          """
+          Conecta una red social via cookies del navegador — sin API keys.
+          Flujo: usuario exporta cookies con Cookie-Editor → pega JSON aquí.
+          """
+          from apps.core.tools.social_session import PLATFORM_CONFIG, SUPPORTED_PLATFORMS
+          platform = platform_raw.strip().lower()
+
+          if not platform:
+              # Mostrar menú de plataformas disponibles
+              rows = []
+              platforms_list = list(PLATFORM_CONFIG.items())
+              for i in range(0, len(platforms_list), 2):
+                  row = []
+                  p1, cfg1 = platforms_list[i]
+                  row.append({"text": cfg1["emoji"] + " " + cfg1["display_name"], "callback_data": "cmd:sesion_" + p1})
+                  if i + 1 < len(platforms_list):
+                      p2, cfg2 = platforms_list[i + 1]
+                      row.append({"text": cfg2["emoji"] + " " + cfg2["display_name"], "callback_data": "cmd:sesion_" + p2})
+                  rows.append(row)
+              await self.send(
+                  chat_id,
+                  "<b>Conectar red social sin API</b>\n\n"
+                  "Elige la plataforma. ARIA te explicará cómo exportar las cookies de tu navegador — "
+                  "sin necesidad de crear apps ni pedir permisos.",
+                  reply_markup={"inline_keyboard": rows},
+              )
+              return
+
+          if platform not in SUPPORTED_PLATFORMS:
+              await self.send(
+                  chat_id,
+                  f"Plataforma no soportada. Disponibles: {', '.join(SUPPORTED_PLATFORMS)}",
+              )
+              return
+
+          cfg = PLATFORM_CONFIG[platform]
+          from apps.core.tools.social_session import get_social_session_manager
+          mgr = get_social_session_manager()
+
+          # Guardar estado pendiente para detectar cuando el usuario pegue el JSON
+          await mgr.set_pending_import(chat_id, platform)
+
+          connect_url = f"https://aria-ai.fly.dev/social/connect?platform={platform}&token={settings.SOCIAL_CONNECT_TOKEN or 'aria'}"
+
+          await self.send(
+              chat_id,
+              f"{cfg['emoji']} <b>Conectar {cfg['display_name']} sin API</b>\n\n"
+              f"{cfg['instructions']}\n\n"
+              f"<b>Opción A — Telegram:</b> Pega el JSON de cookies aquí directamente\n"
+              f"<b>Opción B — Web:</b> <a href=\"{connect_url}\">Usar formulario web</a>\n\n"
+              f"<a href=\"{cfg['help_url']}\">🔗 Descargar Cookie-Editor</a>\n\n"
+              f"<i>Tienes 10 minutos para pegar las cookies.</i>",
+          )
+
+      async def _maybe_handle_cookie_import(self, text: str, chat_id: str) -> bool:
+          """
+          Detecta si el usuario pegó un JSON de cookies para importar.
+          Retorna True si manejó el mensaje, False si debe procesarse normalmente.
+          """
+          # Mínimo 100 chars y debe parecer JSON (starts with [ o {)
+          stripped = text.strip()
+          if len(stripped) < 100:
+              return False
+          if not (stripped.startswith("[") or stripped.startswith("{")):
+              return False
+          # Verificar si hay una importación pendiente
+          try:
+              from apps.core.tools.social_session import get_social_session_manager
+              mgr = get_social_session_manager()
+              platform = await mgr.get_pending_import(chat_id)
+              if not platform:
+                  return False
+              # Parece JSON de cookies y hay pendiente — intentar importar
+              await self._do_cookie_import(chat_id, platform, stripped, mgr)
+              return True
+          except Exception as exc:
+              import logging
+              logging.getLogger("aria.telegram_bot").error("[TelegramBot] cookie_import error: %s", exc)
+              return False
+
+      async def _do_cookie_import(self, chat_id: str, platform: str, raw_json: str, mgr) -> None:
+          """Procesa el JSON de cookies pegado por el usuario."""
+          from apps.core.tools.social_session import PLATFORM_CONFIG
+          cfg = PLATFORM_CONFIG.get(platform, {})
+
+          await self.send(chat_id, f"⏳ Procesando cookies de {cfg.get('display_name', platform)}...")
+
+          cookies = mgr.parse_cookies_json(raw_json)
+          if not cookies:
+              await self.send(
+                  chat_id,
+                  "❌ No pude leer el JSON. Asegúrate de exportar como JSON desde Cookie-Editor "
+                  "(Export → Export as JSON), no como texto plano.",
+              )
+              return
+
+          validation = mgr.validate_cookies_for_platform(cookies, platform)
+          if not validation.get("valid"):
+              missing = validation.get("error", "cookies faltantes")
+              await self.send(
+                  chat_id,
+                  f"❌ {missing}\n\nCookies que encontré: {', '.join(list(cookies.keys())[:10])}\n\n"
+                  f"Asegúrate de estar logueado en {cfg.get('display_name', platform)} antes de exportar.",
+              )
+              return
+
+          # Guardar sesión
+          save_result = await mgr.save_session(platform, cookies)
+          if not save_result.get("success"):
+              await self.send(chat_id, f"❌ Error guardando la sesión: {save_result.get('error')}")
+              return
+
+          # Limpiar pendiente
+          await mgr.clear_pending_import(chat_id)
+
+          # Probar la sesión
+          await self.send(chat_id, f"✅ {len(cookies)} cookies guardadas. Verificando que funcionen...")
+          test = await mgr.test_session(platform)
+
+          if test.get("success"):
+              user_info = test.get("user_info", {})
+              user_str = ""
+              if user_info:
+                  username = user_info.get("username") or user_info.get("firstName", "")
+                  if username:
+                      user_str = f" como <b>@{username}</b>"
+              await self.send(
+                  chat_id,
+                  f"🎉 <b>{cfg.get('display_name', platform)} conectado{user_str}!</b>\n\n"
+                  f"ARIA puede ahora publicar en {cfg.get('display_name', platform)} sin API keys. "
+                  f"Usa /publicar {platform} &lt;mensaje&gt; para publicar.",
+              )
+          else:
+              error = test.get("error", "error desconocido")
+              await self.send(
+                  chat_id,
+                  f"⚠️ Cookies guardadas pero la verificación falló: {error}\n\n"
+                  f"Las cookies pueden ser correctas — algunos endpoints de prueba son restrictivos. "
+                  f"Intenta publicar con /publicar {platform} <mensaje> para confirmar.",
+              )
+
+      async def cmd_redes_all(self, chat_id: str) -> None:
+          """Lista TODAS las cuentas: OAuth + sesiones sin API."""
+          await self._send_typing(chat_id)
+          lines = ["<b>Cuentas de Redes Sociales</b>\n"]
+          found_any = False
+
+          # Sesiones sin API (cookies)
+          try:
+              from apps.core.tools.social_session import get_social_session_manager
+              mgr = get_social_session_manager()
+              sessions = await mgr.list_active_sessions()
+              if sessions:
+                  lines.append("<b>📱 Conectadas sin API (cookies):</b>")
+                  for s in sessions:
+                      age = f"{s['age_days']}d" if s['age_days'] > 0 else "hoy"
+                      lines.append(f"  ✅ {s['emoji']} {s['display_name']} ({s['cookies_count']} cookies, {age})")
+                  found_any = True
+          except Exception:
+              pass
+
+          # OAuth accounts
+          try:
+              from apps.core.tools.social_media import SocialMediaManager
+              sm = SocialMediaManager()
+              accounts = await sm.list_connected_accounts()
+              if accounts:
+                  lines.append("\n<b>🔑 Conectadas via OAuth:</b>")
+                  emoji_map = {"facebook": "📘", "instagram": "📸", "tiktok": "🎵", "linkedin": "💼"}
+                  for acc in accounts:
+                      e = emoji_map.get(acc["platform"], "🔗")
+                      lines.append(f"  ✅ {e} {acc['platform'].title()} — @{acc.get('username', '?')}")
+                  found_any = True
+          except Exception:
+              pass
+
+          if not found_any:
+              lines.append("Ninguna cuenta conectada aún.\n\n"
+                          "Usa /sesion para conectar sin API (recomendado) o "
+                          "/conectar para conectar via OAuth.")
+
+          lines.append("\n/sesion — Conectar sin API  |  /conectar — OAuth")
+          await self.send(
+              chat_id,
+              "\n".join(lines),
+              reply_markup={"inline_keyboard": [[
+                  {"text": "➕ Conectar sin API", "callback_data": "cmd:sesion"},
+                  {"text": "🔑 Conectar OAuth", "callback_data": "cmd:conectar_"},
+              ]]},
+          )
+
+      # ── ESTADO Y CONTROL ──────────────────────────────────
 
     async def cmd_status(self, chat_id: str) -> None:
         await self._send_typing(chat_id)
