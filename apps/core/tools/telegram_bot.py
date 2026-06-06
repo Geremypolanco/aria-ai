@@ -219,52 +219,52 @@ class AriaTelegramBot:
         return True
 
     async def _cmd_zapier(self, chat_id: str, args: str) -> None:
-          """Delega una acción a Zapier y reporta el resultado."""
-          from apps.core.tools.zapier_client import get_zapier_client, ZapierEvents
-          zapier = get_zapier_client()
+        """Delega una acción a Zapier y reporta el resultado."""
+        from apps.core.tools.zapier_client import get_zapier_client, ZapierEvents
+        zapier = get_zapier_client()
 
-          if not zapier.is_configured():
-              await self._send(
-                  chat_id,
-                  "⚠️ El webhook de Zapier no está configurado en el servidor todavía. "
-                  "Pídeme que lo active.",
-              )
-              return
+        if not zapier.is_configured():
+            await self._send(
+                chat_id,
+                "⚠️ El webhook de Zapier no está configurado en el servidor todavía. "
+                "Pídeme que lo active.",
+            )
+            return
 
-          text_lower = (args or "").strip().lower()
+        text_lower = (args or "").strip().lower()
 
-          if re.search(r"producto|tienda|catálogo", text_lower):
-              event, label = ZapierEvents.SHOPIFY_GET_PRODUCTS, "productos de Shopify"
-          elif re.search(r"pedido|order|venta", text_lower):
-              event, label = ZapierEvents.SHOPIFY_GET_ORDERS, "pedidos de Shopify"
-          elif re.search(r"inventario|stock", text_lower):
-              event, label = ZapierEvents.SHOPIFY_GET_INVENTORY, "inventario de Shopify"
-          elif re.search(r"ingreso|revenue|facturación", text_lower):
-              event, label = ZapierEvents.SHOPIFY_GET_REVENUE, "ingresos de Shopify"
-          elif re.search(r"gmail|correo|inbox", text_lower):
-              event, label = ZapierEvents.GMAIL_GET_INBOX, "bandeja de Gmail"
-          elif re.search(r"ping|test|prueba", text_lower):
-              event, label = ZapierEvents.PING, "ping de prueba"
-          else:
-              event, label = "aria.custom_request", (args or "solicitud")[:80]
+        if re.search(r"producto|tienda|catálogo", text_lower):
+            event, label = ZapierEvents.SHOPIFY_GET_PRODUCTS, "productos de Shopify"
+        elif re.search(r"pedido|order|venta", text_lower):
+            event, label = ZapierEvents.SHOPIFY_GET_ORDERS, "pedidos de Shopify"
+        elif re.search(r"inventario|stock", text_lower):
+            event, label = ZapierEvents.SHOPIFY_GET_INVENTORY, "inventario de Shopify"
+        elif re.search(r"ingreso|revenue|facturación", text_lower):
+            event, label = ZapierEvents.SHOPIFY_GET_REVENUE, "ingresos de Shopify"
+        elif re.search(r"gmail|correo|inbox", text_lower):
+            event, label = ZapierEvents.GMAIL_GET_INBOX, "bandeja de Gmail"
+        elif re.search(r"ping|test|prueba", text_lower):
+            event, label = ZapierEvents.PING, "ping de prueba"
+        else:
+            event, label = "aria.custom_request", (args or "solicitud")[:80]
 
-          await self._send(chat_id, f"⚡ Enviando a Zapier: <code>{label}</code>...")
-          result = await zapier.trigger(event, {"query": args or "", "source": "telegram"})
+        await self._send(chat_id, f"⚡ Enviando a Zapier: <code>{label}</code>...")
+        result = await zapier.trigger(event, {"query": args or "", "source": "telegram"})
 
-          if result.get("success"):
-              await self._send(
-                  chat_id,
-                  f"✅ <b>Zapier recibió la solicitud.</b>\n"
-                  f"Evento: <code>{event}</code>\n"
-                  f"ID: <code>{result.get('request_id', '—')}</code>\n\n"
-                  f"El Zap se está ejecutando. Si configuraste un paso de respuesta en Zapier "
-                  f"(POST a <code>https://aria-ai.fly.dev/zapier/callback</code>), "
-                  f"te traeré los resultados aquí.",
-              )
-          else:
-              await self._send(chat_id, f"❌ Error: {result.get('error', 'desconocido')}")
+        if result.get("success"):
+            await self._send(
+                chat_id,
+                f"✅ <b>Zapier recibió la solicitud.</b>\n"
+                f"Evento: <code>{event}</code>\n"
+                f"ID: <code>{result.get('request_id', '—')}</code>\n\n"
+                f"El Zap se está ejecutando. Si configuraste un paso de respuesta en Zapier "
+                f"(POST a <code>https://aria-ai.fly.dev/zapier/callback</code>), "
+                f"te traeré los resultados aquí.",
+            )
+        else:
+            await self._send(chat_id, f"❌ Error: {result.get('error', 'desconocido')}")
 
-      async def _cmd_start(self, chat_id: str, _: str) -> None:
+    async def _cmd_start(self, chat_id: str, _: str) -> None:
         await self._send(
             chat_id,
             "Estoy aquí. Ya no tienes que hablarme con comandos.\n\n"
