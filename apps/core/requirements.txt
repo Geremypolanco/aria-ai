@@ -67,3 +67,6 @@ sentry-sdk[fastapi]==2.14.0
 
 # ── Storage ───────────────────────────────────────────────
 boto3==1.35.29
+
+# ── Automatización de navegador y screenshots ──────────────
+playwright==1.47.0

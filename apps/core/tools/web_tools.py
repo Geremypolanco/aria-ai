@@ -18,6 +18,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import os
+import uuid
+from datetime import datetime
 from typing import Any, Optional
 from urllib.parse import quote_plus, urljoin, urlparse
 import httpx
@@ -158,6 +161,49 @@ class WebTools:
         except Exception as exc:
             logger.error("[WebTools] duckduckgo error: %s", exc)
         return {"success": False, "results": [], "source": "duckduckgo"}
+
+    # ══════════════════════════════════════════════════════════════
+    # SCREENSHOTS Y NAVEGACION REAL
+    # ══════════════════════════════════════════════════════════════
+
+    async def take_screenshot(self, url: str, full_page: bool = False) -> dict[str, Any]:
+        """
+        Toma una captura de pantalla real de cualquier URL usando Playwright.
+        Retorna la ruta local del archivo generado.
+        """
+        try:
+            from playwright.async_api import async_playwright
+            
+            # Crear directorio de screenshots si no existe
+            os.makedirs("screenshots", exist_ok=True)
+            filename = f"screenshots/{uuid.uuid4().short if hasattr(uuid.uuid4(), 'short') else str(uuid.uuid4())[:8]}_{int(datetime.now().timestamp())}.png"
+            
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                context = await browser.new_context(
+                    viewport={'width': 1280, 'height': 800},
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                )
+                page = await context.new_page()
+                
+                logger.info("[WebTools] Navegando para screenshot: %s", url)
+                await page.goto(url, wait_until="networkidle", timeout=30000)
+                
+                # Esperar un poco mas por si hay animaciones
+                await asyncio.sleep(2)
+                
+                await page.screenshot(path=filename, full_page=full_page)
+                await browser.close()
+                
+                return {
+                    "success": True,
+                    "url": url,
+                    "screenshot_path": filename,
+                    "timestamp": datetime.now().isoformat()
+                }
+        except Exception as exc:
+            logger.error("[WebTools] Error tomando screenshot de %s: %s", url, exc)
+            return {"success": False, "error": str(exc), "url": url}
 
     # ══════════════════════════════════════════════════════════════
     # FETCH DE PAGINAS WEB

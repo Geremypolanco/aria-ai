@@ -416,8 +416,12 @@ Genera el plan de monetizacion detallado. JSON esperado:
         return summary
 
     async def _send_cycle_report(self, results: list, intelligence: dict, revenue: dict, duration: float) -> None:
-        """Envia reporte del ciclo a Telegram."""
+        """Envia reporte del ciclo a Telegram con screenshots si existen."""
         from apps.core.main import send_telegram
+        from apps.core.tools.telegram_bot import get_bot
+        
+        bot = get_bot()
+        chat_id = str(settings.TELEGRAM_CHAT_ID) if settings.TELEGRAM_CHAT_ID else None
         
         status_emoji = "✅" if revenue["missions_failed"] == 0 else "⚠️"
         lines = [
@@ -433,6 +437,26 @@ Genera el plan de monetizacion detallado. JSON esperado:
             lines.append(f"📦 Productos creados: {revenue['products_listed']}")
             
         await send_telegram("\n".join(lines))
+        
+        # Enviar screenshots si hay alguno en los resultados
+        if chat_id:
+            for r in results:
+                # Screenshot de producto
+                if r.get("product_screenshot"):
+                    await bot._send_photo(
+                        chat_id, 
+                        r["product_screenshot"], 
+                        caption=f"📸 Screenshot del producto creado: {r.get('agent', 'ecommerce')}"
+                    )
+                # Screenshots de investigacion
+                market_research = r.get("market_research", {})
+                if isinstance(market_research, dict) and market_research.get("screenshots"):
+                    for ss_path in market_research["screenshots"]:
+                        await bot._send_photo(
+                            chat_id, 
+                            ss_path, 
+                            caption=f"🔍 Análisis de competencia: {r.get('agent', 'ecommerce')}"
+                        )
 
     async def start(self) -> None:
         """Inicializacion del orquestador."""

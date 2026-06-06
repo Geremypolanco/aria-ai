@@ -150,6 +150,14 @@ class EcommerceAgent(BaseAgent):
         if settings.SHOPIFY_ENABLED and product_idea.get("title"):
             shopify_result = await self._create_shopify_listing(product_idea)
             results["shopify_listing"] = shopify_result
+            
+            # Tomar screenshot del producto creado si tenemos la URL
+            if shopify_result.get("success") and shopify_result.get("product_url"):
+                from apps.core.tools.web_tools import WebTools
+                wt = WebTools()
+                ss_res = await wt.take_screenshot(shopify_result["product_url"])
+                if ss_res.get("success"):
+                    results["product_screenshot"] = ss_res["screenshot_path"]
 
         # Paso 4: Configurar Zapier
         zapier_result = await self._setup_zapier_automations()
@@ -166,24 +174,38 @@ class EcommerceAgent(BaseAgent):
     # ── INVESTIGACIÓN DE MERCADO ──────────────────────────────────
 
     async def _research_market(self, topic: str) -> Dict[str, Any]:
-        """Investiga tendencias, competidores y oportunidades en la web."""
+        """Investiga tendencias, competidores y oportunidades en la web con screenshots."""
         logger.info(f"[EcommerceAgent] Investigando mercado para: {topic}")
 
         research_data = {
             "topic": topic,
             "best_practices": self.knowledge["shopify_listing_best_practices"],
             "product_research_framework": self.knowledge["product_research_framework"],
+            "screenshots": []
         }
 
-        # Intentar búsqueda web si está disponible
+        # Intentar búsqueda web y screenshots si está disponible
         if self._web:
             try:
                 search_query = f"best shopify products to sell {topic} 2025 high demand"
-                web_result = await self._web.scrape(search_query)
-                if web_result.get("success"):
-                    research_data["web_findings"] = web_result.get("content", "")[:2000]
+                # Usamos el buscador expandido que implementamos antes
+                from apps.core.tools.web_tools import WebTools
+                wt = WebTools()
+                search_results = await wt.search_web(search_query, num_results=3)
+                
+                if search_results.get("success") and search_results.get("results"):
+                    research_data["web_findings"] = str(search_results["results"])
+                    
+                    # Tomar screenshot del primer resultado relevante (competencia)
+                    top_url = search_results["results"][0].get("url")
+                    if top_url:
+                        ss_res = await wt.take_screenshot(top_url)
+                        if ss_res.get("success"):
+                            research_data["screenshots"].append(ss_res["screenshot_path"])
+                            logger.info(f"[EcommerceAgent] Screenshot de competencia guardado: {ss_res['screenshot_path']}")
+                            
             except Exception as e:
-                logger.warning(f"[EcommerceAgent] Web scraping no disponible: {e}")
+                logger.warning(f"[EcommerceAgent] Error en investigacion con screenshots: {e}")
 
         return research_data
 

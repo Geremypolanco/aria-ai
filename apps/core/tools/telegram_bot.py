@@ -779,6 +779,28 @@ class AriaTelegramBot:
         except Exception as exc:
             logger.error("[TelegramBot] Error enviando mensaje: %s", exc)
 
+    async def _send_photo(self, chat_id: str, photo_path: str, caption: Optional[str] = None) -> bool:
+        """Envía una foto local a Telegram."""
+        import os
+        if not settings.telegram_token or not os.path.exists(photo_path):
+            return False
+        url = f"{TELEGRAM_API}{settings.telegram_token}/sendPhoto"
+        try:
+            import aiofiles
+            async with aiofiles.open(photo_path, mode='rb') as f:
+                content = await f.read()
+                files = {"photo": (os.path.basename(photo_path), content, "image/png")}
+                data = {"chat_id": chat_id}
+                if caption:
+                    data["caption"] = caption[:1024]
+                    data["parse_mode"] = "HTML"
+                
+                res = await self._http.post(url, data=data, files=files)
+                return res.status_code == 200
+        except Exception as exc:
+            logger.error("[TelegramBot] Error enviando foto: %s", exc)
+            return False
+
     async def _send_startup_message(self) -> None:
         if not settings.TELEGRAM_CHAT_ID:
             return
