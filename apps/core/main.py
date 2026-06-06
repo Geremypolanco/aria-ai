@@ -224,6 +224,42 @@ async def health() -> JSONResponse:
         return JSONResponse({"status": "degraded", "error": str(exc)}, status_code=200)
 
 
+# ── ZAPIER WEBHOOK ────────────────────────────────────────
+
+class ZapierPayload(BaseModel):
+    """Estructura del payload enviado por Zapier."""
+    action: str
+    task: str
+    data: Optional[dict[str, Any]] = None
+    user_id: Optional[str] = "default"
+
+
+@app.post("/api/webhooks/zapier")
+async def zapier_webhook(payload: ZapierPayload) -> JSONResponse:
+    """
+    Recibe un webhook de Zapier para ejecutar una tarea en Aria.
+    """
+    logger.info(f"[Webhook] Recibida petición de Zapier: {payload.action}")
+    
+    try:
+        orch = await get_orchestrator()
+        # Ejecutamos la tarea de forma asíncrona
+        asyncio.create_task(orch.execute_task(payload.task, {
+            "source": "zapier",
+            "action": payload.action,
+            "data": payload.data
+        }))
+        
+        return JSONResponse({
+            "success": True, 
+            "message": "Tarea recibida",
+            "task_id": "zap_" + str(hash(payload.task))[:8]
+        })
+    except Exception as exc:
+        logger.error(f"[Webhook] Error procesando tarea de Zapier: {exc}")
+        return JSONResponse({"success": False, "error": str(exc)}, status_code=200)
+
+
 # ── TELEGRAM WEBHOOK ──────────────────────────────────────
 
 @app.post("/telegram/webhook")
