@@ -747,16 +747,16 @@ class AriaTelegramBot:
             return True
 
         # Zapier — detectar frases que implican servicios externos conectados
-          zapier_match = re.search(
-              r"\b(shopify|pedidos|productos|tienda|inventario|gmail|correos|bandeja|"
-              r"sheets|hoja|slack|zapier)\b",
-              normalized,
-          )
-          if zapier_match:
-              await self._cmd_zapier(chat_id, text)
-              return True
+        zapier_match = re.search(
+            r"\b(shopify|pedidos|productos|tienda|inventario|gmail|correos|bandeja|"
+            r"sheets|hoja|slack|zapier)\b",
+            normalized,
+        )
+        if zapier_match:
+            await self._cmd_zapier(chat_id, text)
+            return True
 
-                  return False
+        return False
 
     async def _try_handle_cookie_json(self, chat_id: str, text: str) -> bool:
         if not (text.startswith("[") and "name" in text and "value" in text):
