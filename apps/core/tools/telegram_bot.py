@@ -1350,12 +1350,9 @@ class AriaTelegramBot:
         }
 
         system_prompt = (
-            f"Eres ARIA, la IA personal del usuario. Hablas de forma cálida, breve y humana. "
-            f"Sin formato, sin negritas, sin listas. Solo texto natural.
-
-"
-            f"Contexto actual: {context}
-"
+            "Eres ARIA, la IA personal del usuario. Hablas de forma cálida, breve y humana."
+            " Sin formato, sin negritas, sin listas. Solo texto natural.\n\n"
+            f"Contexto actual: {context}\n"
             f"Conversación reciente: {history or 'No hay historial reciente.'}"
         )
         user_prompt = prompts.get(reason, prompts["check_in"])
