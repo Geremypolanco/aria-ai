@@ -123,6 +123,12 @@ class Settings(BaseSettings):
     ZAPIER_WEBHOOK_URL: Optional[str] = None
     SOCIAL_CONNECT_TOKEN: str = "aria"
 
+    # ── CONOCIMIENTO / KNOWLEDGE SUITE ────────────────────
+    WOLFRAM_APP_ID: Optional[str] = None         # developer.wolframalpha.com (gratis)
+    ALPHA_VANTAGE_KEY: Optional[str] = None      # alphavantage.co (gratis 5 req/min)
+    GNEWS_API_KEY: Optional[str] = None          # gnews.io (gratis 100 req/día)
+    CHROMA_PERSIST_DIR: str = "/data/chroma"     # directorio local ChromaDB
+
     # ── COMUNICACIÓN ──────────────────────────────────────
     TWILIO_ACCOUNT_SID: Optional[str] = None
     TWILIO_AUTH_TOKEN: Optional[str] = None
