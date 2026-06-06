@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
   WORKDIR /app
 
-  # System dependencies
+  # System dependencies (includes Playwright/Chromium runtime libs)
   RUN apt-get update && apt-get install -y \
       gcc \
       libnss3 \
@@ -21,12 +21,13 @@ FROM python:3.12-slim
       libasound2 \
       libpango-1.0-0 \
       libcairo2 \
+      fonts-liberation \
       && rm -rf /var/lib/apt/lists/*
 
   # Python dependencies
   COPY apps/core/requirements.txt .
   RUN pip install --no-cache-dir -r requirements.txt && \
-      playwright install chromium --with-deps
+      playwright install chromium
 
   # Code
   COPY apps/ apps/
