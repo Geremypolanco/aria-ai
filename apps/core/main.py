@@ -118,11 +118,33 @@ async def agent_heartbeat_job() -> None:
 
 
 async def daily_report_job() -> None:
+    """Saludo matutino — Aria escribe por cuenta propia al empezar el día."""
     try:
-        orch = await get_orchestrator()
-        await orch.send_daily_report()
+        from apps.core.tools.telegram_bot import get_bot
+        bot = get_bot()
+        await bot.send_proactive(reason="morning")
     except Exception as exc:
-        logger.error("Error en reporte diario: %s", exc)
+        logger.error("Error en saludo matutino: %s", exc)
+
+
+async def evening_checkin_job() -> None:
+    """Check-in vespertino — Aria retoma la conversación al final del día."""
+    try:
+        from apps.core.tools.telegram_bot import get_bot
+        bot = get_bot()
+        await bot.send_proactive(reason="evening")
+    except Exception as exc:
+        logger.error("Error en check-in vespertino: %s", exc)
+
+
+async def spontaneous_insight_job() -> None:
+    """Observación espontánea — Aria comparte algo interesante que encontró."""
+    try:
+        from apps.core.tools.telegram_bot import get_bot
+        bot = get_bot()
+        await bot.send_proactive(reason="insight")
+    except Exception as exc:
+        logger.error("Error en insight espontáneo: %s", exc)
 
 
 async def auto_evolve_job() -> None:
@@ -171,7 +193,9 @@ async def lifespan(app: FastAPI):
         interval = int(raw) if raw.isdigit() and int(raw) > 0 else 60
         scheduler.add_job(autonomous_cycle_job, IntervalTrigger(minutes=interval), id="autonomous_cycle", replace_existing=True)
         scheduler.add_job(agent_heartbeat_job, IntervalTrigger(seconds=30), id="heartbeat", replace_existing=True)
-        scheduler.add_job(daily_report_job, CronTrigger(hour=9, minute=0), id="daily_report", replace_existing=True)
+        scheduler.add_job(daily_report_job, CronTrigger(hour=13, minute=0), id="daily_report", replace_existing=True)
+        scheduler.add_job(evening_checkin_job, CronTrigger(hour=23, minute=30), id="evening_checkin", replace_existing=True)
+        scheduler.add_job(spontaneous_insight_job, CronTrigger(hour=17, minute=0), id="spontaneous_insight", replace_existing=True)
         scheduler.add_job(auto_evolve_job, IntervalTrigger(hours=4), id="auto_evolve", replace_existing=True)
         scheduler.add_job(learning_cycle_job, IntervalTrigger(hours=4), id="learning_cycle", replace_existing=True)
         scheduler.add_job(model_discovery_job, IntervalTrigger(hours=24), id="model_discovery", replace_existing=True)
