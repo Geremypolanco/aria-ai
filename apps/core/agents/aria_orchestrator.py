@@ -42,7 +42,7 @@ class AriaOrchestrator:
 
     async def evaluate_and_execute(self, action_data: Dict[str, Any]) -> Dict[str, Any]:
         """Evalúa éticamente una acción antes de ejecutarla, considerando el sentimiento de Aria."""
-        logger.info(f"Aria está evaluando la acción: {action_data.get("name")}")
+        logger.info(f"Aria está evaluando la acción: {action_data.get('name')}")
         
         # Evaluación Ética
         ethical_decision = self.ethics_engine.evaluate_action(action_data)
@@ -62,7 +62,7 @@ class AriaOrchestrator:
                 outcome = {"status": "pending_analysis", "reason": "Baja confianza en la ejecución."}
             else:
                 # Si pasa las evaluaciones, ejecutar la acción
-                logger.info(f"Acción \'{action_data.get("name")}\' aprobada éticamente y con confianza. Ejecutando...")
+                logger.info(f"Acción '{action_data.get('name')}' aprobada éticamente y con confianza. Ejecutando...")
                 self.sentiment_engine.update_sentiment("acción aprobada", {"happiness": 0.05, "confidence": 0.05})
                 
                 # Aquí iría la lógica de ejecución real de la acción
@@ -86,7 +86,7 @@ class AriaOrchestrator:
         }
         decision = self.evaluate_and_execute(action_data)
         if decision["status"] == "rejected":
-            logger.error(f"Transformación de Shopify abortada: {decision["reason"]}")
+            logger.error(f"Transformación de Shopify abortada: {decision['reason']}")
             return
 
         # 1. Gmail
