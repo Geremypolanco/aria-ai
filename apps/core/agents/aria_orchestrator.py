@@ -25,6 +25,7 @@ import httpx
 from apps.core.agents.base_agent import BaseAgent
 from apps.core.config import settings
 from apps.core.tools.ai_client import AIModel, get_ai_client
+from apps.core.integrations.mcp_client import mcp_manager
 
 logger = logging.getLogger("aria.orchestrator")
 
@@ -109,6 +110,7 @@ class AriaOrchestrator(BaseAgent):
         self._active_plans: Dict[str, TaskPlan] = {}
         self._reasoning_history: List[Dict[str, Any]] = []
         self._cycle_count = 0
+        self._mcp_initialized = False
 
     async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Punto de entrada principal para ejecutar una tarea."""
@@ -117,6 +119,10 @@ class AriaOrchestrator(BaseAgent):
 
         if not task:
             return {"success": False, "error": "No task provided"}
+
+        if not self._mcp_initialized:
+            await self._initialize_mcp()
+            self._mcp_initialized = True
 
         return await self.execute_task(task, user_context)
 
@@ -373,6 +379,53 @@ Proporciona un resumen ejecutivo y recomendaciones siguientes."""
 
     def _auto_discover_agents(self) -> None:
         """Descubre automáticamente los agentes disponibles."""
-        # Esto se expandiría para cargar dinámicamente los agentes disponibles
-        logger.info("[Aria] Descubriendo agentes disponibles...")
-        # Placeholder para implementación real
+        # Cargar agentes estáticos (los que ya hemos definido)
+        from apps.core.agents.enhanced_dev_agent import EnhancedDevAgent
+        from apps.core.agents.research_agent import ResearchAgent
+        from apps.core.agents.interaction_agent import InteractionAgent
+
+        self._agents = {
+            "dev": EnhancedDevAgent(),
+            "research": ResearchAgent(),
+            "interaction": InteractionAgent(),
+        }
+
+        logger.info(f"[Aria] Agentes estáticos descubiertos: {list(self._agents.keys())}")
+
+        # Descubrir herramientas de MCP
+        if mcp_manager.clients:
+            for client_name, client in mcp_manager.clients.items():
+                for tool_name, tool_spec in client.tools.items():
+                    # Crear un agente proxy para cada herramienta MCP
+                    mcp_agent_name = f"mcp_{client_name}_{tool_name}"
+                    self._agents[mcp_agent_name] = McpToolAgent(client_name, tool_name, tool_spec)
+                    logger.info(f"[Aria] Agente MCP descubierto: {mcp_agent_name}")
+
+    async def _initialize_mcp(self):
+        """Inicializa el MCP Manager y conecta a servidores MCP predefinidos."""
+        logger.info("[Aria] Inicializando MCP Manager...")
+        # Conectar al servidor MCP de Zapier
+        zapier_client_info = {"name": "Aria-Zapier-Client", "version": "1.0.0"}
+        zapier_server_url = "https://mcp.zapier.com/mcp" # URL del servidor MCP de Zapier
+        await mcp_manager.add_server("zapier_mcp", zapier_server_url, zapier_client_info)
+        logger.info("[Aria] MCP Manager inicializado y conectado a Zapier MCP.")
+
+
+class McpToolAgent(BaseAgent):
+    """Agente proxy para herramientas descubiertas vía MCP."""
+
+    def __init__(self, mcp_client_name: str, tool_name: str, tool_spec: Dict[str, Any]):
+        super().__init__(
+            name=f"mcp_{mcp_client_name}_{tool_name}",
+            description=tool_spec.get("description", f"Herramienta MCP: {tool_name}"),
+            capabilities=["mcp_tool_execution"],
+        )
+        self.mcp_client_name = mcp_client_name
+        self.tool_name = tool_name
+        self.tool_spec = tool_spec
+
+    async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Ejecuta la herramienta MCP."""
+        arguments = context.get("arguments", {})
+        result = await mcp_manager.call_tool_on_server(self.mcp_client_name, self.tool_name, arguments)
+        return result

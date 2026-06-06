@@ -16,6 +16,8 @@ import logging
 import subprocess
 from typing import Any, Dict, List, Optional
 
+from apps.core.integrations.mcp_client import mcp_manager
+
 import httpx
 
 logger = logging.getLogger("aria.tools")
@@ -260,6 +262,22 @@ class WebScrapingTool:
             return {"success": False, "error": str(exc)}
 
 
+class ZapierTool:
+    """Herramienta para interactuar con Zapier a través de su servidor MCP."""
+
+    async def call_zapier_action(self, action_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Llama a una acción de Zapier usando el servidor MCP."""
+        logger.info(f"[ZapierTool] Llamando acción Zapier: {action_name} con {arguments}")
+        result = await mcp_manager.call_tool_on_server(
+            "zapier_mcp",  # Nombre del servidor MCP de Zapier
+            action_name,
+            arguments,
+        )
+        if result:
+            return {"success": not result.get("isError", False), "output": result}
+        return {"success": False, "error": "No se pudo conectar con el servidor MCP de Zapier o la acción falló."}
+
+
 class APIDiscoveryTool:
     """Herramienta para descubrir e integrar APIs."""
 
@@ -330,6 +348,7 @@ class ToolRegistry:
             "deployment": DeploymentTool(),
             "web_scraping": WebScrapingTool(),
             "api_discovery": APIDiscoveryTool(),
+            "zapier": ZapierTool(),
         }
 
     def get_tool(self, tool_name: str) -> Optional[Any]:

@@ -25,6 +25,9 @@ from apps.core.agents.enhanced_dev_agent import EnhancedDevAgent
 from apps.core.agents.research_agent import ResearchAgent
 from apps.core.agents.interaction_agent import InteractionAgent
 from apps.core.sandbox.universal_sandbox import SandboxManager
+from apps.core.integrations.mcp_client import mcp_manager
+from apps.core.config.secrets_manager import secrets_manager, env_manager, config_manager
+from apps.core.deployment.deployment_orchestrator import deployment_orchestrator, DeploymentPlatform
 
 logger = logging.getLogger("aria.api")
 
@@ -50,6 +53,7 @@ dev_agent = EnhancedDevAgent()
 research_agent = ResearchAgent()
 interaction_agent = InteractionAgent()
 sandbox_manager = SandboxManager()
+mcp_manager = mcp_manager # Usar la instancia global del mcp_manager
 
 
 # Request models
@@ -81,6 +85,180 @@ class TaskRequest(BaseModel):
 
 
 # Chat endpoint
+# ==================== Endpoints de Conectores MCP ====================
+
+@app.get("/api/aria/connectors")
+async def list_connectors():
+    """Lista todos los conectores MCP conectados."""
+    connectors = []
+    for name, client in mcp_manager.clients.items():
+        connectors.append({
+            "id": name,
+            "name": name,
+            "type": "mcp",
+            "status": "connected",
+            "tools": list(client.tools.keys()),
+        })
+    return {"success": True, "connectors": connectors}
+
+
+@app.post("/api/aria/connectors")
+async def add_connector(request: dict):
+    """Añade un nuevo conector MCP."""
+    try:
+        name = request.get("name")
+        url = request.get("url")
+        connector_type = request.get("type")
+
+        if connector_type == "mcp":
+            client_info = {"name": name, "version": "1.0.0"}
+            client = await mcp_manager.add_server(name, url, client_info)
+            if client:
+                return {
+                    "success": True,
+                    "connector": {
+                        "id": name,
+                        "name": name,
+                        "type": "mcp",
+                        "status": "connected",
+                        "tools": list(client.tools.keys()),
+                    },
+                }
+        return {"success": False, "error": "No se pudo conectar"}
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+
+@app.get("/api/aria/connectors/{connector_id}/tools")
+async def get_connector_tools(connector_id: str):
+    """Obtiene las herramientas de un conector."""
+    client = mcp_manager.get_client(connector_id)
+    if client:
+        return {"success": True, "tools": list(client.tools.values())}
+    return {"success": False, "error": "Conector no encontrado"}
+
+
+@app.post("/api/aria/connectors/{connector_id}/test")
+async def test_connector(connector_id: str):
+    """Prueba la conexión de un conector."""
+    client = mcp_manager.get_client(connector_id)
+    if client:
+        return {"success": True, "status": "connected"}
+    return {"success": False, "error": "Conector no encontrado"}
+
+
+# ==================== Endpoints de Secretos ====================
+
+@app.get("/api/aria/secrets")
+async def list_secrets():
+    """Lista todos los secretos (sin mostrar valores)."""
+    secrets = secrets_manager.list_secrets()
+    return {"success": True, "secrets": [{"key": k, "value": v} for k, v in secrets.items()]}
+
+
+@app.post("/api/aria/secrets")
+async def add_secret(request: dict):
+    """Añade un nuevo secreto."""
+    key = request.get("key")
+    value = request.get("value")
+    tags = request.get("tags", [])
+
+    success = secrets_manager.set_secret(key, value, tags)
+    return {"success": success}
+
+
+@app.delete("/api/aria/secrets/{key}")
+async def delete_secret(key: str):
+    """Elimina un secreto."""
+    success = secrets_manager.delete_secret(key)
+    return {"success": success}
+
+
+@app.get("/api/aria/secrets/audit-log")
+async def get_secrets_audit_log():
+    """Obtiene el registro de auditoría de secretos."""
+    log = secrets_manager.get_audit_log()
+    return {"success": True, "log": log}
+
+
+# ==================== Endpoints de Entornos ====================
+
+@app.get("/api/aria/environments")
+async def list_environments():
+    """Lista todos los entornos."""
+    envs = env_manager.list_environments()
+    environments = []
+    for env_name in envs:
+        variables = env_manager.get_environment_variables(env_name)
+        environments.append({
+            "name": env_name,
+            "variables": variables,
+            "isActive": env_name == env_manager.current_environment,
+        })
+    return {"success": True, "environments": environments}
+
+
+@app.post("/api/aria/environments")
+async def create_environment(request: dict):
+    """Crea un nuevo entorno."""
+    name = request.get("name")
+    success = env_manager.create_environment(name, {})
+    return {"success": success}
+
+
+@app.post("/api/aria/environments/{name}/activate")
+async def activate_environment(name: str):
+    """Activa un entorno."""
+    success = env_manager.set_environment(name)
+    return {"success": success}
+
+
+# ==================== Endpoints de Despliegues ====================
+
+@app.get("/api/aria/deployments")
+async def list_deployments():
+    """Lista todos los despliegues."""
+    deployments = deployment_orchestrator.get_all_deployments()
+    return {"success": True, "deployments": deployments}
+
+
+@app.post("/api/aria/deployments")
+async def create_deployment(request: dict):
+    """Crea un nuevo despliegue."""
+    try:
+        platform_str = request.get("platform", "vercel")
+        project_path = request.get("projectPath")
+        config = {
+            "project_name": request.get("projectName"),
+            "vercel_token": secrets_manager.get_secret("VERCEL_TOKEN"),
+            "app_name": request.get("projectName"),
+        }
+
+        platform = DeploymentPlatform[platform_str.upper()]
+        result = await deployment_orchestrator.deploy(platform, project_path, config)
+        return result
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+
+@app.get("/api/aria/deployments/{deployment_id}")
+async def get_deployment_status(deployment_id: str):
+    """Obtiene el estado de un despliegue."""
+    status = deployment_orchestrator.get_deployment_status(deployment_id)
+    if status:
+        return {"success": True, "deployment": status}
+    return {"success": False, "error": "Despliegue no encontrado"}
+
+
+@app.post("/api/aria/deployments/{deployment_id}/rollback")
+async def rollback_deployment(deployment_id: str):
+    """Revierte un despliegue."""
+    result = await deployment_orchestrator.rollback(deployment_id)
+    return result
+
+
+# ==================== Endpoint de Chat Original ====================
+
 @app.post("/api/aria/chat")
 async def chat(request: ChatRequest) -> Dict[str, Any]:
     """Procesa un mensaje de chat."""
@@ -295,6 +473,7 @@ async def shutdown_event():
     await dev_agent.cleanup()
     await interaction_agent.cleanup()
     await sandbox_manager.cleanup_all()
+    await mcp_manager.shutdown_all()
 
 
 if __name__ == "__main__":
