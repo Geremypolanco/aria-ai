@@ -546,6 +546,42 @@ class AriaTelegramBot:
 
     # ── CONVERSACIÓN NATURAL ─────────────────────────────────────
 
+    async def _analyze_before_responding(
+        self, ai: Any, text: str, context: str, history: str
+    ) -> str:
+        """
+        Paso de análisis interno — Aria reflexiona antes de responder.
+        No se muestra al usuario. Da base y contexto a la respuesta final.
+        """
+        try:
+            from apps.core.tools.ai_client import AIModel
+            result = await ai.complete(
+                system=(
+                    "Eres el sistema de razonamiento interno de ARIA. "
+                    "Tu tarea es analizar mensajes antes de que ARIA responda. "
+                    "Sé conciso y objetivo. No redactes la respuesta final."
+                ),
+                user=(
+                    f"Mensaje recibido: \"{text}\"\n\n"
+                    f"Contexto del sistema: {context[:400]}\n"
+                    f"Historial reciente: {history[:300] if history else 'Sin historial.'}\n\n"
+                    "Analiza brevemente (2-3 oraciones):\n"
+                    "1. ¿Qué está pidiendo realmente esta persona?\n"
+                    "2. ¿Tengo info confiable para esto, o necesito datos externos?\n"
+                    "3. ¿Cuál es la respuesta más útil y directa?"
+                ),
+                model=AIModel.FAST,
+                max_tokens=110,
+                temperature=0.25,
+                agent_name="telegram_analysis",
+            )
+            if result.success and result.content:
+                logger.info("[TelegramBot] Análisis previo listo (%d chars)", len(result.content))
+                return result.content.strip()
+        except Exception as exc:
+            logger.warning("[TelegramBot] Análisis previo falló (continuando): %s", exc)
+        return ""
+
     async def _handle_conversation(self, chat_id: str, text: str, sender: str) -> None:
         """Conversación libre con ARIA, con memoria e intención natural."""
         if await self._try_handle_cookie_json(chat_id, text):
@@ -571,9 +607,18 @@ class AriaTelegramBot:
 
         try:
             from apps.core.tools.ai_client import AIModel
+
+            # Paso 1 — Análisis interno: Aria entiende qué se le pide antes de hablar
+            analysis = await self._analyze_before_responding(ai, text, context, history or "")
+
+            # Paso 2 — Respuesta final, fundamentada en el análisis previo
+            grounded_user = (
+                f"[Análisis interno previo]\n{analysis}\n\n[Mensaje del usuario]\n{text}"
+                if analysis else text
+            )
             response = await ai.complete(
                 system=persona,
-                user=text,
+                user=grounded_user,
                 model=AIModel.FAST,
                 max_tokens=220,
                 temperature=0.72,
