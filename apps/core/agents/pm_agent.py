@@ -14,7 +14,7 @@ logger = logging.getLogger("aria.pm_agent")
 class PMAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
-            name="pm_agent",
+            name="pm",
             description="Investigación de mercado y gestión de proyectos — análisis completo con Google + HuggingFace",
             capabilities=[
                 "market_research", "competitor_analysis", "niche_validation",

@@ -34,7 +34,7 @@ class ContentAgent(BaseAgent):
 
     def __init__(self) -> None:
         super().__init__(
-            name="content_agent",
+            name="content",
             description="Genera y monetiza contenido automaticamente",
             capabilities=[
                 "trend_detection",

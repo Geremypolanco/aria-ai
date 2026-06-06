@@ -19,7 +19,7 @@ logger = logging.getLogger("aria.cfo_agent")
 class CFOAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
-            name="cfo_agent",
+            name="cfo",
             description="CFO — productos digitales, pagos e ingresos",
             capabilities=["ebook_creation", "gumroad", "stripe", "shopify", "revenue_tracking"],
         )
@@ -201,7 +201,7 @@ class CFOAgent(BaseAgent):
                             "body_html": f"<p>{description}</p>",
                             "vendor": "Aria AI",
                             "product_type": "Digital",
-                            "tags": niche,
+                            "tags": [niche],
                             "variants": [{"price": str(price_usd), "inventory_management": None}],
                             "published": True,
                         }

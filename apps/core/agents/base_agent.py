@@ -210,11 +210,23 @@ class BaseAgent(ABC):
         model: AIModel = AIModel.FAST,
         json_mode: bool = False,
         max_tokens: int = 2000,
+        inject_business_intelligence: bool = True,
     ) -> Optional[str]:
         """
         Llama a la IA y retorna texto.
-        Retorna None si la IA no esta disponible — el agente debe manejar None.
+        Inyecta automáticamente conocimientos de ventas y marketing si se solicita.
         """
+        if inject_business_intelligence:
+            try:
+                from apps.core.intelligence.sales_knowledge import SALES_TECHNIQUES, VOCABULARY_EXPANSION
+                intelligence_context = (
+                    f"\n\n[BUSINESS INTELLIGENCE]:\n"
+                    f"Técnicas: {SALES_TECHNIQUES['copywriting']}\n"
+                    f"Vocabulario Persuasivo: {VOCABULARY_EXPANSION['persuasive_verbs']}\n"
+                )
+                system += intelligence_context
+            except ImportError:
+                pass
         try:
             ai = await get_ai_client()
             response = await ai.complete(

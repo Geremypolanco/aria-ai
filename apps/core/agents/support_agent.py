@@ -14,7 +14,7 @@ logger = logging.getLogger("aria.support_agent")
 class SupportAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
-            name="support_agent",
+            name="support",
             description="Soporte multilingüe — 133 idiomas, análisis de tickets, respuesta automática",
             capabilities=[
                 "customer_support", "multilingual_response", "ticket_analysis",

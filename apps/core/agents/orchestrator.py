@@ -62,6 +62,10 @@ class Orchestrator(BaseAgent):
         cycle_start = time.time()
         logger.info("[Orchestrator] ─── CICLO #%d INICIADO ───", self._cycle_count)
 
+        # Asegurar que los agentes estén cargados
+        if not self._agents:
+            self._auto_discover_agents()
+
         # Log inicio en Supabase
         cycle_id = await self._log_cycle_start()
 
@@ -509,6 +513,8 @@ Genera el plan de monetizacion. JSON esperado:
         aliases = {
             "affiliate": "cfo",
             "social": "marketing",
+            "content_agent": "content",
+            "cfo_agent": "cfo",
             "seo": "content",
             "analytics": "pm",
             "market": "pm",
@@ -670,7 +676,11 @@ Genera el plan de monetizacion. JSON esperado:
         if errors:
             lines += ["", "<b>Errores:</b>"]
             for e in errors[:3]:
-                lines.append(f"  • {e.get('agent', '?')}: {str(e.get('error', ''))[:70]}")
+                agent_name = e.get('agent', '?')
+                error_msg = str(e.get('error', ''))
+                if "no disponible" in error_msg.lower() or "no encontrado" in error_msg.lower():
+                    error_msg = f"Agente '{agent_name}' no cargado."
+                lines.append(f"  • {agent_name}: {error_msg[:70]}")
 
         text = "\n".join(lines)
         await self._telegram_send(text, tg_token)

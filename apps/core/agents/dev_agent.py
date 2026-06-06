@@ -14,7 +14,7 @@ logger = logging.getLogger("aria.dev_agent")
 class DevAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
-            name="dev_agent",
+            name="dev",
             description="Desarrollo de software y productos digitales — código con HuggingFace Qwen2.5-Coder",
             capabilities=[
                 "code_generation", "product_development", "api_integration",

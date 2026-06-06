@@ -15,7 +15,7 @@ logger = logging.getLogger("aria.marketing_agent")
 class MarketingAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
-            name="marketing_agent",
+            name="marketing",
             description="Marketing y redes sociales — contenido automatizado",
             capabilities=[
                 "content_creation", "social_posting", "email_campaigns",

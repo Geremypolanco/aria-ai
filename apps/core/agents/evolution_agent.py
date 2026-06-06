@@ -29,7 +29,7 @@ logger = logging.getLogger("aria.evolution_agent")
 class EvolutionAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
-            name="evolution_agent",
+            name="evolution",
             description="Auto-evolucion: analiza codigo propio, corrige errores de produccion, integra APIs — ciclo infinito de mejora real",
             capabilities=[
                 "code_analysis", "code_improvement", "self_modification",
