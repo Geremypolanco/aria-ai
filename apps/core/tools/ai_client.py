@@ -341,6 +341,8 @@ class AriaAIClient:
                 elif "rate" in err_str or "429" in err_str:
                     logger.info("[%s] HF rate limit en %s — rotando", agent_name, short_name)
                 else:
+                    # DNS / connection error — cuenta para el circuit breaker
+                    self._health[AIProvider.HUGGINGFACE].record_failure()
                     logger.warning("[%s] HF error %s: %s", agent_name, short_name, str(exc)[:80])
                 continue
 
