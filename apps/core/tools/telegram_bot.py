@@ -80,7 +80,8 @@ class AriaTelegramBot:
         "/pausa / /reanudar — Control del scheduler\n"
         "/pendientes — Aprobaciones pendientes\n"
         "/aprobar [id] / /rechazar [id]\n"
-        "/sesion [plataforma] — Conectar sesión social"
+        "/sesion [plataforma] — Conectar sesión social\n"
+        "/saber [tema] — Wikipedia, clima, acciones, crypto, papers, noticias"
     )
 
     def __init__(self) -> None:
@@ -208,6 +209,7 @@ class AriaTelegramBot:
             "/aprobar": self._cmd_aprobar,
             "/rechazar": self._cmd_rechazar,
             "/zapier": self._cmd_zapier,
+            "/saber": self._cmd_saber,
             "/agentes": self._cmd_agentes,
             "/sesion": self._cmd_sesion,
             "/crear": self._cmd_crear,
@@ -596,6 +598,397 @@ class AriaTelegramBot:
             key = SocialSessionManager.PENDING_KEY.format(chat_id=chat_id)
             await mc.set(key, platform, ttl_seconds=SocialSessionManager.PENDING_TTL)
         await self._send(chat_id, msg)
+
+
+    # ── KNOWLEDGE SUITE ──────────────────────────────────────────
+
+    async def _cmd_saber(self, chat_id: str, args: str) -> None:
+        """Comando /saber — accede a la suite de conocimiento de ARIA."""
+        from apps.core.tools.knowledge_suite import get_knowledge_suite
+        ks = get_knowledge_suite()
+        args = args.strip()
+
+        if not args:
+            status = ks.status()
+            active = status["active"]
+            total = status["total"]
+            needs = [k for k, v in status["needs_config"].items() if v]
+            msg = (
+                f"<b>🧠 Suite de Conocimiento ARIA</b>\n\n"
+                f"Motores activos: <b>{active}/{total}</b>\n\n"
+                f"<b>Comandos disponibles:</b>\n"
+                f"/saber wiki [tema] — Wikipedia\n"
+                f"/saber buscar [query] — DuckDuckGo\n"
+                f"/saber noticias [query] — Noticias web\n"
+                f"/saber hn — Top HackerNews\n"
+                f"/saber reddit [subreddit] — Reddit hot\n"
+                f"/saber arxiv [query] — Papers científicos\n"
+                f"/saber pubmed [query] — Biomedicina PubMed\n"
+                f"/saber scholar [query] — Semantic Scholar\n"
+                f"/saber accion [TICKER] — Precio de acción\n"
+                f"/saber crypto [coin] — Precio crypto\n"
+                f"/saber crypto top — Top 20 cryptos\n"
+                f"/saber crypto mercado — Mercado global\n"
+                f"/saber clima [ciudad] — Clima actual\n"
+                f"/saber cambio [USD EUR] — Tipo de cambio\n"
+                f"/saber wolfram [pregunta] — Cómputo Wolfram\n"
+                f"/saber memoria buscar [texto] — Memoria vectorial\n"
+                f"/saber rapido [tema] — Investigación rápida"
+            )
+            if needs:
+                msg += f"\n\n<i>⚙️ Claves opcionales sin configurar: {', '.join(needs)}</i>"
+            await self._send(chat_id, msg)
+            return
+
+        parts = args.split(None, 1)
+        sub = parts[0].lower()
+        query = parts[1].strip() if len(parts) > 1 else ""
+
+        # ── wikipedia ─────────────────────────────────────
+        if sub == "wiki":
+            if not query:
+                await self._send(chat_id, "Uso: /saber wiki [tema]")
+                return
+            r = ks.wikipedia.summary(query, sentences=6)
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            d = r["data"]
+            msg = (
+                f"<b>📖 {d['title']}</b>\n\n"
+                f"{d['summary']}\n\n"
+                f"<a href=\"{d['url']}\">Leer en Wikipedia →</a>"
+            )
+            await self._send(chat_id, msg)
+
+        # ── búsqueda web ──────────────────────────────────
+        elif sub == "buscar":
+            if not query:
+                await self._send(chat_id, "Uso: /saber buscar [términos]")
+                return
+            r = ks.web.search(query, max_results=6)
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            lines = [f"<b>🔍 Resultados para: {query}</b>\n"]
+            for item in r["data"]:
+                lines.append(f"• <b>{item.get('title','')[:60]}</b>")
+                lines.append(f"  {(item.get('body') or '')[:120]}")
+                lines.append(f"  <a href=\"{item.get('href','')}\">Ver →</a>")
+            await self._send(chat_id, "\n".join(lines))
+
+        # ── noticias ──────────────────────────────────────
+        elif sub == "noticias":
+            if not query:
+                r = ks.news.hackernews_top(limit=8)
+                label = "Top HackerNews"
+            else:
+                r = ks.web.search_news(query, max_results=8)
+                label = f"Noticias: {query}"
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            lines = [f"<b>📰 {label}</b>\n"]
+            for item in r["data"]:
+                title = item.get("title") or item.get("title", "")
+                url = item.get("url") or item.get("href", "")
+                lines.append(f"• <a href=\"{url}\">{title[:80]}</a>")
+            await self._send(chat_id, "\n".join(lines))
+
+        # ── hackernews ────────────────────────────────────
+        elif sub == "hn":
+            r = ks.news.hackernews_top(limit=10)
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            lines = [f"<b>🔶 HackerNews Top</b>\n"]
+            for item in r["data"]:
+                url = item.get("url") or f"https://news.ycombinator.com/item?id={item.get('id')}"
+                lines.append(f"▲{item.get('score',0)} <a href=\"{url}\">{item['title'][:70]}</a>")
+            await self._send(chat_id, "\n".join(lines))
+
+        # ── reddit ────────────────────────────────────────
+        elif sub == "reddit":
+            target = query or "technology"
+            r = ks.reddit.subreddit_hot(target, limit=8)
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            lines = [f"<b>🤖 r/{target} — Hot</b>\n"]
+            for item in r["data"]:
+                lines.append(f"↑{item['score']} <a href=\"{item['permalink']}\">{item['title'][:70]}</a>")
+            await self._send(chat_id, "\n".join(lines))
+
+        # ── arxiv ─────────────────────────────────────────
+        elif sub == "arxiv":
+            if not query:
+                await self._send(chat_id, "Uso: /saber arxiv [tema o ID]")
+                return
+            r = ks.arxiv.search(query, max_results=6)
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            lines = [f"<b>🔬 arXiv: {query}</b>\n"]
+            for p in r["data"]:
+                authors = ", ".join(p["authors"][:2])
+                lines.append(f"📄 <b>{p['title'][:70]}</b>")
+                lines.append(f"   {authors} · {p.get('published','')[:4]}")
+                lines.append(f"   <a href=\"{p['url']}\">Ver →</a>")
+            await self._send(chat_id, "\n".join(lines))
+
+        # ── pubmed ────────────────────────────────────────
+        elif sub == "pubmed":
+            if not query:
+                await self._send(chat_id, "Uso: /saber pubmed [término médico]")
+                return
+            r = ks.pubmed.search(query, max_results=6)
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            lines = [f"<b>🧬 PubMed: {query}</b>\n"]
+            for p in r["data"]:
+                authors = ", ".join(p["authors"][:2])
+                lines.append(f"📋 <b>{p['title'][:70]}</b>")
+                lines.append(f"   {authors} · {p.get('journal','')[:40]} · {p.get('pubdate','')[:4]}")
+                lines.append(f"   <a href=\"{p['url']}\">Ver →</a>")
+            await self._send(chat_id, "\n".join(lines))
+
+        # ── scholar ───────────────────────────────────────
+        elif sub == "scholar":
+            if not query:
+                await self._send(chat_id, "Uso: /saber scholar [tema]")
+                return
+            r = ks.scholar.search(query, limit=6)
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            lines = [f"<b>🎓 Semantic Scholar: {query}</b>\n"]
+            for p in r["data"]:
+                authors = ", ".join(p["authors"][:2])
+                lines.append(f"📑 <b>{p['title'][:70]}</b>")
+                lines.append(f"   {authors} · {p.get('year','')} · ⭐{p.get('citations',0)} citas")
+                if p.get("url"):
+                    lines.append(f"   <a href=\"{p['url']}\">Ver →</a>")
+            await self._send(chat_id, "\n".join(lines))
+
+        # ── acción / bolsa ────────────────────────────────
+        elif sub in ("accion", "acción", "bolsa", "stock"):
+            if not query:
+                await self._send(chat_id, "Uso: /saber accion [TICKER] (ej: AAPL, TSLA, AMZN)")
+                return
+            r = ks.finance.get_ticker(query.upper())
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            d = r["data"]
+            change = d.get("change_pct") or 0
+            arrow = "📈" if change >= 0 else "📉"
+            msg = (
+                f"{arrow} <b>{d.get('name','')} ({query.upper()})</b>\n\n"
+                f"Precio: <b>${d.get('price','N/A')}</b> {d.get('currency','')}\n"
+                f"Cambio 24h: {change:.2f}%\n"
+                f"Market Cap: {d.get('market_cap','N/A')}\n"
+                f"P/E: {d.get('pe_ratio','N/A')}\n"
+                f"52w Alto: {d.get('52w_high','N/A')} | Bajo: {d.get('52w_low','N/A')}\n"
+                f"Sector: {d.get('sector','N/A')}\n"
+            )
+            if d.get("description"):
+                msg += f"\n<i>{d['description'][:200]}</i>"
+            await self._send(chat_id, msg)
+
+        # ── crypto ────────────────────────────────────────
+        elif sub == "crypto":
+            sub2 = query.lower().strip()
+            if sub2 == "top":
+                r = ks.crypto.top_coins(limit=20)
+                if not r["success"]:
+                    await self._send(chat_id, f"❌ {r['error']}")
+                    return
+                lines = [f"<b>🏆 Top 20 Cryptos</b>\n"]
+                for c in r["data"]:
+                    chg = c.get("change_24h") or 0
+                    arrow = "▲" if chg >= 0 else "▼"
+                    lines.append(f"#{c['rank']} {c['name']} ({c['symbol']}) — ${c['price']:,.4f} {arrow}{abs(chg):.1f}%")
+                await self._send(chat_id, "\n".join(lines))
+            elif sub2 == "mercado":
+                r = ks.crypto.global_market()
+                if not r["success"]:
+                    await self._send(chat_id, f"❌ {r['error']}")
+                    return
+                d = r["data"]
+                chg = d.get("market_cap_change_24h") or 0
+                arrow = "📈" if chg >= 0 else "📉"
+                msg = (
+                    f"{arrow} <b>Mercado Crypto Global</b>\n\n"
+                    f"Cap total: ${d.get('total_market_cap_usd',0):,.0f}\n"
+                    f"Volumen 24h: ${d.get('total_volume_24h_usd',0):,.0f}\n"
+                    f"Cambio 24h: {chg:.2f}%\n"
+                    f"Dominancia BTC: {d.get('btc_dominance',0):.1f}%\n"
+                    f"Dominancia ETH: {d.get('eth_dominance',0):.1f}%\n"
+                    f"Monedas activas: {d.get('active_coins','N/A')}\n"
+                    f"Mercados: {d.get('markets','N/A')}"
+                )
+                await self._send(chat_id, msg)
+            elif sub2 == "trending":
+                r = ks.crypto.trending()
+                if not r["success"]:
+                    await self._send(chat_id, f"❌ {r['error']}")
+                    return
+                lines = [f"<b>🔥 Cryptos Trending</b>\n"]
+                for c in r["data"]:
+                    lines.append(f"• {c['name']} ({c['symbol']}) — rank #{c.get('rank','?')}")
+                await self._send(chat_id, "\n".join(lines))
+            else:
+                coin = sub2 or "bitcoin"
+                r = ks.crypto.get_coin_details(coin)
+                if not r["success"]:
+                    r2 = ks.crypto.get_price([coin])
+                    if r2["success"] and coin in r2["data"]:
+                        d = r2["data"][coin]
+                        await self._send(chat_id, f"💰 <b>{coin.upper()}</b>\n${d.get('usd','N/A')} USD | {d.get('usd_24h_change',0):.2f}% 24h")
+                    else:
+                        await self._send(chat_id, f"❌ No encontré '{coin}'. Prueba con el ID completo (ej: bitcoin, ethereum, solana)")
+                    return
+                d = r["data"]
+                chg_note = ""
+                msg = (
+                    f"<b>💎 {d['name']} ({d['symbol']})</b>\n\n"
+                    f"Precio: <b>${d.get('price_usd','N/A'):,}</b> USD\n"
+                    f"Rank: #{d.get('rank','N/A')}\n"
+                    f"Cap: ${d.get('market_cap',0):,.0f}\n"
+                    f"ATH: ${d.get('ath','N/A')} ({(d.get('ath_date','') or '')[:10]})\n"
+                    f"Supply: {d.get('supply','N/A')} | Max: {d.get('max_supply','∞')}\n"
+                    f"Sentimiento +: {d.get('sentiment_up','N/A')}%\n"
+                )
+                if d.get("description"):
+                    msg += f"\n<i>{d['description'][:200]}</i>"
+                await self._send(chat_id, msg)
+
+        # ── clima ─────────────────────────────────────────
+        elif sub == "clima":
+            location = query or "Ciudad de Mexico"
+            r = ks.weather.current(location)
+            if not r["success"]:
+                await self._send(chat_id, f"❌ {r['error']}")
+                return
+            d = r["data"]
+            msg = (
+                f"<b>🌤 Clima en {d['location']}</b>\n\n"
+                f"Temp: <b>{d['temp_c']}°C</b> (Sensación: {d['feels_like_c']}°C)\n"
+                f"{d['description']}\n"
+                f"Humedad: {d['humidity']}% | Viento: {d['wind_kmph']} km/h {d['wind_dir']}\n"
+                f"Visibilidad: {d['visibility_km']} km | UV: {d['uv_index']}\n"
+                f"Presión: {d['pressure']} hPa"
+            )
+            await self._send(chat_id, msg)
+
+        # ── tipo de cambio ────────────────────────────────
+        elif sub in ("cambio", "divisa", "forex"):
+            if not query:
+                r = ks.currency.compare("USD", ["EUR", "MXN", "COP", "BRL", "GBP", "JPY", "CAD"])
+                if r["success"]:
+                    lines = ["<b>💱 Tipos de cambio (base USD)</b>\n"]
+                    for cur, rate in r["data"].items():
+                        lines.append(f"1 USD = {rate} {cur}")
+                    await self._send(chat_id, "\n".join(lines))
+                return
+            parts2 = query.upper().split()
+            if len(parts2) == 2:
+                r = ks.currency.convert(1.0, parts2[0], parts2[1])
+                if not r["success"]:
+                    await self._send(chat_id, f"❌ {r['error']}")
+                    return
+                d = r["data"]
+                await self._send(chat_id, f"💱 1 {d['from']} = <b>{d['result']}</b> {d['to']}")
+            else:
+                r = ks.currency.get_rates(parts2[0])
+                if not r["success"]:
+                    await self._send(chat_id, f"❌ {r['error']}")
+                    return
+                common = {k: v for k, v in r["data"]["rates"].items() if k in ["EUR","MXN","COP","BRL","GBP","JPY"]}
+                lines = [f"<b>💱 Cambios desde {parts2[0]}</b>\n"]
+                for cur, rate in common.items():
+                    lines.append(f"1 {parts2[0]} = {rate} {cur}")
+                await self._send(chat_id, "\n".join(lines))
+
+        # ── wolfram alpha ─────────────────────────────────
+        elif sub == "wolfram":
+            if not query:
+                await self._send(chat_id, "Uso: /saber wolfram [pregunta o cálculo]")
+                return
+            if not ks.wolfram.is_configured():
+                await self._send(chat_id, "⚙️ Wolfram Alpha no configurado.\nEjecuta: <code>fly secrets set WOLFRAM_APP_ID=\"tu_key\"</code>\nClave gratis en: developer.wolframalpha.com")
+                return
+            r = ks.wolfram.short_answer(query)
+            if not r["success"]:
+                r = ks.wolfram.query(query)
+                if r["success"] and r["data"]:
+                    answer = r["data"][0]["answer"]
+                    await self._send(chat_id, f"🧮 <b>{query}</b>\n\n{answer}")
+                else:
+                    await self._send(chat_id, f"❌ {r.get('error','Sin respuesta')}")
+            else:
+                await self._send(chat_id, f"🧮 <b>{query}</b>\n\n{r['data']['answer']}")
+
+        # ── memoria vectorial ─────────────────────────────
+        elif sub == "memoria":
+            sub3_parts = query.split(None, 1)
+            sub3 = sub3_parts[0].lower() if sub3_parts else ""
+            mem_query = sub3_parts[1] if len(sub3_parts) > 1 else ""
+
+            if sub3 == "buscar":
+                if not mem_query:
+                    await self._send(chat_id, "Uso: /saber memoria buscar [texto]")
+                    return
+                r = ks.vector_memory.search(mem_query, n_results=5)
+                if not r["success"]:
+                    await self._send(chat_id, f"❌ {r['error']}")
+                    return
+                if not r["data"]:
+                    await self._send(chat_id, "No encontré nada relevante en la memoria.")
+                    return
+                lines = [f"<b>🧠 Memoria — Búsqueda: {mem_query}</b>\n"]
+                for item in r["data"]:
+                    score = 1 - item["distance"]
+                    lines.append(f"[{score:.0%}] <code>{item['id']}</code>\n{item['text'][:150]}")
+                await self._send(chat_id, "\n".join(lines))
+            elif sub3 == "estado":
+                r = ks.vector_memory.collection_stats()
+                if r["success"]:
+                    d = r["data"]
+                    await self._send(chat_id, f"🧠 Memoria vectorial: <b>{d['documents']}</b> documentos en colección <code>{d['collection']}</code>")
+                else:
+                    await self._send(chat_id, f"❌ {r['error']}")
+            else:
+                await self._send(chat_id, "Subcomandos de memoria: buscar · estado")
+
+        # ── investigación rápida ──────────────────────────
+        elif sub == "rapido":
+            if not query:
+                await self._send(chat_id, "Uso: /saber rapido [tema]")
+                return
+            await self._send(chat_id, f"🔍 Investigando <b>{query}</b>...")
+            r = ks.quick_research(query)
+            lines = [f"<b>⚡ Investigación rápida: {query}</b>\n"]
+            wiki = r.get("wikipedia")
+            if wiki:
+                lines.append(f"<b>📖 Wikipedia:</b>\n{wiki.get('summary','')[:300]}\n")
+            web = r.get("web", [])
+            if web:
+                lines.append(f"<b>🔍 Web ({len(web)} resultados):</b>")
+                for item in web[:3]:
+                    lines.append(f"• <a href=\"{item.get('href','')}\"> {item.get('title','')[:60]}</a>")
+            hn = r.get("hackernews", [])
+            if hn:
+                lines.append(f"\n<b>🔶 HN relacionado:</b>")
+                for item in hn[:2]:
+                    url = item.get("url") or f"https://news.ycombinator.com/item?id={item.get('id')}"
+                    lines.append(f"• <a href=\"{url}\">{item.get('title','')[:60]}</a>")
+            await self._send(chat_id, "\n".join(lines))
+
+        else:
+            await self._send(chat_id, f"Subcomando no reconocido: <code>{sub}</code>\nEscribe /saber para ver todos los comandos.")
+
 
     # ── CONVERSACIÓN NATURAL ─────────────────────────────────────
 
