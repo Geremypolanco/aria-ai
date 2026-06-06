@@ -20,6 +20,9 @@ from apps.core.tools.content_pipeline import ContentPipeline
 from apps.core.tools.publishing_tools import PublishingTools
 from apps.core.tools.social_content_tools import SocialContentTools
 from apps.core.tools.affiliate_tools import AffiliateTools
+from apps.core.tools.workspace_tools import WorkspaceTools
+from apps.core.tools.saas_tools import NotionTools, VercelTools
+from apps.core.tools.marketing_tools import MetaMarketingTools
 
 __all__ = [
     "AIModel", "AIProvider", "AIResponse", "get_ai_client",
@@ -31,5 +34,6 @@ __all__ = [
     "CanvaTools", "AirtableTools",
     "AriaTelegramBot", "get_bot",
     "SocialMediaManager",
-      "ContentPipeline", "PublishingTools", "SocialContentTools", "AffiliateTools",
+    "ContentPipeline", "PublishingTools", "SocialContentTools", "AffiliateTools",
+    "WorkspaceTools", "NotionTools", "VercelTools", "MetaMarketingTools",
 ]

@@ -113,9 +113,14 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: Optional[str] = None
     GITHUB_USERNAME: str = "Geremypolanco"
     VERCEL_TOKEN: Optional[str] = None
+    NOTION_TOKEN: Optional[str] = None
+    FACEBOOK_MARKETING_TOKEN: Optional[str] = None
+    FACEBOOK_AD_ACCOUNT_ID: Optional[str] = None
     DID_API_KEY: Optional[str] = None
     CANVA_CLIENT_ID: Optional[str] = None
     CANVA_CLIENT_SECRET: Optional[str] = None
+    ARIA_BASE_URL: str = "https://aria-ai.fly.dev"
+    SOCIAL_CONNECT_TOKEN: str = "aria"
 
     # ── COMUNICACIÓN ──────────────────────────────────────
     TWILIO_ACCOUNT_SID: Optional[str] = None

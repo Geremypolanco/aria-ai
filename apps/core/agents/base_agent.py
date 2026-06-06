@@ -85,6 +85,12 @@ class BaseAgent(ABC):
         "hashnode": "HASHNODE_TOKEN",
         "amazon": "AMAZON_ASSOCIATE_TAG",
         "affiliate": "AMAZON_ASSOCIATE_TAG",
+        "notion": "NOTION_TOKEN",
+        "vercel": "VERCEL_TOKEN",
+        "meta_ads": "FACEBOOK_MARKETING_TOKEN",
+        "gmail": "GOOGLE_API_KEY",
+        "calendar": "GOOGLE_API_KEY",
+        "drive": "GOOGLE_API_KEY",
     }
 
     def __init__(self, name: str, description: str, capabilities: list[str]) -> None:
