@@ -24,6 +24,7 @@ from apps.core.tools.workspace_tools import WorkspaceTools
 from apps.core.tools.saas_tools import NotionTools, VercelTools
 from apps.core.tools.marketing_tools import MetaMarketingTools
 from apps.core.tools.creative_engine import CreativeEngine
+from apps.core.tools.zapier_connector import ZapierConnector
 
 __all__ = [
     "AIModel", "AIProvider", "AIResponse", "get_ai_client",
@@ -36,6 +37,7 @@ __all__ = [
     "AriaTelegramBot", "get_bot",
     "SocialMediaManager",
     "ContentPipeline", "PublishingTools", "SocialContentTools", "AffiliateTools",
-    "WorkspaceTools", "NotionTools", "VercelTools", "MetaMarketingTools",
+    "WorkspaceTools", "NotionTools", "VercelTools",     "MetaMarketingTools",
     "CreativeEngine",
+    "ZapierConnector",
 ]
