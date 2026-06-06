@@ -526,3 +526,35 @@ def get_ai_client() -> Optional[AriaAIClient]:
     if _client_instance is None:
         _client_instance = AriaAIClient()
     return _client_instance
+
+
+async def refresh_model_rotation_from_redis() -> bool:
+    """
+    Carga HF_MODEL_ROTATION dinámico desde Redis (generado por model_router).
+    Si no hay datos en Redis, mantiene la configuración estática.
+    Llama esto al inicio o cuando model_discovery_job actualiza la tabla.
+    """
+    global HF_MODEL_ROTATION
+    try:
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        raw = await cache.get("aria:model_router:hf_rotation")
+        if not raw:
+            logger.debug("[AIClient] Sin rotación dinámica en Redis — usando config estática")
+            return False
+        dynamic = __import__('json').loads(raw)
+        if not dynamic:
+            return False
+        # Validar y mergear: el config dinámico tiene prioridad pero se usan enum keys
+        updated = 0
+        for model_enum in AIModel:
+            key = model_enum.value
+            if key in dynamic and dynamic[key]:
+                HF_MODEL_ROTATION[model_enum] = dynamic[key]
+                updated += 1
+        if updated:
+            logger.info("[AIClient] HF_MODEL_ROTATION actualizado desde Redis: %d modelos", updated)
+        return updated > 0
+    except Exception as exc:
+        logger.debug("[AIClient] No se pudo cargar rotación dinámica: %s", exc)
+        return False
