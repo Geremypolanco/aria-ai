@@ -9,6 +9,7 @@ from apps.core.agents.dev_agent import DevAgent
 from apps.core.agents.marketing_agent import MarketingAgent
 from apps.core.agents.support_agent import SupportAgent
 from apps.core.agents.evolution_agent import EvolutionAgent
+from apps.core.agents.ecommerce_agent import EcommerceAgent
 
 __all__ = [
     "BaseAgent",
@@ -19,4 +20,5 @@ __all__ = [
     "MarketingAgent",
     "SupportAgent",
     "EvolutionAgent",
+    "EcommerceAgent",
 ]

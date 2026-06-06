@@ -207,7 +207,8 @@ class Orchestrator(BaseAgent):
 
 AGENTES DISPONIBLES:
 - content: genera articulos SEO con links de afiliado → Medium/Dev.to
-- cfo: crea ebooks PDF y los vende en Gumroad
+- cfo: crea ebooks PDF y los vende en Gumroad, Y AHORA: gestiona e-commerce en Shopify, crea listings optimizados y vende servicios High-Ticket
+- pm: investiga mercado, nichos rentables y estrategias de automatizacion Zapier + Shopify
 - affiliate: busca y promociona productos Amazon/ClickBank
 - social: distribuye contenido en redes via Buffer
 - evolution: mejora el codigo de ARIA (baja prioridad)
@@ -262,11 +263,11 @@ Genera el plan de monetizacion. JSON esperado:
         if "cfo" not in existing_agents:
             missions.insert(1, {
                 "agent": "cfo",
-                "task": "create_and_sell_ebook",
+                "task": "shopify_zapier_automation_and_highticket",
                 "priority": 2,
-                "target_topic": "productividad con IA",
-                "revenue_target_usd": 100,
-                "rationale": "Ebooks en Gumroad = ingresos directos",
+                "target_topic": "servicios premium y productos fisicos",
+                "revenue_target_usd": 500,
+                "rationale": "Operaciones en Shopify via Zapier y ventas High-Ticket = altos ingresos",
             })
 
         missions.sort(key=lambda x: x.get("priority", 99))
@@ -276,35 +277,43 @@ Genera el plan de monetizacion. JSON esperado:
     def _fallback_monetization_plan(self) -> dict:
         """Plan de emergencia cuando la IA no responde."""
         return {
-            "focus": "monetizacion directa — content + productos digitales",
-            "market_opportunity": "herramientas IA en expansion",
+            "focus": "monetizacion multicanal — e-commerce Shopify + contenido + high-ticket",
+            "market_opportunity": "e-commerce y servicios premium con IA en expansion",
             "missions": [
+                {
+                    "agent": "ecommerce",
+                    "task": "full_ecommerce_pipeline",
+                    "priority": 1,
+                    "target_topic": "productos de alto valor con IA",
+                    "revenue_target_usd": 500,
+                    "rationale": "Shopify + Zapier + High-Ticket = maximos ingresos",
+                },
                 {
                     "agent": "content",
                     "task": "full_pipeline",
-                    "priority": 1,
-                    "target_topic": "herramientas de IA para ganar dinero en 2025",
+                    "priority": 2,
+                    "target_topic": "herramientas de IA para e-commerce 2025",
                     "revenue_target_usd": 50,
                 },
                 {
                     "agent": "cfo",
                     "task": "create_and_sell_ebook",
-                    "priority": 2,
-                    "target_topic": "guia de automatizacion con IA",
+                    "priority": 3,
+                    "target_topic": "guia de automatizacion con IA y Shopify",
                     "revenue_target_usd": 100,
                 },
                 {
                     "agent": "affiliate",
                     "task": "promote_products",
-                    "priority": 3,
+                    "priority": 4,
                     "target_topic": "software de productividad IA",
                     "revenue_target_usd": 30,
                 },
                 {
                     "agent": "social",
                     "task": "distribute_content",
-                    "priority": 4,
-                    "target_topic": "IA y negocios digitales",
+                    "priority": 5,
+                    "target_topic": "e-commerce con IA y Shopify",
                     "revenue_target_usd": 10,
                 },
             ],
@@ -521,7 +530,13 @@ Genera el plan de monetizacion. JSON esperado:
             "monetization": "cfo",
             "copy": "content",
             "research": "pm",
-            "sales": "marketing",
+            "sales": "ecommerce",
+            "shopify": "ecommerce",
+            "zapier": "ecommerce",
+            "high_ticket": "ecommerce",
+            "store": "ecommerce",
+            "listing": "ecommerce",
+            "inventory": "ecommerce",
             "support_tickets": "support",
             "bug_fix": "dev",
             "code": "dev",
