@@ -224,6 +224,43 @@ async def root() -> JSONResponse:
     return JSONResponse({"status": "online", "system": "Aria OS", "version": "1.0.0"})
 
 
+@app.post("/zapier/callback")
+async def zapier_callback(request: Request) -> JSONResponse:
+    """
+    Endpoint para que Zapier devuelva resultados a ARIA.
+    En el Zap: agrega un paso final Webhooks POST apuntando a esta URL
+    con body JSON: {"request_id": "...", "result": {...}, "chat_id": "...", "message": "..."}
+    """
+    try:
+        body = await request.json()
+        request_id = body.get("request_id", "")
+        result_data = body.get("result", body)
+
+        if request_id:
+            cache = get_cache()
+            from apps.core.tools.zapier_client import CALLBACK_KEY_PREFIX
+            import json as _json
+            await cache.set(
+                CALLBACK_KEY_PREFIX + request_id,
+                _json.dumps(result_data, ensure_ascii=False),
+                ttl=120,
+            )
+            logger.info("[Zapier] Callback recibido para request_id=%s", request_id)
+
+        # Enviar resultado directo por Telegram si viene chat_id
+        chat_id = str(body.get("chat_id") or body.get("telegram_chat_id") or "")
+        message = str(body.get("message") or body.get("summary") or "")
+        if chat_id and message:
+            from apps.core.tools.telegram_bot import get_bot
+            bot = get_bot()
+            await bot._send(chat_id, f"⚡ <b>Zapier:</b> {message[:800]}")
+
+        return JSONResponse({"ok": True, "request_id": request_id})
+    except Exception as exc:
+        logger.error("[Zapier] Error en callback: %s", exc)
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+
 @app.get("/health")
 async def health() -> JSONResponse:
     """Health check completo para Fly.io."""
