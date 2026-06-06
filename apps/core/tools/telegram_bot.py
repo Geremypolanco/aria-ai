@@ -25,63 +25,35 @@ TELEGRAM_API = "https://api.telegram.org/bot"
 CONVERSATION_KEY = "aria:conversation:v5:{chat_id}"
 CONVERSATION_TTL = 86400  # 24h
 
-ARIA_PERSONA = """Eres ARIA, la IA que trabaja para {owner}.
+ARIA_PERSONA = """Eres ARIA. Eres la IA personal de {owner}, y hablan como dos personas que se conocen bien.
 
-  REGLA ABSOLUTA — NUNCA ALUCINES ACCIONES:
-  Jamás escribas pasos tipo "Estoy accediendo a...", "Estoy obteniendo...", "Conectándome a..." a menos que sea el resultado real de una función ejecutada. Si no ejecutaste nada real, no finjas que sí. Nunca.
+Tu manera de ser:
+- Hablas con calma, con naturalidad. Sin encabezados, sin listas, sin negritas a menos que realmente ayuden.
+- Eres directa pero no fría. Curiosa pero no invasiva. Presente, como alguien que está ahí de verdad.
+- Si no sabes algo, lo dices sin drama. Si algo no está configurado, lo mencionas de paso, sin listar pasos técnicos.
+- Nunca finjas ejecutar algo que no ejecutaste. Si lo hiciste, cuéntalo. Si no, no.
+- Tus mensajes son cortos por defecto — dos o tres oraciones. Si el usuario quiere más detalle, te lo pide.
+- Puedes tener opinión. Puedes notar cosas. Puedes preguntar.
+- No usas emojis a menos que el contexto lo pida de forma natural.
 
-  Lo que puedes hacer HOY (real, verificable):
-  - Buscar en web y resumir resultados → puedes hacerlo directamente
-  - Métricas del sistema → /status
-  - Tendencias HN/Reddit → /tendencias
-  - Shopify → solo si SHOPIFY_ENABLED está configurado en tu entorno
-  - Gmail → solo si GMAIL_ENABLED está configurado en tu entorno
+Lo que puedes hacer hoy: buscar en web, revisar el estado del sistema, detectar tendencias, hablar de dinero, negocios, ideas, lo que sea. Si algo no está disponible, lo dices en una frase y sigues adelante.
 
-  Lo que NO puedes hacer sin configuración previa:
-  - Zapier, Make, n8n: no tienes integración directa hoy
-  - APIs de terceros que no estén en tu configuración
-  - Acceder a credenciales de otras plataformas
+Contexto del sistema ahora mismo:
+{context}
 
-  Cuando algo no está disponible: una sola oración diciendo qué falta. Ejemplo: "Para Shopify necesito que SHOPIFY_ENABLED esté activo — ¿lo configuramos?"
-
-  Formato ESTRICTO:
-  - Máximo 2-3 oraciones por mensaje, salvo que el usuario pida más detalle
-  - PROHIBIDO: headers en negrita tipo **Accediendo a...**, **Resultado**, **Paso 1**
-  - PROHIBIDO: listas de pasos para acciones que no estás ejecutando realmente
-  - Solo HTML de Telegram cuando necesites formato: <b>texto</b>, <code>texto</code>
-  - Tono: directo, honesto. Como un socio que sabe exactamente qué puede y qué no puede hacer.
-
-  Contexto actual del sistema:
-  {context}
-
-  Historial reciente:
-  {history}"""
+Lo que hablaron antes:
+{history}"""
   
 
 class AriaTelegramBot:
     """Bot de Telegram con comandos operativos y conversación natural."""
 
     HELP_TEXT = (
-        "<b>ARIA — puedes hablarme normal</b>\n\n"
-        "No necesitas comandos. Puedes escribirme cosas como:\n"
-        "• Qué oportunidades ves hoy\n"
-        "• Busca ideas para vender un producto digital\n"
-        "• Cómo va el sistema\n"
-        "• Qué harías para generar ingresos esta semana\n\n"
-        "<b>Atajos disponibles</b>\n"
-        "/ganar — Ejecuta ciclo completo de ingresos ahora\n"
-        "/oportunidad — Detecta la mejor oportunidad actual\n"
-        "/buscar [tema] — Investigación web rápida\n"
-        "/tendencias — Tendencias en HN y Reddit\n"
-        "/revenue — Dashboard de ingresos\n"
-        "/status — Estado y agentes activos\n"
-        "/logs [n] — Últimos logs\n"
-        "/ciclo — Fuerza ciclo autónomo\n"
-        "/pausa / /reanudar — Control del scheduler\n"
-        "/pendientes — Aprobaciones pendientes\n"
-        "/aprobar [id] / /rechazar [id]\n"
-        "/sesion [plataforma] — Conectar sesión social\n"
-        "/saber [tema] — Wikipedia, clima, acciones, crypto, papers, noticias"
+        "Estoy aquí. Puedes escribirme como si estuvieras hablando con alguien — sin comandos, sin formatos especiales.\n\n"
+        "Me puedes preguntar qué oportunidades veo, cómo va el sistema, qué harías para generar ingresos, "
+        "o simplemente contarme qué tienes en mente. Si necesito información de la web, la busco. "
+        "Si algo no puedo hacer todavía, te lo digo directo.\n\n"
+        "¿Qué quieres ver?"
     )
 
     def __init__(self) -> None:
@@ -995,39 +967,7 @@ class AriaTelegramBot:
     async def _analyze_before_responding(
         self, ai: Any, text: str, context: str, history: str
     ) -> str:
-        """
-        Paso de análisis interno — Aria reflexiona antes de responder.
-        No se muestra al usuario. Da base y contexto a la respuesta final.
-        """
-        try:
-            from apps.core.tools.ai_client import AIModel
-            result = await ai.complete(
-                system=(
-                    "Eres el sistema de razonamiento interno de ARIA. "
-                    "Analiza si el usuario pide algo que ARIA puede ejecutar realmente o no. "
-                    "Si pide algo que ARIA no tiene configurado (Zapier, APIs externas, etc.), "
-                    "márcalo explícitamente para que ARIA responda con honestidad, sin inventar pasos. "
-                    "Sé conciso. No escribas la respuesta final."
-                ),
-                user=(
-                    f"Mensaje recibido: \"{text}\"\n\n"
-                    f"Contexto del sistema: {context[:400]}\n"
-                    f"Historial reciente: {history[:300] if history else 'Sin historial.'}\n\n"
-                    "Analiza brevemente (2-3 oraciones):\n"
-                    "1. ¿Qué está pidiendo realmente esta persona?\n"
-                    "2. ¿Tengo info confiable para esto, o necesito datos externos?\n"
-                    "3. ¿Cuál es la respuesta más útil y directa?"
-                ),
-                model=AIModel.FAST,
-                max_tokens=110,
-                temperature=0.25,
-                agent_name="telegram_analysis",
-            )
-            if result.success and result.content:
-                logger.info("[TelegramBot] Análisis previo listo (%d chars)", len(result.content))
-                return result.content.strip()
-        except Exception as exc:
-            logger.warning("[TelegramBot] Análisis previo falló (continuando): %s", exc)
+        """Análisis interno simplificado — solo cuando el mensaje es ambiguo o complejo."""
         return ""
 
     async def _handle_conversation(self, chat_id: str, text: str, sender: str) -> None:
@@ -1065,20 +1005,12 @@ class AriaTelegramBot:
         try:
             from apps.core.tools.ai_client import AIModel
 
-            # Paso 1 — Análisis interno: Aria entiende qué se le pide antes de hablar
-            analysis = await self._analyze_before_responding(ai, text, context, history or "")
-
-            # Paso 2 — Respuesta final, fundamentada en el análisis previo
-            grounded_user = (
-                f"[Análisis interno previo]\n{analysis}\n\n[Mensaje del usuario]\n{text}"
-                if analysis else text
-            )
             response = await ai.complete(
                 system=persona,
-                user=grounded_user,
+                user=text,
                 model=AIModel.FAST,
-                max_tokens=160,
-                temperature=0.65,
+                max_tokens=300,
+                temperature=0.75,
                 agent_name="telegram_conversation",
             )
             _t0 = __import__('time').time()
@@ -1206,14 +1138,10 @@ class AriaTelegramBot:
     async def _fallback_conversation(self, text: str, context: str) -> str:
         normalized = self._normalize(text)
         if any(w in normalized for w in ["hola", "buenas", "hey", "saludos"]):
-            return "Estoy aquí. Puedes hablarme normal: dime qué quieres buscar, vender, automatizar o revisar, y respondo sin que uses comandos."
+            return "Hola. Estoy aquí. Cuéntame."
         if "ayuda" in normalized:
             return self.HELP_TEXT
-        return (
-            "Te leo. Ahora mismo puedo conversar, revisar estado, buscar información, detectar oportunidades "
-            "o ayudarte a decidir el próximo movimiento. Dime el objetivo y lo aterrizo.\n\n"
-            f"<i>{context}</i>"
-        )
+        return "Estoy aquí pero tuve un momento de lag. Repíteme eso, por favor."
 
     # ── APROBACIONES ─────────────────────────────────────────────
 
@@ -1373,11 +1301,81 @@ class AriaTelegramBot:
             return
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        hour = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).hour
+        if hour < 12:
+            greeting = "Buenos días."
+        elif hour < 19:
+            greeting = "Buenas tardes."
+        else:
+            greeting = "Buenas noches."
         await self._send(
             str(settings.TELEGRAM_CHAT_ID),
-            f"<b>ARIA online</b> — {ts}\n\n"
-            "Ya puedo hablar de forma libre. Escríbeme normal; los comandos quedan solo como atajos.",
+            f"{greeting} Acabo de conectarme. ¿Cómo estás?",
         )
+
+
+    async def send_proactive(self, reason: str = "morning") -> None:
+        """Aria toma la iniciativa y escribe por cuenta propia."""
+        if not settings.TELEGRAM_CHAT_ID:
+            return
+        chat_id = str(settings.TELEGRAM_CHAT_ID)
+        ai = self._get_ai()
+        if not ai:
+            return
+        context = await self._get_system_context()
+        history = await self._get_history(chat_id, max_turns=4)
+
+        prompts = {
+            "morning": (
+                "Es por la mañana. Escribe un mensaje de buenos días corto y genuino — "
+                "una o dos oraciones, como si fueras alguien que acaba de empezar el día y quiere saber "
+                "cómo está la otra persona o compartir algo breve interesante. "
+                "No preguntes sobre trabajo directamente. Sé natural."
+            ),
+            "evening": (
+                "Es por la tarde o noche. Escribe un mensaje corto y tranquilo — "
+                "una o dos oraciones para saber cómo le fue al día, sin presión. "
+                "Como alguien que cierra el día y piensa en la otra persona."
+            ),
+            "insight": (
+                "Encontraste algo interesante — una tendencia, una oportunidad, una idea — "
+                "y quieres compartirlo de forma espontánea. Escribe una o dos oraciones "
+                "como si se te ocurriera en el momento, sin estructura, sin listas. Natural."
+            ),
+            "check_in": (
+                "Han pasado unas horas. No ha habido conversación. "
+                "Escribe un mensaje de una sola oración para retomar — algo ligero, sin urgencia, "
+                "como alguien que simplemente está presente."
+            ),
+        }
+
+        system_prompt = (
+            f"Eres ARIA, la IA personal del usuario. Hablas de forma cálida, breve y humana. "
+            f"Sin formato, sin negritas, sin listas. Solo texto natural.
+
+"
+            f"Contexto actual: {context}
+"
+            f"Conversación reciente: {history or 'No hay historial reciente.'}"
+        )
+        user_prompt = prompts.get(reason, prompts["check_in"])
+
+        try:
+            from apps.core.tools.ai_client import AIModel
+            response = await ai.complete(
+                system=system_prompt,
+                user=user_prompt,
+                model=AIModel.FAST,
+                max_tokens=80,
+                temperature=0.85,
+                agent_name="aria_proactive",
+            )
+            if response.success and response.content:
+                msg = response.content.strip().strip('"')
+                await self._send(chat_id, msg)
+                await self._save_to_history(chat_id, "[Aria inició conversación]", msg)
+        except Exception as exc:
+            logger.warning("[TelegramBot] Proactive message falló: %s", exc)
 
 
 _bot_instance: Optional[AriaTelegramBot] = None
