@@ -297,10 +297,12 @@ class CommerceTools:
                     "vendor": vendor,
                     "product_type": product_type,
                     "status": "active",
+                    "published_scope": "global",
                     "variants": [
                         {
                             "price": str(price),
                             "requires_shipping": False,
+                            "inventory_management": None,
                             "taxable": True,
                         }
                     ],

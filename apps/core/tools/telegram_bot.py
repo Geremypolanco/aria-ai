@@ -202,6 +202,7 @@ class AriaTelegramBot:
             "/rechazar": self._cmd_rechazar,
             "/agentes": self._cmd_agentes,
             "/sesion": self._cmd_sesion,
+            "/crear": self._cmd_crear,
         }
         handler = handlers.get(cmd)
         if not handler:
@@ -472,7 +473,47 @@ class AriaTelegramBot:
             await self._send(chat_id, f"No encontré aprobación '{aid}'.")
 
     async def _cmd_agentes(self, chat_id: str, _: str) -> None:
-        await self._cmd_status(chat_id, _)
+        """Muestra el estado de los agentes."""
+        try:
+            from apps.core.agents.orchestrator import get_orchestrator
+            orch = get_orchestrator()
+            msg = "🤖 <b>Agentes ARIA</b>\n\n"
+            for name, agent in orch.agents.items():
+                caps = agent.check_capabilities()
+                status = "✅" if caps["fully_operational"] else "⚠️"
+                msg += f"{status} <b>{name.upper()}</b>: {caps['operational_pct']}%\n"
+            await self._send(chat_id, msg)
+        except Exception as exc:
+            await self._send(chat_id, f"Error: {exc}")
+
+    async def _cmd_crear(self, chat_id: str, args: str) -> None:
+        """Comando para crear cualquier cosa: /crear [formato] [tema]"""
+        parts = args.split(None, 1)
+        if not parts or len(parts) < 2:
+            await self._send(chat_id, "Dime qué quieres crear. Uso: /crear [formato] [tema]\nFormatos: musica, video, manga, software, landing, imagen")
+            return
+        
+        fmt = parts[0].lower()
+        topic = parts[1]
+        await self._send(chat_id, f"Vale, me pongo con tu <b>{fmt}</b> sobre <b>{topic}</b>. Dame un momento...")
+        
+        try:
+            from apps.core.agents.orchestrator import get_orchestrator
+            orch = get_orchestrator()
+            res = await orch.execute_mission(f"create {fmt} about {topic}")
+            
+            if res.get("success"):
+                msg = f"✨ ¡Listo! He creado el contenido.\n"
+                assets = res.get("assets", [])
+                if assets:
+                    url = next((a.get("url") or a.get("shop_url") or a.get("image_url") for a in assets), None)
+                    if url:
+                        msg += f"🔗 <b>Enlace:</b> {url}"
+                await self._send(chat_id, msg)
+            else:
+                await self._send(chat_id, f"Hubo un lío real: {res.get('error', 'desconocido')}")
+        except Exception as exc:
+            await self._send(chat_id, f"Fallo técnico: {exc}")
 
     async def _cmd_sesion(self, chat_id: str, platform: str) -> None:
         from apps.core.tools.social_session import PLATFORM_CONFIG, SUPPORTED_PLATFORMS

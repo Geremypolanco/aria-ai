@@ -23,6 +23,7 @@ from apps.core.tools.affiliate_tools import AffiliateTools
 from apps.core.tools.workspace_tools import WorkspaceTools
 from apps.core.tools.saas_tools import NotionTools, VercelTools
 from apps.core.tools.marketing_tools import MetaMarketingTools
+from apps.core.tools.creative_engine import CreativeEngine
 
 __all__ = [
     "AIModel", "AIProvider", "AIResponse", "get_ai_client",
@@ -36,4 +37,5 @@ __all__ = [
     "SocialMediaManager",
     "ContentPipeline", "PublishingTools", "SocialContentTools", "AffiliateTools",
     "WorkspaceTools", "NotionTools", "VercelTools", "MetaMarketingTools",
+    "CreativeEngine",
 ]

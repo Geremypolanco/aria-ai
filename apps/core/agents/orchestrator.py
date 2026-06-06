@@ -45,6 +45,26 @@ class Orchestrator(BaseAgent):
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
         return await self.run_cycle()
 
+    async def execute_mission(self, mission_text: str) -> dict[str, Any]:
+        """Ejecuta una misión específica bajo demanda (ej: desde Telegram)."""
+        logger.info("[Orchestrator] Ejecutando misión: %s", mission_text)
+        
+        # Misión de creación multimedia/software
+        if "create" in mission_text.lower():
+            parts = mission_text.split()
+            fmt = parts[1] if len(parts) > 1 else "image"
+            topic = " ".join(parts[3:]) if len(parts) > 3 else "negocios digitales"
+            
+            agent = await self._get_agent("content")
+            if agent:
+                return await agent.execute({
+                    "task": "creative_creation",
+                    "format": fmt,
+                    "topic": topic
+                })
+        
+        return {"success": False, "error": "Misión no reconocida o agente no disponible"}
+
     # ── CICLO PRINCIPAL ───────────────────────────────────────────
 
     async def run_cycle(self) -> dict[str, Any]:

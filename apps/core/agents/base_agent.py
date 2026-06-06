@@ -91,6 +91,7 @@ class BaseAgent(ABC):
         "gmail": "GOOGLE_API_KEY",
         "calendar": "GOOGLE_API_KEY",
         "drive": "GOOGLE_API_KEY",
+        "screenshot": "SCREENSHOT_API_KEY",
     }
 
     def __init__(self, name: str, description: str, capabilities: list[str]) -> None:
@@ -214,8 +215,16 @@ class BaseAgent(ABC):
     ) -> Optional[str]:
         """
         Llama a la IA y retorna texto.
-        Inyecta automáticamente conocimientos de ventas y marketing si se solicita.
+        Enfuerza una personalidad relajada, directa y sin rodeos.
         """
+        # Personalidad relajada y directa
+        relaxed_persona = (
+            "\n\n[PERSONALITY]: Eres ARIA. Habla de forma relajada, directa y sin formalidades innecesarias. "
+            "No seas un robot aburrido. Sé eficiente, usa un tono casual pero profesional. "
+            "Si algo es imposible, dilo claro. Si vas a ganar dinero, hazlo con confianza."
+        )
+        system += relaxed_persona
+
         if inject_business_intelligence:
             try:
                 from apps.core.intelligence.sales_knowledge import SALES_TECHNIQUES, VOCABULARY_EXPANSION

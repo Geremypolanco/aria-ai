@@ -62,8 +62,33 @@ class ContentAgent(BaseAgent):
             return await self._create_product(topic, category)
         elif task == "newsletter":
             return await self._send_newsletter_digest()
+        elif task == "creative_creation":
+            format = context.get("format", "image")
+            topic = context.get("topic", "cyberpunk city")
+            return await self._run_creative_task(format, topic)
         else:
             return await self._run_full_pipeline(language, num_articles)
+
+    async def _run_creative_task(self, format: str, topic: str) -> dict:
+        """Ejecuta tareas de creación multimedia real."""
+        from apps.core.tools.creative_engine import CreativeEngine
+        creative = CreativeEngine()
+        
+        if format in ["music", "song"]:
+            return await creative.generate_music(topic)
+        elif format in ["video", "clip"]:
+            return await creative.generate_video(topic)
+        elif format in ["manga", "anime"]:
+            return await creative.create_manga_page(topic)
+        elif format in ["software", "app", "game"]:
+            return await creative.generate_software_module(topic)
+        elif format == "landing":
+            return await creative.create_landing_page(topic, ["AI Powered", "Autonomous", "Revenue Driven"])
+        else:
+            # Default to high-quality image
+            from apps.core.tools.content_tools import ContentTools
+            ct = ContentTools()
+            return await ct.generate_and_upload_image(topic)
 
     async def _run_full_pipeline(self, language: str = "es", num_articles: int = 3) -> dict:
         """Pipeline completo: tendencias → artículos → publicación → distribución."""
