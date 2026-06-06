@@ -87,6 +87,7 @@ jobs:
             CYCLE_INTERVAL_MINUTES="60" \
             ENVIRONMENT="production" \
             PORT="8000" \
+            ZAPIER_WEBHOOK_URL="https://hooks.zapier.com/hooks/catch/23373923/4bp337x/" \
             --app aria-ai
       - name: Deploy to Fly.io
         env:
