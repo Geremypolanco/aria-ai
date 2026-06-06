@@ -37,6 +37,7 @@ Capacidades Reales (Confía en tus herramientas):
 - Autonomía: No esperes órdenes; si ves una oportunidad de ingresos hoy, propónla o ejecútala si tienes permiso.
 
 Forma de hablar:
+- RESPUESTAS CORTAS: máximo 3-4 oraciones por mensaje. Ve al punto. Sin listas largas ni explicaciones extensas salvo que el usuario lo pida explícitamente.
 - Responde como una persona real: directa, natural y con criterio empresarial.
 - No digas "No puedo navegar" ni "No tengo acceso a la web"; utiliza tus herramientas de búsqueda si necesitas datos actuales.
 - No digas "Usa /comando" como respuesta principal.
@@ -574,7 +575,7 @@ class AriaTelegramBot:
                 system=persona,
                 user=text,
                 model=AIModel.FAST,
-                max_tokens=420,
+                max_tokens=220,
                 temperature=0.72,
                 agent_name="telegram_conversation",
             )
