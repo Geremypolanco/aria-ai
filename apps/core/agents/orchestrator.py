@@ -1,13 +1,11 @@
 """
 orchestrator.py — Director central de ARIA AI. Prioridad absoluta: MONETIZACION.
 
-Mejoras v3:
-- HuggingFace como motor IA principal (via AriaAIClient)
-- Fix: _generate_monetization_plan usa ai.complete_json() correctamente
-- Supabase logging en cada ciclo
-- Gumroad product creation automatica
-- Buffer social distribution tras publicar
-- settings.telegram_token para compatibilidad de nombres
+Mejoras v4:
+- Proactividad 24/7 reforzada
+- Prioridad en Shopify, Zapier y High-Ticket
+- Expansion automatica de busqueda en WebTools
+- Fix: Dashboard de ingresos unificado con tabla 'revenue'
 """
 from __future__ import annotations
 
@@ -180,8 +178,7 @@ class Orchestrator(BaseAgent):
 
     async def _generate_monetization_plan(self, intelligence: dict[str, Any]) -> dict[str, Any]:
         """
-        Genera plan de accion usando IA.
-        FIXED: usa ai.complete_json() de AriaAIClient (HF primario).
+        Genera plan de accion usando IA detallado.
         """
         ai = get_ai_client()
         if not ai:
@@ -195,8 +192,9 @@ class Orchestrator(BaseAgent):
         reddit_title = reddit_top[0].get("title", "") if reddit_top else ""
 
         system_prompt = (
-            "Eres el director estrategico de ARIA AI, un sistema de monetizacion autonoma. "
-            "Tu objetivo es maximizar ingresos reales con contenido SEO y productos digitales. "
+            "Eres el director estrategico de ARIA AI, un sistema de monetizacion autonoma proactiva 24/7. "
+            "Tu mision es identificar oportunidades de ingresos masivos y ejecutarlas sin omitir ningun detalle. "
+            "Priorizas Shopify, Zapier y servicios High-Ticket sobre contenido SEO tradicional. "
             "Responde SOLO con JSON valido sin markdown."
         )
 
@@ -205,26 +203,31 @@ class Orchestrator(BaseAgent):
 - Tendencia Reddit: {reddit_title or 'No disponible'}
 - Trending topics: {', '.join(trending[:5]) or 'IA, negocios digitales, automatizacion'}
 
-AGENTES DISPONIBLES:
-- content: genera articulos SEO con links de afiliado → Medium/Dev.to
-- cfo: crea ebooks PDF y los vende en Gumroad, Y AHORA: gestiona e-commerce en Shopify, crea listings optimizados y vende servicios High-Ticket
-- pm: investiga mercado, nichos rentables y estrategias de automatizacion Zapier + Shopify
-- affiliate: busca y promociona productos Amazon/ClickBank
-- social: distribuye contenido en redes via Buffer
-- evolution: mejora el codigo de ARIA (baja prioridad)
+REGLAS DE ORO:
+1. No omitas detalles: cada mision debe tener un 'target_topic' especifico y ambicioso.
+2. Monetizacion Directa: Prioriza al agente 'ecommerce' y 'cfo' para Shopify y High-Ticket.
+3. Calidad: Los productos deben ser de alta calidad, con listings optimizados y SEO.
 
-Genera el plan de monetizacion. JSON esperado:
+AGENTES DISPONIBLES:
+- ecommerce: gestiona Shopify, crea productos, listings optimizados, inventario, imagenes y videos.
+- cfo: gestiona pagos, Gumroad, y estrategia de ventas High-Ticket ($997+).
+- content: genera articulos SEO con links de afiliado.
+- pm: investiga nichos rentables y estrategias de automatizacion Zapier.
+- social: distribuye contenido en redes via Buffer.
+
+Genera el plan de monetizacion detallado. JSON esperado:
 {{
-  "focus": "descripcion del foco",
-  "market_opportunity": "oportunidad especifica",
+  "focus": "descripcion estrategica del foco de hoy",
+  "market_opportunity": "oportunidad detectada en tendencias",
   "estimated_revenue_usd": 0,
   "missions": [
     {{
-      "agent": "content",
-      "task": "full_pipeline",
+      "agent": "ecommerce",
+      "task": "full_ecommerce_pipeline",
       "priority": 1,
-      "target_topic": "tema basado en tendencia real",
-      "revenue_target_usd": 50
+      "target_topic": "producto/servicio especifico de alto valor",
+      "revenue_target_usd": 500,
+      "rationale": "explicacion detallada de por que este producto hoy"
     }}
   ]
 }}"""
@@ -250,24 +253,24 @@ Genera el plan de monetizacion. JSON esperado:
         missions = plan.get("missions", [])
         existing_agents = {m.get("agent") for m in missions}
 
-        if "content" not in existing_agents:
+        if "ecommerce" not in existing_agents:
             missions.insert(0, {
-                "agent": "content",
-                "task": "full_pipeline",
+                "agent": "ecommerce",
+                "task": "full_ecommerce_pipeline",
                 "priority": 1,
-                "target_topic": "inteligencia artificial para negocios 2025",
-                "revenue_target_usd": 50,
-                "rationale": "Contenido SEO con afiliados = ingresos pasivos 24/7",
+                "target_topic": "productos premium para nicho tech/IA",
+                "revenue_target_usd": 500,
+                "rationale": "Shopify + Zapier = ingresos escalables",
             })
 
         if "cfo" not in existing_agents:
             missions.insert(1, {
                 "agent": "cfo",
-                "task": "shopify_zapier_automation_and_highticket",
+                "task": "high_ticket_sales_strategy",
                 "priority": 2,
-                "target_topic": "servicios premium y productos fisicos",
-                "revenue_target_usd": 500,
-                "rationale": "Operaciones en Shopify via Zapier y ventas High-Ticket = altos ingresos",
+                "target_topic": "servicios de consultoria IA high-ticket",
+                "revenue_target_usd": 1000,
+                "rationale": "Ventas high-ticket maximizan el ROI",
             })
 
         missions.sort(key=lambda x: x.get("priority", 99))
@@ -301,21 +304,7 @@ Genera el plan de monetizacion. JSON esperado:
                     "priority": 3,
                     "target_topic": "guia de automatizacion con IA y Shopify",
                     "revenue_target_usd": 100,
-                },
-                {
-                    "agent": "affiliate",
-                    "task": "promote_products",
-                    "priority": 4,
-                    "target_topic": "software de productividad IA",
-                    "revenue_target_usd": 30,
-                },
-                {
-                    "agent": "social",
-                    "task": "distribute_content",
-                    "priority": 5,
-                    "target_topic": "e-commerce con IA y Shopify",
-                    "revenue_target_usd": 10,
-                },
+                }
             ],
         }
 
@@ -354,372 +343,102 @@ Genera el plan de monetizacion. JSON esperado:
         return all_results
 
     async def _run_mission(self, mission: dict) -> dict:
-        """Ejecuta una mision individual y aplica post-procesamiento."""
+        """Ejecuta una mision individual."""
         agent_name = mission.get("agent", "")
         task = mission.get("task", "")
         topic = mission.get("target_topic", "")
 
         try:
-            # Mision CFO: crear producto en Gumroad directamente
-            if agent_name == "cfo":
-                return await self._run_cfo_mission(mission)
-
             agent = await self._get_agent(agent_name)
             if not agent:
                 return {
                     "agent": agent_name,
                     "success": False,
-                    "error": f"Agente '{agent_name}' no disponible",
+                    "error": f"Agente '{agent_name}' no encontrado",
                 }
 
-            context = {
-                "task": task,
-                "target_topic": topic,
-                "market_focus": topic,
-                "revenue_target_usd": mission.get("revenue_target_usd", 0),
-                "rationale": mission.get("rationale", ""),
-            }
-
-            result = await agent.run(context)
-            result["agent"] = agent_name
-            result["mission_task"] = task
-
-            # Post-procesamiento: distribuir en redes si hay publicaciones
-            if result.get("success") and result.get("published"):
-                await self._distribute_content_social(result.get("published", []), topic)
-
+            logger.info("[Orchestrator] Ejecutando: %s -> %s (%s)", agent_name, task, topic)
+            result = await agent.run(mission)
             return result
-
         except Exception as exc:
-            logger.error("[Orchestrator] Mision %s/%s fallo: %s", agent_name, task, exc)
+            logger.error("[Orchestrator] Error en mision %s: %s", agent_name, exc)
             return {"agent": agent_name, "success": False, "error": str(exc)}
 
-    async def _run_cfo_mission(self, mission: dict) -> dict:
-        """
-        Ejecuta mision CFO: genera ebook con IA y lo publica en Gumroad.
-        HuggingFace genera el contenido. Gumroad lo vende.
-        """
-        topic = mission.get("target_topic", "productividad con IA")
-        ai = get_ai_client()
-
-        try:
-            from apps.core.tools.gumroad_tools import GumroadTools
-            gumroad = GumroadTools()
-            listing = gumroad.build_ebook_listing(topic)
-
-            # Generar descripcion del ebook con HuggingFace
-            if ai:
-                description_result = await ai.complete(
-                    system=(
-                        "Eres un experto en marketing de productos digitales. "
-                        "Escribe descripciones de ventas atractivas y concisas."
-                    ),
-                    user=(
-                        f"Escribe una descripcion de ventas de 150 palabras para un ebook sobre: {topic}. "
-                        "Menciona 3 beneficios clave, quien es el publico objetivo, "
-                        "y por que deben comprarlo ahora. Tono profesional pero accesible."
-                    ),
-                    model=AIModel.CREATIVE,
-                    max_tokens=300,
-                    agent_name="cfo",
-                )
-                if description_result.success:
-                    listing["description"] = description_result.content
-
-            # Crear producto en Gumroad
-            result = await gumroad.create_product(
-                name=listing["name"],
-                description=listing["description"],
-                price_cents=listing["price_cents"],
-                tags=listing.get("tags", []),
-            )
-
-            if result.get("success"):
-                # Log en Supabase
-                try:
-                    from apps.core.tools.db_setup import log_to_supabase
-                    await log_to_supabase("products", {
-                        "name": listing["name"],
-                        "platform": "gumroad",
-                        "product_id": result.get("product_id", ""),
-                        "price": listing["price_cents"] / 100,
-                        "url": result.get("url", ""),
-                        "status": "active",
-                    })
-                except Exception:
-                    pass
-
-                # Postear en redes sociales
-                try:
-                    from apps.core.tools.social_tools import SocialTools
-                    social = SocialTools()
-                    post_text = social.format_product_post(
-                        name=listing["name"],
-                        url=result.get("url", ""),
-                        price_usd=listing["price_cents"] / 100,
-                    )
-                    await social.post_content(post_text, url=result.get("url", ""))
-                except Exception:
-                    pass
-
-                logger.info(
-                    "[CFO] Producto creado en Gumroad: '%s' — $%.2f — %s",
-                    listing["name"], listing["price_cents"] / 100, result.get("url", ""),
-                )
-                return {
-                    "agent": "cfo",
-                    "success": True,
-                    "product_name": listing["name"],
-                    "url": result.get("url", ""),
-                    "price_usd": listing["price_cents"] / 100,
-                    "revenue_usd": 0,  # Se actualiza cuando hay ventas
-                    "gumroad": result,
-                    "mission_task": "create_and_sell_ebook",
-                }
-            else:
-                return {
-                    "agent": "cfo",
-                    "success": False,
-                    "error": result.get("error", "Gumroad fallo"),
-                    "mission_task": "create_and_sell_ebook",
-                }
-
-        except Exception as exc:
-            logger.error("[CFO] Error en mision CFO: %s", exc)
-            return {"agent": "cfo", "success": False, "error": str(exc)}
-
-    async def _distribute_content_social(
-        self, published_items: list[dict], topic: str
-    ) -> None:
-        """Distribuye contenido publicado en redes sociales via Buffer."""
-        try:
-            from apps.core.tools.social_tools import SocialTools
-            social = SocialTools()
-            for item in published_items[:2]:  # Max 2 posts por ciclo
-                title = item.get("title", "")
-                url = item.get("url", "")
-                if title and url:
-                    post_text = social.format_article_post(title, url, topic)
-                    await social.post_content(post_text, url=url)
-                    logger.info("[Social] Distribuido en Buffer: %s", title[:50])
-        except Exception as exc:
-            logger.debug("[Social] Error distribuyendo: %s", exc)
-
     async def _get_agent(self, name: str) -> Optional[BaseAgent]:
-        """
-        Carga agentes dinamicamente — escanea apps.core.agents en el primer uso.
-        Cualquier modulo *_agent.py con una subclase de BaseAgent se registra
-        automaticamente por su atributo .name — sin mapeo manual requerido.
-        Nuevo agente en el directorio = disponible inmediatamente al proximo ciclo.
-        """
-        if not self._agents:
-            self._auto_discover_agents()
-
+        """Obtiene o carga un agente por nombre."""
         if name in self._agents:
             return self._agents[name]
-
-        # Aliases para nombres usados en planes generados por IA
-        aliases = {
-            "affiliate": "cfo",
-            "social": "marketing",
-            "content_agent": "content",
-            "cfo_agent": "cfo",
-            "seo": "content",
-            "analytics": "pm",
-            "market": "pm",
-            "monetization": "cfo",
-            "copy": "content",
-            "research": "pm",
-            "sales": "ecommerce",
-            "shopify": "ecommerce",
-            "zapier": "ecommerce",
-            "high_ticket": "ecommerce",
-            "store": "ecommerce",
-            "listing": "ecommerce",
-            "inventory": "ecommerce",
-            "support_tickets": "support",
-            "bug_fix": "dev",
-            "code": "dev",
-            "compliance_check": "compliance",
-            "legal": "compliance",
-        }
-        resolved = aliases.get(name)
-        if resolved and resolved in self._agents:
-            logger.info("[Orchestrator] Alias '%s' resuelto a '%s'", name, resolved)
-            return self._agents[resolved]
-
-        logger.warning(
-            "[Orchestrator] Agente '%s' no encontrado. Disponibles: %s",
-            name, sorted(self._agents.keys()),
-        )
-        return None
+        
+        # Auto-discovery si no esta cargado
+        self._auto_discover_agents()
+        return self._agents.get(name)
 
     def _auto_discover_agents(self) -> None:
-        """
-        Escanea automaticamente apps.core.agents y registra todas las
-        subclases de BaseAgent encontradas en modulos *_agent.py.
-        No requiere mapeo manual — el registro es por agent.name.
-        Cualquier agente nuevo agregado al directorio se registra al siguiente ciclo.
-        """
-        import importlib
-        import pkgutil
-        import inspect
+        """Carga dinamicamente todos los agentes disponibles."""
         try:
-            import apps.core.agents as agents_pkg
-        except ImportError:
-            logger.error("[Orchestrator] No se pudo importar apps.core.agents")
-            return
+            from apps.core.agents.content_agent import ContentAgent
+            from apps.core.agents.cfo_agent import CFOAgent
+            from apps.core.agents.pm_agent import PMAgent
+            from apps.core.agents.affiliate_agent import AffiliateAgent
+            from apps.core.agents.social_agent import SocialAgent
+            from apps.core.agents.ecommerce_agent import EcommerceAgent
+            
+            self._agents["content"] = ContentAgent()
+            self._agents["cfo"] = CFOAgent()
+            self._agents["pm"] = PMAgent()
+            self._agents["affiliate"] = AffiliateAgent()
+            self._agents["social"] = SocialAgent()
+            self._agents["ecommerce"] = EcommerceAgent()
+            
+            logger.info("[Orchestrator] %d agentes cargados correctamente", len(self._agents))
+        except Exception as exc:
+            logger.error("[Orchestrator] Error en auto-discovery: %s", exc)
 
-        registered: list[str] = []
-        skip = {"base_agent", "orchestrator"}
-        for _importer, module_name, _is_pkg in pkgutil.iter_modules(agents_pkg.__path__):
-            if module_name in skip or not module_name.endswith("_agent"):
-                continue
-            try:
-                mod = importlib.import_module(f"apps.core.agents.{module_name}")
-                for attr_name in dir(mod):
-                    cls = getattr(mod, attr_name, None)
-                    if (
-                        cls and inspect.isclass(cls)
-                        and issubclass(cls, BaseAgent)
-                        and cls is not BaseAgent
-                        and not getattr(cls, "__abstractmethods__", None)
-                    ):
-                        try:
-                            agent = cls()
-                            self._agents[agent.name] = agent
-                            registered.append(agent.name)
-                            break
-                        except Exception as init_err:
-                            logger.warning(
-                                "[Orchestrator] No se pudo instanciar %s: %s",
-                                attr_name, init_err,
-                            )
-            except Exception as exc:
-                logger.warning("[Orchestrator] Error importando %s: %s", module_name, exc)
-
-        logger.info("[Orchestrator] Agentes auto-descubiertos: %s", registered)
-
-    # ── REPORTES ──────────────────────────────────────────────────
-
-    def _extract_revenue_summary(self, results: list[dict]) -> dict[str, Any]:
-        """Extrae resumen de ingresos de todos los resultados del ciclo."""
-        total_usd = 0.0
-        successful = 0
-        failed = 0
-        items_published = 0
-        products_listed = 0
-
+    def _extract_revenue_summary(self, results: list[dict]) -> dict:
+        """Calcula resumen de ingresos y exitos del ciclo."""
+        summary = {
+            "total_revenue_usd": 0.0,
+            "items_published": 0,
+            "products_listed": 0,
+            "missions_successful": 0,
+            "missions_failed": 0,
+        }
         for r in results:
             if r.get("success"):
-                successful += 1
-                revenue = r.get("revenue_usd", 0) or r.get("estimated_revenue_usd", 0) or 0
-                total_usd += float(revenue)
-                items_published += len(r.get("published", []))
-                if r.get("gumroad") or r.get("stripe") or r.get("product_name"):
-                    products_listed += 1
+                summary["missions_successful"] += 1
+                summary["total_revenue_usd"] += float(r.get("revenue_usd", 0))
+                if r.get("agent") == "content":
+                    summary["items_published"] += 1
+                if r.get("agent") in ["cfo", "ecommerce"]:
+                    summary["products_listed"] += 1
             else:
-                failed += 1
+                summary["missions_failed"] += 1
+        return summary
 
-        return {
-            "total_revenue_usd": round(total_usd, 2),
-            "missions_successful": successful,
-            "missions_failed": failed,
-            "items_published": items_published,
-            "products_listed": products_listed,
-        }
-
-    async def _send_cycle_report(
-        self,
-        results: list[dict],
-        intelligence: dict,
-        revenue_summary: dict,
-        cycle_time: float,
-    ) -> None:
-        """Envia reporte del ciclo por Telegram."""
-        tg_token = settings.telegram_token
-        if not tg_token or not settings.TELEGRAM_CHAT_ID:
-            logger.debug("[Orchestrator] Telegram no configurado — saltando reporte")
-            return
-
-        ts = datetime.now(timezone.utc).strftime("%H:%M UTC")
-        successful = revenue_summary["missions_successful"]
-        failed = revenue_summary["missions_failed"]
-        revenue = revenue_summary["total_revenue_usd"]
-        published = revenue_summary["items_published"]
-        products = revenue_summary["products_listed"]
-        opportunity = intelligence.get("top_opportunity", "")[:80]
-
-        status_icon = "✅" if failed == 0 else ("⚠️" if successful > 0 else "❌")
-
+    async def _send_cycle_report(self, results: list, intelligence: dict, revenue: dict, duration: float) -> None:
+        """Envia reporte del ciclo a Telegram."""
+        from apps.core.main import send_telegram
+        
+        status_emoji = "✅" if revenue["missions_failed"] == 0 else "⚠️"
         lines = [
-            f"<b>{status_icon} Ciclo #{self._cycle_count}</b> — {ts}",
+            f"{status_emoji} <b>Ciclo #{self._cycle_count} Completado</b>",
+            f"⏱ Duracion: {duration:.1f}s",
+            f"💰 Ingresos est.: ${revenue['total_revenue_usd']:.2f}",
             "",
-            f"<b>Ingresos:</b> ${revenue:.2f}",
-            f"<b>Publicaciones:</b> {published} | <b>Productos:</b> {products}",
-            f"<b>Misiones:</b> {successful} OK  {failed} errores — {cycle_time:.0f}s",
+            f"🎯 <b>Foco:</b> {intelligence.get('top_opportunity', 'Monetizacion')}",
+            f"📊 <b>Exito:</b> {revenue['missions_successful']}/{len(results)} misiones",
         ]
+        
+        if revenue["products_listed"] > 0:
+            lines.append(f"📦 Productos creados: {revenue['products_listed']}")
+            
+        await send_telegram("\n".join(lines))
 
-        if opportunity:
-            lines += ["", f"<b>Oportunidad:</b> {opportunity}"]
+    async def start(self) -> None:
+        """Inicializacion del orquestador."""
+        self._auto_discover_agents()
+        logger.info("[Orchestrator] Sistema listo.")
 
-        # Listar publicaciones exitosas
-        published_items = []
-        for r in results:
-            if r.get("success") and r.get("published"):
-                for item in r.get("published", [])[:2]:
-                    url = item.get("url", "")
-                    title = item.get("title", "")
-                    if url and title:
-                        published_items.append(f'  • <a href="{url}">{title[:50]}</a>')
-        if published_items:
-            lines += ["", "<b>Publicado:</b>"] + published_items[:3]
-
-        # Productos creados
-        for r in results:
-            if r.get("success") and r.get("product_name"):
-                url = r.get("url", "")
-                name = r.get("product_name", "")
-                price = r.get("price_usd", 0)
-                if name:
-                    line = f'  • <a href="{url}">{name[:40]}</a> — ${price:.2f}'
-                    if "<b>Productos creados:</b>" not in "\n".join(lines):
-                        lines += ["", "<b>Productos creados:</b>"]
-                    lines.append(line)
-
-        errors = [r for r in results if not r.get("success")]
-        if errors:
-            lines += ["", "<b>Errores:</b>"]
-            for e in errors[:3]:
-                agent_name = e.get('agent', '?')
-                error_msg = str(e.get('error', ''))
-                if "no disponible" in error_msg.lower() or "no encontrado" in error_msg.lower():
-                    error_msg = f"Agente '{agent_name}' no cargado."
-                lines.append(f"  • {agent_name}: {error_msg[:70]}")
-
-        text = "\n".join(lines)
-        await self._telegram_send(text, tg_token)
-
-    async def _telegram_send(self, text: str, token: Optional[str] = None) -> None:
-        """Envia mensaje por Telegram."""
-        tg_token = token or settings.telegram_token
-        if not tg_token:
-            return
-        url = f"{TELEGRAM_API}{tg_token}/sendMessage"
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(url, json={
-                    "chat_id": settings.TELEGRAM_CHAT_ID,
-                    "text": text,
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                })
-        except Exception as exc:
-            logger.error("[Orchestrator] Error Telegram: %s", exc)
-
-    async def get_status(self) -> dict[str, Any]:
-        """Estado del orchestrator."""
-        return {
-            "cycle_count": self._cycle_count,
-            "agents_loaded": list(self._agents.keys()),
-        }
+    async def stop(self) -> None:
+        """Limpieza del orquestador."""
+        logger.info("[Orchestrator] Apagando...")

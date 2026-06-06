@@ -356,32 +356,43 @@ class AriaTelegramBot:
             from apps.core.memory.supabase_client import get_supabase
             sb = get_supabase()
             if not sb:
-                await self._send(chat_id, "Supabase no configurado — no hay tracking de ingresos.")
+                await self._send(chat_id, "⚠️ Supabase no configurado — no hay tracking de ingresos.")
                 return
+            
+            # Intentamos leer de la tabla 'revenue' (esquema principal)
             result = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: sb.table("revenue_events")
-                .select("amount_usd, source, created_at")
+                lambda: sb.table("revenue")
+                .select("amount, platform, created_at")
                 .order("created_at", desc=True)
-                .limit(20)
+                .limit(50)
                 .execute(),
             )
+            
             events = (result.data or []) if result else []
             if not events:
-                await self._send(chat_id, "Sin ingresos registrados todavía. Puedo ayudarte a decidir el primer ciclo de monetización.")
+                await self._send(chat_id, "💰 Sin ingresos registrados todavía. ¡Vamos a crear el primer producto!")
                 return
-            total = sum(e.get("amount_usd", 0) for e in events)
-            by_source: dict[str, float] = {}
+                
+            total = sum(float(e.get("amount", 0)) for e in events)
+            by_platform: dict[str, float] = {}
             for e in events:
-                src = e.get("source", "unknown")
-                by_source[src] = by_source.get(src, 0) + e.get("amount_usd", 0)
-            lines = [f"<b>Ingresos totales: ${total:.2f}</b>\n"]
-            for src, amt in sorted(by_source.items(), key=lambda x: x[1], reverse=True):
-                lines.append(f"{src}: ${amt:.2f}")
-            lines.append(f"\n{len(events)} transacciones registradas")
+                plat = e.get("platform", "otros")
+                by_platform[plat] = by_platform.get(plat, 0.0) + float(e.get("amount", 0))
+                
+            lines = [f"📊 <b>Dashboard de Ingresos (Total: ${total:.2f})</b>\n"]
+            for plat, amt in sorted(by_platform.items(), key=lambda x: x[1], reverse=True):
+                lines.append(f"• {plat.capitalize()}: <b>${amt:.2f}</b>")
+            
+            lines.append(f"\n<i>{len(events)} transacciones procesadas correctamente.</i>")
             await self._send(chat_id, "\n".join(lines))
+            
         except Exception as exc:
-            await self._send(chat_id, f"Error leyendo ingresos: {exc}")
+            error_msg = str(exc)
+            if "Invalid API key" in error_msg or "401" in error_msg:
+                await self._send(chat_id, "❌ <b>Error de Autenticación</b>\n\nLa SUPABASE_KEY configurada no es válida. Por favor, revisa los secrets en Fly.io o .env.")
+            else:
+                await self._send(chat_id, f"⚠️ <b>Error leyendo ingresos:</b> {error_msg}")
 
     async def _cmd_logs(self, chat_id: str, args: str) -> None:
         try:

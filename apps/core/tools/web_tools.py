@@ -51,12 +51,18 @@ class WebTools:
 
     async def search_web(self, query: str, num_results: int = 10) -> dict[str, Any]:
         """
-        Busqueda web real. Intenta SerpAPI primero (mejor calidad),
-        luego DuckDuckGo (gratuito, sin key).
+        Busqueda web real con expansion automatica de query para negocios.
+        Intenta SerpAPI primero (mejor calidad), luego DuckDuckGo.
         """
+        # Expansion automatica si la query es muy corta o vaga
+        optimized_query = query
+        if len(query.split()) < 4 and any(w in query.lower() for w in ["estrategia", "vender", "negocio", "ganar", "shopify", "producto"]):
+            optimized_query = f"{query} best practices 2025 guide monetization e-commerce high ticket"
+            logger.info("[WebTools] Query optimizada: %s -> %s", query, optimized_query)
+
         # 1. SerpAPI (si esta configurado)
         if getattr(settings, "SERP_API_KEY", None):
-            result = await self._search_serpapi(query, num_results)
+            result = await self._search_serpapi(optimized_query, num_results)
             if result["success"]:
                 return result
 
