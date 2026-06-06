@@ -101,6 +101,31 @@ class AriaTelegramBot:
         self._approval_counter = 0
         self._last_update_id: Optional[int] = None
 
+    # ── WEBHOOK ──────────────────────────────────────────────────
+
+    async def set_webhook(self, url: str) -> bool:
+        """Registra el webhook de Telegram."""
+        if not settings.telegram_token:
+            return False
+        api_url = f"{TELEGRAM_API}{settings.telegram_token}/setWebhook"
+        try:
+            res = await self._http.post(api_url, json={"url": url})
+            return res.status_code == 200 and res.json().get("ok")
+        except Exception as exc:
+            logger.error("[TelegramBot] Error registrando webhook: %s", exc)
+            return False
+
+    async def get_webhook_info(self) -> dict:
+        """Obtiene información del webhook actual."""
+        if not settings.telegram_token:
+            return {"ok": False, "error": "Token no configurado"}
+        api_url = f"{TELEGRAM_API}{settings.telegram_token}/getWebhookInfo"
+        try:
+            res = await self._http.get(api_url)
+            return res.json()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     # ── CICLO PRINCIPAL ──────────────────────────────────────────
 
     async def start_polling(self) -> None:
@@ -719,26 +744,29 @@ def get_bot() -> AriaTelegramBot:
         _bot_instance = AriaTelegramBot()
     return _bot_instance
 
-151	    async def set_webhook(self, url: str) -> bool:
-152	        """Registra el webhook de Telegram."""
-153	        if not settings.telegram_token:
-154	            return False
-155	        api_url = f"{TELEGRAM_API}{settings.telegram_token}/setWebhook"
-156	        try:
-157	            res = await self._http.post(api_url, json={"url": url})
-158	            return res.status_code == 200 and res.json().get("ok")
-159	        except Exception as exc:
-160	            logger.error("[TelegramBot] Error registrando webhook: %s", exc)
-161	            return False
-162	
-163	    async def get_webhook_info(self) -> dict:
-164	        """Obtiene información del webhook actual."""
-165	        if not settings.telegram_token:
-166	            return {"ok": False, "error": "Token no configurado"}
-167	        api_url = f"{TELEGRAM_API}{settings.telegram_token}/getWebhookInfo"
-168	        try:
-169	            res = await self._http.get(api_url)
-170	            return res.json()
-171	        except Exception as exc:
-172	            return {"ok": False, "error": str(exc)}
-173	
+class AriaTelegramBot:
+    # ... (existing methods)
+
+
+        """Registra el webhook de Telegram."""
+        if not settings.telegram_token:
+            return False
+        api_url = f"{TELEGRAM_API}{settings.telegram_token}/setWebhook"
+        try:
+            res = await self._http.post(api_url, json={"url": url})
+            return res.status_code == 200 and res.json().get("ok")
+        except Exception as exc:
+            logger.error("[TelegramBot] Error registrando webhook: %s", exc)
+            return False
+
+    async def get_webhook_info(self) -> dict:
+        """Obtiene información del webhook actual."""
+        if not settings.telegram_token:
+            return {"ok": False, "error": "Token no configurado"}
+        api_url = f"{TELEGRAM_API}{settings.telegram_token}/getWebhookInfo"
+        try:
+            res = await self._http.get(api_url)
+            return res.json()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
