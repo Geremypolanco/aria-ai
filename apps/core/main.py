@@ -243,7 +243,7 @@ async def zapier_callback(request: Request) -> JSONResponse:
             await cache.set(
                 CALLBACK_KEY_PREFIX + request_id,
                 _json.dumps(result_data, ensure_ascii=False),
-                ttl=120,
+                ttl_seconds=120,
             )
             logger.info("[Zapier] Callback recibido para request_id=%s", request_id)
 
