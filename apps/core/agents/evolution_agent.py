@@ -457,7 +457,7 @@ class EvolutionAgent(BaseAgent):
                     "hf_task": matched_task or "auto",
                     "models_found": result.get("models", result.get("hub_models", []))[:2],
                     "can_use_now": True,
-                    "how_to_use": f"from apps.core.tools.hf_discovery import get_hf; hf = get_hf(); await hf.discover_and_run('{matched_task or "text-generation"}',...)",
+                    "how_to_use": "from apps.core.tools.hf_discovery import get_hf; hf = get_hf(); await hf.discover_and_run(task='" + (matched_task or "text-generation") + "',...)",
                 })
                 logger.info("[EvolutionAgent] HF tool para '%s': %s", gap, matched_task)
             else:
