@@ -596,8 +596,17 @@ class AriaTelegramBot:
         web_context = await self._get_web_context_if_needed(text)
         ai = self._get_ai()
 
+        # Contexto aprendido — enriquece respuestas con conocimiento acumulado
+        learned_ctx = ""
+        try:
+            from apps.core.intelligence.continuous_learning import get_learning_engine
+            learned_ctx = await get_learning_engine().get_learned_context(text[:120])
+        except Exception:
+            pass
+
         owner = getattr(settings, "OWNER_NAME", None) or sender or "jefe"
-        persona = ARIA_PERSONA.format(owner=owner, context=context + web_context, history=history or "Sin historial reciente.")
+        enriched_context = context + web_context + ("\n" + learned_ctx if learned_ctx else "")
+        persona = ARIA_PERSONA.format(owner=owner, context=enriched_context, history=history or "Sin historial reciente.")
 
         if not ai:
             reply = await self._fallback_conversation(text, context)
@@ -624,11 +633,24 @@ class AriaTelegramBot:
                 temperature=0.72,
                 agent_name="telegram_conversation",
             )
+            _t0 = __import__('time').time()
             reply = response.content.strip() if response.success and response.content else ""
             if not reply:
                 reply = await self._fallback_conversation(text, context)
             await self._send(chat_id, self._sanitize_telegram_html(reply))
             await self._save_to_history(chat_id, text, reply)
+            # Grabar interacción para motor de aprendizaje continuo
+            try:
+                from apps.core.intelligence.continuous_learning import get_learning_engine
+                await get_learning_engine().record(
+                    source="telegram", agent="telegram_conversation",
+                    user_text=text, aria_text=reply,
+                    model_used=getattr(response, "model", "unknown"),
+                    latency_ms=int((__import__('time').time() - _t0) * 1000),
+                    success=bool(reply), tokens=getattr(response, "tokens_used", 0),
+                )
+            except Exception:
+                pass
         except Exception as exc:
             logger.error("[TelegramBot] AI error: %s", exc)
             reply = await self._fallback_conversation(text, context)
