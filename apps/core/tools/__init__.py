@@ -25,6 +25,14 @@ from apps.core.tools.saas_tools import NotionTools, VercelTools
 from apps.core.tools.marketing_tools import MetaMarketingTools
 from apps.core.tools.creative_engine import CreativeEngine
 from apps.core.tools.zapier_connector import ZapierConnector
+from apps.core.tools.knowledge_suite import (
+    KnowledgeSuite, get_knowledge_suite,
+    WebSearchEngine, WikipediaEngine, WebContentExtractor,
+    ArxivEngine, PubMedEngine, SemanticScholarEngine,
+    FinanceEngine, CryptoEngine, WolframEngine,
+    NewsEngine, WeatherEngine, CurrencyEngine,
+    RedditEngine, VectorMemoryEngine, AlphaVantageEngine,
+)
 
 __all__ = [
     "AIModel", "AIProvider", "AIResponse", "get_ai_client",
@@ -40,4 +48,10 @@ __all__ = [
     "WorkspaceTools", "NotionTools", "VercelTools",     "MetaMarketingTools",
     "CreativeEngine",
     "ZapierConnector",
+    "KnowledgeSuite", "get_knowledge_suite",
+    "WebSearchEngine", "WikipediaEngine", "WebContentExtractor",
+    "ArxivEngine", "PubMedEngine", "SemanticScholarEngine",
+    "FinanceEngine", "CryptoEngine", "WolframEngine",
+    "NewsEngine", "WeatherEngine", "CurrencyEngine",
+    "RedditEngine", "VectorMemoryEngine", "AlphaVantageEngine",
 ]
