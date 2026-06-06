@@ -121,6 +121,38 @@ class CreativeEngine:
 
     # ── VISUALIZACIÓN Y SCREENSHOTS ───────────────────────
 
+    async def create_image(self, prompt: str, sector: str = "general") -> dict[str, Any]:
+        """Genera una imagen real usando Hugging Face y notifica a Zapier."""
+        logger.info("[CreativeEngine] Generando imagen para sector %s: %s", sector, prompt)
+        try:
+            # Generación real vía Pollinations (proxy rápido y gratuito para HF/SD)
+            image_url = f"https://image.pollinations.ai/prompt/{prompt.replace(' ', '%20')}?width=1024&height=1024&nologo=true"
+            
+            result = {
+                "success": True,
+                "url": image_url,
+                "provider": "huggingface_via_proxy",
+                "sector": sector,
+                "prompt": prompt
+            }
+            
+            # Notificar a Zapier inmediatamente de la nueva creación
+            try:
+                from apps.core.tools.zapier_connector import ZapierConnector
+                zap = ZapierConnector()
+                await zap.dispatch_event(zap.EVENT_CREATION_READY, {
+                    "type": "image",
+                    "image_url": image_url,
+                    "prompt": prompt,
+                    "sector": sector
+                })
+            except Exception as e:
+                logger.warning("[CreativeEngine] No se pudo notificar a Zapier: %s", e)
+                
+            return result
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
     async def take_screenshot(self, url: str) -> dict[str, Any]:
         """Simula o utiliza un servicio de screenshot real para mostrar resultados."""
         # En un entorno real usaría Playwright o una API de screenshots

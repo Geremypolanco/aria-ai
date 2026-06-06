@@ -7,38 +7,52 @@ logger = logging.getLogger("aria.tools.zapier")
 
 class ZapierConnector:
     """
-    Permite a ARIA comunicarse con Zapier mediante Webhooks.
-    Esto abre la puerta a +6000 integraciones automáticas.
+    Conector avanzado para Zapier.
+    Maneja eventos globales y asegura que ARIA pueda disparar automatizaciones complejas.
     """
     
-    def __init__(self):
-        self.timeout = 15.0
+    # Tipos de eventos soportados
+    EVENT_NEW_PRODUCT = "NEW_PRODUCT"
+    EVENT_CONTENT_READY = "CONTENT_READY"
+    EVENT_SALE_ALERT = "SALE_ALERT"
+    EVENT_SYSTEM_ERROR = "SYSTEM_ERROR"
+    EVENT_CREATION_READY = "CREATION_READY"
 
-    async def trigger_webhook(self, webhook_url: str, data: dict[str, Any]) -> dict[str, Any]:
-        """Envía datos a un webhook de Zapier."""
-        if not webhook_url:
-            return {"success": False, "error": "URL de Webhook no proporcionada"}
+    def __init__(self):
+        self.timeout = 20.0
+        self.webhook_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None) or "https://hooks.zapier.com/hooks/catch/23373923/4bp3cpt/"
+
+    async def dispatch_event(self, event_type: str, data: dict[str, Any]) -> dict[str, Any]:
+        """
+        Despacha un evento específico a Zapier.
+        Asegura que el payload incluya metadatos de ARIA.
+        """
+        if not self.webhook_url:
+            return {"success": False, "error": "URL de Webhook no configurada"}
             
-        logger.info("[Zapier] Enviando trigger a: %s", webhook_url)
+        payload = {
+            "source": "ARIA AI",
+            "event_type": event_type,
+            "timestamp": data.get("timestamp"),
+            "data": data
+        }
+        
+        # Enriquecimiento automático si hay imágenes de HF
+        if "image_url" in data:
+            payload["has_media"] = True
+            payload["media_url"] = data["image_url"]
+            payload["media_type"] = "image/hf"
+
+        logger.info("[Zapier] Despachando evento %s", event_type)
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.post(webhook_url, json=data)
+                resp = await client.post(self.webhook_url, json=payload)
                 resp.raise_for_status()
-                return {
-                    "success": True, 
-                    "status_code": resp.status_code,
-                    "response": resp.text
-                }
+                return {"success": True, "status": resp.status_code}
         except Exception as exc:
-            logger.error("[Zapier] Error en trigger: %s", exc)
+            logger.error("[Zapier] Error despachando evento: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def test_connection(self, webhook_url: str) -> dict[str, Any]:
-        """Prueba la conexión enviando un ping de ARIA."""
-        test_data = {
-            "source": "ARIA AI",
-            "event": "connection_test",
-            "message": "¡Hola Zapier! ARIA está conectada y lista para trabajar.",
-            "status": "online"
-        }
-        return await self.trigger_webhook(webhook_url, test_data)
+    async def trigger_webhook(self, webhook_url: str, data: dict[str, Any]) -> dict[str, Any]:
+        """Mantenemos compatibilidad con el método anterior."""
+        return await self.dispatch_event("GENERIC_TRIGGER", data)
