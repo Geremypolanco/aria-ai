@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
-from apps.core.config import settings
+from apps.core.config_pkg import settings
 from apps.core.memory.redis_client import get_cache
 from apps.core.memory.supabase_client import get_db
 from apps.core.tools.ai_client import AIModel, get_ai_client

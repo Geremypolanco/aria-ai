@@ -24,7 +24,7 @@ from typing import Any, Optional
 
 import httpx
 
-from apps.core.config import settings
+from apps.core.config_pkg import settings
 
 logger = logging.getLogger("aria.telegram_bot")
 
@@ -718,3 +718,27 @@ def get_bot() -> AriaTelegramBot:
     if _bot_instance is None:
         _bot_instance = AriaTelegramBot()
     return _bot_instance
+
+151	    async def set_webhook(self, url: str) -> bool:
+152	        """Registra el webhook de Telegram."""
+153	        if not settings.telegram_token:
+154	            return False
+155	        api_url = f"{TELEGRAM_API}{settings.telegram_token}/setWebhook"
+156	        try:
+157	            res = await self._http.post(api_url, json={"url": url})
+158	            return res.status_code == 200 and res.json().get("ok")
+159	        except Exception as exc:
+160	            logger.error("[TelegramBot] Error registrando webhook: %s", exc)
+161	            return False
+162	
+163	    async def get_webhook_info(self) -> dict:
+164	        """Obtiene información del webhook actual."""
+165	        if not settings.telegram_token:
+166	            return {"ok": False, "error": "Token no configurado"}
+167	        api_url = f"{TELEGRAM_API}{settings.telegram_token}/getWebhookInfo"
+168	        try:
+169	            res = await self._http.get(api_url)
+170	            return res.json()
+171	        except Exception as exc:
+172	            return {"ok": False, "error": str(exc)}
+173	

@@ -3,7 +3,8 @@ from typing import List, Dict, Any
 from apps.core.integrations.gmail_engine import GmailEngine
 from apps.core.integrations.shopify_engine import ShopifyEngine
 from apps.core.integrations.linkedin_engine import LinkedInEngine
-from apps.core.config import settings
+from apps.core.intelligence.universal_modules import UniversalAria
+from apps.core.config_pkg import settings
 
 logger = logging.getLogger("aria.orchestrator")
 
@@ -21,6 +22,9 @@ class AriaOrchestrator:
             settings.LINKEDIN_ACCESS_TOKEN,
             settings.LINKEDIN_PERSON_ID
         ) if settings.LINKEDIN_ENABLED else None
+        
+        # Inicializar módulos universales
+        self.universal = UniversalAria()
 
     def execute_business_transformation(self):
         """Ejecuta la transformación total del negocio."""
@@ -38,14 +42,13 @@ class AriaOrchestrator:
         if self.shopify:
             logger.info("Ejecutando transformación REAL de Shopify...")
             self.shopify.delete_all_products()
-            # Lógica para crear catálogo...
         else:
             logger.warning("Modo Simulación: Shopify no configurado.")
 
         # 3. LinkedIn
         if self.linkedin:
             logger.info("Ejecutando estrategia REAL de LinkedIn...")
-            self.linkedin.create_viral_post("Aria v2.2.0 está operando mi negocio.")
+            self.linkedin.create_viral_post("Aria v3.0.0 está operando mi negocio.")
         else:
             logger.warning("Modo Simulación: LinkedIn no configurado.")
 
