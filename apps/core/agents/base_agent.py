@@ -384,5 +384,5 @@ class BaseAgent(ABC):
 
 def _get_db():
     """Helper para obtener cliente Supabase."""
-    from apps.core.memory.supabase_client import AriaDatabase
-    return AriaDatabase()._client
+    from apps.core.memory.supabase_client import get_db
+    return get_db()._client

@@ -274,3 +274,6 @@ def get_db() -> AriaDatabase:
     if _db_instance is None:
         _db_instance = AriaDatabase()
     return _db_instance
+
+# Alias para compatibilidad con código que busca get_supabase
+get_supabase = get_db
