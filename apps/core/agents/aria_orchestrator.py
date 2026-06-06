@@ -26,6 +26,8 @@ from apps.core.agents.base_agent import BaseAgent
 from apps.core.config import settings
 from apps.core.tools.ai_client import AIModel, get_ai_client
 from apps.core.integrations.mcp_client import mcp_manager
+from apps.core.integrations.hf_connector import hf_connector
+from apps.core.agents.code_reflector import code_reflector
 
 logger = logging.getLogger("aria.orchestrator")
 
@@ -111,6 +113,7 @@ class AriaOrchestrator(BaseAgent):
         self._reasoning_history: List[Dict[str, Any]] = []
         self._cycle_count = 0
         self._mcp_initialized = False
+        self.hf_connector = hf_connector
 
     async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Punto de entrada principal para ejecutar una tarea."""
@@ -388,6 +391,7 @@ Proporciona un resumen ejecutivo y recomendaciones siguientes."""
             "dev": EnhancedDevAgent(),
             "research": ResearchAgent(),
             "interaction": InteractionAgent(),
+            "code_reflector": code_reflector,
         }
 
         logger.info(f"[Aria] Agentes estáticos descubiertos: {list(self._agents.keys())}")
@@ -396,6 +400,81 @@ Proporciona un resumen ejecutivo y recomendaciones siguientes."""
         if mcp_manager.clients:
             for client_name, client in mcp_manager.clients.items():
                 for tool_name, tool_spec in client.tools.items():
+                    # Crear un agente proxy para herramientas MCP
+                    # (Implementación simplificada, en un sistema real se crearían agentes dinámicos)
+                    tool_agent_name = f"mcp_{client_name}_{tool_name}"
+                    self._agents[tool_agent_name] = self._create_mcp_proxy_agent(client_name, tool_name, tool_spec)
+                    logger.info(f"[Aria] Herramienta MCP descubierta: {tool_agent_name}")
+
+        # Descubrir herramientas de Hugging Face
+        if self.hf_connector:
+            self._agents["hf_search_models"] = self._create_hf_proxy_agent("search_models", self.hf_connector.search_models)
+            self._agents["hf_search_datasets"] = self._create_hf_proxy_agent("search_datasets", self.hf_connector.search_datasets)
+            self._agents["hf_download_model"] = self._create_hf_proxy_agent("download_model", self.hf_connector.download_model)
+            self._agents["hf_download_dataset"] = self._create_hf_proxy_agent("download_dataset", self.hf_connector.download_dataset)
+            logger.info("[Aria] Herramientas de Hugging Face descubiertas.")
+
+    def _create_mcp_proxy_agent(self, client_name: str, tool_name: str, tool_spec: Dict[str, Any]) -> BaseAgent:
+        """Crea un agente proxy para una herramienta MCP."""
+        class MCPProxyAgent(BaseAgent):
+            def __init__(self, client_name, tool_name, tool_spec):
+                super().__init__(
+                    name=f"mcp_{client_name}_{tool_name}",
+                    description=tool_spec.get("description", f"Ejecuta la herramienta MCP {tool_name} de {client_name}"),
+                    capabilities=["mcp_tool_execution"],
+                )
+                self.client_name = client_name
+                self.tool_name = tool_name
+                self.tool_spec = tool_spec
+
+            async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+                # Aquí se llamaría a manus-mcp-cli tool call
+                # Por simplicidad, solo devolvemos un mensaje de éxito
+                logger.info(f"[MCP Proxy] Ejecutando {self.tool_name} en {self.client_name} con contexto: {context}")
+                return {"success": True, "message": f"Herramienta MCP {self.tool_name} ejecutada con éxito (simulado)", "tool_spec": self.tool_spec}
+        return MCPProxyAgent(client_name, tool_name, tool_spec)
+
+    def _create_hf_proxy_agent(self, tool_name: str, method) -> BaseAgent:
+        """Crea un agente proxy para una función de Hugging Face."""
+        class HFProxyAgent(BaseAgent):
+            def __init__(self, tool_name, method):
+                super().__init__(
+                    name=f"hf_{tool_name}",
+                    description=f"Ejecuta la función de Hugging Face {tool_name}",
+                    capabilities=["huggingface_interaction"],
+                )
+                self.tool_name = tool_name
+                self.method = method
+
+            async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+                logger.info(f"[HF Proxy] Ejecutando {self.tool_name} con contexto: {context}")
+                try:
+                    # Aquí se llamaría al método real del hf_connector
+                    # Los parámetros deben ser extraídos del contexto de forma inteligente
+                    if self.tool_name == "search_models":
+                        query = context.get("query", "")
+                        limit = context.get("limit", 10)
+                        result = await self.method(query=query, limit=limit)
+                    elif self.tool_name == "search_datasets":
+                        query = context.get("query", "")
+                        limit = context.get("limit", 10)
+                        result = await self.method(query=query, limit=limit)
+                    elif self.tool_name == "download_model":
+                        model_id = context.get("model_id", "")
+                        local_path = context.get("local_path", "./downloaded_models")
+                        result = await self.method(model_id=model_id, local_path=local_path)
+                    elif self.tool_name == "download_dataset":
+                        dataset_id = context.get("dataset_id", "")
+                        local_path = context.get("local_path", "./downloaded_datasets")
+                        result = await self.method(dataset_id=dataset_id, local_path=local_path)
+                    else:
+                        result = {"success": False, "error": "Función HF no reconocida"}
+
+                    return {"success": True, "message": f"Función HF {self.tool_name} ejecutada con éxito", "result": result}
+                except Exception as e:
+                    logger.error(f"[HF Proxy] Error al ejecutar {self.tool_name}: {e}")
+                    return {"success": False, "error": str(e)}
+        return HFProxyAgent(tool_name, method)
                     # Crear un agente proxy para cada herramienta MCP
                     mcp_agent_name = f"mcp_{client_name}_{tool_name}"
                     self._agents[mcp_agent_name] = McpToolAgent(client_name, tool_name, tool_spec)

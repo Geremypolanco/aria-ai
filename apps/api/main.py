@@ -29,6 +29,7 @@ from apps.core.integrations.mcp_client import mcp_manager
 from apps.core.config.secrets_manager import secrets_manager, env_manager, config_manager
 from apps.core.deployment.deployment_orchestrator import deployment_orchestrator, DeploymentPlatform
 from apps.api.webhooks import router as webhooks_router
+from apps.core.integrations.hf_connector import hf_connector
 
 logger = logging.getLogger("aria.api")
 
@@ -58,6 +59,7 @@ research_agent = ResearchAgent()
 interaction_agent = InteractionAgent()
 sandbox_manager = SandboxManager()
 mcp_manager = mcp_manager # Usar la instancia global del mcp_manager
+hf_connector = hf_connector # Usar la instancia global del hf_connector
 
 
 # Request models
@@ -259,6 +261,39 @@ async def rollback_deployment(deployment_id: str):
     """Revierte un despliegue."""
     result = await deployment_orchestrator.rollback(deployment_id)
     return result
+
+
+# ==================== Endpoint de Chat Original ====================
+
+# ==================== Endpoints de Hugging Face ====================
+
+@app.get("/api/aria/hf/models")
+async def search_hf_models(query: str, limit: int = 10):
+    """Busca modelos en Hugging Face Hub."""
+    models = await hf_connector.search_models(query, limit)
+    return {"success": True, "models": models}
+
+@app.get("/api/aria/hf/datasets")
+async def search_hf_datasets(query: str, limit: int = 10):
+    """Busca datasets en Hugging Face Hub."""
+    datasets = await hf_connector.search_datasets(query, limit)
+    return {"success": True, "datasets": datasets}
+
+@app.post("/api/aria/hf/models/download")
+async def download_hf_model(model_id: str, local_path: str):
+    """Descarga un modelo de Hugging Face Hub."""
+    downloaded_path = await hf_connector.download_model(model_id, local_path)
+    if downloaded_path:
+        return {"success": True, "path": downloaded_path}
+    return {"success": False, "error": "No se pudo descargar el modelo"}
+
+@app.post("/api/aria/hf/datasets/download")
+async def download_hf_dataset(dataset_id: str, local_path: str):
+    """Descarga un dataset de Hugging Face Hub."""
+    downloaded_path = await hf_connector.download_dataset(dataset_id, local_path)
+    if downloaded_path:
+        return {"success": True, "path": downloaded_path}
+    return {"success": False, "error": "No se pudo descargar el dataset"}
 
 
 # ==================== Endpoint de Chat Original ====================
