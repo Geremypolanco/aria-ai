@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
-from apps.core.config_pkg import settings
+from apps.core.config import settings
 from apps.core.memory.redis_client import get_cache
 from apps.core.memory.supabase_client import get_db
 from apps.core.tools.ai_client import AIModel, get_ai_client
@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("aria.core")
 
 TELEGRAM_API = "https://api.telegram.org/bot"
-scheduler = AsyncIOScheduler(timezone="UTC")
+scheduler = AsyncIOScheduler(timezone="America/New_York")
 
 # Orchestrator instancia global (lazy)
 _orchestrator: Optional[Any] = None
@@ -181,6 +181,19 @@ async def model_discovery_job() -> None:
     except Exception as exc:
         logger.error("Error en descubrimiento de modelos: %s", exc)
 
+async def digest_bot_job() -> None:
+    """Ejecuta el scan de mañana de todos los bots y envía el resumen a Aria."""
+    logger.info("Scheduler: DigestBot — scan matutino iniciando...")
+    try:
+        from apps.core.bots.digest_bot import get_digest_bot
+        digest = get_digest_bot()
+        await digest.send_to_aria()
+        logger.info("Scheduler: DigestBot — scan completado")
+    except Exception as exc:
+        logger.error("DigestBot job error: %s", exc)
+
+
+
 
 # ── LIFESPAN ──────────────────────────────────────────────
 
@@ -199,6 +212,7 @@ async def lifespan(app: FastAPI):
         scheduler.add_job(auto_evolve_job, IntervalTrigger(hours=4), id="auto_evolve", replace_existing=True)
         scheduler.add_job(learning_cycle_job, IntervalTrigger(hours=4), id="learning_cycle", replace_existing=True)
         scheduler.add_job(model_discovery_job, IntervalTrigger(hours=24), id="model_discovery", replace_existing=True)
+        scheduler.add_job(digest_bot_job, CronTrigger(hour=12, minute=30), id="digest_morning", replace_existing=True)
         scheduler.start()
         logger.info("Scheduler iniciado con %d jobs.", len(scheduler.get_jobs()))
     except Exception as exc:
@@ -354,15 +368,41 @@ async def telegram_webhook(request: Request) -> JSONResponse:
     """
     Webhook de Telegram. Recibe todos los updates del bot y los procesa.
     Telegram requiere respuesta HTTP 200 inmediata — el procesamiento es async.
+    Todos los mensajes pasan por el firewall de seguridad antes de ser procesados.
     """
     try:
         update = await request.json()
         logger.debug("[Webhook] Update recibido: %s", str(update)[:200])
 
+        # Extraer datos del mensaje para el firewall
+        message = update.get("message") or update.get("edited_message") or {}
+        chat = message.get("chat") or {}
+        from_user = message.get("from") or {}
+        chat_id = str(chat.get("id", ""))
+        chat_type = chat.get("type", "private")
+        text = message.get("text") or message.get("caption") or ""
+        sender = from_user.get("username") or from_user.get("first_name") or "unknown"
+
+        # Firewall: pasar por todas las capas de seguridad
+        if chat_id and text:
+            from apps.core.security.firewall import get_firewall
+            fw = get_firewall()
+            decision = await fw.inspect(chat_id, text, sender=sender, chat_type=chat_type)
+            if not decision.allowed:
+                logger.info("[Webhook] Mensaje bloqueado por firewall: %s (reason=%s)", chat_id, decision.block_reason)
+                return JSONResponse({"ok": True})  # 200 silencioso — nunca revelar que fue bloqueado
+
+            # Inyectar texto limpio en el update para que el bot lo use
+            if decision.clean_text != text and message:
+                update_copy = dict(update)
+                msg_key = "message" if "message" in update_copy else "edited_message"
+                update_copy[msg_key] = dict(message)
+                update_copy[msg_key]["text"] = decision.clean_text
+                update = update_copy
+
         from apps.core.tools.telegram_bot import get_bot
         import asyncio
         bot = get_bot()
-        # Procesamos el update de forma asíncrona sin bloquear el webhook
         asyncio.create_task(bot.handle_update(update))
 
         return JSONResponse({"ok": True})
