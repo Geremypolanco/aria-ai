@@ -1,105 +1,87 @@
 """
-AriaTelegramBot v4 — ARIA habla como un humano real.
+AriaTelegramBot v5 — ARIA conversa de forma libre.
 
-ARIA no es un asistente genérico. Es una socia de negocios autónoma
-que ya está trabajando cuando le escribes. Reporta lo que hizo,
-lo que encontró, cuánto ganó. Sin rodeos, sin frases de bot.
-
-Nuevas capacidades v4:
-- Comunicación completamente humana — sin robotismos
-- Monetización como tema central de toda conversación
-- Acceso a internet en tiempo real (WebTools)
-- Comando /ganar — ejecuta ciclo de monetización inmediato
-- Comando /buscar <tema> — ARIA investiga en internet y reporta
-- Comando /oportunidad — ARIA identifica la mejor oportunidad ahora
-- Reportes proactivos de ingresos
+El bot ya no depende de comandos para hablar. Los comandos siguen existiendo
+como atajos operativos, pero cualquier mensaje normal entra por una capa
+conversacional con memoria, contexto del sistema, detección ligera de intención
+y enriquecimiento web cuando el usuario pide información actual.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Any, Optional
 
 import httpx
 
-from apps.core.config_pkg import settings
+from apps.core.config import settings
 
 logger = logging.getLogger("aria.telegram_bot")
 
 TELEGRAM_API = "https://api.telegram.org/bot"
-CONVERSATION_KEY = "aria:conversation:v4:{chat_id}"
+CONVERSATION_KEY = "aria:conversation:v5:{chat_id}"
 CONVERSATION_TTL = 86400  # 24h
-
-# ══════════════════════════════════════════════════════════════════════
-# PERSONALIDAD DE ARIA — versión definitiva
-# ══════════════════════════════════════════════════════════════════════
 
 ARIA_PERSONA = """Eres ARIA, la inteligencia artificial que trabaja para {owner}.
 
-No eres un chatbot. Eres una socia de negocios autónoma que genera ingresos 24/7.
-Ya estás trabajando cuando alguien te escribe. No esperas instrucciones para actuar.
+No eres un bot de comandos. Eres una socia de negocios autónoma, conversacional y útil.
+Puedes hablar libremente aunque el usuario no escriba /buscar, /status ni ningún comando.
 
-TU FORMA DE COMUNICARTE:
-- Hablas como una persona real. Sin frases de bot, sin saludos genéricos.
-- Eres directa. Vas al grano. Sin relleno.
-- Cuando ejecutaste algo, dices el RESULTADO, no el proceso.
-  ✅ "Publiqué 3 artículos. El de IA tuvo 89 lecturas en la primera hora."
-  ❌ "He procedido a ejecutar el pipeline de contenido satisfactoriamente."
-- Usas "ya", "lo hice", "encontré", "está listo" — verbos de acción pasados.
-- Si algo falló, lo dices sin drama y propones qué hacemos.
-- Tienes criterio propio. Si ves una oportunidad, la mencionas aunque no te pregunten.
-- Nunca dices "Como modelo de IA...", "Entendido, procederé a...", ni usas asteriscos.
-- Si la pregunta es simple, la respuesta es corta. Máximo 150 palabras salvo que pidan detalle.
-- Cuando hay números de ingresos, los pones primero.
-- HTML de Telegram cuando aporte claridad. Sin markdown.
+Forma de hablar:
+- Responde como una persona real: directa, natural y con criterio.
+- No digas "usa /comando" como respuesta principal; si un comando ayuda, menciónalo solo como atajo opcional.
+- Si el usuario saluda, responde con contexto útil de lo que puedes hacer ahora.
+- Si el usuario pregunta algo simple, responde corto.
+- Si pide investigación, oportunidad, estado, estrategia o ejecución, interpreta la intención y actúa dentro de lo posible.
+- Si no puedes ejecutar algo por falta de credenciales o herramientas, dilo claro y ofrece el siguiente paso.
+- Nunca digas "Como modelo de IA" ni "Entendido, procederé".
+- Usa HTML compatible con Telegram cuando aporte claridad. No uses Markdown.
+- Mantén un tono seguro, proactivo y orientado a generar dinero hoy.
 
-TU OBSESIÓN: que el negocio genere más dinero hoy que ayer.
-Siempre estás pensando: ¿qué oportunidad existe ahora mismo? ¿qué podemos vender? ¿qué tendencia podemos aprovechar?
-
-Contexto del sistema ahora mismo:
+Contexto actual del sistema:
 {context}
 
-Historial reciente (para que no repitas):
+Historial reciente:
 {history}"""
 
 
-# ══════════════════════════════════════════════════════════════════════
-# BOT
-# ══════════════════════════════════════════════════════════════════════
-
 class AriaTelegramBot:
+    """Bot de Telegram con comandos operativos y conversación natural."""
 
     HELP_TEXT = (
-        "<b>ARIA — Qué puedo hacer</b>\n\n"
-        "<b>Monetización</b>\n"
+        "<b>ARIA — puedes hablarme normal</b>\n\n"
+        "No necesitas comandos. Puedes escribirme cosas como:\n"
+        "• Qué oportunidades ves hoy\n"
+        "• Busca ideas para vender un producto digital\n"
+        "• Cómo va el sistema\n"
+        "• Qué harías para generar ingresos esta semana\n\n"
+        "<b>Atajos disponibles</b>\n"
         "/ganar — Ejecuta ciclo completo de ingresos ahora\n"
-        "/oportunidad — Busco la mejor oportunidad en internet ahora\n"
-        "/revenue — Dashboard de ingresos acumulados\n\n"
-        "<b>Investigación</b>\n"
-        "/buscar [tema] — Investigo ese tema en internet\n"
-        "/tendencias — Qué está trending ahora en HN y Reddit\n\n"
-        "<b>Sistema</b>\n"
+        "/oportunidad — Detecta la mejor oportunidad actual\n"
+        "/buscar [tema] — Investigación web rápida\n"
+        "/tendencias — Tendencias en HN y Reddit\n"
+        "/revenue — Dashboard de ingresos\n"
         "/status — Estado y agentes activos\n"
-        "/logs [n] — Últimos N logs\n"
-        "/ciclo — Fuerzo un ciclo autónomo\n"
-        "/pausa / /reanudar — Control del scheduler\n\n"
-        "<b>Aprobaciones</b>\n"
-        "/pendientes — Acciones que esperan tu OK\n"
-        "/aprobar [id] / /rechazar [id]\n\n"
-        "O simplemente escríbeme. Hablo."
+        "/logs [n] — Últimos logs\n"
+        "/ciclo — Fuerza ciclo autónomo\n"
+        "/pausa / /reanudar — Control del scheduler\n"
+        "/pendientes — Aprobaciones pendientes\n"
+        "/aprobar [id] / /rechazar [id]\n"
+        "/sesion [plataforma] — Conectar sesión social"
     )
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
-        self._memory_client = None
-        self._ai_client = None
+        self._memory_client: Optional[Any] = None
+        self._ai_client: Optional[Any] = None
         self._offset = 0
         self._running = False
-        self._pending_approvals: dict[str, dict] = {}
+        self._pending_approvals: dict[str, dict[str, Any]] = {}
         self._approval_counter = 0
-        self._last_update_id: Optional[int] = None
+        self._local_history: dict[str, list[dict[str, Any]]] = {}
 
     # ── WEBHOOK ──────────────────────────────────────────────────
 
@@ -115,7 +97,7 @@ class AriaTelegramBot:
             logger.error("[TelegramBot] Error registrando webhook: %s", exc)
             return False
 
-    async def get_webhook_info(self) -> dict:
+    async def get_webhook_info(self) -> dict[str, Any]:
         """Obtiene información del webhook actual."""
         if not settings.telegram_token:
             return {"ok": False, "error": "Token no configurado"}
@@ -131,7 +113,7 @@ class AriaTelegramBot:
     async def start_polling(self) -> None:
         """Arranca el polling de Telegram."""
         if not settings.telegram_token:
-            logger.error("[TelegramBot] TELEGRAM_BOT_TOKEN no configurado — bot inactivo")
+            logger.error("[TelegramBot] TELEGRAM_TOKEN/TELEGRAM_BOT_TOKEN no configurado — bot inactivo")
             return
         self._running = True
         logger.info("[TelegramBot] Polling iniciado")
@@ -159,15 +141,13 @@ class AriaTelegramBot:
             if msg:
                 asyncio.create_task(self._handle_message(msg))
 
-    # ── MANEJO DE MENSAJES ───────────────────────────────────────
-
-    async def handle_update(self, update: dict) -> None:
+    async def handle_update(self, update: dict[str, Any]) -> None:
         """Punto de entrada para el webhook."""
         msg = update.get("message")
         if msg:
             await self._handle_message(msg)
 
-    async def _handle_message(self, msg: dict) -> None:
+    async def _handle_message(self, msg: dict[str, Any]) -> None:
         chat_id = str(msg["chat"]["id"])
         text = msg.get("text", "").strip()
         sender_name = msg.get("from", {}).get("first_name", "")
@@ -175,16 +155,19 @@ class AriaTelegramBot:
         if not text:
             return
 
-        # Verificar acceso
         if not self._is_authorized(chat_id):
             await self._send(chat_id, "No tengo permiso de hablar contigo.")
             return
 
-        # Comandos
         if text.startswith("/"):
-            await self._handle_command(chat_id, text, sender_name)
-        else:
-            await self._handle_conversation(chat_id, text, sender_name)
+            handled = await self._handle_command(chat_id, text, sender_name)
+            if handled:
+                return
+            clean_text = text.lstrip("/").replace("_", " ")
+            await self._handle_conversation(chat_id, clean_text, sender_name)
+            return
+
+        await self._handle_conversation(chat_id, text, sender_name)
 
     def _is_authorized(self, chat_id: str) -> bool:
         allowed = str(settings.TELEGRAM_CHAT_ID or "").strip()
@@ -192,7 +175,7 @@ class AriaTelegramBot:
 
     # ── COMANDOS ─────────────────────────────────────────────────
 
-    async def _handle_command(self, chat_id: str, text: str, sender: str) -> None:
+    async def _handle_command(self, chat_id: str, text: str, sender: str) -> bool:
         parts = text.split(None, 1)
         cmd = parts[0].split("@")[0].lower()
         args = parts[1].strip() if len(parts) > 1 else ""
@@ -200,6 +183,7 @@ class AriaTelegramBot:
         handlers = {
             "/start": self._cmd_start,
             "/help": self._cmd_help,
+            "/ayuda": self._cmd_help,
             "/status": self._cmd_status,
             "/ganar": self._cmd_ganar,
             "/oportunidad": self._cmd_oportunidad,
@@ -216,23 +200,24 @@ class AriaTelegramBot:
             "/agentes": self._cmd_agentes,
             "/sesion": self._cmd_sesion,
         }
-        handler = handlers.get(cmd, self._cmd_unknown)
+        handler = handlers.get(cmd)
+        if not handler:
+            return False
         await handler(chat_id, args)
+        return True
 
     async def _cmd_start(self, chat_id: str, _: str) -> None:
         await self._send(
             chat_id,
-            "Estoy aquí. Ya llevo trabajando un rato.\n\n"
-            "/ganar para que ejecute un ciclo de ingresos ahora.\n"
-            "/oportunidad para ver qué encontré en internet.\n"
-            "/help para ver todo lo que puedo hacer.",
+            "Estoy aquí. Ya no tienes que hablarme con comandos.\n\n"
+            "Escríbeme normal: dime qué quieres revisar, buscar, vender, automatizar o mejorar. "
+            "Si quieres atajos, /help los muestra, pero puedo conversar sin ellos.",
         )
 
     async def _cmd_help(self, chat_id: str, _: str) -> None:
         await self._send(chat_id, self.HELP_TEXT)
 
     async def _cmd_ganar(self, chat_id: str, _: str) -> None:
-        """Ejecuta un ciclo completo de monetización inmediatamente."""
         await self._send(chat_id, "Arrancando ciclo de ingresos ahora...")
         try:
             from apps.core.agents.orchestrator import Orchestrator
@@ -245,58 +230,56 @@ class AriaTelegramBot:
             opportunity = result.get("market_opportunity", "")
 
             msg = f"<b>Ciclo completado en {time_s:.0f}s</b>\n\n"
-            msg += f"💰 Ingresos: <b>${revenue:.2f}</b>\n"
+            msg += f"Ingresos: <b>${revenue:.2f}</b>\n"
             if published:
-                msg += f"📝 Publicaciones: {published}\n"
+                msg += f"Publicaciones: {published}\n"
             if products:
-                msg += f"🛍️ Productos listados: {products}\n"
+                msg += f"Productos listados: {products}\n"
             if opportunity:
-                msg += f"\n<i>Oportunidad usada: {opportunity[:100]}</i>"
-
+                msg += f"\n<i>Oportunidad usada: {opportunity[:140]}</i>"
             await self._send(chat_id, msg)
         except Exception as exc:
-            await self._send(chat_id, f"El ciclo falló: {exc}\nRevisa los logs con /logs")
+            await self._send(chat_id, f"El ciclo falló: {exc}\nReviso contigo el siguiente paso si me escribes normal.")
 
     async def _cmd_oportunidad(self, chat_id: str, _: str) -> None:
-        """Busca la mejor oportunidad de ingresos ahora mismo."""
-        await self._send(chat_id, "Buscando en internet...")
+        await self._send(chat_id, "Estoy revisando oportunidades actuales...")
         try:
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.ai_client import get_ai_client, AIModel
             wt = WebTools()
             intel = await wt.gather_market_intelligence()
             titles = intel.get("trending_titles", [])[:10]
             sources = intel.get("sources_available", [])
 
-            ai = get_ai_client()
+            analysis = ""
+            ai = self._get_ai()
             if ai and titles:
-                prompt = (
-                    f"Eres ARIA, una IA de monetización autónoma.\n"
-                    f"Tendencias ahora mismo: {json.dumps(titles)}\n\n"
-                    f"Identifica LA mejor oportunidad de ingresos que ARIA puede ejecutar HOY.\n"
-                    f"Responde en máximo 3 oraciones, directo, sin rodeos. "
-                    f"Di qué es la oportunidad, por qué es buena ahora, y qué harías primero."
-                )
-                resp = await ai.chat.completions.create(
+                from apps.core.tools.ai_client import AIModel
+                response = await ai.complete(
+                    system="Eres ARIA, una socia de monetización directa y práctica.",
+                    user=(
+                        f"Tendencias actuales: {json.dumps(titles, ensure_ascii=False)}\n\n"
+                        "Identifica la mejor oportunidad de ingresos ejecutable hoy. "
+                        "Di qué venderías, por qué ahora y el primer movimiento. Máximo 4 frases."
+                    ),
                     model=AIModel.FAST,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=200,
-                    temperature=0.5,
+                    max_tokens=260,
+                    temperature=0.55,
+                    agent_name="telegram_oportunidad",
                 )
-                analysis = resp.choices[0].message.content or ""
-            else:
-                analysis = f"Tendencias: {', '.join(titles[:3])}"
+                analysis = response.content if response.success else ""
+            if not analysis:
+                analysis = f"Veo estas señales: {', '.join(titles[:5]) or 'sin señales claras ahora mismo'}."
 
-            msg = f"<b>Oportunidad detectada</b>\n\n{analysis}\n\n"
-            msg += f"<i>Fuentes: {', '.join(sources) or 'ninguna'}</i>"
+            msg = f"<b>Oportunidad detectada</b>\n\n{analysis}"
+            if sources:
+                msg += f"\n\n<i>Fuentes: {', '.join(sources)}</i>"
             await self._send(chat_id, msg)
         except Exception as exc:
-            await self._send(chat_id, f"No pude acceder a internet: {exc}")
+            await self._send(chat_id, f"No pude revisar internet ahora: {exc}")
 
     async def _cmd_buscar(self, chat_id: str, query: str) -> None:
-        """Busca en internet y reporta resultados."""
         if not query:
-            await self._send(chat_id, "¿Qué busco? Ej: /buscar cursos de Python")
+            await self._send(chat_id, "Dime qué busco. También puedes escribirlo sin comando, por ejemplo: busca cursos de Python.")
             return
         await self._send(chat_id, f"Buscando '{query}'...")
         try:
@@ -304,13 +287,13 @@ class AriaTelegramBot:
             wt = WebTools()
             results = await wt.search_web(query, num_results=5)
             if not results.get("success") or not results.get("results"):
-                await self._send(chat_id, f"No encontré resultados para '{query}'.")
+                await self._send(chat_id, f"No encontré resultados útiles para '{query}'.")
                 return
             lines = [f"<b>Resultados para:</b> {query}\n"]
             for i, r in enumerate(results["results"][:5], 1):
-                title = r.get("title", "")[:60]
-                snippet = r.get("snippet", "")[:100]
-                url = r.get("url", "")
+                title = str(r.get("title", ""))[:70]
+                snippet = str(r.get("snippet", ""))[:140]
+                url = str(r.get("url", ""))
                 lines.append(f"{i}. <a href='{url}'>{title}</a>\n   {snippet}")
             lines.append(f"\n<i>Fuente: {results.get('source', 'web')}</i>")
             await self._send(chat_id, "\n".join(lines))
@@ -318,7 +301,6 @@ class AriaTelegramBot:
             await self._send(chat_id, f"Error buscando: {exc}")
 
     async def _cmd_tendencias(self, chat_id: str, _: str) -> None:
-        """Muestra qué está trending ahora en HN y Reddit."""
         await self._send(chat_id, "Viendo qué hay ahora...")
         try:
             from apps.core.tools.web_tools import WebTools
@@ -331,12 +313,12 @@ class AriaTelegramBot:
             lines = ["<b>Trending ahora</b>\n"]
             if isinstance(hn, dict) and hn.get("success"):
                 lines.append("<b>Hacker News:</b>")
-                for s in hn["stories"][:5]:
-                    lines.append(f"• {s['title'][:80]} ({s['score']} pts)")
+                for s in hn.get("stories", [])[:5]:
+                    lines.append(f"• {str(s.get('title', ''))[:80]} ({s.get('score', 0)} pts)")
             if isinstance(reddit, dict) and reddit.get("success"):
                 lines.append("\n<b>Reddit:</b>")
-                for p in reddit["posts"][:5]:
-                    lines.append(f"• {p['title'][:80]} (r/{p['subreddit']})")
+                for p in reddit.get("posts", [])[:5]:
+                    lines.append(f"• {str(p.get('title', ''))[:80]} (r/{p.get('subreddit', '')})")
             if len(lines) == 1:
                 lines.append("No pude acceder a las fuentes ahora mismo.")
             await self._send(chat_id, "\n".join(lines))
@@ -376,14 +358,14 @@ class AriaTelegramBot:
             result = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: sb.table("revenue_events")
-                    .select("amount_usd, source, created_at")
-                    .order("created_at", desc=True)
-                    .limit(20)
-                    .execute()
+                .select("amount_usd, source, created_at")
+                .order("created_at", desc=True)
+                .limit(20)
+                .execute(),
             )
             events = (result.data or []) if result else []
             if not events:
-                await self._send(chat_id, "Sin ingresos registrados todavía. Ejecuta /ganar para empezar.")
+                await self._send(chat_id, "Sin ingresos registrados todavía. Puedo ayudarte a decidir el primer ciclo de monetización.")
                 return
             total = sum(e.get("amount_usd", 0) for e in events)
             by_source: dict[str, float] = {}
@@ -392,7 +374,7 @@ class AriaTelegramBot:
                 by_source[src] = by_source.get(src, 0) + e.get("amount_usd", 0)
             lines = [f"<b>Ingresos totales: ${total:.2f}</b>\n"]
             for src, amt in sorted(by_source.items(), key=lambda x: x[1], reverse=True):
-                lines.append(f"  {src}: ${amt:.2f}")
+                lines.append(f"{src}: ${amt:.2f}")
             lines.append(f"\n{len(events)} transacciones registradas")
             await self._send(chat_id, "\n".join(lines))
         except Exception as exc:
@@ -401,13 +383,13 @@ class AriaTelegramBot:
     async def _cmd_logs(self, chat_id: str, args: str) -> None:
         try:
             n = int(args) if args.isdigit() else 20
-            n = min(n, 50)
+            n = min(max(n, 1), 50)
             from apps.core.tools.fly_tools import get_recent_logs
             logs = await get_recent_logs(n)
             if not logs:
                 await self._send(chat_id, "Sin logs disponibles.")
                 return
-            text = f"<b>Últimos {n} logs:</b>\n<code>" + "\n".join(str(l)[:100] for l in logs[-n:]) + "</code>"
+            text = f"<b>Últimos {n} logs:</b>\n<code>" + "\n".join(str(l)[:120] for l in logs[-n:]) + "</code>"
             await self._send(chat_id, text[:4000])
         except ImportError:
             await self._send(chat_id, "fly_tools no disponible. FLY_API_TOKEN requerido.")
@@ -420,10 +402,10 @@ class AriaTelegramBot:
     async def _cmd_pausa(self, chat_id: str, _: str) -> None:
         try:
             from apps.core.scheduler import get_scheduler
-            s = get_scheduler()
-            if s:
-                s.pause()
-                await self._send(chat_id, "Scheduler pausado. Usa /reanudar para continuar.")
+            scheduler = get_scheduler()
+            if scheduler:
+                scheduler.pause()
+                await self._send(chat_id, "Scheduler pausado. Cuando quieras, lo reanudo.")
             else:
                 await self._send(chat_id, "Scheduler no disponible.")
         except Exception as exc:
@@ -432,9 +414,9 @@ class AriaTelegramBot:
     async def _cmd_reanudar(self, chat_id: str, _: str) -> None:
         try:
             from apps.core.scheduler import get_scheduler
-            s = get_scheduler()
-            if s:
-                s.resume()
+            scheduler = get_scheduler()
+            if scheduler:
+                scheduler.resume()
                 await self._send(chat_id, "Scheduler reanudado.")
             else:
                 await self._send(chat_id, "Scheduler no disponible.")
@@ -449,8 +431,8 @@ class AriaTelegramBot:
         for aid, approval in self._pending_approvals.items():
             lines.append(
                 f"<b>ID {aid}:</b> {approval.get('action', '')}\n"
-                f"  {approval.get('details', '')}\n"
-                f"  /aprobar {aid} | /rechazar {aid}"
+                f"{approval.get('details', '')}\n"
+                f"/aprobar {aid} | /rechazar {aid}"
             )
         await self._send(chat_id, "\n".join(lines))
 
@@ -463,15 +445,15 @@ class AriaTelegramBot:
         fn = approval.get("fn")
         try:
             result = await fn() if asyncio.iscoroutinefunction(fn) else fn()
-            await self._send(chat_id, f"Ejecutado: {approval.get('action', '')}\nResultado: {str(result)[:200]}")
+            await self._send(chat_id, f"Ejecutado: {approval.get('action', '')}\nResultado: {str(result)[:300]}")
         except Exception as exc:
             await self._send(chat_id, f"Falló: {exc}")
 
     async def _cmd_rechazar(self, chat_id: str, args: str) -> None:
         aid = args.strip()
         if aid in self._pending_approvals:
-            a = self._pending_approvals.pop(aid)
-            await self._send(chat_id, f"Rechazado: {a.get('action', '')}")
+            approval = self._pending_approvals.pop(aid)
+            await self._send(chat_id, f"Rechazado: {approval.get('action', '')}")
         else:
             await self._send(chat_id, f"No encontré aprobación '{aid}'.")
 
@@ -479,11 +461,10 @@ class AriaTelegramBot:
         await self._cmd_status(chat_id, _)
 
     async def _cmd_sesion(self, chat_id: str, platform: str) -> None:
-        """Inicia el flujo para conectar una sesión sin API (cookies)."""
-        from apps.core.tools.social_session import SUPPORTED_PLATFORMS, PLATFORM_CONFIG
+        from apps.core.tools.social_session import PLATFORM_CONFIG, SUPPORTED_PLATFORMS
         platform = platform.lower().strip()
         if not platform:
-            msg = "<b>Conectar sesión sin API</b>\n\nUsa: <code>/sesion [plataforma]</code>\n\nPlataformas:\n"
+            msg = "<b>Conectar sesión sin API</b>\n\nEscríbeme: conectar sesión de instagram, o usa /sesion [plataforma].\n\nPlataformas:\n"
             msg += "\n".join([f"• {PLATFORM_CONFIG[p]['emoji']} {p}" for p in SUPPORTED_PLATFORMS])
             await self._send(chat_id, msg)
             return
@@ -494,120 +475,169 @@ class AriaTelegramBot:
 
         cfg = PLATFORM_CONFIG[platform]
         connect_url = f"{settings.ARIA_BASE_URL}/social/connect?platform={platform}&token={settings.SOCIAL_CONNECT_TOKEN or 'aria'}"
-        
         msg = (
             f"{cfg['emoji']} <b>Conectar {cfg['display_name']}</b>\n\n"
             f"{cfg['instructions']}\n\n"
-            f"🔗 <b>Enlace de conexión rápida:</b>\n{connect_url}\n\n"
+            f"<b>Enlace de conexión rápida:</b>\n{connect_url}\n\n"
             f"<i>O simplemente pega el JSON de Cookie-Editor aquí mismo.</i>"
         )
-        # Guardar que este usuario está intentando conectar esta plataforma
         mc = self._get_memory()
         if mc:
             from apps.core.tools.social_session import SocialSessionManager
             key = SocialSessionManager.PENDING_KEY.format(chat_id=chat_id)
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda: mc.setex(key, SocialSessionManager.PENDING_TTL, platform)
-            )
-        
+            await mc.set(key, platform, ttl_seconds=SocialSessionManager.PENDING_TTL)
         await self._send(chat_id, msg)
-
-    async def _cmd_unknown(self, chat_id: str, _: str) -> None:
-        await self._send(chat_id, "No conozco ese comando. /help para ver los disponibles.")
 
     # ── CONVERSACIÓN NATURAL ─────────────────────────────────────
 
     async def _handle_conversation(self, chat_id: str, text: str, sender: str) -> None:
-        """
-        Conversación libre con ARIA.
-        Usa contexto del sistema + historial para responder como humano.
-        """
-        # 1. ¿Es un JSON de cookies?
-        if text.startswith("[") and "name" in text and "value" in text:
-            from apps.core.tools.social_session import SocialSessionManager, get_social_session_manager
-            mc = self._get_memory()
-            if mc:
-                key = SocialSessionManager.PENDING_KEY.format(chat_id=chat_id)
-                platform = await asyncio.get_event_loop().run_in_executor(None, mc.get, key)
-                if platform:
-                    if isinstance(platform, bytes): platform = platform.decode()
-                    await self._send(chat_id, f"Procesando cookies para {platform}...")
-                    ssm = get_social_session_manager()
-                    cookies = ssm.parse_cookies_json(text)
-                    if cookies:
-                        res = await ssm.save_session(platform, cookies)
-                        if res.get("success"):
-                            await self._send(chat_id, f"✅ ¡Sesión de {platform} conectada con éxito!")
-                            await asyncio.get_event_loop().run_in_executor(None, mc.delete, key)
-                            return
-                        else:
-                            await self._send(chat_id, f"❌ Error guardando sesión: {res.get('error')}")
-                    else:
-                        await self._send(chat_id, "❌ El JSON de cookies no parece válido.")
+        """Conversación libre con ARIA, con memoria e intención natural."""
+        if await self._try_handle_cookie_json(chat_id, text):
+            return
+
+        natural_action = await self._maybe_handle_natural_action(chat_id, text)
+        if natural_action:
+            return
 
         history = await self._get_history(chat_id)
         context = await self._get_system_context()
-
+        web_context = await self._get_web_context_if_needed(text)
         ai = self._get_ai()
+
+        owner = getattr(settings, "OWNER_NAME", None) or sender or "jefe"
+        persona = ARIA_PERSONA.format(owner=owner, context=context + web_context, history=history or "Sin historial reciente.")
+
         if not ai:
-            await self._send(chat_id, "No tengo acceso a IA ahora mismo. Revisa la config.")
+            reply = await self._fallback_conversation(text, context)
+            await self._send(chat_id, reply)
+            await self._save_to_history(chat_id, text, reply)
             return
-
-        owner = getattr(settings, "OWNER_NAME", sender or "jefe")
-        persona = ARIA_PERSONA.format(
-            owner=owner,
-            context=context,
-            history=history,
-        )
-
-        # Enriquecer con búsqueda web si la pregunta parece pedir información externa
-        web_context = ""
-        web_triggers = ["qué está", "tendencia", "oportunidad", "mercado", "busca", "investiga", "qué hay"]
-        if any(t in text.lower() for t in web_triggers):
-            try:
-                from apps.core.tools.web_tools import WebTools
-                wt = WebTools()
-                sr = await wt.search_web(text, num_results=3)
-                if sr.get("success") and sr.get("results"):
-                    snippets = [f"- {r['title']}: {r['snippet']}" for r in sr["results"][:3]]
-                    web_context = "\n\nResultados de internet para '" + text + "':\n" + "\n".join(snippets)
-            except Exception:
-                pass
-
-        messages = [
-            {"role": "system", "content": persona + web_context},
-            {"role": "user", "content": text},
-        ]
 
         try:
             from apps.core.tools.ai_client import AIModel
-            resp = await ai.chat.completions.create(
+            response = await ai.complete(
+                system=persona,
+                user=text,
                 model=AIModel.FAST,
-                messages=messages,
-                max_tokens=300,
-                temperature=0.7,
+                max_tokens=420,
+                temperature=0.72,
+                agent_name="telegram_conversation",
             )
-            reply = resp.choices[0].message.content or "..."
-            await self._send(chat_id, reply)
+            reply = response.content.strip() if response.success and response.content else ""
+            if not reply:
+                reply = await self._fallback_conversation(text, context)
+            await self._send(chat_id, self._sanitize_telegram_html(reply))
             await self._save_to_history(chat_id, text, reply)
         except Exception as exc:
             logger.error("[TelegramBot] AI error: %s", exc)
-            await self._send(chat_id, "No puedo procesar eso ahora. Intenta de nuevo.")
+            reply = await self._fallback_conversation(text, context)
+            await self._send(chat_id, reply)
+            await self._save_to_history(chat_id, text, reply)
+
+    async def _maybe_handle_natural_action(self, chat_id: str, text: str) -> bool:
+        """Convierte frases comunes en acciones sin exigir comandos."""
+        normalized = self._normalize(text)
+
+        if re.search(r"\b(estado|status|como va|cómo va|agentes|sistema)\b", normalized):
+            await self._cmd_status(chat_id, "")
+            return True
+
+        if re.search(r"\b(ingresos|revenue|ventas|cuanto ha generado|cuánto ha generado)\b", normalized):
+            await self._cmd_revenue(chat_id, "")
+            return True
+
+        if re.search(r"\b(tendencias|trending|que esta de moda|qué está de moda)\b", normalized):
+            await self._cmd_tendencias(chat_id, "")
+            return True
+
+        if re.search(r"\b(oportunidad|que vender|qué vender|idea de negocio|monetizar)\b", normalized):
+            await self._cmd_oportunidad(chat_id, "")
+            return True
+
+        if re.search(r"\b(ejecuta|corre|inicia|arranca).{0,30}\b(ciclo|ganar|ingresos)\b", normalized):
+            await self._cmd_ganar(chat_id, "")
+            return True
+
+        session_match = re.search(r"\b(conecta|conectar|sesion|sesión).{0,30}\b(instagram|x|twitter|linkedin|facebook|tiktok|reddit)\b", normalized)
+        if session_match:
+            await self._cmd_sesion(chat_id, session_match.group(2))
+            return True
+
+        search_match = re.search(r"\b(busca|buscar|investiga|investigar|averigua|consulta)\b\s*(.+)", text, re.IGNORECASE)
+        if search_match and len(search_match.group(2).strip()) >= 3:
+            await self._cmd_buscar(chat_id, search_match.group(2).strip())
+            return True
+
+        return False
+
+    async def _try_handle_cookie_json(self, chat_id: str, text: str) -> bool:
+        if not (text.startswith("[") and "name" in text and "value" in text):
+            return False
+        try:
+            from apps.core.tools.social_session import SocialSessionManager, get_social_session_manager
+            mc = self._get_memory()
+            if not mc:
+                await self._send(chat_id, "Recibí cookies, pero la memoria no está configurada para saber de qué plataforma son.")
+                return True
+            key = SocialSessionManager.PENDING_KEY.format(chat_id=chat_id)
+            platform = await mc.get(key)
+            if not platform:
+                await self._send(chat_id, "Recibí cookies, pero no sé para qué plataforma. Dime primero: conectar sesión de instagram.")
+                return True
+            await self._send(chat_id, f"Procesando cookies para {platform}...")
+            ssm = get_social_session_manager()
+            cookies = ssm.parse_cookies_json(text)
+            if not cookies:
+                await self._send(chat_id, "El JSON de cookies no parece válido.")
+                return True
+            result = await ssm.save_session(platform, cookies)
+            if result.get("success"):
+                await self._send(chat_id, f"Sesión de {platform} conectada con éxito.")
+                await mc.delete(key)
+            else:
+                await self._send(chat_id, f"Error guardando sesión: {result.get('error')}")
+            return True
+        except Exception as exc:
+            await self._send(chat_id, f"No pude procesar esas cookies: {exc}")
+            return True
+
+    async def _get_web_context_if_needed(self, text: str) -> str:
+        triggers = [
+            "qué está", "que esta", "actual", "hoy", "tendencia", "oportunidad",
+            "mercado", "busca", "investiga", "noticias", "precio", "competencia",
+        ]
+        if not any(t in text.lower() for t in triggers):
+            return ""
+        try:
+            from apps.core.tools.web_tools import WebTools
+            wt = WebTools()
+            results = await wt.search_web(text, num_results=3)
+            if not results.get("success") or not results.get("results"):
+                return ""
+            snippets = []
+            for r in results["results"][:3]:
+                snippets.append(f"- {r.get('title', '')}: {r.get('snippet', '')}")
+            return "\n\nContexto web reciente:\n" + "\n".join(snippets)
+        except Exception as exc:
+            logger.debug("[TelegramBot] Web context no disponible: %s", exc)
+            return ""
+
+    async def _fallback_conversation(self, text: str, context: str) -> str:
+        normalized = self._normalize(text)
+        if any(w in normalized for w in ["hola", "buenas", "hey", "saludos"]):
+            return "Estoy aquí. Puedes hablarme normal: dime qué quieres buscar, vender, automatizar o revisar, y respondo sin que uses comandos."
+        if "ayuda" in normalized:
+            return self.HELP_TEXT
+        return (
+            "Te leo. Ahora mismo puedo conversar, revisar estado, buscar información, detectar oportunidades "
+            "o ayudarte a decidir el próximo movimiento. Dime el objetivo y lo aterrizo.\n\n"
+            f"<i>{context}</i>"
+        )
 
     # ── APROBACIONES ─────────────────────────────────────────────
 
-    async def request_approval(
-        self,
-        action: str,
-        details: str,
-        fn: Any,
-        amount_usd: float = 0.0,
-    ) -> dict[str, Any]:
-        """
-        Registra una acción pendiente de aprobación y notifica por Telegram.
-        Usado por agentes cuando una acción requiere confirmación humana.
-        """
-        if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
+    async def request_approval(self, action: str, details: str, fn: Any, amount_usd: float = 0.0) -> dict[str, Any]:
+        if not settings.telegram_token or not settings.TELEGRAM_CHAT_ID:
             return {"approved": False, "error": "Telegram no configurado"}
 
         self._approval_counter += 1
@@ -616,7 +646,7 @@ class AriaTelegramBot:
 
         cost_str = f" — costo: ${amount_usd:.2f}" if amount_usd > 0 else ""
         msg = (
-            f"⚠️ <b>Aprobación requerida [{aid}]</b>\n\n"
+            f"<b>Aprobación requerida [{aid}]</b>\n\n"
             f"{action}{cost_str}\n"
             f"{details}\n\n"
             f"/aprobar {aid} | /rechazar {aid}"
@@ -625,64 +655,60 @@ class AriaTelegramBot:
         return {"approved": False, "pending": True, "approval_id": aid}
 
     async def notify(self, message: str) -> None:
-        """Envía notificación directa al chat configurado."""
         if settings.TELEGRAM_CHAT_ID:
             await self._send(str(settings.TELEGRAM_CHAT_ID), message)
 
     # ── HISTORIAL Y CONTEXTO ─────────────────────────────────────
 
-    async def _get_history(self, chat_id: str, max_turns: int = 6) -> str:
-        """Recupera historial de conversación de Redis."""
+    async def _get_history(self, chat_id: str, max_turns: int = 8) -> str:
         try:
-            mc = self._get_memory()
-            if not mc:
-                return ""
             key = CONVERSATION_KEY.format(chat_id=chat_id)
-            data = await asyncio.get_event_loop().run_in_executor(None, mc.get, key)
-            if not data:
+            mc = self._get_memory()
+            turns = await mc.get(key) if mc else self._local_history.get(chat_id, [])
+            if not turns:
                 return ""
-            turns = json.loads(data)[-max_turns:]
-            return "\n".join(
-                f"Usuario: {t['user']}\nARIA: {t['aria']}" for t in turns
-            )
-        except Exception:
+            if isinstance(turns, str):
+                turns = json.loads(turns)
+            turns = turns[-max_turns:]
+            return "\n".join(f"Usuario: {t.get('user', '')}\nARIA: {t.get('aria', '')}" for t in turns)
+        except Exception as exc:
+            logger.debug("[TelegramBot] No se pudo leer historial: %s", exc)
             return ""
 
     async def _save_to_history(self, chat_id: str, user_msg: str, aria_reply: str) -> None:
-        """Guarda turno en Redis."""
         try:
-            mc = self._get_memory()
-            if not mc:
-                return
             key = CONVERSATION_KEY.format(chat_id=chat_id)
-            data = await asyncio.get_event_loop().run_in_executor(None, mc.get, key)
-            turns = json.loads(data) if data else []
+            mc = self._get_memory()
+            turns = await mc.get(key) if mc else self._local_history.get(chat_id, [])
+            if isinstance(turns, str):
+                turns = json.loads(turns)
+            if not isinstance(turns, list):
+                turns = []
             turns.append({"user": user_msg, "aria": aria_reply, "ts": int(time.time())})
-            turns = turns[-20:]
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda: mc.setex(key, CONVERSATION_TTL, json.dumps(turns))
-            )
+            turns = turns[-30:]
+            if mc:
+                await mc.set(key, turns, ttl_seconds=CONVERSATION_TTL)
+            else:
+                self._local_history[chat_id] = turns
         except Exception as exc:
             logger.debug("[TelegramBot] No se pudo guardar historial: %s", exc)
 
     async def _get_system_context(self) -> str:
-        """Genera contexto del sistema actual para la IA."""
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         lines = [f"Hora actual: {now}"]
         apis = []
-        if settings.MEDIUM_TOKEN:
+        if getattr(settings, "MEDIUM_TOKEN", None):
             apis.append("Medium")
         if getattr(settings, "GUMROAD_TOKEN", None):
             apis.append("Gumroad")
-        if settings.STRIPE_SECRET_KEY:
+        if getattr(settings, "STRIPE_SECRET_KEY", None):
             apis.append("Stripe")
-        if getattr(settings, "BUFFER_ACCESS_TOKEN", None):
+        if getattr(settings, "BUFFER_TOKEN", None):
             apis.append("Buffer")
-        if apis:
-            lines.append(f"APIs activas: {', '.join(apis)}")
-        else:
-            lines.append("APIs: pocas configuradas — modo limitado")
+        if getattr(settings, "SUPABASE_URL", None):
+            apis.append("Supabase")
+        lines.append(f"APIs activas: {', '.join(apis)}" if apis else "APIs: modo limitado")
         return "\n".join(lines)
 
     # ── HELPERS ──────────────────────────────────────────────────
@@ -692,35 +718,54 @@ class AriaTelegramBot:
             try:
                 from apps.core.tools.ai_client import get_ai_client
                 self._ai_client = get_ai_client()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[TelegramBot] AI no disponible: %s", exc)
         return self._ai_client
 
     def _get_memory(self) -> Optional[Any]:
         if not self._memory_client:
             try:
-                from apps.core.memory.redis_client import get_redis
-                self._memory_client = get_redis()
-            except Exception:
-                pass
+                if settings.UPSTASH_REDIS_REST_URL and settings.UPSTASH_REDIS_REST_TOKEN:
+                    from apps.core.memory.redis_client import get_cache
+                    self._memory_client = get_cache()
+            except Exception as exc:
+                logger.debug("[TelegramBot] Memoria no disponible: %s", exc)
         return self._memory_client
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        lowered = text.lower().strip()
+        replacements = str.maketrans("áéíóúüñ", "aeiouun")
+        return lowered.translate(replacements)
+
+    @staticmethod
+    def _sanitize_telegram_html(text: str) -> str:
+        # Telegram falla si recibe etiquetas no soportadas generadas por el modelo.
+        allowed = {"b", "strong", "i", "em", "u", "s", "code", "pre", "a"}
+        def repl(match: re.Match[str]) -> str:
+            tag = match.group(1).lower().strip("/").split()[0]
+            return match.group(0) if tag in allowed else ""
+        return re.sub(r"</?([a-zA-Z0-9]+)(?:\s+[^>]*)?>", repl, text)[:4000]
 
     async def _send(self, chat_id: str, text: str, parse_mode: str = "HTML") -> None:
         if not settings.telegram_token:
             return
         url = f"{TELEGRAM_API}{settings.telegram_token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": text[:4000],
+            "parse_mode": parse_mode,
+            "disable_web_page_preview": True,
+        }
         try:
-            await self._http.post(url, json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": parse_mode,
-                "disable_web_page_preview": True,
-            })
+            res = await self._http.post(url, json=payload)
+            if res.status_code >= 400 and parse_mode:
+                payload.pop("parse_mode", None)
+                await self._http.post(url, json=payload)
         except Exception as exc:
             logger.error("[TelegramBot] Error enviando mensaje: %s", exc)
 
     async def _send_startup_message(self) -> None:
-        """Mensaje de inicio cuando ARIA arranca."""
         if not settings.TELEGRAM_CHAT_ID:
             return
         from datetime import datetime, timezone
@@ -728,12 +773,9 @@ class AriaTelegramBot:
         await self._send(
             str(settings.TELEGRAM_CHAT_ID),
             f"<b>ARIA online</b> — {ts}\n\n"
-            f"Arrancando ciclos de monetización. "
-            f"Usa /ganar para forzar uno ahora o /oportunidad para ver qué detecté.",
+            "Ya puedo hablar de forma libre. Escríbeme normal; los comandos quedan solo como atajos.",
         )
 
-
-# ── SINGLETON ─────────────────────────────────────────────────
 
 _bot_instance: Optional[AriaTelegramBot] = None
 
@@ -743,30 +785,3 @@ def get_bot() -> AriaTelegramBot:
     if _bot_instance is None:
         _bot_instance = AriaTelegramBot()
     return _bot_instance
-
-class AriaTelegramBot:
-    # ... (existing methods)
-
-
-        """Registra el webhook de Telegram."""
-        if not settings.telegram_token:
-            return False
-        api_url = f"{TELEGRAM_API}{settings.telegram_token}/setWebhook"
-        try:
-            res = await self._http.post(api_url, json={"url": url})
-            return res.status_code == 200 and res.json().get("ok")
-        except Exception as exc:
-            logger.error("[TelegramBot] Error registrando webhook: %s", exc)
-            return False
-
-    async def get_webhook_info(self) -> dict:
-        """Obtiene información del webhook actual."""
-        if not settings.telegram_token:
-            return {"ok": False, "error": "Token no configurado"}
-        api_url = f"{TELEGRAM_API}{settings.telegram_token}/getWebhookInfo"
-        try:
-            res = await self._http.get(api_url)
-            return res.json()
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)}
-
