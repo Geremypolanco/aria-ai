@@ -120,6 +120,7 @@ class Settings(BaseSettings):
     CANVA_CLIENT_ID: Optional[str] = None
     CANVA_CLIENT_SECRET: Optional[str] = None
     ARIA_BASE_URL: str = "https://aria-ai.fly.dev"
+      ZAPIER_WEBHOOK_URL: Optional[str] = None   # fly secrets set ZAPIER_WEBHOOK_URL="https://hooks.zapier.com/..."
     SOCIAL_CONNECT_TOKEN: str = "aria"
 
     # ── COMUNICACIÓN ──────────────────────────────────────
