@@ -70,3 +70,34 @@ boto3==1.35.29
 
 # ── Automatización de navegador y screenshots ──────────────
 playwright==1.47.0
+
+# ── Suite de Conocimiento ─────────────────────────────────
+
+# Búsqueda web (sin API key)
+duckduckgo-search==6.3.7
+
+# Wikipedia (sin API key)
+wikipedia-api==0.7.1
+
+# Extracción limpia de contenido web
+trafilatura==2.0.0
+
+# Papers científicos: arXiv (sin API key)
+arxiv==2.1.3
+
+# Finanzas: acciones, ETFs, criptos via Yahoo Finance (sin API key)
+yfinance==0.2.51
+
+# Cómputo de conocimiento (requiere WOLFRAM_APP_ID gratis)
+wolframalpha==5.1.3
+
+# Indicadores financieros avanzados (requiere ALPHA_VANTAGE_KEY gratis)
+alpha-vantage==3.0.0
+
+# Datos extra de pandas (yfinance lo requiere)
+pandas==2.2.3
+numpy==2.1.3
+
+# RAG / Memoria vectorial local
+chromadb==0.5.23
+sentence-transformers==3.3.1
