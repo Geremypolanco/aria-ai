@@ -28,6 +28,7 @@ from apps.core.sandbox.universal_sandbox import SandboxManager
 from apps.core.integrations.mcp_client import mcp_manager
 from apps.core.config.secrets_manager import secrets_manager, env_manager, config_manager
 from apps.core.deployment.deployment_orchestrator import deployment_orchestrator, DeploymentPlatform
+from apps.api.webhooks import router as webhooks_router
 
 logger = logging.getLogger("aria.api")
 
@@ -46,6 +47,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register routers
+app.include_router(webhooks_router)
 
 # Initialize agents
 orchestrator = AriaOrchestrator()

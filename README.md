@@ -7,7 +7,7 @@ Aria es un sistema de IA autónomo de última generación que combina las capaci
 ### 🧠 Motor de Razonamiento Superior
 - **Orquestación Dinámica:** Planificación y descomposición de tareas complejas en sub-tareas ejecutables.
 - **MCP Connector (Extensibilidad Infinita):** Soporte nativo para el *Model Context Protocol*, permitiendo conectar Aria a cualquier servidor de herramientas MCP.
-- **Integración con Zapier (Zanier):** Acceso a más de 6,000 aplicaciones y 20,000 acciones para automatizar flujos de trabajo en el mundo real.
+- **Integración con Zapier (Zanier):** Acceso bidireccional a más de 6,000 aplicaciones. Aria puede ejecutar acciones de Zapier y Zapier puede disparar tareas en Aria mediante webhooks.
 - **Contexto Infinito:** Gestión de memoria persistente que supera las limitaciones de ventana de contexto tradicionales.
 
 ### 💻 Entorno de Desarrollo (Replit++)
@@ -56,6 +56,12 @@ python -m apps.api.main
 # Iniciar frontend
 npm run dev
 ```
+
+## 🔌 Integración con Zapier
+
+Aria v2.1.0 permite una conexión profunda con Zapier:
+1. **Aria -> Zapier:** El orquestador usa el servidor MCP de Zapier para ejecutar acciones en apps como Gmail, Slack o Notion.
+2. **Zapier -> Aria:** Zapier puede enviar eventos a `https://<tu-dominio>/api/webhooks/zapier` para que Aria procese tareas automáticamente basándose en triggers externos.
 
 ## 🔒 Seguridad y Privacidad
 Aria ejecuta todo el código en entornos sandbox aislados y protege tus credenciales mediante un sistema de encriptación Fernet de grado industrial.
