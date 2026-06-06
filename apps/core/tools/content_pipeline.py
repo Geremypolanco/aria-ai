@@ -223,7 +223,7 @@ class ContentPipeline:
         """Genera un artículo SEO completo con IA."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
-            ai = await get_ai_client()
+            ai = get_ai_client()
             category = topic.get("category", "tech")
 
             lang_instruction = "en español" if language == "es" else "in English"

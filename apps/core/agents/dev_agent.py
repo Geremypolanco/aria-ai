@@ -100,7 +100,7 @@ class DevAgent(BaseAgent):
         if not result.get("success"):
             # Fallback a ai_client
             from apps.core.tools.ai_client import get_ai_client
-            ai = await get_ai_client()
+            ai = get_ai_client()
             response = await ai.complete(
                 system=f"Expert {language} developer. Write clean, production-ready code only.",
                 user=task,

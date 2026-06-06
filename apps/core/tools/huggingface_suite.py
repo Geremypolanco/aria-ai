@@ -758,7 +758,7 @@ class HuggingFaceSuite:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
-            ai = await get_ai_client()
+            ai = get_ai_client()
             response = await ai.complete(
                 system=f"You are an expert {language} developer. Generate clean, production-ready code. Return only code, no explanations unless asked.",
                 user=prompt,

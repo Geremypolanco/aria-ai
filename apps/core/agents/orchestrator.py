@@ -371,7 +371,7 @@ Genera el plan de monetizacion. JSON esperado:
                 "rationale": mission.get("rationale", ""),
             }
 
-            result = await agent.execute(context)
+            result = await agent.run(context)
             result["agent"] = agent_name
             result["mission_task"] = task
 

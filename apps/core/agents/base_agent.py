@@ -228,7 +228,7 @@ class BaseAgent(ABC):
             except ImportError:
                 pass
         try:
-            ai = await get_ai_client()
+            ai = get_ai_client()
             response = await ai.complete(
                 system=system,
                 user=user,
