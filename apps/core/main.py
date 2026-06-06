@@ -136,6 +136,30 @@ async def auto_evolve_job() -> None:
         logger.error("Error en auto-evolución: %s", exc)
 
 
+async def learning_cycle_job() -> None:
+    """Ciclo de auto-aprendizaje continuo con modelos HuggingFace."""
+    try:
+        from apps.core.intelligence.continuous_learning import get_learning_engine
+        engine = get_learning_engine()
+        result = await engine.run_learning_cycle()
+        if not result.get("skipped"):
+            logger.info("[Scheduler] Aprendizaje: %d temas, %d cristales", result.get("topics_discovered",0), result.get("crystals_created",0))
+    except Exception as exc:
+        logger.error("Error en ciclo de aprendizaje: %s", exc)
+
+
+async def model_discovery_job() -> None:
+    """Ciclo de descubrimiento y benchmarking de modelos HF para cada función de Aria."""
+    try:
+        from apps.core.intelligence.model_router import get_model_router
+        router = get_model_router()
+        result = await router.run_discovery_cycle()
+        if not result.get("skipped"):
+            logger.info("[Scheduler] Descubrimiento: %d modelos evaluados, %d entradas actualizadas", result.get("models_evaluated",0), result.get("routing_entries_updated",0))
+    except Exception as exc:
+        logger.error("Error en descubrimiento de modelos: %s", exc)
+
+
 # ── LIFESPAN ──────────────────────────────────────────────
 
 @asynccontextmanager
@@ -149,6 +173,8 @@ async def lifespan(app: FastAPI):
         scheduler.add_job(agent_heartbeat_job, IntervalTrigger(seconds=30), id="heartbeat", replace_existing=True)
         scheduler.add_job(daily_report_job, CronTrigger(hour=9, minute=0), id="daily_report", replace_existing=True)
         scheduler.add_job(auto_evolve_job, IntervalTrigger(hours=4), id="auto_evolve", replace_existing=True)
+        scheduler.add_job(learning_cycle_job, IntervalTrigger(hours=4), id="learning_cycle", replace_existing=True)
+        scheduler.add_job(model_discovery_job, IntervalTrigger(hours=24), id="model_discovery", replace_existing=True)
         scheduler.start()
         logger.info("Scheduler iniciado con %d jobs.", len(scheduler.get_jobs()))
     except Exception as exc:
