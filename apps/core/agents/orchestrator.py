@@ -379,6 +379,11 @@ Genera el plan de monetizacion detallado. JSON esperado:
 
             logger.info("[Orchestrator] Ejecutando: %s -> %s (%s)", agent_name, task, topic)
             result = await agent.run(mission)
+            
+            # Si es una creación exitosa en Shopify/E-commerce, notificar a Zapier
+            if result.get("success") and agent_name in ["cfo", "ecommerce"] and result.get("shop_url"):
+                await self._notify_zapier_new_product(result)
+                
             return result
         except Exception as exc:
             logger.error("[Orchestrator] Error en mision %s: %s", agent_name, exc)
@@ -434,6 +439,27 @@ Genera el plan de monetizacion detallado. JSON esperado:
             else:
                 summary["missions_failed"] += 1
         return summary
+
+    async def _notify_zapier_new_product(self, product_data: dict) -> None:
+        """Notifica a Zapier para que inicie la promoción (ej: en LinkedIn)."""
+        webhook_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None) or "https://hooks.zapier.com/hooks/catch/23373923/4bp3cpt/"
+        
+        try:
+            from apps.core.tools.zapier_connector import ZapierConnector
+            zap = ZapierConnector()
+            payload = {
+                "event": "new_product_created",
+                "platform": "shopify",
+                "title": product_data.get("title") or "Nuevo Producto ARIA",
+                "url": product_data.get("shop_url"),
+                "price": product_data.get("price", "Consultar"),
+                "description": product_data.get("description", ""),
+                "suggested_linkedin_post": f"🚀 ¡Nuevo lanzamiento! Acabamos de publicar {product_data.get('title')}. Échale un vistazo aquí: {product_data.get('shop_url')}"
+            }
+            await zap.trigger_webhook(webhook_url, payload)
+            logger.info("[Orchestrator] Zapier notificado para el producto: %s", product_data.get("title"))
+        except Exception as exc:
+            logger.error("[Orchestrator] Error notificando a Zapier: %s", exc)
 
     async def _send_cycle_report(self, results: list, intelligence: dict, revenue: dict, duration: float) -> None:
         """Envia reporte del ciclo a Telegram con screenshots si existen."""

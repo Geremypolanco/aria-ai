@@ -45,6 +45,18 @@ SALES_TECHNIQUES = {
 # ── ESTRATEGIAS DE MARKETING ──────────────────────────────────────────────────
 
 MARKETING_STRATEGY = {
+    "linkedin_authority": [
+        "Hook: Comenzar con una declaración fuerte o una pregunta en las primeras 3 líneas.",
+        "Body: Usar párrafos cortos, listas y espacios en blanco para legibilidad móvil.",
+        "CTA: Llamadas a la acción suaves ('¿Qué opinas?') o directas ('Haz clic aquí').",
+        "Storytelling: Compartir el 'detrás de escena' de la creación de productos en Shopify.",
+        "Expertise: Publicar insights técnicos sobre IA y economía circular para generar confianza.",
+    ],
+    "shopify_seo_mastery": [
+        "Títulos: Keyword principal + Beneficio + Marca.",
+        "Meta Desc: Máximo 160 caracteres con un fuerte CTA.",
+        "URL Slugs: Cortos y descriptivos, solo con palabras clave.",
+    ],
     "content_pillars": [
         "Educational: Enseñar cómo resolver un problema específico.",
         "Inspirational: Casos de éxito y transformaciones.",
