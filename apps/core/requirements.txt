@@ -62,6 +62,10 @@ markdown==3.7
 beautifulsoup4==4.12.3
 lxml==5.3.0
 
+# ── Auditoría y Calidad ───────────────────────────────────
+radon==6.0.1
+pyflakes==3.2.0
+
 # ── Analytics ─────────────────────────────────────────────
 sentry-sdk[fastapi]==2.14.0
 

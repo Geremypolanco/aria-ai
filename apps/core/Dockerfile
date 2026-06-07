@@ -5,6 +5,7 @@ FROM python:3.12-slim
   # System dependencies (includes Playwright/Chromium runtime libs)
   RUN apt-get update && apt-get install -y \
       gcc \
+      bc \
       libnss3 \
       libnspr4 \
       libatk1.0-0 \

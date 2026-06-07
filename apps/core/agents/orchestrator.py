@@ -407,6 +407,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
             from apps.core.agents.affiliate_agent import AffiliateAgent
             from apps.core.agents.social_agent import SocialAgent
             from apps.core.agents.ecommerce_agent import EcommerceAgent
+            from apps.core.agents.process_auditor import ProcessAuditor
             
             self._agents["content"] = ContentAgent()
             self._agents["cfo"] = CFOAgent()
@@ -414,6 +415,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
             self._agents["affiliate"] = AffiliateAgent()
             self._agents["social"] = SocialAgent()
             self._agents["ecommerce"] = EcommerceAgent()
+            self._agents["process_auditor"] = ProcessAuditor()
             
             logger.info("[Orchestrator] %d agentes cargados correctamente", len(self._agents))
         except Exception as exc:
