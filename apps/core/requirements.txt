@@ -29,7 +29,7 @@ stripe==10.6.0
 mailchimp-marketing==3.0.75
 
 # ── Shopify ───────────────────────────────────────────────
-ShopifyAPI==12.6.0
+ShopifyAPI==12.7.0
 
 # ── Contenido multimedia ──────────────────────────────────
 cloudinary==1.41.0
