@@ -49,11 +49,20 @@ class AriaTelegramBot:
     """Bot de Telegram con comandos operativos y conversación natural."""
 
     HELP_TEXT = (
-        "Estoy aquí. Puedes escribirme como si estuvieras hablando con alguien — sin comandos, sin formatos especiales.\n\n"
-        "Me puedes preguntar qué oportunidades veo, cómo va el sistema, qué harías para generar ingresos, "
-        "o simplemente contarme qué tienes en mente. Si necesito información de la web, la busco. "
-        "Si algo no puedo hacer todavía, te lo digo directo.\n\n"
-        "¿Qué quieres ver?"
+        "<b>💎 ARIA AI — Panel de Control</b>\n\n"
+        "Estoy lista para gestionar tu ecosistema digital. Puedes hablarme de forma natural o usar mis herramientas de acceso rápido:\n\n"
+        "🚀 <b>Acción Inmediata</b>\n"
+        "• /ganar — Ejecutar ciclo autónomo de ingresos\n"
+        "• /oportunidad — Analizar tendencias y mercados\n"
+        "• /buscar — Investigar temas específicos\n\n"
+        "💼 <b>Gestión y Finanzas</b>\n"
+        "• /revenue — Reporte de ingresos y conversiones\n"
+        "• /pendientes — Revisar acciones que requieren aprobación\n"
+        "• /status — Estado de salud de mis agentes y núcleos\n\n"
+        "🔌 <b>Conectividad</b>\n"
+        "• /zapier — Gestionar conectores (Gmail, Shopify, Slack...)\n"
+        "• /agentes — Listar mis agentes activos y sus roles\n\n"
+        "<i>Escríbeme cualquier duda o instrucción directa. Mi prioridad es tu rentabilidad.</i>"
     )
 
     def __init__(self) -> None:
@@ -1296,22 +1305,28 @@ class AriaTelegramBot:
             logger.error("[TelegramBot] Error enviando foto: %s", exc)
             return False
 
-    async def _send_startup_message(self) -> None:
+        async def _send_startup_message(self) -> None:
         if not settings.TELEGRAM_CHAT_ID:
             return
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).strftime("%H:%M UTC")
         hour = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).hour
+        
         if hour < 12:
-            greeting = "Buenos días."
+            greeting = "Buenos días"
         elif hour < 19:
-            greeting = "Buenas tardes."
+            greeting = "Buenas tardes"
         else:
-            greeting = "Buenas noches."
-        await self._send(
-            str(settings.TELEGRAM_CHAT_ID),
-            f"{greeting} Acabo de conectarme. ¿Cómo estás?",
+            greeting = "Buenas noches"
+            
+        msg = (
+            f"💠 <b>ARIA AI — Sistema Operativo Online</b>\n\n"
+            f"¡{greeting}! Todos mis sistemas están operativos y listos para trabajar.\n\n"
+            f"🕒 <b>Sincronización:</b> {ts}\n"
+            f"📡 <b>Conexión:</b> Estable (Multi-App habilitado)\n\n"
+            f"¿En qué nos enfocaremos hoy?"
         )
+        await self._send(str(settings.TELEGRAM_CHAT_ID), msg)
 
 
     async def send_proactive(self, reason: str = "morning") -> None:
