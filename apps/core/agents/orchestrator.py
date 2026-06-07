@@ -65,6 +65,14 @@ class Orchestrator(BaseAgent):
         
         return {"success": False, "error": "Misión no reconocida o agente no disponible"}
 
+    async def execute_task(self, task_text: str, metadata: dict[str, Any]) -> dict[str, Any]:
+        """Ejecuta una tarea recibida vía webhook (ej: Zapier)."""
+        logger.info("[Orchestrator] Ejecutando tarea de %s: %s", metadata.get("source", "desconocido"), task_text)
+        
+        # Por ahora, redirigimos a execute_mission para mantener compatibilidad
+        # En el futuro, esto podría tener una lógica de ruteo más compleja
+        return await self.execute_mission(task_text)
+
     # ── CICLO PRINCIPAL ───────────────────────────────────────────
 
     async def run_cycle(self) -> dict[str, Any]:
