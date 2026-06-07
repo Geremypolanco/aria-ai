@@ -55,7 +55,7 @@ jobs:
       status: ${{ steps.score.outputs.status }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v5
         with:
@@ -174,7 +174,7 @@ jobs:
       status: ${{ steps.score.outputs.status }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: "[CHECK] Secretos expuestos en código"
         id: secrets
@@ -296,7 +296,7 @@ jobs:
       status: ${{ steps.score.outputs.status }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: "[CHECK] Archivos legales y de compliance"
         id: legal
@@ -385,7 +385,7 @@ jobs:
       status: ${{ steps.score.outputs.status }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: "[CHECK] Workflows de GitHub Actions"
         id: workflows
@@ -485,7 +485,7 @@ jobs:
     if: always()
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Generar reporte consolidado
         id: report
