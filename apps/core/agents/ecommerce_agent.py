@@ -358,30 +358,21 @@ Genera el JSON con este formato exacto:
     # ── AUTOMATIZACIONES ZAPIER ───────────────────────────────────
 
     async def _setup_zapier_automations(self) -> Dict[str, Any]:
-        """Configura y documenta las automatizaciones de Zapier para Shopify."""
-        automations = self.knowledge["zapier_shopify_automations"]
-
-        if self._zapier:
-            try:
-                # Intentar listar las acciones disponibles en Zapier vía MCP
-                result = await self._zapier.call_zapier_action(
-                    "list_actions",
-                    {"app": "shopify"}
-                )
-                logger.info(f"[EcommerceAgent] Zapier acciones disponibles: {result}")
-                return {
-                    "success": True,
-                    "recommended_automations": automations,
-                    "zapier_connection": result,
-                    "note": "Zapier MCP conectado. Configurar Zaps recomendados en el dashboard de Zapier.",
-                }
-            except Exception as e:
-                logger.warning(f"[EcommerceAgent] Zapier MCP no disponible: {e}")
-
+        """
+        IMPORTANTE: Shopify está conectado DIRECTAMENTE via ShopifyEngine (Admin API).
+        NO se usa Zapier para operaciones de Shopify (productos, inventario, pedidos).
+        Zapier solo aplica para integraciones con apps externas (Gmail, Slack, Sheets).
+        """
         return {
             "success": True,
-            "recommended_automations": automations,
-            "note": "Automatizaciones documentadas. Configurar manualmente en zapier.com/apps/shopify/integrations",
+            "shopify_integration": "DIRECTA — Shopify Admin API via ShopifyEngine",
+            "shopify_store": "voidline-38.myshopify.com",
+            "note": (
+                "Shopify conectado DIRECTAMENTE con Admin API token. "
+                "Aria usa ShopifyEngine para crear productos, gestionar inventario y ver pedidos. "
+                "Zapier NO es necesario para Shopify. "
+                "Usa Zapier solo para otras apps: Gmail, Slack, Google Sheets, etc."
+            ),
         }
 
     # ── EMBUDO HIGH-TICKET ────────────────────────────────────────
