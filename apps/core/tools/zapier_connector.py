@@ -15,7 +15,7 @@ class ZapierConnector:
     def __init__(self):
         self.timeout = 30.0
         # Priorizamos la URL de settings, si no, usamos el fallback del usuario
-        self.webhook_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None) or "https://hooks.zapier.com/hooks/catch/23373923/4bp3cpt/"
+        self.webhook_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None)  # Requiere ZAPIER_WEBHOOK_URL configurado explícitamente en Fly.io
 
     async def trigger_action(self, action_name: str, app_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """
