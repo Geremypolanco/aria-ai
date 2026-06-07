@@ -98,6 +98,23 @@ class Settings(BaseSettings):
     SHOPIFY_API_KEY: Optional[str] = None
     SHOPIFY_ADMIN_TOKEN: Optional[str] = None
     SHOPIFY_AUTOMATION_TOKEN: Optional[str] = None
+    # ── Shopify properties (auto-generados desde SHOPIFY_URL y SHOPIFY_ADMIN_TOKEN)
+
+    @property
+    def SHOPIFY_SHOP_NAME(self) -> str:
+        """Nombre del shop sin .myshopify.com — extraído de SHOPIFY_URL."""
+        url = self.SHOPIFY_URL or ""
+        return url.replace("https://", "").replace("http://", "").replace(".myshopify.com", "").strip("/")
+
+    @property
+    def SHOPIFY_ACCESS_TOKEN(self) -> Optional[str]:
+        """Token Admin API de Shopify (alias de SHOPIFY_ADMIN_TOKEN o SHOPIFY_AUTOMATION_TOKEN)."""
+        return self.SHOPIFY_ADMIN_TOKEN or self.SHOPIFY_AUTOMATION_TOKEN
+
+    @property
+    def SHOPIFY_ENABLED(self) -> bool:
+        """True si Shopify está configurado con URL y token de acceso."""
+        return bool(self.SHOPIFY_URL and (self.SHOPIFY_ADMIN_TOKEN or self.SHOPIFY_AUTOMATION_TOKEN))
 
     # ── REDES SOCIALES ────────────────────────────────────
     BUFFER_TOKEN: Optional[str] = None
