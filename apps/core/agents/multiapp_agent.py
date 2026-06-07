@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, Optional
 from apps.core.agents.base_agent import BaseAgent
 from apps.core.tools.zapier_connector import ZapierConnector
+from apps.core.tools.mcp_zapier import MCPZapierTool
 from apps.core.tools.ai_client import get_ai_client, AIModel
 
 logger = logging.getLogger("aria.agents.multiapp")
@@ -20,6 +21,7 @@ class MultiAppAgent(BaseAgent):
             capabilities=["multi_app_automation", "zapier_orchestration", "cross_platform_flows"]
         )
         self._zapier = ZapierConnector()
+        self._mcp = MCPZapierTool()
 
     async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         task = context.get("task", "general_automation")
@@ -29,15 +31,23 @@ class MultiAppAgent(BaseAgent):
         
         logger.info("[MultiAppAgent] Ejecutando tarea: %s para app: %s", task, app)
         
-        # Disparar acción universal en Zapier
-        result = await self._zapier.trigger_action(
-            action_name=action,
-            app_name=app,
-            params={
-                "task_description": task,
-                **params
-            }
-        )
+        # Intentar ejecución directa vía MCP si es posible
+        if context.get("use_mcp"):
+            result = await self._mcp.execute_action(
+                action_key=action,
+                selected_api=context.get("selected_api", ""),
+                params=params
+            )
+        else:
+            # Disparar acción universal en Zapier Webhook
+            result = await self._zapier.trigger_action(
+                action_name=action,
+                app_name=app,
+                params={
+                    "task_description": task,
+                    **params
+                }
+            )
         
         return {
             "agent": self.name,
