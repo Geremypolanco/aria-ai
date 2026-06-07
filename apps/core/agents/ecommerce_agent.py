@@ -83,8 +83,9 @@ ECOMMERCE_KNOWLEDGE = {
 
 class EcommerceAgent(BaseAgent):
     """
-    Agente especializado en e-commerce, Shopify, Zapier y ventas High-Ticket.
-    Aprende continuamente de la web y ejecuta operaciones reales en Shopify.
+    Agente especializado en e-commerce y ventas High-Ticket.
+    Usa Shopify Admin API DIRECTAMENTE via ShopifyEngine — NO usa Zapier para Shopify.
+    Zapier se reserva solo para integraciones externas (Gmail, Slack, etc.).
     """
 
     def __init__(self) -> None:
@@ -95,7 +96,6 @@ class EcommerceAgent(BaseAgent):
                 "shopify_product_creation",
                 "listing_optimization",
                 "inventory_management",
-                "zapier_automation",
                 "high_ticket_sales",
                 "market_research",
                 "content_creation",
