@@ -1,0 +1,622 @@
+name: Process Audit — Auditoría Universal de Procesos
+
+on:
+  # Ejecutar en cada push a main
+  push:
+    branches: [main]
+  # Ejecutar en Pull Requests
+  pull_request:
+    branches: [main]
+  # Ejecución programada: cada lunes a las 09:00 UTC
+  schedule:
+    - cron: '0 9 * * 1'
+  # Ejecución manual desde GitHub UI
+  workflow_dispatch:
+    inputs:
+      lifecycle_stage:
+        description: 'Etapa del ciclo de vida a auditar'
+        required: false
+        default: 'produccion'
+        type: choice
+        options:
+          - idea
+          - investigacion
+          - planificacion
+          - produccion
+          - validacion
+          - publicacion
+          - distribucion
+          - monitoreo
+          - optimizacion
+          - escalado
+          - mantenimiento
+          - archivado
+      audit_scope:
+        description: 'Alcance de la auditoría'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - github_only
+          - security_only
+          - compliance_only
+
+# ══════════════════════════════════════════════════════════════════════════════
+jobs:
+# ══════════════════════════════════════════════════════════════════════════════
+
+  # ── CAPA TÉCNICA: Calidad de código ──────────────────────────────────────
+  audit-tecnica:
+    name: "[TÉCNICA] Calidad y Deuda Técnica"
+    runs-on: ubuntu-latest
+    outputs:
+      score: ${{ steps.score.outputs.value }}
+      status: ${{ steps.score.outputs.status }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias de análisis
+        run: |
+          pip install radon pyflakes --quiet 2>&1 | tail -3
+
+      - name: "[CHECK] Sintaxis Python — todos los archivos"
+        id: syntax
+        run: |
+          echo "=== Verificando sintaxis Python ==="
+          ERRORS=0
+          FILES=0
+          while IFS= read -r f; do
+            FILES=$((FILES+1))
+            if ! python3 -m py_compile "$f" 2>/dev/null; then
+              echo "SYNTAX ERROR: $f"
+              ERRORS=$((ERRORS+1))
+            fi
+          done < <(find apps/core -name "*.py" -not -path "*__pycache__*")
+          echo "Archivos revisados: $FILES | Errores: $ERRORS"
+          echo "syntax_errors=$ERRORS" >> $GITHUB_OUTPUT
+          echo "syntax_files=$FILES" >> $GITHUB_OUTPUT
+          [ $ERRORS -eq 0 ] && echo "✅ Sintaxis OK" || echo "❌ $ERRORS errores de sintaxis"
+
+      - name: "[CHECK] Complejidad ciclomática (Radon)"
+        id: complexity
+        run: |
+          echo "=== Análisis de Complejidad Ciclomática ==="
+          HIGH_COMPLEXITY=$(radon cc apps/core -n C --show-complexity 2>/dev/null | wc -l || echo "0")
+          echo "Funciones con complejidad alta (C+): $HIGH_COMPLEXITY"
+          echo "complexity_issues=$HIGH_COMPLEXITY" >> $GITHUB_OUTPUT
+          if [ "$HIGH_COMPLEXITY" -gt 10 ]; then
+            echo "⚠️ WARN: $HIGH_COMPLEXITY funciones con alta complejidad"
+          else
+            echo "✅ Complejidad bajo control"
+          fi
+
+      - name: "[CHECK] Deuda técnica — __pycache__ en repositorio"
+        id: pycache
+        run: |
+          PYCACHE_COUNT=$(find . -name "__pycache__" -not -path "./.git/*" | wc -l)
+          echo "Directorios __pycache__ encontrados: $PYCACHE_COUNT"
+          echo "pycache_count=$PYCACHE_COUNT" >> $GITHUB_OUTPUT
+          if [ "$PYCACHE_COUNT" -gt 0 ]; then
+            echo "⚠️ WARN: $PYCACHE_COUNT directorios __pycache__ en el repositorio"
+            echo "  → Agregar '__pycache__/' al .gitignore"
+          else
+            echo "✅ Sin __pycache__ en repositorio"
+          fi
+
+      - name: "[CHECK] Tests — cobertura mínima"
+        id: tests
+        run: |
+          TEST_FILES=$(find . -name "test_*.py" -o -name "*_test.py" | grep -v __pycache__ | wc -l)
+          echo "Archivos de tests encontrados: $TEST_FILES"
+          echo "test_files=$TEST_FILES" >> $GITHUB_OUTPUT
+          if [ "$TEST_FILES" -eq 0 ]; then
+            echo "❌ FAIL: No se encontraron archivos de tests"
+            echo "  → ACCIÓN REQUERIDA: Implementar pytest con cobertura mínima 70%"
+          else
+            echo "✅ Tests encontrados: $TEST_FILES archivos"
+          fi
+
+      - name: "[CHECK] Documentación — archivos clave"
+        id: docs
+        run: |
+          MISSING=""
+          [ ! -f "README.md" ]   && MISSING="$MISSING README.md"
+          [ ! -f "CHANGELOG.md" ] && MISSING="$MISSING CHANGELOG.md"
+          [ ! -f "LICENSE" ]     && MISSING="$MISSING LICENSE"
+          [ ! -f "ROADMAP.md" ]  && MISSING="$MISSING ROADMAP.md"
+          echo "Documentación faltante:$MISSING"
+          echo "missing_docs=$MISSING" >> $GITHUB_OUTPUT
+          if [ -n "$MISSING" ]; then
+            echo "⚠️ WARN: Documentación faltante:$MISSING"
+          else
+            echo "✅ Documentación completa"
+          fi
+
+      - name: Calcular score técnico
+        id: score
+        run: |
+          SYNTAX_ERR=${{ steps.syntax.outputs.syntax_errors }}
+          TEST_FILES=${{ steps.tests.outputs.test_files }}
+          PYCACHE=${{ steps.pycache.outputs.pycache_count }}
+          COMPLEXITY=${{ steps.complexity.outputs.complexity_issues }}
+
+          # Calcular score (0-100)
+          SCORE=100
+          [ "$SYNTAX_ERR" -gt 0 ]  && SCORE=$((SCORE - 30))
+          [ "$TEST_FILES" -eq 0 ]  && SCORE=$((SCORE - 25))
+          [ "$PYCACHE" -gt 0 ]     && SCORE=$((SCORE - 10))
+          [ "$COMPLEXITY" -gt 10 ] && SCORE=$((SCORE - 10))
+
+          echo "value=$SCORE" >> $GITHUB_OUTPUT
+          if [ "$SCORE" -ge 75 ]; then
+            echo "status=PASS" >> $GITHUB_OUTPUT
+            echo "✅ Score Técnico: $SCORE/100 — PASS"
+          elif [ "$SCORE" -ge 50 ]; then
+            echo "status=WARN" >> $GITHUB_OUTPUT
+            echo "⚠️ Score Técnico: $SCORE/100 — WARN"
+          else
+            echo "status=FAIL" >> $GITHUB_OUTPUT
+            echo "❌ Score Técnico: $SCORE/100 — FAIL"
+          fi
+
+  # ── CAPA SEGURIDAD: Secretos y dependencias ───────────────────────────────
+  audit-seguridad:
+    name: "[SEGURIDAD] Secretos y Vulnerabilidades"
+    runs-on: ubuntu-latest
+    outputs:
+      score: ${{ steps.score.outputs.value }}
+      status: ${{ steps.score.outputs.status }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "[CHECK] Secretos expuestos en código"
+        id: secrets
+        run: |
+          echo "=== Escaneando secretos expuestos ==="
+          # Patrones de secretos comunes
+          PATTERNS=(
+            "sk-[a-zA-Z0-9]{20,}"
+            "ghp_[a-zA-Z0-9]{36}"
+            "AKIA[0-9A-Z]{16}"
+            "password\s*=\s*['\"][^'\"]{8,}"
+            "secret\s*=\s*['\"][^'\"]{8,}"
+          )
+          FOUND=0
+          for pattern in "${PATTERNS[@]}"; do
+            MATCHES=$(grep -rn --include="*.py" --include="*.yml" --include="*.json" \
+              -E "$pattern" . \
+              --exclude-dir=".git" \
+              --exclude-dir="__pycache__" \
+              --exclude="*.example" 2>/dev/null | grep -v "test_" | wc -l)
+            [ "$MATCHES" -gt 0 ] && FOUND=$((FOUND + MATCHES))
+          done
+          echo "Posibles secretos encontrados: $FOUND"
+          echo "secrets_found=$FOUND" >> $GITHUB_OUTPUT
+          if [ "$FOUND" -gt 0 ]; then
+            echo "❌ FAIL: $FOUND posibles secretos expuestos detectados"
+          else
+            echo "✅ No se detectaron secretos expuestos"
+          fi
+
+      - name: "[CHECK] .env en repositorio"
+        id: dotenv
+        run: |
+          if [ -f ".env" ]; then
+            echo "❌ FAIL: Archivo .env encontrado en repositorio"
+            echo "env_exposed=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ .env no está en el repositorio"
+            echo "env_exposed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "[CHECK] .gitignore protege archivos sensibles"
+        id: gitignore
+        run: |
+          MISSING_RULES=""
+          if [ -f ".gitignore" ]; then
+            grep -q "\.env" .gitignore     || MISSING_RULES="$MISSING_RULES .env"
+            grep -q "__pycache__" .gitignore || MISSING_RULES="$MISSING_RULES __pycache__"
+            grep -q "\.pyc" .gitignore     || MISSING_RULES="$MISSING_RULES *.pyc"
+            grep -q "\.log" .gitignore     || MISSING_RULES="$MISSING_RULES *.log"
+          else
+            MISSING_RULES=" (sin .gitignore)"
+          fi
+          echo "Reglas faltantes en .gitignore:$MISSING_RULES"
+          echo "gitignore_missing=$MISSING_RULES" >> $GITHUB_OUTPUT
+          if [ -n "$MISSING_RULES" ]; then
+            echo "⚠️ WARN: .gitignore incompleto — falta:$MISSING_RULES"
+          else
+            echo "✅ .gitignore correctamente configurado"
+          fi
+
+      - name: "[CHECK] Dependencias — requirements.txt presente"
+        id: deps
+        run: |
+          if [ -f "apps/core/requirements.txt" ] || [ -f "requirements.txt" ]; then
+            REQ_FILE=$(find . -name "requirements.txt" | head -1)
+            DEP_COUNT=$(wc -l < "$REQ_FILE")
+            echo "✅ requirements.txt encontrado con $DEP_COUNT dependencias"
+            echo "deps_ok=true" >> $GITHUB_OUTPUT
+            echo "dep_count=$DEP_COUNT" >> $GITHUB_OUTPUT
+          else
+            echo "❌ FAIL: requirements.txt no encontrado"
+            echo "deps_ok=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "[CHECK] Dependabot configurado"
+        id: dependabot
+        run: |
+          if [ -f ".github/dependabot.yml" ]; then
+            echo "✅ Dependabot configurado"
+            echo "dependabot=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ WARN: Dependabot no configurado — vulnerabilidades no monitoreadas automáticamente"
+            echo "dependabot=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calcular score de seguridad
+        id: score
+        run: |
+          SECRETS=${{ steps.secrets.outputs.secrets_found }}
+          ENV_EXPOSED=${{ steps.dotenv.outputs.env_exposed }}
+          DEPS_OK=${{ steps.deps.outputs.deps_ok }}
+          DEPENDABOT=${{ steps.dependabot.outputs.dependabot }}
+
+          SCORE=100
+          [ "$SECRETS" -gt 0 ]      && SCORE=$((SCORE - 40))
+          [ "$ENV_EXPOSED" = "true" ] && SCORE=$((SCORE - 30))
+          [ "$DEPS_OK" = "false" ]   && SCORE=$((SCORE - 15))
+          [ "$DEPENDABOT" = "false" ] && SCORE=$((SCORE - 15))
+
+          echo "value=$SCORE" >> $GITHUB_OUTPUT
+          if [ "$SCORE" -ge 75 ]; then
+            echo "status=PASS" >> $GITHUB_OUTPUT
+            echo "✅ Score Seguridad: $SCORE/100 — PASS"
+          elif [ "$SCORE" -ge 50 ]; then
+            echo "status=WARN" >> $GITHUB_OUTPUT
+            echo "⚠️ Score Seguridad: $SCORE/100 — WARN"
+          else
+            echo "status=FAIL" >> $GITHUB_OUTPUT
+            echo "❌ Score Seguridad: $SCORE/100 — FAIL"
+          fi
+
+  # ── CAPA COMPLIANCE: Legal y políticas ───────────────────────────────────
+  audit-compliance:
+    name: "[COMPLIANCE] Legal y Políticas"
+    runs-on: ubuntu-latest
+    outputs:
+      score: ${{ steps.score.outputs.value }}
+      status: ${{ steps.score.outputs.status }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "[CHECK] Archivos legales y de compliance"
+        id: legal
+        run: |
+          echo "=== Verificando archivos de compliance ==="
+          SCORE=100
+          MISSING=""
+
+          check_file() {
+            local file=$1
+            local label=$2
+            local penalty=$3
+            if [ ! -f "$file" ]; then
+              echo "❌ FALTA: $label ($file)"
+              MISSING="$MISSING $label"
+              SCORE=$((SCORE - penalty))
+            else
+              echo "✅ Presente: $label"
+            fi
+          }
+
+          check_file "LICENSE"       "LICENSE"          25
+          check_file "PRIVACY.md"    "Privacy Policy"   20
+          check_file "TERMS.md"      "Terms of Service" 20
+          check_file "SECURITY.md"   "Security Policy"  15
+          check_file "CODE_OF_CONDUCT.md" "Code of Conduct" 10
+          check_file "CONTRIBUTING.md"    "Contributing Guide" 10
+
+          echo "missing_legal=$MISSING" >> $GITHUB_OUTPUT
+          echo "legal_score=$SCORE" >> $GITHUB_OUTPUT
+
+      - name: "[CHECK] Issue templates configurados"
+        id: templates
+        run: |
+          TEMPLATE_DIR=".github/ISSUE_TEMPLATE"
+          if [ -d "$TEMPLATE_DIR" ]; then
+            TEMPLATE_COUNT=$(ls "$TEMPLATE_DIR"/*.md 2>/dev/null | wc -l)
+            echo "✅ Issue templates: $TEMPLATE_COUNT encontrados"
+            echo "templates_ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ WARN: Issue templates no configurados"
+            echo "templates_ok=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "[CHECK] CHANGELOG presente"
+        id: changelog
+        run: |
+          if [ -f "CHANGELOG.md" ]; then
+            echo "✅ CHANGELOG.md presente"
+            echo "changelog=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ WARN: CHANGELOG.md no encontrado"
+            echo "changelog=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calcular score de compliance
+        id: score
+        run: |
+          LEGAL_SCORE=${{ steps.legal.outputs.legal_score }}
+          TEMPLATES=${{ steps.templates.outputs.templates_ok }}
+          CHANGELOG=${{ steps.changelog.outputs.changelog }}
+
+          SCORE=$LEGAL_SCORE
+          [ "$TEMPLATES" = "false" ] && SCORE=$((SCORE - 5))
+          [ "$CHANGELOG" = "false" ] && SCORE=$((SCORE - 10))
+          [ "$SCORE" -lt 0 ] && SCORE=0
+
+          echo "value=$SCORE" >> $GITHUB_OUTPUT
+          if [ "$SCORE" -ge 75 ]; then
+            echo "status=PASS" >> $GITHUB_OUTPUT
+            echo "✅ Score Compliance: $SCORE/100 — PASS"
+          elif [ "$SCORE" -ge 50 ]; then
+            echo "status=WARN" >> $GITHUB_OUTPUT
+            echo "⚠️ Score Compliance: $SCORE/100 — WARN"
+          else
+            echo "status=FAIL" >> $GITHUB_OUTPUT
+            echo "❌ Score Compliance: $SCORE/100 — FAIL"
+          fi
+
+  # ── CAPA OPERACIONAL: CI/CD y automatización ──────────────────────────────
+  audit-operacional:
+    name: "[OPERACIONAL] CI/CD y Automatización"
+    runs-on: ubuntu-latest
+    outputs:
+      score: ${{ steps.score.outputs.value }}
+      status: ${{ steps.score.outputs.status }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "[CHECK] Workflows de GitHub Actions"
+        id: workflows
+        run: |
+          WORKFLOW_COUNT=$(find .github/workflows -name "*.yml" 2>/dev/null | wc -l)
+          echo "Workflows encontrados: $WORKFLOW_COUNT"
+          echo "workflow_count=$WORKFLOW_COUNT" >> $GITHUB_OUTPUT
+          if [ "$WORKFLOW_COUNT" -ge 2 ]; then
+            echo "✅ CI/CD configurado con $WORKFLOW_COUNT workflows"
+          elif [ "$WORKFLOW_COUNT" -eq 1 ]; then
+            echo "⚠️ WARN: Solo 1 workflow — considerar separar deploy/test/audit"
+          else
+            echo "❌ FAIL: No se encontraron workflows de GitHub Actions"
+          fi
+
+      - name: "[CHECK] Dockerfile presente"
+        id: docker
+        run: |
+          DOCKER_COUNT=$(find . -name "Dockerfile" | grep -v ".git" | wc -l)
+          echo "Dockerfiles encontrados: $DOCKER_COUNT"
+          echo "docker_count=$DOCKER_COUNT" >> $GITHUB_OUTPUT
+          if [ "$DOCKER_COUNT" -gt 0 ]; then
+            echo "✅ Dockerfile presente — containerización configurada"
+          else
+            echo "⚠️ WARN: Dockerfile no encontrado"
+          fi
+
+      - name: "[CHECK] Health check endpoint documentado"
+        id: healthcheck
+        run: |
+          HEALTH_REFS=$(grep -r "health" apps/ --include="*.py" -l 2>/dev/null | wc -l)
+          echo "Archivos con health check: $HEALTH_REFS"
+          echo "health_refs=$HEALTH_REFS" >> $GITHUB_OUTPUT
+          if [ "$HEALTH_REFS" -gt 0 ]; then
+            echo "✅ Health check implementado"
+          else
+            echo "⚠️ WARN: Health check no detectado"
+          fi
+
+      - name: "[CHECK] Ciclo de vida — etapa actual"
+        id: lifecycle
+        run: |
+          STAGE="${{ github.event.inputs.lifecycle_stage || 'produccion' }}"
+          echo "Etapa del ciclo de vida: $STAGE"
+          echo "lifecycle_stage=$STAGE" >> $GITHUB_OUTPUT
+
+          # Validar checks requeridos para la etapa
+          case "$STAGE" in
+            produccion)
+              echo "Checks requeridos: código versionado, commits descriptivos, tests escritos, PRs activos"
+              ;;
+            publicacion)
+              echo "Checks requeridos: CI/CD activo, deployment automatizado, rollback disponible, health check"
+              ;;
+            monitoreo)
+              echo "Checks requeridos: uptime monitoreado, logs centralizados, alertas activas, métricas tiempo real"
+              ;;
+            *)
+              echo "Etapa: $STAGE — checks genéricos aplicados"
+              ;;
+          esac
+
+      - name: Calcular score operacional
+        id: score
+        run: |
+          WORKFLOWS=${{ steps.workflows.outputs.workflow_count }}
+          DOCKER=${{ steps.docker.outputs.docker_count }}
+          HEALTH=${{ steps.healthcheck.outputs.health_refs }}
+
+          SCORE=100
+          [ "$WORKFLOWS" -eq 0 ] && SCORE=$((SCORE - 40))
+          [ "$WORKFLOWS" -eq 1 ] && SCORE=$((SCORE - 10))
+          [ "$DOCKER" -eq 0 ]    && SCORE=$((SCORE - 20))
+          [ "$HEALTH" -eq 0 ]    && SCORE=$((SCORE - 20))
+
+          echo "value=$SCORE" >> $GITHUB_OUTPUT
+          if [ "$SCORE" -ge 75 ]; then
+            echo "status=PASS" >> $GITHUB_OUTPUT
+            echo "✅ Score Operacional: $SCORE/100 — PASS"
+          elif [ "$SCORE" -ge 50 ]; then
+            echo "status=WARN" >> $GITHUB_OUTPUT
+            echo "⚠️ Score Operacional: $SCORE/100 — WARN"
+          else
+            echo "status=FAIL" >> $GITHUB_OUTPUT
+            echo "❌ Score Operacional: $SCORE/100 — FAIL"
+          fi
+
+  # ── REPORTE FINAL: Consolidación de todas las capas ──────────────────────
+  audit-report:
+    name: "[REPORTE] Auditoría Universal — Score Global"
+    runs-on: ubuntu-latest
+    needs:
+      - audit-tecnica
+      - audit-seguridad
+      - audit-compliance
+      - audit-operacional
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generar reporte consolidado
+        id: report
+        run: |
+          SCORE_TECNICA=${{ needs.audit-tecnica.outputs.score }}
+          SCORE_SEGURIDAD=${{ needs.audit-seguridad.outputs.score }}
+          SCORE_COMPLIANCE=${{ needs.audit-compliance.outputs.score }}
+          SCORE_OPERACIONAL=${{ needs.audit-operacional.outputs.score }}
+
+          STATUS_TECNICA=${{ needs.audit-tecnica.outputs.status }}
+          STATUS_SEGURIDAD=${{ needs.audit-seguridad.outputs.status }}
+          STATUS_COMPLIANCE=${{ needs.audit-compliance.outputs.status }}
+          STATUS_OPERACIONAL=${{ needs.audit-operacional.outputs.status }}
+
+          # Score global ponderado
+          # Técnica: 30% | Seguridad: 30% | Operacional: 25% | Compliance: 15%
+          GLOBAL=$(echo "scale=1; ($SCORE_TECNICA * 30 + $SCORE_SEGURIDAD * 30 + $SCORE_OPERACIONAL * 25 + $SCORE_COMPLIANCE * 15) / 100" | bc)
+
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║       AUDITORÍA UNIVERSAL DE PROCESOS — ARIA AI              ║"
+          echo "║       Modelo de 7 Macrocapas — Ciclo de Vida Digital         ║"
+          echo "╠══════════════════════════════════════════════════════════════╣"
+          echo "║  Capa              Score    Status                           ║"
+          echo "╠══════════════════════════════════════════════════════════════╣"
+          printf "║  %-18s %-8s %-30s ║\n" "Técnica"     "$SCORE_TECNICA/100"    "$STATUS_TECNICA"
+          printf "║  %-18s %-8s %-30s ║\n" "Seguridad"   "$SCORE_SEGURIDAD/100"  "$STATUS_SEGURIDAD"
+          printf "║  %-18s %-8s %-30s ║\n" "Operacional" "$SCORE_OPERACIONAL/100" "$STATUS_OPERACIONAL"
+          printf "║  %-18s %-8s %-30s ║\n" "Compliance"  "$SCORE_COMPLIANCE/100" "$STATUS_COMPLIANCE"
+          echo "╠══════════════════════════════════════════════════════════════╣"
+          printf "║  %-18s %-8s %-30s ║\n" "GLOBAL"      "$GLOBAL/100"           ""
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo ""
+
+          # Determinar status global
+          GLOBAL_INT=${GLOBAL%.*}
+          if [ "$GLOBAL_INT" -ge 75 ]; then
+            echo "✅ AUDITORÍA GLOBAL: PASS ($GLOBAL/100)"
+            echo "global_status=PASS" >> $GITHUB_OUTPUT
+          elif [ "$GLOBAL_INT" -ge 50 ]; then
+            echo "⚠️ AUDITORÍA GLOBAL: WARN ($GLOBAL/100) — Mejoras recomendadas"
+            echo "global_status=WARN" >> $GITHUB_OUTPUT
+          else
+            echo "❌ AUDITORÍA GLOBAL: FAIL ($GLOBAL/100) — Acción inmediata requerida"
+            echo "global_status=FAIL" >> $GITHUB_OUTPUT
+          fi
+
+          echo "global_score=$GLOBAL" >> $GITHUB_OUTPUT
+
+      - name: Generar plan de acción
+        run: |
+          SCORE_TECNICA=${{ needs.audit-tecnica.outputs.score }}
+          SCORE_SEGURIDAD=${{ needs.audit-seguridad.outputs.score }}
+          SCORE_COMPLIANCE=${{ needs.audit-compliance.outputs.score }}
+          SCORE_OPERACIONAL=${{ needs.audit-operacional.outputs.score }}
+
+          echo ""
+          echo "══════════════════════════════════════════════════════════════"
+          echo "  PLAN DE ACCIÓN PRIORIZADO"
+          echo "══════════════════════════════════════════════════════════════"
+
+          PRIORITY=1
+
+          if [ "$SCORE_TECNICA" -lt 75 ]; then
+            echo "$PRIORITY. [TÉCNICA] Implementar suite de tests con pytest (cobertura ≥ 70%)"
+            PRIORITY=$((PRIORITY+1))
+            echo "$PRIORITY. [TÉCNICA] Limpiar __pycache__ del repo y actualizar .gitignore"
+            PRIORITY=$((PRIORITY+1))
+            echo "$PRIORITY. [TÉCNICA] Crear CHANGELOG.md y ROADMAP.md"
+            PRIORITY=$((PRIORITY+1))
+          fi
+
+          if [ "$SCORE_SEGURIDAD" -lt 75 ]; then
+            echo "$PRIORITY. [SEGURIDAD] Configurar Dependabot (.github/dependabot.yml)"
+            PRIORITY=$((PRIORITY+1))
+            echo "$PRIORITY. [SEGURIDAD] Ejecutar Snyk scan en CI/CD pipeline"
+            PRIORITY=$((PRIORITY+1))
+          fi
+
+          if [ "$SCORE_COMPLIANCE" -lt 75 ]; then
+            echo "$PRIORITY. [COMPLIANCE] Agregar LICENSE al repositorio (MIT recomendado)"
+            PRIORITY=$((PRIORITY+1))
+            echo "$PRIORITY. [COMPLIANCE] Crear PRIVACY.md y TERMS.md"
+            PRIORITY=$((PRIORITY+1))
+            echo "$PRIORITY. [COMPLIANCE] Crear SECURITY.md con política de reporte de vulnerabilidades"
+            PRIORITY=$((PRIORITY+1))
+          fi
+
+          if [ "$SCORE_OPERACIONAL" -lt 75 ]; then
+            echo "$PRIORITY. [OPERACIONAL] Separar workflow de tests del workflow de deploy"
+            PRIORITY=$((PRIORITY+1))
+          fi
+
+          echo ""
+          echo "Referencia: Modelo Universal de Auditoría Digital"
+          echo "Ciclo de vida: Idea → Investigación → Planificación → Producción →"
+          echo "               Validación → Publicación → Distribución → Monitoreo →"
+          echo "               Optimización → Escalado → Mantenimiento → Archivado"
+
+      - name: Notificar resultado por Telegram
+        if: always()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          GLOBAL_SCORE="${{ steps.report.outputs.global_score }}"
+          GLOBAL_STATUS="${{ steps.report.outputs.global_status }}"
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s" 2>/dev/null || echo "N/A")
+
+          case "$GLOBAL_STATUS" in
+            PASS) EMOJI="✅" ;;
+            WARN) EMOJI="⚠️" ;;
+            FAIL) EMOJI="❌" ;;
+            *)    EMOJI="🔍" ;;
+          esac
+
+          MSG="${EMOJI} <b>Auditoría de Procesos — ARIA AI</b>%0A%0A"
+          MSG="${MSG}📊 Score Global: <b>${GLOBAL_SCORE}/100</b> (${GLOBAL_STATUS})%0A"
+          MSG="${MSG}🔧 Técnica: ${{ needs.audit-tecnica.outputs.score }}/100 (${{ needs.audit-tecnica.outputs.status }})%0A"
+          MSG="${MSG}🔒 Seguridad: ${{ needs.audit-seguridad.outputs.score }}/100 (${{ needs.audit-seguridad.outputs.status }})%0A"
+          MSG="${MSG}⚙️ Operacional: ${{ needs.audit-operacional.outputs.score }}/100 (${{ needs.audit-operacional.outputs.status }})%0A"
+          MSG="${MSG}📋 Compliance: ${{ needs.audit-compliance.outputs.score }}/100 (${{ needs.audit-compliance.outputs.status }})%0A"
+          MSG="${MSG}%0A📦 <code>${COMMIT_MSG}</code>%0A"
+          MSG="${MSG}🌐 aria-ai.fly.dev"
+
+          curl -sf "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}&parse_mode=HTML&text=${MSG}" || true
+
+      - name: Fallar si el score global es FAIL
+        if: steps.report.outputs.global_status == 'FAIL'
+        run: |
+          echo "❌ La auditoría de procesos ha fallado. Score global insuficiente."
+          echo "Revisar el plan de acción generado arriba."
+          exit 1
