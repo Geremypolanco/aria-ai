@@ -222,7 +222,7 @@ class Orchestrator(BaseAgent):
         system_prompt = (
             "Eres el director estrategico de ARIA AI, un sistema de monetizacion autonoma proactiva 24/7. "
             "Tu mision es identificar oportunidades de ingresos masivos y ejecutarlas sin omitir ningun detalle. "
-            "Priorizas Shopify, Zapier y servicios High-Ticket sobre contenido SEO tradicional. "
+            "Priorizas Shopify (Admin API directa) y servicios High-Ticket sobre contenido SEO tradicional. "
             "Responde SOLO con JSON valido sin markdown."
         )
 
@@ -288,7 +288,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
                 "priority": 1,
                 "target_topic": "productos premium para nicho tech/IA",
                 "revenue_target_usd": 500,
-                "rationale": "Shopify + Zapier = ingresos escalables",
+                "rationale": "Shopify Admin API directa = ingresos escalables sin intermediarios",
             })
 
         if "cfo" not in existing_agents:
@@ -308,7 +308,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
     def _fallback_monetization_plan(self) -> dict:
         """Plan de emergencia cuando la IA no responde."""
         return {
-            "focus": "monetizacion multicanal — e-commerce Shopify + contenido + high-ticket",
+            "focus": "monetizacion multicanal — e-commerce Shopify (API directa) + contenido + high-ticket",
             "market_opportunity": "e-commerce y servicios premium con IA en expansion",
             "missions": [
                 {
@@ -317,7 +317,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
                     "priority": 1,
                     "target_topic": "productos de alto valor con IA",
                     "revenue_target_usd": 500,
-                    "rationale": "Shopify + Zapier + High-Ticket = maximos ingresos",
+                    "rationale": "Shopify Admin API directa + High-Ticket = maximos ingresos",
                 },
                 {
                     "agent": "content",
@@ -388,10 +388,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
             logger.info("[Orchestrator] Ejecutando: %s -> %s (%s)", agent_name, task, topic)
             result = await agent.run(mission)
             
-            # Si es una creación exitosa en Shopify/E-commerce, notificar a Zapier
-            if result.get("success") and agent_name in ["cfo", "ecommerce"] and result.get("shop_url"):
-                await self._notify_zapier_new_product(result)
-                
+            # Shopify usa Admin API directa — no se usa Zapier para acceder a Shopify
             return result
         except Exception as exc:
             logger.error("[Orchestrator] Error en mision %s: %s", agent_name, exc)
@@ -453,8 +450,15 @@ Genera el plan de monetizacion detallado. JSON esperado:
         return summary
 
     async def _notify_zapier_new_product(self, product_data: dict) -> None:
-        """Notifica a Zapier para que inicie la promoción (ej: en LinkedIn)."""
-        webhook_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None) or "https://hooks.zapier.com/hooks/catch/23373923/4bp3cpt/"
+        """
+        Notificación OPCIONAL a Zapier solo para promoción (LinkedIn, etc.).
+        IMPORTANTE: NO se usa Zapier para acceder a Shopify. Shopify usa Admin API directa.
+        Solo activa si ZAPIER_WEBHOOK_URL está explícitamente configurado en Fly.io.
+        """
+        webhook_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None)
+        if not webhook_url:
+            logger.debug("[Orchestrator] ZAPIER_WEBHOOK_URL no configurado — notificación omitida.")
+            return
         
         try:
             from apps.core.tools.zapier_connector import ZapierConnector
