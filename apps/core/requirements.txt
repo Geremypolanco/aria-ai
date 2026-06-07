@@ -34,7 +34,7 @@ ShopifyAPI==12.6.0
 # ── Contenido multimedia ──────────────────────────────────
 cloudinary==1.41.0
 requests==2.32.3
-aiofiles==24.1.0
+aiofiles==25.1.0
 
 # ── Utilidades ────────────────────────────────────────────
 python-multipart==0.0.12
