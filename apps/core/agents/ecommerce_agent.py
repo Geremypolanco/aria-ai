@@ -159,9 +159,10 @@ class EcommerceAgent(BaseAgent):
                 if ss_res.get("success"):
                     results["product_screenshot"] = ss_res["screenshot_path"]
 
-        # Paso 4: Configurar Zapier
-        zapier_result = await self._setup_zapier_automations()
-        results["zapier_automations"] = zapier_result
+        # Paso 4: Configurar Zapier (Desactivado por petición del usuario: usar API directa)
+        # zapier_result = await self._setup_zapier_automations()
+        # results["zapier_automations"] = zapier_result
+        results["zapier_automations"] = {"success": True, "note": "Saltado: Aria ahora llama directamente a la API de Shopify."}
 
         # Paso 5: Estrategia High-Ticket
         highticket_strategy = await self._create_high_ticket_funnel(topic)
@@ -305,11 +306,19 @@ Genera el JSON con este formato exacto:
         """Crea un listing completo y optimizado en Shopify."""
         try:
             from apps.core.integrations.shopify_engine import ShopifyEngine
-            engine = ShopifyEngine(settings.SHOPIFY_SHOP_NAME, settings.SHOPIFY_ACCESS_TOKEN)
+            
+            # Limpiar el nombre de la tienda por si viene con .myshopify.com
+            shop_name = settings.SHOPIFY_SHOP_NAME or settings.SHOPIFY_URL or ""
+            shop_name = shop_name.replace(".myshopify.com", "").replace("https://", "").replace("http://", "")
+            
+            # Usar el token disponible (Automation o Admin)
+            access_token = settings.SHOPIFY_ACCESS_TOKEN or settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN
+            
+            engine = ShopifyEngine(shop_name, access_token)
 
             product_id = engine.create_optimized_product(product_data)
             if product_id:
-                shop_url = f"https://{settings.SHOPIFY_SHOP_NAME}.myshopify.com/products/"
+                shop_url = f"https://{shop_name}.myshopify.com/products/"
                 logger.info(f"[EcommerceAgent] Listing creado en Shopify: {product_data['title']}")
                 return {
                     "success": True,
