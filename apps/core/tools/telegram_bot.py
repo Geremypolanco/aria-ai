@@ -1306,27 +1306,27 @@ class AriaTelegramBot:
             return False
 
         async def _send_startup_message(self) -> None:
-        if not settings.TELEGRAM_CHAT_ID:
-            return
-        from datetime import datetime, timezone
-        ts = datetime.now(timezone.utc).strftime("%H:%M UTC")
-        hour = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).hour
-        
-        if hour < 12:
-            greeting = "Buenos días"
-        elif hour < 19:
-            greeting = "Buenas tardes"
-        else:
-            greeting = "Buenas noches"
+            if not settings.TELEGRAM_CHAT_ID:
+                return
+            from datetime import datetime, timezone
+            ts = datetime.now(timezone.utc).strftime("%H:%M UTC")
+            hour = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).hour
             
-        msg = (
-            f"💠 <b>ARIA AI — Sistema Operativo Online</b>\n\n"
-            f"¡{greeting}! Todos mis sistemas están operativos y listos para trabajar.\n\n"
-            f"🕒 <b>Sincronización:</b> {ts}\n"
-            f"📡 <b>Conexión:</b> Estable (Multi-App habilitado)\n\n"
-            f"¿En qué nos enfocaremos hoy?"
-        )
-        await self._send(str(settings.TELEGRAM_CHAT_ID), msg)
+            if hour < 12:
+                greeting = "Buenos días"
+            elif hour < 19:
+                greeting = "Buenas tardes"
+            else:
+                greeting = "Buenas noches"
+                
+            msg = (
+                f"💠 <b>ARIA AI — Sistema Operativo Online</b>\n\n"
+                f"¡{greeting}! Todos mis sistemas están operativos y listos para trabajar.\n\n"
+                f"🕒 <b>Sincronización:</b> {ts}\n"
+                f"📡 <b>Conexión:</b> Estable (Multi-App habilitado)\n\n"
+                f"¿En qué nos enfocaremos hoy?"
+            )
+            await self._send(str(settings.TELEGRAM_CHAT_ID), msg)
 
 
     async def send_proactive(self, reason: str = "morning") -> None:
