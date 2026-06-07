@@ -282,12 +282,15 @@ class CommerceTools:
         vendor: str = "Aria AI",
     ) -> dict[str, Any]:
         """Crea un producto en Shopify via Admin API."""
-        if not settings.SHOPIFY_URL or not settings.SHOPIFY_AUTOMATION_TOKEN:
-            return {"success": False, "error": "Shopify no configurado"}
+        shop_url = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
+        token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN or settings.SHOPIFY_ACCESS_TOKEN
+        
+        if not shop_url or not token:
+            return {"success": False, "error": "Shopify no configurado en el servidor"}
         try:
-            url = f"https://{settings.SHOPIFY_URL}/admin/api/2024-01/products.json"
+            url = f"https://{shop_url}/admin/api/2024-01/products.json"
             headers = {
-                "X-Shopify-Access-Token": settings.SHOPIFY_AUTOMATION_TOKEN,
+                "X-Shopify-Access-Token": token,
                 "Content-Type": "application/json",
             }
             payload = {
@@ -328,11 +331,14 @@ class CommerceTools:
 
     async def shopify_get_orders(self, limit: int = 20) -> dict[str, Any]:
         """Obtiene los últimos pedidos de Shopify."""
-        if not settings.SHOPIFY_URL or not settings.SHOPIFY_AUTOMATION_TOKEN:
+        shop_url = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
+        token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN or settings.SHOPIFY_ACCESS_TOKEN
+        
+        if not shop_url or not token:
             return {"success": False, "error": "Shopify no configurado"}
         try:
-            url = f"https://{settings.SHOPIFY_URL}/admin/api/2024-01/orders.json"
-            headers = {"X-Shopify-Access-Token": settings.SHOPIFY_AUTOMATION_TOKEN}
+            url = f"https://{shop_url}/admin/api/2024-01/orders.json"
+            headers = {"X-Shopify-Access-Token": token}
             res = await self._http.get(url, headers=headers, params={"limit": limit, "status": "any"})
             if res.status_code == 200:
                 orders = res.json().get("orders", [])

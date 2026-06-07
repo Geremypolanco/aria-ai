@@ -102,7 +102,7 @@ class EcommerceAgent(BaseAgent):
             ],
         )
         self.knowledge = ECOMMERCE_KNOWLEDGE
-        self._zapier = tool_registry.get_tool("zapier")
+        self._zapier = None # Zapier deshabilitado a petición del usuario
         self._web = tool_registry.get_tool("web_scraping")
 
     async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -146,22 +146,24 @@ class EcommerceAgent(BaseAgent):
         product_idea = await self._generate_product_idea(topic, market_data)
         results["product_idea"] = product_idea
 
-        # Paso 3: Crear listing en Shopify (si está configurado)
-        if settings.SHOPIFY_ENABLED and product_idea.get("title"):
+        # Paso 3: Crear listing en Shopify (Producción Real)
+        if product_idea.get("title"):
             shopify_result = await self._create_shopify_listing(product_idea)
             results["shopify_listing"] = shopify_result
             
             # Tomar screenshot del producto creado si tenemos la URL
             if shopify_result.get("success") and shopify_result.get("product_url"):
-                from apps.core.tools.web_tools import WebTools
-                wt = WebTools()
-                ss_res = await wt.take_screenshot(shopify_result["product_url"])
-                if ss_res.get("success"):
-                    results["product_screenshot"] = ss_res["screenshot_path"]
+                try:
+                    from apps.core.tools.web_tools import WebTools
+                    wt = WebTools()
+                    ss_res = await wt.take_screenshot(shopify_result["product_url"])
+                    if ss_res.get("success"):
+                        results["product_screenshot"] = ss_res["screenshot_path"]
+                except Exception as e:
+                    logger.warning(f"[EcommerceAgent] Error tomando screenshot: {e}")
 
-        # Paso 4: Configurar Zapier
-        zapier_result = await self._setup_zapier_automations()
-        results["zapier_automations"] = zapier_result
+        # Paso 4: Configurar Zapier (Deshabilitado)
+        results["zapier_automations"] = {"success": True, "note": "Zapier deshabilitado temporalmente."}
 
         # Paso 5: Estrategia High-Ticket
         highticket_strategy = await self._create_high_ticket_funnel(topic)
@@ -214,10 +216,10 @@ class EcommerceAgent(BaseAgent):
         market_data = await self._research_market(topic)
         product_idea = await self._generate_product_idea(topic, market_data)
 
-        if settings.SHOPIFY_ENABLED and product_idea.get("title"):
+        if product_idea.get("title"):
             return await self._create_shopify_listing(product_idea)
 
-        return {"success": True, "product_idea": product_idea, "note": "Shopify no configurado — modo simulación"}
+        return {"success": False, "error": "No se pudo generar una idea de producto válida."}
 
     # ── GENERACIÓN DE PRODUCTOS CON IA ────────────────────────────
 
@@ -305,8 +307,14 @@ Genera el JSON con este formato exacto:
         """Crea un listing completo y optimizado en Shopify."""
         try:
             from apps.core.integrations.shopify_engine import ShopifyEngine
-            engine = ShopifyEngine(settings.SHOPIFY_SHOP_NAME, settings.SHOPIFY_ACCESS_TOKEN)
+            # Usamos las variables de configuración correctas para producción
+            shop_name = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
+            access_token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_ACCESS_TOKEN
+            
+            if not shop_name or not access_token:
+                return {"success": False, "error": "Credenciales de Shopify no configuradas en el servidor."}
 
+            engine = ShopifyEngine(shop_name, access_token)
             product_id = engine.create_optimized_product(product_data)
             if product_id:
                 shop_url = f"https://{settings.SHOPIFY_SHOP_NAME}.myshopify.com/products/"

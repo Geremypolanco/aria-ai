@@ -380,9 +380,9 @@ Genera el plan de monetizacion detallado. JSON esperado:
             logger.info("[Orchestrator] Ejecutando: %s -> %s (%s)", agent_name, task, topic)
             result = await agent.run(mission)
             
-            # Si es una creación exitosa en Shopify/E-commerce, notificar a Zapier
-            if result.get("success") and agent_name in ["cfo", "ecommerce"] and result.get("shop_url"):
-                await self._notify_zapier_new_product(result)
+            # Notificación de Zapier deshabilitada temporalmente a petición del usuario
+            # if result.get("success") and agent_name in ["cfo", "ecommerce"] and result.get("shop_url"):
+            #     await self._notify_zapier_new_product(result)
                 
             return result
         except Exception as exc:
@@ -404,16 +404,25 @@ Genera el plan de monetizacion detallado. JSON esperado:
             from apps.core.agents.content_agent import ContentAgent
             from apps.core.agents.cfo_agent import CFOAgent
             from apps.core.agents.pm_agent import PMAgent
-            from apps.core.agents.affiliate_agent import AffiliateAgent
-            from apps.core.agents.social_agent import SocialAgent
             from apps.core.agents.ecommerce_agent import EcommerceAgent
             
             self._agents["content"] = ContentAgent()
             self._agents["cfo"] = CFOAgent()
             self._agents["pm"] = PMAgent()
-            self._agents["affiliate"] = AffiliateAgent()
-            self._agents["social"] = SocialAgent()
             self._agents["ecommerce"] = EcommerceAgent()
+            
+            # Agentes opcionales o en desarrollo
+            try:
+                from apps.core.agents.affiliate_agent import AffiliateAgent
+                self._agents["affiliate"] = AffiliateAgent()
+            except ImportError:
+                logger.debug("[Orchestrator] AffiliateAgent no disponible")
+
+            try:
+                from apps.core.agents.social_agent import SocialAgent
+                self._agents["social"] = SocialAgent()
+            except ImportError:
+                logger.debug("[Orchestrator] SocialAgent no disponible")
             
             logger.info("[Orchestrator] %d agentes cargados correctamente", len(self._agents))
         except Exception as exc:
@@ -440,26 +449,18 @@ Genera el plan de monetizacion detallado. JSON esperado:
                 summary["missions_failed"] += 1
         return summary
 
-    async def _notify_zapier_new_product(self, product_data: dict) -> None:
-        """Notifica a Zapier para que inicie la promoción (ej: en LinkedIn)."""
-        webhook_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None) or "https://hooks.zapier.com/hooks/catch/23373923/4bp3cpt/"
-        
-        try:
-            from apps.core.tools.zapier_connector import ZapierConnector
-            zap = ZapierConnector()
-            payload = {
-                "event": "new_product_created",
-                "platform": "shopify",
-                "title": product_data.get("title") or "Nuevo Producto ARIA",
-                "url": product_data.get("shop_url"),
-                "price": product_data.get("price", "Consultar"),
-                "description": product_data.get("description", ""),
-                "suggested_linkedin_post": f"🚀 ¡Nuevo lanzamiento! Acabamos de publicar {product_data.get('title')}. Échale un vistazo aquí: {product_data.get('shop_url')}"
-            }
-            await zap.trigger_webhook(webhook_url, payload)
-            logger.info("[Orchestrator] Zapier notificado para el producto: %s", product_data.get("title"))
-        except Exception as exc:
-            logger.error("[Orchestrator] Error notificando a Zapier: %s", exc)
+    async def get_status(self) -> dict[str, Any]:
+        """Retorna el estado actual del Orchestrator para el bot de Telegram."""
+        if not self._agents:
+            self._auto_discover_agents()
+            
+        caps = self.check_capabilities()
+        return {
+            "cycle_count": self._cycle_count,
+            "agents_loaded": list(self._agents.keys()),
+            "capabilities": {c: True for c in caps.get("available", [])},
+            "missing_capabilities": caps.get("unavailable", []),
+        }
 
     async def _send_cycle_report(self, results: list, intelligence: dict, revenue: dict, duration: float) -> None:
         """Envia reporte del ciclo a Telegram con screenshots si existen."""
@@ -470,10 +471,16 @@ Genera el plan de monetizacion detallado. JSON esperado:
         chat_id = str(settings.TELEGRAM_CHAT_ID) if settings.TELEGRAM_CHAT_ID else None
         
         status_emoji = "✅" if revenue["missions_failed"] == 0 else "⚠️"
+        
+        # Verificación real de Shopify para el reporte
+        shop_url = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
+        shop_status = f"🛒 Shopify: {shop_url}" if shop_url else "🛒 Shopify: No conectado"
+
         lines = [
             f"{status_emoji} <b>Ciclo #{self._cycle_count} Completado</b>",
             f"⏱ Duracion: {duration:.1f}s",
             f"💰 Ingresos est.: ${revenue['total_revenue_usd']:.2f}",
+            f"{shop_status}",
             "",
             f"🎯 <b>Foco:</b> {intelligence.get('top_opportunity', 'Monetizacion')}",
             f"📊 <b>Exito:</b> {revenue['missions_successful']}/{len(results)} misiones",

@@ -207,7 +207,7 @@ class AriaTelegramBot:
             "/pendientes": self._cmd_pendientes,
             "/aprobar": self._cmd_aprobar,
             "/rechazar": self._cmd_rechazar,
-            "/zapier": self._cmd_zapier,
+
             "/agentes": self._cmd_agentes,
             "/sesion": self._cmd_sesion,
             "/crear": self._cmd_crear,
@@ -217,52 +217,6 @@ class AriaTelegramBot:
             return False
         await handler(chat_id, args)
         return True
-
-    async def _cmd_zapier(self, chat_id: str, args: str) -> None:
-        """Delega una acción a Zapier y reporta el resultado."""
-        from apps.core.tools.zapier_client import get_zapier_client, ZapierEvents
-        zapier = get_zapier_client()
-
-        if not zapier.is_configured():
-            await self._send(
-                chat_id,
-                "⚠️ El webhook de Zapier no está configurado en el servidor todavía. "
-                "Pídeme que lo active.",
-            )
-            return
-
-        text_lower = (args or "").strip().lower()
-
-        if re.search(r"producto|tienda|catálogo", text_lower):
-            event, label = ZapierEvents.SHOPIFY_GET_PRODUCTS, "productos de Shopify"
-        elif re.search(r"pedido|order|venta", text_lower):
-            event, label = ZapierEvents.SHOPIFY_GET_ORDERS, "pedidos de Shopify"
-        elif re.search(r"inventario|stock", text_lower):
-            event, label = ZapierEvents.SHOPIFY_GET_INVENTORY, "inventario de Shopify"
-        elif re.search(r"ingreso|revenue|facturación", text_lower):
-            event, label = ZapierEvents.SHOPIFY_GET_REVENUE, "ingresos de Shopify"
-        elif re.search(r"gmail|correo|inbox", text_lower):
-            event, label = ZapierEvents.GMAIL_GET_INBOX, "bandeja de Gmail"
-        elif re.search(r"ping|test|prueba", text_lower):
-            event, label = ZapierEvents.PING, "ping de prueba"
-        else:
-            event, label = "aria.custom_request", (args or "solicitud")[:80]
-
-        await self._send(chat_id, f"⚡ Enviando a Zapier: <code>{label}</code>...")
-        result = await zapier.trigger(event, {"query": args or "", "source": "telegram"})
-
-        if result.get("success"):
-            await self._send(
-                chat_id,
-                f"✅ <b>Zapier recibió la solicitud.</b>\n"
-                f"Evento: <code>{event}</code>\n"
-                f"ID: <code>{result.get('request_id', '—')}</code>\n\n"
-                f"El Zap se está ejecutando. Si configuraste un paso de respuesta en Zapier "
-                f"(POST a <code>https://aria-ai.fly.dev/zapier/callback</code>), "
-                f"te traeré los resultados aquí.",
-            )
-        else:
-            await self._send(chat_id, f"❌ Error: {result.get('error', 'desconocido')}")
 
     async def _cmd_start(self, chat_id: str, _: str) -> None:
         await self._send(
@@ -574,7 +528,7 @@ class AriaTelegramBot:
         platform = platform.lower().strip()
         if not platform:
             msg = "<b>Conectar sesión sin API</b>\n\nEscríbeme: conectar sesión de instagram, o usa /sesion [plataforma].\n\nPlataformas:\n"
-            msg += "\n".join([f"• {PLATFORM_CONFIG[p]['emoji']} {p}" for p in SUPPORTED_PLATFORMS])
+            msg += "\n".join([f'• {PLATFORM_CONFIG[p]["emoji"]} {p}' for p in SUPPORTED_PLATFORMS])
             await self._send(chat_id, msg)
             return
 
@@ -585,8 +539,8 @@ class AriaTelegramBot:
         cfg = PLATFORM_CONFIG[platform]
         connect_url = f"{settings.ARIA_BASE_URL}/social/connect?platform={platform}&token={settings.SOCIAL_CONNECT_TOKEN or 'aria'}"
         msg = (
-            f"{cfg['emoji']} <b>Conectar {cfg['display_name']}</b>\n\n"
-            f"{cfg['instructions']}\n\n"
+            f'{cfg["emoji"]} <b>Conectar {cfg["display_name"]}</b>\n\n'
+            f'{cfg["instructions"]}\n\n'
             f"<b>Enlace de conexión rápida:</b>\n{connect_url}\n\n"
             f"<i>O simplemente pega el JSON de Cookie-Editor aquí mismo.</i>"
         )

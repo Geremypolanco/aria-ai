@@ -230,8 +230,8 @@ class BaseAgent(ABC):
                 from apps.core.intelligence.sales_knowledge import SALES_TECHNIQUES, VOCABULARY_EXPANSION
                 intelligence_context = (
                     f"\n\n[BUSINESS INTELLIGENCE]:\n"
-                    f"Técnicas: {SALES_TECHNIQUES['copywriting']}\n"
-                    f"Vocabulario Persuasivo: {VOCABULARY_EXPANSION['persuasive_verbs']}\n"
+                    f'Técnicas: {SALES_TECHNIQUES["copywriting"]}\n'
+                    f'Vocabulario Persuasivo: {VOCABULARY_EXPANSION["persuasive_verbs"]}\n'
                 )
                 system += intelligence_context
             except ImportError:

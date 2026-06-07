@@ -185,14 +185,17 @@ class CFOAgent(BaseAgent):
         self, name: str, description: str, price_usd: float, niche: str
     ) -> dict[str, Any]:
         """Crea un producto en Shopify."""
-        if not settings.SHOPIFY_URL or not settings.SHOPIFY_AUTOMATION_TOKEN:
-            return {"success": False, "error": "Shopify no configurado"}
+        shop_url = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
+        token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN or settings.SHOPIFY_ACCESS_TOKEN
+        
+        if not shop_url or not token:
+            return {"success": False, "error": "Shopify no configurado en el servidor"}
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(
-                    f"https://{settings.SHOPIFY_URL}/admin/api/2024-01/products.json",
+                    f"https://{shop_url}/admin/api/2024-01/products.json",
                     headers={
-                        "X-Shopify-Access-Token": settings.SHOPIFY_AUTOMATION_TOKEN,
+                        "X-Shopify-Access-Token": token,
                         "Content-Type": "application/json",
                     },
                     json={
