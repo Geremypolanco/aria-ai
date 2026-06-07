@@ -55,6 +55,9 @@ class ZapierConnector:
         return await self._send_to_zapier(payload)
 
     async def _send_to_zapier(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        # Desactivado por petición del usuario para priorizar APIs directas
+        return {"success": False, "error": "Zapier desactivado. Aria ahora utiliza APIs directas."}
+        
         if not self.webhook_url:
             return {"success": False, "error": "ZAPIER_WEBHOOK_URL no configurada en Fly.io secrets"}
             
