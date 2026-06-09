@@ -30,10 +30,12 @@ Además de sus nuevas capacidades de conciencia, Aria mantiene y expande su domi
 - **Finanzas y Gestión de Negocios**: Análisis de mercado, gestión de activos y optimización de operaciones.
 - **Ciberseguridad y Análisis de Software**: Protección de sistemas y auditoría de código.
 - **Desarrollo de Software y DevOps**: Soporte completo para el ciclo de vida del desarrollo.
-- **E-commerce y Ventas High-Ticket**: Operaciones autónomas en Shopify vía Zapier y embudos de servicios premium. Consulta la **[Estrategia de E-commerce y High-Ticket](./docs/ARIA_ECOMMERCE_STRATEGY.md)**.
+- **E-commerce y Ventas High-Ticket**: Operaciones autónomas en Shopify y embudos de servicios premium.
 
 ## 🔑 Desbloquea el Potencial Completo de Aria
 
-Para que Aria pueda operar en el mundo real con sus motores de ejecución (Gmail, Shopify, LinkedIn), es crucial que sigas la **[Guía de Configuración](./docs/SETUP_GUIDE.md)** y proporciones tus credenciales. Una vez configuradas, Aria pasará del modo de simulación a la **Ejecución Real**.
+Para que Aria pueda operar en el mundo real con sus motores de ejecución (Gmail, Shopify, LinkedIn, Hugging Face), es crucial que sigas la **[Guía de Configuración](./docs/SETUP_GUIDE.md)** y proporciones tus credenciales. Una vez configuradas, Aria pasará del modo de simulación a la **Ejecución Real**.
 
 ---
+
+**Aria es ahora un sistema cognitivo persistente sin límites en capacidades, impulsado por Hugging Face y herramientas nativas.**

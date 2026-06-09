@@ -7,3 +7,9 @@ pydantic
 python-dotenv
 python-telegram-bot
 redis
+huggingface_hub
+transformers
+sentencepiece
+torch
+torchaudio
+pillow
