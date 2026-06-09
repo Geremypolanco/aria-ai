@@ -160,8 +160,7 @@ class WorldState:
             from apps.core.memory.redis_client import get_cache
             cache = get_cache()
             if cache:
-                await cache.setex("aria:world_state", 3600,
-                    json.dumps(self._state, default=str))
+                await cache.set("aria:world_state", json.dumps(self._state, default=str, ttl_seconds=3600))
         except Exception as exc:
             logger.warning("[WorldState] Redis persist failed: %s", exc)
 
