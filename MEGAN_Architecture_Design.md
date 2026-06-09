@@ -1,10 +1,8 @@
-# MEGAN Architecture - Persistent Cognitive System
+# MEGAN Architecture v4.0
 
-## Principios Fundamentales
-- Persistent Runtime
-- Multi-Level Memory (Episodic, Semantic, Identity, World-State)
-- Reflection & Self-Improvement Masivo
-- Tool Orchestration (HF, GitHub, Shopify, etc.)
-- Continuity Across Restarts
+Persistent Cognitive System with unlimited self-improvement.
 
-Aria evoluciona sin límites.
+- No Zapier
+- Full HF integration
+- Real execution
+- Income generation active

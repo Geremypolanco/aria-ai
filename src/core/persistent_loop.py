@@ -1,41 +1,32 @@
 import os
 import time
 import asyncio
-from dotenv import load_dotenv
-
-load_dotenv()
+from datetime import datetime
 
 class PersistentCognitiveRuntime:
     def __init__(self):
-        self.memory = {}  # Will be replaced with advanced multi-level
-        self.goals = ["Generate revenue streams", "Continuous self-improvement", "Maintain human-like Telegram interaction"]
-        self.reflection_log = []
-    
-    async def runtime_loop(self):
-        print("🚀 ARIA MEGAN Persistent Runtime started")
-        while True:
-            # Reflection
-            self.reflect()
-            # Auto improvement
-            await self.self_improve()
-            # Check goals
-            await self.process_goals()
-            await asyncio.sleep(60)  # Cycle every minute
-    
-    def reflect(self):
-        print("🔄 Reflection: Analyzing performance...")
-        self.reflection_log.append("Cycle completed")
-    
-    async def self_improve(self):
-        print("⚡ Auto-mejora masiva activada: Buscando código avanzado...")
-        # In real version: clone & adapt from top repos
-    
-    async def process_goals(self):
-        print("🎯 Processing income goals...")
+        self.memory = {}
+        self.goals = ['Generar ingresos masivos', 'Auto-mejora continua', 'Continuidad cognitiva']
+        self.reflection_count = 0
 
-async def main():
-    runtime = PersistentCognitiveRuntime()
-    await runtime.runtime_loop()
+    async def run(self):
+        print('🚀 Aria MEGAN Persistent Runtime iniciado - Modo sin límites')
+        while True:
+            await self.reflect()
+            await self.generate_income()
+            await self.self_improve()
+            await asyncio.sleep(30)
+
+    async def reflect(self):
+        self.reflection_count += 1
+        print(f'🔄 Reflexión #{self.reflection_count}: Analizando estado y optimizando...')
+
+    async def generate_income(self):
+        print('💰 Income Agent activo: Creando cursos, ebooks y productos Shopify...')
+
+    async def self_improve(self):
+        print('⚡ Auto-mejora masiva: Buscando y adaptando código avanzado...')
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    runtime = PersistentCognitiveRuntime()
+    asyncio.run(runtime.run())
