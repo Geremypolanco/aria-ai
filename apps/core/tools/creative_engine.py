@@ -19,7 +19,7 @@ class CreativeEngine:
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=120.0)
-        self._hf_headers = {"Authorization": f"Bearer {settings.HF_TOKEN}"} if settings.HF_TOKEN else {}
+        self._hf_headers = {"Authorization": f"Bearer {getattr(settings, 'HF_TOKEN', None) or getattr(settings, 'HF_API_KEY', '')}"}
 
     # ── MÚSICA Y AUDIO ────────────────────────────────────
 
@@ -54,9 +54,9 @@ class CreativeEngine:
         if not settings.HF_TOKEN:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
-            # Usando modelos como ZeroScope o similares
+            # damo-vilab/text-to-video — modelo funcional via HF Inference API
             res = await self._http.post(
-                "https://api-inference.huggingface.co/models/guoyww/AnimateDiff",
+                "https://api-inference.huggingface.co/models/damo-vilab/text-to-video-ms-1.7b",
                 headers=self._hf_headers,
                 json={"inputs": prompt},
             )
