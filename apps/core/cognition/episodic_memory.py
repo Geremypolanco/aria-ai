@@ -209,7 +209,7 @@ class EpisodicMemory:
             cache = get_cache()
             if cache:
                 key = f"aria:episode:{episode['id']}"
-                await cache.setex(key, 86400 * 7, json.dumps({k: v for k, v in episode.items() if k != "embedding"}))
+                await cache.set(key, 86400 * 7, json.dumps({k: v for k, v in episode.items() if k != "embedding"}))
         except Exception:
             pass
 
