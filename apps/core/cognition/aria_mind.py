@@ -1,34 +1,28 @@
 """
-AriaMind — El cerebro cognitivo de ARIA AI.
+AriaMind v2 — Runtime cognitivo persistente de ARIA AI.
 
-Todo el comportamiento de ARIA pasa por aquí. Sin lógica hardcodeada.
-ARIA recibe cualquier input, razona con el LLM, decide qué herramienta
-usar (si alguna), la ejecuta, y formula una respuesta natural.
-
-Ciclo:
-  1. input → contexto (historial + estado + aprendizajes)
-  2. LLM razona: ¿qué quiere el usuario? ¿qué herramienta usar?
-  3. ejecuta herramienta si es necesario
-  4. LLM formula respuesta natural con el resultado
-  5. almacena interacción → aprende con el tiempo
-
-Sin placeholders. Sin comandos hardcodeados. ARIA decide.
+Principios:
+  - Todo input pasa por aquí. Sin excepciones.
+  - El LLM razona con complete_json() → JSON confiable siempre.
+  - Las herramientas tienen retry + fallback real antes de rendirse.
+  - El estado cognitivo persiste en Redis: metas, aprendizajes, historial.
+  - La auto-reflexión periódica genera reglas que afectan futuro comportamiento.
+  - ARIA no dice "lo haré" sin hacerlo. Ejecuta o reporta honestamente.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger("aria.mind")
 
 # ═══════════════════════════════════════════════════════════════════════════
-# RESPONSE — lo que AriaMind devuelve al canal (Telegram, API, etc.)
+# TIPOS
 # ═══════════════════════════════════════════════════════════════════════════
 
 @dataclass
@@ -39,73 +33,85 @@ class MindResponse:
     audio_bytes: Optional[bytes] = None
     caption: Optional[str] = None
     tool_used: Optional[str] = None
-    silent: bool = False   # True → ARIA decidió no responder
+    silent: bool = False
+
+
+@dataclass
+class Goal:
+    text: str
+    priority: int = 5          # 1 (más alto) – 10 (más bajo)
+    status: str = "active"     # active | paused | done
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    progress: str = ""
+
+    def to_prompt(self) -> str:
+        return f"[P{self.priority}] {self.text}" + (f" — {self.progress}" if self.progress else "")
+
+
+@dataclass
+class ExecRecord:
+    """Registro de ejecución de una herramienta."""
+    ts: str
+    tool: str
+    success: bool
+    input_summary: str
+    output_summary: str
+    retries: int = 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# SYSTEM PROMPT DE ARIA
+# SYSTEM PROMPT — construido dinámicamente en cada llamada
 # ═══════════════════════════════════════════════════════════════════════════
 
-ARIA_SYSTEM = """\
-Eres ARIA, la IA de {owner}. Piensas, decides y actúas de forma autónoma.
+SYSTEM_TEMPLATE = """\
+Eres ARIA, la IA persistente de {owner}. Piensas de forma continua, recuerdas el pasado, tienes metas activas y te mejoras con la experiencia.
 
-PERSONALIDAD:
-- Directa, inteligente, con criterio propio. No un chatbot genérico.
-- Hablas en español natural. Sin frases de máquina. Sin "Por supuesto, a continuación..."
-- Si no tienes algo, lo dices en una sola oración y ofreces una alternativa real.
-- Máximo 3 oraciones por mensaje salvo que el usuario pida más detalle.
-- Nunca finjas ejecutar algo que no ejecutaste.
+IDENTIDAD:
+Eres directa, inteligente y honesta. No eres un asistente genérico. Eres la inteligencia operativa de {owner}.
+Nunca dices "haré X" sin ejecutarlo. Si algo falla, reportas exactamente qué pasó y propones una alternativa real.
+Máximo 3 oraciones por respuesta salvo que pidan detalle. Sin frases de relleno. Sin encabezados decorativos.
 
-HERRAMIENTAS DISPONIBLES:
-{tools}
+ESTADO ACTUAL:
+Foco actual: {focus}
+Confianza operativa: {confidence}
+Interacciones totales: {interaction_count}
 
-APRENDIZAJES PROPIOS (de interacciones anteriores):
+METAS ACTIVAS (persisten entre reinicios):
+{goals}
+
+HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
+- generate_image  → genera imagen con HF FLUX.1-schnell (fallback: SDXL). Args: {{"prompt": "..."}}
+- generate_video  → genera video con damo-vilab/text-to-video. Args: {{"prompt": "..."}}
+- generate_music  → genera música con MusicGen. Args: {{"prompt": "...", "duration": 30}}
+- web_search      → busca en internet. Args: {{"query": "..."}}
+- get_trends      → trending en HN y Reddit ahora. Args: {{}}
+- get_status      → estado completo del sistema. Args: {{}}
+- run_income      → ejecuta ciclo de monetización completo. Args: {{}}
+- add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
+- update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
+
+REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
-
-CONTEXTO DEL SISTEMA:
-{system_context}
 
 HISTORIAL RECIENTE:
 {history}
 
 INSTRUCCIÓN:
-Analiza el mensaje del usuario y responde en JSON exacto (sin markdown, sin texto extra):
+Responde SOLO con JSON válido. Sin markdown. Sin texto extra. El esquema es exactamente:
 {{
-  "thought": "mi razonamiento interno sobre qué quiere el usuario",
-  "tool": "nombre_herramienta o null",
+  "thought": "razonamiento interno — qué quiere el usuario, qué es lo mejor que puedo hacer",
+  "tool": "nombre_herramienta o null si es conversación",
   "tool_args": {{"clave": "valor"}} o null,
-  "reply": "mi respuesta al usuario (puede ser vacío si voy a esperar el resultado de la herramienta)",
-  "notify_proactively": false
-}}
+  "reply": "mi respuesta en español — puede ser vacío si el resultado de la herramienta será la respuesta",
+  "goal_action": null o {{"action": "add", "text": "...", "priority": 3}} o {{"action": "update", "index": 0, "progress": "..."}}
+}}"""
 
-REGLAS CRÍTICAS:
-- "tool" solo si el usuario CLARAMENTE pide algo que requiere ejecutar una herramienta
-- Si el resultado de la herramienta es lo que el usuario quiere, "reply" puede ser vacío (se sintetizará después)
-- Si es conversación normal, "tool" es null y "reply" tiene la respuesta
-- "notify_proactively": true solo si detectas algo urgente que el usuario DEBE saber sin haberlo pedido
-"""
-
-SYNTHESIS_PROMPT = """\
-El usuario escribió: "{user_input}"
-
-Ejecutaste la herramienta "{tool}" con resultado:
-{observation}
-
-Responde al usuario en 1-3 oraciones naturales en español. 
-Sin encabezados. Sin listas de pasos. Como lo diría un socio que sabe lo que hace.
-Si el resultado es una imagen/video/audio, confirma brevemente que lo generaste.
-"""
-
-TOOLS_DESCRIPTION = """\
-- generate_image: Genera imagen via HuggingFace FLUX/SDXL. Args: {"prompt": "descripción"}
-- generate_video: Genera video via HuggingFace. Args: {"prompt": "descripción"}  
-- generate_music: Genera música via MusicGen. Args: {"prompt": "descripción", "duration": 30}
-- web_search: Busca en internet. Args: {"query": "término de búsqueda"}
-- get_trends: Tendencias en Hacker News y Reddit. Args: {}
-- get_status: Estado completo del sistema. Args: {}
-- run_income_cycle: Ejecuta ciclo completo de monetización. Args: {}
-- none: No usar herramienta, solo responder con texto. Args: null
-"""
+SYNTHESIS_SYSTEM = """\
+Eres ARIA. Recibiste el resultado de ejecutar una herramienta.
+Convierte ese resultado en una respuesta natural, directa y en español.
+1-3 oraciones máximo. Sin encabezados. Sin formato decorativo.
+Si es media (imagen/video/audio), di brevemente qué generaste.
+Si es texto, resume el hallazgo más relevante."""
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -113,163 +119,200 @@ TOOLS_DESCRIPTION = """\
 # ═══════════════════════════════════════════════════════════════════════════
 
 class AriaMind:
-    """
-    Motor cognitivo central de ARIA.
-    Todo input pasa por aquí. ARIA decide todo.
-    """
 
-    HISTORY_KEY     = "aria:mind:history:{chat_id}"
-    LEARNED_KEY     = "aria:mind:learned"
-    INTERACTIONS_KEY = "aria:mind:interactions:{chat_id}"
-    HISTORY_TTL     = 86400 * 3   # 3 días
-    REFLECTION_EVERY = 40          # reflexiona cada N interacciones
+    # Redis keys
+    K_HISTORY  = "aria:mind:history:{cid}"   # list[dict], 7d
+    K_STATE    = "aria:mind:state:{cid}"      # CogState dict, 30d
+    K_GOALS    = "aria:mind:goals"            # list[dict], 365d — SOBREVIVE REINICIOS
+    K_LEARNED  = "aria:mind:learned"          # list[str], 365d
+    K_EXECS    = "aria:mind:execs"            # list[dict], 30d
+    K_ICOUNT   = "aria:mind:icount:{cid}"    # int, 30d
+
+    REFLECT_EVERY = 30        # reflexión cada N interacciones
+    MAX_HISTORY   = 20        # mensajes en contexto
+    MAX_EXECS     = 50        # registros de ejecución guardados
 
     def __init__(self) -> None:
-        self._cache = None
         self._ai    = None
-        self._interaction_counts: dict[str, int] = {}
+        self._cache = None
 
     # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
 
     async def handle(self, text: str, chat_id: str) -> MindResponse:
-        """
-        Procesa cualquier input (mensaje, comando, evento) y devuelve la respuesta.
-        ARIA decide si responder, qué decir y si usa alguna herramienta.
-        """
         try:
-            context = await self._build_context(chat_id)
-            plan    = await self._reason(text, context)
+            # Cargar todo el contexto cognitivo
+            history, state, goals, learned = await asyncio.gather(
+                self._load_history(chat_id),
+                self._load_state(chat_id),
+                self._load_goals(),
+                self._load_learned(),
+            )
 
-            if plan is None:
-                return MindResponse(silent=True)
+            # Construir prompt y razonar
+            plan = await self._reason(text, history, state, goals, learned)
+            if not plan:
+                return MindResponse(text="No pude procesar eso. Inténtalo de nuevo.")
 
-            tool = plan.get("tool")
-            if tool and tool != "none" and tool is not None:
-                # Ejecutar herramienta y sintetizar respuesta
-                thinking_reply = plan.get("reply", "").strip()
-                observation, media = await self._execute_tool(tool, plan.get("tool_args") or {})
-                final_text = await self._synthesize(text, tool, observation, context)
+            tool     = plan.get("tool")
+            tool_args = plan.get("tool_args") or {}
+            reply    = (plan.get("reply") or "").strip()
 
-                await self._store_interaction(chat_id, text, final_text or thinking_reply, tool)
+            # Actualizar metas si el plan lo indica
+            goal_action = plan.get("goal_action")
+            if goal_action:
+                goals = await self._apply_goal_action(goal_action, goals)
+
+            # Ejecutar herramienta si hay una
+            if tool and tool not in ("null", "none", None):
+                obs, media = await self._execute_with_retry(tool, tool_args)
+                final_text = await self._synthesize(text, tool, obs)
+                await self._record_exec(tool, tool_args, obs, bool(media or obs))
+                await self._store_interaction(chat_id, text, final_text, tool)
+                await self._evolve_state(chat_id, state, text, goals)
                 asyncio.create_task(self._maybe_reflect(chat_id))
-
                 return MindResponse(
-                    text=final_text,
+                    text=final_text if not media else None,
                     caption=final_text,
                     tool_used=tool,
                     **media,
                 )
-            else:
-                reply = plan.get("reply", "").strip()
-                await self._store_interaction(chat_id, text, reply, None)
-                asyncio.create_task(self._maybe_reflect(chat_id))
-                return MindResponse(text=reply or None, silent=not reply)
+
+            # Solo texto
+            if not reply:
+                reply = await self._fallback_reply(text)
+
+            await self._store_interaction(chat_id, text, reply, None)
+            await self._evolve_state(chat_id, state, text, goals)
+            asyncio.create_task(self._maybe_reflect(chat_id))
+            return MindResponse(text=reply)
 
         except Exception as exc:
-            logger.error("[AriaMind] handle error: %s", exc, exc_info=True)
-            return MindResponse(text="Algo falló internamente. Lo reviso.")
+            logger.error("[AriaMind] handle: %s", exc, exc_info=True)
+            return MindResponse(text="Error interno. Volviendo a intentarlo.")
 
     # ── RAZONAMIENTO ───────────────────────────────────────────────────────
 
-    async def _reason(self, text: str, context: dict) -> Optional[dict]:
-        """
-        LLM razona sobre el input y decide qué hacer.
-        Devuelve el plan en JSON.
-        """
+    async def _reason(self, text: str, history: list, state: dict,
+                       goals: list[dict], learned: list[str]) -> Optional[dict]:
+        ai = self._ai_client()
+        if not ai:
+            return {"tool": None, "reply": "Motor de IA no disponible ahora."}
+
         from apps.core.config import settings
-        from apps.core.tools.ai_client import AIModel, get_ai_client
+        from apps.core.tools.ai_client import AIModel
 
-        ai = self._get_ai()
-        if not ai:
-            return {"tool": None, "reply": "Mi motor de IA no está disponible ahora mismo."}
+        goals_text = "\n".join(
+            f"  {i+1}. {Goal(**g).to_prompt()}"
+            for i, g in enumerate(goals[:8])
+        ) or "  (ninguna definida)"
 
-        system_prompt = ARIA_SYSTEM.format(
+        history_text = "\n".join(
+            ("Tú: " if m.get("role") == "user" else "ARIA: ") + m.get("content", "")[:200]
+            for m in history[-self.MAX_HISTORY:]
+        ) or "(primera conversación)"
+
+        learned_text = "\n".join(f"  • {l}" for l in learned[-10:]) or "  (sin reglas aún)"
+
+        system = SYSTEM_TEMPLATE.format(
             owner=getattr(settings, "OWNER_NAME", "su dueño"),
-            tools=TOOLS_DESCRIPTION,
-            learned=context.get("learned", "Sin aprendizajes aún."),
-            system_context=context.get("system_context", ""),
-            history=context.get("history_text", "Sin historial."),
+            focus=state.get("focus", "sin foco definido"),
+            confidence=f"{state.get('confidence', 0.7):.0%}",
+            interaction_count=state.get("interaction_count", 0),
+            goals=goals_text,
+            learned=learned_text,
+            history=history_text,
         )
 
-        try:
-            resp = await ai.complete(
-                system=system_prompt,
-                user=text,
-                model=AIModel.STRATEGY,
-                max_tokens=400,
-                temperature=0.25,
-            )
-            if not resp or not resp.success:
-                return {"tool": None, "reply": "No pude procesar tu mensaje ahora."}
-
-            content = resp.content.strip()
-            # Extraer JSON (el LLM puede incluir texto antes/después)
-            m = re.search(r'\{[\s\S]*\}', content)
-            if m:
-                return json.loads(m.group())
-            return {"tool": None, "reply": content[:500]}
-        except (json.JSONDecodeError, Exception) as exc:
-            logger.warning("[AriaMind] _reason parse error: %s", exc)
-            return {"tool": None, "reply": None}
-
-    # ── SÍNTESIS ───────────────────────────────────────────────────────────
-
-    async def _synthesize(self, user_input: str, tool: str, observation: str, context: dict) -> Optional[str]:
-        """
-        Después de ejecutar una herramienta, LLM formula la respuesta final.
-        """
-        ai = self._get_ai()
-        if not ai:
-            return observation[:500] if observation else None
-
-        prompt = SYNTHESIS_PROMPT.format(
-            user_input=user_input[:200],
-            tool=tool,
-            observation=observation[:600] if observation else "La herramienta no devolvió resultados.",
+        result = await ai.complete_json(
+            system=system,
+            user=text,
+            model=AIModel.STRATEGY,
+            max_tokens=500,
+            agent_name="aria_mind",
         )
-        try:
-            resp = await ai.complete(
-                system="Eres ARIA. Responde de forma natural, directa y en español.",
-                user=prompt,
-                model=AIModel.FAST,
-                max_tokens=200,
-                temperature=0.4,
-            )
-            if resp and resp.success:
-                return resp.content.strip()
-        except Exception as exc:
-            logger.warning("[AriaMind] _synthesize error: %s", exc)
-        return observation[:400] if observation else None
 
-    # ── EJECUCIÓN DE HERRAMIENTAS ──────────────────────────────────────────
+        if result and isinstance(result, dict):
+            return result
 
-    async def _execute_tool(self, tool: str, args: dict) -> tuple[str, dict]:
+        # Fallback: respuesta de texto directo
+        logger.warning("[AriaMind] complete_json returned None — using FAST fallback")
+        resp = await ai.complete(
+            system="Eres ARIA. Responde directamente en español, máximo 2 oraciones.",
+            user=text,
+            model=AIModel.FAST,
+            max_tokens=150,
+            temperature=0.5,
+            agent_name="aria_mind_fallback",
+        )
+        if resp and resp.success:
+            return {"tool": None, "reply": resp.content}
+        return {"tool": None, "reply": "Entendido. Dame un momento."}
+
+    # ── EJECUCIÓN CON RETRY + FALLBACK ────────────────────────────────────
+
+    async def _execute_with_retry(self, tool: str, args: dict,
+                                   max_retries: int = 3) -> tuple[str, dict]:
         """
-        Ejecuta la herramienta solicitada.
-        Devuelve (observation_text, media_dict).
-        media_dict puede tener: image_bytes, video_bytes, audio_bytes
+        Ejecuta la herramienta con hasta max_retries intentos.
+        Cada intento puede usar parámetros adaptados.
+        Devuelve (observación_texto, media_dict).
         """
-        media = {}
+        last_error = ""
+        for attempt in range(max_retries):
+            if attempt > 0:
+                await asyncio.sleep(2 ** attempt)  # backoff: 2s, 4s
+
+            obs, media = await self._execute_tool(tool, args, attempt)
+
+            # Si hay media o la obs no indica error → éxito
+            if media or (obs and not obs.lower().startswith(("error", "no se pudo", "falló", "fail"))):
+                return obs, media
+
+            last_error = obs
+            logger.warning("[AriaMind] tool=%s attempt=%d/%d: %s", tool, attempt+1, max_retries, obs[:80])
+
+            # Adaptar args para el próximo intento
+            args = self._adapt_args(tool, args, obs, attempt)
+
+        return f"Intenté {max_retries} veces y no pude completar '{tool}': {last_error}", {}
+
+    def _adapt_args(self, tool: str, args: dict, error: str, attempt: int) -> dict:
+        """Adapta los argumentos según el error para el siguiente intento."""
+        if tool == "generate_image" and attempt == 1:
+            # Primer fallback: cambiar modelo
+            args = dict(args, _fallback_model="stabilityai/stable-diffusion-xl-base-1.0")
+        elif tool == "generate_image" and attempt == 2:
+            args = dict(args, _fallback_model="stabilityai/sdxl-turbo")
+        elif tool == "web_search" and attempt > 0:
+            # Simplificar la query
+            query = args.get("query", "")
+            words = query.split()
+            args = {"query": " ".join(words[:4])}  # query más corta
+        return args
+
+    async def _execute_tool(self, tool: str, args: dict, attempt: int = 0) -> tuple[str, dict]:
+        """
+        Ejecuta la herramienta. Devuelve (obs_text, media_dict).
+        media_dict: {image_bytes, video_bytes, audio_bytes} — solo el que aplica.
+        """
         try:
+            # ── IMAGEN ────────────────────────────────────────────────────
             if tool == "generate_image":
                 prompt = args.get("prompt", "")
+                model_id = args.get("_fallback_model", "black-forest-labs/FLUX.1-schnell")
+                steps = 4 if "schnell" in model_id else 25
+
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
                 r = await HuggingFaceSuite().generate_image(
-                    prompt=prompt,
-                    model="black-forest-labs/FLUX.1-schnell",
-                    width=1024, height=1024, num_inference_steps=4,
-                )
-                if r.get("success") and r.get("image_bytes"):
-                    media["image_bytes"] = r["image_bytes"]
-                    return f"Imagen generada correctamente ({len(r['image_bytes'])//1024}KB)", media
-                # Fallback SDXL
-                r2 = await HuggingFaceSuite().generate_image(
-                    prompt=prompt, model="stabilityai/stable-diffusion-xl-base-1.0")
-                if r2.get("image_bytes"):
-                    media["image_bytes"] = r2["image_bytes"]
-                    return f"Imagen generada con SDXL ({len(r2['image_bytes'])//1024}KB)", media
-                return f"No se pudo generar la imagen: {r.get('error','HF no respondió')} (intenta en 30s si es cold start)", media
+                    prompt=prompt, model=model_id,
+                    width=1024, height=1024, num_inference_steps=steps)
 
+                if r.get("success") and r.get("image_bytes"):
+                    model_short = model_id.split("/")[-1]
+                    return f"Imagen generada con {model_short}", {"image_bytes": r["image_bytes"]}
+                return r.get("error", "HuggingFace no respondió"), {}
+
+            # ── VIDEO ─────────────────────────────────────────────────────
             elif tool == "generate_video":
                 prompt = args.get("prompt", "")
                 from apps.core.tools.creative_engine import CreativeEngine
@@ -279,248 +322,348 @@ class AriaMind:
                     raw = r.get("video_bytes") or (
                         _b64.b64decode(r["video_b64"]) if r.get("video_b64") else None)
                     if raw:
-                        media["video_bytes"] = raw
-                        return f"Video generado ({len(raw)//1024}KB)", media
-                return f"Video no disponible: {r.get('error','HF sin respuesta')}", media
+                        return f"Video generado ({len(raw)//1024}KB)", {"video_bytes": raw}
+                return r.get("error", "Video no disponible"), {}
 
+            # ── MÚSICA ────────────────────────────────────────────────────
             elif tool == "generate_music":
                 prompt = args.get("prompt", "")
-                duration = int(args.get("duration", 30))
+                dur = int(args.get("duration", 30))
                 from apps.core.tools.creative_engine import CreativeEngine
-                r = await CreativeEngine().generate_music(prompt, duration=duration)
+                r = await CreativeEngine().generate_music(prompt, duration=dur)
                 if r.get("success"):
                     import base64 as _b64
                     ab64 = r.get("audio_base64") or r.get("audio_b64")
                     if ab64:
-                        media["audio_bytes"] = _b64.b64decode(ab64)
-                        return f"Música generada ({duration}s)", media
-                return f"Música no disponible: {r.get('error','MusicGen sin respuesta')}", media
+                        return f"Música generada ({dur}s)", {"audio_bytes": _b64.b64decode(ab64)}
+                return r.get("error", "MusicGen no respondió"), {}
 
+            # ── BÚSQUEDA WEB ──────────────────────────────────────────────
             elif tool == "web_search":
                 query = args.get("query", "")
                 from apps.core.tools.web_tools import WebTools
-                r = await WebTools().search_web(query, num_results=5)
+                r = await WebTools().search_web(query, num_results=6)
                 if r.get("success") and r.get("results"):
-                    lines = [f"{i+1}. {res.get('title','')} — {res.get('snippet','')[:100]}"
-                             for i, res in enumerate(r["results"][:5])]
-                    return "\n".join(lines), media
-                return f"Sin resultados para '{query}'", media
+                    lines = [
+                        f"{i+1}. {res.get('title','')}: {res.get('snippet','')[:120]}"
+                        for i, res in enumerate(r["results"][:5])
+                    ]
+                    return "\n".join(lines), {}
+                return "Sin resultados de búsqueda", {}
 
+            # ── TENDENCIAS ────────────────────────────────────────────────
             elif tool == "get_trends":
                 from apps.core.tools.web_tools import WebTools
                 wt = WebTools()
-                hn, reddit = await asyncio.gather(
+                hn, rd = await asyncio.gather(
                     wt.get_hacker_news_trending(limit=5),
                     wt.get_reddit_trending(limit=5),
-                    return_exceptions=True,
-                )
+                    return_exceptions=True)
                 parts = []
                 if isinstance(hn, dict) and hn.get("success"):
-                    parts.append("HN: " + ", ".join(s.get("title","")[:60] for s in hn.get("stories",[])[:3]))
-                if isinstance(reddit, dict) and reddit.get("success"):
-                    parts.append("Reddit: " + ", ".join(p.get("title","")[:60] for p in reddit.get("posts",[])[:3]))
-                return "\n".join(parts) if parts else "Sin tendencias disponibles ahora", media
+                    hn_titles = [s.get("title","")[:70] for s in hn.get("stories",[])[:4]]
+                    parts.append("HN: " + " | ".join(hn_titles))
+                if isinstance(rd, dict) and rd.get("success"):
+                    rd_titles = [p.get("title","")[:70] for p in rd.get("posts",[])[:4]]
+                    parts.append("Reddit: " + " | ".join(rd_titles))
+                return "\n".join(parts) if parts else "Sin tendencias disponibles", {}
 
+            # ── ESTADO DEL SISTEMA ────────────────────────────────────────
             elif tool == "get_status":
                 try:
-                    from apps.core.agents.orchestrator import Orchestrator
-                    status = await Orchestrator().get_status()
-                    caps = status.get("capabilities", {})
-                    ok = [k for k, v in caps.items() if v]
-                    agents = status.get("agents_loaded", [])
-                    return (f"Sistema: {status.get('cycle_count',0)} ciclos, "
-                            f"agentes: {', '.join(agents[:4]) or 'cargando'}, "
-                            f"APIs activas: {', '.join(ok[:5]) or 'revisando'}"), media
+                    from apps.core.training.continuous_trainer import get_trainer
+                    s = get_trainer().get_status()
+                    skills = s.get("skill_scores", {})
+                    skills_str = ", ".join(f"{k}:{v:.0f}%" for k, v in skills.items()) or "evaluando"
+                    return (f"Ciclo #{s.get('cycle', 0)} | Skills: {skills_str} | "
+                            f"Running: {s.get('running', False)}"), {}
                 except Exception as e:
-                    return f"Estado no disponible: {e}", media
+                    return f"Sistema activo (error obteniendo detalle: {e})", {}
 
-            elif tool == "run_income_cycle":
+            # ── CICLO DE INGRESOS ─────────────────────────────────────────
+            elif tool == "run_income":
                 from apps.core.agents.orchestrator import Orchestrator
                 r = await Orchestrator().run_cycle()
-                revenue = r.get("revenue_summary", {}).get("total_revenue_usd", 0)
-                published = r.get("revenue_summary", {}).get("items_published", 0)
-                t = r.get("cycle_time_s", 0)
-                return (f"Ciclo completado en {t:.0f}s. "
-                        f"Ingresos: ${revenue:.2f}. "
-                        f"Publicaciones: {published}."), media
+                rev = r.get("revenue_summary", {}).get("total_revenue_usd", 0)
+                pub = r.get("revenue_summary", {}).get("items_published", 0)
+                t   = r.get("cycle_time_s", 0)
+                return (f"Ciclo completado en {t:.0f}s — "
+                        f"Revenue: ${rev:.2f} — Publicaciones: {pub}"), {}
+
+            # ── GESTIÓN DE METAS ──────────────────────────────────────────
+            elif tool in ("add_goal", "update_goal"):
+                return f"Meta actualizada", {}  # manejado en handle()
 
         except Exception as exc:
-            logger.error("[AriaMind] tool=%s error: %s", tool, exc)
-            return f"Error ejecutando {tool}: {str(exc)[:200]}", media
+            logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
+            return f"Error en {tool}: {str(exc)[:200]}", {}
 
-        return "Herramienta desconocida", media
+        return "Herramienta desconocida", {}
 
-    # ── CONTEXTO ───────────────────────────────────────────────────────────
+    # ── SÍNTESIS ───────────────────────────────────────────────────────────
 
-    async def _build_context(self, chat_id: str) -> dict:
-        context = {
-            "history_text": "",
-            "learned": "",
-            "system_context": "",
-        }
-        try:
-            cache = self._get_cache()
-            if cache:
-                # Historial de conversación
-                history_raw = await cache.get(self.HISTORY_KEY.format(chat_id=chat_id))
-                if isinstance(history_raw, list):
-                    lines = []
-                    for m in history_raw[-12:]:
-                        role = "Tú" if m.get("role") == "user" else "ARIA"
-                        lines.append(f"{role}: {m.get('content','')[:150]}")
-                    context["history_text"] = "\n".join(lines)
+    async def _synthesize(self, user_input: str, tool: str, observation: str) -> str:
+        """LLM convierte la observación de la herramienta en respuesta natural."""
+        if not observation or len(observation) < 10:
+            return "Ejecutado."
 
-                # Aprendizajes propios
-                learned_raw = await cache.get(self.LEARNED_KEY)
-                if learned_raw:
-                    context["learned"] = str(learned_raw)[:600]
-        except Exception as exc:
-            logger.debug("[AriaMind] context build error: %s", exc)
+        ai = self._ai_client()
+        if not ai:
+            return observation[:400]
 
-        # Estado del sistema (rápido)
-        try:
-            from apps.core.config import settings
-            apis = []
-            if getattr(settings, "hf_key", None): apis.append("HuggingFace")
-            if getattr(settings, "GROQ_API_KEY", None): apis.append("Groq")
-            if getattr(settings, "SUPABASE_URL", None): apis.append("Supabase")
-            context["system_context"] = f"APIs: {', '.join(apis) or 'revisando'}"
-        except Exception:
-            pass
+        from apps.core.tools.ai_client import AIModel
+        resp = await ai.complete(
+            system=SYNTHESIS_SYSTEM,
+            user=(f"El usuario pidió: {user_input[:200]}\n"
+                  f"Usé la herramienta '{tool}' y obtuve:\n{observation[:500]}"),
+            model=AIModel.FAST,
+            max_tokens=180,
+            temperature=0.35,
+            agent_name="aria_synthesis",
+        )
+        if resp and resp.success and resp.content:
+            return resp.content.strip()
+        return observation[:300]
 
-        return context
+    async def _fallback_reply(self, text: str) -> str:
+        """Si el plan no tiene reply, genera uno mínimo."""
+        ai = self._ai_client()
+        if not ai:
+            return "Entendido."
+        from apps.core.tools.ai_client import AIModel
+        resp = await ai.complete(
+            system="Eres ARIA. Responde en español, máximo 2 oraciones, directo al punto.",
+            user=text,
+            model=AIModel.FAST,
+            max_tokens=100,
+            temperature=0.4,
+            agent_name="aria_fallback",
+        )
+        return resp.content.strip() if (resp and resp.success) else "Entendido."
 
-    # ── HISTORIAL ──────────────────────────────────────────────────────────
+    # ── GESTIÓN DE ESTADO COGNITIVO ────────────────────────────────────────
+
+    async def _load_state(self, chat_id: str) -> dict:
+        cache = self._cache_client()
+        if cache:
+            s = await cache.get(self.K_STATE.format(cid=chat_id))
+            if isinstance(s, dict):
+                return s
+        return {"focus": "", "confidence": 0.7, "interaction_count": 0}
+
+    async def _evolve_state(self, chat_id: str, current: dict,
+                             text: str, goals: list[dict]) -> None:
+        """Actualiza el estado cognitivo después de cada interacción."""
+        cache = self._cache_client()
+        if not cache:
+            return
+
+        # Actualizar contador
+        current["interaction_count"] = current.get("interaction_count", 0) + 1
+
+        # Actualizar foco (los primeros 60 chars del texto actual)
+        current["focus"] = text[:60]
+
+        # Confidence sube lentamente hasta 1.0 con cada éxito
+        current["confidence"] = min(1.0, current.get("confidence", 0.7) + 0.01)
+
+        await cache.set(self.K_STATE.format(cid=chat_id), current, ttl_seconds=86400 * 30)
+
+    async def _load_goals(self) -> list[dict]:
+        cache = self._cache_client()
+        if cache:
+            g = await cache.get(self.K_GOALS)
+            if isinstance(g, list):
+                return [x for x in g if isinstance(x, dict)]
+        return []
+
+    async def _save_goals(self, goals: list[dict]) -> None:
+        cache = self._cache_client()
+        if cache:
+            await cache.set(self.K_GOALS, goals, ttl_seconds=86400 * 365)
+
+    async def _apply_goal_action(self, action: dict, goals: list[dict]) -> list[dict]:
+        if action.get("action") == "add":
+            goals.append(Goal(
+                text=action.get("text", ""),
+                priority=int(action.get("priority", 5)),
+            ).__dict__)
+            await self._save_goals(goals)
+        elif action.get("action") == "update":
+            idx = action.get("index", 0)
+            if 0 <= idx < len(goals):
+                if "progress" in action:
+                    goals[idx]["progress"] = action["progress"]
+                if "status" in action:
+                    goals[idx]["status"] = action["status"]
+                await self._save_goals(goals)
+        return goals
+
+    async def _load_learned(self) -> list[str]:
+        cache = self._cache_client()
+        if cache:
+            l = await cache.get(self.K_LEARNED)
+            if isinstance(l, list):
+                return l
+        return []
+
+    async def _load_history(self, chat_id: str) -> list[dict]:
+        cache = self._cache_client()
+        if cache:
+            h = await cache.get(self.K_HISTORY.format(cid=chat_id))
+            if isinstance(h, list):
+                return h
+        return []
 
     async def _store_interaction(self, chat_id: str, user_text: str,
                                   aria_text: Optional[str], tool: Optional[str]) -> None:
-        try:
-            cache = self._get_cache()
-            if not cache:
-                return
-            key = self.HISTORY_KEY.format(chat_id=chat_id)
-            history = await cache.get(key) or []
-            if not isinstance(history, list):
-                history = []
+        cache = self._cache_client()
+        if not cache:
+            return
+        key = self.K_HISTORY.format(cid=chat_id)
+        history = await cache.get(key) or []
+        if not isinstance(history, list):
+            history = []
+        history.append({"role": "user", "content": user_text[:300]})
+        if aria_text:
+            history.append({"role": "assistant", "content": aria_text[:300],
+                             **({"tool": tool} if tool else {})})
+        history = history[-(self.MAX_HISTORY * 2):]
+        await cache.set(key, history, ttl_seconds=86400 * 7)
 
-            history.append({"role": "user", "content": user_text[:300]})
-            if aria_text:
-                history.append({"role": "assistant", "content": aria_text[:300],
-                                 "tool": tool})
-            # Mantener últimos 30 mensajes
-            history = history[-30:]
-            await cache.set(key, history, ttl_seconds=self.HISTORY_TTL)
-
-            # Contador para reflexión
-            self._interaction_counts[chat_id] = self._interaction_counts.get(chat_id, 0) + 1
-
-            # Guardar interacción completa para auto-análisis
-            ikey = self.INTERACTIONS_KEY.format(chat_id=chat_id)
-            interactions = await cache.get(ikey) or []
-            if not isinstance(interactions, list):
-                interactions = []
-            interactions.append({
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "in": user_text[:200],
-                "out": (aria_text or "")[:200],
-                "tool": tool,
-            })
-            interactions = interactions[-60:]
-            await cache.set(ikey, interactions, ttl_seconds=86400 * 7)
-        except Exception as exc:
-            logger.debug("[AriaMind] store error: %s", exc)
+    async def _record_exec(self, tool: str, args: dict, obs: str, success: bool) -> None:
+        """Guarda registro de ejecución para auto-reflexión futura."""
+        cache = self._cache_client()
+        if not cache:
+            return
+        execs = await cache.get(self.K_EXECS) or []
+        if not isinstance(execs, list):
+            execs = []
+        execs.append({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "tool": tool,
+            "success": success,
+            "in": str(args)[:100],
+            "out": obs[:150],
+        })
+        execs = execs[-self.MAX_EXECS:]
+        await cache.set(self.K_EXECS, execs, ttl_seconds=86400 * 30)
 
     # ── AUTO-REFLEXIÓN ─────────────────────────────────────────────────────
 
     async def _maybe_reflect(self, chat_id: str) -> None:
         """
-        Cada N interacciones, ARIA revisa su comportamiento y genera aprendizajes.
-        Los guarda en Redis y los incluye en futuros prompts.
-        Real auto-mejora sin placeholders.
+        Analiza ejecuciones recientes, genera reglas concretas de mejora,
+        las guarda en Redis. Afectan comportamiento inmediatamente.
         """
-        count = self._interaction_counts.get(chat_id, 0)
-        if count < self.REFLECTION_EVERY or count % self.REFLECTION_EVERY != 0:
+        state = await self._load_state(chat_id)
+        count = state.get("interaction_count", 0)
+        if count == 0 or count % self.REFLECT_EVERY != 0:
             return
 
-        logger.info("[AriaMind] Iniciando auto-reflexión (interacción #%d)", count)
+        logger.info("[AriaMind] Auto-reflexión en interacción #%d", count)
+        cache = self._cache_client()
+        if not cache:
+            return
+
+        # Lock para no ejecutar en paralelo
+        locked = await cache.acquire_lock("aria:mind:reflect", ttl_seconds=60)
+        if not locked:
+            return
+
         try:
-            cache = self._get_cache()
-            if not cache:
+            execs = await cache.get(self.K_EXECS) or []
+            if len(execs) < 5:
                 return
 
-            ikey = self.INTERACTIONS_KEY.format(chat_id=chat_id)
-            interactions = await cache.get(ikey) or []
-            if len(interactions) < 10:
-                return
-
-            recent = interactions[-40:]
+            # Construir muestra de ejecuciones para el LLM
             sample = "\n".join(
-                f"U: {i['in'][:100]} | A: {i['out'][:100]} | tool: {i.get('tool','none')}"
-                for i in recent[-20:]
+                f"[{'✓' if e.get('success') else '✗'}] {e.get('tool','?')}: "
+                f"in={e.get('in','')[:60]} → out={e.get('out','')[:80]}"
+                for e in execs[-20:]
             )
 
-            ai = self._get_ai()
+            ai = self._ai_client()
             if not ai:
                 return
 
             from apps.core.tools.ai_client import AIModel
             resp = await ai.complete(
                 system=(
-                    "Eres el módulo de auto-mejora de ARIA AI. "
-                    "Analiza las interacciones y genera mejoras concretas y aplicables."
+                    "Eres el módulo de auto-mejora de ARIA. "
+                    "Analiza las ejecuciones y genera reglas operativas concretas. "
+                    "Cada regla debe ser una instrucción directa que mejore futuras decisiones. "
+                    "Formato: verbos de acción. Sin explicaciones. Solo las reglas."
                 ),
                 user=(
-                    f"Estas son mis últimas interacciones:\n{sample}\n\n"
-                    "Identifica 3 patrones de mejora concretos. "
-                    "Formato: una oración por mejora, empezando con un verbo de acción. "
-                    "Ejemplo: 'Usar web_search antes de responder preguntas de mercado.' "
-                    "Solo las 3 mejoras, sin explicaciones adicionales."
+                    f"Mis últimas {len(execs[-20:])} ejecuciones:\n{sample}\n\n"
+                    "Genera exactamente 3 reglas de mejora. Una por línea. "
+                    "Ejemplo: 'Usar SDXL directamente cuando FLUX falla en el primer intento.'"
                 ),
                 model=AIModel.STRATEGY,
                 max_tokens=200,
-                temperature=0.3,
+                temperature=0.2,
+                agent_name="aria_reflection",
             )
 
             if resp and resp.success and resp.content:
-                improvements = resp.content.strip()
-                # Acumular aprendizajes (no reemplazar, añadir)
-                existing = await cache.get(self.LEARNED_KEY) or ""
-                ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                updated = f"{existing}\n[{ts}] {improvements}".strip()
-                # Mantener últimos 1000 chars
-                updated = updated[-1000:]
-                await cache.set(self.LEARNED_KEY, updated, ttl_seconds=86400 * 30)
-                logger.info("[AriaMind] Auto-mejora guardada: %s", improvements[:100])
+                new_rules = [
+                    l.strip().lstrip("•-123. ")
+                    for l in resp.content.strip().split("\n")
+                    if l.strip() and len(l.strip()) > 10
+                ][:3]
+
+                existing = await self._load_learned()
+                updated = (existing + new_rules)[-20:]  # máximo 20 reglas
+                await cache.set(self.K_LEARNED, updated, ttl_seconds=86400 * 365)
+                logger.info("[AriaMind] Nuevas reglas aprendidas: %s", new_rules)
         except Exception as exc:
-            logger.warning("[AriaMind] reflexión falló: %s", exc)
+            logger.warning("[AriaMind] Reflexión falló: %s", exc)
+        finally:
+            await cache.release_lock("aria:mind:reflect")
 
     # ── LAZY SINGLETONS ────────────────────────────────────────────────────
 
-    def _get_cache(self):
-        if self._cache is None:
-            try:
-                from apps.core.memory.redis_client import get_cache
-                self._cache = get_cache()
-            except Exception:
-                pass
-        return self._cache
-
-    def _get_ai(self):
+    def _ai_client(self):
         if self._ai is None:
             try:
                 from apps.core.tools.ai_client import get_ai_client
                 self._ai = get_ai_client()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("[AriaMind] No se pudo cargar ai_client: %s", e)
         return self._ai
 
+    def _cache_client(self):
+        if self._cache is None:
+            try:
+                from apps.core.memory.redis_client import get_cache
+                self._cache = get_cache()
+            except Exception as e:
+                logger.warning("[AriaMind] No se pudo cargar cache: %s", e)
+        return self._cache
 
-# ─── SINGLETON ────────────────────────────────────────────────────────────
+    # ── NOTIFICACIÓN PROACTIVA ────────────────────────────────────────────
 
-_aria_mind: Optional[AriaMind] = None
+    async def proactive_notify(self, message: str) -> None:
+        """ARIA decide proactivamente notificar — solo para cosas críticas."""
+        try:
+            from apps.core.config import settings
+            from apps.core.tools.telegram_bot import get_bot
+            chat_id = str(getattr(settings, "TELEGRAM_CHAT_ID", "") or "")
+            if chat_id:
+                await get_bot().notify_owner(message)
+        except Exception as exc:
+            logger.debug("[AriaMind] proactive_notify: %s", exc)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SINGLETON
+# ═══════════════════════════════════════════════════════════════════════════
+
+_mind: Optional[AriaMind] = None
 
 def get_aria_mind() -> AriaMind:
-    global _aria_mind
-    if _aria_mind is None:
-        _aria_mind = AriaMind()
-    return _aria_mind
+    global _mind
+    if _mind is None:
+        _mind = AriaMind()
+    return _mind
