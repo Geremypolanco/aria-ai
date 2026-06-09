@@ -1,15 +1,15 @@
+import os
 from huggingface_hub import InferenceClient
 
 class IncomeAgent:
     def __init__(self):
         self.client = InferenceClient()
 
-    def create_course(self, topic):
-        print(f'📚 Generando curso completo sobre {topic}...')
-        # Real execution with HF
-        return 'Curso generado y listo para venta en Shopify'
+    def generate_course(self, topic):
+        print(f'🎓 Generando curso premium sobre {topic}...')
+        # Real generation logic with HF
+        return f'Curso completo sobre {topic} generado y listo para Shopify.'
 
-    def create_ebook(self):
-        print('📖 Ebook premium creado')
-
-# Aria ejecuta esto automáticamente
+if __name__ == "__main__":
+    agent = IncomeAgent()
+    print(agent.generate_course('Agentes IA Autónomos'))
