@@ -1,1 +1,10 @@
-[Massive update with persistent runtime, massive self-improvement loops, HF integration, memory from Neuroca/Mem0/AgenticMemory inspirations]
+# MEGAN Architecture - Persistent Cognitive System
+
+## Principios Fundamentales
+- Persistent Runtime
+- Multi-Level Memory (Episodic, Semantic, Identity, World-State)
+- Reflection & Self-Improvement Masivo
+- Tool Orchestration (HF, GitHub, Shopify, etc.)
+- Continuity Across Restarts
+
+Aria evoluciona sin límites.
