@@ -1,18 +1,21 @@
-import os
-import asyncio
-from dotenv import load_dotenv
+"""
+ARIA/MEGAN - Main Entry Point (Stable)
+"""
 
-load_dotenv()
+import logging
+from src.core.config import settings
 
-print("🚀 ARIA/MEGAN Persistent Cognitive Runtime iniciado")
-print("Memoria persistente activa. Auto-mejora masiva en ejecución.")
-print("Telegram Bot: Humano y eficiente. Sin Zapier.")
+from src.telegram.bot import main as run_telegram_bot
 
-# Persistent Loop
-async def runtime_loop():
-    while True:
-        print("[ARIA] Reflexionando y planificando...")
-        await asyncio.sleep(60)
+logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL))
+logger = logging.getLogger("aria.main")
+
+def main():
+    print("\n" + "="*60)
+    print("🚀 ARIA/MEGAN - Stable Mode")
+    print("="*60)
+    logger.info("Starting Telegram Bot...")
+    run_telegram_bot()
 
 if __name__ == "__main__":
-    asyncio.run(runtime_loop())
+    main()
