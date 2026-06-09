@@ -206,7 +206,7 @@ REASON: [why this matters]
             from apps.core.memory.redis_client import get_cache
             cache = get_cache()
             if cache and decisions:
-                await cache.setex("aria:reflection:decisions", 86400, json.dumps(decisions))
+                await cache.set("aria:reflection:decisions", json.dumps(decisions, ttl_seconds=86400))
         except Exception as exc:
             logger.warning("[Reflection] Redis persist failed: %s", exc)
 
