@@ -185,6 +185,16 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error en setup de Telegram: %s", exc)
 
+
+    # ── CONTINUOUS TRAINING LOOP (background, 24/7) ────────────────────────
+    try:
+        from apps.core.training.continuous_trainer import get_trainer
+        import asyncio as _aio
+        _aio.create_task(get_trainer().run_forever())
+        logger.info("🧠 ContinuousTrainer 24/7 — skills eval, auto-mejora, env awareness ACTIVOS")
+    except Exception as exc:
+        logger.error("Error iniciando ContinuousTrainer: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
