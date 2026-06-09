@@ -1,15 +1,6 @@
-asyncio
-aiosqlite
-httpx
-fastapi
-uvicorn
-pydantic
-python-dotenv
-python-telegram-bot
-redis
 huggingface_hub
 transformers
-sentencepiece
 torch
-torchaudio
-pillow
+mem0ai
+langgraph
+# etc for massive capabilities
