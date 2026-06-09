@@ -495,33 +495,73 @@ class AriaTelegramBot:
             await self._send(chat_id, f"Error: {exc}")
 
     async def _cmd_crear(self, chat_id: str, args: str) -> None:
-        """Comando para crear cualquier cosa: /crear [formato] [tema]"""
+        """Genera imagen/video/audio con HuggingFace y entrega el archivo real en Telegram."""
         parts = args.split(None, 1)
         if not parts or len(parts) < 2:
-            await self._send(chat_id, "Dime qué quieres crear. Uso: /crear [formato] [tema]\nFormatos: musica, video, manga, software, landing, imagen")
+            await self._send(chat_id,
+                "/crear imagen [descripción] — FLUX.1-schnell\n"
+                "/crear video [descripción] — damo-vilab text-to-video\n"
+                "/crear musica [descripción] — MusicGen\n"
+                "/crear software/landing [descripción]")
             return
-        
-        fmt = parts[0].lower()
-        topic = parts[1]
-        await self._send(chat_id, f"Vale, me pongo con tu <b>{fmt}</b> sobre <b>{topic}</b>. Dame un momento...")
-        
+        fmt = {"foto":"imagen","dibujo":"imagen","image":"imagen","clip":"video",
+               "animacion":"video","cancion":"musica","música":"musica"
+               }.get(parts[0].lower().strip(), parts[0].lower().strip())
+        topic = parts[1].strip()
+        await self._send(chat_id, f"⚙️ <b>{fmt}</b>: {topic[:60]}…")
         try:
-            from apps.core.agents.orchestrator import get_orchestrator
-            orch = get_orchestrator()
-            res = await orch.execute_mission(f"create {fmt} about {topic}")
-            
-            if res.get("success"):
-                msg = f"✨ ¡Listo! He creado el contenido.\n"
-                assets = res.get("assets", [])
-                if assets:
-                    url = next((a.get("url") or a.get("shop_url") or a.get("image_url") for a in assets), None)
-                    if url:
-                        msg += f"🔗 <b>Enlace:</b> {url}"
-                await self._send(chat_id, msg)
+            if fmt == "imagen":
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                hf = HuggingFaceSuite()
+                r = await hf.generate_image(prompt=topic,
+                    model="black-forest-labs/FLUX.1-schnell",
+                    width=1024, height=1024, num_inference_steps=4)
+                if r.get("success") and r.get("image_bytes"):
+                    ok = await self._send_photo_bytes(chat_id, r["image_bytes"],
+                         caption=f"🎨 {topic[:80]}\n<i>FLUX.1-schnell · HF</i>")
+                    if not ok:
+                        r2 = await hf.generate_image(prompt=topic,
+                             model="stabilityai/stable-diffusion-xl-base-1.0")
+                        if r2.get("image_bytes"):
+                            await self._send_photo_bytes(chat_id, r2["image_bytes"],
+                                 caption=f"🎨 {topic[:80]}\n<i>SDXL · HF</i>")
+                        else: await self._send(chat_id, f"❌ {r2.get('error','HF sin respuesta')}")
+                else: await self._send(chat_id, f"❌ {r.get('error','HF no respondió')} — reintenta en 30s (cold start)")
+            elif fmt == "video":
+                from apps.core.tools.creative_engine import CreativeEngine
+                r = await CreativeEngine().generate_video(topic)
+                if r.get("success"):
+                    import base64 as _b64
+                    raw = r.get("video_bytes") or (_b64.b64decode(r["video_b64"]) if r.get("video_b64") else None)
+                    if raw:
+                        ok = await self._send_video_bytes(chat_id, raw,
+                             caption=f"🎬 {topic[:80]}\n<i>HuggingFace Video</i>")
+                        if not ok: await self._send(chat_id, f"⚠️ Video generado ({len(raw)//1024}KB) pero Telegram rechazó — ¿excede 50MB?")
+                    elif r.get("url"): await self._send(chat_id, f"🎬 {r['url']}")
+                    else: await self._send(chat_id, "❌ Video sin datos enviables")
+                else: await self._send(chat_id, f"❌ {r.get('error','HF sin respuesta')} — prueba: /crear imagen {topic}")
+            elif fmt == "musica":
+                from apps.core.tools.creative_engine import CreativeEngine
+                r = await CreativeEngine().generate_music(topic, duration=30)
+                if r.get("success"):
+                    import base64 as _b64
+                    ab64 = r.get("audio_base64") or r.get("audio_b64")
+                    if ab64:
+                        ok = await self._send_audio_bytes(chat_id, _b64.b64decode(ab64),
+                             caption=f"🎵 {topic[:80]}\n<i>MusicGen · HF</i>")
+                        if not ok: await self._send(chat_id, "⚠️ Audio OK pero Telegram rechazó el envío")
+                    else: await self._send(chat_id, "❌ Audio sin datos enviables")
+                else: await self._send(chat_id, f"❌ {r.get('error','MusicGen sin respuesta')}")
             else:
-                await self._send(chat_id, f"Hubo un lío real: {res.get('error', 'desconocido')}")
+                from apps.core.agents.orchestrator import get_orchestrator
+                r = await get_orchestrator().execute_mission(f"create {fmt} about {topic}")
+                url = next((a.get("url") or a.get("shop_url") for a in r.get("assets",[])), None) if r.get("success") else None
+                await self._send(chat_id,
+                    f"✨ <b>{fmt.title()}</b> «{topic}» completado.{chr(10)+url if url else ''}" if r.get("success")
+                    else f"❌ {r.get('error','Error')}")
         except Exception as exc:
-            await self._send(chat_id, f"Fallo técnico: {exc}")
+            logger.error("[Bot] _cmd_crear: %s", exc)
+            await self._send(chat_id, f"❌ {str(exc)[:200]}")
 
     async def _cmd_sesion(self, chat_id: str, platform: str) -> None:
         from apps.core.tools.social_session import PLATFORM_CONFIG, SUPPORTED_PLATFORMS
@@ -928,6 +968,42 @@ class AriaTelegramBot:
         except Exception as exc:
             logger.error("[TelegramBot] Error enviando foto: %s", exc)
             return False
+
+
+    async def _send_photo_bytes(self, chat_id: str, image_bytes: bytes, caption: str = None, filename: str = "aria.png") -> bool:
+        """Bytes de imagen → Telegram sin disco. Para HuggingFace FLUX/SDXL."""
+        if not settings.telegram_token or not image_bytes: return False
+        try:
+            d = {"chat_id": chat_id}
+            if caption: d["caption"] = caption[:1024]; d["parse_mode"] = "HTML"
+            r = await self._http.post(f"{TELEGRAM_API}{settings.telegram_token}/sendPhoto",
+                data=d, files={"photo": (filename, image_bytes, "image/png")})
+            if r.status_code != 200: logger.error("[Bot] sendPhoto %d: %s", r.status_code, r.text[:150])
+            return r.status_code == 200
+        except Exception as e: logger.error("[Bot] _send_photo_bytes: %s", e); return False
+
+    async def _send_video_bytes(self, chat_id: str, video_bytes: bytes, caption: str = None, filename: str = "aria.mp4") -> bool:
+        """Bytes de video → Telegram sin disco. Para HuggingFace text-to-video."""
+        if not settings.telegram_token or not video_bytes: return False
+        try:
+            d = {"chat_id": chat_id}
+            if caption: d["caption"] = caption[:1024]; d["parse_mode"] = "HTML"
+            r = await self._http.post(f"{TELEGRAM_API}{settings.telegram_token}/sendVideo",
+                data=d, files={"video": (filename, video_bytes, "video/mp4")})
+            if r.status_code != 200: logger.error("[Bot] sendVideo %d: %s", r.status_code, r.text[:150])
+            return r.status_code == 200
+        except Exception as e: logger.error("[Bot] _send_video_bytes: %s", e); return False
+
+    async def _send_audio_bytes(self, chat_id: str, audio_bytes: bytes, caption: str = None, filename: str = "aria.wav") -> bool:
+        """Bytes de audio → Telegram sin disco. Para MusicGen."""
+        if not settings.telegram_token or not audio_bytes: return False
+        try:
+            d = {"chat_id": chat_id}
+            if caption: d["caption"] = caption[:1024]; d["parse_mode"] = "HTML"
+            r = await self._http.post(f"{TELEGRAM_API}{settings.telegram_token}/sendAudio",
+                data=d, files={"audio": (filename, audio_bytes, "audio/wav")})
+            return r.status_code == 200
+        except Exception as e: logger.error("[Bot] _send_audio_bytes: %s", e); return False
 
     async def _send_startup_message(self) -> None:
         if not settings.TELEGRAM_CHAT_ID:
