@@ -1,6 +1,12 @@
+python-dotenv
+python-telegram-bot
 huggingface_hub
 transformers
 torch
-mem0ai
+supabase
+shopifyapi
+github
+flyctl
+sqlite3
 langgraph
-# etc for massive capabilities
+mem0

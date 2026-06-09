@@ -1,32 +1,5 @@
-# fly.toml app configuration file generated for aria-ai on 2026-06-03T14:21:19Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
-app = 'aria-ai'
-primary_region = 'iad'
-
-[build]
-  dockerfile = 'apps/core/Dockerfile'
+app = "aria-ai"
+primary_region = "iad"
 
 [env]
-  PYTHONUNBUFFERED = "1"
-  ENVIRONMENT = 'production'
-  PORT = '8000'
-
-[http_service]
-  internal_port = 8000
-  force_https = true
-  auto_stop_machines = 'off'
-  auto_start_machines = true
-  min_machines_running = 1
-
-  [http_service.concurrency]
-    type = 'connections'
-    hard_limit = 50
-    soft_limit = 25
-
-[[vm]]
-  memory = '512mb'
-  cpu_kind = 'shared'
-  cpus = 1
+  PORT = "8080"
