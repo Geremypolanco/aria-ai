@@ -6,6 +6,7 @@ on:
     paths:
       - 'apps/core/**'
       - 'fly.toml'
+      - 'Dockerfile'
       - '.github/workflows/deploy-core.yml'
   workflow_dispatch:
     inputs:
@@ -86,7 +87,7 @@ jobs:
             SENTRY_DSN="${{ secrets.SENTRY_DSN }}" \
             CYCLE_INTERVAL_MINUTES="60" \
             ENVIRONMENT="production" \
-            PORT="8000" \
+            PORT="8080" \
             ZAPIER_WEBHOOK_URL="https://hooks.zapier.com/hooks/catch/23373923/4bp337x/" \
             --app aria-ai
       - name: Deploy to Fly.io
