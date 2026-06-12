@@ -42,7 +42,7 @@ class HuggingFaceSuite:
     """Suite completa de capacidades de HuggingFace para ARIA AI."""
 
     def __init__(self) -> None:
-        self._token = settings.HF_TOKEN
+        self._token = settings.hf_key  # HF_TOKEN | HF_API_KEY | HUGGING_FACE_TOKEN
         self._http = httpx.AsyncClient(timeout=120.0)
 
     def _headers(self, extra: dict | None = None) -> dict:

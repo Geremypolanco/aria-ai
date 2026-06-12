@@ -81,7 +81,7 @@ class EvolutionaryLearningLoop:
         """
         logger.info("Aplicando mejoras propuestas...")
         for imp in improvements:
-            logger.info(f"Aplicando: {imp.get("description")}. Cambio: {imp.get("proposed_change")}")
+            logger.info("Aplicando: %s. Cambio: %s", imp.get("description"), imp.get("proposed_change"))
             # Aquí iría la lógica para modificar el código o la configuración de Aria
             # Por ejemplo, actualizar un valor en settings.py o modificar una función.
         logger.info("Mejoras aplicadas.")
