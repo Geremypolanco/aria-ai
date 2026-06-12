@@ -1,0 +1,37 @@
+name: Python syntax check (PR gate)
+
+  on:
+    pull_request:
+      branches: [main]
+      paths:
+        - '**/*.py'
+
+  jobs:
+    py-compile:
+      name: py_compile — all .py files
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+
+        - uses: actions/setup-python@v5
+          with:
+            python-version: '3.12'
+
+        - name: Syntax check all Python files
+          run: |
+            echo "Running py_compile on every .py file..."
+            ERRORS=0
+            while IFS= read -r f; do
+              if ! python3 -m py_compile "$f" 2>/tmp/err; then
+                echo "SYNTAX ERROR: $f"
+                cat /tmp/err
+                ERRORS=$((ERRORS + 1))
+              fi
+            done < <(find . -name "*.py" -not -path "./.git/*")
+            if [ "$ERRORS" -gt 0 ]; then
+              echo ""
+              echo "FAILED: $ERRORS file(s) with syntax errors."
+              exit 1
+            fi
+            echo "OK — all Python files compile."
+  
