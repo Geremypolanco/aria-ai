@@ -22,6 +22,7 @@ from typing import Any, Optional
 import httpx
 
 from apps.core.config import settings
+from apps.core.intelligence.quality_checker import get_quality_checker
 
 logger = logging.getLogger("aria.content_pipeline")
 
@@ -442,6 +443,26 @@ Tono: experto pero accesible, como un blogger senior."""
                 article = await self.generate_article(topic, language=language)
                 if not article:
                     continue
+
+                # 2b. Control de calidad — regenerar una vez si no pasa
+                _qc = get_quality_checker()
+                _keywords = topic.get("keywords", [])
+                _report = _qc.check(article, keywords=_keywords)
+                if not _report.passed:
+                    logger.warning(
+                        "[ContentPipeline] Artículo no pasó QC (score %d), regenerando: %s",
+                        _report.score,
+                        "; ".join(_report.issues),
+                    )
+                    _retry = await self.generate_article(topic, language=language)
+                    if _retry:
+                        article = _retry
+                        _report2 = _qc.check(article, keywords=_keywords)
+                        if not _report2.passed:
+                            logger.warning(
+                                "[ContentPipeline] Regeneración tampoco pasó QC (score %d) — publicando igual",
+                                _report2.score,
+                            )
 
                 # 3. Inyectar afiliados
                 article = self.inject_affiliate_links(article)

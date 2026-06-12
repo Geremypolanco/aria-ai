@@ -282,9 +282,9 @@ class CommerceTools:
         vendor: str = "Aria AI",
     ) -> dict[str, Any]:
         """Crea un producto en Shopify via Admin API."""
-        shop_url = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
-        token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN or settings.SHOPIFY_ACCESS_TOKEN
-        
+        shop_url = settings.SHOPIFY_URL
+        token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN
+
         if not shop_url or not token:
             return {"success": False, "error": "Shopify no configurado en el servidor"}
         try:
@@ -331,9 +331,9 @@ class CommerceTools:
 
     async def shopify_get_orders(self, limit: int = 20) -> dict[str, Any]:
         """Obtiene los últimos pedidos de Shopify."""
-        shop_url = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
-        token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN or settings.SHOPIFY_ACCESS_TOKEN
-        
+        shop_url = settings.SHOPIFY_URL
+        token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN
+
         if not shop_url or not token:
             return {"success": False, "error": "Shopify no configurado"}
         try:
