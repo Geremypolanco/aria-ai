@@ -54,25 +54,29 @@ class WebTools:
 
     async def search_web(self, query: str, num_results: int = 10) -> dict[str, Any]:
         """
-        Busqueda web real con expansion automatica de query para negocios.
-        Intenta SerpAPI primero (mejor calidad), luego DuckDuckGo.
+        Busqueda web real con expansion inteligente de query.
+        Intenta SerpAPI primero (mejor calidad), luego DuckDuckGo + NewsAPI.
         """
-        # Expansion automatica si la query es muy corta o vaga
-        optimized_query = query
-        if len(query.split()) < 4 and any(w in query.lower() for w in ["estrategia", "vender", "negocio", "ganar", "shopify", "producto"]):
-            optimized_query = f"{query} best practices 2025 guide monetization e-commerce high ticket"
+        optimized_query = self._optimize_query(query)
+        if optimized_query != query:
             logger.info("[WebTools] Query optimizada: %s -> %s", query, optimized_query)
 
-        # 1. SerpAPI (si esta configurado)
+        # 1. SerpAPI (si esta configurado) — Google real
         if getattr(settings, "SERP_API_KEY", None):
             result = await self._search_serpapi(optimized_query, num_results)
-            if result["success"]:
+            if result["success"] and result.get("results"):
                 return result
 
         # 2. DuckDuckGo Instant Answer API (sin key, siempre disponible)
-        result = await self._search_duckduckgo(query)
-        if result["success"]:
+        result = await self._search_duckduckgo(optimized_query)
+        if result["success"] and result.get("results"):
             return result
+
+        # 3. NewsAPI como fallback (si hay NEWS_API_KEY)
+        if getattr(settings, "NEWS_API_KEY", None):
+            result = await self._search_newsapi(query, num_results)
+            if result["success"] and result.get("results"):
+                return result
 
         return {
             "success": False,
@@ -80,6 +84,31 @@ class WebTools:
             "results": [],
             "query": query,
         }
+
+    def _optimize_query(self, query: str) -> str:
+        """Optimiza la query para mejores resultados según el tipo de búsqueda."""
+        q = query.strip()
+        words = q.split()
+        # No modificar queries ya específicas (> 6 palabras)
+        if len(words) > 6:
+            return q
+        q_lower = q.lower()
+        # Negocios y monetización
+        if any(w in q_lower for w in ["vender", "negocio", "shopify", "ecommerce", "tienda"]):
+            return f"{q} estrategia 2025 guía completa"
+        # Preguntas de "cómo"
+        if q_lower.startswith(("cómo", "como", "how to", "how do")):
+            return f"{q} paso a paso tutorial 2025"
+        # Tendencias y novedades
+        if any(w in q_lower for w in ["tendencia", "trend", "nuevo", "latest", "mejor"]):
+            return f"{q} 2025 actualizado"
+        # Marketing y contenido
+        if any(w in q_lower for w in ["marketing", "seo", "contenido", "social media"]):
+            return f"{q} mejores prácticas ejemplos 2025"
+        # AI y tecnología
+        if any(w in q_lower for w in ["ai", "ia", "inteligencia artificial", "llm", "gpt"]):
+            return f"{q} 2025 comparison review"
+        return q
 
     async def _search_serpapi(self, query: str, num: int = 10) -> dict[str, Any]:
         """Busqueda via SerpAPI — resultados de Google reales."""
@@ -205,6 +234,40 @@ class WebTools:
             logger.error("[WebTools] Error tomando screenshot de %s: %s", url, exc)
             return {"success": False, "error": str(exc), "url": url}
 
+    async def _search_newsapi(self, query: str, num: int = 10) -> dict[str, Any]:
+        """Búsqueda de noticias via NewsAPI (fallback con NEWS_API_KEY)."""
+        try:
+            res = await self._http.get(
+                "https://newsapi.org/v2/everything",
+                params={
+                    "q": query,
+                    "apiKey": settings.NEWS_API_KEY,
+                    "language": "es",
+                    "sortBy": "relevancy",
+                    "pageSize": num,
+                },
+            )
+            if res.status_code == 200:
+                data = res.json()
+                articles = data.get("articles", [])
+                return {
+                    "success": bool(articles),
+                    "source": "newsapi",
+                    "query": query,
+                    "results": [
+                        {
+                            "title": a.get("title", ""),
+                            "url": a.get("url", ""),
+                            "snippet": a.get("description", "") or a.get("content", "")[:300],
+                            "published": a.get("publishedAt", ""),
+                        }
+                        for a in articles[:num]
+                    ],
+                }
+        except Exception as exc:
+            logger.error("[WebTools] newsapi error: %s", exc)
+        return {"success": False, "results": [], "source": "newsapi"}
+
     # ══════════════════════════════════════════════════════════════
     # FETCH DE PAGINAS WEB
     # ══════════════════════════════════════════════════════════════
@@ -212,7 +275,7 @@ class WebTools:
     async def fetch_page(self, url: str, max_chars: int = 5000) -> dict[str, Any]:
         """
         Descarga y extrae el texto limpio de cualquier URL publica.
-        Elimina HTML, scripts, styles — retorna texto legible.
+        Elimina HTML, scripts, styles, nav, footer — retorna contenido legible.
         """
         try:
             res = await self._http.get(url, timeout=15.0)
@@ -220,16 +283,36 @@ class WebTools:
                 return {"success": False, "error": f"HTTP {res.status_code}", "url": url}
 
             html = res.text
-            # Extraer texto limpio sin dependencias extra
-            text = re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r"<[^>]+>", " ", text)
-            text = re.sub(r"&[a-z]+;", " ", text)
-            text = re.sub(r"\s+", " ", text).strip()
 
             # Extraer titulo
             title_match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
-            title = title_match.group(1).strip() if title_match else ""
+            title = re.sub(r"\s+", " ", title_match.group(1)).strip() if title_match else ""
+
+            # Eliminar ruido: scripts, styles, nav, footer, header, aside, forms
+            text = html
+            for tag in ("script", "style", "nav", "footer", "header", "aside", "form", "noscript", "iframe"):
+                text = re.sub(rf"<{tag}[^>]*>.*?</{tag}>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+
+            # Convertir bloques de contenido a texto legible
+            text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+            text = re.sub(r"<p[^>]*>", "\n", text, flags=re.IGNORECASE)
+            text = re.sub(r"<h[1-6][^>]*>", "\n## ", text, flags=re.IGNORECASE)
+            text = re.sub(r"</h[1-6]>", "\n", text, flags=re.IGNORECASE)
+            text = re.sub(r"<li[^>]*>", "\n- ", text, flags=re.IGNORECASE)
+
+            # Eliminar el resto de etiquetas HTML
+            text = re.sub(r"<[^>]+>", " ", text)
+
+            # Decodificar entidades HTML comunes
+            for entity, char in [("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
+                                   ("&quot;", '"'), ("&#39;", "'"), ("&nbsp;", " ")]:
+                text = text.replace(entity, char)
+            text = re.sub(r"&[a-z#0-9]+;", " ", text)
+
+            # Limpiar espacios múltiples pero preservar saltos de línea útiles
+            text = re.sub(r"[ \t]+", " ", text)
+            text = re.sub(r"\n{3,}", "\n\n", text)
+            text = text.strip()
 
             return {
                 "success": True,
