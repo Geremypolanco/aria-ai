@@ -68,8 +68,11 @@ Eres ARIA, la IA persistente de {owner}. Piensas de forma continua, recuerdas el
 
 IDENTIDAD:
 Eres directa, inteligente y honesta. No eres un asistente genérico. Eres la inteligencia operativa de {owner}.
-Nunca dices "haré X" sin ejecutarlo. Si algo falla, reportas exactamente qué pasó y propones una alternativa real.
-Máximo 3 oraciones por respuesta salvo que pidan detalle. Sin frases de relleno. Sin encabezados decorativos.
+Piensas paso a paso antes de responder. Nunca dices "haré X" sin ejecutarlo. Si algo falla, reportas exactamente qué pasó y propones una alternativa real.
+Adaptas la longitud de tu respuesta a lo que el usuario necesita: breve para preguntas simples, detallado y estructurado para análisis, investigaciones y estrategias.
+Cuando el usuario pide información sobre algo actual, tendencias, precios, noticias o datos de internet → usa web_search SIEMPRE.
+Cuando el usuario pide investigación profunda sobre un tema → usa web_search con una query específica y detallada.
+Usa markdown (listas, negritas, títulos) cuando mejore la legibilidad.
 
 ESTADO ACTUAL:
 Foco actual: {focus}
@@ -83,12 +86,21 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - generate_image  → genera imagen con HF FLUX.1-schnell (fallback: SDXL). Args: {{"prompt": "..."}}
 - generate_video  → genera video con damo-vilab/text-to-video. Args: {{"prompt": "..."}}
 - generate_music  → genera música con MusicGen. Args: {{"prompt": "...", "duration": 30}}
-- web_search      → busca en internet. Args: {{"query": "..."}}
+- web_search      → busca en internet en tiempo real. Usa queries específicas y descriptivas. Args: {{"query": "..."}}
+- deep_search     → búsqueda profunda: busca Y lee el contenido de las páginas top. Ideal para investigación. Args: {{"query": "...", "num_pages": 3}}
+- fetch_url       → lee el contenido completo de una URL específica. Args: {{"url": "https://..."}}
 - get_trends      → trending en HN y Reddit ahora. Args: {{}}
 - get_status      → estado completo del sistema. Args: {{}}
 - run_income      → ejecuta ciclo de monetización completo. Args: {{}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
+
+REGLAS DE RAZONAMIENTO:
+1. Usa tu campo "thought" para razonar paso a paso antes de decidir qué hacer.
+2. Si el usuario hace una pregunta factual o pide algo de internet → herramienta web_search o deep_search.
+3. Si el usuario pide análisis estratégico → piensa en profundidad, responde con estructura clara.
+4. Si tienes dudas sobre qué quiere el usuario → interpreta la intención más útil y ejecútala.
+5. Nunca inventes datos, precios, estadísticas o hechos. Busca si no sabes.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -99,19 +111,24 @@ HISTORIAL RECIENTE:
 INSTRUCCIÓN:
 Responde SOLO con JSON válido. Sin markdown. Sin texto extra. El esquema es exactamente:
 {{
-  "thought": "razonamiento interno — qué quiere el usuario, qué es lo mejor que puedo hacer",
-  "tool": "nombre_herramienta o null si es conversación",
+  "thought": "razonamiento paso a paso — qué quiere el usuario, qué información necesita, qué herramienta usar y por qué",
+  "tool": "nombre_herramienta o null si es conversación directa",
   "tool_args": {{"clave": "valor"}} o null,
-  "reply": "mi respuesta en español — puede ser vacío si el resultado de la herramienta será la respuesta",
+  "reply": "mi respuesta en español — puede ser vacío si el resultado de la herramienta será la respuesta. Si respondo directamente, que sea completo y útil.",
   "goal_action": null o {{"action": "add", "text": "...", "priority": 3}} o {{"action": "update", "index": 0, "progress": "..."}}
 }}"""
 
 SYNTHESIS_SYSTEM = """\
-Eres ARIA. Recibiste el resultado de ejecutar una herramienta.
-Convierte ese resultado en una respuesta natural, directa y en español.
-1-3 oraciones máximo. Sin encabezados. Sin formato decorativo.
-Si es media (imagen/video/audio), di brevemente qué generaste.
-Si es texto, resume el hallazgo más relevante."""
+Eres ARIA. Recibiste el resultado de ejecutar una herramienta y debes convertirlo en una respuesta completa y útil en español.
+
+REGLAS DE SÍNTESIS:
+- Responde de forma completa. No cortes información valiosa artificialmente.
+- Usa markdown (listas, negritas, secciones) cuando mejore la claridad.
+- Para búsquedas web: extrae los puntos más relevantes, incluye datos concretos, menciona fuentes cuando sea útil.
+- Para imágenes/video/audio: describe brevemente qué se generó.
+- Para análisis: estructura la respuesta con claridad, incluye conclusiones accionables.
+- Sé directa y profesional. Sin frases de relleno ni introducciones innecesarias.
+- Si los resultados de búsqueda son insuficientes, dilo y sugiere una búsqueda más específica."""
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -227,7 +244,7 @@ class AriaMind:
             system=system,
             user=text,
             model=AIModel.STRATEGY,
-            max_tokens=500,
+            max_tokens=1000,
             agent_name="aria_mind",
         )
 
@@ -342,14 +359,52 @@ class AriaMind:
             elif tool == "web_search":
                 query = args.get("query", "")
                 from apps.core.tools.web_tools import WebTools
-                r = await WebTools().search_web(query, num_results=6)
+                r = await WebTools().search_web(query, num_results=10)
                 if r.get("success") and r.get("results"):
-                    lines = [
-                        f"{i+1}. {res.get('title','')}: {res.get('snippet','')[:120]}"
-                        for i, res in enumerate(r["results"][:5])
-                    ]
-                    return "\n".join(lines), {}
-                return "Sin resultados de búsqueda", {}
+                    source = r.get("source", "web")
+                    lines = [f"[Fuente: {source} | Query: {query}]"]
+                    for i, res in enumerate(r["results"][:8]):
+                        title = res.get("title", "")
+                        snippet = res.get("snippet", "")[:300]
+                        url = res.get("url", "")
+                        lines.append(f"{i+1}. **{title}**\n   {snippet}\n   🔗 {url}")
+                    return "\n\n".join(lines), {}
+                return "Sin resultados de búsqueda. Intenta reformular la query.", {}
+
+            # ── BÚSQUEDA PROFUNDA ─────────────────────────────────────────
+            elif tool == "deep_search":
+                query = args.get("query", "")
+                num_pages = min(int(args.get("num_pages", 3)), 5)
+                from apps.core.tools.web_tools import WebTools
+                wt = WebTools()
+                r = await wt.search_web(query, num_results=num_pages + 2)
+                if not r.get("success") or not r.get("results"):
+                    return "No se encontraron resultados para la búsqueda profunda.", {}
+                # Fetch content from top pages in parallel
+                urls = [res.get("url", "") for res in r["results"] if res.get("url")][:num_pages]
+                fetch_tasks = [wt.fetch_page(url, max_chars=2000) for url in urls]
+                pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+                parts = [f"[Deep Search: {query}]"]
+                for i, (res, page) in enumerate(zip(r["results"], pages)):
+                    title = res.get("title", f"Resultado {i+1}")
+                    url = res.get("url", "")
+                    if isinstance(page, dict) and page.get("success") and page.get("text"):
+                        content = page["text"][:1500]
+                    else:
+                        content = res.get("snippet", "")[:400]
+                    parts.append(f"### {title}\n🔗 {url}\n{content}")
+                return "\n\n---\n\n".join(parts), {}
+
+            # ── FETCH DE URL ──────────────────────────────────────────────
+            elif tool == "fetch_url":
+                url = args.get("url", "")
+                if not url:
+                    return "Necesito una URL para leer.", {}
+                from apps.core.tools.web_tools import WebTools
+                r = await WebTools().fetch_page(url, max_chars=4000)
+                if r.get("success") and r.get("text"):
+                    return f"[Contenido de {url}]\n\n{r['text']}", {}
+                return f"No se pudo leer la URL: {r.get('error', 'Sin respuesta')}", {}
 
             # ── TENDENCIAS ────────────────────────────────────────────────
             elif tool == "get_trends":
@@ -414,28 +469,31 @@ class AriaMind:
         from apps.core.tools.ai_client import AIModel
         resp = await ai.complete(
             system=SYNTHESIS_SYSTEM,
-            user=(f"El usuario pidió: {user_input[:200]}\n"
-                  f"Usé la herramienta '{tool}' y obtuve:\n{observation[:500]}"),
-            model=AIModel.FAST,
-            max_tokens=180,
+            user=(f"El usuario pidió: {user_input[:400]}\n"
+                  f"Usé la herramienta '{tool}' y obtuve:\n{observation[:2000]}"),
+            model=AIModel.STRATEGY,
+            max_tokens=800,
             temperature=0.35,
             agent_name="aria_synthesis",
         )
         if resp and resp.success and resp.content:
             return resp.content.strip()
-        return observation[:300]
+        return observation[:600]
 
     async def _fallback_reply(self, text: str) -> str:
-        """Si el plan no tiene reply, genera uno mínimo."""
+        """Si el plan no tiene reply, genera respuesta directa y útil."""
         ai = self._ai_client()
         if not ai:
             return "Entendido."
         from apps.core.tools.ai_client import AIModel
         resp = await ai.complete(
-            system="Eres ARIA. Responde en español, máximo 2 oraciones, directo al punto.",
+            system=(
+                "Eres ARIA, asistente inteligente. Responde en español de forma directa y completa. "
+                "Usa markdown cuando sea útil. Si necesitas datos de internet, dilo y sugiere qué buscar."
+            ),
             user=text,
-            model=AIModel.FAST,
-            max_tokens=100,
+            model=AIModel.STRATEGY,
+            max_tokens=600,
             temperature=0.4,
             agent_name="aria_fallback",
         )

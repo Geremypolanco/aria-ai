@@ -257,7 +257,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
                 system=system_prompt,
                 user=user_prompt,
                 model=AIModel.STRATEGY,
-                max_tokens=800,
+                max_tokens=1200,
                 agent_name="orchestrator",
             )
             if plan and plan.get("missions"):
