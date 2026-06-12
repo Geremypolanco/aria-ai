@@ -1,7 +1,7 @@
 python-telegram-bot==21.4
 python-dotenv
 supabase
-shopify
+ShopifyAPI
 requests
 langchain
 langgraph
