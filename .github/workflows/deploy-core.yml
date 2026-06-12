@@ -69,7 +69,7 @@ jobs:
             PAYPAL_SECRET="${{ secrets.PAYPAL_SECRET }}" \
             GUMROAD_TOKEN="${{ secrets.GUMROAD_TOKEN }}" \
             SHOPIFY_URL="${{ secrets.SHOPIFY_URL }}" \
-            SHOPIFY_API_KEY="${{ secrets.SHOPIFY_API_KEY }}" \
+            SHOPIFY_ADMIN_TOKEN="${{ secrets.SHOPIFY_ADMIN_TOKEN }}" \
             SHOPIFY_AUTOMATION_TOKEN="${{ secrets.SHOPIFY_AUTOMATION_TOKEN }}" \
             PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}" \
             NEWS_API_KEY="${{ secrets.NEWS_API_KEY }}" \
