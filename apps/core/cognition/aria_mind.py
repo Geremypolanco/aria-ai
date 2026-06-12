@@ -31,6 +31,8 @@ class MindResponse:
     image_bytes: Optional[bytes] = None
     video_bytes: Optional[bytes] = None
     audio_bytes: Optional[bytes] = None
+    document_bytes: Optional[bytes] = None
+    document_filename: Optional[str] = None
     caption: Optional[str] = None
     tool_used: Optional[str] = None
     silent: bool = False
@@ -86,6 +88,9 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - generate_image  → genera imagen con HF FLUX.1-schnell (fallback: SDXL). Args: {{"prompt": "..."}}
 - generate_video  → genera video con damo-vilab/text-to-video. Args: {{"prompt": "..."}}
 - generate_music  → genera música con MusicGen. Args: {{"prompt": "...", "duration": 30}}
+- speak           → convierte texto a voz con Bark TTS. Args: {{"text": "...", "voice": "v2/es_speaker_1"}}
+- translate       → traduce texto entre idiomas. Args: {{"text": "...", "source": "es", "target": "en"}}
+- generate_pdf    → crea un PDF descargable. Args: {{"title": "...", "content": "...", "sections": [{{"title":"...", "body":"..."}}]}}
 - web_search      → busca en internet en tiempo real. Usa queries específicas y descriptivas. Args: {{"query": "..."}}
 - deep_search     → búsqueda profunda: busca Y lee el contenido de las páginas top. Ideal para investigación. Args: {{"query": "...", "num_pages": 3}}
 - fetch_url       → lee el contenido completo de una URL específica. Args: {{"url": "https://..."}}
@@ -187,8 +192,10 @@ class AriaMind:
                 await self._store_interaction(chat_id, text, final_text, tool)
                 await self._evolve_state(chat_id, state, text, goals)
                 asyncio.create_task(self._maybe_reflect(chat_id))
+                # For documents, send text + doc; for A/V media, send caption only
+                is_doc = "document_bytes" in media
                 return MindResponse(
-                    text=final_text if not media else None,
+                    text=final_text if is_doc else (None if media else final_text),
                     caption=final_text,
                     tool_used=tool,
                     **media,
@@ -444,6 +451,42 @@ class AriaMind:
                 t   = r.get("cycle_time_s", 0)
                 return (f"Ciclo completado en {t:.0f}s — "
                         f"Revenue: ${rev:.2f} — Publicaciones: {pub}"), {}
+
+            # ── TEXT-TO-SPEECH (BARK) ─────────────────────────────────────────
+            elif tool == "speak":
+                text_input = args.get("text", "")
+                voice = args.get("voice", "v2/es_speaker_1")
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().text_to_speech_bark(text_input, voice_preset=voice)
+                if r.get("success") and r.get("audio_bytes"):
+                    ab = r["audio_bytes"]
+                    return f"Audio generado ({len(ab)//1024}KB, voz: {voice})", {"audio_bytes": ab}
+                return r.get("error", "TTS no disponible"), {}
+
+            # ── TRADUCCIÓN ────────────────────────────────────────────────────
+            elif tool == "translate":
+                text_input = args.get("text", "")
+                source = args.get("source", "es")
+                target = args.get("target", "en")
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().translate(text_input, source=source, target=target)
+                if r.get("success"):
+                    return f"[{source}→{target}] {r.get('translated', '')}", {}
+                return r.get("error", "Traducción no disponible"), {}
+
+            # ── GENERACIÓN DE PDF ─────────────────────────────────────────────
+            elif tool == "generate_pdf":
+                title = args.get("title", "Documento")
+                content = args.get("content", "")
+                sections = args.get("sections") or []
+                from apps.core.tools.pdf_generator import generate_pdf as _gen_pdf
+                r = await _gen_pdf(title=title, content=content, sections=sections)
+                if r.get("success") and r.get("pdf_bytes"):
+                    fname = r.get("filename", "documento.pdf")
+                    size  = r.get("size_kb", 0)
+                    return (f"PDF generado: {fname} ({size}KB)",
+                            {"document_bytes": r["pdf_bytes"], "document_filename": fname})
+                return r.get("error", "No se pudo generar el PDF"), {}
 
             # ── GESTIÓN DE METAS ──────────────────────────────────────────
             elif tool in ("add_goal", "update_goal"):

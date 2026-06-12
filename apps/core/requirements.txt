@@ -50,5 +50,8 @@ beautifulsoup4==4.12.3
 # ── Analytics ─────────────────────────────────────────────
 sentry-sdk[fastapi]==2.14.0
 
+# ── PDF generation ────────────────────────────────────────
+fpdf2==2.7.9
+
 # ── Automatización de navegador y screenshots ──────────────
 # playwright==1.47.0 (Removido por ser pesado para despliegue rápido)

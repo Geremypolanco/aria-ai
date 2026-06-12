@@ -82,7 +82,7 @@ class McpClient:
                 if "result" in response_json:
                     return response_json["result"]
                 elif "error" in response_json:
-                    logger.error(f"[MCP Client] Error del servidor: {response_json["error"]}")
+                    logger.error("[MCP Client] Error del servidor: %s", response_json["error"])
                     return None
                 else:
                     logger.warning(f"[MCP Client] Respuesta inesperada: {response_json}")

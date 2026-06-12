@@ -55,6 +55,27 @@ class AriaTelegramBot:
         if msg:
             await self._handle_message(msg)
 
+    async def _download_file(self, file_id: str) -> Optional[bytes]:
+        """Descarga un archivo de Telegram dado su file_id."""
+        try:
+            r = await self._http.get(
+                f"{TELEGRAM_API}{settings.telegram_token}/getFile",
+                params={"file_id": file_id},
+            )
+            if r.status_code != 200:
+                return None
+            file_path = r.json().get("result", {}).get("file_path", "")
+            if not file_path:
+                return None
+            dl = await self._http.get(
+                f"https://api.telegram.org/file/bot{settings.telegram_token}/{file_path}",
+                timeout=60.0,
+            )
+            return dl.content if dl.status_code == 200 else None
+        except Exception as exc:
+            logger.error("[Bot] _download_file %s: %s", file_id, exc)
+            return None
+
     async def start_polling(self) -> None:
         if not settings.telegram_token:
             logger.error("[Bot] TELEGRAM_TOKEN no configurado — bot inactivo")
@@ -72,7 +93,8 @@ class AriaTelegramBot:
     async def _poll(self) -> None:
         url = f"{TELEGRAM_API}{settings.telegram_token}/getUpdates"
         r = await self._http.get(url,
-            params={"timeout": 10, "offset": self._offset, "allowed_updates": ["message"]},
+            params={"timeout": 10, "offset": self._offset,
+                    "allowed_updates": '["message"]'},
             timeout=15.0)
         if r.status_code != 200:
             return
@@ -89,12 +111,26 @@ class AriaTelegramBot:
 
     async def _handle_message(self, msg: dict[str, Any]) -> None:
         chat_id = str(msg["chat"]["id"])
-        text    = msg.get("text", "").strip()
-
-        if not text:
-            return
 
         if not self._is_authorized(chat_id):
+            return
+
+        # Determinar tipo de mensaje y construir texto para AriaMind
+        text = msg.get("text", "").strip()
+
+        # Foto enviada por el usuario → describir con BLIP-2
+        if not text and msg.get("photo"):
+            text = await self._describe_user_photo(msg, chat_id)
+            if not text:
+                return
+
+        # Voz o audio enviado por el usuario → transcribir con Whisper
+        if not text and (msg.get("voice") or msg.get("audio")):
+            text = await self._transcribe_user_audio(msg, chat_id)
+            if not text:
+                return
+
+        if not text:
             return
 
         # Todo pasa por AriaMind — sin excepciones
@@ -107,11 +143,14 @@ class AriaTelegramBot:
             await self._send(chat_id, "Algo falló internamente. Inténtalo de nuevo.")
             return
 
-        if response.silent or (not response.text and not response.image_bytes
-                                and not response.video_bytes and not response.audio_bytes):
+        if response.silent or (
+            not response.text and not response.image_bytes
+            and not response.video_bytes and not response.audio_bytes
+            and not response.document_bytes
+        ):
             return
 
-        # Enviar media primero si existe
+        # Enviar media según tipo
         if response.image_bytes:
             ok = await self._send_photo_bytes(chat_id, response.image_bytes, response.caption)
             if not ok and response.caption:
@@ -130,8 +169,70 @@ class AriaTelegramBot:
                 await self._send(chat_id, response.caption)
             return
 
+        if response.document_bytes:
+            fname = response.document_filename or "documento.pdf"
+            ok = await self._send_document_bytes(chat_id, response.document_bytes, fname, response.caption)
+            if not ok and response.caption:
+                await self._send(chat_id, response.caption)
+            # Also send any explanatory text
+            if response.text:
+                await self._send(chat_id, response.text)
+            return
+
         if response.text:
             await self._send(chat_id, response.text)
+
+    async def _describe_user_photo(self, msg: dict[str, Any], chat_id: str) -> str:
+        """Descarga foto del usuario, la describe con BLIP-2 y devuelve texto para AriaMind."""
+        try:
+            photos = msg["photo"]
+            # Usar la foto de mayor resolución (último elemento)
+            file_id = photos[-1]["file_id"]
+            caption = msg.get("caption", "").strip()
+
+            img_bytes = await self._download_file(file_id)
+            if not img_bytes:
+                await self._send(chat_id, "No pude descargar la imagen.")
+                return ""
+
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            r = await HuggingFaceSuite().describe_image(image_bytes=img_bytes)
+            description = r.get("description", "") if r.get("success") else ""
+
+            if description:
+                base = f"[El usuario envió una foto. Descripción: {description}]"
+            else:
+                base = "[El usuario envió una foto que no pude describir.]"
+
+            return f"{base} {caption}".strip() if caption else base
+        except Exception as exc:
+            logger.error("[Bot] _describe_user_photo: %s", exc)
+            return ""
+
+    async def _transcribe_user_audio(self, msg: dict[str, Any], chat_id: str) -> str:
+        """Descarga audio/voz del usuario, transcribe con Whisper y devuelve texto para AriaMind."""
+        try:
+            voice = msg.get("voice") or msg.get("audio") or {}
+            file_id = voice.get("file_id", "")
+            if not file_id:
+                return ""
+
+            audio_bytes = await self._download_file(file_id)
+            if not audio_bytes:
+                await self._send(chat_id, "No pude descargar el audio.")
+                return ""
+
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+            r = await HuggingFaceSuite().transcribe(audio_bytes)
+            transcript = r.get("transcript", "").strip() if r.get("success") else ""
+
+            if transcript:
+                return f"[Mensaje de voz transcrito]: {transcript}"
+            await self._send(chat_id, "No pude transcribir el audio.")
+            return ""
+        except Exception as exc:
+            logger.error("[Bot] _transcribe_user_audio: %s", exc)
+            return ""
 
     def _is_authorized(self, chat_id: str) -> bool:
         allowed = str(getattr(settings, "TELEGRAM_CHAT_ID", "") or "").strip()
@@ -216,6 +317,29 @@ class AriaTelegramBot:
             return r.status_code == 200
         except Exception as exc:
             logger.error("[Bot] _send_audio_bytes: %s", exc)
+            return False
+
+    async def _send_document_bytes(self, chat_id: str, doc_bytes: bytes,
+                                    filename: str = "documento.pdf",
+                                    caption: str = None) -> bool:
+        if not settings.telegram_token or not doc_bytes:
+            return False
+        try:
+            d = {"chat_id": chat_id}
+            if caption:
+                d["caption"] = caption[:1024]
+                d["parse_mode"] = "HTML"
+            mime = "application/pdf" if filename.endswith(".pdf") else "application/octet-stream"
+            r = await self._http.post(
+                f"{TELEGRAM_API}{settings.telegram_token}/sendDocument",
+                data=d,
+                files={"document": (filename, doc_bytes, mime)},
+            )
+            if r.status_code != 200:
+                logger.error("[Bot] sendDocument %d: %s", r.status_code, r.text[:150])
+            return r.status_code == 200
+        except Exception as exc:
+            logger.error("[Bot] _send_document_bytes: %s", exc)
             return False
 
     # ── NOTIFICACIÓN PROACTIVA ────────────────────────────────────────────

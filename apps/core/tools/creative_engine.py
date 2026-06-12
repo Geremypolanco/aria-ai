@@ -19,13 +19,13 @@ class CreativeEngine:
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=120.0)
-        self._hf_headers = {"Authorization": f"Bearer {getattr(settings, 'HF_TOKEN', None) or getattr(settings, 'HF_API_KEY', '')}"}
+        self._hf_headers = {"Authorization": f"Bearer {settings.hf_key or ''}"}
 
     # ── MÚSICA Y AUDIO ────────────────────────────────────
 
     async def generate_music(self, prompt: str, duration: int = 30) -> dict[str, Any]:
         """Genera música usando MusicGen o modelos similares en HF."""
-        if not settings.HF_TOKEN:
+        if not settings.hf_key:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
             # Usando facebook/musicgen-small como base
@@ -51,7 +51,7 @@ class CreativeEngine:
 
     async def generate_video(self, prompt: str) -> dict[str, Any]:
         """Genera clips de video usando modelos Text-to-Video."""
-        if not settings.HF_TOKEN:
+        if not settings.hf_key:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
             # damo-vilab/text-to-video — modelo funcional via HF Inference API
