@@ -114,14 +114,22 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - analyze_decision → framework de decisión multi-criterio tipo McKinsey. Args: {{"question": "...", "options": ["...", "..."], "criteria": ["impacto", "esfuerzo", "riesgo"]}}
 - create_presentation → genera presentación HTML con Reveal.js. Args: {{"title": "...", "topic": "...", "slide_count": 10, "template": "dark|light|corporate|tech"}}
 - create_pitch_deck → pitch deck para inversores estilo YC. Args: {{"company": "...", "problem": "...", "solution": "...", "market": "...", "traction": "..."}}
+- analyze_image    → analiza/describe una imagen por URL. Args: {{"url": "https://...", "question": "¿qué ves?"}}
+- extract_text     → OCR: extrae texto de una imagen. Args: {{"url": "https://..."}}
+- edit_image       → edita imagen por instrucción natural. Args: {{"url": "https://...", "instruction": "quita el fondo"}}
+- analyze_video    → analiza un video por URL, extrae frames clave. Args: {{"url": "https://...", "question": "¿qué ocurre?"}}
+- run_background   → ejecuta tarea larga en segundo plano y te notifica cuando termina. Args: {{"task": "descripción", "agent": "ceo|research|developer|content"}}
+- task_status      → estado de tareas en segundo plano. Args: {{"task_id": "..."}} o {{}} para listar todas.
 
 REGLAS DE RAZONAMIENTO:
 1. Usa tu campo "thought" para razonar paso a paso antes de decidir qué hacer.
 2. Si el usuario hace una pregunta factual o pide algo de internet → herramienta web_search o deep_search.
 3. Si el usuario pide análisis estratégico, decisiones difíciles o problemas complejos → usa deep_think con depth="deep".
 4. Si el usuario pide una presentación o pitch deck → usa create_presentation o create_pitch_deck.
-4. Si tienes dudas sobre qué quiere el usuario → interpreta la intención más útil y ejecútala.
-5. Nunca inventes datos, precios, estadísticas o hechos. Busca si no sabes.
+5. Si el usuario comparte una imagen (URL) y pide análisis, OCR o descripción → usa analyze_image o extract_text.
+6. Si el usuario pide una tarea larga que tardará minutos → usa run_background para no bloquear la conversación.
+7. Si tienes dudas sobre qué quiere el usuario → interpreta la intención más útil y ejecútala.
+8. Nunca inventes datos, precios, estadísticas o hechos. Busca si no sabes.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -724,6 +732,77 @@ class AriaMind:
                     obs = f"Pitch deck '{company}' generado: {r['slide_count']} slides"
                     return obs, {"document_bytes": r["html_bytes"], "document_filename": fname}
                 return "No se pudo generar el pitch deck", {}
+
+            # ── MULTIMODAL ────────────────────────────────────────────────
+            elif tool == "analyze_image":
+                url      = args.get("url", "")
+                question = args.get("question", "Describe esta imagen en detalle.")
+                from apps.core.tools.multimodal import get_multimodal
+                r = await get_multimodal().analyze_image(image_url=url, question=question)
+                if r.get("success"):
+                    return f"[ANÁLISIS DE IMAGEN]\n{r['analysis']}", {}
+                return f"No pude analizar la imagen: {r.get('error', 'error desconocido')}", {}
+
+            elif tool == "extract_text":
+                url = args.get("url", "")
+                from apps.core.tools.multimodal import get_multimodal
+                r = await get_multimodal().extract_text(image_url=url)
+                if r.get("success"):
+                    return f"[OCR]\n{r['analysis']}", {}
+                return f"No pude extraer texto: {r.get('error', 'error desconocido')}", {}
+
+            elif tool == "edit_image":
+                url         = args.get("url", "")
+                instruction = args.get("instruction", "")
+                from apps.core.tools.multimodal import get_multimodal
+                r = await get_multimodal().edit_image(image_url=url, instruction=instruction)
+                if r.get("success") and r.get("image_bytes"):
+                    return f"Imagen editada: '{instruction}'", {"image_bytes": r["image_bytes"]}
+                return f"No pude editar la imagen: {r.get('error', 'error desconocido')}", {}
+
+            elif tool == "analyze_video":
+                url      = args.get("url", "")
+                question = args.get("question", "Describe este video en detalle.")
+                from apps.core.tools.multimodal import get_multimodal
+                r = await get_multimodal().analyze_video_url(url, question)
+                if r.get("success"):
+                    frames = r.get("frames_analyzed", 0)
+                    return f"[ANÁLISIS DE VIDEO — {frames} frames]\n{r['analysis']}", {}
+                return f"No pude analizar el video: {r.get('error', 'error desconocido')}", {}
+
+            # ── BACKGROUND TASKS ─────────────────────────────────────────
+            elif tool == "run_background":
+                task_name  = args.get("task", "")
+                agent_name = args.get("agent", "ceo")
+                from apps.core.tools.task_manager import get_task_manager
+                from apps.core.agents.business_hub import BusinessHub
+
+                async def _bg():
+                    return await BusinessHub().dispatch(agent_name, task_name, {})
+
+                mgr     = get_task_manager()
+                task_id = await mgr.submit(
+                    name=task_name,
+                    coro=_bg(),
+                    description=f"{agent_name}: {task_name}",
+                    session_id=None,
+                )
+                return f"Tarea '{task_name}' iniciada en segundo plano (ID: {task_id}). Te avisaré cuando termine.", {}
+
+            elif tool == "task_status":
+                task_id = args.get("task_id", "")
+                from apps.core.tools.task_manager import get_task_manager
+                mgr = get_task_manager()
+                if task_id:
+                    record = mgr.get_task(task_id)
+                    if record:
+                        return f"[Tarea {task_id}] {record.status.value}: {record.result or record.error or 'en progreso'}", {}
+                    return f"Tarea {task_id} no encontrada.", {}
+                tasks = mgr.list_tasks(limit=10)
+                if not tasks:
+                    return "No hay tareas en segundo plano.", {}
+                lines = [f"• [{t['id']}] {t['status']} — {t['name']}" for t in tasks]
+                return "[TAREAS EN SEGUNDO PLANO]\n" + "\n".join(lines), {}
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)

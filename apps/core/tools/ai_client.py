@@ -9,6 +9,7 @@ ANTES de caer a Groq — maximizando el uso del tier gratuito de HuggingFace.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import re
@@ -471,6 +472,88 @@ class AriaAIClient:
         content = data["choices"][0]["message"]["content"].strip()
         tokens = data.get("usage", {}).get("total_tokens", 0)
         return content, tokens
+
+    # ── VISION ────────────────────────────────────────────
+
+    async def analyze_image(
+        self,
+        image_base64: str,
+        media_type: str = "image/jpeg",
+        question: str = "Describe this image in detail.",
+        max_tokens: int = 1000,
+    ) -> str:
+        """
+        Analyze an image with vision. Tries Groq (llama-3.2-vision) first,
+        then falls back to OpenAI GPT-4o-mini vision.
+        Returns the analysis text.
+        """
+        # Try Groq vision (llama-3.2-11b-vision-preview)
+        if settings.GROQ_API_KEY and self._health[AIProvider.GROQ].is_available():
+            try:
+                from groq import AsyncGroq
+                groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+                resp = await asyncio.wait_for(
+                    groq_client.chat.completions.create(
+                        model="llama-3.2-11b-vision-preview",
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_base64}"}},
+                                {"type": "text", "text": question},
+                            ],
+                        }],
+                        max_tokens=max_tokens,
+                    ),
+                    timeout=30.0,
+                )
+                content = resp.choices[0].message.content or ""
+                if content:
+                    return content.strip()
+            except Exception as exc:
+                logger.warning("[Vision] Groq vision failed: %s", exc)
+
+        # Fall back to OpenAI GPT-4o-mini vision
+        if settings.OPENAI_API_KEY:
+            try:
+                resp = await self._http.post(
+                    self._OAI_ENDPOINT,
+                    json={
+                        "model": "gpt-4o-mini",
+                        "messages": [{
+                            "role": "user",
+                            "content": [
+                                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_base64}"}},
+                                {"type": "text", "text": question},
+                            ],
+                        }],
+                        "max_tokens": max_tokens,
+                    },
+                    headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"].strip()
+            except Exception as exc:
+                logger.warning("[Vision] OpenAI vision failed: %s", exc)
+
+        # Fall back to text description using HF BLIP-2
+        if settings.hf_key:
+            try:
+                res = await self._http.post(
+                    "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large",
+                    headers={"Authorization": f"Bearer {settings.hf_key}"},
+                    content=base64.b64decode(image_base64),
+                    timeout=30.0,
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    if isinstance(data, list) and data:
+                        return data[0].get("generated_text", "")
+            except Exception as exc:
+                logger.warning("[Vision] HF BLIP fallback failed: %s", exc)
+
+        return "No se pudo analizar la imagen (configura GROQ_API_KEY u OPENAI_API_KEY para visión)."
 
     # ── UTILIDADES ────────────────────────────────────────
 

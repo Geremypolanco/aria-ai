@@ -108,6 +108,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error precargando AriaMind: %s", exc)
 
+    # 3b. TaskManager — persistent background task queue
+    try:
+        from apps.core.tools.task_manager import get_task_manager
+        get_task_manager().start(workers=3)
+        logger.info("TaskManager iniciado (3 workers)")
+    except Exception as exc:
+        logger.error("Error iniciando TaskManager: %s", exc)
+
     # 4. Scheduler (ciclos autónomos, SIN notificaciones Telegram automáticas)
     try:
         scheduler.add_job(autonomous_cycle_job, IntervalTrigger(minutes=settings.CYCLE_INTERVAL_MINUTES),
