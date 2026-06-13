@@ -401,7 +401,7 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
     <template x-for="item in navItems" :key="item.id">
       <div class="nav-item tip" :class="activeSection===item.id ? 'active' : ''"
            :data-tip="item.label"
-           @click="activeSection=item.id; closeMobileSidebar(); if(item.id==='settings') loadAiHealth()">
+           @click="activeSection=item.id; closeMobileSidebar(); if(item.id==='settings') loadAiHealth(); if(item.id==='income') loadIncome()">
         <span class="nav-icon" x-html="item.icon"></span>
         <span class="nav-label flex-1" x-text="item.label"></span>
         <span x-show="item.badge && !desktopCollapsed" class="nav-badge badge badge-v text-xs ml-auto" x-text="item.badge"></span>
@@ -539,6 +539,31 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
         <div class="text-3xl font-bold mb-0.5" x-text="metrics.health ? metrics.health.toFixed(0)+'%' : '—'"></div>
         <div class="text-xs" style="color:var(--text3)">Score global</div>
       </div>
+    </div>
+
+    <!-- Income Loop Banner -->
+    <div class="mb-4 p-3 rounded-xl flex items-center gap-4 cursor-pointer hover:opacity-90 transition-opacity"
+         style="background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(16,185,129,.08));border:1px solid rgba(124,58,237,.2)"
+         @click="activeSection='income'; loadIncome()">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 rounded-full"
+             :class="incomeStatus.running ? 'bg-emerald-400 pulse-dot' : 'bg-red-400'"></div>
+        <span class="text-sm font-semibold"
+              :class="incomeStatus.running ? 'text-emerald-400' : 'text-red-400'"
+              x-text="incomeStatus.running ? 'Income Loop 24/7 — ACTIVO' : 'Income Loop — PARADO'"></span>
+      </div>
+      <div class="hidden sm:flex items-center gap-5 ml-2">
+        <div class="text-xs" style="color:var(--text3)">
+          Ciclos: <span class="font-mono font-semibold" style="color:var(--text2)" x-text="incomeStatus.total_cycles||0"></span>
+        </div>
+        <div class="text-xs" style="color:var(--text3)">
+          Éxitos: <span class="font-mono font-semibold text-emerald-400" x-text="incomeStatus.successful_cycles||0"></span>
+        </div>
+        <div class="text-xs" style="color:var(--text3)">
+          Revenue: <span class="font-mono font-semibold text-yellow-400" x-text="'$'+(incomeStatus.total_revenue_potential||0).toFixed(0)"></span>
+        </div>
+      </div>
+      <div class="ml-auto text-xs" style="color:var(--text3)">Ver detalles →</div>
     </div>
 
     <!-- Activity + Quick Chat -->
@@ -1260,6 +1285,193 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
     </div>
   </section>
 
+  <!-- ═══════════ INCOME ═══════════ -->
+  <section x-show="activeSection==='income'" class="p-5 lg:p-7 max-w-7xl mx-auto">
+    <div class="section-header">
+      <div>
+        <h1 class="section-title">Motor de Ingresos</h1>
+        <p class="section-sub">Loop 24/7 · 6 estrategias · 67 nichos · autónomo</p>
+      </div>
+      <div class="flex gap-2">
+        <button @click="incomeRunCycle()" :disabled="incomeRunning"
+                class="btn btn-primary btn-sm gap-1.5"
+                style="font-size:12px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          <span x-text="incomeRunning ? 'Ejecutando...' : 'Ciclo Ya'"></span>
+        </button>
+        <button @click="incomeToggleLoop()" class="btn btn-sm gap-1.5"
+                :class="incomeStatus.running ? 'btn-ghost' : 'btn-outline'"
+                style="font-size:12px">
+          <span x-text="incomeStatus.running ? '⏸ Pausar Loop' : '▶ Iniciar Loop'"></span>
+        </button>
+        <button @click="loadIncome()" class="btn btn-ghost btn-sm btn-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Metric Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div class="metric-card">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Estado</span>
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center"
+               :style="incomeStatus.running ? 'background:rgba(16,185,129,.15)' : 'background:rgba(239,68,68,.12)'">
+            <div class="w-2.5 h-2.5 rounded-full"
+                 :class="incomeStatus.running ? 'bg-emerald-400 pulse-dot' : 'bg-red-400'"></div>
+          </div>
+        </div>
+        <div class="text-2xl font-bold mb-0.5"
+             :class="incomeStatus.running ? 'text-emerald-400' : 'text-red-400'"
+             x-text="incomeStatus.running ? 'ACTIVO' : 'PARADO'"></div>
+        <div class="text-xs" style="color:var(--text3)">Loop 24/7</div>
+      </div>
+      <div class="metric-card">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Ciclos</span>
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(124,58,237,.15)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
+          </div>
+        </div>
+        <div class="text-3xl font-bold mb-0.5" x-text="incomeStatus.total_cycles||'0'"></div>
+        <div class="text-xs" style="color:var(--text3)">Total ejecutados</div>
+      </div>
+      <div class="metric-card">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Éxito</span>
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(16,185,129,.12)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+        </div>
+        <div class="text-3xl font-bold mb-0.5 text-emerald-400" x-text="incomeStatus.successful_cycles||'0'"></div>
+        <div class="text-xs" style="color:var(--text3)">Ciclos exitosos</div>
+      </div>
+      <div class="metric-card">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Potencial</span>
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(245,158,11,.12)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+        </div>
+        <div class="text-3xl font-bold mb-0.5 text-yellow-400"
+             x-text="'$'+(incomeStatus.total_revenue_potential||0).toFixed(0)"></div>
+        <div class="text-xs" style="color:var(--text3)">Revenue potencial</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+      <!-- Strategy Distribution -->
+      <div class="card p-4">
+        <h3 class="font-semibold text-sm mb-4" style="color:var(--text2)">Distribución de Estrategias</h3>
+        <div class="space-y-3">
+          <template x-for="s in incomeStrategies" :key="s.name">
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span x-text="s.label" style="color:var(--text2)"></span>
+                <span x-text="s.pct+'%'" style="color:var(--text3)"></span>
+              </div>
+              <div class="h-1.5 rounded-full" style="background:var(--border)">
+                <div class="h-1.5 rounded-full transition-all duration-500"
+                     :style="`width:${s.pct}%;background:${s.color}`"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+        <!-- Last cycle info -->
+        <div x-show="incomeStatus.last_cycle" class="mt-5 pt-4" style="border-top:1px solid var(--border)">
+          <div class="text-xs font-medium mb-2" style="color:var(--text3)">Último Ciclo</div>
+          <div class="text-xs mb-1" style="color:var(--text2)">
+            <span class="font-mono px-1.5 py-0.5 rounded" style="background:var(--elevated);color:#a78bfa"
+                  x-text="incomeStatus.last_cycle?.strategy||'—'"></span>
+          </div>
+          <div class="text-xs" style="color:var(--text3)"
+               x-text="incomeStatus.last_cycle?.summary?.substring(0,80)||''"></div>
+          <div class="flex items-center gap-2 mt-2">
+            <div class="w-1.5 h-1.5 rounded-full"
+                 :class="incomeStatus.last_cycle?.success ? 'bg-emerald-400' : 'bg-red-400'"></div>
+            <span class="text-xs" style="color:var(--text3)"
+                  x-text="incomeStatus.last_cycle?.success ? 'Exitoso' : 'Sin resultado'"></span>
+            <span class="text-xs ml-auto font-mono" style="color:var(--text3)"
+                  x-text="(incomeStatus.last_cycle?.elapsed_seconds||0)+'s'"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cycle History -->
+      <div class="card lg:col-span-2" style="overflow:hidden">
+        <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid var(--border)">
+          <h3 class="font-semibold text-sm">Historial de Ciclos</h3>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono" style="color:var(--text3)"
+                  x-text="'errores: '+(incomeStatus.errors||0)"></span>
+          </div>
+        </div>
+        <div class="scrollable" style="max-height:340px">
+          <template x-for="(c, i) in (incomeStatus.recent_cycles||[]).slice(0,15)" :key="i">
+            <div class="flex items-start gap-3 px-4 py-3" style="border-bottom:1px solid var(--border)">
+              <div class="flex-shrink-0 mt-0.5">
+                <div class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                     :class="c.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/15 text-red-400'">
+                  <span x-show="c.success">✓</span>
+                  <span x-show="!c.success">✕</span>
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-xs font-mono px-1.5 py-0.5 rounded"
+                        style="background:var(--elevated);color:#a78bfa"
+                        x-text="c.strategy"></span>
+                  <span x-show="c.revenue_potential > 0"
+                        class="text-xs font-semibold text-yellow-400"
+                        x-text="'$'+c.revenue_potential?.toFixed(0)"></span>
+                  <span class="text-xs ml-auto font-mono" style="color:var(--text3)"
+                        x-text="c.elapsed_seconds+'s'"></span>
+                </div>
+                <div class="text-xs truncate" style="color:var(--text2)" x-text="c.summary"></div>
+                <template x-if="c.urls_created?.length">
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    <template x-for="(u,j) in c.urls_created.slice(0,3)" :key="j">
+                      <a :href="u" target="_blank" rel="noopener"
+                         class="text-xs px-1.5 py-0.5 rounded hover:opacity-80 transition-opacity"
+                         style="background:rgba(59,130,246,.12);color:#60a5fa">↗ link</a>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+          <div x-show="!(incomeStatus.recent_cycles?.length)" class="text-center py-12 text-sm" style="color:var(--text3)">
+            Sin ciclos todavía — el loop iniciará automáticamente o presiona "Ciclo Ya"
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Opportunity Queue -->
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-sm">Cola de Oportunidades <span class="ml-2 text-xs font-mono" style="color:var(--text3)" x-text="'('+( incomeStatus.opportunity_count||0)+')'"></span></h3>
+        <button @click="incomeRunCycleStrategy('opportunity_scan')" class="btn btn-ghost btn-sm" style="font-size:11px">
+          + Escanear ahora
+        </button>
+      </div>
+      <div x-show="incomeStatus.opportunities?.length">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          <template x-for="(opp, i) in (incomeStatus.opportunities||[]).slice(0,6)" :key="i">
+            <div class="p-3 rounded-lg text-xs" style="background:var(--elevated);border:1px solid var(--border)">
+              <div class="font-medium mb-1" style="color:var(--text)" x-text="opp.title||opp"></div>
+              <div x-show="opp.revenue_estimate" class="text-yellow-400 font-semibold" x-text="'$'+opp.revenue_estimate"></div>
+              <div x-show="opp.niche" class="mt-1" style="color:var(--text3)" x-text="opp.niche"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div x-show="!incomeStatus.opportunities?.length" class="text-xs py-4 text-center" style="color:var(--text3)">
+        Escanea el mercado para descubrir oportunidades de ingresos
+      </div>
+    </div>
+  </section>
+
   </main>
 </div><!-- /main-content -->
 
@@ -1344,6 +1556,18 @@ function ariaApp() {
     // Goals
     newGoalText: '',
 
+    // Income Loop
+    incomeStatus: { running: false, total_cycles: 0, successful_cycles: 0, errors: 0, total_revenue_potential: 0, recent_cycles: [], last_cycle: null, opportunities: [], opportunity_count: 0 },
+    incomeRunning: false,
+    incomeStrategies: [
+      { name: 'content_pipeline', label: 'Content Pipeline',  pct: 35, color: '#7c3aed' },
+      { name: 'niche_rotator',    label: 'Niche Rotator',     pct: 25, color: '#2563eb' },
+      { name: 'product_factory',  label: 'Product Factory',   pct: 20, color: '#059669' },
+      { name: 'opportunity_scan', label: 'Opportunity Scan',  pct: 10, color: '#d97706' },
+      { name: 'social_blitz',     label: 'Social Blitz',      pct:  5, color: '#db2777' },
+      { name: 'premium_offer',    label: 'Premium Offer',     pct:  5, color: '#0891b2' },
+    ],
+
     // Knowledge Base
     kbUrl: '',
     kbText: '',
@@ -1398,6 +1622,7 @@ function ariaApp() {
       { id:'knowledge',  label:'Conocimiento',   icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>' },
       { id:'goals',      label:'Metas',          icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>' },
       { id:'activity',   label:'Actividad',      icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>' },
+      { id:'income',     label:'Ingresos',       icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', badge: '24/7' },
       { id:'settings',   label:'Ajustes',        icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' },
     ],
 
@@ -1406,6 +1631,7 @@ function ariaApp() {
       { id:'chat',       label:'Chat',      icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
       { id:'agents',     label:'Agentes',   icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>' },
       { id:'automation', label:'Auto',      icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>' },
+      { id:'income',     label:'Ingresos',  icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
       { id:'settings',   label:'Ajustes',   icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>' },
     ],
 
@@ -1418,6 +1644,7 @@ function ariaApp() {
       this.loadData();
       setInterval(() => this.loadActivity(), 20000);
       setInterval(() => this.loadTasks(), 15000);
+      setInterval(() => this.loadIncome(), 60000);
       this.$nextTick(() => this.watchScroll());
     },
 
@@ -1479,7 +1706,7 @@ function ariaApp() {
       await Promise.allSettled([
         this.loadStatus(), this.loadAgents(), this.loadGoals(),
         this.loadActivity(), this.loadPipeline(), this.loadWorkflows(), this.loadKbSources(),
-        this.loadTasks(),
+        this.loadTasks(), this.loadIncome(),
       ]);
     },
 
@@ -1601,6 +1828,46 @@ function ariaApp() {
         const d = await r.json();
         this.kbSources = d.sources || [];
       } catch(e) { this.kbSources = [] }
+    },
+
+    // ── INCOME LOOP ───────────────────────────────────────
+    async loadIncome() {
+      try {
+        const r = await fetch('/api/v1/income');
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d.error) return;
+        this.incomeStatus = { ...this.incomeStatus, ...d };
+      } catch(e) {}
+    },
+
+    async incomeRunCycle(strategy) {
+      if (this.incomeRunning) return;
+      this.incomeRunning = true;
+      try {
+        const r = await fetch('/api/v1/income/cycle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ strategy: strategy || null }),
+        });
+        const d = await r.json();
+        if (d.error) { this.toast('error', d.error); return; }
+        this.toast('success', `Ciclo: ${d.strategy} — ${d.success ? '✓' : '✕'} ${d.summary?.substring(0,50)||''}`);
+        await this.loadIncome();
+      } catch(e) { this.toast('error', 'Error ejecutando ciclo') }
+      finally { this.incomeRunning = false }
+    },
+
+    async incomeRunCycleStrategy(s) { return this.incomeRunCycle(s) },
+
+    async incomeToggleLoop() {
+      const endpoint = this.incomeStatus.running ? '/api/v1/income/stop' : '/api/v1/income/start';
+      try {
+        const r = await fetch(endpoint, { method: 'POST' });
+        const d = await r.json();
+        this.incomeStatus.running = d.running;
+        this.toast('success', d.running ? 'Loop iniciado' : 'Loop pausado');
+      } catch(e) { this.toast('error', 'Error controlando loop') }
     },
 
     // ── FILTERS ───────────────────────────────────────────
