@@ -276,6 +276,14 @@ class AriaMind:
             if stripped in ("/status", "/estado", "status"):
                 return await self._build_status()
 
+            # Cognitive commands — planner + reasoning engine
+            if stripped.startswith("/plan ") or stripped.startswith("/planear "):
+                goal = text.split(" ", 1)[1].strip()
+                return await self._handle_plan_command(goal)
+            if stripped.startswith("/think ") or stripped.startswith("/razona ") or stripped.startswith("/reason "):
+                question = text.split(" ", 1)[1].strip()
+                return await self._handle_think_command(question)
+
             # Cargar todo el contexto cognitivo
             history, state, goals, learned = await asyncio.gather(
                 self._load_history(chat_id),
@@ -359,6 +367,18 @@ class AriaMind:
         except Exception:
             pass
 
+        # Semantic memory enrichment — inject relevant facts ARIA knows
+        semantic_context = ""
+        try:
+            from apps.core.memory.semantic_memory import get_semantic_memory
+            sem_mem = get_semantic_memory()
+            facts = await sem_mem.search(text, top_k=3, min_confidence=0.5)
+            if facts:
+                fact_lines = "\n".join(f"  • [{f.category}] {f.content}" for f in facts)
+                semantic_context = f"\nConocimiento relevante de ARIA:\n{fact_lines}\n"
+        except Exception:
+            pass
+
         system = SYSTEM_TEMPLATE.format(
             owner=getattr(settings, "OWNER_NAME", "su dueño"),
             focus=state.get("focus", "sin foco definido"),
@@ -370,8 +390,9 @@ class AriaMind:
         )
 
         user_input = text
-        if kb_context:
-            user_input = f"{kb_context}\n\n---\nMensaje del usuario: {text}"
+        enrichment = "".join(filter(None, [kb_context, semantic_context]))
+        if enrichment:
+            user_input = f"{enrichment}\n---\nMensaje del usuario: {text}"
 
         result = await ai.complete_json(
             system=system,
@@ -1356,6 +1377,71 @@ class AriaMind:
             logger.warning("[AriaMind] Reflexión falló: %s", exc)
         finally:
             await cache.release_lock("aria:mind:reflect")
+
+    # ── COGNITIVE COMMANDS ─────────────────────────────────────────────────
+
+    async def _handle_plan_command(self, goal: str) -> MindResponse:
+        """
+        /plan <goal> — decompose a goal into an executable plan using ARIAPlanner.
+        Returns the plan as a formatted text summary.
+        """
+        try:
+            from apps.core.cognition.planner import get_planner
+            planner = get_planner()
+            ai = self._ai_client()
+            plan = await planner.create_plan(goal, context={}, ai_client=ai)
+
+            task_lines = "\n".join(
+                f"  {i+1}. [{t.tool}] {t.title}"
+                + (f" (depende de tarea {t.depends_on[0][-1]} )" if t.depends_on else "")
+                for i, t in enumerate(plan.tasks)
+            )
+
+            response = (
+                f"Plan creado (ID: {plan.id})\n"
+                f"Meta: {goal}\n\n"
+                f"Razonamiento: {plan.reasoning[:200]}\n\n"
+                f"Tareas ({len(plan.tasks)}):\n{task_lines}\n\n"
+                f"Progreso: {plan.progress_pct()}%"
+            )
+            return MindResponse(text=response, tool_used="planner")
+        except Exception as exc:
+            logger.error("[AriaMind] Plan command failed: %s", exc)
+            return MindResponse(text=f"Error al crear el plan: {exc}")
+
+    async def _handle_think_command(self, question: str) -> MindResponse:
+        """
+        /think <question> — run full chain-of-thought + self-critique reasoning.
+        Returns confidence, conclusion, and recommended action.
+        """
+        try:
+            from apps.core.cognition.reasoning_engine import get_reasoning_engine
+            ai = self._ai_client()
+            engine = get_reasoning_engine(ai_client=ai)
+            result = await engine.reason(question, context={})
+
+            step_lines = "\n".join(
+                f"  Paso {s.step+1}: {s.thought[:100]} → {s.leads_to[:80]}"
+                f" (incertidumbre: {s.uncertainty:.0%})"
+                for s in result.steps
+            )
+            issues = "\n".join(
+                f"  • {issue}"
+                for c in result.critiques for issue in c.issues[:2]
+            ) or "  (ninguno)"
+
+            response = (
+                f"Razonamiento completado ({result.reasoning_time_ms}ms)\n"
+                f"Confianza: {result.confidence:.0%}\n\n"
+                f"Cadena de pensamiento:\n{step_lines}\n\n"
+                f"Críticas identificadas:\n{issues}\n\n"
+                f"Conclusión: {result.conclusion}\n\n"
+                f"Acción recomendada: {result.action_recommendation}"
+            )
+            return MindResponse(text=response, tool_used="reasoning_engine")
+        except Exception as exc:
+            logger.error("[AriaMind] Think command failed: %s", exc)
+            return MindResponse(text=f"Error en el razonamiento: {exc}")
 
     # ── LAZY SINGLETONS ────────────────────────────────────────────────────
 
