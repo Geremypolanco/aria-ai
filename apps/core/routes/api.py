@@ -504,6 +504,72 @@ async def api_schedule(req: ScheduleRequest) -> dict:
         return {"error": str(exc)}
 
 
+# ── INCOME LOOP ───────────────────────────────────────────────────────────────
+
+
+@router.get("/income", dependencies=[Depends(verify_api_key)])
+async def api_income_status() -> dict:
+    """Return IncomeLoop status: running state, cycle stats, recent history."""
+    try:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        return loop.get_status_dict()
+    except Exception as exc:
+        logger.error("[API /income] %s", exc)
+        return {"error": str(exc)}
+
+
+class IncomeCycleRequest(BaseModel):
+    strategy: Optional[str] = None
+
+
+@router.post("/income/cycle", dependencies=[Depends(verify_api_key)])
+async def api_income_run_cycle(req: IncomeCycleRequest) -> dict:
+    """Execute one income cycle immediately (optionally with a specific strategy)."""
+    try:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        result = await loop._run_one_cycle(force_strategy=req.strategy)
+        _log_activity("info", f"Income cycle: {result.strategy} — {result.summary[:60]}", "income")
+        return {
+            "cycle_id": result.cycle_id,
+            "strategy": result.strategy,
+            "success": result.success,
+            "summary": result.summary,
+            "revenue_potential": result.revenue_potential,
+            "urls_created": result.urls_created,
+            "elapsed_seconds": result.elapsed_seconds,
+        }
+    except Exception as exc:
+        logger.error("[API /income/cycle] %s", exc)
+        return {"error": str(exc)}
+
+
+@router.post("/income/start", dependencies=[Depends(verify_api_key)])
+async def api_income_start() -> dict:
+    """Start the IncomeLoop if not already running."""
+    try:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        if not loop.is_running:
+            await loop.start()
+        return {"running": loop.is_running}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@router.post("/income/stop", dependencies=[Depends(verify_api_key)])
+async def api_income_stop() -> dict:
+    """Stop the IncomeLoop."""
+    try:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        loop.stop()
+        return {"running": loop.is_running}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 
 

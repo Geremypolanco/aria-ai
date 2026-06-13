@@ -116,9 +116,9 @@ class IncomeLoop:
 
             await asyncio.sleep(INTERVAL_SECONDS)
 
-    async def _run_one_cycle(self) -> None:
+    async def _run_one_cycle(self, force_strategy: str | None = None) -> "CycleResult":
         self._cycle += 1
-        strategy = self._pick_strategy()
+        strategy = force_strategy if force_strategy else self._pick_strategy()
         start    = time.time()
         logger.info("[IncomeLoop] Cycle #%d — strategy: %s", self._cycle, strategy)
 
@@ -156,6 +156,7 @@ class IncomeLoop:
             "[IncomeLoop] Cycle #%d done in %ds | success=%s | %s",
             self._cycle, result.elapsed_seconds, result.success, result.summary[:80]
         )
+        return result
 
     def _pick_strategy(self) -> str:
         """Weighted random strategy selection."""
@@ -577,6 +578,59 @@ JSON:
             pass
 
     # ── Status ────────────────────────────────────────────────────────────
+
+    def get_status_dict(self) -> dict:
+        """Return structured status dict for API/dashboard consumption."""
+        r = self._redis()
+        total_cycles    = 0
+        success_count   = 0
+        error_count     = 0
+        last_cycle_data = {}
+        recent_cycles   = []
+        opportunities   = []
+        total_revenue   = 0.0
+
+        if r:
+            try:
+                total_cycles  = int(r.get("aria:income:total_cycles") or 0)
+                success_count = int(r.get("aria:income:successful_cycles") or 0)
+                error_count   = int(r.get("aria:income:errors") or 0)
+
+                last_raw = r.get("aria:income:last_cycle")
+                if last_raw:
+                    last_cycle_data = json.loads(last_raw if isinstance(last_raw, str) else last_raw.decode())
+
+                history_raw = r.lrange("aria:income:loop_history", -20, -1)
+                for raw in reversed(history_raw or []):
+                    try:
+                        c = json.loads(raw if isinstance(raw, str) else raw.decode())
+                        recent_cycles.append(c)
+                        total_revenue += c.get("revenue_potential", 0)
+                    except Exception:
+                        pass
+
+                opp_raw = r.lrange("aria:income:opportunity_queue", 0, 9)
+                for raw in (opp_raw or []):
+                    try:
+                        opportunities.append(json.loads(raw if isinstance(raw, str) else raw.decode()))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        return {
+            "running": self.is_running,
+            "total_cycles": total_cycles,
+            "successful_cycles": success_count,
+            "errors": error_count,
+            "success_rate": round(success_count / total_cycles * 100, 1) if total_cycles else 0,
+            "total_revenue_potential": round(total_revenue, 2),
+            "last_cycle": last_cycle_data or None,
+            "recent_cycles": recent_cycles,
+            "opportunities": opportunities,
+            "opportunity_count": len(opportunities),
+            "interval_minutes": INTERVAL_SECONDS // 60,
+        }
 
     def get_status(self) -> str:
         r = self._redis()
