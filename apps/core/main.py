@@ -130,6 +130,21 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando TaskManager: %s", exc)
 
+    # 3c. Enterprise runtime: task queue worker + world model init
+    try:
+        from apps.core.runtime.task_queue import get_task_queue
+        await get_task_queue().start_worker()
+        logger.info("TaskQueue worker started (4-priority Redis streams)")
+    except Exception as exc:
+        logger.error("Error iniciando TaskQueue worker: %s", exc)
+
+    try:
+        from apps.core.world_model.entity_registry import get_entity_registry
+        await get_entity_registry().load()
+        logger.info("World model entity registry initialized")
+    except Exception as exc:
+        logger.error("Error inicializando WorldModel: %s", exc)
+
     # 4. Scheduler (ciclos autónomos, SIN notificaciones Telegram automáticas)
     try:
         scheduler.add_job(autonomous_cycle_job, IntervalTrigger(minutes=settings.CYCLE_INTERVAL_MINUTES),
@@ -238,6 +253,70 @@ async def metrics():
 async def api_metrics():
     """Structured metrics as JSON for dashboard consumption."""
     return get_metrics().to_dict()
+
+
+@app.get("/api/v1/governance/audit")
+async def governance_audit():
+    """Security audit log — all policy decisions ARIA has made."""
+    try:
+        from apps.core.security.capabilities import get_policy_engine
+        engine = get_policy_engine()
+        return {
+            "summary": engine.summary(),
+            "recent": engine.get_audit_log(limit=50),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/world-model")
+async def world_model_summary():
+    """Summary of ARIA's persistent world model."""
+    try:
+        from apps.core.world_model.entity_registry import get_entity_registry
+        registry = get_entity_registry()
+        return registry.summary()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/memory/temporal")
+async def temporal_memory_summary():
+    """Recent events from ARIA's temporal memory."""
+    try:
+        from apps.core.memory.temporal.temporal_memory import get_temporal_memory
+        mem = get_temporal_memory()
+        recent = await mem.recent(n=20)
+        return {
+            "summary": mem.summary(),
+            "recent_events": [e.to_dict() for e in recent],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/memory/procedural")
+async def procedural_memory_summary():
+    """ARIA's learned procedures."""
+    try:
+        from apps.core.memory.procedural.procedural_memory import get_procedural_memory
+        mem = get_procedural_memory()
+        procs = await mem.list_all()
+        return {
+            "summary": mem.summary(),
+            "procedures": [
+                {
+                    "id": p.id, "name": p.name,
+                    "success_rate": round(p.success_rate, 3),
+                    "execution_count": p.execution_count,
+                    "trusted": p.is_trusted,
+                    "utility_score": round(p.utility_score(), 3),
+                }
+                for p in procs[:20]
+            ],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 @app.get("/status")
