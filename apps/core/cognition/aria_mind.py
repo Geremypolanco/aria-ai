@@ -645,6 +645,7 @@ class AriaMind:
                 return f"[BROWSER] {summary}\n{details}", {}
 
 
+
             # ── AGENTE DE NEGOCIO ─────────────────────────────────────────
             elif tool == "run_business_agent":
                 agent_name = args.get("agent", "ceo")
