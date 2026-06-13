@@ -136,21 +136,12 @@ class SalesAgent(BaseAgent):
                 )
             elif platform == "shopify":
                 from apps.core.integrations.shopify_engine import ShopifyEngine
-                from apps.core.config import settings as _s
-                shop_url = _s.SHOPIFY_URL.replace("https://", "").rstrip("/")
-                engine = ShopifyEngine(shop_name=shop_url, access_token=_s.SHOPIFY_ADMIN_TOKEN)
-                import asyncio as _asyncio
-                product_id = await _asyncio.get_event_loop().run_in_executor(
-                    None, lambda: engine.create_optimized_product(
-                        {"title": name, "body_html": description, "variants": [{"price": str(price)}]}
-                    )
+                return await ShopifyEngine().create_product(
+                    title=name, description=description, price=price
                 )
-                return {"success": bool(product_id), "product_id": product_id, "platform": "shopify"}
             elif platform == "stripe":
                 from apps.core.tools.commerce_tools import CommerceTools
-                return await CommerceTools().stripe_create_product(
-                    name=name, description=description, price_cents=int(price * 100)
-                )
+                return await CommerceTools().create_stripe_product(name=name, price=price)
             return {"success": False, "error": f"Unknown platform: {platform}"}
         except Exception as exc:
             logger.error("[SalesAgent] publish_product error: %s", exc)
