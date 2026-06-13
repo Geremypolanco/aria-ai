@@ -1282,6 +1282,43 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
         <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/pipeline</span></div>
       </div>
       <p class="text-xs mt-3" style="color:var(--text3)">Header: <code class="px-1 py-0.5 rounded" style="background:var(--elevated);color:#a78bfa">X-ARIA-Key: tu-api-key</code></p>
+      <!-- Income API -->
+      <div class="mt-3" style="border-top:1px solid var(--border);padding-top:12px">
+        <div class="mb-2 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">INCOME LOOP</div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/income</span></div>
+        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/income/cycle</span> <span style="color:var(--text3)">— ejecutar ciclo ya</span></div>
+        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/income/start</span></div>
+        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/income/stop</span></div>
+      </div>
+    </div>
+
+    <!-- Income Secrets Checklist -->
+    <div class="card p-5 mt-4">
+      <h3 class="font-semibold text-sm mb-1">Secrets para Ingresos — Fly.io</h3>
+      <p class="text-xs mb-4" style="color:var(--text3)">Configura estos secretos en Fly.io para activar cada estrategia de ingresos</p>
+      <div class="space-y-2">
+        <template x-for="secret in incomeSecrets" :key="secret.key">
+          <div class="flex items-start gap-3 p-3 rounded-lg" style="background:var(--elevated);border:1px solid var(--border)">
+            <div class="flex-shrink-0 mt-0.5">
+              <div class="w-5 h-5 rounded-full flex items-center justify-center"
+                   :style="secret.priority==='critical' ? 'background:rgba(239,68,68,.2)' : secret.priority==='high' ? 'background:rgba(245,158,11,.15)' : 'background:rgba(59,130,246,.12)'">
+                <span class="text-xs" :style="secret.priority==='critical' ? 'color:#ef4444' : secret.priority==='high' ? 'color:#f59e0b' : 'color:#60a5fa'"
+                      x-text="secret.priority==='critical' ? '!' : secret.priority==='high' ? '↑' : '·'"></span>
+              </div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <code class="text-xs px-1.5 py-0.5 rounded font-mono"
+                      style="background:rgba(124,58,237,.1);color:#a78bfa" x-text="secret.key"></code>
+                <span class="text-xs font-medium" style="color:var(--text2)" x-text="secret.label"></span>
+              </div>
+              <div class="text-xs mt-1" style="color:var(--text3)" x-text="secret.description"></div>
+              <div class="text-xs mt-0.5 font-mono" style="color:var(--text3)"
+                   x-text="'fly secrets set '+secret.key+'=tu_valor'"></div>
+            </div>
+          </div>
+        </template>
+      </div>
     </div>
   </section>
 
@@ -1559,6 +1596,24 @@ function ariaApp() {
     // Income Loop
     incomeStatus: { running: false, total_cycles: 0, successful_cycles: 0, errors: 0, total_revenue_potential: 0, recent_cycles: [], last_cycle: null, opportunities: [], opportunity_count: 0 },
     incomeRunning: false,
+    incomeSecrets: [
+      { key: 'GUMROAD_TOKEN',           label: 'Gumroad API',        priority: 'critical', description: 'Vende productos digitales, ebooks y servicios. Principal plataforma de ingresos.' },
+      { key: 'ANTHROPIC_API_KEY',       label: 'Anthropic Claude',   priority: 'critical', description: 'Motor AI principal para generar contenido, productos y análisis.' },
+      { key: 'OPENAI_API_KEY',          label: 'OpenAI GPT',         priority: 'critical', description: 'Fallback AI y generación de imágenes DALL·E.' },
+      { key: 'DEVTO_API_KEY',           label: 'Dev.to Publishing',  priority: 'high',     description: 'Publica artículos técnicos y de programación con tráfico orgánico masivo.' },
+      { key: 'MEDIUM_TOKEN',            label: 'Medium Publishing',  priority: 'high',     description: 'Publica en Medium Partner Program para monetizar con lecturas.' },
+      { key: 'HASHNODE_TOKEN',          label: 'Hashnode Blog',      priority: 'high',     description: 'Blog técnico con SEO optimizado. Necesita también HASHNODE_PUBLICATION_ID.' },
+      { key: 'NEWS_API_KEY',            label: 'NewsAPI Trends',     priority: 'high',     description: 'Accede a noticias trending para generar contenido relevante.' },
+      { key: 'SHOPIFY_URL',             label: 'Shopify Store URL',  priority: 'high',     description: 'URL de tu tienda ej: mystore.myshopify.com. Necesita SHOPIFY_ADMIN_TOKEN.' },
+      { key: 'SHOPIFY_ADMIN_TOKEN',     label: 'Shopify Admin API',  priority: 'high',     description: 'Token de acceso para crear productos en tu tienda Shopify.' },
+      { key: 'MAILCHIMP_API_KEY',       label: 'Mailchimp Email',    priority: 'high',     description: 'Envía campañas de email marketing a tu lista. Necesita MAILCHIMP_DC.' },
+      { key: 'ZAPIER_WEBHOOK_URL',      label: 'Zapier Webhooks',    priority: 'high',     description: 'Conecta ARIA con 5000+ apps vía Zapier para distribución automática.' },
+      { key: 'GITHUB_TOKEN',            label: 'GitHub API',         priority: 'high',     description: 'Para que ARIA lea y mejore su propio código autónomamente.' },
+      { key: 'HASHNODE_PUBLICATION_ID', label: 'Hashnode Pub ID',    priority: 'medium',   description: 'ID de tu publicación en Hashnode (ver en settings de Hashnode).' },
+      { key: 'TWITTER_API_KEY',         label: 'Twitter/X API',      priority: 'medium',   description: 'Distribuye contenido en Twitter/X para generar tráfico.' },
+      { key: 'STRIPE_SECRET_KEY',       label: 'Stripe Payments',    priority: 'medium',   description: 'Pagos directos sin comisión de terceros (vs 5-10% de Gumroad).' },
+      { key: 'ARIA_API_KEY',            label: 'ARIA API Key',       priority: 'medium',   description: 'Protege el acceso a la API REST de ARIA con autenticación.' },
+    ],
     incomeStrategies: [
       { name: 'content_pipeline', label: 'Content Pipeline',  pct: 28, color: '#7c3aed' },
       { name: 'niche_rotator',    label: 'Niche Rotator',     pct: 20, color: '#2563eb' },
