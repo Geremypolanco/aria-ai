@@ -103,6 +103,32 @@ class Settings(BaseSettings):
     BUFFER_TOKEN: Optional[str] = None
     AIRTABLE_TOKEN: Optional[str] = None
     MAILCHIMP_API_KEY: Optional[str] = None
+    MAILCHIMP_DC: Optional[str] = None
+
+    # Twitter / X
+    TWITTER_API_KEY: Optional[str] = None
+    TWITTER_API_SECRET: Optional[str] = None
+    TWITTER_ACCESS_TOKEN: Optional[str] = None
+    TWITTER_ACCESS_TOKEN_SECRET: Optional[str] = None
+    TWITTER_BEARER_TOKEN: Optional[str] = None
+
+    # Reddit
+    REDDIT_CLIENT_ID: Optional[str] = None
+    REDDIT_CLIENT_SECRET: Optional[str] = None
+    REDDIT_USERNAME: Optional[str] = None
+    REDDIT_PASSWORD: Optional[str] = None
+    REDDIT_TARGET_SUBREDDIT: Optional[str] = None
+
+    # Pinterest
+    PINTEREST_ACCESS_TOKEN: Optional[str] = None
+    PINTEREST_BOARD_ID: Optional[str] = None
+    PINTEREST_DEFAULT_IMAGE_URL: Optional[str] = None
+
+    # Discord
+    DISCORD_WEBHOOK_URL: Optional[str] = None
+
+    # Screenshot API
+    SCREENSHOT_API_KEY: Optional[str] = None
 
     # ── MULTIMEDIA ────────────────────────────────────────
     CLOUDINARY_CLOUD_NAME: Optional[str] = None
