@@ -1064,6 +1064,33 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
       </template>
       <div x-show="filteredActivity.length===0" class="p-10 text-center text-sm" style="color:var(--text3)">Sin actividad registrada</div>
     </div>
+
+    <!-- Background Tasks -->
+    <div class="mt-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Tareas en Segundo Plano</h2>
+        <button @click="loadTasks()" class="btn btn-ghost btn-sm btn-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
+        </button>
+      </div>
+      <div class="card overflow-hidden">
+        <template x-for="(t,i) in tasks" :key="t.id||i">
+          <div class="activity-row">
+            <span class="text-xs font-mono flex-shrink-0 w-16" style="color:var(--text3)" x-text="t.id?.substring(0,8)"></span>
+            <span class="badge flex-shrink-0 w-20 text-center"
+                  :class="t.status==='done'?'badge-g':t.status==='running'?'badge-b':t.status==='failed'?'badge-r':'badge-y'"
+                  x-text="t.status||'queued'"></span>
+            <span class="text-xs flex-1" style="color:var(--text2)" x-text="t.description||t.mission||t.tool||'tarea'"></span>
+            <button x-show="t.status==='queued'||t.status==='running'"
+                    @click="cancelTask(t.id)"
+                    class="text-xs px-2 py-0.5 rounded" style="background:#450a0a;color:#f87171;border:none;cursor:pointer">
+              Cancelar
+            </button>
+          </div>
+        </template>
+        <div x-show="tasks.length===0" class="p-8 text-center text-sm" style="color:var(--text3)">No hay tareas en segundo plano</div>
+      </div>
+    </div>
   </section>
 
   <!-- ═══════════ AJUSTES ═══════════ -->
@@ -1188,6 +1215,7 @@ function ariaApp() {
     // Data
     agents: [],
     goals: [],
+    tasks: [],
     activity: [],
     activityFilter: '',
     metrics: { agents: 0, goals: 0, runs: 0, health: 0 },
@@ -1279,6 +1307,7 @@ function ariaApp() {
       this.connectWS();
       this.loadData();
       setInterval(() => this.loadActivity(), 20000);
+      setInterval(() => this.loadTasks(), 15000);
     },
 
     updateClock() {
@@ -1338,6 +1367,7 @@ function ariaApp() {
       await Promise.allSettled([
         this.loadStatus(), this.loadAgents(), this.loadGoals(),
         this.loadActivity(), this.loadPipeline(), this.loadWorkflows(), this.loadKbSources(),
+        this.loadTasks(),
       ]);
     },
 
@@ -1405,7 +1435,23 @@ function ariaApp() {
         const r = await fetch('/api/v1/activity');
         if (!r.ok) return;
         const d = await r.json();
-        this.activity = d.activity || d || [];
+        this.activity = d.entries || d.activity || d || [];
+      } catch(e) {}
+    },
+
+    async loadTasks() {
+      try {
+        const r = await fetch('/api/v1/tasks');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.tasks = d.tasks || [];
+      } catch(e) {}
+    },
+
+    async cancelTask(id) {
+      try {
+        await fetch(`/api/v1/tasks/${id}`, { method:'DELETE' });
+        await this.loadTasks();
       } catch(e) {}
     },
 
