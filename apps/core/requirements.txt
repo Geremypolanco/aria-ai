@@ -56,6 +56,9 @@ fpdf2==2.7.9
 # ── Automatización de navegador y screenshots ──────────────
 playwright==1.47.0
 
+# ── Graph-based cognition ─────────────────────────────────
+networkx==3.4.2           # Reasoning graphs, world model topology, dependency DAGs
+
 # ── Observabilidad (OTel — opcional, graceful no-op si no instalado) ─
 opentelemetry-api==1.27.0
 opentelemetry-sdk==1.27.0
