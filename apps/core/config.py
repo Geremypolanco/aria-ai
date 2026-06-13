@@ -130,6 +130,25 @@ class Settings(BaseSettings):
     # Screenshot API
     SCREENSHOT_API_KEY: Optional[str] = None
 
+    # ── PUBLICACIÓN DE CONTENIDO ──────────────────────────
+    MEDIUM_TOKEN: Optional[str] = None
+    DEVTO_API_KEY: Optional[str] = None
+    HASHNODE_TOKEN: Optional[str] = None
+    HASHNODE_PUBLICATION_ID: Optional[str] = None
+    PRODUCT_HUNT_TOKEN: Optional[str] = None
+
+    # ── EMAIL / NEWSLETTER ────────────────────────────────
+    RESEND_API_KEY: Optional[str] = None
+    SENDGRID_API_KEY: Optional[str] = None
+    MAILGUN_API_KEY: Optional[str] = None
+    MAILGUN_DOMAIN: Optional[str] = None
+    EMAIL_FROM: Optional[str] = None
+    NEWSLETTER_LIST_EMAIL: Optional[str] = None
+
+    # ── AFILIADOS ─────────────────────────────────────────
+    AMAZON_ASSOCIATE_TAG: Optional[str] = None
+    CLICKBANK_AFFILIATE_ID: Optional[str] = None
+
     # ── MULTIMEDIA ────────────────────────────────────────
     CLOUDINARY_CLOUD_NAME: Optional[str] = None
     CLOUDINARY_API_KEY: Optional[str] = None
