@@ -61,7 +61,7 @@ class FinanceAgent(BaseAgent):
         if settings.STRIPE_SECRET_KEY:
             try:
                 from apps.core.tools.commerce_tools import CommerceTools
-                stripe_data = await CommerceTools().get_stripe_revenue(period)
+                stripe_data = await CommerceTools().stripe_get_revenue()
                 if stripe_data.get("success"):
                     revenue["sources"]["stripe"] = stripe_data
                     revenue["total_usd"] += stripe_data.get("total_usd", 0)
@@ -72,8 +72,13 @@ class FinanceAgent(BaseAgent):
         if settings.SHOPIFY_URL and settings.SHOPIFY_ADMIN_TOKEN:
             try:
                 from apps.core.integrations.shopify_engine import ShopifyEngine
-                shop_data = await ShopifyEngine().get_revenue_summary(period)
-                if shop_data.get("success"):
+                shop_url = settings.SHOPIFY_URL.replace("https://", "").rstrip("/")
+                engine = ShopifyEngine(shop_name=shop_url, access_token=settings.SHOPIFY_ADMIN_TOKEN)
+                import asyncio as _asyncio
+                shop_data = await _asyncio.get_event_loop().run_in_executor(
+                    None, lambda: engine.get_orders_report(limit=50)
+                )
+                if shop_data:
                     revenue["sources"]["shopify"] = shop_data
                     revenue["total_usd"] += shop_data.get("total_revenue", 0)
             except Exception as exc:
