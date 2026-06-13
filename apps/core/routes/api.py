@@ -300,6 +300,148 @@ async def api_cancel_task(task_id: str) -> dict:
         return {"error": str(exc)}
 
 
+# ── WORKFLOWS ─────────────────────────────────────────────────────────────────
+
+
+class WorkflowCreateRequest(BaseModel):
+    name: str
+    description: str
+
+
+@router.get("/workflows", dependencies=[Depends(verify_api_key)])
+async def api_workflows_list() -> dict:
+    """List all saved workflows."""
+    try:
+        from apps.core.tools.workflow_engine import get_workflow_engine
+        engine = get_workflow_engine()
+        await engine._ensure_loaded()
+        return {"workflows": engine.list()}
+    except Exception as exc:
+        logger.error("[API /workflows] %s", exc)
+        return {"error": str(exc), "workflows": []}
+
+
+@router.post("/workflows", dependencies=[Depends(verify_api_key)])
+async def api_workflows_create(req: WorkflowCreateRequest) -> dict:
+    """Create a new workflow from a natural-language description."""
+    try:
+        from apps.core.tools.workflow_engine import get_workflow_engine
+        result = await get_workflow_engine().create(req.name, req.description)
+        _log_activity("info", f"Workflow created: {req.name}", "workflow")
+        return result
+    except Exception as exc:
+        logger.error("[API /workflows POST] %s", exc)
+        return {"error": str(exc)}
+
+
+@router.post("/workflows/{workflow_id}/run", dependencies=[Depends(verify_api_key)])
+async def api_workflows_run(workflow_id: str) -> dict:
+    """Execute a workflow by ID."""
+    try:
+        from apps.core.tools.workflow_engine import get_workflow_engine
+        result = await get_workflow_engine().run(workflow_id)
+        _log_activity("info", f"Workflow run: {workflow_id}", "workflow")
+        return result
+    except Exception as exc:
+        logger.error("[API /workflows/%s/run] %s", workflow_id, exc)
+        return {"error": str(exc)}
+
+
+@router.delete("/workflows/{workflow_id}", dependencies=[Depends(verify_api_key)])
+async def api_workflows_delete(workflow_id: str) -> dict:
+    """Delete a workflow by ID."""
+    try:
+        from apps.core.tools.workflow_engine import get_workflow_engine
+        ok = get_workflow_engine().delete(workflow_id)
+        return {"deleted": ok, "workflow_id": workflow_id}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── KNOWLEDGE BASE ─────────────────────────────────────────────────────────────
+
+
+class KBIngestRequest(BaseModel):
+    source: str                         # URL or raw text
+    is_url: bool = False
+    category: Optional[str] = None
+    title: Optional[str] = None         # optional display name for text blocks
+
+
+@router.get("/knowledge/sources", dependencies=[Depends(verify_api_key)])
+async def api_kb_sources() -> dict:
+    """List all knowledge base sources."""
+    try:
+        from apps.core.tools.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        await kb._ensure_loaded()
+        sources = kb.list_sources()
+        stats = kb.stats()
+        return {"sources": sources, "stats": stats}
+    except Exception as exc:
+        logger.error("[API /knowledge/sources] %s", exc)
+        return {"error": str(exc), "sources": []}
+
+
+@router.post("/knowledge/ingest", dependencies=[Depends(verify_api_key)])
+async def api_kb_ingest(req: KBIngestRequest) -> dict:
+    """Ingest a URL or text block into the knowledge base."""
+    try:
+        from apps.core.tools.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        if req.is_url:
+            result = await kb.ingest_url(req.source)
+        else:
+            title = req.title or req.source[:60]
+            result = await kb.ingest_text(req.source, title)
+        _log_activity("info", f"KB ingest: {req.source[:60]}", "knowledge")
+        return result
+    except Exception as exc:
+        logger.error("[API /knowledge/ingest] %s", exc)
+        return {"error": str(exc)}
+
+
+@router.get("/knowledge/search", dependencies=[Depends(verify_api_key)])
+async def api_kb_search(q: str = "", top_k: int = 5) -> dict:
+    """Semantic search over the knowledge base."""
+    try:
+        from apps.core.tools.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        if not q:
+            return {"results": [], "query": q}
+        results = await kb.search(q, top_k=top_k)
+        return {
+            "results": [
+                {
+                    "source": r.get("source", ""),
+                    "category": r.get("category", ""),
+                    "snippet": r.get("text", "")[:300],
+                    "score": r.get("score"),
+                    "id": r.get("id"),
+                }
+                for r in results
+            ],
+            "query": q,
+            "count": len(results),
+        }
+    except Exception as exc:
+        logger.error("[API /knowledge/search] %s", exc)
+        return {"error": str(exc), "results": []}
+
+
+@router.delete("/knowledge/sources/{source_id}", dependencies=[Depends(verify_api_key)])
+async def api_kb_delete_source(source_id: str) -> dict:
+    """Delete a knowledge base source by source identifier."""
+    try:
+        from apps.core.tools.knowledge_base import get_knowledge_base
+        kb = get_knowledge_base()
+        count = kb.delete_source(source_id)
+        await kb._persist()
+        return {"deleted": count > 0, "chunks_removed": count, "source_id": source_id}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @router.post("/schedule", dependencies=[Depends(verify_api_key)])
 async def api_schedule(req: ScheduleRequest) -> dict:
     """Schedule a recurring task."""

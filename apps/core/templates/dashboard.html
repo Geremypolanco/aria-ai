@@ -2,648 +2,1257 @@
 <html lang="es" class="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARIA AI — Control Center</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ARIA AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-  [x-cloak] { display: none !important; }
-  body { background-color: #080a0f; }
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: #0f1117; }
-  ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 2px; }
-  .gradient-text { background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .card { background: #0f1117; border: 1px solid #1e2536; border-radius: 12px; }
-  .nav-item { border-radius: 8px; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px; transition: all 0.15s; }
-  .nav-item:hover { background: #1a1f2e; }
-  .nav-item.active { background: #1e1b4b; color: #a78bfa; }
-  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-  .metric-card { background: linear-gradient(135deg, #0f1117 0%, #131825 100%); border: 1px solid #1e2536; border-radius: 12px; padding: 20px; }
-  .msg-user { background: #312e81; border-radius: 18px 18px 4px 18px; max-width: 75%; }
-  .msg-aria { background: #131825; border: 1px solid #1e2536; border-radius: 18px 18px 18px 4px; max-width: 80%; }
-  .badge { padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
-  .badge-green { background: #064e3b; color: #34d399; }
-  .badge-red { background: #450a0a; color: #f87171; }
-  .badge-yellow { background: #451a03; color: #fbbf24; }
-  .badge-purple { background: #2e1065; color: #c084fc; }
-  .badge-blue { background: #0c1a6b; color: #60a5fa; }
-  .typing-dot { width: 6px; height: 6px; border-radius: 50%; background: #a78bfa; animation: typing 1.4s infinite; }
-  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes typing { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-6px); opacity: 1; } }
-  .agent-card { background: #0f1117; border: 1px solid #1e2536; border-radius: 10px; padding: 16px; transition: border-color 0.15s; }
-  .agent-card:hover { border-color: #4c1d95; }
-  pre { white-space: pre-wrap; word-break: break-word; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; }
-  .scrollable { overflow-y: auto; }
+/* ── TOKENS ─────────────────────────────────────────── */
+:root{
+  --bg:       #07080d;
+  --surface:  #0d0f18;
+  --elevated: #12141f;
+  --hover:    #181b28;
+  --border:   #1d2030;
+  --borderl:  #262a3d;
+  --accent:   #7c3aed;
+  --accent2:  #6d28d9;
+  --glow:     rgba(124,58,237,.10);
+  --glow2:    rgba(124,58,237,.22);
+  --text:     #edf0fb;
+  --text2:    #8892aa;
+  --text3:    #484f68;
+  --green:    #10b981;
+  --yellow:   #f59e0b;
+  --red:      #ef4444;
+  --blue:     #3b82f6;
+}
+*{box-sizing:border-box}
+[x-cloak]{display:none!important}
+
+/* ── BASE ─────────────────────────────────────────────── */
+html,body{height:100%;overflow:hidden}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:15px;
+  line-height:1.55;
+}
+
+/* ── SCROLLBARS ──────────────────────────────────────── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#262a3d;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#333850}
+
+/* ── UTILITIES ───────────────────────────────────────── */
+.scrollable{overflow-y:auto}
+.gradient-text{
+  background:linear-gradient(135deg,#818cf8,#a78bfa,#c084fc);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.glow-bg{
+  position:fixed;top:-200px;right:-200px;
+  width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(109,40,217,.08) 0%,transparent 70%);
+  pointer-events:none;z-index:0;
+}
+
+/* ── SIDEBAR ─────────────────────────────────────────── */
+#sidebar{
+  position:fixed;top:0;left:0;bottom:0;z-index:40;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  transition:width .2s ease,transform .2s ease;
+  overflow:hidden;
+}
+#sidebar.expanded{width:248px}
+#sidebar.collapsed{width:64px}
+@media(max-width:1023px){
+  #sidebar{width:248px!important;transform:translateX(-100%)}
+  #sidebar.mobile-open{transform:translateX(0)!important}
+}
+#main-content{
+  margin-left:64px;
+  transition:margin-left .2s ease;
+}
+#main-content.sidebar-expanded{margin-left:248px}
+@media(max-width:1023px){
+  #main-content,#main-content.sidebar-expanded{margin-left:0!important}
+}
+
+/* ── NAV ITEMS ───────────────────────────────────────── */
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 12px;border-radius:8px;
+  cursor:pointer;color:var(--text2);
+  font-size:13.5px;font-weight:500;
+  transition:background .15s,color .15s;
+  white-space:nowrap;overflow:hidden;
+  position:relative;
+}
+.nav-item:hover{background:var(--hover);color:var(--text)}
+.nav-item.active{background:rgba(124,58,237,.15);color:#a78bfa}
+.nav-item.active::before{
+  content:'';position:absolute;left:0;top:20%;bottom:20%;
+  width:3px;border-radius:0 3px 3px 0;background:#7c3aed;
+}
+.nav-icon{flex-shrink:0;width:18px;height:18px;display:flex;align-items:center;justify-content:center}
+.nav-label{transition:opacity .15s,width .15s}
+#sidebar.collapsed .nav-label{opacity:0;width:0;overflow:hidden}
+#sidebar.collapsed .nav-badge{display:none}
+
+/* ── CARDS ───────────────────────────────────────────── */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:12px;
+}
+.card-elevated{
+  background:var(--elevated);
+  border:1px solid var(--borderl);
+  border-radius:12px;
+}
+.metric-card{
+  background:linear-gradient(135deg,var(--surface) 0%,#111525 100%);
+  border:1px solid var(--border);
+  border-radius:12px;padding:20px;
+  transition:border-color .2s;
+}
+.metric-card:hover{border-color:var(--borderl)}
+
+/* ── CHAT BUBBLES ────────────────────────────────────── */
+.msg-user{
+  background:linear-gradient(135deg,#4c1d95,#5b21b6);
+  border-radius:18px 18px 4px 18px;
+  max-width:78%;padding:10px 15px;
+}
+.msg-aria{
+  background:var(--elevated);
+  border:1px solid var(--border);
+  border-radius:18px 18px 18px 4px;
+  max-width:82%;padding:10px 15px;
+}
+/* markdown inside ARIA messages */
+.msg-aria strong{color:#c4b5fd;font-weight:600}
+.msg-aria em{color:#94a3b8;font-style:italic}
+.msg-aria code{
+  background:rgba(0,0,0,.4);border:1px solid var(--border);
+  padding:1px 5px;border-radius:4px;
+  font-family:'JetBrains Mono',monospace;font-size:12px;color:#a78bfa;
+}
+.msg-aria pre{
+  background:rgba(0,0,0,.5);border:1px solid var(--border);
+  border-radius:8px;padding:12px;margin:8px 0;
+  overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;
+}
+.msg-aria h1,.msg-aria h2,.msg-aria h3{font-weight:600;margin:8px 0 4px}
+.msg-aria h1{font-size:16px;color:var(--text)}
+.msg-aria h2{font-size:14px;color:var(--text)}
+.msg-aria h3{font-size:13px;color:var(--text2)}
+.msg-aria ul,.msg-aria ol{margin:6px 0;padding-left:18px}
+.msg-aria li{margin:2px 0;font-size:13.5px}
+.msg-aria p{margin:4px 0}
+
+/* ── PULSE DOT ───────────────────────────────────────── */
+.pulse-dot{
+  width:8px;height:8px;border-radius:50%;
+  animation:pulse-anim 2s infinite;
+}
+@keyframes pulse-anim{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+
+/* ── TYPING ──────────────────────────────────────────── */
+.typing-dot{
+  width:5px;height:5px;border-radius:50%;background:#a78bfa;
+  animation:typing-anim 1.4s infinite;
+}
+.typing-dot:nth-child(2){animation-delay:.2s}
+.typing-dot:nth-child(3){animation-delay:.4s}
+@keyframes typing-anim{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}
+
+/* ── BADGES ──────────────────────────────────────────── */
+.badge{padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-g{background:#064e3b;color:#34d399}
+.badge-r{background:#450a0a;color:#f87171}
+.badge-y{background:#451a03;color:#fbbf24}
+.badge-v{background:#2e1065;color:#c084fc}
+.badge-b{background:#0c1a6b;color:#60a5fa}
+
+/* ── INPUT BASE ──────────────────────────────────────── */
+.input{
+  background:var(--elevated);border:1px solid var(--border);
+  border-radius:10px;color:var(--text);
+  padding:10px 14px;font-size:13.5px;
+  outline:none;font-family:inherit;
+  transition:border-color .15s;width:100%;
+}
+.input:focus{border-color:rgba(124,58,237,.6)}
+.input::placeholder{color:var(--text3)}
+textarea.input{resize:none}
+
+/* ── BUTTONS ─────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:9px 18px;border-radius:9px;font-size:13.5px;font-weight:500;
+  cursor:pointer;transition:all .15s;font-family:inherit;border:none;
+}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:#5b21b6;color:#ddd6fe}
+.btn-primary:not(:disabled):hover{background:#4c1d95}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}
+.btn-ghost:not(:disabled):hover{background:var(--hover);color:var(--text)}
+.btn-sm{padding:6px 12px;font-size:12.5px;border-radius:7px}
+.btn-icon{padding:7px;width:32px;height:32px;border-radius:8px}
+
+/* ── AGENT CARD ──────────────────────────────────────── */
+.agent-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:16px;
+  transition:border-color .15s,transform .15s;
+}
+.agent-card:hover{border-color:#4c1d95;transform:translateY(-1px)}
+
+/* ── SECTION FADE ────────────────────────────────────── */
+[x-show]{transition:opacity .15s ease}
+
+/* ── MODAL ───────────────────────────────────────────── */
+.modal-bg{
+  position:fixed;inset:0;z-index:50;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.75);backdrop-filter:blur(4px);
+  padding:16px;
+}
+.modal-box{
+  background:var(--surface);border:1px solid var(--borderl);
+  border-radius:16px;padding:24px;width:100%;max-width:480px;
+}
+
+/* ── MOBILE BOTTOM NAV ───────────────────────────────── */
+#bottom-nav{
+  display:none;position:fixed;bottom:0;left:0;right:0;z-index:40;
+  background:var(--surface);border-top:1px solid var(--border);
+  padding:8px 4px calc(8px + env(safe-area-inset-bottom));
+}
+@media(max-width:1023px){
+  #bottom-nav{display:flex}
+  body{padding-bottom:64px}
+}
+.bnav-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  color:var(--text3);padding:6px 4px;cursor:pointer;
+  transition:color .15s;font-size:10px;font-weight:500;
+}
+.bnav-item.active{color:#a78bfa}
+.bnav-item svg{width:20px;height:20px}
+
+/* ── BACKDROP ────────────────────────────────────────── */
+#sidebar-backdrop{
+  display:none;position:fixed;inset:0;z-index:39;
+  background:rgba(0,0,0,.65);backdrop-filter:blur(2px);
+}
+@media(max-width:1023px){#sidebar-backdrop.visible{display:block}}
+
+/* ── TOOLTIP ─────────────────────────────────────────── */
+.tip{position:relative}
+.tip::after{
+  content:attr(data-tip);
+  position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);
+  background:#1f2335;border:1px solid var(--borderl);color:var(--text);
+  padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;
+  pointer-events:none;opacity:0;transition:opacity .15s;z-index:99;
+}
+#sidebar.collapsed .tip:hover::after{opacity:1}
+
+/* ── SECTION HEADERS ─────────────────────────────────── */
+.section-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:24px;
+}
+.section-title{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.section-sub{color:var(--text2);font-size:13px;margin-top:3px}
+
+/* ── ACTIVITY ROW ────────────────────────────────────── */
+.activity-row{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:10px 16px;border-bottom:1px solid #0e1015;
+}
+.activity-row:last-child{border-bottom:none}
+
+/* ── KB CHIP ─────────────────────────────────────────── */
+.source-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--elevated);border:1px solid var(--border);
+  border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text2);
+  transition:border-color .15s;
+}
+.source-chip:hover{border-color:#4c1d95;color:var(--text)}
+
+/* ── PREFORMATTED CODE ───────────────────────────────── */
+pre{white-space:pre-wrap;word-break:break-word;font-family:'JetBrains Mono','Fira Code',monospace;font-size:12.5px}
+code{font-family:'JetBrains Mono','Fira Code',monospace}
+
+/* ── PROGRESS BAR ────────────────────────────────────── */
+.progress-track{background:var(--border);border-radius:3px;height:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#7c3aed,#a78bfa);transition:width .3s ease}
 </style>
 </head>
-<body class="text-slate-200 font-sans antialiased" x-data="ariaApp()" x-init="init()" x-cloak>
 
-<!-- TOP HEADER -->
-<header class="fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-6" style="background:#080a0f;border-bottom:1px solid #1e2536">
-  <div class="flex items-center gap-3">
-    <div class="flex items-center gap-2">
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <circle cx="14" cy="14" r="13" stroke="#7c3aed" stroke-width="1.5"/>
-        <path d="M8 20L14 8L20 20" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M10 16H18" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+<body x-data="ariaApp()" x-init="init()" x-cloak>
+
+<!-- GLOW BACKGROUND EFFECT -->
+<div class="glow-bg"></div>
+
+<!-- SIDEBAR BACKDROP (mobile) -->
+<div id="sidebar-backdrop" :class="mobileSidebarOpen ? 'visible' : ''"
+     @click="closeMobileSidebar()"></div>
+
+<!-- ══════════════ SIDEBAR ══════════════ -->
+<aside id="sidebar"
+       :class="[desktopCollapsed ? 'collapsed' : 'expanded', mobileSidebarOpen ? 'mobile-open' : '']">
+
+  <!-- Logo Area -->
+  <div class="flex items-center justify-between px-4 py-4 flex-shrink-0" style="border-bottom:1px solid var(--border);min-height:60px">
+    <div class="flex items-center gap-2.5 overflow-hidden">
+      <div class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.3)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M6 18L12 4L18 18" stroke="#a78bfa" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 13H15" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="nav-label">
+        <div class="gradient-text font-bold text-base leading-none">ARIA</div>
+        <div class="text-xs mt-0.5" style="color:var(--text3)">Autonomous AI</div>
+      </div>
+    </div>
+    <!-- Desktop collapse toggle -->
+    <button class="hidden lg:flex btn btn-icon btn-ghost nav-label ml-1"
+            @click="toggleSidebar()" style="flex-shrink:0">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path x-show="!desktopCollapsed" d="M15 18l-6-6 6-6"/>
+        <path x-show="desktopCollapsed" d="M9 18l6-6-6-6"/>
       </svg>
-      <span class="font-bold text-lg tracking-tight gradient-text">ARIA</span>
-      <span class="text-slate-500 text-sm font-normal">AI Control Center</span>
+    </button>
+  </div>
+
+  <!-- New Chat Button -->
+  <div class="px-3 py-3 flex-shrink-0">
+    <button @click="activeSection='chat'; closeMobileSidebar()"
+            class="w-full btn btn-primary flex items-center gap-2 justify-center"
+            :class="desktopCollapsed ? 'px-0 py-2' : ''"
+            style="font-size:13px">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      <span class="nav-label">Nuevo Chat</span>
+    </button>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="flex-1 px-2 space-y-0.5 scrollable py-1">
+    <template x-for="item in navItems" :key="item.id">
+      <div class="nav-item tip" :class="activeSection===item.id ? 'active' : ''"
+           :data-tip="item.label"
+           @click="activeSection=item.id; closeMobileSidebar()">
+        <span class="nav-icon" x-html="item.icon"></span>
+        <span class="nav-label flex-1" x-text="item.label"></span>
+        <span x-show="item.badge && !desktopCollapsed" class="nav-badge badge badge-v text-xs ml-auto" x-text="item.badge"></span>
+      </div>
+    </template>
+  </nav>
+
+  <!-- System Health (bottom of sidebar) -->
+  <div class="flex-shrink-0 px-3 py-3 nav-label" style="border-top:1px solid var(--border)">
+    <div class="rounded-lg p-3" style="background:var(--elevated);border:1px solid var(--border)">
+      <div class="flex items-center justify-between mb-2.5">
+        <span class="text-xs font-medium" style="color:var(--text3)">SISTEMA</span>
+        <div class="flex items-center gap-1.5">
+          <div class="pulse-dot" :class="connected ? 'bg-emerald-500' : 'bg-red-500'" style="width:6px;height:6px"></div>
+          <span class="text-xs" :class="connected ? 'text-emerald-400' : 'text-red-400'" x-text="connected ? 'Online' : 'Offline'"></span>
+        </div>
+      </div>
+      <template x-for="(val, key) in Object.entries(skills).slice(0,3)" :key="key">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="text-xs flex-1 truncate capitalize" style="color:var(--text3)" x-text="val[0].replace('_',' ')"></span>
+          <div class="progress-track flex-shrink-0" style="width:48px">
+            <div class="progress-fill" :style="`width:${val[1]}%`"></div>
+          </div>
+          <span class="text-xs font-mono w-6 text-right" :class="val[1]>=70?'text-emerald-400':val[1]>=40?'text-yellow-400':'text-red-400'" x-text="Math.round(val[1])"></span>
+        </div>
+      </template>
+      <div x-show="Object.keys(skills).length === 0" class="text-xs py-1" style="color:var(--text3)">Cargando...</div>
     </div>
   </div>
-  <div class="flex items-center gap-4">
-    <div class="flex items-center gap-2 text-sm">
-      <div class="pulse-dot" :class="connected ? 'bg-emerald-500' : 'bg-red-500'"></div>
-      <span class="text-slate-400" x-text="connected ? 'Conectado' : 'Desconectado'"></span>
+</aside>
+
+<!-- ══════════════ HEADER ══════════════ -->
+<header class="fixed top-0 right-0 z-30 h-[60px] flex items-center justify-between px-4"
+        :style="desktopCollapsed ? 'left:64px' : 'left:248px'"
+        style="background:var(--bg);border-bottom:1px solid var(--border);transition:left .2s ease"
+        :class="{'!left-0': windowWidth < 1024}">
+
+  <!-- Left: hamburger (mobile) + breadcrumb -->
+  <div class="flex items-center gap-3">
+    <!-- Mobile hamburger -->
+    <button class="lg:hidden btn btn-icon btn-ghost" @click="toggleMobileSidebar()">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+
+    <!-- ARIA logo (mobile, since sidebar is hidden) -->
+    <div class="flex items-center gap-2 lg:hidden">
+      <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.3)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <path d="M6 18L12 4L18 18" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 13H15" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="gradient-text font-bold text-base">ARIA</span>
     </div>
-    <div class="text-slate-500 text-sm font-mono" x-text="currentTime"></div>
-    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style="background:#1e1b4b;color:#a78bfa">G</div>
+
+    <!-- Section title (desktop) -->
+    <div class="hidden lg:block">
+      <span class="text-sm font-medium" style="color:var(--text2)"
+            x-text="navItems.find(n=>n.id===activeSection)?.label || 'ARIA'"></span>
+    </div>
+  </div>
+
+  <!-- Right: status + clock + avatar -->
+  <div class="flex items-center gap-3">
+    <div class="hidden sm:flex items-center gap-1.5 text-sm">
+      <div class="pulse-dot" :class="connected ? 'bg-emerald-500' : 'bg-red-500'"></div>
+      <span style="color:var(--text2);font-size:12.5px" x-text="connected ? 'Conectado' : 'Reconectando...'"></span>
+    </div>
+    <span class="hidden md:block font-mono text-xs" style="color:var(--text3)" x-text="currentTime"></span>
+    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 cursor-pointer"
+         style="background:rgba(124,58,237,.2);color:#a78bfa;border:1px solid rgba(124,58,237,.3)">G</div>
   </div>
 </header>
 
-<!-- LAYOUT -->
-<div class="flex pt-14 h-screen">
+<!-- ══════════════ MAIN CONTENT ══════════════ -->
+<div id="main-content" :class="desktopCollapsed ? '' : 'sidebar-expanded'"
+     class="flex flex-col" style="padding-top:60px;height:100vh;overflow:hidden">
 
-  <!-- SIDEBAR -->
-  <aside class="fixed top-14 left-0 bottom-0 w-56 p-3 scrollable" style="background:#080a0f;border-right:1px solid #1e2536">
-    <div class="space-y-1">
-      <template x-for="item in navItems" :key="item.id">
-        <div class="nav-item" :class="activeSection === item.id ? 'active' : 'text-slate-400'"
-             @click="activeSection = item.id">
-          <span x-html="item.icon"></span>
-          <span x-text="item.label"></span>
-          <span x-show="item.badge" class="ml-auto badge badge-purple text-xs" x-text="item.badge" style="display:none"></span>
-        </div>
-      </template>
+  <main class="flex-1 overflow-y-auto scrollable">
+
+  <!-- ═══════════ OVERVIEW ═══════════ -->
+  <section x-show="activeSection==='overview'" class="p-5 lg:p-7 max-w-7xl mx-auto">
+    <div class="section-header">
+      <div>
+        <h1 class="section-title">Bienvenido de nuevo</h1>
+        <p class="section-sub">Sistema ARIA operando · <span x-text="new Date().toLocaleDateString('es',{weekday:'long',day:'numeric',month:'long'})"></span></p>
+      </div>
+      <button @click="loadData()" class="btn btn-ghost btn-sm hidden sm:flex gap-1.5">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+        Actualizar
+      </button>
     </div>
 
-    <!-- System Status Mini -->
-    <div class="mt-6 p-3 rounded-lg" style="background:#0f1117;border:1px solid #1e2536">
-      <div class="text-xs text-slate-500 mb-2 uppercase tracking-wider">Sistema</div>
-      <template x-for="(val, key) in skills" :key="key">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-slate-400 capitalize" x-text="key.replace('_',' ')"></span>
-          <div class="flex items-center gap-1">
-            <div class="w-16 h-1 rounded-full" style="background:#1e2536">
-              <div class="h-1 rounded-full" :style="`width:${val}%;background:${val>=70?'#10b981':val>=40?'#f59e0b':'#ef4444'}`"></div>
-            </div>
-            <span class="text-xs font-mono" :class="val>=70?'text-emerald-400':val>=40?'text-amber-400':'text-red-400'" x-text="val.toFixed(0)"></span>
+    <!-- Metric Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div class="metric-card">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Agentes</span>
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(124,58,237,.15)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
           </div>
         </div>
-      </template>
+        <div class="text-3xl font-bold mb-0.5" x-text="metrics.agents||'—'"></div>
+        <div class="text-xs" style="color:var(--text3)">Disponibles</div>
+      </div>
+      <div class="metric-card">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Metas</span>
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(16,185,129,.12)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+          </div>
+        </div>
+        <div class="text-3xl font-bold mb-0.5" x-text="metrics.goals||'—'"></div>
+        <div class="text-xs" style="color:var(--text3)">Activas</div>
+      </div>
+      <div class="metric-card">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Pipelines</span>
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(59,130,246,.12)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
+          </div>
+        </div>
+        <div class="text-3xl font-bold mb-0.5" x-text="metrics.runs||'0'"></div>
+        <div class="text-xs" style="color:var(--text3)">Ejecutados</div>
+      </div>
+      <div class="metric-card">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Salud</span>
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(245,158,11,.12)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          </div>
+        </div>
+        <div class="text-3xl font-bold mb-0.5" x-text="metrics.health ? metrics.health.toFixed(0)+'%' : '—'"></div>
+        <div class="text-xs" style="color:var(--text3)">Score global</div>
+      </div>
     </div>
-  </aside>
 
-  <!-- MAIN CONTENT -->
-  <main class="ml-56 flex-1 overflow-y-auto p-6">
-
-    <!-- ═══════════════ OVERVIEW ═══════════════ -->
-    <section x-show="activeSection === 'overview'">
-      <div class="mb-6">
-        <h1 class="text-2xl font-bold">Visión General</h1>
-        <p class="text-slate-500 text-sm mt-1">Estado en tiempo real del sistema ARIA</p>
-      </div>
-
-      <!-- Metric Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="metric-card">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-slate-400 text-sm">Agentes</span>
-            <span style="color:#a78bfa">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-            </span>
-          </div>
-          <div class="text-3xl font-bold" x-text="metrics.agents || '—'"></div>
-          <div class="text-xs text-slate-500 mt-1">Disponibles</div>
-        </div>
-        <div class="metric-card">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-slate-400 text-sm">Metas</span>
-            <span style="color:#34d399">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/></svg>
-            </span>
-          </div>
-          <div class="text-3xl font-bold" x-text="metrics.goals || '—'"></div>
-          <div class="text-xs text-slate-500 mt-1">Activas</div>
-        </div>
-        <div class="metric-card">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-slate-400 text-sm">Pipelines</span>
-            <span style="color:#60a5fa">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
-            </span>
-          </div>
-          <div class="text-3xl font-bold" x-text="metrics.runs || '0'"></div>
-          <div class="text-xs text-slate-500 mt-1">Ejecutados</div>
-        </div>
-        <div class="metric-card">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-slate-400 text-sm">Salud</span>
-            <span style="color:#f59e0b">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            </span>
-          </div>
-          <div class="text-3xl font-bold" x-text="metrics.health ? metrics.health.toFixed(0)+'%' : '—'"></div>
-          <div class="text-xs text-slate-500 mt-1">Score global</div>
-        </div>
-      </div>
-
-      <!-- Two column layout -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <!-- Activity Feed -->
-        <div class="card p-4 lg:col-span-2">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold text-sm">Actividad Reciente</h3>
-            <button @click="loadActivity()" class="text-xs text-slate-500 hover:text-slate-300">↻ Actualizar</button>
-          </div>
-          <div class="space-y-2 scrollable" style="max-height:320px">
-            <template x-for="(entry, i) in activity.slice(0,20)" :key="i">
-              <div class="flex gap-3 py-2" style="border-bottom:1px solid #1e2536">
-                <div class="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0"
-                     :class="entry.level==='ERROR'?'bg-red-500':entry.level==='WARNING'?'bg-amber-500':'bg-emerald-500'"></div>
-                <div class="flex-1 min-w-0">
-                  <div class="text-xs text-slate-300 truncate" x-text="entry.message"></div>
-                  <div class="text-xs text-slate-600 mt-0.5" x-text="entry.ts?.substring(11,19)"></div>
-                </div>
-              </div>
-            </template>
-            <div x-show="activity.length === 0" class="text-center text-slate-600 py-8 text-sm">
-              Sin actividad aún — inicia un pipeline o envía un mensaje
-            </div>
-          </div>
-        </div>
-
-        <!-- Quick Chat -->
-        <div class="card p-4 flex flex-col" style="height:400px">
-          <h3 class="font-semibold text-sm mb-3">Chat Rápido</h3>
-          <div class="flex-1 scrollable space-y-2 mb-3" id="quick-chat-messages">
-            <template x-for="(m, i) in quickMessages" :key="i">
-              <div class="flex" :class="m.role==='user' ? 'justify-end' : 'justify-start'">
-                <div class="px-3 py-2 text-sm" :class="m.role==='user' ? 'msg-user' : 'msg-aria'" x-text="m.text"></div>
-              </div>
-            </template>
-            <div x-show="quickThinking" class="flex gap-1 p-2">
-              <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
-            </div>
-          </div>
-          <div class="flex gap-2">
-            <input x-model="quickInput"
-                   @keydown.enter="sendQuick()"
-                   placeholder="Pregunta algo..."
-                   class="flex-1 bg-transparent text-sm px-3 py-2 rounded-lg outline-none"
-                   style="background:#131825;border:1px solid #1e2536;color:#e2e8f0"
-                   :disabled="quickThinking">
-            <button @click="sendQuick()"
-                    :disabled="quickThinking || !quickInput.trim()"
-                    class="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40"
-                    style="background:#4c1d95;color:#c4b5fd">
-              →
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════ CHAT ═══════════════ -->
-    <section x-show="activeSection === 'chat'" class="flex flex-col h-full" style="height:calc(100vh - 110px)">
-      <div class="mb-4 flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold">Chat con ARIA</h1>
-          <p class="text-slate-500 text-sm mt-0.5">Sesión activa · WebSocket <span x-text="connected ? '🟢 conectado' : '🔴 desconectado'"></span></p>
-        </div>
-        <button @click="clearChat()" class="text-xs text-slate-500 hover:text-red-400 px-3 py-1.5 rounded-lg" style="border:1px solid #1e2536">
-          Limpiar
-        </button>
-      </div>
-
-      <div class="card flex-1 flex flex-col overflow-hidden">
-        <!-- Messages -->
-        <div class="flex-1 scrollable p-4 space-y-4" id="chat-messages" style="overflow-y:auto">
-          <!-- Welcome -->
-          <div x-show="messages.length === 0" class="flex flex-col items-center justify-center h-full text-center">
-            <div class="w-16 h-16 rounded-full flex items-center justify-center mb-4" style="background:#1e1b4b">
-              <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
-                <circle cx="14" cy="14" r="13" stroke="#7c3aed" stroke-width="1.5"/>
-                <path d="M8 20L14 8L20 20" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M10 16H18" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
-            </div>
-            <p class="text-slate-300 font-medium">Hola, soy ARIA</p>
-            <p class="text-slate-500 text-sm mt-1">Tu IA autónoma de negocio. Pregúntame cualquier cosa.</p>
-            <div class="flex flex-wrap gap-2 mt-4 justify-center">
-              <template x-for="hint in chatHints" :key="hint">
-                <button @click="chatInput = hint; sendMessage()"
-                        class="px-3 py-1.5 rounded-full text-xs hover:border-violet-500 transition-colors"
-                        style="background:#131825;border:1px solid #1e2536;color:#94a3b8"
-                        x-text="hint"></button>
-              </template>
-            </div>
-          </div>
-
-          <template x-for="(m, i) in messages" :key="i">
-            <div class="flex" :class="m.role === 'user' ? 'justify-end' : 'justify-start gap-3'">
-              <!-- ARIA avatar -->
-              <div x-show="m.role === 'aria'" class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold mt-1" style="background:#1e1b4b;color:#a78bfa">A</div>
-              <div class="px-4 py-3 text-sm leading-relaxed" style="white-space:pre-wrap"
-                   :class="m.role === 'user' ? 'msg-user' : 'msg-aria'"
-                   x-text="m.text"></div>
-            </div>
-          </template>
-
-          <!-- Typing indicator -->
-          <div x-show="thinking" class="flex gap-3">
-            <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center" style="background:#1e1b4b;color:#a78bfa;font-size:11px;font-weight:700">A</div>
-            <div class="px-4 py-3 flex gap-1 items-center msg-aria">
-              <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Input -->
-        <div class="p-4" style="border-top:1px solid #1e2536">
-          <div class="flex gap-3 items-end">
-            <textarea x-model="chatInput"
-                      @keydown.enter.prevent="if(!$event.shiftKey) sendMessage()"
-                      placeholder="Escribe un mensaje… (Enter para enviar, Shift+Enter para nueva línea)"
-                      rows="2"
-                      class="flex-1 resize-none text-sm px-4 py-3 rounded-xl outline-none scrollable"
-                      style="background:#131825;border:1px solid #1e2536;color:#e2e8f0;font-family:inherit"
-                      :disabled="thinking"></textarea>
-            <button @click="sendMessage()"
-                    :disabled="thinking || !chatInput.trim()"
-                    class="px-4 py-3 rounded-xl font-medium text-sm disabled:opacity-40 flex-shrink-0"
-                    style="background:#4c1d95;color:#c4b5fd">
-              Enviar
-            </button>
-          </div>
-          <div class="flex gap-2 mt-2 flex-wrap">
-            <template x-for="cmd in quickCommands" :key="cmd">
-              <button @click="chatInput = cmd"
-                      class="text-xs px-2 py-1 rounded-md transition-colors"
-                      style="background:#131825;border:1px solid #1e2536;color:#64748b"
-                      x-text="cmd"></button>
-            </template>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════ AGENTS ═══════════════ -->
-    <section x-show="activeSection === 'agents'">
-      <div class="mb-6 flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold">Agentes</h1>
-          <p class="text-slate-500 text-sm mt-1">Especialistas autónomos de ARIA</p>
-        </div>
-        <button @click="loadAgents()" class="text-xs px-3 py-2 rounded-lg text-slate-400 hover:text-slate-200" style="border:1px solid #1e2536">↻ Actualizar</button>
-      </div>
-
-      <!-- Mission modal -->
-      <div x-show="missionModal.open" class="fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,0.8)" @click.self="missionModal.open=false">
-        <div class="card p-6 w-full max-w-md">
-          <h3 class="font-semibold mb-1" x-text="`Activar: ${missionModal.agent}`"></h3>
-          <p class="text-slate-500 text-sm mb-4">Describe la misión para este agente</p>
-          <textarea x-model="missionModal.mission" rows="3" placeholder="Ej: Crear una campaña de marketing para lanzar un producto de IA..."
-                    class="w-full resize-none text-sm px-3 py-2 rounded-lg outline-none mb-4"
-                    style="background:#131825;border:1px solid #1e2536;color:#e2e8f0"></textarea>
-          <div class="flex gap-3">
-            <button @click="runMission()" :disabled="!missionModal.mission.trim()" class="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style="background:#4c1d95;color:#c4b5fd">
-              🚀 Ejecutar con Pipeline
-            </button>
-            <button @click="missionModal.open=false" class="px-4 py-2 rounded-lg text-sm text-slate-400" style="border:1px solid #1e2536">
-              Cancelar
-            </button>
-          </div>
-          <div x-show="missionModal.result" class="mt-3 p-3 rounded-lg text-sm" style="background:#131825;border:1px solid #1e2536">
-            <pre x-text="missionModal.result" class="text-slate-300 text-xs"></pre>
-          </div>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        <template x-for="agent in agents" :key="agent.name">
-          <div class="agent-card">
-            <div class="flex items-start justify-between mb-3">
-              <div class="flex items-center gap-2">
-                <div class="w-9 h-9 rounded-lg flex items-center justify-center text-sm" style="background:#1e1b4b;color:#a78bfa" x-text="agent.name.charAt(0).toUpperCase()"></div>
-                <div>
-                  <div class="font-semibold text-sm capitalize" x-text="agent.name"></div>
-                  <span class="badge" :class="agent.type==='business'?'badge-purple':'badge-blue'" x-text="agent.type"></span>
-                </div>
-              </div>
-              <div class="w-2 h-2 rounded-full mt-1" :class="agent.available ? 'bg-emerald-500' : 'bg-slate-600'"></div>
-            </div>
-            <p class="text-slate-400 text-xs leading-relaxed mb-4" x-text="agent.description || 'Agente especializado de ARIA'"></p>
-            <button @click="openMission(agent.name)" class="w-full py-1.5 rounded-lg text-xs font-medium" style="background:#1a1f2e;color:#a78bfa;border:1px solid #2e1065">
-              Activar misión →
-            </button>
-          </div>
-        </template>
-      </div>
-    </section>
-
-    <!-- ═══════════════ GOALS ═══════════════ -->
-    <section x-show="activeSection === 'goals'">
-      <div class="mb-6 flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold">Metas Activas</h1>
-          <p class="text-slate-500 text-sm mt-1">Objetivos persistentes de ARIA</p>
-        </div>
-        <button @click="loadGoals()" class="text-xs px-3 py-2 rounded-lg text-slate-400 hover:text-slate-200" style="border:1px solid #1e2536">↻ Actualizar</button>
-      </div>
-
-      <div x-show="goals.length === 0" class="card p-12 text-center">
-        <div class="text-4xl mb-3">🎯</div>
-        <p class="text-slate-400 text-sm">ARIA no tiene metas activas aún.</p>
-        <p class="text-slate-600 text-xs mt-1">Usa `/add_goal` en el chat para definir objetivos.</p>
-      </div>
-
-      <div class="space-y-3">
-        <template x-for="(goal, i) in goals" :key="i">
-          <div class="card p-4 flex items-start gap-4">
-            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-                 style="background:#1e1b4b;color:#a78bfa" x-text="i+1"></div>
-            <div class="flex-1">
-              <div class="font-medium text-sm" x-text="goal.text || goal.goal || JSON.stringify(goal)"></div>
-              <div class="flex gap-2 mt-2">
-                <span class="badge" :class="goal.status==='active'||!goal.status?'badge-green':goal.status==='completed'?'badge-blue':'badge-yellow'"
-                      x-text="goal.status || 'active'"></span>
-                <span x-show="goal.priority" class="badge badge-purple" x-text="`P${goal.priority}`"></span>
-              </div>
-              <div x-show="goal.progress" class="text-xs text-slate-500 mt-1" x-text="goal.progress"></div>
-            </div>
-          </div>
-        </template>
-      </div>
-    </section>
-
-    <!-- ═══════════════ ACTIVITY ═══════════════ -->
-    <section x-show="activeSection === 'activity'">
-      <div class="mb-6 flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold">Log de Actividad</h1>
-          <p class="text-slate-500 text-sm mt-1">Historial de operaciones del sistema</p>
-        </div>
-        <div class="flex gap-2">
-          <select x-model="activityFilter" class="text-xs px-3 py-2 rounded-lg outline-none" style="background:#0f1117;border:1px solid #1e2536;color:#94a3b8">
-            <option value="">Todo</option>
-            <option value="ERROR">Errores</option>
-            <option value="WARNING">Advertencias</option>
-            <option value="INFO">Info</option>
-          </select>
-          <button @click="loadActivity()" class="text-xs px-3 py-2 rounded-lg text-slate-400" style="border:1px solid #1e2536">↻</button>
-        </div>
-      </div>
-      <div class="card">
-        <template x-for="(entry, i) in filteredActivity" :key="i">
-          <div class="flex gap-3 px-4 py-2.5" style="border-bottom:1px solid #131825">
-            <span class="text-xs font-mono text-slate-600 flex-shrink-0 w-20" x-text="entry.ts?.substring(11,19)"></span>
-            <span class="badge flex-shrink-0 w-16 text-center"
-                  :class="entry.level==='ERROR'?'badge-red':entry.level==='WARNING'?'badge-yellow':'badge-blue'"
-                  x-text="entry.level || 'INFO'"></span>
-            <span class="text-xs text-slate-300" x-text="entry.message"></span>
-          </div>
-        </template>
-        <div x-show="filteredActivity.length === 0" class="p-8 text-center text-slate-600 text-sm">
-          Sin actividad registrada aún
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════ PIPELINE ═══════════════ -->
-    <section x-show="activeSection === 'pipeline'">
-      <div class="mb-6 flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold">Execution Pipeline</h1>
-          <p class="text-slate-500 text-sm mt-1">Plan → Audit → Execute → Verify</p>
-        </div>
-        <button @click="loadPipeline()" class="text-xs px-3 py-2 rounded-lg text-slate-400" style="border:1px solid #1e2536">↻ Actualizar</button>
-      </div>
-
-      <!-- Run new pipeline -->
-      <div class="card p-5 mb-4">
-        <h3 class="font-semibold text-sm mb-3">Nueva misión</h3>
-        <div class="flex gap-3">
-          <input x-model="newMission" placeholder="Describe la misión para ARIA..."
-                 @keydown.enter="runPipeline()"
-                 class="flex-1 text-sm px-4 py-2.5 rounded-xl outline-none"
-                 style="background:#131825;border:1px solid #1e2536;color:#e2e8f0">
-          <select x-model="pipelineAgent" class="text-sm px-3 py-2 rounded-xl outline-none" style="background:#131825;border:1px solid #1e2536;color:#e2e8f0">
-            <option value="auto">Auto-routing</option>
-            <option value="ceo">CEO</option>
-            <option value="developer">Developer</option>
-            <option value="marketing">Marketing</option>
-            <option value="sales">Sales</option>
-            <option value="research">Research</option>
-            <option value="content">Content</option>
-            <option value="finance">Finance</option>
-          </select>
-          <button @click="runPipeline()" :disabled="pipelineRunning || !newMission.trim()"
-                  class="px-5 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
-                  style="background:#4c1d95;color:#c4b5fd">
-            <span x-show="!pipelineRunning">Ejecutar</span>
-            <span x-show="pipelineRunning">Procesando…</span>
+    <!-- Activity + Quick Chat -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- Activity Feed -->
+      <div class="card lg:col-span-2" style="overflow:hidden">
+        <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid var(--border)">
+          <h3 class="font-semibold text-sm">Actividad Reciente</h3>
+          <button @click="loadActivity()" class="btn btn-ghost btn-sm btn-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
           </button>
         </div>
+        <div class="scrollable" style="max-height:310px">
+          <template x-for="(e,i) in activity.slice(0,25)" :key="i">
+            <div class="activity-row">
+              <div class="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0"
+                   :class="e.level==='ERROR'?'bg-red-500':e.level==='WARNING'?'bg-yellow-500':'bg-emerald-500'"></div>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs truncate" style="color:var(--text2)" x-text="e.message"></div>
+                <div class="text-xs mt-0.5 font-mono" style="color:var(--text3)" x-text="e.ts?.substring(11,19)"></div>
+              </div>
+            </div>
+          </template>
+          <div x-show="activity.length===0" class="text-center py-10 text-sm" style="color:var(--text3)">
+            Sin actividad aún — inicia un pipeline o envía un mensaje
+          </div>
+        </div>
       </div>
 
-      <!-- Pipeline stage visualization -->
-      <div x-show="pipelineRunning" class="card p-5 mb-4">
-        <div class="flex items-center gap-2 mb-4">
-          <div class="pulse-dot"></div>
-          <span class="text-sm font-medium">Pipeline ejecutando...</span>
+      <!-- Quick Chat -->
+      <div class="card flex flex-col" style="min-height:360px;max-height:390px">
+        <div class="px-4 py-3 flex-shrink-0" style="border-bottom:1px solid var(--border)">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full pulse-dot" :class="connected?'bg-emerald-500':'bg-yellow-500'"></div>
+            <h3 class="font-semibold text-sm">Chat Rápido</h3>
+          </div>
         </div>
-        <div class="flex items-center gap-2">
-          <template x-for="(stage, i) in pipelineStages" :key="stage">
-            <div class="flex items-center gap-2">
-              <div class="flex flex-col items-center">
-                <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs"
-                     :class="i < currentPipelineStage ? 'bg-emerald-900 text-emerald-400 border border-emerald-700' : i===currentPipelineStage ? 'bg-violet-900 text-violet-400 border border-violet-600' : 'bg-slate-900 text-slate-600 border border-slate-700'"
-                     x-text="i < currentPipelineStage ? '✓' : i+1"></div>
-                <span class="text-xs mt-1 text-slate-500" x-text="stage"></span>
-              </div>
-              <div x-show="i < pipelineStages.length-1" class="w-8 h-px bg-slate-700 mb-4"></div>
+        <div class="flex-1 scrollable p-3 space-y-2" id="quick-chat-messages">
+          <template x-for="(m,i) in quickMessages" :key="i">
+            <div class="flex" :class="m.role==='user'?'justify-end':'justify-start'">
+              <div class="px-3 py-2 text-sm leading-snug" :class="m.role==='user'?'msg-user':'msg-aria'" x-text="m.text"></div>
             </div>
+          </template>
+          <div x-show="quickThinking" class="flex gap-1 p-2 items-center">
+            <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+          </div>
+          <div x-show="quickMessages.length===0" class="flex flex-col items-center justify-center h-24 text-center">
+            <p class="text-xs" style="color:var(--text3)">Escribe algo para empezar</p>
+          </div>
+        </div>
+        <div class="p-3 flex-shrink-0" style="border-top:1px solid var(--border)">
+          <div class="flex gap-2">
+            <input x-model="quickInput" @keydown.enter="sendQuick()"
+                   placeholder="Pregunta algo..." class="input flex-1" style="padding:8px 12px;font-size:13px"
+                   :disabled="quickThinking">
+            <button @click="sendQuick()" :disabled="quickThinking||!quickInput.trim()"
+                    class="btn btn-primary btn-sm" style="padding:8px 14px">→</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ CHAT ═══════════ -->
+  <section x-show="activeSection==='chat'" class="flex flex-col" style="height:calc(100vh - 60px);overflow:hidden">
+    <!-- Chat header -->
+    <div class="flex items-center justify-between px-5 py-3 flex-shrink-0" style="border-bottom:1px solid var(--border)">
+      <div>
+        <h2 class="font-semibold text-sm">Chat con ARIA</h2>
+        <p class="text-xs mt-0.5" style="color:var(--text3)">
+          WebSocket <span x-text="connected ? '· conectado' : '· desconectado'"></span>
+          · sesión <span x-text="sessionId.substring(0,8)" class="font-mono"></span>
+        </p>
+      </div>
+      <button @click="clearChat()" class="btn btn-ghost btn-sm">Limpiar</button>
+    </div>
+
+    <!-- Messages -->
+    <div class="flex-1 scrollable px-4 py-4 space-y-5" id="chat-messages" style="overflow-y:auto">
+      <!-- Welcome screen -->
+      <div x-show="messages.length===0" class="flex flex-col items-center justify-center min-h-full text-center py-10">
+        <div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-5" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.25)">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+            <path d="M6 18L12 4L18 18" stroke="#a78bfa" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M9 13H15" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h2 class="text-xl font-semibold mb-1">¿En qué te ayudo hoy?</h2>
+        <p class="text-sm mb-6" style="color:var(--text2);max-width:360px">Soy ARIA, tu IA autónoma de negocio. Puedo investigar, crear contenido, escribir código, analizar datos y mucho más.</p>
+        <div class="flex flex-wrap gap-2 justify-center max-w-lg">
+          <template x-for="hint in chatHints" :key="hint">
+            <button @click="chatInput=hint;sendMessage()"
+                    class="text-xs px-3 py-2 rounded-xl cursor-pointer transition-all"
+                    style="background:var(--elevated);border:1px solid var(--border);color:var(--text2)"
+                    onmouseover="this.style.borderColor='rgba(124,58,237,.5)'"
+                    onmouseout="this.style.borderColor='var(--border)'"
+                    x-text="hint"></button>
           </template>
         </div>
       </div>
 
-      <!-- Pipeline history -->
-      <div class="card overflow-hidden">
-        <div class="px-4 py-3" style="border-bottom:1px solid #1e2536">
-          <span class="text-sm font-medium">Historial de pipelines</span>
+      <!-- Message list -->
+      <template x-for="(m,i) in messages" :key="i">
+        <div class="flex" :class="m.role==='user'?'justify-end':'justify-start gap-3'">
+          <div x-show="m.role==='aria'" class="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold mt-1" style="background:rgba(124,58,237,.2);color:#a78bfa">A</div>
+          <div :class="m.role==='user'?'msg-user':'msg-aria'" class="text-sm leading-relaxed">
+            <div x-show="m.role==='user'" x-text="m.text"></div>
+            <div x-show="m.role==='aria'" x-html="renderMarkdown(m.text)"></div>
+          </div>
         </div>
-        <template x-for="(run, i) in pipelineRuns" :key="i">
-          <div class="px-4 py-3 flex items-center gap-4" style="border-bottom:1px solid #131825">
-            <span class="text-lg" x-text="run.stage==='complete'?'✅':run.stage==='failed'?'❌':'🔄'"></span>
-            <div class="flex-1 min-w-0">
-              <div class="text-sm truncate" x-text="run.mission"></div>
-              <div class="flex gap-2 mt-1">
-                <span class="text-xs text-slate-600 font-mono" x-text="run.id?.substring(0,8)"></span>
-                <span class="badge" :class="run.stage==='complete'?'badge-green':run.stage==='failed'?'badge-red':'badge-yellow'" x-text="run.stage"></span>
-                <span x-show="run.agent_name" class="badge badge-purple" x-text="run.agent_name"></span>
+      </template>
+
+      <!-- Thinking -->
+      <div x-show="thinking" class="flex gap-3">
+        <div class="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center" style="background:rgba(124,58,237,.2);color:#a78bfa;font-size:11px;font-weight:700">A</div>
+        <div class="msg-aria px-4 py-3 flex gap-1 items-center">
+          <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="flex-shrink-0 px-4 pb-4 pt-3" style="border-top:1px solid var(--border)">
+      <!-- Quick commands -->
+      <div class="flex gap-1.5 mb-2.5 flex-wrap">
+        <template x-for="cmd in quickCommands.slice(0,6)" :key="cmd">
+          <button @click="chatInput=cmd" class="text-xs px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
+                  style="background:var(--elevated);border:1px solid var(--border);color:var(--text3)"
+                  onmouseover="this.style.color='var(--text2)'" onmouseout="this.style.color='var(--text3)'"
+                  x-text="cmd"></button>
+        </template>
+      </div>
+      <div class="flex gap-3 items-end">
+        <div class="flex-1 relative">
+          <textarea x-model="chatInput"
+                    @keydown.enter.prevent="if(!$event.shiftKey) sendMessage()"
+                    placeholder="Escribe un mensaje… (Enter = enviar · Shift+Enter = nueva línea)"
+                    rows="2"
+                    class="input w-full scrollable"
+                    style="padding-right:48px;line-height:1.5"
+                    :disabled="thinking"></textarea>
+        </div>
+        <button @click="sendMessage()" :disabled="thinking||!chatInput.trim()"
+                class="btn btn-primary flex-shrink-0" style="padding:11px 20px">
+          <svg x-show="!thinking" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <svg x-show="thinking" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ AGENTS ═══════════ -->
+  <section x-show="activeSection==='agents'" class="p-5 lg:p-7 max-w-7xl mx-auto">
+    <div class="section-header">
+      <div>
+        <h1 class="section-title">Agentes</h1>
+        <p class="section-sub">Especialistas autónomos · <span x-text="agents.length"></span> disponibles</p>
+      </div>
+      <button @click="loadAgents()" class="btn btn-ghost btn-sm">↻ Actualizar</button>
+    </div>
+
+    <!-- Mission modal -->
+    <div x-show="missionModal.open" class="modal-bg" @click.self="missionModal.open=false">
+      <div class="modal-box">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold" style="background:rgba(124,58,237,.2);color:#a78bfa" x-text="missionModal.agent.charAt(0).toUpperCase()"></div>
+          <div>
+            <h3 class="font-semibold" x-text="`Activar: ${missionModal.agent}`"></h3>
+            <p class="text-xs" style="color:var(--text3)">Describe la misión para este agente</p>
+          </div>
+        </div>
+        <textarea x-model="missionModal.mission" rows="3" placeholder="Ej: Analizar el mercado de IA y crear un informe ejecutivo con oportunidades de negocio..." class="input mb-3"></textarea>
+        <div class="flex gap-2 mb-3">
+          <button @click="runMission()" :disabled="!missionModal.mission.trim()" class="btn btn-primary flex-1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Ejecutar Pipeline
+          </button>
+          <button @click="missionModal.open=false" class="btn btn-ghost">Cancelar</button>
+        </div>
+        <div x-show="missionModal.result" class="rounded-lg p-3 text-xs font-mono scrollable" style="background:#080a10;border:1px solid var(--border);max-height:160px">
+          <pre x-text="missionModal.result" style="color:var(--text2)"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+      <template x-for="agent in agents" :key="agent.name">
+        <div class="agent-card">
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold" style="background:rgba(124,58,237,.15);color:#a78bfa" x-text="agent.name.charAt(0).toUpperCase()"></div>
+              <div>
+                <div class="font-semibold text-sm capitalize" x-text="agent.name"></div>
+                <span class="badge" :class="agent.type==='business'?'badge-v':'badge-b'" x-text="agent.type"></span>
               </div>
             </div>
-            <div class="text-xs text-slate-600 flex-shrink-0" x-text="run.started_at?.substring(0,16)?.replace('T',' ')"></div>
+            <div class="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" :class="agent.available?'bg-emerald-500':'bg-slate-600'"></div>
+          </div>
+          <p class="text-xs leading-relaxed mb-4" style="color:var(--text2)" x-text="agent.description||'Agente especializado de ARIA'"></p>
+          <button @click="openMission(agent.name)" class="w-full btn btn-ghost btn-sm" style="font-size:12px">
+            Activar misión →
+          </button>
+        </div>
+      </template>
+      <div x-show="agents.length===0" class="col-span-full card p-10 text-center">
+        <p class="text-sm" style="color:var(--text3)">Cargando agentes...</p>
+      </div>
+    </div>
+
+    <!-- Crews section -->
+    <div class="mt-8">
+      <div class="section-header">
+        <div>
+          <h2 class="text-lg font-semibold">Equipos (Crews)</h2>
+          <p class="section-sub">Agentes colaborando en secuencia para proyectos complejos</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <template x-for="crew in crews" :key="crew.id">
+          <div class="agent-card">
+            <div class="flex items-center gap-2.5 mb-3">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:rgba(59,130,246,.12);color:#60a5fa" x-html="crew.icon"></div>
+              <div>
+                <div class="font-semibold text-sm" x-text="crew.name"></div>
+                <div class="text-xs" style="color:var(--text3)" x-text="crew.members+' agentes'"></div>
+              </div>
+            </div>
+            <p class="text-xs leading-relaxed mb-4" style="color:var(--text2)" x-text="crew.description"></p>
+            <button @click="openCrewModal(crew)" class="w-full btn btn-ghost btn-sm" style="font-size:12px">
+              Lanzar Crew →
+            </button>
           </div>
         </template>
-        <div x-show="pipelineRuns.length === 0" class="p-8 text-center text-slate-600 text-sm">
-          No hay pipelines ejecutados aún
-        </div>
       </div>
-    </section>
+    </div>
 
-    <!-- ═══════════════ SETTINGS ═══════════════ -->
-    <section x-show="activeSection === 'settings'">
-      <div class="mb-6">
-        <h1 class="text-2xl font-bold">Configuración</h1>
-        <p class="text-slate-500 text-sm mt-1">Estado de integraciones y capacidades</p>
+    <!-- Crew run modal -->
+    <div x-show="crewModal.open" class="modal-bg" @click.self="crewModal.open=false">
+      <div class="modal-box">
+        <h3 class="font-semibold mb-1" x-text="`Crew: ${crewModal.name}`"></h3>
+        <p class="text-xs mb-4" style="color:var(--text3)">Los agentes colaborarán secuencialmente en tu misión</p>
+        <textarea x-model="crewModal.mission" rows="3" placeholder="Describe la misión del equipo..." class="input mb-3"></textarea>
+        <div class="flex gap-2">
+          <button @click="runCrew()" :disabled="!crewModal.mission.trim()||crewModal.running" class="btn btn-primary flex-1">
+            <span x-show="!crewModal.running">🚀 Lanzar</span>
+            <span x-show="crewModal.running">Ejecutando…</span>
+          </button>
+          <button @click="crewModal.open=false" class="btn btn-ghost">Cancelar</button>
+        </div>
+        <div x-show="crewModal.result" class="mt-3 rounded-lg p-3 text-xs scrollable" style="background:#080a10;border:1px solid var(--border);max-height:200px">
+          <pre x-text="crewModal.result" style="color:var(--text2);white-space:pre-wrap"></pre>
+        </div>
       </div>
+    </div>
+  </section>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="card p-5">
-          <h3 class="font-semibold text-sm mb-4">Integraciones de Pago</h3>
-          <template x-for="item in integrations.payments" :key="item.name">
-            <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #131825">
-              <span class="text-sm" x-text="item.name"></span>
-              <span class="badge" :class="item.configured ? 'badge-green' : 'badge-red'" x-text="item.configured ? '✓ Activo' : '✗ No configurado'"></span>
-            </div>
-          </template>
-        </div>
-        <div class="card p-5">
-          <h3 class="font-semibold text-sm mb-4">IA y Procesamiento</h3>
-          <template x-for="item in integrations.ai" :key="item.name">
-            <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #131825">
-              <span class="text-sm" x-text="item.name"></span>
-              <span class="badge" :class="item.configured ? 'badge-green' : 'badge-red'" x-text="item.configured ? '✓ Activo' : '✗ No configurado'"></span>
-            </div>
-          </template>
-        </div>
-        <div class="card p-5">
-          <h3 class="font-semibold text-sm mb-4">Publicación de Contenido</h3>
-          <template x-for="item in integrations.publishing" :key="item.name">
-            <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #131825">
-              <span class="text-sm" x-text="item.name"></span>
-              <span class="badge" :class="item.configured ? 'badge-green' : 'badge-red'" x-text="item.configured ? '✓ Activo' : '✗ No configurado'"></span>
-            </div>
-          </template>
-        </div>
-        <div class="card p-5">
-          <h3 class="font-semibold text-sm mb-4">Redes Sociales</h3>
-          <template x-for="item in integrations.social" :key="item.name">
-            <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #131825">
-              <span class="text-sm" x-text="item.name"></span>
-              <span class="badge" :class="item.configured ? 'badge-green' : 'badge-red'" x-text="item.configured ? '✓ Activo' : '✗ No configurado'"></span>
-            </div>
-          </template>
-        </div>
+  <!-- ═══════════ AUTOMATIZACIÓN ═══════════ -->
+  <section x-show="activeSection==='automation'" class="p-5 lg:p-7 max-w-7xl mx-auto">
+    <div class="section-header">
+      <div>
+        <h1 class="section-title">Automatización</h1>
+        <p class="section-sub">Workflows multi-paso y ejecución de pipelines</p>
       </div>
+    </div>
 
-      <div class="card p-5 mt-4">
-        <h3 class="font-semibold text-sm mb-1">API de ARIA</h3>
-        <p class="text-slate-500 text-xs mb-4">Úsala para integrar ARIA con otras herramientas</p>
-        <div class="space-y-2 text-xs font-mono" style="background:#131825;border:1px solid #1e2536;border-radius:8px;padding:12px">
-          <div class="text-emerald-400">POST /api/v1/chat</div>
-          <div class="text-blue-400">GET  /api/v1/status</div>
-          <div class="text-emerald-400">POST /api/v1/run</div>
-          <div class="text-blue-400">GET  /api/v1/agents</div>
-          <div class="text-blue-400">GET  /api/v1/goals</div>
-          <div class="text-emerald-400">WS   /api/v1/ws</div>
-        </div>
-        <p class="text-slate-600 text-xs mt-3">Header requerido: <code class="text-slate-400">X-ARIA-Key: tu-api-key</code></p>
+    <!-- Create workflow -->
+    <div class="card p-5 mb-5">
+      <h3 class="font-semibold text-sm mb-3">Crear Workflow</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <input x-model="wfName" placeholder="Nombre del workflow" class="input">
+        <input x-model="wfDesc" placeholder="Descripción en lenguaje natural: investiga X, luego publica..." class="input">
       </div>
-    </section>
+      <button @click="createWorkflow()" :disabled="!wfName.trim()||!wfDesc.trim()||wfCreating" class="btn btn-primary btn-sm">
+        <span x-show="!wfCreating">+ Crear Workflow</span>
+        <span x-show="wfCreating">Generando pasos…</span>
+      </button>
+    </div>
+
+    <!-- Workflow list -->
+    <div class="card mb-6 overflow-hidden">
+      <div class="px-4 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--border)">
+        <span class="font-semibold text-sm">Mis Workflows</span>
+        <button @click="loadWorkflows()" class="btn btn-ghost btn-sm btn-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
+        </button>
+      </div>
+      <template x-for="wf in workflows" :key="wf.id">
+        <div class="px-4 py-3 flex items-center gap-4" style="border-bottom:1px solid #0a0c12">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:rgba(59,130,246,.1);color:#60a5fa">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-sm truncate" x-text="wf.name"></div>
+            <div class="text-xs truncate mt-0.5" style="color:var(--text3)" x-text="wf.description"></div>
+          </div>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <span class="text-xs font-mono" style="color:var(--text3)" x-text="wf.run_count+' runs'"></span>
+            <button @click="runWorkflow(wf.id)" class="btn btn-ghost btn-sm" style="font-size:12px">▶ Ejecutar</button>
+          </div>
+        </div>
+      </template>
+      <div x-show="workflows.length===0" class="p-8 text-center text-sm" style="color:var(--text3)">
+        No hay workflows guardados — crea uno arriba
+      </div>
+    </div>
+
+    <!-- Pipeline -->
+    <div class="section-header">
+      <div>
+        <h2 class="text-lg font-semibold">Execution Pipeline</h2>
+        <p class="section-sub">Plan → Audit → Execute → Verify</p>
+      </div>
+    </div>
+
+    <div class="card p-5 mb-4">
+      <h3 class="font-semibold text-sm mb-3">Nueva Misión</h3>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input x-model="newMission" placeholder="Describe la misión para ARIA..."
+               @keydown.enter="runPipeline()" class="input flex-1">
+        <select x-model="pipelineAgent" class="input sm:w-40" style="width:auto">
+          <option value="auto">Auto-routing</option>
+          <option value="ceo">CEO</option>
+          <option value="developer">Developer</option>
+          <option value="marketing">Marketing</option>
+          <option value="sales">Sales</option>
+          <option value="research">Research</option>
+          <option value="content">Content</option>
+          <option value="finance">Finance</option>
+        </select>
+        <button @click="runPipeline()" :disabled="pipelineRunning||!newMission.trim()" class="btn btn-primary">
+          <span x-show="!pipelineRunning">Ejecutar</span>
+          <span x-show="pipelineRunning" class="flex items-center gap-2">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>
+            Procesando…
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Pipeline stage indicator -->
+    <div x-show="pipelineRunning" class="card p-4 mb-4">
+      <div class="flex items-center gap-2 mb-4">
+        <div class="pulse-dot bg-violet-500"></div>
+        <span class="text-sm font-medium">Pipeline ejecutando...</span>
+      </div>
+      <div class="flex items-center gap-1 overflow-x-auto pb-1">
+        <template x-for="(stage,i) in pipelineStages" :key="stage">
+          <div class="flex items-center gap-1 flex-shrink-0">
+            <div class="flex flex-col items-center gap-1">
+              <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                   :class="i<currentPipelineStage?'bg-emerald-900 text-emerald-400 border border-emerald-700':i===currentPipelineStage?'bg-violet-900 text-violet-400 border border-violet-600':'bg-slate-900 text-slate-600 border border-slate-700'"
+                   x-text="i<currentPipelineStage?'✓':i+1"></div>
+              <span class="text-xs whitespace-nowrap" style="color:var(--text3)" x-text="stage"></span>
+            </div>
+            <div x-show="i<pipelineStages.length-1" class="w-6 h-px mb-4 flex-shrink-0" style="background:var(--border)"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="card overflow-hidden">
+      <div class="px-4 py-3" style="border-bottom:1px solid var(--border)">
+        <span class="font-semibold text-sm">Historial de Pipelines</span>
+      </div>
+      <template x-for="(run,i) in pipelineRuns" :key="i">
+        <div class="px-4 py-3 flex items-center gap-3" style="border-bottom:1px solid #0a0c12">
+          <span class="text-base flex-shrink-0" x-text="run.stage==='complete'?'✅':run.stage==='failed'?'❌':'🔄'"></span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm truncate" x-text="run.mission"></div>
+            <div class="flex gap-2 mt-1">
+              <span class="text-xs font-mono" style="color:var(--text3)" x-text="run.id?.substring(0,8)"></span>
+              <span class="badge" :class="run.stage==='complete'?'badge-g':run.stage==='failed'?'badge-r':'badge-y'" x-text="run.stage"></span>
+              <span x-show="run.agent_name" class="badge badge-v" x-text="run.agent_name"></span>
+            </div>
+          </div>
+          <div class="text-xs flex-shrink-0 hidden sm:block" style="color:var(--text3)" x-text="run.started_at?.substring(0,16)?.replace('T',' ')"></div>
+        </div>
+      </template>
+      <div x-show="pipelineRuns.length===0" class="p-8 text-center text-sm" style="color:var(--text3)">No hay pipelines ejecutados aún</div>
+    </div>
+  </section>
+
+  <!-- ═══════════ CONOCIMIENTO ═══════════ -->
+  <section x-show="activeSection==='knowledge'" class="p-5 lg:p-7 max-w-7xl mx-auto">
+    <div class="section-header">
+      <div>
+        <h1 class="section-title">Base de Conocimiento</h1>
+        <p class="section-sub">ARIA aprende de documentos y URLs. RAG semántico activo.</p>
+      </div>
+    </div>
+
+    <!-- Ingest panel -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div class="card p-5">
+        <h3 class="font-semibold text-sm mb-3">Agregar URL</h3>
+        <div class="flex gap-2">
+          <input x-model="kbUrl" placeholder="https://..." class="input flex-1" @keydown.enter="ingestUrl()">
+          <button @click="ingestUrl()" :disabled="!kbUrl.trim()||kbLoading" class="btn btn-primary btn-sm">Aprender</button>
+        </div>
+        <p class="text-xs mt-2" style="color:var(--text3)">ARIA descargará y fragmentará la página automáticamente</p>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-sm mb-3">Agregar Texto</h3>
+        <div class="flex gap-2">
+          <textarea x-model="kbText" placeholder="Pega aquí el texto o notas..." rows="2" class="input flex-1"></textarea>
+          <button @click="ingestText()" :disabled="!kbText.trim()||kbLoading" class="btn btn-primary btn-sm">Agregar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification -->
+    <div x-show="kbNotif" class="mb-4 rounded-xl p-3 text-sm" style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);color:#34d399">
+      <span x-text="kbNotif"></span>
+    </div>
+
+    <!-- Search KB -->
+    <div class="card p-5 mb-5">
+      <h3 class="font-semibold text-sm mb-3">Buscar en la Base de Conocimiento</h3>
+      <div class="flex gap-2">
+        <input x-model="kbQuery" placeholder="Buscar semánticamente..." class="input flex-1" @keydown.enter="searchKb()">
+        <button @click="searchKb()" :disabled="!kbQuery.trim()" class="btn btn-ghost btn-sm">Buscar</button>
+      </div>
+      <div x-show="kbResults.length>0" class="mt-4 space-y-3">
+        <template x-for="(r,i) in kbResults" :key="i">
+          <div class="rounded-xl p-3 text-xs" style="background:var(--elevated);border:1px solid var(--border)">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-mono truncate max-w-xs" style="color:#a78bfa" x-text="r.source"></span>
+              <span class="badge badge-v" x-text="'score: '+r.score"></span>
+            </div>
+            <p style="color:var(--text2)" x-text="r.text?.substring(0,300)+'...'"></p>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Sources list -->
+    <div class="card overflow-hidden">
+      <div class="px-4 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--border)">
+        <span class="font-semibold text-sm">Fuentes Ingresadas <span class="badge badge-v ml-2" x-text="kbSources.length"></span></span>
+        <button @click="loadKbSources()" class="btn btn-ghost btn-sm btn-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
+        </button>
+      </div>
+      <div class="p-4">
+        <div class="flex flex-wrap gap-2" x-show="kbSources.length>0">
+          <template x-for="s in kbSources" :key="s.source">
+            <div class="source-chip">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span class="truncate max-w-[180px]" x-text="s.source"></span>
+              <span style="color:var(--text3)" x-text="s.chunks+'✦'"></span>
+            </div>
+          </template>
+        </div>
+        <div x-show="kbSources.length===0" class="text-sm text-center py-6" style="color:var(--text3)">
+          No hay fuentes ingresadas — agrega una URL o texto arriba
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ METAS ═══════════ -->
+  <section x-show="activeSection==='goals'" class="p-5 lg:p-7 max-w-4xl mx-auto">
+    <div class="section-header">
+      <div>
+        <h1 class="section-title">Metas Activas</h1>
+        <p class="section-sub">Objetivos persistentes de ARIA entre reinicios</p>
+      </div>
+      <button @click="loadGoals()" class="btn btn-ghost btn-sm">↻</button>
+    </div>
+    <div x-show="goals.length===0" class="card p-14 text-center">
+      <div class="text-5xl mb-4">🎯</div>
+      <p class="text-sm" style="color:var(--text2)">ARIA no tiene metas activas.</p>
+      <p class="text-xs mt-2" style="color:var(--text3)">Usa <code class="text-violet-400">/add_goal [objetivo]</code> en el chat.</p>
+    </div>
+    <div class="space-y-2">
+      <template x-for="(goal,i) in goals" :key="i">
+        <div class="card p-4 flex items-start gap-4">
+          <div class="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0" style="background:rgba(124,58,237,.15);color:#a78bfa" x-text="i+1"></div>
+          <div class="flex-1">
+            <div class="font-medium text-sm" x-text="goal.text||goal.goal||JSON.stringify(goal)"></div>
+            <div class="flex gap-2 mt-2">
+              <span class="badge" :class="goal.status==='active'||!goal.status?'badge-g':goal.status==='completed'?'badge-b':'badge-y'" x-text="goal.status||'active'"></span>
+              <span x-show="goal.priority" class="badge badge-v" x-text="'P'+goal.priority"></span>
+            </div>
+            <div x-show="goal.progress" class="text-xs mt-1.5" style="color:var(--text3)" x-text="goal.progress"></div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  <!-- ═══════════ ACTIVIDAD ═══════════ -->
+  <section x-show="activeSection==='activity'" class="p-5 lg:p-7 max-w-5xl mx-auto">
+    <div class="section-header">
+      <div>
+        <h1 class="section-title">Log de Actividad</h1>
+        <p class="section-sub">Historial de operaciones del sistema en tiempo real</p>
+      </div>
+      <div class="flex gap-2">
+        <select x-model="activityFilter" class="input btn-sm" style="width:auto;padding:6px 12px;font-size:12.5px">
+          <option value="">Todo</option>
+          <option value="ERROR">Errores</option>
+          <option value="WARNING">Avisos</option>
+          <option value="INFO">Info</option>
+        </select>
+        <button @click="loadActivity()" class="btn btn-ghost btn-sm btn-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="card overflow-hidden">
+      <template x-for="(e,i) in filteredActivity" :key="i">
+        <div class="activity-row">
+          <span class="text-xs font-mono flex-shrink-0 w-20" style="color:var(--text3)" x-text="e.ts?.substring(11,19)"></span>
+          <span class="badge flex-shrink-0 w-16 text-center"
+                :class="e.level==='ERROR'?'badge-r':e.level==='WARNING'?'badge-y':'badge-b'"
+                x-text="e.level||'INFO'"></span>
+          <span class="text-xs" style="color:var(--text2)" x-text="e.message"></span>
+        </div>
+      </template>
+      <div x-show="filteredActivity.length===0" class="p-10 text-center text-sm" style="color:var(--text3)">Sin actividad registrada</div>
+    </div>
+  </section>
+
+  <!-- ═══════════ AJUSTES ═══════════ -->
+  <section x-show="activeSection==='settings'" class="p-5 lg:p-7 max-w-4xl mx-auto">
+    <div class="section-header">
+      <div>
+        <h1 class="section-title">Configuración</h1>
+        <p class="section-sub">Estado de integraciones y acceso API</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div class="card p-5">
+        <h3 class="font-semibold text-sm mb-4">IA y Modelos</h3>
+        <template x-for="item in integrations.ai" :key="item.name">
+          <div class="flex items-center justify-between py-2.5" style="border-bottom:1px solid var(--border)">
+            <span class="text-sm" x-text="item.name"></span>
+            <span class="badge" :class="item.configured?'badge-g':'badge-r'" x-text="item.configured?'✓ Activo':'✗ No config.'"></span>
+          </div>
+        </template>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-sm mb-4">Pagos y E-commerce</h3>
+        <template x-for="item in integrations.payments" :key="item.name">
+          <div class="flex items-center justify-between py-2.5" style="border-bottom:1px solid var(--border)">
+            <span class="text-sm" x-text="item.name"></span>
+            <span class="badge" :class="item.configured?'badge-g':'badge-r'" x-text="item.configured?'✓ Activo':'✗ No config.'"></span>
+          </div>
+        </template>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-sm mb-4">Publicación de Contenido</h3>
+        <template x-for="item in integrations.publishing" :key="item.name">
+          <div class="flex items-center justify-between py-2.5" style="border-bottom:1px solid var(--border)">
+            <span class="text-sm" x-text="item.name"></span>
+            <span class="badge" :class="item.configured?'badge-g':'badge-r'" x-text="item.configured?'✓ Activo':'✗ No config.'"></span>
+          </div>
+        </template>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-semibold text-sm mb-4">Redes Sociales</h3>
+        <template x-for="item in integrations.social" :key="item.name">
+          <div class="flex items-center justify-between py-2.5" style="border-bottom:1px solid var(--border)">
+            <span class="text-sm" x-text="item.name"></span>
+            <span class="badge" :class="item.configured?'badge-g':'badge-r'" x-text="item.configured?'✓ Activo':'✗ No config.'"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <h3 class="font-semibold text-sm mb-1">API de ARIA</h3>
+      <p class="text-xs mb-4" style="color:var(--text3)">Integra ARIA con cualquier herramienta usando la API REST o WebSocket</p>
+      <div class="rounded-xl p-4 font-mono text-xs space-y-1.5" style="background:#05060a;border:1px solid var(--border)">
+        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/chat</span></div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/status</span></div>
+        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/run</span></div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/agents</span></div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/tasks</span></div>
+        <div><span class="text-yellow-400">WS</span>   <span style="color:var(--text2)">/api/v1/ws</span></div>
+      </div>
+      <p class="text-xs mt-3" style="color:var(--text3)">Header: <code class="px-1 py-0.5 rounded" style="background:var(--elevated);color:#a78bfa">X-ARIA-Key: tu-api-key</code></p>
+    </div>
+  </section>
 
   </main>
-</div>
+</div><!-- /main-content -->
 
+<!-- ══════════════ MOBILE BOTTOM NAV ══════════════ -->
+<nav id="bottom-nav">
+  <template x-for="item in mobileNavItems" :key="item.id">
+    <div class="bnav-item" :class="activeSection===item.id?'active':''"
+         @click="activeSection=item.id">
+      <span x-html="item.icon"></span>
+      <span x-text="item.label"></span>
+    </div>
+  </template>
+</nav>
+
+<!-- ══════════════ JAVASCRIPT ══════════════ -->
 <script>
 function ariaApp() {
   return {
+    // ── STATE ────────────────────────────────────────────
     activeSection: 'overview',
     connected: false,
     ws: null,
     currentTime: '',
+    windowWidth: window.innerWidth,
+    sessionId: 'web_' + Math.random().toString(36).substring(2, 10),
+
+    // Sidebar
+    desktopCollapsed: localStorage.getItem('aria_sidebar_collapsed') === 'true',
+    mobileSidebarOpen: false,
+
+    // Chat
     messages: [],
     chatInput: '',
     thinking: false,
+
+    // Quick chat (overview)
     quickMessages: [],
     quickInput: '',
     quickThinking: false,
+
+    // Data
     agents: [],
     goals: [],
     activity: [],
     activityFilter: '',
     metrics: { agents: 0, goals: 0, runs: 0, health: 0 },
     skills: {},
+
+    // Pipeline
     pipelineRuns: [],
     newMission: '',
     pipelineAgent: 'auto',
     pipelineRunning: false,
     currentPipelineStage: 0,
-    pipelineStages: ['Plan', 'Audit', 'Execute', 'Verify'],
+    pipelineStages: ['Planificar', 'Auditar', 'Ejecutar', 'Verificar'],
+
+    // Modals
     missionModal: { open: false, agent: '', mission: '', result: '' },
-    chatHints: ['/status', '/plan lanzar un SaaS', '/research tendencias IA 2025', '/code script Python'],
-    quickCommands: ['/run', '/plan', '/audit', '/status', '/goals', '/agents', '/research', '/help'],
-    navItems: [
-      { id: 'overview',  label: 'Visión General', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>' },
-      { id: 'chat',      label: 'Chat', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
-      { id: 'agents',    label: 'Agentes', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>' },
-      { id: 'goals',     label: 'Metas', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/></svg>' },
-      { id: 'activity',  label: 'Actividad', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>' },
-      { id: 'pipeline',  label: 'Pipeline', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>' },
-      { id: 'settings',  label: 'Ajustes', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' },
+    crewModal: { open: false, id: '', name: '', mission: '', running: false, result: '' },
+
+    // Workflows
+    workflows: [],
+    wfName: '',
+    wfDesc: '',
+    wfCreating: false,
+
+    // Knowledge Base
+    kbUrl: '',
+    kbText: '',
+    kbQuery: '',
+    kbResults: [],
+    kbSources: [],
+    kbLoading: false,
+    kbNotif: '',
+
+    // Hints
+    chatHints: [
+      'Analiza las tendencias de IA en 2026',
+      '/plan lanzar un SaaS de productividad',
+      'Crea un pitch deck para inversores',
+      '/research competidores en mi nicho',
+      'Escribe un artículo SEO sobre automatización',
     ],
+    quickCommands: ['/run', '/plan', '/audit', '/status', '/goals', '/research', '/think', '/help'],
+
+    // Integrations
     integrations: {
-      payments:    [ {name:'Stripe',   configured:false}, {name:'Shopify',  configured:false}, {name:'Gumroad', configured:false}, {name:'PayPal',  configured:false} ],
-      ai:          [ {name:'HuggingFace', configured:false}, {name:'OpenAI',    configured:false}, {name:'Groq',      configured:false}, {name:'Anthropic', configured:false} ],
-      publishing:  [ {name:'Dev.to',   configured:false}, {name:'Medium',   configured:false}, {name:'Hashnode', configured:false}, {name:'Resend',  configured:false} ],
-      social:      [ {name:'Twitter/X',configured:false}, {name:'Instagram',configured:false}, {name:'LinkedIn', configured:false}, {name:'Reddit',  configured:false} ],
+      payments:   [{name:'Stripe',configured:false},{name:'Shopify',configured:false},{name:'Gumroad',configured:false},{name:'PayPal',configured:false}],
+      ai:         [{name:'HuggingFace',configured:false},{name:'OpenAI',configured:false},{name:'Groq',configured:false},{name:'Anthropic',configured:false}],
+      publishing: [{name:'Dev.to',configured:false},{name:'Medium',configured:false},{name:'Hashnode',configured:false},{name:'Resend',configured:false}],
+      social:     [{name:'Twitter/X',configured:false},{name:'Instagram',configured:false},{name:'LinkedIn',configured:false},{name:'Reddit',configured:false}],
     },
 
+    // Crews
+    crews: [
+      { id:'research_crew',  name:'Research Crew',  members:3, description:'Investigador → Analista → Redactor. Informes profundos y accionables.',  icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' },
+      { id:'content_crew',   name:'Content Crew',   members:3, description:'Investigador → SEO Strategist → Editor. Contenido listo para publicar.', icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
+      { id:'dev_crew',       name:'Dev Crew',        members:3, description:'PM → Developer → QA. Proyectos de software de principio a fin.',        icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>' },
+      { id:'sales_crew',     name:'Sales Crew',      members:3, description:'Analista de Mercado → Sales Strategist → Copywriter de conversión.',    icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
+      { id:'launch_crew',    name:'Launch Crew',     members:3, description:'Estratega → Marketing Director → Analista Financiero. Go-to-market.',   icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>' },
+      { id:'venture_crew',   name:'Venture Crew',    members:3, description:'Analista de Negocio → Estratega Financiero → Pitch Specialist.',        icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
+    ],
+
+    // ── NAVIGATION ────────────────────────────────────────
+    navItems: [
+      { id:'overview',   label:'Visión General', icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
+      { id:'chat',       label:'Chat',           icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
+      { id:'agents',     label:'Agentes',        icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+      { id:'automation', label:'Automatización', icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>' },
+      { id:'knowledge',  label:'Conocimiento',   icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>' },
+      { id:'goals',      label:'Metas',          icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>' },
+      { id:'activity',   label:'Actividad',      icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>' },
+      { id:'settings',   label:'Ajustes',        icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' },
+    ],
+
+    mobileNavItems: [
+      { id:'overview',   label:'Inicio',    icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>' },
+      { id:'chat',       label:'Chat',      icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
+      { id:'agents',     label:'Agentes',   icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>' },
+      { id:'automation', label:'Auto',      icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>' },
+      { id:'settings',   label:'Ajustes',   icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>' },
+    ],
+
+    // ── INIT ─────────────────────────────────────────────
     init() {
       this.updateClock();
       setInterval(() => this.updateClock(), 1000);
+      window.addEventListener('resize', () => { this.windowWidth = window.innerWidth });
       this.connectWS();
       this.loadData();
-      setInterval(() => this.loadActivity(), 30000);
+      setInterval(() => this.loadActivity(), 20000);
     },
 
     updateClock() {
-      this.currentTime = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      this.currentTime = new Date().toLocaleTimeString('es', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
     },
 
+    // ── SIDEBAR ────────────────────────────────────────────
+    toggleSidebar() {
+      this.desktopCollapsed = !this.desktopCollapsed;
+      localStorage.setItem('aria_sidebar_collapsed', this.desktopCollapsed);
+    },
+    toggleMobileSidebar() { this.mobileSidebarOpen = !this.mobileSidebarOpen },
+    closeMobileSidebar()  { this.mobileSidebarOpen = false },
+
+    // ── WEBSOCKET ─────────────────────────────────────────
     connectWS() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const url   = `${proto}://${location.host}/api/v1/ws`;
       try {
-        this.ws = new WebSocket(url);
-        this.ws.onopen  = () => { this.connected = true; };
-        this.ws.onclose = () => { this.connected = false; setTimeout(() => this.connectWS(), 5000); };
-        this.ws.onerror = () => { this.connected = false; };
+        this.ws = new WebSocket(`${proto}://${location.host}/api/v1/ws`);
+        this.ws.onopen  = () => { this.connected = true };
+        this.ws.onclose = () => { this.connected = false; setTimeout(() => this.connectWS(), 5000) };
+        this.ws.onerror = () => { this.connected = false };
         this.ws.onmessage = (evt) => {
           try {
-            const data = JSON.parse(evt.data);
-            if (data.type === 'reply') {
+            const d = JSON.parse(evt.data);
+            if (d.type === 'reply') {
               this.thinking = false;
-              this.messages.push({ role: 'aria', text: data.text });
+              this.messages.push({ role:'aria', text: d.text });
               this.$nextTick(() => this.scrollChat());
             }
           } catch(e) {}
         };
-      } catch(e) { this.connected = false; }
+      } catch(e) { this.connected = false }
     },
 
+    // ── LOAD DATA ─────────────────────────────────────────
     async loadData() {
       await Promise.allSettled([
-        this.loadStatus(),
-        this.loadAgents(),
-        this.loadGoals(),
-        this.loadActivity(),
-        this.loadPipeline(),
+        this.loadStatus(), this.loadAgents(), this.loadGoals(),
+        this.loadActivity(), this.loadPipeline(), this.loadWorkflows(), this.loadKbSources(),
       ]);
     },
 
@@ -654,8 +1263,7 @@ function ariaApp() {
         const d = await r.json();
         this.skills = d.skills || d.trainer?.skill_scores || {};
         const vals = Object.values(this.skills);
-        this.metrics.health = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : 0;
-        // Update integration status
+        this.metrics.health = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
         const integs = d.integrations || {};
         for (const [key, val] of Object.entries(integs)) {
           for (const cat of Object.values(this.integrations)) {
@@ -674,7 +1282,7 @@ function ariaApp() {
         this.agents = d.agents || d || [];
         this.metrics.agents = this.agents.length;
         const nav = this.navItems.find(n => n.id === 'agents');
-        if (nav) nav.badge = this.agents.length;
+        if (nav) nav.badge = this.agents.length || null;
       } catch(e) {}
     },
 
@@ -707,41 +1315,59 @@ function ariaApp() {
       } catch(e) {}
     },
 
+    async loadWorkflows() {
+      try {
+        const r = await fetch('/api/v1/workflows');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.workflows = d.workflows || [];
+      } catch(e) { this.workflows = [] }
+    },
+
+    async loadKbSources() {
+      try {
+        const r = await fetch('/api/v1/knowledge/sources');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.kbSources = d.sources || [];
+      } catch(e) { this.kbSources = [] }
+    },
+
+    // ── FILTERS ───────────────────────────────────────────
     get filteredActivity() {
       if (!this.activityFilter) return this.activity;
       return this.activity.filter(e => e.level === this.activityFilter);
     },
 
+    // ── CHAT ─────────────────────────────────────────────
     async sendMessage() {
       const text = this.chatInput.trim();
       if (!text || this.thinking) return;
-      this.messages.push({ role: 'user', text });
+      this.messages.push({ role:'user', text });
       this.chatInput = '';
       this.thinking  = true;
       this.$nextTick(() => this.scrollChat());
 
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'chat', message: text }));
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type:'chat', message:text, session_id: this.sessionId }));
       } else {
-        // Fallback to REST
         try {
           const r = await fetch('/api/v1/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ message:text, session_id: this.sessionId })
           });
           const d = await r.json();
           this.thinking = false;
-          this.messages.push({ role: 'aria', text: d.reply || d.error || 'Sin respuesta' });
+          this.messages.push({ role:'aria', text: d.reply||d.error||'Sin respuesta' });
         } catch(e) {
           this.thinking = false;
-          this.messages.push({ role: 'aria', text: 'Error de conexión. Verifica que el servidor está activo.' });
+          this.messages.push({ role:'aria', text:'Error de conexión.' });
         }
         this.$nextTick(() => this.scrollChat());
       }
     },
 
-    clearChat() { this.messages = []; },
+    clearChat() { this.messages = [] },
 
     scrollChat() {
       const el = document.getElementById('chat-messages');
@@ -751,19 +1377,18 @@ function ariaApp() {
     async sendQuick() {
       const text = this.quickInput.trim();
       if (!text || this.quickThinking) return;
-      this.quickMessages.push({ role: 'user', text });
-      this.quickInput   = '';
+      this.quickMessages.push({ role:'user', text });
+      this.quickInput    = '';
       this.quickThinking = true;
       try {
         const r = await fetch('/api/v1/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text })
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ message:text })
         });
         const d = await r.json();
-        this.quickMessages.push({ role: 'aria', text: d.reply || d.error || 'Error' });
+        this.quickMessages.push({ role:'aria', text: d.reply||'Error' });
       } catch(e) {
-        this.quickMessages.push({ role: 'aria', text: 'Error de conexión.' });
+        this.quickMessages.push({ role:'aria', text:'Error.' });
       } finally {
         this.quickThinking = false;
         this.$nextTick(() => {
@@ -773,8 +1398,38 @@ function ariaApp() {
       }
     },
 
+    // ── MARKDOWN ──────────────────────────────────────────
+    renderMarkdown(text) {
+      if (!text) return '';
+      let h = text
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        // code blocks
+        .replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+        // inline code
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        // bold
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.+?)__/g, '<strong>$1</strong>')
+        // italic
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        // headers
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        // bullet lists
+        .replace(/^[-•] (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+        // numbered lists
+        .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+        // line breaks
+        .replace(/\n\n/g, '</p><p style="margin:6px 0">')
+        .replace(/\n/g, '<br>');
+      return '<p style="margin:0">' + h + '</p>';
+    },
+
+    // ── AGENTS & PIPELINE ────────────────────────────────
     openMission(agentName) {
-      this.missionModal = { open: true, agent: agentName, mission: '', result: '' };
+      this.missionModal = { open:true, agent:agentName, mission:'', result:'' };
     },
 
     async runMission() {
@@ -783,44 +1438,117 @@ function ariaApp() {
       this.missionModal.result = '⏳ Ejecutando pipeline...';
       try {
         const r = await fetch('/api/v1/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mission, agent, use_pipeline: true })
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ mission, agent, use_pipeline:true })
         });
         const d = await r.json();
-        this.missionModal.result = d.result?.summary || d.result?.report || JSON.stringify(d.result, null, 2)?.substring(0, 500) || 'Completado';
+        this.missionModal.result = d.result?.summary || d.result?.report || JSON.stringify(d.result,null,2)?.substring(0,600) || 'Completado';
         await this.loadPipeline();
-      } catch(e) {
-        this.missionModal.result = `Error: ${e.message}`;
-      }
+      } catch(e) { this.missionModal.result = `Error: ${e.message}` }
     },
 
     async runPipeline() {
       if (!this.newMission.trim() || this.pipelineRunning) return;
-      this.pipelineRunning    = true;
+      this.pipelineRunning = true;
       this.currentPipelineStage = 0;
-
-      const stages = [0, 1, 2, 3];
-      const interval = setInterval(() => {
-        if (this.currentPipelineStage < 3) this.currentPipelineStage++;
-      }, 3000);
-
+      const iv = setInterval(() => { if (this.currentPipelineStage < 3) this.currentPipelineStage++ }, 4000);
       try {
         const r = await fetch('/api/v1/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mission: this.newMission, agent: this.pipelineAgent, use_pipeline: true })
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ mission:this.newMission, agent:this.pipelineAgent, use_pipeline:true })
+        });
+        clearInterval(iv);
+        this.currentPipelineStage = 4;
+        this.newMission = '';
+        await this.loadPipeline();
+      } catch(e) { clearInterval(iv) }
+      finally { setTimeout(() => { this.pipelineRunning = false; this.currentPipelineStage = 0 }, 1500) }
+    },
+
+    // ── CREWS ─────────────────────────────────────────────
+    openCrewModal(crew) {
+      this.crewModal = { open:true, id:crew.id, name:crew.name, mission:'', running:false, result:'' };
+    },
+
+    async runCrew() {
+      if (!this.crewModal.mission.trim()) return;
+      this.crewModal.running = true;
+      try {
+        const r = await fetch('/api/v1/chat', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ message:`run_crew crew=${this.crewModal.id} mission=${this.crewModal.mission}` })
         });
         const d = await r.json();
-        clearInterval(interval);
-        this.currentPipelineStage = 4;
-        this.newMission  = '';
-        await this.loadPipeline();
-      } catch(e) {
-        clearInterval(interval);
-      } finally {
-        setTimeout(() => { this.pipelineRunning = false; this.currentPipelineStage = 0; }, 1500);
-      }
+        this.crewModal.result = d.reply || JSON.stringify(d);
+      } catch(e) { this.crewModal.result = `Error: ${e.message}` }
+      finally { this.crewModal.running = false }
+    },
+
+    // ── WORKFLOWS ─────────────────────────────────────────
+    async createWorkflow() {
+      if (!this.wfName.trim() || !this.wfDesc.trim()) return;
+      this.wfCreating = true;
+      try {
+        const r = await fetch('/api/v1/workflows', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ name:this.wfName, description:this.wfDesc })
+        });
+        const d = await r.json();
+        if (d.success) {
+          this.wfName = ''; this.wfDesc = '';
+          await this.loadWorkflows();
+        }
+      } catch(e) {} finally { this.wfCreating = false }
+    },
+
+    async runWorkflow(wfId) {
+      try {
+        const r = await fetch(`/api/v1/workflows/${wfId}/run`, { method:'POST' });
+        const d = await r.json();
+        alert(d.final_output || d.error || 'Workflow completado');
+        await this.loadWorkflows();
+      } catch(e) {}
+    },
+
+    // ── KNOWLEDGE BASE ────────────────────────────────────
+    async ingestUrl() {
+      if (!this.kbUrl.trim()) return;
+      this.kbLoading = true;
+      try {
+        const r = await fetch('/api/v1/knowledge/ingest', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ source: this.kbUrl, is_url: true })
+        });
+        const d = await r.json();
+        this.kbNotif = d.success ? `✅ Aprendido: ${d.chunks_added} fragmentos de "${this.kbUrl.substring(0,50)}"` : `Error: ${d.error}`;
+        if (d.success) { this.kbUrl = ''; await this.loadKbSources(); }
+        setTimeout(() => this.kbNotif = '', 5000);
+      } catch(e) { this.kbNotif = 'Error de conexión' }
+      finally { this.kbLoading = false }
+    },
+
+    async ingestText() {
+      if (!this.kbText.trim()) return;
+      this.kbLoading = true;
+      try {
+        const r = await fetch('/api/v1/knowledge/ingest', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ source: this.kbText, is_url: false, category: 'manual' })
+        });
+        const d = await r.json();
+        this.kbNotif = d.success ? `✅ Texto agregado: ${d.chunks_added} fragmentos` : `Error: ${d.error}`;
+        if (d.success) { this.kbText = ''; await this.loadKbSources(); }
+        setTimeout(() => this.kbNotif = '', 5000);
+      } catch(e) {} finally { this.kbLoading = false }
+    },
+
+    async searchKb() {
+      if (!this.kbQuery.trim()) return;
+      try {
+        const r = await fetch(`/api/v1/knowledge/search?q=${encodeURIComponent(this.kbQuery)}&top_k=5`);
+        const d = await r.json();
+        this.kbResults = d.results || [];
+      } catch(e) {}
     },
   };
 }
