@@ -205,7 +205,8 @@ _HELP_TEXT = """\
 **Gestión**
 - `/goals` — lista metas activas
 - `/add_goal [meta]` — añade nueva meta persistente
-- `/status` — estado completo del sistema
+- `/status` — estado del sistema (proveedores, metas, tareas, KB)
+- `/clear` — reiniciar la conversación
 - `/audit` — auditoría del negocio
 
 **Multimedia**
@@ -249,6 +250,8 @@ class AriaMind:
                 return MindResponse(text=_HELP_TEXT)
             if stripped in ("/clear", "/limpiar", "/reset"):
                 return MindResponse(text="🗑 Conversación reiniciada. ¿En qué te ayudo?", silent=False)
+            if stripped in ("/status", "/estado", "status"):
+                return await self._build_status()
 
             # Cargar todo el contexto cognitivo
             history, state, goals, learned = await asyncio.gather(
@@ -1238,6 +1241,64 @@ class AriaMind:
                 await get_bot().notify_owner(message)
         except Exception as exc:
             logger.debug("[AriaMind] proactive_notify: %s", exc)
+
+    async def _build_status(self) -> MindResponse:
+        """Fast-path /status command — returns rich system status without an LLM call."""
+        lines: list[str] = ["## Estado del Sistema ARIA\n"]
+
+        # AI providers
+        try:
+            from apps.core.tools.ai_client import get_ai_client
+            health = get_ai_client().get_health_summary()
+            providers = {k: v for k, v in health.items() if k != "_totals"}
+            totals = health.get("_totals", {})
+            lines.append("**Proveedores de IA:**")
+            for name, info in providers.items():
+                icon = "🟢" if info.get("available") else "🔴"
+                rate = info.get("success_rate_pct", 100)
+                calls = info.get("total_calls", 0)
+                lines.append(f"  {icon} **{name}** — {rate:.0f}% éxito · {calls} llamadas")
+            if totals:
+                lines.append(f"\n  Tokens totales: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`")
+        except Exception:
+            lines.append("  Sin datos de proveedores")
+
+        # Goals
+        try:
+            goals = await self._load_goals()
+            active = [g for g in goals if isinstance(g, dict) and g.get("status", "active") == "active"]
+            lines.append(f"\n**Metas activas:** {len(active)}")
+            for g in active[:5]:
+                p = g.get("priority", "")
+                lines.append(f"  - {'[P'+str(p)+'] ' if p else ''}{g.get('text','')[:70]}")
+            if len(active) > 5:
+                lines.append(f"  … y {len(active)-5} más")
+        except Exception:
+            pass
+
+        # Background tasks
+        try:
+            from apps.core.tools.task_manager import get_task_manager
+            stats = get_task_manager().stats()
+            running = stats.get("running", 0)
+            queued = stats.get("queued", 0)
+            completed = stats.get("completed", 0)
+            lines.append(f"\n**Tareas en segundo plano:** {running} activas · {queued} en cola · {completed} completadas")
+        except Exception:
+            pass
+
+        # Knowledge base
+        try:
+            from apps.core.tools.knowledge_base import get_knowledge_base
+            kb = get_knowledge_base()
+            kstats = kb.stats()
+            lines.append(f"\n**Base de conocimiento:** {kstats.get('total_chunks', 0)} fragmentos en {len(kstats.get('by_category', {}))} categorías")
+        except Exception:
+            pass
+
+        lines.append(f"\n**Timestamp:** `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}`")
+        lines.append("\nUsa `/help` para ver todas las capacidades disponibles.")
+        return MindResponse(text="\n".join(lines))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
