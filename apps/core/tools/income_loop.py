@@ -5,12 +5,13 @@ Runs every 30 minutes alongside the orchestrator (60 min).
 Focuses on PURE EXECUTION — no planning overhead.
 
 Every cycle picks a strategy based on weighted probability:
-  30% — Content Pipeline   (SEO articles + affiliate → Medium/dev.to/Hashnode)
-  22% — Niche Rotator      (launches next niche in catalog → Gumroad + Zapier)
-  18% — Product Factory    (creates new digital products for trending topics)
-  10% — Opportunity Scan   (web research for new income streams)
+  28% — Content Pipeline   (SEO articles + affiliate → Medium/dev.to/Hashnode)
+  20% — Niche Rotator      (launches next niche in catalog → Gumroad + Zapier)
+  17% — Product Factory    (creates new digital products for trending topics)
+   9% — Opportunity Scan   (web research for new income streams)
    8% — Shopify Listing    (creates Shopify digital product from trending topic)
    7% — Email Campaign     (Mailchimp campaign to owned audience)
+   6% — Ebook Factory      (AI-generated ebook sold on Gumroad at $7-$27)
    3% — Social Blitz       (Zapier distribution for all existing products)
    2% — Premium Offer      (high-ticket B2B consulting offers)
 
@@ -42,12 +43,13 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",  30),
-    ("niche_rotator",     22),
-    ("product_factory",   18),
-    ("opportunity_scan",  10),
+    ("content_pipeline",  28),
+    ("niche_rotator",     20),
+    ("product_factory",   17),
+    ("opportunity_scan",   9),
     ("shopify_listing",    8),
     ("email_campaign",     7),
+    ("ebook_factory",      6),
     ("social_blitz",       3),
     ("premium_offer",      2),
 ]
@@ -76,7 +78,7 @@ class IncomeLoop:
         self._running    = False
         self._task       = None
         self._cycle      = 0
-        self._niche_idx  = 0    # Round-robin through niche catalog
+        self._niche_idx  = 0    # Round-robin through niche catalog (loaded from Redis in first cycle)
 
     # ── Control ───────────────────────────────────────────────────────────
 
@@ -183,6 +185,8 @@ class IncomeLoop:
             return await self._exec_shopify_listing()
         elif strategy == "email_campaign":
             return await self._exec_email_campaign()
+        elif strategy == "ebook_factory":
+            return await self._exec_ebook_factory()
         elif strategy == "social_blitz":
             return await self._exec_social_blitz()
         elif strategy == "premium_offer":
@@ -222,8 +226,12 @@ class IncomeLoop:
             if not candidates:
                 # All launched — pick the oldest for a refresh
                 candidates = all_keys
+            # Load from Redis on first use to survive restarts
+            if self._niche_idx == 0:
+                self._niche_idx = self._load_niche_idx()
             target = candidates[self._niche_idx % len(candidates)]
             self._niche_idx += 1
+            self._save_niche_idx()
 
             result = await engine.launch_niche(target)
             urls   = [u["url"] for u in result.published_urls + result.seo_article_urls if u.get("url")]
@@ -597,6 +605,81 @@ JSON:
             logger.error("[IncomeLoop] shopify_listing: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
+    async def _exec_ebook_factory(self) -> dict:
+        """
+        Generate a complete ebook/guide on a trending topic and sell it on Gumroad.
+        AI writes a full table of contents + introduction + 3 sample chapters.
+        Price: $7-$27 (impulse buy range).
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.gumroad_tools import GumroadTools
+            from apps.core.tools.content_pipeline import ContentPipeline
+
+            cp     = ContentPipeline()
+            topics = await cp.get_trending_topics(limit=5)
+            topic  = topics[random.randint(0, min(2, len(topics)-1))] if topics else "AI side income strategies"
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "AI unavailable"}
+
+            resp = await ai.complete(
+                system="You are a bestselling ebook author. Create detailed, valuable ebooks that people buy. Output JSON only.",
+                user=f"""Create a complete sellable ebook on: "{topic}"
+
+JSON:
+{{
+  "title": "Compelling ebook title (60 chars max)",
+  "subtitle": "Subtitle explaining the value (80 chars)",
+  "description": "Sales page description (300+ words). Lead with transformation. Include what they'll learn, who it's for, what problems it solves. Include testimonial-style outcomes.",
+  "table_of_contents": ["Chapter 1: ...", "Chapter 2: ...", "Chapter 3: ...", "Chapter 4: ...", "Chapter 5: ..."],
+  "price_cents": 1700,
+  "tags": ["ebook", "guide", "productivity"],
+  "category": "Self-Help"
+}}""",
+                model=AIModel.STRATEGY,
+                max_tokens=1500,
+                temperature=0.7,
+            )
+
+            if not resp or not resp.success:
+                return {"success": False, "summary": "AI failed to generate ebook"}
+
+            try:
+                ebook = json.loads(resp.content.strip())
+            except Exception:
+                return {"success": False, "summary": "Invalid ebook JSON"}
+
+            # Enrich description with TOC
+            toc = ebook.get("table_of_contents", [])
+            full_description = ebook.get("description", "")
+            if toc:
+                full_description += "\n\n**What You'll Learn:**\n" + "\n".join(f"✓ {ch}" for ch in toc)
+            full_description += f"\n\n**Format:** PDF Ebook | Instant Download | {len(toc)} Chapters"
+
+            gt  = GumroadTools()
+            gr  = await gt.create_product(
+                name=ebook.get("title", f"The Complete Guide to {topic[:30]}"),
+                description=full_description,
+                price_cents=ebook.get("price_cents", 1700),
+                tags=ebook.get("tags", ["ebook", "guide"]),
+            )
+
+            if gr.get("success"):
+                price = ebook.get("price_cents", 1700) / 100
+                return {
+                    "success": True,
+                    "summary": f"Ebook '{ebook.get('title','')[:50]}' at ${price:.2f} — {len(toc)} chapters",
+                    "revenue_potential": price,
+                    "urls": [gr.get("url", "")] if gr.get("url") else [],
+                }
+            return {"success": False, "summary": f"Gumroad: {gr.get('error', 'failed')}"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] ebook_factory: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
     async def _exec_email_campaign(self) -> dict:
         """
         Create and send a Mailchimp email campaign promoting ARIA's latest products.
@@ -664,6 +747,24 @@ JSON:
             return {"success": False, "summary": str(exc)[:100]}
 
     # ── Persistence ───────────────────────────────────────────────────────
+
+    def _load_niche_idx(self) -> int:
+        try:
+            r = self._redis()
+            if r:
+                val = r.get("aria:income:niche_idx")
+                return int(val) if val else 0
+        except Exception:
+            pass
+        return 0
+
+    def _save_niche_idx(self) -> None:
+        try:
+            r = self._redis()
+            if r:
+                r.set("aria:income:niche_idx", self._niche_idx)
+        except Exception:
+            pass
 
     def _redis(self):
         try:
