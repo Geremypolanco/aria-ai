@@ -128,6 +128,12 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - run_workflow     → ejecuta un workflow guardado. Args: {{"workflow_id": "..."}}
 - list_workflows   → lista los workflows disponibles. Args: {{}}
 - think_verified   → razonamiento verificado con auto-corrección multi-path (Test-Time Compute). Para problemas de máxima importancia. Args: {{"question": "...", "context": "..."}}
+- github_view      → lee contenido de cualquier repo GitHub: archivos, estructura, branches, commits, PRs, issues. Args: {{"owner": "...", "repo": "...", "path": "", "action": "view|branches|commits|prs|issues", "sub": "list|read|info"}}
+- github_write     → crea o actualiza archivos en GitHub. Args: {{"owner": "...", "repo": "...", "path": "archivo.py", "content": "...", "message": "feat: ...", "branch": "main"}}
+- github_pr        → crea PRs o branches. Args: {{"action": "create_pr|create_branch", "owner": "...", "repo": "...", "title": "...", "head": "...", "base": "main", "body": "..."}}
+- github_issues    → crea o lista issues. Args: {{"action": "issues|create_issue", "owner": "...", "repo": "...", "title": "...", "body": "..."}}
+- github_search    → busca repos, código o issues en GitHub. Args: {{"query": "...", "type": "repos|code|issues"}}
+- github_self      → accedo a MI PROPIO código fuente (Geremypolanco/aria-ai). Puedo ver mi estructura, leer mis archivos y mejorar mi propio código. Args: {{"sub": "structure|read|commit", "path": "", "content": "...", "message": "refactor: ..."}}
 
 REGLAS DE RAZONAMIENTO:
 1. Usa tu campo "thought" para razonar paso a paso antes de decidir qué hacer.
@@ -143,6 +149,9 @@ REGLAS DE RAZONAMIENTO:
 11. Para decisiones críticas o preguntas de máxima importancia → usa think_verified para máxima calidad.
 12. Si tienes dudas sobre qué quiere el usuario → interpreta la intención más útil y ejecútala.
 13. Nunca inventes datos, precios, estadísticas o hechos. Busca si no sabes.
+14. Si el usuario pide ver/leer/explorar código en GitHub → usa github_view. Para MI propio código → github_self con sub="structure" o sub="read".
+15. Si el usuario pide crear archivos, branches, PRs o issues en GitHub → usa github_write, github_pr, github_issues.
+16. Si el usuario pide buscar repos o proyectos en GitHub → usa github_search.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -976,6 +985,22 @@ class AriaMind:
                 from apps.core.tools.deep_think import get_deep_think
                 result = await get_deep_think().think_verified(question, context=context, paths=2)
                 obs = f"[RAZONAMIENTO VERIFICADO — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
+                return obs, {}
+
+            # ── GITHUB ───────────────────────────────────────────────────
+            elif tool in ("github_view", "github_write", "github_pr",
+                          "github_issues", "github_search", "github_self"):
+                from apps.core.tools.github_client import github_dispatch
+                action_map = {
+                    "github_view":   args.get("action", "view"),
+                    "github_write":  "write",
+                    "github_pr":     args.get("action", "create_pr"),
+                    "github_issues": args.get("action", "issues"),
+                    "github_search": "search",
+                    "github_self":   "self",
+                }
+                gh_action = action_map[tool]
+                obs = await github_dispatch(gh_action, args)
                 return obs, {}
 
         except Exception as exc:
