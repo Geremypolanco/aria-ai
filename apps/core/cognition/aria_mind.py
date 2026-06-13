@@ -95,6 +95,11 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - create_social_content → genera contenido optimizado para redes sociales. Args: {{"topic": "...", "platforms": ["instagram","linkedin","twitter","tiktok","facebook","youtube"], "tone": "professional|casual|viral"}}
 - build_software  → genera un proyecto de software completo (ZIP con múltiples archivos). Args: {{"name": "...", "description": "...", "stack": "fastapi|react|flask|nextjs|cli|discord_bot", "requirements": "..."}}
 - build_game      → genera un videojuego completo con assets y lógica. Args: {{"name": "...", "genre": "platformer|puzzle|rpg|shooter|arcade", "description": "...", "engine": "pygame|phaser|godot"}}
+- publish_article → publica artículo en Medium, Dev.to o Hashnode. Args: {{"title": "...", "content": "...", "tags": ["..."], "platforms": ["devto","medium","hashnode"]}}
+- send_email      → envía email o newsletter. Args: {{"subject": "...", "body": "...", "to": "email@..."}}
+- describe_image  → describe el contenido de una imagen por URL. Args: {{"url": "https://..."}}
+- execute_code    → ejecuta código Python o JS en sandbox seguro y devuelve el output real. Args: {{"code": "...", "language": "python|javascript"}}
+- run_business_agent → activa un agente especializado de negocio. Args: {{"agent": "ceo|marketing|sales|developer|research|content|finance", "mission": "...", "context": {{}}}}
 - web_search      → busca en internet en tiempo real. Usa queries específicas y descriptivas. Args: {{"query": "..."}}
 - deep_search     → búsqueda profunda: busca Y lee el contenido de las páginas top. Ideal para investigación. Args: {{"query": "...", "num_pages": 3}}
 - fetch_url       → lee el contenido completo de una URL específica. Args: {{"url": "https://..."}}
@@ -557,9 +562,87 @@ class AriaMind:
                     return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
                 return r.get("error", "Game build failed"), {}
 
+            # ── PUBLICAR ARTÍCULO ─────────────────────────────────────────
+            elif tool == "publish_article":
+                title   = args.get("title", "")
+                content = args.get("content", "")
+                tags    = args.get("tags", [])
+                platforms = args.get("platforms", ["devto"])
+                from apps.core.tools.publishing_tools import PublishingTools
+                pt = PublishingTools()
+                results = {}
+                for plat in platforms:
+                    if plat == "devto":
+                        results["devto"] = await pt.publish_to_devto(title, content, tags)
+                    elif plat == "medium":
+                        results["medium"] = await pt.publish_to_medium(title, content, tags)
+                    elif plat == "hashnode":
+                        results["hashnode"] = await pt.publish_to_hashnode(title, content, tags)
+                published = [p for p, r in results.items() if r.get("success")]
+                if published:
+                    return f"Artículo publicado en: {', '.join(published)}", {}
+                errors = "; ".join(f"{p}: {r.get('error','?')}" for p, r in results.items())
+                return f"No se pudo publicar: {errors}", {}
+
+            # ── ENVIAR EMAIL / NEWSLETTER ─────────────────────────────────
+            elif tool == "send_email":
+                subject = args.get("subject", "")
+                body    = args.get("body", "")
+                to      = args.get("to", "")
+                from apps.core.tools.publishing_tools import PublishingTools
+                r = await PublishingTools().send_newsletter(subject, body, to_override=to)
+                if r.get("success"):
+                    return f"Email enviado vía {r.get('provider', 'email')}", {}
+                return r.get("error", "Email no disponible"), {}
+
+            # ── DESCRIBIR IMAGEN ──────────────────────────────────────────
+            elif tool == "describe_image":
+                url   = args.get("url", "")
+                if not url:
+                    return "Necesito una URL de imagen.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().describe_image(image_url=url)
+                if r.get("success"):
+                    return f"Descripción: {r.get('description', '')}", {}
+                return r.get("error", "No se pudo describir la imagen"), {}
+
+            # ── EJECUTAR CÓDIGO (SANDBOX) ─────────────────────────────────
+            elif tool == "execute_code":
+                code     = args.get("code", "")
+                language = args.get("language", "python")
+                from apps.core.tools.code_runner import CodeRunner
+                r = await CodeRunner().run(code=code, language=language)
+                output = r.get("stdout", "") or r.get("stderr", "") or "(sin salida)"
+                status = "OK" if r.get("success") else "ERROR"
+                return f"[{language} {status}]\n{output[:2000]}", {}
+
+            # ── AGENTE DE NEGOCIO ─────────────────────────────────────────
+            elif tool == "run_business_agent":
+                agent_name = args.get("agent", "ceo")
+                mission    = args.get("mission", "")
+                context    = args.get("context", {})
+                from apps.core.agents.business_hub import BusinessHub
+                r = await BusinessHub().dispatch(agent_name, mission, context)
+                summary = r.get("summary", r.get("result", str(r))[:400])
+                return f"[{agent_name.upper()}] {summary}", {}
+
             # ── GESTIÓN DE METAS ──────────────────────────────────────────
             elif tool in ("add_goal", "update_goal"):
-                return f"Meta actualizada", {}  # manejado en handle()
+                # Delegate to the goal_action system properly
+                action = "add" if tool == "add_goal" else "update"
+                goal_action_dict: dict = {"action": action}
+                if action == "add":
+                    goal_action_dict["text"] = args.get("text", "")
+                    goal_action_dict["priority"] = args.get("priority", 5)
+                else:
+                    goal_action_dict["index"] = args.get("index", 0)
+                    if "progress" in args:
+                        goal_action_dict["progress"] = args["progress"]
+                    if "status" in args:
+                        goal_action_dict["status"] = args["status"]
+                goals_list = await self._load_goals()
+                await self._apply_goal_action(goal_action_dict, goals_list)
+                return f"Meta {'añadida' if action == 'add' else 'actualizada'} correctamente", {}
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
