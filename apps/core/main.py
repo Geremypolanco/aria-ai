@@ -6,10 +6,10 @@ Cambios vs v1:
   - AriaMind arranca en lifespan
   - Scheduler NO spamea Telegram — solo logs
   - Startup message mínimo: ARIA ya está activa, sin detalles técnicos
+  - v2.1: OpenTelemetry tracing + structured logging + Sentry + /metrics endpoint
 """
 from __future__ import annotations
 
-import logging
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -22,19 +22,25 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from apps.core.config_pkg import settings
+
+# ── Observability bootstrap (FIRST — before any other imports) ────────────
+from apps.core.observability.logging import configure_logging, get_logger
+from apps.core.observability.tracing import setup_tracing
+from apps.core.observability.sentry import setup_sentry
+from apps.core.observability.metrics import get_metrics
+
+configure_logging(level="INFO")
+setup_tracing(service_name="aria-ai", service_version="2.0.0")
+setup_sentry()
+
+logger = get_logger("aria.core")
+
 from apps.core.memory.redis_client import get_cache
 from apps.core.memory.supabase_client import get_db
 from apps.core.tools.ai_client import AIModel, get_ai_client
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
-logger = logging.getLogger("aria.core")
 
 TELEGRAM_API = "https://api.telegram.org/bot"
 scheduler    = AsyncIOScheduler(timezone="UTC")
@@ -185,6 +191,10 @@ async def heartbeat_job() -> None:
 
 app = FastAPI(title="Aria AI", version="2.0.0", lifespan=lifespan)
 
+# Observability middleware — must be added BEFORE CORS so request IDs propagate
+from apps.core.observability.middleware import AriaObservabilityMiddleware
+app.add_middleware(AriaObservabilityMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -216,6 +226,18 @@ async def telegram_webhook(request: Request):
 @app.get("/health")
 async def health():
     return {"status": "ok", "ts": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def metrics():
+    """Prometheus-compatible metrics endpoint. Scrape with Grafana or any Prom-compatible tool."""
+    return get_metrics().to_prometheus()
+
+
+@app.get("/api/v1/metrics")
+async def api_metrics():
+    """Structured metrics as JSON for dashboard consumption."""
+    return get_metrics().to_dict()
 
 
 @app.get("/status")

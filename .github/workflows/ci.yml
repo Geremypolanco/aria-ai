@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/*", "feature/*", "fix/*"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ── Job 1: Static analysis ─────────────────────────────────────────────
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install lint tools
+        run: pip install ruff==0.6.9 black==24.8.0
+
+      - name: Run Ruff (linter + import sorter)
+        run: ruff check apps/ --output-format=github
+
+      - name: Run Black (formatter check)
+        run: black --check apps/ --line-length=100
+
+  # ── Job 2: Type checking ───────────────────────────────────────────────
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install deps + mypy
+        run: |
+          pip install mypy==1.11.2 types-requests pydantic==2.8.2 pydantic-settings==2.4.0
+          pip install fastapi==0.115.0 starlette
+
+      - name: Run mypy (core modules)
+        run: |
+          mypy apps/core/config.py \
+               apps/core/observability/ \
+               apps/core/cognition/planner.py \
+               apps/core/cognition/reasoning_engine.py \
+               --ignore-missing-imports \
+               --no-strict-optional \
+               --python-version 3.12
+        continue-on-error: true  # Warn but don't block — existing code has type debt
+
+  # ── Job 3: Tests ───────────────────────────────────────────────────────
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+
+    env:
+      # Minimal secrets for test isolation — real services are mocked
+      ENVIRONMENT: test
+      HF_TOKEN: ""
+      GROQ_API_KEY: ""
+      OPENAI_API_KEY: ""
+      SUPABASE_URL: ""
+      SUPABASE_KEY: ""
+      UPSTASH_REDIS_REST_URL: ""
+      UPSTASH_REDIS_REST_TOKEN: ""
+      TELEGRAM_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install pytest==8.3.3 pytest-asyncio==0.24.0 pytest-cov==5.0.0 \
+                      httpx==0.27.2 pytest-mock==3.14.0
+          pip install -r apps/core/requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ \
+            -v \
+            --tb=short \
+            --cov=apps/core \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=20 \
+            -p no:warnings \
+            --timeout=30
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: coverage.xml
+          fail_ci_if_error: false
+
+  # ── Job 4: Python syntax check (fast gate) ────────────────────────────
+  syntax:
+    name: Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Compile all Python files
+        run: |
+          find apps/core -name "*.py" -not -path "*/__pycache__/*" | while read f; do
+            python3 -m py_compile "$f" || { echo "SYNTAX ERROR: $f"; exit 1; }
+          done
+          echo "All Python files compiled successfully"
+
+  # ── Job 5: Security audit ─────────────────────────────────────────────
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install bandit + pip-audit
+        run: pip install bandit==1.7.10 pip-audit==2.7.3
+
+      - name: Bandit security lint
+        run: |
+          bandit -r apps/core/ \
+            -x apps/core/__pycache__ \
+            -ll \
+            -f txt \
+            --skip B101,B601,B603,B104
+        continue-on-error: true  # Advisory, not blocking
+
+      - name: Dependency vulnerability audit
+        run: pip-audit -r apps/core/requirements.txt --ignore-vuln GHSA-jfh8-c2jp-5 || true
+        continue-on-error: true
