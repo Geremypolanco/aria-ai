@@ -649,17 +649,32 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
                   x-text="cmd"></button>
         </template>
       </div>
+      <!-- Attachment preview -->
+      <div x-show="attachedImage" class="mb-2 flex items-center gap-2 rounded-xl px-3 py-2" style="background:var(--elevated);border:1px solid var(--borderl)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <span class="text-xs flex-1" style="color:var(--text2)" x-text="attachedImageName"></span>
+        <button @click="attachedImage='';attachedImageName=''" style="color:var(--text3);font-size:16px;background:none;border:none;cursor:pointer">✕</button>
+      </div>
       <div class="flex gap-3 items-end">
+        <!-- Hidden file input -->
+        <input type="file" id="img-upload" accept="image/*" class="hidden"
+               @change="handleImageUpload($event)">
+        <!-- Attach button -->
+        <button @click="document.getElementById('img-upload').click()"
+                class="btn btn-ghost btn-icon flex-shrink-0" title="Adjuntar imagen"
+                style="padding:9px;height:42px;width:42px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 0 1 5.66 5.65l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
         <div class="flex-1 relative">
           <textarea x-model="chatInput"
                     @keydown.enter.prevent="if(!$event.shiftKey) sendMessage()"
                     placeholder="Escribe un mensaje… (Enter = enviar · Shift+Enter = nueva línea)"
                     rows="2"
                     class="input w-full scrollable"
-                    style="padding-right:48px;line-height:1.5"
+                    style="line-height:1.5"
                     :disabled="thinking"></textarea>
         </div>
-        <button @click="sendMessage()" :disabled="thinking||!chatInput.trim()"
+        <button @click="sendMessage()" :disabled="thinking||(!chatInput.trim()&&!attachedImage)"
                 class="btn btn-primary flex-shrink-0" style="padding:11px 20px">
           <svg x-show="!thinking" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           <svg x-show="thinking" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>
@@ -1162,6 +1177,8 @@ function ariaApp() {
     messages: [],
     chatInput: '',
     thinking: false,
+    attachedImage: '',       // base64 data URL
+    attachedImageName: '',
 
     // Quick chat (overview)
     quickMessages: [],
@@ -1427,13 +1444,51 @@ function ariaApp() {
     },
 
     // ── CHAT ─────────────────────────────────────────────
+    handleImageUpload(evt) {
+      const file = evt.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.attachedImage = e.target.result;   // data:image/...;base64,...
+        this.attachedImageName = file.name;
+      };
+      reader.readAsDataURL(file);
+      evt.target.value = '';  // reset so same file can be re-selected
+    },
+
     async sendMessage() {
       const text = this.chatInput.trim();
-      if (!text || this.thinking) return;
-      this.messages.push({ role:'user', text });
+      const img  = this.attachedImage;
+      if ((!text && !img) || this.thinking) return;
+
+      // Build user display message
+      const userText = text || `[imagen: ${this.attachedImageName}]`;
+      this.messages.push({ role:'user', text: userText });
       this.chatInput = '';
-      this.thinking  = true;
+      this.attachedImage = '';
+      this.attachedImageName = '';
+      this.thinking = true;
       this.$nextTick(() => this.scrollChat());
+
+      // If image attached, send via REST (WS can't easily handle base64 blobs)
+      if (img) {
+        try {
+          const b64 = img.split(',')[1] || img;
+          const msgText = text || 'Analiza esta imagen y descríbela en detalle.';
+          const r = await fetch('/api/v1/chat', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ message: msgText, session_id: this.sessionId, image_base64: b64 })
+          });
+          const d = await r.json();
+          this.thinking = false;
+          this.messages.push({ role:'aria', text: d.reply||d.error||'Sin respuesta', streaming:false });
+        } catch(e) {
+          this.thinking = false;
+          this.messages.push({ role:'aria', text:'Error al analizar la imagen.', streaming:false });
+        }
+        this.$nextTick(() => this.scrollChat());
+        return;
+      }
 
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type:'chat', message:text, session_id: this.sessionId, stream: true }));
@@ -1445,10 +1500,10 @@ function ariaApp() {
           });
           const d = await r.json();
           this.thinking = false;
-          this.messages.push({ role:'aria', text: d.reply||d.error||'Sin respuesta' });
+          this.messages.push({ role:'aria', text: d.reply||d.error||'Sin respuesta', streaming:false });
         } catch(e) {
           this.thinking = false;
-          this.messages.push({ role:'aria', text:'Error de conexión.' });
+          this.messages.push({ role:'aria', text:'Error de conexión.', streaming:false });
         }
         this.$nextTick(() => this.scrollChat());
       }
