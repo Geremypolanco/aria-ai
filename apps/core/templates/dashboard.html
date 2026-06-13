@@ -578,11 +578,26 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
           · sesión <span x-text="sessionId.substring(0,8)" class="font-mono"></span>
         </p>
       </div>
-      <button @click="clearChat()" class="btn btn-ghost btn-sm">Limpiar</button>
+      <div class="flex gap-2">
+        <button @click="exportChat()" x-show="messages.length>0"
+                class="btn btn-ghost btn-sm" title="Exportar conversación">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Exportar
+        </button>
+        <button @click="clearChat()" class="btn btn-ghost btn-sm">Limpiar</button>
+      </div>
+    </div>
+
+    <!-- Drag-over overlay -->
+    <div id="drag-overlay" class="hidden" style="position:absolute;inset:0;z-index:20;background:rgba(124,58,237,.12);border:2px dashed #7c3aed;border-radius:12px;display:flex;align-items:center;justify-content:center;pointer-events:none">
+      <p class="text-sm font-medium" style="color:#a78bfa">Suelta la imagen para analizarla</p>
     </div>
 
     <!-- Messages -->
-    <div class="flex-1 scrollable px-4 py-4 space-y-5" id="chat-messages" style="overflow-y:auto">
+    <div class="flex-1 scrollable px-4 py-4 space-y-5 relative" id="chat-messages" style="overflow-y:auto"
+         @dragover.prevent="document.getElementById('drag-overlay').style.display='flex'"
+         @dragleave="document.getElementById('drag-overlay').style.display='none'"
+         @drop.prevent="handleDrop($event); document.getElementById('drag-overlay').style.display='none'">
       <!-- Welcome screen -->
       <div x-show="messages.length===0" class="flex flex-col items-center justify-center min-h-full text-center py-10">
         <div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-5" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.25)">
@@ -1591,6 +1606,29 @@ function ariaApp() {
     },
 
     clearChat() { this.messages = [] },
+
+    exportChat() {
+      const lines = this.messages.map(m =>
+        `[${m.role === 'user' ? 'Tú' : 'ARIA'}]\n${m.text}\n`
+      ).join('\n---\n\n');
+      const blob = new Blob([lines], { type:'text/plain;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = `aria-chat-${Date.now()}.txt`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    },
+
+    handleDrop(evt) {
+      const file = evt.dataTransfer.files?.[0];
+      if (!file || !file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.attachedImage = e.target.result;
+        this.attachedImageName = file.name;
+      };
+      reader.readAsDataURL(file);
+    },
 
     async copyMsg(text, evt) {
       try {
