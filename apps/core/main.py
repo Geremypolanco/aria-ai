@@ -21,6 +21,7 @@ import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from apps.core.config_pkg import settings
@@ -168,6 +169,22 @@ async def heartbeat_job() -> None:
 
 app = FastAPI(title="Aria AI", version="2.0.0", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount API v1 routes
+try:
+    from apps.core.routes.api import router as api_router
+    app.include_router(api_router)
+    logger.info("API v1 montada en /api/v1")
+except Exception as _e:
+    logger.error("Error montando API v1: %s", _e)
+
 
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
@@ -199,9 +216,25 @@ async def status():
     })
 
 
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard():
+    """ARIA AI Control Center — Professional web interface."""
+    import os
+    template_path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return "<h1>Dashboard</h1><p>Template not found. Check apps/core/templates/dashboard.html</p>"
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return "<h1>ARIA AI</h1><p>Sistema operativo cognitivo activo.</p>"
+    """Redirects to the dashboard."""
+    return """<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/dashboard">
+    <title>ARIA AI</title></head><body>
+    <p>Redirigiendo al <a href="/dashboard">Dashboard de ARIA</a>...</p>
+    </body></html>"""
 
 
 if __name__ == "__main__":

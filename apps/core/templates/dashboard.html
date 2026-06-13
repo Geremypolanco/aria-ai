@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARIA AI — Control Center</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  [x-cloak] { display: none !important; }
+  body { background-color: #080a0f; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #0f1117; }
+  ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 2px; }
+  .gradient-text { background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .card { background: #0f1117; border: 1px solid #1e2536; border-radius: 12px; }
+  .nav-item { border-radius: 8px; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px; transition: all 0.15s; }
+  .nav-item:hover { background: #1a1f2e; }
+  .nav-item.active { background: #1e1b4b; color: #a78bfa; }
+  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .metric-card { background: linear-gradient(135deg, #0f1117 0%, #131825 100%); border: 1px solid #1e2536; border-radius: 12px; padding: 20px; }
+  .msg-user { background: #312e81; border-radius: 18px 18px 4px 18px; max-width: 75%; }
+  .msg-aria { background: #131825; border: 1px solid #1e2536; border-radius: 18px 18px 18px 4px; max-width: 80%; }
+  .badge { padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: #064e3b; color: #34d399; }
+  .badge-red { background: #450a0a; color: #f87171; }
+  .badge-yellow { background: #451a03; color: #fbbf24; }
+  .badge-purple { background: #2e1065; color: #c084fc; }
+  .badge-blue { background: #0c1a6b; color: #60a5fa; }
+  .typing-dot { width: 6px; height: 6px; border-radius: 50%; background: #a78bfa; animation: typing 1.4s infinite; }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-6px); opacity: 1; } }
+  .agent-card { background: #0f1117; border: 1px solid #1e2536; border-radius: 10px; padding: 16px; transition: border-color 0.15s; }
+  .agent-card:hover { border-color: #4c1d95; }
+  pre { white-space: pre-wrap; word-break: break-word; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; }
+  .scrollable { overflow-y: auto; }
+</style>
+</head>
+<body class="text-slate-200 font-sans antialiased" x-data="ariaApp()" x-init="init()" x-cloak>
+
+<!-- TOP HEADER -->
+<header class="fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-6" style="background:#080a0f;border-bottom:1px solid #1e2536">
+  <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="13" stroke="#7c3aed" stroke-width="1.5"/>
+        <path d="M8 20L14 8L20 20" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M10 16H18" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span class="font-bold text-lg tracking-tight gradient-text">ARIA</span>
+      <span class="text-slate-500 text-sm font-normal">AI Control Center</span>
+    </div>
+  </div>
+  <div class="flex items-center gap-4">
+    <div class="flex items-center gap-2 text-sm">
+      <div class="pulse-dot" :class="connected ? 'bg-emerald-500' : 'bg-red-500'"></div>
+      <span class="text-slate-400" x-text="connected ? 'Conectado' : 'Desconectado'"></span>
+    </div>
+    <div class="text-slate-500 text-sm font-mono" x-text="currentTime"></div>
+    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style="background:#1e1b4b;color:#a78bfa">G</div>
+  </div>
+</header>
+
+<!-- LAYOUT -->
+<div class="flex pt-14 h-screen">
+
+  <!-- SIDEBAR -->
+  <aside class="fixed top-14 left-0 bottom-0 w-56 p-3 scrollable" style="background:#080a0f;border-right:1px solid #1e2536">
+    <div class="space-y-1">
+      <template x-for="item in navItems" :key="item.id">
+        <div class="nav-item" :class="activeSection === item.id ? 'active' : 'text-slate-400'"
+             @click="activeSection = item.id">
+          <span x-html="item.icon"></span>
+          <span x-text="item.label"></span>
+          <span x-show="item.badge" class="ml-auto badge badge-purple text-xs" x-text="item.badge" style="display:none"></span>
+        </div>
+      </template>
+    </div>
+
+    <!-- System Status Mini -->
+    <div class="mt-6 p-3 rounded-lg" style="background:#0f1117;border:1px solid #1e2536">
+      <div class="text-xs text-slate-500 mb-2 uppercase tracking-wider">Sistema</div>
+      <template x-for="(val, key) in skills" :key="key">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-slate-400 capitalize" x-text="key.replace('_',' ')"></span>
+          <div class="flex items-center gap-1">
+            <div class="w-16 h-1 rounded-full" style="background:#1e2536">
+              <div class="h-1 rounded-full" :style="`width:${val}%;background:${val>=70?'#10b981':val>=40?'#f59e0b':'#ef4444'}`"></div>
+            </div>
+            <span class="text-xs font-mono" :class="val>=70?'text-emerald-400':val>=40?'text-amber-400':'text-red-400'" x-text="val.toFixed(0)"></span>
+          </div>
+        </div>
+      </template>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="ml-56 flex-1 overflow-y-auto p-6">
+
+    <!-- ═══════════════ OVERVIEW ═══════════════ -->
+    <section x-show="activeSection === 'overview'">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold">Visión General</h1>
+        <p class="text-slate-500 text-sm mt-1">Estado en tiempo real del sistema ARIA</p>
+      </div>
+
+      <!-- Metric Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="metric-card">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-slate-400 text-sm">Agentes</span>
+            <span style="color:#a78bfa">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            </span>
+          </div>
+          <div class="text-3xl font-bold" x-text="metrics.agents || '—'"></div>
+          <div class="text-xs text-slate-500 mt-1">Disponibles</div>
+        </div>
+        <div class="metric-card">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-slate-400 text-sm">Metas</span>
+            <span style="color:#34d399">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/></svg>
+            </span>
+          </div>
+          <div class="text-3xl font-bold" x-text="metrics.goals || '—'"></div>
+          <div class="text-xs text-slate-500 mt-1">Activas</div>
+        </div>
+        <div class="metric-card">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-slate-400 text-sm">Pipelines</span>
+            <span style="color:#60a5fa">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
+            </span>
+          </div>
+          <div class="text-3xl font-bold" x-text="metrics.runs || '0'"></div>
+          <div class="text-xs text-slate-500 mt-1">Ejecutados</div>
+        </div>
+        <div class="metric-card">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-slate-400 text-sm">Salud</span>
+            <span style="color:#f59e0b">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </span>
+          </div>
+          <div class="text-3xl font-bold" x-text="metrics.health ? metrics.health.toFixed(0)+'%' : '—'"></div>
+          <div class="text-xs text-slate-500 mt-1">Score global</div>
+        </div>
+      </div>
+
+      <!-- Two column layout -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- Activity Feed -->
+        <div class="card p-4 lg:col-span-2">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-sm">Actividad Reciente</h3>
+            <button @click="loadActivity()" class="text-xs text-slate-500 hover:text-slate-300">↻ Actualizar</button>
+          </div>
+          <div class="space-y-2 scrollable" style="max-height:320px">
+            <template x-for="(entry, i) in activity.slice(0,20)" :key="i">
+              <div class="flex gap-3 py-2" style="border-bottom:1px solid #1e2536">
+                <div class="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0"
+                     :class="entry.level==='ERROR'?'bg-red-500':entry.level==='WARNING'?'bg-amber-500':'bg-emerald-500'"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-xs text-slate-300 truncate" x-text="entry.message"></div>
+                  <div class="text-xs text-slate-600 mt-0.5" x-text="entry.ts?.substring(11,19)"></div>
+                </div>
+              </div>
+            </template>
+            <div x-show="activity.length === 0" class="text-center text-slate-600 py-8 text-sm">
+              Sin actividad aún — inicia un pipeline o envía un mensaje
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Chat -->
+        <div class="card p-4 flex flex-col" style="height:400px">
+          <h3 class="font-semibold text-sm mb-3">Chat Rápido</h3>
+          <div class="flex-1 scrollable space-y-2 mb-3" id="quick-chat-messages">
+            <template x-for="(m, i) in quickMessages" :key="i">
+              <div class="flex" :class="m.role==='user' ? 'justify-end' : 'justify-start'">
+                <div class="px-3 py-2 text-sm" :class="m.role==='user' ? 'msg-user' : 'msg-aria'" x-text="m.text"></div>
+              </div>
+            </template>
+            <div x-show="quickThinking" class="flex gap-1 p-2">
+              <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <input x-model="quickInput"
+                   @keydown.enter="sendQuick()"
+                   placeholder="Pregunta algo..."
+                   class="flex-1 bg-transparent text-sm px-3 py-2 rounded-lg outline-none"
+                   style="background:#131825;border:1px solid #1e2536;color:#e2e8f0"
+                   :disabled="quickThinking">
+            <button @click="sendQuick()"
+                    :disabled="quickThinking || !quickInput.trim()"
+                    class="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40"
+                    style="background:#4c1d95;color:#c4b5fd">
+              →
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ CHAT ═══════════════ -->
+    <section x-show="activeSection === 'chat'" class="flex flex-col h-full" style="height:calc(100vh - 110px)">
+      <div class="mb-4 flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold">Chat con ARIA</h1>
+          <p class="text-slate-500 text-sm mt-0.5">Sesión activa · WebSocket <span x-text="connected ? '🟢 conectado' : '🔴 desconectado'"></span></p>
+        </div>
+        <button @click="clearChat()" class="text-xs text-slate-500 hover:text-red-400 px-3 py-1.5 rounded-lg" style="border:1px solid #1e2536">
+          Limpiar
+        </button>
+      </div>
+
+      <div class="card flex-1 flex flex-col overflow-hidden">
+        <!-- Messages -->
+        <div class="flex-1 scrollable p-4 space-y-4" id="chat-messages" style="overflow-y:auto">
+          <!-- Welcome -->
+          <div x-show="messages.length === 0" class="flex flex-col items-center justify-center h-full text-center">
+            <div class="w-16 h-16 rounded-full flex items-center justify-center mb-4" style="background:#1e1b4b">
+              <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
+                <circle cx="14" cy="14" r="13" stroke="#7c3aed" stroke-width="1.5"/>
+                <path d="M8 20L14 8L20 20" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M10 16H18" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <p class="text-slate-300 font-medium">Hola, soy ARIA</p>
+            <p class="text-slate-500 text-sm mt-1">Tu IA autónoma de negocio. Pregúntame cualquier cosa.</p>
+            <div class="flex flex-wrap gap-2 mt-4 justify-center">
+              <template x-for="hint in chatHints" :key="hint">
+                <button @click="chatInput = hint; sendMessage()"
+                        class="px-3 py-1.5 rounded-full text-xs hover:border-violet-500 transition-colors"
+                        style="background:#131825;border:1px solid #1e2536;color:#94a3b8"
+                        x-text="hint"></button>
+              </template>
+            </div>
+          </div>
+
+          <template x-for="(m, i) in messages" :key="i">
+            <div class="flex" :class="m.role === 'user' ? 'justify-end' : 'justify-start gap-3'">
+              <!-- ARIA avatar -->
+              <div x-show="m.role === 'aria'" class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold mt-1" style="background:#1e1b4b;color:#a78bfa">A</div>
+              <div class="px-4 py-3 text-sm leading-relaxed" style="white-space:pre-wrap"
+                   :class="m.role === 'user' ? 'msg-user' : 'msg-aria'"
+                   x-text="m.text"></div>
+            </div>
+          </template>
+
+          <!-- Typing indicator -->
+          <div x-show="thinking" class="flex gap-3">
+            <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center" style="background:#1e1b4b;color:#a78bfa;font-size:11px;font-weight:700">A</div>
+            <div class="px-4 py-3 flex gap-1 items-center msg-aria">
+              <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Input -->
+        <div class="p-4" style="border-top:1px solid #1e2536">
+          <div class="flex gap-3 items-end">
+            <textarea x-model="chatInput"
+                      @keydown.enter.prevent="if(!$event.shiftKey) sendMessage()"
+                      placeholder="Escribe un mensaje… (Enter para enviar, Shift+Enter para nueva línea)"
+                      rows="2"
+                      class="flex-1 resize-none text-sm px-4 py-3 rounded-xl outline-none scrollable"
+                      style="background:#131825;border:1px solid #1e2536;color:#e2e8f0;font-family:inherit"
+                      :disabled="thinking"></textarea>
+            <button @click="sendMessage()"
+                    :disabled="thinking || !chatInput.trim()"
+                    class="px-4 py-3 rounded-xl font-medium text-sm disabled:opacity-40 flex-shrink-0"
+                    style="background:#4c1d95;color:#c4b5fd">
+              Enviar
+            </button>
+          </div>
+          <div class="flex gap-2 mt-2 flex-wrap">
+            <template x-for="cmd in quickCommands" :key="cmd">
+              <button @click="chatInput = cmd"
+                      class="text-xs px-2 py-1 rounded-md transition-colors"
+                      style="background:#131825;border:1px solid #1e2536;color:#64748b"
+                      x-text="cmd"></button>
+            </template>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ AGENTS ═══════════════ -->
+    <section x-show="activeSection === 'agents'">
+      <div class="mb-6 flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold">Agentes</h1>
+          <p class="text-slate-500 text-sm mt-1">Especialistas autónomos de ARIA</p>
+        </div>
+        <button @click="loadAgents()" class="text-xs px-3 py-2 rounded-lg text-slate-400 hover:text-slate-200" style="border:1px solid #1e2536">↻ Actualizar</button>
+      </div>
+
+      <!-- Mission modal -->
+      <div x-show="missionModal.open" class="fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,0.8)" @click.self="missionModal.open=false">
+        <div class="card p-6 w-full max-w-md">
+          <h3 class="font-semibold mb-1" x-text="`Activar: ${missionModal.agent}`"></h3>
+          <p class="text-slate-500 text-sm mb-4">Describe la misión para este agente</p>
+          <textarea x-model="missionModal.mission" rows="3" placeholder="Ej: Crear una campaña de marketing para lanzar un producto de IA..."
+                    class="w-full resize-none text-sm px-3 py-2 rounded-lg outline-none mb-4"
+                    style="background:#131825;border:1px solid #1e2536;color:#e2e8f0"></textarea>
+          <div class="flex gap-3">
+            <button @click="runMission()" :disabled="!missionModal.mission.trim()" class="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style="background:#4c1d95;color:#c4b5fd">
+              🚀 Ejecutar con Pipeline
+            </button>
+            <button @click="missionModal.open=false" class="px-4 py-2 rounded-lg text-sm text-slate-400" style="border:1px solid #1e2536">
+              Cancelar
+            </button>
+          </div>
+          <div x-show="missionModal.result" class="mt-3 p-3 rounded-lg text-sm" style="background:#131825;border:1px solid #1e2536">
+            <pre x-text="missionModal.result" class="text-slate-300 text-xs"></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <template x-for="agent in agents" :key="agent.name">
+          <div class="agent-card">
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <div class="w-9 h-9 rounded-lg flex items-center justify-center text-sm" style="background:#1e1b4b;color:#a78bfa" x-text="agent.name.charAt(0).toUpperCase()"></div>
+                <div>
+                  <div class="font-semibold text-sm capitalize" x-text="agent.name"></div>
+                  <span class="badge" :class="agent.type==='business'?'badge-purple':'badge-blue'" x-text="agent.type"></span>
+                </div>
+              </div>
+              <div class="w-2 h-2 rounded-full mt-1" :class="agent.available ? 'bg-emerald-500' : 'bg-slate-600'"></div>
+            </div>
+            <p class="text-slate-400 text-xs leading-relaxed mb-4" x-text="agent.description || 'Agente especializado de ARIA'"></p>
+            <button @click="openMission(agent.name)" class="w-full py-1.5 rounded-lg text-xs font-medium" style="background:#1a1f2e;color:#a78bfa;border:1px solid #2e1065">
+              Activar misión →
+            </button>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- ═══════════════ GOALS ═══════════════ -->
+    <section x-show="activeSection === 'goals'">
+      <div class="mb-6 flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold">Metas Activas</h1>
+          <p class="text-slate-500 text-sm mt-1">Objetivos persistentes de ARIA</p>
+        </div>
+        <button @click="loadGoals()" class="text-xs px-3 py-2 rounded-lg text-slate-400 hover:text-slate-200" style="border:1px solid #1e2536">↻ Actualizar</button>
+      </div>
+
+      <div x-show="goals.length === 0" class="card p-12 text-center">
+        <div class="text-4xl mb-3">🎯</div>
+        <p class="text-slate-400 text-sm">ARIA no tiene metas activas aún.</p>
+        <p class="text-slate-600 text-xs mt-1">Usa `/add_goal` en el chat para definir objetivos.</p>
+      </div>
+
+      <div class="space-y-3">
+        <template x-for="(goal, i) in goals" :key="i">
+          <div class="card p-4 flex items-start gap-4">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                 style="background:#1e1b4b;color:#a78bfa" x-text="i+1"></div>
+            <div class="flex-1">
+              <div class="font-medium text-sm" x-text="goal.text || goal.goal || JSON.stringify(goal)"></div>
+              <div class="flex gap-2 mt-2">
+                <span class="badge" :class="goal.status==='active'||!goal.status?'badge-green':goal.status==='completed'?'badge-blue':'badge-yellow'"
+                      x-text="goal.status || 'active'"></span>
+                <span x-show="goal.priority" class="badge badge-purple" x-text="`P${goal.priority}`"></span>
+              </div>
+              <div x-show="goal.progress" class="text-xs text-slate-500 mt-1" x-text="goal.progress"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- ═══════════════ ACTIVITY ═══════════════ -->
+    <section x-show="activeSection === 'activity'">
+      <div class="mb-6 flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold">Log de Actividad</h1>
+          <p class="text-slate-500 text-sm mt-1">Historial de operaciones del sistema</p>
+        </div>
+        <div class="flex gap-2">
+          <select x-model="activityFilter" class="text-xs px-3 py-2 rounded-lg outline-none" style="background:#0f1117;border:1px solid #1e2536;color:#94a3b8">
+            <option value="">Todo</option>
+            <option value="ERROR">Errores</option>
+            <option value="WARNING">Advertencias</option>
+            <option value="INFO">Info</option>
+          </select>
+          <button @click="loadActivity()" class="text-xs px-3 py-2 rounded-lg text-slate-400" style="border:1px solid #1e2536">↻</button>
+        </div>
+      </div>
+      <div class="card">
+        <template x-for="(entry, i) in filteredActivity" :key="i">
+          <div class="flex gap-3 px-4 py-2.5" style="border-bottom:1px solid #131825">
+            <span class="text-xs font-mono text-slate-600 flex-shrink-0 w-20" x-text="entry.ts?.substring(11,19)"></span>
+            <span class="badge flex-shrink-0 w-16 text-center"
+                  :class="entry.level==='ERROR'?'badge-red':entry.level==='WARNING'?'badge-yellow':'badge-blue'"
+                  x-text="entry.level || 'INFO'"></span>
+            <span class="text-xs text-slate-300" x-text="entry.message"></span>
+          </div>
+        </template>
+        <div x-show="filteredActivity.length === 0" class="p-8 text-center text-slate-600 text-sm">
+          Sin actividad registrada aún
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ PIPELINE ═══════════════ -->
+    <section x-show="activeSection === 'pipeline'">
+      <div class="mb-6 flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold">Execution Pipeline</h1>
+          <p class="text-slate-500 text-sm mt-1">Plan → Audit → Execute → Verify</p>
+        </div>
+        <button @click="loadPipeline()" class="text-xs px-3 py-2 rounded-lg text-slate-400" style="border:1px solid #1e2536">↻ Actualizar</button>
+      </div>
+
+      <!-- Run new pipeline -->
+      <div class="card p-5 mb-4">
+        <h3 class="font-semibold text-sm mb-3">Nueva misión</h3>
+        <div class="flex gap-3">
+          <input x-model="newMission" placeholder="Describe la misión para ARIA..."
+                 @keydown.enter="runPipeline()"
+                 class="flex-1 text-sm px-4 py-2.5 rounded-xl outline-none"
+                 style="background:#131825;border:1px solid #1e2536;color:#e2e8f0">
+          <select x-model="pipelineAgent" class="text-sm px-3 py-2 rounded-xl outline-none" style="background:#131825;border:1px solid #1e2536;color:#e2e8f0">
+            <option value="auto">Auto-routing</option>
+            <option value="ceo">CEO</option>
+            <option value="developer">Developer</option>
+            <option value="marketing">Marketing</option>
+            <option value="sales">Sales</option>
+            <option value="research">Research</option>
+            <option value="content">Content</option>
+            <option value="finance">Finance</option>
+          </select>
+          <button @click="runPipeline()" :disabled="pipelineRunning || !newMission.trim()"
+                  class="px-5 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+                  style="background:#4c1d95;color:#c4b5fd">
+            <span x-show="!pipelineRunning">Ejecutar</span>
+            <span x-show="pipelineRunning">Procesando…</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Pipeline stage visualization -->
+      <div x-show="pipelineRunning" class="card p-5 mb-4">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="pulse-dot"></div>
+          <span class="text-sm font-medium">Pipeline ejecutando...</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <template x-for="(stage, i) in pipelineStages" :key="stage">
+            <div class="flex items-center gap-2">
+              <div class="flex flex-col items-center">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs"
+                     :class="i < currentPipelineStage ? 'bg-emerald-900 text-emerald-400 border border-emerald-700' : i===currentPipelineStage ? 'bg-violet-900 text-violet-400 border border-violet-600' : 'bg-slate-900 text-slate-600 border border-slate-700'"
+                     x-text="i < currentPipelineStage ? '✓' : i+1"></div>
+                <span class="text-xs mt-1 text-slate-500" x-text="stage"></span>
+              </div>
+              <div x-show="i < pipelineStages.length-1" class="w-8 h-px bg-slate-700 mb-4"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Pipeline history -->
+      <div class="card overflow-hidden">
+        <div class="px-4 py-3" style="border-bottom:1px solid #1e2536">
+          <span class="text-sm font-medium">Historial de pipelines</span>
+        </div>
+        <template x-for="(run, i) in pipelineRuns" :key="i">
+          <div class="px-4 py-3 flex items-center gap-4" style="border-bottom:1px solid #131825">
+            <span class="text-lg" x-text="run.stage==='complete'?'✅':run.stage==='failed'?'❌':'🔄'"></span>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm truncate" x-text="run.mission"></div>
+              <div class="flex gap-2 mt-1">
+                <span class="text-xs text-slate-600 font-mono" x-text="run.id?.substring(0,8)"></span>
+                <span class="badge" :class="run.stage==='complete'?'badge-green':run.stage==='failed'?'badge-red':'badge-yellow'" x-text="run.stage"></span>
+                <span x-show="run.agent_name" class="badge badge-purple" x-text="run.agent_name"></span>
+              </div>
+            </div>
+            <div class="text-xs text-slate-600 flex-shrink-0" x-text="run.started_at?.substring(0,16)?.replace('T',' ')"></div>
+          </div>
+        </template>
+        <div x-show="pipelineRuns.length === 0" class="p-8 text-center text-slate-600 text-sm">
+          No hay pipelines ejecutados aún
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ SETTINGS ═══════════════ -->
+    <section x-show="activeSection === 'settings'">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold">Configuración</h1>
+        <p class="text-slate-500 text-sm mt-1">Estado de integraciones y capacidades</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card p-5">
+          <h3 class="font-semibold text-sm mb-4">Integraciones de Pago</h3>
+          <template x-for="item in integrations.payments" :key="item.name">
+            <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #131825">
+              <span class="text-sm" x-text="item.name"></span>
+              <span class="badge" :class="item.configured ? 'badge-green' : 'badge-red'" x-text="item.configured ? '✓ Activo' : '✗ No configurado'"></span>
+            </div>
+          </template>
+        </div>
+        <div class="card p-5">
+          <h3 class="font-semibold text-sm mb-4">IA y Procesamiento</h3>
+          <template x-for="item in integrations.ai" :key="item.name">
+            <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #131825">
+              <span class="text-sm" x-text="item.name"></span>
+              <span class="badge" :class="item.configured ? 'badge-green' : 'badge-red'" x-text="item.configured ? '✓ Activo' : '✗ No configurado'"></span>
+            </div>
+          </template>
+        </div>
+        <div class="card p-5">
+          <h3 class="font-semibold text-sm mb-4">Publicación de Contenido</h3>
+          <template x-for="item in integrations.publishing" :key="item.name">
+            <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #131825">
+              <span class="text-sm" x-text="item.name"></span>
+              <span class="badge" :class="item.configured ? 'badge-green' : 'badge-red'" x-text="item.configured ? '✓ Activo' : '✗ No configurado'"></span>
+            </div>
+          </template>
+        </div>
+        <div class="card p-5">
+          <h3 class="font-semibold text-sm mb-4">Redes Sociales</h3>
+          <template x-for="item in integrations.social" :key="item.name">
+            <div class="flex items-center justify-between py-2" style="border-bottom:1px solid #131825">
+              <span class="text-sm" x-text="item.name"></span>
+              <span class="badge" :class="item.configured ? 'badge-green' : 'badge-red'" x-text="item.configured ? '✓ Activo' : '✗ No configurado'"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div class="card p-5 mt-4">
+        <h3 class="font-semibold text-sm mb-1">API de ARIA</h3>
+        <p class="text-slate-500 text-xs mb-4">Úsala para integrar ARIA con otras herramientas</p>
+        <div class="space-y-2 text-xs font-mono" style="background:#131825;border:1px solid #1e2536;border-radius:8px;padding:12px">
+          <div class="text-emerald-400">POST /api/v1/chat</div>
+          <div class="text-blue-400">GET  /api/v1/status</div>
+          <div class="text-emerald-400">POST /api/v1/run</div>
+          <div class="text-blue-400">GET  /api/v1/agents</div>
+          <div class="text-blue-400">GET  /api/v1/goals</div>
+          <div class="text-emerald-400">WS   /api/v1/ws</div>
+        </div>
+        <p class="text-slate-600 text-xs mt-3">Header requerido: <code class="text-slate-400">X-ARIA-Key: tu-api-key</code></p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+function ariaApp() {
+  return {
+    activeSection: 'overview',
+    connected: false,
+    ws: null,
+    currentTime: '',
+    messages: [],
+    chatInput: '',
+    thinking: false,
+    quickMessages: [],
+    quickInput: '',
+    quickThinking: false,
+    agents: [],
+    goals: [],
+    activity: [],
+    activityFilter: '',
+    metrics: { agents: 0, goals: 0, runs: 0, health: 0 },
+    skills: {},
+    pipelineRuns: [],
+    newMission: '',
+    pipelineAgent: 'auto',
+    pipelineRunning: false,
+    currentPipelineStage: 0,
+    pipelineStages: ['Plan', 'Audit', 'Execute', 'Verify'],
+    missionModal: { open: false, agent: '', mission: '', result: '' },
+    chatHints: ['/status', '/plan lanzar un SaaS', '/research tendencias IA 2025', '/code script Python'],
+    quickCommands: ['/run', '/plan', '/audit', '/status', '/goals', '/agents', '/research', '/help'],
+    navItems: [
+      { id: 'overview',  label: 'Visión General', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>' },
+      { id: 'chat',      label: 'Chat', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
+      { id: 'agents',    label: 'Agentes', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>' },
+      { id: 'goals',     label: 'Metas', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/></svg>' },
+      { id: 'activity',  label: 'Actividad', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>' },
+      { id: 'pipeline',  label: 'Pipeline', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>' },
+      { id: 'settings',  label: 'Ajustes', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' },
+    ],
+    integrations: {
+      payments:    [ {name:'Stripe',   configured:false}, {name:'Shopify',  configured:false}, {name:'Gumroad', configured:false}, {name:'PayPal',  configured:false} ],
+      ai:          [ {name:'HuggingFace', configured:false}, {name:'OpenAI',    configured:false}, {name:'Groq',      configured:false}, {name:'Anthropic', configured:false} ],
+      publishing:  [ {name:'Dev.to',   configured:false}, {name:'Medium',   configured:false}, {name:'Hashnode', configured:false}, {name:'Resend',  configured:false} ],
+      social:      [ {name:'Twitter/X',configured:false}, {name:'Instagram',configured:false}, {name:'LinkedIn', configured:false}, {name:'Reddit',  configured:false} ],
+    },
+
+    init() {
+      this.updateClock();
+      setInterval(() => this.updateClock(), 1000);
+      this.connectWS();
+      this.loadData();
+      setInterval(() => this.loadActivity(), 30000);
+    },
+
+    updateClock() {
+      this.currentTime = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    },
+
+    connectWS() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const url   = `${proto}://${location.host}/api/v1/ws`;
+      try {
+        this.ws = new WebSocket(url);
+        this.ws.onopen  = () => { this.connected = true; };
+        this.ws.onclose = () => { this.connected = false; setTimeout(() => this.connectWS(), 5000); };
+        this.ws.onerror = () => { this.connected = false; };
+        this.ws.onmessage = (evt) => {
+          try {
+            const data = JSON.parse(evt.data);
+            if (data.type === 'reply') {
+              this.thinking = false;
+              this.messages.push({ role: 'aria', text: data.text });
+              this.$nextTick(() => this.scrollChat());
+            }
+          } catch(e) {}
+        };
+      } catch(e) { this.connected = false; }
+    },
+
+    async loadData() {
+      await Promise.allSettled([
+        this.loadStatus(),
+        this.loadAgents(),
+        this.loadGoals(),
+        this.loadActivity(),
+        this.loadPipeline(),
+      ]);
+    },
+
+    async loadStatus() {
+      try {
+        const r = await fetch('/api/v1/status');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.skills = d.skills || d.trainer?.skill_scores || {};
+        const vals = Object.values(this.skills);
+        this.metrics.health = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : 0;
+        // Update integration status
+        const integs = d.integrations || {};
+        for (const [key, val] of Object.entries(integs)) {
+          for (const cat of Object.values(this.integrations)) {
+            const item = cat.find(i => i.name.toLowerCase().includes(key.toLowerCase()));
+            if (item) item.configured = !!val;
+          }
+        }
+      } catch(e) {}
+    },
+
+    async loadAgents() {
+      try {
+        const r = await fetch('/api/v1/agents');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.agents = d.agents || d || [];
+        this.metrics.agents = this.agents.length;
+        const nav = this.navItems.find(n => n.id === 'agents');
+        if (nav) nav.badge = this.agents.length;
+      } catch(e) {}
+    },
+
+    async loadGoals() {
+      try {
+        const r = await fetch('/api/v1/goals');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.goals = d.goals || d || [];
+        this.metrics.goals = this.goals.length;
+      } catch(e) {}
+    },
+
+    async loadActivity() {
+      try {
+        const r = await fetch('/api/v1/activity');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.activity = d.activity || d || [];
+      } catch(e) {}
+    },
+
+    async loadPipeline() {
+      try {
+        const r = await fetch('/api/v1/pipeline');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.pipelineRuns = d.runs || d || [];
+        this.metrics.runs = this.pipelineRuns.length;
+      } catch(e) {}
+    },
+
+    get filteredActivity() {
+      if (!this.activityFilter) return this.activity;
+      return this.activity.filter(e => e.level === this.activityFilter);
+    },
+
+    async sendMessage() {
+      const text = this.chatInput.trim();
+      if (!text || this.thinking) return;
+      this.messages.push({ role: 'user', text });
+      this.chatInput = '';
+      this.thinking  = true;
+      this.$nextTick(() => this.scrollChat());
+
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'chat', message: text }));
+      } else {
+        // Fallback to REST
+        try {
+          const r = await fetch('/api/v1/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text })
+          });
+          const d = await r.json();
+          this.thinking = false;
+          this.messages.push({ role: 'aria', text: d.reply || d.error || 'Sin respuesta' });
+        } catch(e) {
+          this.thinking = false;
+          this.messages.push({ role: 'aria', text: 'Error de conexión. Verifica que el servidor está activo.' });
+        }
+        this.$nextTick(() => this.scrollChat());
+      }
+    },
+
+    clearChat() { this.messages = []; },
+
+    scrollChat() {
+      const el = document.getElementById('chat-messages');
+      if (el) el.scrollTop = el.scrollHeight;
+    },
+
+    async sendQuick() {
+      const text = this.quickInput.trim();
+      if (!text || this.quickThinking) return;
+      this.quickMessages.push({ role: 'user', text });
+      this.quickInput   = '';
+      this.quickThinking = true;
+      try {
+        const r = await fetch('/api/v1/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+        });
+        const d = await r.json();
+        this.quickMessages.push({ role: 'aria', text: d.reply || d.error || 'Error' });
+      } catch(e) {
+        this.quickMessages.push({ role: 'aria', text: 'Error de conexión.' });
+      } finally {
+        this.quickThinking = false;
+        this.$nextTick(() => {
+          const el = document.getElementById('quick-chat-messages');
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      }
+    },
+
+    openMission(agentName) {
+      this.missionModal = { open: true, agent: agentName, mission: '', result: '' };
+    },
+
+    async runMission() {
+      const { agent, mission } = this.missionModal;
+      if (!mission.trim()) return;
+      this.missionModal.result = '⏳ Ejecutando pipeline...';
+      try {
+        const r = await fetch('/api/v1/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mission, agent, use_pipeline: true })
+        });
+        const d = await r.json();
+        this.missionModal.result = d.result?.summary || d.result?.report || JSON.stringify(d.result, null, 2)?.substring(0, 500) || 'Completado';
+        await this.loadPipeline();
+      } catch(e) {
+        this.missionModal.result = `Error: ${e.message}`;
+      }
+    },
+
+    async runPipeline() {
+      if (!this.newMission.trim() || this.pipelineRunning) return;
+      this.pipelineRunning    = true;
+      this.currentPipelineStage = 0;
+
+      const stages = [0, 1, 2, 3];
+      const interval = setInterval(() => {
+        if (this.currentPipelineStage < 3) this.currentPipelineStage++;
+      }, 3000);
+
+      try {
+        const r = await fetch('/api/v1/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mission: this.newMission, agent: this.pipelineAgent, use_pipeline: true })
+        });
+        const d = await r.json();
+        clearInterval(interval);
+        this.currentPipelineStage = 4;
+        this.newMission  = '';
+        await this.loadPipeline();
+      } catch(e) {
+        clearInterval(interval);
+      } finally {
+        setTimeout(() => { this.pipelineRunning = false; this.currentPipelineStage = 0; }, 1500);
+      }
+    },
+  };
+}
+</script>
+</body>
+</html>
