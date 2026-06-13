@@ -62,6 +62,7 @@ router = APIRouter(prefix="/api/v1", tags=["ARIA API"])
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    image_base64: Optional[str] = None  # base64 image for vision analysis
 
 
 class RunRequest(BaseModel):
@@ -119,11 +120,23 @@ async def api_status() -> dict:
 
 @router.post("/chat", dependencies=[Depends(verify_api_key)])
 async def api_chat(req: ChatRequest) -> dict:
-    """Chat with ARIA mind. Returns a text reply."""
+    """Chat with ARIA mind. Optionally analyze an image via image_base64."""
     try:
+        session_id = req.session_id or "api_default"
+
+        # Vision path: analyze image first, then pass description + user question to ARIA
+        if req.image_base64:
+            from apps.core.tools.ai_client import get_ai_client
+            client = get_ai_client()
+            description = await client.analyze_image(
+                image_base64=req.image_base64,
+                question=req.message or "Describe esta imagen en detalle.",
+            )
+            _log_activity("info", f"Vision [{session_id}]: {req.message[:40]}", "chat")
+            return {"reply": description, "tool_used": "analyze_image"}
+
         from apps.core.cognition.aria_mind import get_aria_mind
         mind = get_aria_mind()
-        session_id = req.session_id or "api_default"
         response = await mind.handle(req.message, session_id)
         _log_activity("info", f"Chat [{session_id}]: {req.message[:60]}", "chat")
         return {
