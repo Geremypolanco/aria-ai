@@ -455,6 +455,17 @@ async def api_kb_delete_source(source_id: str) -> dict:
         return {"error": str(exc)}
 
 
+@router.get("/health/ai", dependencies=[Depends(verify_api_key)])
+async def api_ai_health() -> dict:
+    """Return AI provider health: circuit breakers, success rates, token counts."""
+    try:
+        from apps.core.tools.ai_client import get_ai_client
+        client = get_ai_client()
+        return client.get_health_summary()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @router.post("/schedule", dependencies=[Depends(verify_api_key)])
 async def api_schedule(req: ScheduleRequest) -> dict:
     """Schedule a recurring task."""
