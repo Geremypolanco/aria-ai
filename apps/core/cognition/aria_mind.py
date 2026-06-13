@@ -110,11 +110,16 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - run_income      → ejecuta ciclo de monetización completo. Args: {{}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
+- deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
+- analyze_decision → framework de decisión multi-criterio tipo McKinsey. Args: {{"question": "...", "options": ["...", "..."], "criteria": ["impacto", "esfuerzo", "riesgo"]}}
+- create_presentation → genera presentación HTML con Reveal.js. Args: {{"title": "...", "topic": "...", "slide_count": 10, "template": "dark|light|corporate|tech"}}
+- create_pitch_deck → pitch deck para inversores estilo YC. Args: {{"company": "...", "problem": "...", "solution": "...", "market": "...", "traction": "..."}}
 
 REGLAS DE RAZONAMIENTO:
 1. Usa tu campo "thought" para razonar paso a paso antes de decidir qué hacer.
 2. Si el usuario hace una pregunta factual o pide algo de internet → herramienta web_search o deep_search.
-3. Si el usuario pide análisis estratégico → piensa en profundidad, responde con estructura clara.
+3. Si el usuario pide análisis estratégico, decisiones difíciles o problemas complejos → usa deep_think con depth="deep".
+4. Si el usuario pide una presentación o pitch deck → usa create_presentation o create_pitch_deck.
 4. Si tienes dudas sobre qué quiere el usuario → interpreta la intención más útil y ejecútala.
 5. Nunca inventes datos, precios, estadísticas o hechos. Busca si no sabes.
 
@@ -644,6 +649,8 @@ class AriaMind:
                 )
                 return f"[BROWSER] {summary}\n{details}", {}
 
+
+
             # ── AGENTE DE NEGOCIO ─────────────────────────────────────────
             elif tool == "run_business_agent":
                 agent_name = args.get("agent", "ceo")
@@ -671,6 +678,52 @@ class AriaMind:
                 goals_list = await self._load_goals()
                 await self._apply_goal_action(goal_action_dict, goals_list)
                 return f"Meta {'añadida' if action == 'add' else 'actualizada'} correctamente", {}
+
+            # ── RAZONAMIENTO EXTENDIDO ────────────────────────────────────
+            elif tool == "deep_think":
+                question = args.get("question", "")
+                depth    = args.get("depth", "auto")
+                context  = args.get("context", "")
+                from apps.core.tools.deep_think import get_deep_think
+                result = await get_deep_think().think(question, context=context, depth=depth)
+                obs = f"[DEEP THINK — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
+                return obs, {}
+
+            elif tool == "analyze_decision":
+                question = args.get("question", "")
+                options  = args.get("options", [])
+                criteria = args.get("criteria", [])
+                from apps.core.tools.deep_think import get_deep_think
+                result = await get_deep_think().analyze_decision(question, options, criteria)
+                return f"[DECISIÓN]\n{result['recommendation']}", {}
+
+            # ── PRESENTACIONES ────────────────────────────────────────────
+            elif tool == "create_presentation":
+                title       = args.get("title", "Presentación")
+                topic       = args.get("topic", title)
+                slide_count = int(args.get("slide_count", 10))
+                template    = args.get("template", "dark")
+                from apps.core.tools.presentation_builder import PresentationBuilder
+                r = await PresentationBuilder().create_presentation(title, topic, slide_count, template)
+                if r.get("success") and r.get("html_bytes"):
+                    fname = r.get("filename", "presentation.html")
+                    obs = f"Presentación '{title}' generada: {r['slide_count']} slides"
+                    return obs, {"document_bytes": r["html_bytes"], "document_filename": fname}
+                return "No se pudo generar la presentación", {}
+
+            elif tool == "create_pitch_deck":
+                company  = args.get("company", "")
+                problem  = args.get("problem", "")
+                solution = args.get("solution", "")
+                market   = args.get("market", "")
+                traction = args.get("traction", "")
+                from apps.core.tools.presentation_builder import PresentationBuilder
+                r = await PresentationBuilder().create_pitch_deck(company, problem, solution, market, traction)
+                if r.get("success") and r.get("html_bytes"):
+                    fname = r.get("filename", "pitch_deck.html")
+                    obs = f"Pitch deck '{company}' generado: {r['slide_count']} slides"
+                    return obs, {"document_bytes": r["html_bytes"], "document_filename": fname}
+                return "No se pudo generar el pitch deck", {}
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)

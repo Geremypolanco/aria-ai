@@ -133,6 +133,20 @@ class AriaTelegramBot:
         if not text:
             return
 
+        # Slash commands → CommandRouter (intercepta antes de AriaMind)
+        if text.startswith("/") and not text.startswith("/start"):
+            try:
+                from apps.core.commands.aria_commands import get_command_router
+                router = get_command_router()
+                if router.is_command(text):
+                    cmd_response = await router.handle(text, session_id=f"telegram:{chat_id}")
+                    if cmd_response:
+                        await self._send(chat_id, cmd_response)
+                        return
+            except Exception as exc:
+                logger.error("[Bot] CommandRouter error: %s", exc)
+                # Fall through to AriaMind
+
         # Todo pasa por AriaMind — sin excepciones
         try:
             from apps.core.cognition.aria_mind import get_aria_mind
