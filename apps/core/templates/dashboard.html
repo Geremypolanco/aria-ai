@@ -632,14 +632,16 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
                 <span x-show="m.streaming" class="streaming-cursor"></span>
               </div>
             </div>
-            <!-- Copy button (shows on hover, only for ARIA messages) -->
-            <button x-show="m.role==='aria' && !m.streaming"
-                    @click="copyMsg(m.text, $event)"
-                    class="absolute opacity-0 group-hover:opacity-100 transition-opacity"
-                    style="bottom:-22px;right:0;background:var(--elevated);border:1px solid var(--border);color:var(--text3);padding:2px 8px;border-radius:5px;font-size:10px;cursor:pointer;white-space:nowrap"
-                    title="Copiar">
-              copiar
-            </button>
+            <!-- Timestamp + copy (hover) -->
+            <div class="absolute opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2"
+                 style="bottom:-20px;right:0">
+              <span x-show="m.ts" class="text-xs font-mono" style="color:var(--text3)" x-text="m.ts"></span>
+              <button x-show="m.role==='aria' && !m.streaming"
+                      @click="copyMsg(m.text, $event)"
+                      style="background:var(--elevated);border:1px solid var(--border);color:var(--text3);padding:2px 8px;border-radius:5px;font-size:10px;cursor:pointer;white-space:nowrap">
+                copiar
+              </button>
+            </div>
           </div>
         </div>
       </template>
@@ -1390,13 +1392,14 @@ function ariaApp() {
               if (last && last.role === 'aria' && last.streaming) {
                 if (d.text) last.text = d.text;
                 last.streaming = false;
+                last.ts = this._ts();
               } else {
-                this.messages.push({ role:'aria', text: d.text, streaming: false });
+                this.messages.push({ role:'aria', text: d.text, streaming: false, ts: this._ts() });
               }
               this.$nextTick(() => this.scrollChat());
             } else if (d.type === 'error') {
               this.thinking = false;
-              this.messages.push({ role:'aria', text: d.text || 'Error desconocido', streaming: false });
+              this.messages.push({ role:'aria', text: d.text || 'Error desconocido', streaming: false, ts: this._ts() });
               this.$nextTick(() => this.scrollChat());
             }
           } catch(e) {}
@@ -1540,6 +1543,8 @@ function ariaApp() {
     },
 
     // ── CHAT ─────────────────────────────────────────────
+    _ts() { return new Date().toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'}) },
+
     handleImageUpload(evt) {
       const file = evt.target.files?.[0];
       if (!file) return;
@@ -1559,7 +1564,7 @@ function ariaApp() {
 
       // Build user display message
       const userText = text || `[imagen: ${this.attachedImageName}]`;
-      this.messages.push({ role:'user', text: userText });
+      this.messages.push({ role:'user', text: userText, ts: this._ts() });
       this.chatInput = '';
       this.attachedImage = '';
       this.attachedImageName = '';

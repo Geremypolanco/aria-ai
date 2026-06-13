@@ -243,10 +243,12 @@ class AriaMind:
 
     async def handle(self, text: str, chat_id: str) -> MindResponse:
         try:
-            # Fast-path for /help command
+            # Fast-path for built-in commands
             stripped = text.strip().lower()
             if stripped in ("/help", "/ayuda", "help", "ayuda"):
                 return MindResponse(text=_HELP_TEXT)
+            if stripped in ("/clear", "/limpiar", "/reset"):
+                return MindResponse(text="🗑 Conversación reiniciada. ¿En qué te ayudo?", silent=False)
 
             # Cargar todo el contexto cognitivo
             history, state, goals, learned = await asyncio.gather(
