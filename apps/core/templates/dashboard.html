@@ -607,14 +607,24 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
 
       <!-- Message list -->
       <template x-for="(m,i) in messages" :key="i">
-        <div class="flex" :class="m.role==='user'?'justify-end':'justify-start gap-3'">
+        <div class="flex msg-row" :class="m.role==='user'?'justify-end':'justify-start gap-3'">
           <div x-show="m.role==='aria'" class="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold mt-1" style="background:rgba(124,58,237,.2);color:#a78bfa">A</div>
-          <div :class="m.role==='user'?'msg-user':'msg-aria'" class="text-sm leading-relaxed">
-            <div x-show="m.role==='user'" x-text="m.text"></div>
-            <div x-show="m.role==='aria'">
-              <span x-html="renderMarkdown(m.text)"></span>
-              <span x-show="m.streaming" class="streaming-cursor"></span>
+          <div class="relative group" style="max-width:82%">
+            <div :class="m.role==='user'?'msg-user':'msg-aria'" class="text-sm leading-relaxed">
+              <div x-show="m.role==='user'" x-text="m.text"></div>
+              <div x-show="m.role==='aria'">
+                <span x-html="renderMarkdown(m.text)"></span>
+                <span x-show="m.streaming" class="streaming-cursor"></span>
+              </div>
             </div>
+            <!-- Copy button (shows on hover, only for ARIA messages) -->
+            <button x-show="m.role==='aria' && !m.streaming"
+                    @click="copyMsg(m.text, $event)"
+                    class="absolute opacity-0 group-hover:opacity-100 transition-opacity"
+                    style="bottom:-22px;right:0;background:var(--elevated);border:1px solid var(--border);color:var(--text3);padding:2px 8px;border-radius:5px;font-size:10px;cursor:pointer;white-space:nowrap"
+                    title="Copiar">
+              copiar
+            </button>
           </div>
         </div>
       </template>
@@ -976,10 +986,18 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
       </div>
       <button @click="loadGoals()" class="btn btn-ghost btn-sm">↻</button>
     </div>
+
+    <!-- Add goal -->
+    <div class="card p-4 mb-4 flex gap-2">
+      <input x-model="newGoalText" placeholder="Describir nueva meta para ARIA..."
+             class="input flex-1" @keydown.enter="addGoal()">
+      <button @click="addGoal()" :disabled="!newGoalText.trim()" class="btn btn-primary btn-sm">Agregar</button>
+    </div>
+
     <div x-show="goals.length===0" class="card p-14 text-center">
-      <div class="text-5xl mb-4">🎯</div>
+      <div class="mb-4" style="font-size:40px;opacity:.5">◎</div>
       <p class="text-sm" style="color:var(--text2)">ARIA no tiene metas activas.</p>
-      <p class="text-xs mt-2" style="color:var(--text3)">Usa <code class="text-violet-400">/add_goal [objetivo]</code> en el chat.</p>
+      <p class="text-xs mt-2" style="color:var(--text3)">Agrega una arriba o usa el chat.</p>
     </div>
     <div class="space-y-2">
       <template x-for="(goal,i) in goals" :key="i">
@@ -993,6 +1011,8 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
             </div>
             <div x-show="goal.progress" class="text-xs mt-1.5" style="color:var(--text3)" x-text="goal.progress"></div>
           </div>
+          <button @click="sendGoalChat('Elimina la meta: '+(goal.text||goal.goal))"
+                  class="btn-icon btn btn-ghost" style="color:var(--text3);font-size:14px" title="Eliminar vía chat">✕</button>
         </div>
       </template>
     </div>
@@ -1082,13 +1102,27 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
     <div class="card p-5">
       <h3 class="font-semibold text-sm mb-1">API de ARIA</h3>
       <p class="text-xs mb-4" style="color:var(--text3)">Integra ARIA con cualquier herramienta usando la API REST o WebSocket</p>
-      <div class="rounded-xl p-4 font-mono text-xs space-y-1.5" style="background:#05060a;border:1px solid var(--border)">
+      <div class="rounded-xl p-4 font-mono text-xs" style="background:#05060a;border:1px solid var(--border);line-height:2">
+        <div class="mb-2 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">CHAT & CORE</div>
         <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/chat</span></div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/status</span></div>
+        <div><span class="text-yellow-400">WS</span>   <span style="color:var(--text2)">/api/v1/ws</span> <span style="color:var(--text3)">— streaming support</span></div>
         <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/run</span></div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/status</span></div>
         <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/agents</span></div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/goals</span></div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/activity</span></div>
+        <div class="mt-2 mb-1 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">WORKFLOWS</div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/workflows</span></div>
+        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/workflows</span></div>
+        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/workflows/{id}/run</span></div>
+        <div class="mt-2 mb-1 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">KNOWLEDGE BASE</div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/knowledge/sources</span></div>
+        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/knowledge/ingest</span></div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/knowledge/search?q=</span></div>
+        <div class="mt-2 mb-1 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">TASKS & PIPELINE</div>
         <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/tasks</span></div>
-        <div><span class="text-yellow-400">WS</span>   <span style="color:var(--text2)">/api/v1/ws</span></div>
+        <div><span class="text-red-400">DEL</span>  <span style="color:var(--text2)">/api/v1/tasks/{id}</span></div>
+        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/pipeline</span></div>
       </div>
       <p class="text-xs mt-3" style="color:var(--text3)">Header: <code class="px-1 py-0.5 rounded" style="background:var(--elevated);color:#a78bfa">X-ARIA-Key: tu-api-key</code></p>
     </div>
@@ -1159,6 +1193,9 @@ function ariaApp() {
     wfName: '',
     wfDesc: '',
     wfCreating: false,
+
+    // Goals
+    newGoalText: '',
 
     // Knowledge Base
     kbUrl: '',
@@ -1327,6 +1364,25 @@ function ariaApp() {
       } catch(e) {}
     },
 
+    async addGoal() {
+      const text = this.newGoalText.trim();
+      if (!text) return;
+      this.newGoalText = '';
+      // Send to chat as /add_goal command so ARIA persists it
+      this.messages.push({ role:'user', text: `/add_goal ${text}` });
+      this.thinking = true;
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type:'chat', message:`/add_goal ${text}`, session_id: this.sessionId, stream: false }));
+      }
+      setTimeout(() => this.loadGoals(), 2500);
+    },
+
+    sendGoalChat(msg) {
+      this.activeSection = 'chat';
+      this.chatInput = msg;
+      this.$nextTick(() => this.sendMessage());
+    },
+
     async loadActivity() {
       try {
         const r = await fetch('/api/v1/activity');
@@ -1399,6 +1455,17 @@ function ariaApp() {
     },
 
     clearChat() { this.messages = [] },
+
+    async copyMsg(text, evt) {
+      try {
+        await navigator.clipboard.writeText(text);
+        const btn = evt.target;
+        const orig = btn.textContent;
+        btn.textContent = '✓ copiado';
+        btn.style.color = '#10b981';
+        setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1500);
+      } catch(e) {}
+    },
 
     scrollChat() {
       const el = document.getElementById('chat-messages');
