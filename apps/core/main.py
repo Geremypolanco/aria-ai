@@ -100,6 +100,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando ContinuousTrainer: %s", exc)
 
+    # 2b. IncomeLoop 24/7 — autonomous income generation every 30 min
+    try:
+        from apps.core.tools.income_loop import get_income_loop
+        await get_income_loop().start()
+        logger.info("IncomeLoop 24/7 activo (cada 30 min)")
+    except Exception as exc:
+        logger.error("Error iniciando IncomeLoop: %s", exc)
+
     # 3. AriaMind precarga (para que el primer mensaje no tenga cold start)
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
