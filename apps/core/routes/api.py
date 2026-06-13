@@ -485,7 +485,16 @@ async def api_schedule(req: ScheduleRequest) -> dict:
 
 @router.websocket("/ws")
 async def websocket_aria(websocket: WebSocket) -> None:
-    """Real-time bidirectional chat with ARIA via WebSocket."""
+    """
+    Real-time bidirectional chat with ARIA via WebSocket.
+
+    Incoming JSON: {"type": "chat", "message": "...", "stream": true|false}
+    Outgoing (streaming):
+      {"type": "chunk",  "text": "..."} × N
+      {"type": "reply",  "text": "", "tool_used": ..., "ts": "..."}  ← signals done
+    Outgoing (non-streaming):
+      {"type": "reply",  "text": "...", "tool_used": ..., "ts": "..."}
+    """
     await websocket.accept()
     session_id = f"ws_{id(websocket)}"
     _log_activity("info", f"WebSocket connected: {session_id}", "ws")
@@ -497,25 +506,59 @@ async def websocket_aria(websocket: WebSocket) -> None:
         while True:
             data = await websocket.receive_text()
 
-            # Parse as JSON {type: "chat", message: "..."} or plain text
+            # Parse as JSON or plain text
             try:
                 payload = json.loads(data)
                 message = payload.get("message", data)
+                want_stream = bool(payload.get("stream", True))
             except Exception:
                 message = data
+                want_stream = True
 
             if not message or not message.strip():
                 continue
 
+            # Detect if the message likely needs tool execution (non-streamable)
+            TOOL_TRIGGERS = [
+                "busca", "search", "investiga", "crea", "create", "genera", "generate",
+                "ejecuta", "run", "analiza", "analyze", "escribe", "write",
+                "código", "code", "imagen", "image", "workflow", "crew",
+            ]
+            needs_tool = any(t in message.lower() for t in TOOL_TRIGGERS)
+
             try:
-                response = await mind.handle(message, session_id)
-                await websocket.send_json({
-                    "type": "reply",
-                    "text": response.text or "",
-                    "tool_used": response.tool_used,
-                    "ts": datetime.utcnow().isoformat(),
-                })
+                if want_stream and not needs_tool:
+                    # Stream direct AI response for conversational messages
+                    from apps.core.tools.ai_client import get_ai_client
+                    from apps.core.cognition.aria_mind import SYSTEM_TEMPLATE
+                    client = get_ai_client()
+                    full_text = ""
+                    async for chunk in client.stream_complete(
+                        system=SYSTEM_TEMPLATE,
+                        user=message,
+                        max_tokens=1200,
+                        temperature=0.7,
+                    ):
+                        full_text += chunk
+                        await websocket.send_json({"type": "chunk", "text": chunk})
+                    await websocket.send_json({
+                        "type": "reply",
+                        "text": full_text,
+                        "tool_used": None,
+                        "ts": datetime.utcnow().isoformat(),
+                    })
+                else:
+                    # Full mind: tool use, memory, agent dispatch
+                    response = await mind.handle(message, session_id)
+                    await websocket.send_json({
+                        "type": "reply",
+                        "text": response.text or "",
+                        "tool_used": response.tool_used,
+                        "ts": datetime.utcnow().isoformat(),
+                    })
+
                 _log_activity("info", f"WS [{session_id}]: {message[:60]}", "ws")
+
             except Exception as exc:
                 logger.error("[WS] handle error: %s", exc)
                 await websocket.send_json({
