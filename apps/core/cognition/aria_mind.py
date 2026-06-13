@@ -91,6 +91,10 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - speak           → convierte texto a voz con Bark TTS. Args: {{"text": "...", "voice": "v2/es_speaker_1"}}
 - translate       → traduce texto entre idiomas. Args: {{"text": "...", "source": "es", "target": "en"}}
 - generate_pdf    → crea un PDF descargable. Args: {{"title": "...", "content": "...", "sections": [{{"title":"...", "body":"..."}}]}}
+- create_website  → genera un sitio web profesional completo (HTML/Tailwind) listo para desplegar. Args: {{"name": "...", "description": "...", "template": "saas|landing|portfolio|ecommerce|blog", "sections": ["hero","features","pricing","cta","footer"]}}
+- create_social_content → genera contenido optimizado para redes sociales. Args: {{"topic": "...", "platforms": ["instagram","linkedin","twitter","tiktok","facebook","youtube"], "tone": "professional|casual|viral"}}
+- build_software  → genera un proyecto de software completo (ZIP con múltiples archivos). Args: {{"name": "...", "description": "...", "stack": "fastapi|react|flask|nextjs|cli|discord_bot", "requirements": "..."}}
+- build_game      → genera un videojuego completo con assets y lógica. Args: {{"name": "...", "genre": "platformer|puzzle|rpg|shooter|arcade", "description": "...", "engine": "pygame|phaser|godot"}}
 - web_search      → busca en internet en tiempo real. Usa queries específicas y descriptivas. Args: {{"query": "..."}}
 - deep_search     → búsqueda profunda: busca Y lee el contenido de las páginas top. Ideal para investigación. Args: {{"query": "...", "num_pages": 3}}
 - fetch_url       → lee el contenido completo de una URL específica. Args: {{"url": "https://..."}}
@@ -487,6 +491,71 @@ class AriaMind:
                     return (f"PDF generado: {fname} ({size}KB)",
                             {"document_bytes": r["pdf_bytes"], "document_filename": fname})
                 return r.get("error", "No se pudo generar el PDF"), {}
+
+            # ── SITIO WEB ─────────────────────────────────────────────────────
+            elif tool == "create_website":
+                from apps.core.tools.website_engine import WebsiteEngine
+                r = await WebsiteEngine().generate_website(
+                    name=args.get("name", "My Website"),
+                    description=args.get("description", ""),
+                    sections=args.get("sections", ["hero", "features", "cta", "footer"]),
+                    template=args.get("template", "saas"),
+                )
+                if r.get("success") and r.get("html_bytes"):
+                    fname = r.get("filename", "website.html")
+                    size  = len(r["html_bytes"]) // 1024
+                    return (f"Sitio web generado: {fname} ({size}KB)",
+                            {"document_bytes": r["html_bytes"], "document_filename": fname})
+                return r.get("error", "Website generation failed"), {}
+
+            # ── CONTENIDO SOCIAL ──────────────────────────────────────────────
+            elif tool == "create_social_content":
+                topic     = args.get("topic", "")
+                platforms = args.get("platforms", ["instagram", "linkedin", "twitter"])
+                tone      = args.get("tone", "professional")
+                from apps.core.tools.social_engine import SocialContentEngine
+                r = await SocialContentEngine().create_content_pack(topic, platforms, tone)
+                if r.get("success"):
+                    lines = [f"Contenido generado para {r.get('generated', 0)} plataformas:\n"]
+                    for plat, res in r.get("platforms", {}).items():
+                        if res.get("success"):
+                            lines.append(f"**{plat.upper()}**\n{res.get('content', '')[:500]}\n")
+                    return "\n".join(lines), {}
+                return "No se pudo generar contenido social", {}
+
+            # ── SOFTWARE / APP ────────────────────────────────────────────────
+            elif tool == "build_software":
+                from apps.core.tools.software_builder import SoftwareBuilder
+                r = await SoftwareBuilder().build_project(
+                    name=args.get("name", "MyApp"),
+                    description=args.get("description", ""),
+                    stack=args.get("stack", "fastapi"),
+                    requirements_text=args.get("requirements", ""),
+                )
+                if r.get("success") and r.get("zip_bytes"):
+                    fname = r.get("filename", "project.zip")
+                    size  = r.get("size_kb", 0)
+                    files = r.get("files", [])
+                    obs   = f"Proyecto generado: {fname} ({size}KB) — {len(files)} archivos: {', '.join(files[:6])}"
+                    return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
+                return r.get("error", "Software build failed"), {}
+
+            # ── VIDEOJUEGO ────────────────────────────────────────────────────
+            elif tool == "build_game":
+                from apps.core.tools.game_builder import GameBuilder
+                r = await GameBuilder().create_game(
+                    name=args.get("name", "MyGame"),
+                    genre=args.get("genre", "arcade"),
+                    description=args.get("description", ""),
+                    engine=args.get("engine", "pygame"),
+                )
+                if r.get("success") and r.get("zip_bytes"):
+                    fname = r.get("filename", "game.zip")
+                    size  = r.get("size_kb", 0)
+                    files = r.get("files", [])
+                    obs   = f"Juego generado ({r.get('engine', '')}): {fname} ({size}KB) — {len(files)} archivos"
+                    return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
+                return r.get("error", "Game build failed"), {}
 
             # ── GESTIÓN DE METAS ──────────────────────────────────────────
             elif tool in ("add_goal", "update_goal"):
