@@ -221,6 +221,49 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error scheduler: %s", exc)
 
+    # 5. Phase 5 autonomous business systems
+    try:
+        from apps.business.growth.growth_engine import get_growth_engine
+        get_growth_engine()
+        logger.info("Growth Engine initialized (8 loops: shopify_seo, content, social, email, affiliate, youtube, linkedin, paid)")
+    except Exception as exc:
+        logger.error("Error iniciando GrowthEngine: %s", exc)
+
+    try:
+        from apps.business.ecommerce.shopify_operator import get_shopify_operator
+        get_shopify_operator()
+        logger.info("Shopify Operator initialized (autonomous catalog optimization)")
+    except Exception as exc:
+        logger.error("Error iniciando ShopifyOperator: %s", exc)
+
+    try:
+        from apps.content.content_os import get_content_os
+        get_content_os()
+        logger.info("Content OS initialized (multi-platform content pipeline)")
+    except Exception as exc:
+        logger.error("Error iniciando ContentOS: %s", exc)
+
+    try:
+        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+        get_autonomous_scheduler()
+        logger.info("Autonomous Scheduler initialized (6 strategic objectives, 24/7 execution)")
+    except Exception as exc:
+        logger.error("Error iniciando AutonomousScheduler: %s", exc)
+
+    try:
+        from apps.business.economics.economic_engine import get_economic_engine
+        get_economic_engine()
+        logger.info("Economic Intelligence Engine initialized (CAC/LTV/ROI optimization)")
+    except Exception as exc:
+        logger.error("Error iniciando EconomicEngine: %s", exc)
+
+    try:
+        from apps.business.crm.crm_engine import get_crm_engine
+        get_crm_engine()
+        logger.info("CRM Engine initialized (lead tracking + churn prediction)")
+    except Exception as exc:
+        logger.error("Error iniciando CRMEngine: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -554,6 +597,139 @@ async def status():
         "trainer": trainer_status,
         "ts": datetime.now(timezone.utc).isoformat(),
     })
+
+
+@app.get("/api/v1/growth/loops")
+async def growth_loops():
+    """Growth loop orchestrator status and per-loop metrics."""
+    try:
+        from apps.business.growth.growth_engine import get_growth_engine
+        engine = get_growth_engine()
+        return {
+            "summary": engine.summary(),
+            "loops": [
+                {
+                    "loop_id": l.loop_id, "name": l.name, "channel": l.channel,
+                    "enabled": l.enabled, "success_rate": round(l.success_rate, 3),
+                    "avg_revenue_per_run": round(l.avg_revenue_per_run, 2),
+                    "is_due": l.is_due(),
+                }
+                for l in engine._loops.values()
+            ],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/growth/optimize")
+async def optimize_growth():
+    """Re-prioritize growth loops based on ROI performance."""
+    try:
+        from apps.business.growth.growth_engine import get_growth_engine
+        engine = get_growth_engine()
+        await engine.optimize_allocation()
+        return {"status": "optimized", "summary": engine.summary()}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/ecommerce/shopify")
+async def shopify_status():
+    """Autonomous Shopify operator status and catalog health."""
+    try:
+        from apps.business.ecommerce.shopify_operator import get_shopify_operator
+        op = get_shopify_operator()
+        return op.summary()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/ecommerce/shopify/cycle")
+async def shopify_cycle():
+    """Run one autonomous Shopify optimization cycle."""
+    try:
+        from apps.business.ecommerce.shopify_operator import get_shopify_operator
+        op = get_shopify_operator()
+        return await op.run_autonomous_cycle()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/content")
+async def content_pipeline():
+    """Content OS performance report and pipeline status."""
+    try:
+        from apps.content.content_os import get_content_os
+        cos = get_content_os()
+        return {
+            "summary": cos.summary(),
+            "report": await cos.performance_report(),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/autonomy/schedule")
+async def autonomy_schedule():
+    """Autonomous scheduler status and strategic objectives."""
+    try:
+        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+        sched = get_autonomous_scheduler()
+        objs = await sched.get_objectives()
+        return {
+            "summary": sched.summary(),
+            "objectives": [
+                {
+                    "name": o.name, "priority": o.priority.value,
+                    "frequency_hours": o.frequency_hours,
+                    "success_rate": round(o.success_rate, 3),
+                    "total_value_usd": round(o.total_value_usd, 2),
+                    "is_due": o.is_due(),
+                }
+                for o in objs
+            ],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/economics")
+async def economics_report():
+    """Economic intelligence report with unit economics and forecasting."""
+    try:
+        from apps.business.economics.economic_engine import get_economic_engine
+        engine = get_economic_engine()
+        return await engine.economic_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/crm/summary")
+async def crm_summary():
+    """CRM summary: leads, customers, churn risk, segments."""
+    try:
+        from apps.business.crm.crm_engine import get_crm_engine
+        crm = get_crm_engine()
+        return {
+            "summary": crm.summary(),
+            "high_risk": [
+                {"customer_id": c.customer_id, "email": c.email, "churn_risk": c.churn_risk.value}
+                for c in await crm.high_risk_customers()
+            ],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/growth/learner")
+async def growth_learner_report():
+    """Growth learning system: strategy knowledge and campaign intelligence."""
+    try:
+        from apps.learning.growth.growth_learner import get_growth_learner
+        learner = get_growth_learner()
+        return await learner.learning_report()
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
