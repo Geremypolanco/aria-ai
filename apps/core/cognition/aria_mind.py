@@ -172,6 +172,50 @@ REGLAS DE SÍNTESIS:
 - Sé directa y profesional. Sin frases de relleno ni introducciones innecesarias.
 - Si los resultados de búsqueda son insuficientes, dilo y sugiere una búsqueda más específica."""
 
+_HELP_TEXT = """\
+## 🤖 ARIA — Capacidades disponibles
+
+**Búsqueda e investigación**
+- `busca [tema]` — búsqueda web en tiempo real
+- `/research [tema]` — investigación profunda con lectura de páginas
+- `/think [pregunta]` — razonamiento extendido (DeepThink)
+
+**Creación de contenido**
+- `crea un artículo sobre [tema]` — artículo SEO completo
+- `crea contenido para redes sobre [tema]` — posts optimizados por plataforma
+- `genera una imagen de [descripción]` — imagen con IA (FLUX/SDXL)
+- `crea una presentación sobre [tema]` — Reveal.js listo para proyectar
+- `crea un pitch deck para [empresa]` — presentación para inversores
+
+**Código y software**
+- `construye un [tipo de app] que [hace X]` — proyecto completo con código
+- `ejecuta este código: [código]` — sandbox Python/JS
+- `analiza esta imagen: [URL]` — visión por computadora
+
+**Agentes y automatización**
+- `/run [misión]` — ejecuta con pipeline de agentes
+- `/plan [objetivo]` — plan estratégico detallado
+- `corre el equipo de investigación sobre [tema]` — multi-agente colaborativo
+- `crea un workflow: [descripción]` — automatización multi-paso
+
+**Base de conocimiento**
+- `aprende [URL o texto]` — ingesta en base de conocimiento RAG
+- `busca en mis notas: [query]` — búsqueda semántica interna
+
+**Gestión**
+- `/goals` — lista metas activas
+- `/add_goal [meta]` — añade nueva meta persistente
+- `/status` — estado completo del sistema
+- `/audit` — auditoría del negocio
+
+**Multimedia**
+- Adjunta una imagen (botón 📎 o drag & drop) para análisis visual
+- `genera música: [descripción]` — audio con MusicGen
+- `convierte a voz: [texto]` — síntesis de voz
+
+Escribe cualquier pregunta o instrucción en lenguaje natural — ARIA entiende contexto y elige la herramienta correcta automáticamente.\
+"""
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ARIA MIND
@@ -199,6 +243,11 @@ class AriaMind:
 
     async def handle(self, text: str, chat_id: str) -> MindResponse:
         try:
+            # Fast-path for /help command
+            stripped = text.strip().lower()
+            if stripped in ("/help", "/ayuda", "help", "ayuda"):
+                return MindResponse(text=_HELP_TEXT)
+
             # Cargar todo el contexto cognitivo
             history, state, goals, learned = await asyncio.gather(
                 self._load_history(chat_id),
