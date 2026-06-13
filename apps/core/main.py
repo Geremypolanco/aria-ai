@@ -145,6 +145,35 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error inicializando WorldModel: %s", exc)
 
+    # 3d. Phase 3 enterprise systems: memory orchestrator, tool registry, agent hierarchy, quality
+    try:
+        from apps.core.memory.orchestrator import get_memory_orchestrator
+        get_memory_orchestrator()
+        logger.info("Memory Orchestrator initialized (unified 3-layer retrieval)")
+    except Exception as exc:
+        logger.error("Error iniciando MemoryOrchestrator: %s", exc)
+
+    try:
+        from apps.core.agents.hierarchy.agent_hierarchy import get_agent_hierarchy
+        get_agent_hierarchy()
+        logger.info("Agent Hierarchy bootstrapped (executive → director → specialist)")
+    except Exception as exc:
+        logger.error("Error iniciando AgentHierarchy: %s", exc)
+
+    try:
+        from apps.core.cognition.pipeline.cognitive_pipeline import get_cognitive_pipeline
+        get_cognitive_pipeline()
+        logger.info("Cognitive Pipeline initialized (5-stage async)")
+    except Exception as exc:
+        logger.error("Error iniciando CognitivePipeline: %s", exc)
+
+    try:
+        from apps.core.observability.cognition.reasoning_tracer import get_reasoning_tracer
+        get_reasoning_tracer()
+        logger.info("Reasoning Tracer initialized (hallucination detection active)")
+    except Exception as exc:
+        logger.error("Error iniciando ReasoningTracer: %s", exc)
+
     # 4. Scheduler (ciclos autónomos, SIN notificaciones Telegram automáticas)
     try:
         scheduler.add_job(autonomous_cycle_job, IntervalTrigger(minutes=settings.CYCLE_INTERVAL_MINUTES),
@@ -314,6 +343,100 @@ async def procedural_memory_summary():
                 }
                 for p in procs[:20]
             ],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/memory/orchestrator")
+async def memory_orchestrator_summary():
+    """Unified memory layer summary from the Memory Orchestrator."""
+    try:
+        from apps.core.memory.orchestrator import get_memory_orchestrator
+        return get_memory_orchestrator().summary()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/tools/intelligence")
+async def tool_intelligence_summary():
+    """Tool reliability intelligence summary."""
+    try:
+        from apps.core.tools.intelligence.tool_registry import get_tool_registry
+        registry = get_tool_registry()
+        return {
+            "summary": registry.summary(),
+            "failing_tools": [t.name for t in registry.failing_tools()],
+            "best_tools": [{"name": t.name, "success_rate": round(t.success_rate, 3)} for t in registry.best_tools(top_k=5)],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/agents/hierarchy")
+async def agent_hierarchy_summary():
+    """ARIA agent organizational hierarchy and delegation stats."""
+    try:
+        from apps.core.agents.hierarchy.agent_hierarchy import get_agent_hierarchy
+        h = get_agent_hierarchy()
+        return {
+            "summary": h.summary(),
+            "reporting_structure": h.reporting_structure(),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/business/roi")
+async def roi_summary():
+    """Economic intelligence and opportunity portfolio."""
+    try:
+        from apps.core.business.roi_engine import get_roi_engine
+        engine = get_roi_engine()
+        return {
+            "portfolio": await engine.get_portfolio_summary(),
+            "recommendation": await engine.recommend_next_action(),
+            "top_opportunities": [o.to_dict() for o in await engine.rank_opportunities(top_k=5)],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/quality/health")
+async def system_quality_health():
+    """Autonomous quality controller health report."""
+    try:
+        from apps.core.quality.quality_controller import get_quality_controller
+        ctrl = get_quality_controller()
+        return {
+            "health": ctrl.system_health(),
+            "open_findings": [f.to_dict() for f in ctrl.open_findings()[:10]],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/quality/audit")
+async def run_quality_audit():
+    """Trigger an on-demand architecture audit."""
+    try:
+        from apps.core.quality.quality_controller import get_quality_controller
+        report = await get_quality_controller().run_architecture_audit()
+        return report.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/cognition/traces")
+async def cognition_traces():
+    """Recent reasoning traces with hallucination risk scores."""
+    try:
+        from apps.core.observability.cognition.reasoning_tracer import get_reasoning_tracer
+        tracer = get_reasoning_tracer()
+        return {
+            "summary": tracer.summary(),
+            "recent": tracer.recent(n=10),
+            "high_risk": [t.to_dict() for t in tracer.high_risk_traces()],
         }
     except Exception as exc:
         return {"error": str(exc)}
