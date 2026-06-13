@@ -244,6 +244,61 @@ class DeepThink:
             "duration_ms": result.duration_ms,
         }
 
+    async def think_verified(
+        self,
+        question: str,
+        context: str = "",
+        paths: int = 2,
+        system: str = "",
+    ) -> ThinkingResult:
+        """
+        Test-Time Compute: genera `paths` respuestas independientes en paralelo,
+        las auto-evalúa con un juez interno y devuelve la mejor.
+        Inspirado en GPT-5 / Claude 4.5 inference-time scaling.
+        """
+        import time as _time
+        t0 = _time.monotonic()
+
+        # Generate N candidate answers in parallel
+        tasks = [self.think(question, context=context, depth="deep", system=system)
+                 for _ in range(paths)]
+        candidates: list[ThinkingResult] = await asyncio.gather(*tasks, return_exceptions=True)
+        candidates = [r for r in candidates if isinstance(r, ThinkingResult) and r.answer]
+
+        if not candidates:
+            return await self.think(question, context=context, depth="deep", system=system)
+        if len(candidates) == 1:
+            return candidates[0]
+
+        # Self-evaluation: ask the model to pick the best answer
+        from apps.core.tools.ai_client import get_ai_client, AIModel
+        client = get_ai_client()
+        eval_prompt = (
+            f"Pregunta original: {question}\n\n"
+            + "\n\n".join(f"RESPUESTA {i+1}:\n{c.answer[:1500]}" for i, c in enumerate(candidates))
+            + "\n\nEvalúa cada respuesta en: precisión, completitud y utilidad práctica. "
+            "Responde SOLO con el número de la mejor respuesta (1, 2, etc.) y una breve justificación."
+        )
+        eval_resp = await client.complete(
+            model=AIModel.FAST,
+            system="Eres un juez crítico que evalúa la calidad de respuestas de IA.",
+            user=eval_prompt,
+            max_tokens=200,
+        )
+        eval_text = eval_resp.content if hasattr(eval_resp, "content") else ""
+
+        # Parse choice
+        import re
+        m = re.search(r"\b([1-9])\b", eval_text or "")
+        chosen_idx = (int(m.group(1)) - 1) if m and int(m.group(1)) <= len(candidates) else 0
+        best = candidates[chosen_idx]
+
+        logger.info(
+            "[DeepThink/verified] paths=%d chosen=%d duration=%dms",
+            paths, chosen_idx + 1, int((_time.monotonic() - t0) * 1000)
+        )
+        return best
+
     def _detect_depth(self, question: str) -> str:
         """Detecta automáticamente el nivel de pensamiento necesario."""
         q_lower = question.lower()

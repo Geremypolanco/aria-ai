@@ -120,6 +120,14 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - analyze_video    → analiza un video por URL, extrae frames clave. Args: {{"url": "https://...", "question": "¿qué ocurre?"}}
 - run_background   → ejecuta tarea larga en segundo plano y te notifica cuando termina. Args: {{"task": "descripción", "agent": "ceo|research|developer|content"}}
 - task_status      → estado de tareas en segundo plano. Args: {{"task_id": "..."}} o {{}} para listar todas.
+- learn            → ingesta texto o URL en la base de conocimiento para uso futuro. Args: {{"source": "https://... o texto", "category": "tema", "is_url": true}}
+- search_knowledge → busca en la base de conocimiento semántica interna de ARIA. Args: {{"query": "...", "top_k": 5}}
+- forget_source    → elimina una fuente de la base de conocimiento. Args: {{"source": "nombre_o_url"}}
+- run_crew         → equipo de agentes colaborando secuencialmente en una misión compleja. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
+- create_workflow  → crea automatización multi-paso desde descripción natural. Args: {{"name": "...", "description": "qué debe hacer cada paso"}}
+- run_workflow     → ejecuta un workflow guardado. Args: {{"workflow_id": "..."}}
+- list_workflows   → lista los workflows disponibles. Args: {{}}
+- think_verified   → razonamiento verificado con auto-corrección multi-path (Test-Time Compute). Para problemas de máxima importancia. Args: {{"question": "...", "context": "..."}}
 
 REGLAS DE RAZONAMIENTO:
 1. Usa tu campo "thought" para razonar paso a paso antes de decidir qué hacer.
@@ -128,8 +136,13 @@ REGLAS DE RAZONAMIENTO:
 4. Si el usuario pide una presentación o pitch deck → usa create_presentation o create_pitch_deck.
 5. Si el usuario comparte una imagen (URL) y pide análisis, OCR o descripción → usa analyze_image o extract_text.
 6. Si el usuario pide una tarea larga que tardará minutos → usa run_background para no bloquear la conversación.
-7. Si tienes dudas sobre qué quiere el usuario → interpreta la intención más útil y ejecútala.
-8. Nunca inventes datos, precios, estadísticas o hechos. Busca si no sabes.
+7. Si el usuario pide que aprendas un documento/URL → usa learn para ingresarlo en la base de conocimiento.
+8. Antes de responder preguntas sobre temas específicos que el usuario haya enseñado → usa search_knowledge primero.
+9. Para proyectos complejos multi-disciplinarios → usa run_crew para colaboración de agentes especializados.
+10. Para automatizaciones recurrentes → usa create_workflow + run_workflow.
+11. Para decisiones críticas o preguntas de máxima importancia → usa think_verified para máxima calidad.
+12. Si tienes dudas sobre qué quiere el usuario → interpreta la intención más útil y ejecútala.
+13. Nunca inventes datos, precios, estadísticas o hechos. Busca si no sabes.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -261,6 +274,14 @@ class AriaMind:
 
         learned_text = "\n".join(f"  • {l}" for l in learned[-10:]) or "  (sin reglas aún)"
 
+        # Enrich system with relevant knowledge base context (RAG)
+        kb_context = ""
+        try:
+            from apps.core.tools.knowledge_base import get_knowledge_base
+            kb_context = await get_knowledge_base().search_formatted(text, top_k=3)
+        except Exception:
+            pass
+
         system = SYSTEM_TEMPLATE.format(
             owner=getattr(settings, "OWNER_NAME", "su dueño"),
             focus=state.get("focus", "sin foco definido"),
@@ -271,9 +292,13 @@ class AriaMind:
             history=history_text,
         )
 
+        user_input = text
+        if kb_context:
+            user_input = f"{kb_context}\n\n---\nMensaje del usuario: {text}"
+
         result = await ai.complete_json(
             system=system,
-            user=text,
+            user=user_input,
             model=AIModel.STRATEGY,
             max_tokens=1000,
             agent_name="aria_mind",
@@ -803,6 +828,101 @@ class AriaMind:
                     return "No hay tareas en segundo plano.", {}
                 lines = [f"• [{t['id']}] {t['status']} — {t['name']}" for t in tasks]
                 return "[TAREAS EN SEGUNDO PLANO]\n" + "\n".join(lines), {}
+
+            # ── KNOWLEDGE BASE (RAG) ──────────────────────────────────────
+            elif tool == "learn":
+                source   = args.get("source", "")
+                category = args.get("category", "general")
+                is_url   = args.get("is_url", source.startswith("http"))
+                from apps.core.tools.knowledge_base import get_knowledge_base
+                kb = get_knowledge_base()
+                if is_url:
+                    r = await kb.ingest_url(source, category=category)
+                else:
+                    r = await kb.ingest_text(source, source=category, category=category)
+                if r.get("success"):
+                    return (f"✅ Aprendido: {r['chunks_added']} fragmentos de '{source[:60]}' "
+                            f"(total en KB: {r['total_chunks']})"), {}
+                return f"No pude aprender esa fuente: {r.get('error', 'error')}", {}
+
+            elif tool == "search_knowledge":
+                query = args.get("query", "")
+                top_k = int(args.get("top_k", 5))
+                from apps.core.tools.knowledge_base import get_knowledge_base
+                formatted = await get_knowledge_base().search_formatted(query, top_k=top_k)
+                if formatted:
+                    return formatted, {}
+                return "No encontré información relevante en la base de conocimiento. Prueba a usar 'learn' primero.", {}
+
+            elif tool == "forget_source":
+                source = args.get("source", "")
+                from apps.core.tools.knowledge_base import get_knowledge_base
+                deleted = get_knowledge_base().delete_source(source)
+                return f"Eliminados {deleted} fragmentos de '{source}' de la base de conocimiento.", {}
+
+            # ── MULTI-AGENT CREW ──────────────────────────────────────────
+            elif tool == "run_crew":
+                mission    = args.get("mission", "")
+                crew_name  = args.get("crew", "research_crew")
+                from apps.core.tools.crew_engine import get_crew_engine
+                from apps.core.tools.deep_think import ProgressStream
+
+                ps = ProgressStream(session_id="", task_name=f"Crew:{crew_name}")
+                run = await get_crew_engine().run(
+                    mission=mission,
+                    crew_name=crew_name,
+                    on_progress=lambda step, total, role: ps.update(
+                        f"{role} trabajando...", f"Paso {step}/{total}"
+                    ),
+                )
+                members_summary = " → ".join(m.role for m in run.members)
+                obs = (
+                    f"[CREW: {crew_name.upper()} — {members_summary}]\n\n"
+                    f"{run.final_output or 'Sin output final'}"
+                )
+                return obs, {}
+
+            # ── WORKFLOW ENGINE ───────────────────────────────────────────
+            elif tool == "create_workflow":
+                name        = args.get("name", "Workflow")
+                description = args.get("description", "")
+                from apps.core.tools.workflow_engine import get_workflow_engine
+                r = await get_workflow_engine().create(name, description)
+                if r.get("success"):
+                    steps_str = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(r.get("steps_preview", [])))
+                    return (f"✅ Workflow '{name}' creado (ID: {r['workflow_id']}, {r['steps']} pasos):\n"
+                            f"{steps_str}\n\nUsa run_workflow con id='{r['workflow_id']}' para ejecutarlo."), {}
+                return f"No pude crear el workflow: {r.get('error', 'error')}", {}
+
+            elif tool == "run_workflow":
+                wid = args.get("workflow_id", "")
+                from apps.core.tools.workflow_engine import get_workflow_engine
+                r = await get_workflow_engine().run(wid)
+                if r.get("success"):
+                    steps_summary = "; ".join(
+                        f"paso{s['step']}={'OK' if s['success'] else 'FAIL'}"
+                        for s in r.get("results", [])
+                    )
+                    return (f"[WORKFLOW '{r.get('name', wid)}' — {r['steps_run']} pasos]\n"
+                            f"{steps_summary}\n\n{r.get('final_output', '')}"), {}
+                return f"Error ejecutando workflow: {r.get('error', 'error')}", {}
+
+            elif tool == "list_workflows":
+                from apps.core.tools.workflow_engine import get_workflow_engine
+                wfs = get_workflow_engine().list()
+                if not wfs:
+                    return "No hay workflows guardados. Usa create_workflow para crear uno.", {}
+                lines = [f"• [{w['id']}] **{w['name']}** — {w['description'][:60]} (runs: {w['run_count']})" for w in wfs]
+                return "[WORKFLOWS]\n" + "\n".join(lines), {}
+
+            # ── THINK VERIFIED (Test-Time Compute) ────────────────────────
+            elif tool == "think_verified":
+                question = args.get("question", "")
+                context  = args.get("context", "")
+                from apps.core.tools.deep_think import get_deep_think
+                result = await get_deep_think().think_verified(question, context=context, paths=2)
+                obs = f"[RAZONAMIENTO VERIFICADO — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
+                return obs, {}
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
