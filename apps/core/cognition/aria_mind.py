@@ -107,7 +107,11 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - fetch_url       → lee el contenido completo de una URL específica. Args: {{"url": "https://..."}}
 - get_trends      → trending en HN y Reddit ahora. Args: {{}}
 - get_status      → estado completo del sistema. Args: {{}}
-- run_income      → ejecuta ciclo de monetización completo. Args: {{}}
+- run_income      → ejecuta ciclo de monetización completo (pipeline de contenido + Gumroad). Args: {{}}
+- launch_niche    → activa un nicho completo de forma autónoma: investigación → creación → checklist → publicación → distribución. Úsalo cuando el usuario pida generar ingresos en un nicho específico. Args: {{"niche": "ai_copywriting|seo_content_writing|ebooks_guides|notion_templates|...", "context": "detalles adicionales opcionales"}}
+- income_dashboard → muestra el dashboard completo de ingresos: listings activos, plataformas, revenue por nicho. Args: {{}}
+- list_niches     → lista todos los 45 nichos disponibles con precios, competencia y tiempo al ingreso. Args: {{"category": "services|digital_products|content|saas|creative (opcional)", "tier": 1-5 (opcional)}}
+- auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
 - deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
@@ -152,6 +156,10 @@ REGLAS DE RAZONAMIENTO:
 14. Si el usuario pide ver/leer/explorar código en GitHub → usa github_view. Para MI propio código → github_self con sub="structure" o sub="read".
 15. Si el usuario pide crear archivos, branches, PRs o issues en GitHub → usa github_write, github_pr, github_issues.
 16. Si el usuario pide buscar repos o proyectos en GitHub → usa github_search.
+17. Si el usuario pide generar ingresos, lanzar un negocio o monetizar en un nicho específico → usa launch_niche con el niche_key correcto.
+18. Si el usuario pide ver qué nichos hay disponibles o cuáles son más rentables → usa list_niches o income_dashboard.
+19. Si el usuario pide que ARIA trabaje de forma autónoma para generar dinero sin intervención → usa auto_income.
+20. Para decisiones sobre qué nicho priorizar → usa analyze_decision con los criterios: mercado, competencia, tiempo_al_ingreso.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -986,6 +994,78 @@ class AriaMind:
                 result = await get_deep_think().think_verified(question, context=context, paths=2)
                 obs = f"[RAZONAMIENTO VERIFICADO — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
                 return obs, {}
+
+            # ── NICHE REVENUE ENGINE ─────────────────────────────────────
+            elif tool == "launch_niche":
+                niche   = args.get("niche", "")
+                context = args.get("context", "")
+                if not niche:
+                    from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+                    top5 = get_niche_revenue_engine().get_top_niches_by_potential(n=3)
+                    names = [n["key"] for n in top5]
+                    return (f"Especifica un nicho. Top 3 recomendados ahora mismo: {', '.join(names)}\n"
+                            f"Usa list_niches para ver todos los 45 disponibles."), {}
+                from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine, NICHE_CATALOG
+                if niche not in NICHE_CATALOG:
+                    close = [k for k in NICHE_CATALOG if niche.lower() in k.lower()]
+                    return (f"Nicho '{niche}' no encontrado."
+                            + (f" ¿Quisiste decir: {', '.join(close[:3])}?" if close else "")), {}
+                result = await get_niche_revenue_engine().launch_niche(niche, context=context)
+                lines = [
+                    f"[LAUNCH: {result.niche_name}]",
+                    f"Checklist: {result.checklist.score}/100 {'✅' if result.checklist and result.checklist.passed else '⚠️'}",
+                    f"Tiempo: {result.elapsed_seconds}s",
+                ]
+                if result.published_urls:
+                    lines.append("**Publicado en:**")
+                    for u in result.published_urls:
+                        lines.append(f"  • {u['platform']}: {u['url']}")
+                if result.seo_article_urls:
+                    lines.append("**Artículos SEO:**")
+                    for u in result.seo_article_urls:
+                        lines.append(f"  • {u['platform']}: {u['url']}")
+                if result.errors:
+                    lines.append(f"Advertencias: {'; '.join(result.errors[:3])}")
+                if result.listing:
+                    lines.append(f"\n**Listing:** {result.listing.title}")
+                    lines.append(f"Precio: ${result.listing.pricing_tiers['basic']['price']} – ${result.listing.pricing_tiers['premium']['price']}")
+                return "\n".join(lines), {}
+
+            elif tool == "income_dashboard":
+                from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+                return get_niche_revenue_engine().income_dashboard(), {}
+
+            elif tool == "list_niches":
+                category = args.get("category", None)
+                tier     = args.get("tier", None)
+                from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+                return get_niche_revenue_engine().list_all_niches(category=category, tier=tier), {}
+
+            elif tool == "auto_income":
+                num_niches = int(args.get("num_niches", 3))
+                from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+                result = await get_niche_revenue_engine().autonomous_income_cycle(num_niches=num_niches)
+                lines = [
+                    f"[AUTO INCOME CYCLE]",
+                    f"Nichos intentados: {result['niches_attempted']}",
+                    f"Nichos exitosos: {result['niches_succeeded']}",
+                    f"Listings en vivo: {result['total_listings_live']}",
+                    f"Artículos publicados: {result['total_content_published']}",
+                    f"Tiempo: {result['elapsed_seconds']}s",
+                ]
+                if result.get("all_live_urls"):
+                    lines.append("\n**URLs activas:**")
+                    for u in result["all_live_urls"][:8]:
+                        lines.append(f"  • {u.get('platform')}: {u.get('url')}")
+                if result.get("successful_niches"):
+                    lines.append("\n**Nichos lanzados:**")
+                    for n in result["successful_niches"]:
+                        lines.append(f"  ✅ {n['niche']} — potencial ${n.get('revenue_potential',0)}/sale")
+                if result.get("failed_niches"):
+                    lines.append("\n**Nichos con errores:**")
+                    for n in result["failed_niches"]:
+                        lines.append(f"  ⚠️ {n['niche']}: {', '.join(n.get('errors',[])[:2])}")
+                return "\n".join(lines), {}
 
             # ── GITHUB ───────────────────────────────────────────────────
             elif tool in ("github_view", "github_write", "github_pr",
