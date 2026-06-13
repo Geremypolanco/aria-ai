@@ -366,7 +366,7 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
     <template x-for="item in navItems" :key="item.id">
       <div class="nav-item tip" :class="activeSection===item.id ? 'active' : ''"
            :data-tip="item.label"
-           @click="activeSection=item.id; closeMobileSidebar()">
+           @click="activeSection=item.id; closeMobileSidebar(); if(item.id==='settings') loadAiHealth()">
         <span class="nav-icon" x-html="item.icon"></span>
         <span class="nav-label flex-1" x-text="item.label"></span>
         <span x-show="item.badge && !desktopCollapsed" class="nav-badge badge badge-v text-xs ml-auto" x-text="item.badge"></span>
@@ -1100,6 +1100,32 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
         <h1 class="section-title">Configuración</h1>
         <p class="section-sub">Estado de integraciones y acceso API</p>
       </div>
+      <button @click="loadAiHealth()" class="btn btn-ghost btn-sm">↻</button>
+    </div>
+
+    <!-- AI Provider Health -->
+    <div class="card p-5 mb-4">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-sm">Motor de IA — Estado de Proveedores</h3>
+        <span class="text-xs font-mono" style="color:var(--text3)"
+              x-text="aiHealth._totals ? `${(aiHealth._totals.tokens_used||0).toLocaleString()} tokens · ${aiHealth._totals.fallbacks_triggered||0} fallbacks` : 'Cargando…'"></span>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <template x-for="(ph, name) in aiHealth" :key="name">
+          <div x-show="name!=='_totals'" class="rounded-xl p-3 text-center" style="background:var(--elevated);border:1px solid var(--border)">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center mx-auto mb-2"
+                 :style="ph.available ? 'background:rgba(16,185,129,.15)' : 'background:rgba(239,68,68,.12)'">
+              <div class="w-3 h-3 rounded-full" :class="ph.available ? 'bg-emerald-400' : 'bg-red-400'"></div>
+            </div>
+            <div class="text-xs font-semibold capitalize" x-text="name"></div>
+            <div class="text-xs mt-1" style="color:var(--text3)" x-text="(ph.success_rate_pct||100).toFixed(0)+'% éxito'"></div>
+            <div class="text-xs" style="color:var(--text3)" x-text="ph.total_calls+' llamadas'"></div>
+          </div>
+        </template>
+        <div x-show="Object.keys(aiHealth).length===0" class="col-span-3 text-center py-4 text-sm" style="color:var(--text3)">
+          Haz clic en ↻ para cargar estado de proveedores
+        </div>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -1216,6 +1242,7 @@ function ariaApp() {
     agents: [],
     goals: [],
     tasks: [],
+    aiHealth: {},
     activity: [],
     activityFilter: '',
     metrics: { agents: 0, goals: 0, runs: 0, health: 0 },
@@ -1452,6 +1479,14 @@ function ariaApp() {
       try {
         await fetch(`/api/v1/tasks/${id}`, { method:'DELETE' });
         await this.loadTasks();
+      } catch(e) {}
+    },
+
+    async loadAiHealth() {
+      try {
+        const r = await fetch('/api/v1/health/ai');
+        if (!r.ok) return;
+        this.aiHealth = await r.json();
       } catch(e) {}
     },
 
