@@ -101,11 +101,18 @@ async def api_status() -> dict:
         scheduler_running = False
         jobs = []
 
+    try:
+        from apps.core.tools.task_manager import get_task_manager
+        task_stats = get_task_manager().stats()
+    except Exception:
+        task_stats = {}
+
     return {
         "aria": "running",
         "trainer": trainer_status,
         "agents": {"registered": agent_count},
         "scheduler": {"running": scheduler_running, "jobs": jobs},
+        "tasks": task_stats,
         "ts": datetime.utcnow().isoformat(),
     }
 
@@ -266,6 +273,31 @@ async def api_pipeline_list() -> dict:
     except Exception as exc:
         logger.error("[API /pipeline] %s", exc)
         return {"error": str(exc), "runs": []}
+
+
+@router.get("/tasks", dependencies=[Depends(verify_api_key)])
+async def api_tasks(status: str = "") -> dict:
+    """List background tasks managed by TaskManager."""
+    try:
+        from apps.core.tools.task_manager import get_task_manager
+        mgr = get_task_manager()
+        tasks = mgr.list_tasks(status=status or None, limit=50)
+        stats = mgr.stats()
+        return {"tasks": tasks, "stats": stats}
+    except Exception as exc:
+        logger.error("[API /tasks] %s", exc)
+        return {"error": str(exc), "tasks": []}
+
+
+@router.delete("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
+async def api_cancel_task(task_id: str) -> dict:
+    """Cancel a queued background task."""
+    try:
+        from apps.core.tools.task_manager import get_task_manager
+        ok = get_task_manager().cancel_task(task_id)
+        return {"cancelled": ok, "task_id": task_id}
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 @router.post("/schedule", dependencies=[Depends(verify_api_key)])

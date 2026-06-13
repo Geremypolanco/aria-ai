@@ -130,7 +130,7 @@ class DeepThink:
 
         # Extract thinking trace if present
         thinking_trace = None
-        answer         = response or ""
+        answer         = (response.content if hasattr(response, "content") else str(response)) or ""
 
         if budget > 0 and "<think>" in answer:
             import re
