@@ -174,6 +174,42 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando ReasoningTracer: %s", exc)
 
+    # 3e. Phase 4 platform systems: event bus, rule engine, executive agent, tiered memory, BI telemetry
+    try:
+        from apps.core.events.bus import get_event_bus
+        get_event_bus()
+        logger.info("Event Bus initialized (Redis-backed, Kafka-compatible interface)")
+    except Exception as exc:
+        logger.error("Error iniciando EventBus: %s", exc)
+
+    try:
+        from apps.core.deterministic.rule_engine import get_rule_engine
+        get_rule_engine()
+        logger.info("Rule Engine initialized (6 deterministic governance rules)")
+    except Exception as exc:
+        logger.error("Error iniciando RuleEngine: %s", exc)
+
+    try:
+        from apps.core.agents.executive.executive_agent import get_executive_agent
+        get_executive_agent()
+        logger.info("Executive Agent initialized (task arbitration + budget enforcement)")
+    except Exception as exc:
+        logger.error("Error iniciando ExecutiveAgent: %s", exc)
+
+    try:
+        from apps.core.memory.tiering.tiered_memory import get_tiered_memory
+        get_tiered_memory()
+        logger.info("Tiered Memory initialized (HOT/WARM/COLD hierarchy)")
+    except Exception as exc:
+        logger.error("Error iniciando TieredMemory: %s", exc)
+
+    try:
+        from apps.core.business.intelligence.bi_telemetry import get_bi_telemetry
+        get_bi_telemetry()
+        logger.info("BI Telemetry initialized (workflow profitability tracking)")
+    except Exception as exc:
+        logger.error("Error iniciando BITelemetry: %s", exc)
+
     # 4. Scheduler (ciclos autónomos, SIN notificaciones Telegram automáticas)
     try:
         scheduler.add_job(autonomous_cycle_job, IntervalTrigger(minutes=settings.CYCLE_INTERVAL_MINUTES),
@@ -437,6 +473,70 @@ async def cognition_traces():
             "summary": tracer.summary(),
             "recent": tracer.recent(n=10),
             "high_risk": [t.to_dict() for t in tracer.high_risk_traces()],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/events/stats")
+async def event_bus_stats():
+    """Event bus statistics: topics, volume, DLQ depth."""
+    try:
+        from apps.core.events.bus import get_event_bus
+        return get_event_bus().stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/events/dlq")
+async def event_dlq():
+    """Dead-letter queue — events that failed after all retries."""
+    try:
+        from apps.core.events.bus import get_event_bus
+        bus = get_event_bus()
+        items = await bus.consume_dlq(limit=50)
+        return {"dead_letter_count": bus.dead_letter_count, "items": items}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/business/intelligence")
+async def bi_report():
+    """Business intelligence report: workflow profitability and ROI telemetry."""
+    try:
+        from apps.core.business.intelligence.bi_telemetry import get_bi_telemetry
+        bi = get_bi_telemetry()
+        return {
+            "summary": bi.summary(),
+            "report_24h": await bi.report(window_hours=24),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/quality/benchmark")
+async def run_benchmark():
+    """Run hallucination and rule-engine benchmark suites."""
+    try:
+        from tests.testing.cognition.benchmark_harness import (
+            BenchmarkRunner,
+            build_hallucination_suite,
+            build_rule_engine_suite,
+        )
+        runner = BenchmarkRunner()
+        hallucination_report = await runner.run(build_hallucination_suite())
+        rule_report = await runner.run(build_rule_engine_suite())
+        return {
+            "hallucination_suite": {
+                "pass_rate": hallucination_report.pass_rate,
+                "avg_latency_ms": hallucination_report.avg_latency_ms,
+                "regression_detected": runner.regression_detected(hallucination_report),
+            },
+            "rule_engine_suite": {
+                "pass_rate": rule_report.pass_rate,
+                "avg_latency_ms": rule_report.avg_latency_ms,
+                "regression_detected": runner.regression_detected(rule_report),
+            },
         }
     except Exception as exc:
         return {"error": str(exc)}

@@ -1,0 +1,151 @@
+---
+# ARIA AI — Kubernetes Deployment
+# Segment: API + Worker as separate Deployments for independent scaling.
+#
+# Secrets management: use External Secrets Operator or Sealed Secrets.
+# Never store real secrets in this file.
+#
+# Apply:
+#   kubectl apply -k infra/kubernetes/
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aria-api
+  namespace: aria
+  labels:
+    app: aria-ai
+    component: api
+    version: "2.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aria-ai
+      component: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: aria-ai
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: aria-api
+          image: registry.fly.io/aria-ai:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: PORT
+              value: "8000"
+            - name: ARIA_ENV
+              value: "production"
+          envFrom:
+            - secretRef:
+                name: aria-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]  # drain in-flight requests before SIGTERM
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aria-worker
+  namespace: aria
+  labels:
+    app: aria-ai
+    component: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aria-ai
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: aria-ai
+        component: worker
+    spec:
+      containers:
+        - name: aria-worker
+          image: registry.fly.io/aria-ai:latest
+          command: ["python", "-m", "apps.core.runtime.task_queue_worker"]
+          env:
+            - name: WORKER_CONCURRENCY
+              value: "4"
+            - name: ARIA_ENV
+              value: "production"
+          envFrom:
+            - secretRef:
+                name: aria-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aria-api
+  namespace: aria
+  labels:
+    app: aria-ai
+    component: api
+spec:
+  selector:
+    app: aria-ai
+    component: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aria
+  labels:
+    app: aria-ai

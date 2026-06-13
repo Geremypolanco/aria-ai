@@ -1,0 +1,67 @@
+# ARIA AI Helm Values — override per environment
+# Usage: helm upgrade --install aria-ai infra/helm -f infra/helm/values.production.yaml
+
+image:
+  repository: registry.fly.io/aria-ai
+  tag: latest
+  pullPolicy: Always
+
+api:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    cpuTargetUtilization: 60
+
+worker:
+  replicas: 2
+  concurrency: 4
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 8
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: aria-ai.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+secrets:
+  # Mount from external secrets operator; never hardcode here
+  secretRef: aria-secrets
+
+env:
+  ARIA_ENV: production
+  PORT: "8000"
+  WORKER_CONCURRENCY: "4"
+
+observability:
+  prometheus:
+    scrape: true
+    path: /metrics
+    port: "8000"
