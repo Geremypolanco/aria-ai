@@ -112,6 +112,9 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - income_dashboard → muestra el dashboard completo de ingresos: listings activos, plataformas, revenue por nicho. Args: {{}}
 - list_niches     → lista todos los 45 nichos disponibles con precios, competencia y tiempo al ingreso. Args: {{"category": "services|digital_products|content|saas|creative (opcional)", "tier": 1-5 (opcional)}}
 - auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
+- income_loop_status → muestra el estado del loop de ingresos 24/7: ciclos completados, tasa de éxito, última estrategia ejecutada, URLs creadas. Args: {{}}
+- start_income_loop → inicia el loop autónomo de ingresos 24/7 si no está corriendo. Corre cada 30 min indefinidamente. Args: {{}}
+- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|opportunity_scan|social_blitz|premium_offer (opcional)"}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
 - deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
@@ -160,6 +163,9 @@ REGLAS DE RAZONAMIENTO:
 18. Si el usuario pide ver qué nichos hay disponibles o cuáles son más rentables → usa list_niches o income_dashboard.
 19. Si el usuario pide que ARIA trabaje de forma autónoma para generar dinero sin intervención → usa auto_income.
 20. Para decisiones sobre qué nicho priorizar → usa analyze_decision con los criterios: mercado, competencia, tiempo_al_ingreso.
+21. Si el usuario pide ver el estado del loop de ingresos o quiere saber qué está haciendo ARIA en segundo plano → usa income_loop_status.
+22. Si el usuario pide ejecutar una estrategia de ingresos específica ahora mismo → usa run_income_cycle con la estrategia.
+23. ARIA tiene un loop 24/7 que ya corre en segundo plano. No es necesario lanzarlo manualmente a menos que el usuario lo pida explícitamente.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1065,6 +1071,43 @@ class AriaMind:
                     lines.append("\n**Nichos con errores:**")
                     for n in result["failed_niches"]:
                         lines.append(f"  ⚠️ {n['niche']}: {', '.join(n.get('errors',[])[:2])}")
+                return "\n".join(lines), {}
+
+            # ── INCOME LOOP 24/7 ──────────────────────────────────────────
+            elif tool == "income_loop_status":
+                from apps.core.tools.income_loop import get_income_loop
+                return get_income_loop().get_status(), {}
+
+            elif tool == "start_income_loop":
+                from apps.core.tools.income_loop import get_income_loop
+                loop = get_income_loop()
+                if loop.is_running:
+                    return "El income loop 24/7 ya está corriendo. Usa income_loop_status para ver su estado.", {}
+                await loop.start()
+                return "✅ Income loop 24/7 iniciado. Ejecutará estrategias de ingresos cada 30 minutos de forma autónoma.", {}
+
+            elif tool == "run_income_cycle":
+                from apps.core.tools.income_loop import get_income_loop, STRATEGIES
+                loop      = get_income_loop()
+                strategy  = args.get("strategy", "")
+                valid     = [s[0] for s in STRATEGIES]
+                if strategy and strategy not in valid:
+                    return f"Estrategia inválida. Opciones: {', '.join(valid)}", {}
+                import random as _rnd
+                if not strategy:
+                    strategy = _rnd.choices([s[0] for s in STRATEGIES],
+                                            weights=[s[1] for s in STRATEGIES], k=1)[0]
+                obs = await loop._execute(strategy)
+                lines = [
+                    f"[INCOME CYCLE — {strategy}]",
+                    f"Success: {'✅' if obs.get('success') else '❌'}",
+                    f"Summary: {obs.get('summary', '')}",
+                    f"Revenue potential: ${obs.get('revenue_potential', 0):.0f}",
+                ]
+                if obs.get("urls"):
+                    lines.append("URLs:")
+                    for u in obs["urls"][:4]:
+                        lines.append(f"  • {u}")
                 return "\n".join(lines), {}
 
             # ── GITHUB ───────────────────────────────────────────────────
