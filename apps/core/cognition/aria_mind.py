@@ -100,6 +100,8 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - describe_image  → describe el contenido de una imagen por URL. Args: {{"url": "https://..."}}
 - execute_code    → ejecuta código Python o JS en sandbox seguro y devuelve el output real. Args: {{"code": "...", "language": "python|javascript"}}
 - run_business_agent → activa un agente especializado de negocio. Args: {{"agent": "ceo|marketing|sales|developer|research|content|finance", "mission": "...", "context": {{}}}}
+- browse_page     → abre una URL en navegador real (con JS) y extrae su contenido. Args: {{"url": "https://...", "screenshot": false}}
+- interact_browser → ejecuta acciones en el navegador (click, fill, submit forms). Args: {{"steps": [{{"action": "navigate|click|fill|press|wait|screenshot|extract_text", "url": "...", "selector": "...", "value": "...", "key": "..."}}]}}
 - web_search      → busca en internet en tiempo real. Usa queries específicas y descriptivas. Args: {{"query": "..."}}
 - deep_search     → búsqueda profunda: busca Y lee el contenido de las páginas top. Ideal para investigación. Args: {{"query": "...", "num_pages": 3}}
 - fetch_url       → lee el contenido completo de una URL específica. Args: {{"url": "https://..."}}
@@ -615,6 +617,32 @@ class AriaMind:
                 output = r.get("stdout", "") or r.get("stderr", "") or "(sin salida)"
                 status = "OK" if r.get("success") else "ERROR"
                 return f"[{language} {status}]\n{output[:2000]}", {}
+
+            # ── NAVEGADOR SANDBOX ─────────────────────────────────────────
+            elif tool == "browse_page":
+                url        = args.get("url", "")
+                take_shot  = args.get("screenshot", False)
+                from apps.core.tools.browser_sandbox import get_sandbox
+                r = await get_sandbox().browse(url, extract=True, screenshot=take_shot)
+                content = r.get("content", "")[:3000]
+                title   = r.get("title", url)
+                obs = f"[PÁGINA: {title}]\n{content}"
+                media: dict = {}
+                if take_shot and r.get("screenshot_bytes"):
+                    media["image_bytes"] = r["screenshot_bytes"]
+                return obs, media
+
+            elif tool == "interact_browser":
+                steps  = args.get("steps", [])
+                from apps.core.tools.browser_sandbox import get_sandbox
+                session = get_sandbox()._get_session()
+                r = await session.interact_with_page(steps)
+                summary = f"Pasos ejecutados: {r.get('steps_executed',0)}, exitosos: {r.get('steps_succeeded',0)}"
+                details = "\n".join(
+                    f"  {s['action']}: {'OK' if s.get('result',{}).get('success') else 'FAIL'}"
+                    for s in r.get("results", [])
+                )
+                return f"[BROWSER] {summary}\n{details}", {}
 
             # ── AGENTE DE NEGOCIO ─────────────────────────────────────────
             elif tool == "run_business_agent":

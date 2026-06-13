@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY apps/core/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN playwright install chromium --with-deps 2>/dev/null || true
 
 COPY apps/ apps/
 

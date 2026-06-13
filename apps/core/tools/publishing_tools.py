@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Optional
 
 import httpx
@@ -188,11 +189,21 @@ class PublishingTools:
 
     # ── EMAIL NEWSLETTER ──────────────────────────────────
 
-    async def send_newsletter(self, subject: str, html_content: str, plain_text: str) -> dict:
+    async def send_newsletter(
+        self,
+        subject: str,
+        html_content: str,
+        plain_text: str = "",
+        to_override: Optional[str] = None,
+    ) -> dict:
         """
         Envía newsletter usando el mejor proveedor disponible.
-        Orden: Resend → SendGrid → Mailgun → Mailchimp
+        Orden: Resend → SendGrid → Mailgun
+        to_override: destinatario específico (si no se usa la lista configurada).
         """
+        if not plain_text:
+            plain_text = re.sub(r"<[^>]+>", "", html_content)
+
         providers = [
             ("resend", self._send_via_resend),
             ("sendgrid", self._send_via_sendgrid),
@@ -200,39 +211,42 @@ class PublishingTools:
         ]
         for name, fn in providers:
             try:
-                result = await fn(subject, html_content, plain_text)
+                result = await fn(subject, html_content, plain_text, to=to_override)
                 if result.get("success"):
                     logger.info("[Publishing] Newsletter enviado via %s", name)
-                    return result
+                    return {**result, "provider": name}
             except Exception as exc:
                 logger.warning("[Publishing] %s newsletter error: %s", name, exc)
         return {"success": False, "error": "Todos los proveedores de email fallaron"}
 
-    async def _send_via_resend(self, subject: str, html: str, text: str) -> dict:
+    async def _send_via_resend(self, subject: str, html: str, text: str, to: Optional[str] = None) -> dict:
         """Resend: 3,000 emails/mes gratis."""
         if not settings.RESEND_API_KEY:
+            return {"success": False, "skipped": True}
+        to_email = to or settings.NEWSLETTER_LIST_EMAIL or getattr(settings, "OWNER_EMAIL", None) or ""
+        if not to_email:
             return {"success": False, "skipped": True}
         res = await self._http.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}", "Content-Type": "application/json"},
             json={
                 "from": settings.EMAIL_FROM or "ARIA <newsletter@aria-ai.dev>",
-                "to": [settings.NEWSLETTER_LIST_EMAIL or settings.OWNER_EMAIL or ""],
+                "to": [to_email],
                 "subject": subject,
                 "html": html,
                 "text": text,
             },
         )
         if res.status_code in (200, 201):
-            return {"success": True, "id": res.json().get("id"), "provider": "resend"}
+            return {"success": True, "id": res.json().get("id")}
         return {"success": False, "error": res.text[:200]}
 
-    async def _send_via_sendgrid(self, subject: str, html: str, text: str) -> dict:
+    async def _send_via_sendgrid(self, subject: str, html: str, text: str, to: Optional[str] = None) -> dict:
         """SendGrid: 100 emails/día gratis."""
         if not settings.SENDGRID_API_KEY:
             return {"success": False, "skipped": True}
         from_email = settings.EMAIL_FROM or "noreply@aria-ai.dev"
-        to_email = settings.NEWSLETTER_LIST_EMAIL or settings.OWNER_EMAIL or ""
+        to_email = to or settings.NEWSLETTER_LIST_EMAIL or getattr(settings, "OWNER_EMAIL", None) or ""
         if not to_email:
             return {"success": False, "skipped": True}
         res = await self._http.post(
@@ -249,14 +263,14 @@ class PublishingTools:
             },
         )
         if res.status_code == 202:
-            return {"success": True, "provider": "sendgrid"}
+            return {"success": True}
         return {"success": False, "error": res.text[:200]}
 
-    async def _send_via_mailgun(self, subject: str, html: str, text: str) -> dict:
+    async def _send_via_mailgun(self, subject: str, html: str, text: str, to: Optional[str] = None) -> dict:
         """Mailgun: 5,000 emails/mes gratis (3 meses trial)."""
         if not settings.MAILGUN_API_KEY or not settings.MAILGUN_DOMAIN:
             return {"success": False, "skipped": True}
-        to_email = settings.NEWSLETTER_LIST_EMAIL or settings.OWNER_EMAIL or ""
+        to_email = to or settings.NEWSLETTER_LIST_EMAIL or getattr(settings, "OWNER_EMAIL", None) or ""
         if not to_email:
             return {"success": False, "skipped": True}
         res = await self._http.post(
@@ -271,5 +285,5 @@ class PublishingTools:
             },
         )
         if res.status_code == 200:
-            return {"success": True, "provider": "mailgun", "id": res.json().get("id")}
+            return {"success": True, "id": res.json().get("id")}
         return {"success": False, "error": res.text[:200]}
