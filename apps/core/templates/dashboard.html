@@ -159,6 +159,15 @@ body{
 .msg-aria li{margin:2px 0;font-size:13.5px}
 .msg-aria p{margin:4px 0}
 
+/* ── STREAMING CURSOR ────────────────────────────────── */
+.streaming-cursor{
+  display:inline-block;width:2px;height:14px;
+  background:#a78bfa;border-radius:1px;margin-left:2px;
+  vertical-align:text-bottom;
+  animation:blink-caret .7s step-end infinite;
+}
+@keyframes blink-caret{0%,100%{opacity:1}50%{opacity:0}}
+
 /* ── PULSE DOT ───────────────────────────────────────── */
 .pulse-dot{
   width:8px;height:8px;border-radius:50%;
@@ -602,7 +611,10 @@ code{font-family:'JetBrains Mono','Fira Code',monospace}
           <div x-show="m.role==='aria'" class="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold mt-1" style="background:rgba(124,58,237,.2);color:#a78bfa">A</div>
           <div :class="m.role==='user'?'msg-user':'msg-aria'" class="text-sm leading-relaxed">
             <div x-show="m.role==='user'" x-text="m.text"></div>
-            <div x-show="m.role==='aria'" x-html="renderMarkdown(m.text)"></div>
+            <div x-show="m.role==='aria'">
+              <span x-html="renderMarkdown(m.text)"></span>
+              <span x-show="m.streaming" class="streaming-cursor"></span>
+            </div>
           </div>
         </div>
       </template>
@@ -1238,9 +1250,28 @@ function ariaApp() {
         this.ws.onmessage = (evt) => {
           try {
             const d = JSON.parse(evt.data);
-            if (d.type === 'reply') {
+            if (d.type === 'chunk') {
+              const last = this.messages[this.messages.length - 1];
+              if (last && last.role === 'aria' && last.streaming) {
+                last.text += d.text;
+              } else {
+                this.messages.push({ role:'aria', text: d.text, streaming: true });
+                this.thinking = false;
+              }
+              this.$nextTick(() => this.scrollChat());
+            } else if (d.type === 'reply') {
               this.thinking = false;
-              this.messages.push({ role:'aria', text: d.text });
+              const last = this.messages[this.messages.length - 1];
+              if (last && last.role === 'aria' && last.streaming) {
+                if (d.text) last.text = d.text;
+                last.streaming = false;
+              } else {
+                this.messages.push({ role:'aria', text: d.text, streaming: false });
+              }
+              this.$nextTick(() => this.scrollChat());
+            } else if (d.type === 'error') {
+              this.thinking = false;
+              this.messages.push({ role:'aria', text: d.text || 'Error desconocido', streaming: false });
               this.$nextTick(() => this.scrollChat());
             }
           } catch(e) {}
@@ -1349,7 +1380,7 @@ function ariaApp() {
       this.$nextTick(() => this.scrollChat());
 
       if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type:'chat', message:text, session_id: this.sessionId }));
+        this.ws.send(JSON.stringify({ type:'chat', message:text, session_id: this.sessionId, stream: true }));
       } else {
         try {
           const r = await fetch('/api/v1/chat', {

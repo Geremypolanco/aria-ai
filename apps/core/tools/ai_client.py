@@ -16,7 +16,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 
 import httpx
 from groq import AsyncGroq
@@ -472,6 +472,54 @@ class AriaAIClient:
         content = data["choices"][0]["message"]["content"].strip()
         tokens = data.get("usage", {}).get("total_tokens", 0)
         return content, tokens
+
+    # ── STREAMING ─────────────────────────────────────────
+
+    async def stream_complete(
+        self,
+        system: str,
+        user: str,
+        model: AIModel = AIModel.FAST,
+        max_tokens: int = 1500,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[str]:
+        """
+        Streams response tokens via Groq (fastest streaming provider).
+        Falls back to chunked non-streaming if Groq unavailable.
+        Yields text delta strings.
+        """
+        groq_model = MODEL_REGISTRY[model][AIProvider.GROQ]
+        if settings.GROQ_API_KEY and self._health[AIProvider.GROQ].is_available():
+            try:
+                stream = await self._groq.chat.completions.create(
+                    model=groq_model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    stream=True,
+                )
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta.content if chunk.choices else None
+                    if delta:
+                        yield delta
+                return
+            except Exception as exc:
+                logger.warning("[stream_complete] Groq stream failed: %s — falling back", exc)
+
+        # Fallback: full response, yield in ~30-char chunks to simulate streaming
+        try:
+            resp = await self.complete(system=system, user=user, model=model,
+                                        max_tokens=max_tokens, temperature=temperature)
+            text = resp.content or ""
+            chunk_size = 28
+            for i in range(0, len(text), chunk_size):
+                yield text[i:i + chunk_size]
+                await asyncio.sleep(0.012)
+        except Exception as exc:
+            yield f"[Error: {exc}]"
 
     # ── VISION ────────────────────────────────────────────
 
