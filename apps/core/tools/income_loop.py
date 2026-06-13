@@ -5,12 +5,14 @@ Runs every 30 minutes alongside the orchestrator (60 min).
 Focuses on PURE EXECUTION — no planning overhead.
 
 Every cycle picks a strategy based on weighted probability:
-  35% — Content Pipeline   (SEO articles + affiliate → Medium/dev.to/Hashnode)
-  25% — Niche Rotator      (launches next niche in catalog → Gumroad + Zapier)
-  20% — Product Factory    (creates new digital products for trending topics)
+  30% — Content Pipeline   (SEO articles + affiliate → Medium/dev.to/Hashnode)
+  22% — Niche Rotator      (launches next niche in catalog → Gumroad + Zapier)
+  18% — Product Factory    (creates new digital products for trending topics)
   10% — Opportunity Scan   (web research for new income streams)
-   5% — Social Blitz       (Zapier distribution for all existing products)
-   5% — Premium Offer      (high-ticket B2B consulting offers)
+   8% — Shopify Listing    (creates Shopify digital product from trending topic)
+   7% — Email Campaign     (Mailchimp campaign to owned audience)
+   3% — Social Blitz       (Zapier distribution for all existing products)
+   2% — Premium Offer      (high-ticket B2B consulting offers)
 
 Scale at 30-min intervals:
   48 cycles/day × 3 articles = 144 articles/day
@@ -40,12 +42,14 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",  35),
-    ("niche_rotator",     25),
-    ("product_factory",   20),
+    ("content_pipeline",  30),
+    ("niche_rotator",     22),
+    ("product_factory",   18),
     ("opportunity_scan",  10),
-    ("social_blitz",       5),
-    ("premium_offer",      5),
+    ("shopify_listing",    8),
+    ("email_campaign",     7),
+    ("social_blitz",       3),
+    ("premium_offer",      2),
 ]
 
 
@@ -175,6 +179,10 @@ class IncomeLoop:
             return await self._exec_product_factory()
         elif strategy == "opportunity_scan":
             return await self._exec_opportunity_scan()
+        elif strategy == "shopify_listing":
+            return await self._exec_shopify_listing()
+        elif strategy == "email_campaign":
+            return await self._exec_email_campaign()
         elif strategy == "social_blitz":
             return await self._exec_social_blitz()
         elif strategy == "premium_offer":
@@ -520,6 +528,139 @@ JSON:
 
         except Exception as exc:
             logger.error("[IncomeLoop] premium_offer: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_shopify_listing(self) -> dict:
+        """
+        Create a Shopify product listing for a trending digital item.
+        Targets print-on-demand, digital downloads, or info products.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.commerce_tools import get_commerce_tools
+            from apps.core.tools.content_pipeline import ContentPipeline
+
+            cp     = ContentPipeline()
+            topics = await cp.get_trending_topics(limit=3)
+            topic  = topics[0] if topics else "AI productivity tools 2025"
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "AI unavailable"}
+
+            resp = await ai.complete(
+                system="You are a Shopify product expert. Create compelling digital product listings. Output JSON only.",
+                user=f"""Create a Shopify digital product listing for the trending topic: "{topic}"
+
+JSON:
+{{
+  "title": "Product title (60 chars max)",
+  "description": "Compelling HTML product description (200+ words). Include benefits, what's included, who it's for.",
+  "price": "29.99",
+  "product_type": "Digital Download",
+  "tags": ["digital", "download", "productivity"],
+  "status": "active"
+}}""",
+                model=AIModel.FAST,
+                max_tokens=800,
+                temperature=0.6,
+            )
+
+            if not resp or not resp.success:
+                return {"success": False, "summary": "AI failed to generate product"}
+
+            try:
+                product = json.loads(resp.content.strip())
+            except Exception:
+                return {"success": False, "summary": "Invalid product JSON from AI"}
+
+            ct    = get_commerce_tools()
+            price = float(product.get("price", "29.99"))
+            res   = await ct.shopify_create_product(
+                title=product.get("title", f"Digital Product: {topic[:40]}"),
+                description=product.get("description", ""),
+                price=price,
+                product_type=product.get("product_type", "Digital Download"),
+            )
+
+            if res.get("success"):
+                url = res.get("shop_url", "")
+                return {
+                    "success": True,
+                    "summary": f"Shopify product '{product.get('title','')[:50]}' at ${price:.2f}",
+                    "revenue_potential": price,
+                    "urls": [url] if url else [],
+                }
+            return {"success": False, "summary": f"Shopify: {res.get('error', 'failed')}"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] shopify_listing: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_email_campaign(self) -> dict:
+        """
+        Create and send a Mailchimp email campaign promoting ARIA's latest products.
+        Email list = owned audience = free traffic = recurring revenue.
+        """
+        try:
+            from apps.core.tools.mailchimp_tools import MailchimpTools
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+
+            mc = MailchimpTools()
+            if not mc._configured():
+                return {"success": False, "summary": "Mailchimp not configured (MAILCHIMP_API_KEY missing)"}
+
+            lists = await mc.get_lists()
+            if not lists.get("lists"):
+                return {"success": False, "summary": "No Mailchimp lists found"}
+            list_id = lists["lists"][0]["id"]
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "AI unavailable"}
+
+            resp = await ai.complete(
+                system="You are an email marketing expert. Write high-converting email campaigns. Output JSON only.",
+                user="""Create an email campaign promoting AI productivity tools and digital products.
+
+JSON:
+{
+  "subject": "Email subject line (compelling, under 60 chars)",
+  "preview_text": "Preview text (50 chars max)",
+  "html_body": "Full HTML email body (300+ words). Include CTA button. Professional and persuasive."
+}""",
+                model=AIModel.FAST,
+                max_tokens=1200,
+                temperature=0.7,
+            )
+
+            if not resp or not resp.success:
+                return {"success": False, "summary": "AI failed to generate email"}
+
+            try:
+                email_data = json.loads(resp.content.strip())
+            except Exception:
+                return {"success": False, "summary": "Invalid email JSON"}
+
+            result = await mc.create_campaign(
+                list_id=list_id,
+                subject=email_data.get("subject", "Discover AI Tools That Make You Money"),
+                preview_text=email_data.get("preview_text", "Exclusive offer inside"),
+                html_body=email_data.get("html_body", "<p>Check out our latest products!</p>"),
+            )
+
+            if result.get("success"):
+                campaign_id = result.get("campaign_id", "")
+                return {
+                    "success": True,
+                    "summary": f"Email campaign '{email_data.get('subject','')[:50]}' → list {list_id}",
+                    "revenue_potential": 150.0,
+                    "urls": [f"https://mailchimp.com/campaigns/{campaign_id}"] if campaign_id else [],
+                }
+            return {"success": False, "summary": f"Mailchimp: {result.get('error', 'failed')}"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] email_campaign: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     # ── Persistence ───────────────────────────────────────────────────────
