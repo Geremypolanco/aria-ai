@@ -264,6 +264,63 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando CRMEngine: %s", exc)
 
+    # 6. Phase 6 autonomous media + creative infrastructure
+    try:
+        from apps.multimodal.images.image_generator import get_image_generator
+        get_image_generator()
+        logger.info("Image Generator initialized (FLUX/SDXL/Ideogram/DALL-E/Mock)")
+    except Exception as exc:
+        logger.error("Error iniciando ImageGenerator: %s", exc)
+
+    try:
+        from apps.branding.identity.brand_engine import get_brand_engine
+        get_brand_engine()
+        logger.info("Brand Engine initialized (persistent brand profiles)")
+    except Exception as exc:
+        logger.error("Error iniciando BrandEngine: %s", exc)
+
+    try:
+        from apps.factory.content.content_factory import get_content_factory
+        get_content_factory()
+        logger.info("Content Factory initialized (industrial-scale batch production)")
+    except Exception as exc:
+        logger.error("Error iniciando ContentFactory: %s", exc)
+
+    try:
+        from apps.factory.ads.ad_factory import get_ad_factory
+        get_ad_factory()
+        logger.info("Ad Factory initialized (multi-platform ad creative generation)")
+    except Exception as exc:
+        logger.error("Error iniciando AdFactory: %s", exc)
+
+    try:
+        from apps.distribution.social.social_publisher import get_social_publisher
+        get_social_publisher()
+        logger.info("Social Publisher initialized (scheduled publishing across platforms)")
+    except Exception as exc:
+        logger.error("Error iniciando SocialPublisher: %s", exc)
+
+    try:
+        from apps.revenue.attribution.revenue_tracker import get_revenue_tracker
+        get_revenue_tracker()
+        logger.info("Revenue Tracker initialized (multi-touch attribution)")
+    except Exception as exc:
+        logger.error("Error iniciando RevenueTracker: %s", exc)
+
+    try:
+        from apps.revenue.optimization.revenue_optimizer import get_revenue_optimizer
+        get_revenue_optimizer()
+        logger.info("Revenue Optimizer initialized (quick wins + scenario planning)")
+    except Exception as exc:
+        logger.error("Error iniciando RevenueOptimizer: %s", exc)
+
+    try:
+        from apps.infra.gpu.gpu_orchestrator import get_gpu_orchestrator
+        get_gpu_orchestrator()
+        logger.info("GPU Orchestrator initialized (Modal/RunPod/Mock backends)")
+    except Exception as exc:
+        logger.error("Error iniciando GPUOrchestrator: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -728,6 +785,113 @@ async def growth_learner_report():
         from apps.learning.growth.growth_learner import get_growth_learner
         learner = get_growth_learner()
         return await learner.learning_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/media/image")
+async def image_generator_status():
+    """Image generation pipeline status and recent jobs."""
+    try:
+        from apps.multimodal.images.image_generator import get_image_generator
+        gen = get_image_generator()
+        return gen.queue_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/media/image/generate")
+async def generate_image(request: Request):
+    """Generate an image from a prompt."""
+    try:
+        from apps.multimodal.images.image_generator import get_image_generator
+        body = await request.json()
+        gen = get_image_generator()
+        job = await gen.generate(
+            prompt=body.get("prompt", ""),
+            negative_prompt=body.get("negative_prompt", ""),
+        )
+        return job.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/brand")
+async def brand_status():
+    """Brand engine: list all brand profiles."""
+    try:
+        from apps.branding.identity.brand_engine import get_brand_engine
+        engine = get_brand_engine()
+        brands = await engine.list_brands()
+        return {
+            "brand_count": len(brands),
+            "brands": [
+                {"brand_id": b.brand_id, "name": b.name, "niche": b.niche}
+                for b in brands
+            ],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/factory/stats")
+async def factory_stats():
+    """Content and ad factory production statistics."""
+    try:
+        from apps.factory.content.content_factory import get_content_factory
+        from apps.factory.ads.ad_factory import get_ad_factory
+        return {
+            "content_factory": get_content_factory().summary(),
+            "ad_factory": get_ad_factory().summary(),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/distribution/stats")
+async def distribution_stats():
+    """Social distribution pipeline statistics."""
+    try:
+        from apps.distribution.social.social_publisher import get_social_publisher
+        return await get_social_publisher().publishing_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/revenue/attribution")
+async def revenue_attribution():
+    """Revenue attribution report across all channels."""
+    try:
+        from apps.revenue.attribution.revenue_tracker import get_revenue_tracker, AttributionModel
+        tracker = get_revenue_tracker()
+        channels = await tracker.roi_by_channel(AttributionModel.LAST_TOUCH)
+        forecast = await tracker.revenue_forecast(months=3)
+        return {
+            "summary": tracker.summary(),
+            "by_channel": [c.to_dict() for c in channels],
+            "3_month_forecast": forecast,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/revenue/optimize")
+async def revenue_optimize():
+    """Revenue optimization recommendations and growth scenarios."""
+    try:
+        from apps.revenue.optimization.revenue_optimizer import get_revenue_optimizer
+        optimizer = get_revenue_optimizer()
+        return await optimizer.autonomous_recommendation()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/infra/gpu")
+async def gpu_status():
+    """GPU orchestration status and queue depth."""
+    try:
+        from apps.infra.gpu.gpu_orchestrator import get_gpu_orchestrator
+        return await get_gpu_orchestrator().status()
     except Exception as exc:
         return {"error": str(exc)}
 
