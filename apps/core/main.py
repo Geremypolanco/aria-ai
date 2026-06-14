@@ -321,6 +321,182 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando GPUOrchestrator: %s", exc)
 
+    # 7. Phase 7 strategic economic intelligence
+    try:
+        from apps.market.trends.trend_analyzer import get_trend_analyzer
+        get_trend_analyzer()
+        logger.info("Trend Analyzer initialized (market signal detection)")
+    except Exception as exc:
+        logger.error("Error iniciando TrendAnalyzer: %s", exc)
+
+    try:
+        from apps.market.competition.competitor_monitor import get_competitor_monitor
+        get_competitor_monitor()
+        logger.info("Competitor Monitor initialized (competitive intelligence)")
+    except Exception as exc:
+        logger.error("Error iniciando CompetitorMonitor: %s", exc)
+
+    try:
+        from apps.market.demand.demand_scorer import get_demand_scorer
+        get_demand_scorer()
+        logger.info("Demand Scorer initialized (opportunity scoring)")
+    except Exception as exc:
+        logger.error("Error iniciando DemandScorer: %s", exc)
+
+    try:
+        from apps.market.opportunities.opportunity_finder import get_opportunity_finder
+        get_opportunity_finder()
+        logger.info("Opportunity Finder initialized (ROI-ranked opportunities)")
+    except Exception as exc:
+        logger.error("Error iniciando OpportunityFinder: %s", exc)
+
+    try:
+        from apps.content.intelligence.content_quality_engine import get_content_quality_engine
+        get_content_quality_engine()
+        logger.info("Content Quality Engine initialized (8-dimension quality scoring)")
+    except Exception as exc:
+        logger.error("Error iniciando ContentQualityEngine: %s", exc)
+
+    try:
+        from apps.content.scoring.engagement_predictor import get_engagement_predictor
+        get_engagement_predictor()
+        logger.info("Engagement Predictor initialized (platform-aware predictions)")
+    except Exception as exc:
+        logger.error("Error iniciando EngagementPredictor: %s", exc)
+
+    try:
+        from apps.content.virality.virality_engine import get_virality_engine
+        get_virality_engine()
+        logger.info("Virality Engine initialized (10 viral patterns)")
+    except Exception as exc:
+        logger.error("Error iniciando ViralityEngine: %s", exc)
+
+    try:
+        from apps.learning.economics.economic_learner import get_economic_learner
+        get_economic_learner()
+        logger.info("Economic Learner initialized (channel ROI learning)")
+    except Exception as exc:
+        logger.error("Error iniciando EconomicLearner: %s", exc)
+
+    try:
+        from apps.learning.conversion.conversion_learner import get_conversion_learner
+        get_conversion_learner()
+        logger.info("Conversion Learner initialized (funnel intelligence)")
+    except Exception as exc:
+        logger.error("Error iniciando ConversionLearner: %s", exc)
+
+    try:
+        from apps.psychology.personas.persona_engine import get_persona_engine
+        get_persona_engine()
+        logger.info("Persona Engine initialized (8 audience archetypes)")
+    except Exception as exc:
+        logger.error("Error iniciando PersonaEngine: %s", exc)
+
+    try:
+        from apps.psychology.behavior.behavior_analyzer import get_behavior_analyzer
+        get_behavior_analyzer()
+        logger.info("Behavior Analyzer initialized (user segmentation + churn prediction)")
+    except Exception as exc:
+        logger.error("Error iniciando BehaviorAnalyzer: %s", exc)
+
+    try:
+        from apps.psychology.conversion.persuasion_engine import get_persuasion_engine
+        get_persuasion_engine()
+        logger.info("Persuasion Engine initialized (8 Cialdini principles)")
+    except Exception as exc:
+        logger.error("Error iniciando PersuasionEngine: %s", exc)
+
+    try:
+        from apps.strategy.prioritization.priority_engine import get_priority_engine
+        get_priority_engine()
+        logger.info("Priority Engine initialized (effort-impact ranking)")
+    except Exception as exc:
+        logger.error("Error iniciando PriorityEngine: %s", exc)
+
+    try:
+        from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
+        get_leverage_analyzer()
+        logger.info("Leverage Analyzer initialized (constraint removal planning)")
+    except Exception as exc:
+        logger.error("Error iniciando LeverageAnalyzer: %s", exc)
+
+    try:
+        from apps.strategy.forecasting.strategic_forecaster import get_strategic_forecaster
+        get_strategic_forecaster()
+        logger.info("Strategic Forecaster initialized (LINEAR/EXPONENTIAL/S_CURVE/PLATEAU)")
+    except Exception as exc:
+        logger.error("Error iniciando StrategicForecaster: %s", exc)
+
+    try:
+        from apps.creative.style.style_engine import get_style_engine
+        get_style_engine()
+        logger.info("Style Engine initialized (brand style profiles)")
+    except Exception as exc:
+        logger.error("Error iniciando StyleEngine: %s", exc)
+
+    try:
+        from apps.creative.differentiation.differentiation_engine import get_differentiation_engine
+        get_differentiation_engine()
+        logger.info("Differentiation Engine initialized (17 generic phrase detection)")
+    except Exception as exc:
+        logger.error("Error iniciando DifferentiationEngine: %s", exc)
+
+    try:
+        from apps.creative.identity.creative_identity import get_creative_identity_manager
+        get_creative_identity_manager()
+        logger.info("Creative Identity Manager initialized (voice + novelty tracking)")
+    except Exception as exc:
+        logger.error("Error iniciando CreativeIdentityManager: %s", exc)
+
+    try:
+        from apps.autonomy.goals.goal_manager import get_goal_manager
+        get_goal_manager()
+        logger.info("Goal Manager initialized (autonomous goal tracking)")
+    except Exception as exc:
+        logger.error("Error iniciando GoalManager: %s", exc)
+
+    try:
+        from apps.autonomy.revenue_loops.revenue_loop_engine import get_revenue_loop_engine
+        get_revenue_loop_engine()
+        logger.info("Revenue Loop Engine initialized (autonomous economic loops)")
+    except Exception as exc:
+        logger.error("Error iniciando RevenueLoopEngine: %s", exc)
+
+    try:
+        from apps.autonomy.self_direction.self_director import get_self_director
+        get_self_director()
+        logger.info("Self Director initialized (SCALE/OPTIMIZE/PIVOT directives)")
+    except Exception as exc:
+        logger.error("Error iniciando SelfDirector: %s", exc)
+
+    try:
+        from apps.business.operations.operations_manager import get_operations_manager
+        get_operations_manager()
+        logger.info("Operations Manager initialized (KPI dashboard)")
+    except Exception as exc:
+        logger.error("Error iniciando OperationsManager: %s", exc)
+
+    try:
+        from apps.business.executive.executive_dashboard import get_executive_dashboard
+        get_executive_dashboard()
+        logger.info("Executive Dashboard initialized (strategic snapshots)")
+    except Exception as exc:
+        logger.error("Error iniciando ExecutiveDashboard: %s", exc)
+
+    try:
+        from apps.business.finance.cashflow_engine import get_cashflow_engine
+        get_cashflow_engine()
+        logger.info("Cashflow Engine initialized (runway + forecast)")
+    except Exception as exc:
+        logger.error("Error iniciando CashflowEngine: %s", exc)
+
+    try:
+        from apps.business.analytics.business_analytics import get_business_analytics
+        get_business_analytics()
+        logger.info("Business Analytics initialized (funnel + cohort + attribution)")
+    except Exception as exc:
+        logger.error("Error iniciando BusinessAnalytics: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -892,6 +1068,92 @@ async def gpu_status():
     try:
         from apps.infra.gpu.gpu_orchestrator import get_gpu_orchestrator
         return await get_gpu_orchestrator().status()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/market/trends")
+async def market_trends(niche: str = "general"):
+    """Trend analysis for a given niche."""
+    try:
+        from apps.market.trends.trend_analyzer import get_trend_analyzer
+        return (await get_trend_analyzer().analyze_niche(niche)).to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/market/opportunities")
+async def market_opportunities(niche: str = "general", budget_usd: float = 1000.0):
+    """ROI-ranked business opportunities."""
+    try:
+        from apps.market.opportunities.opportunity_finder import get_opportunity_finder
+        opps = await get_opportunity_finder().find_opportunities(niche, budget_usd)
+        return {"opportunities": [o.to_dict() for o in opps]}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/content/quality")
+async def content_quality_stats():
+    """Content quality engine statistics."""
+    try:
+        from apps.content.intelligence.content_quality_engine import get_content_quality_engine
+        return get_content_quality_engine().quality_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/strategy/priorities")
+async def strategy_priorities():
+    """Top strategic priorities ranked by effort-impact."""
+    try:
+        from apps.strategy.prioritization.priority_engine import get_priority_engine
+        return {"priorities": [a.to_dict() for a in get_priority_engine().top_priorities()]}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/autonomy/goals")
+async def autonomy_goals():
+    """Autonomous goal dashboard."""
+    try:
+        from apps.autonomy.goals.goal_manager import get_goal_manager
+        return get_goal_manager().goal_dashboard()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/autonomy/loops")
+async def autonomy_loops():
+    """Revenue loop analytics."""
+    try:
+        from apps.autonomy.revenue_loops.revenue_loop_engine import get_revenue_loop_engine
+        return get_revenue_loop_engine().loop_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/business/executive")
+async def business_executive():
+    """Executive dashboard snapshot."""
+    try:
+        from apps.business.executive.executive_dashboard import get_executive_dashboard
+        return await get_executive_dashboard().weekly_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/business/cashflow")
+async def business_cashflow():
+    """Cashflow status and runway."""
+    try:
+        from apps.business.finance.cashflow_engine import get_cashflow_engine
+        engine = get_cashflow_engine()
+        return {
+            "current_balance": engine.current_balance(),
+            "runway_months": engine.runway_months(),
+            "monthly_summary": engine.monthly_summary(),
+        }
     except Exception as exc:
         return {"error": str(exc)}
 
