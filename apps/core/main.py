@@ -547,6 +547,91 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando TaskRunner: %s", exc)
 
+    # 9. Phase 9 economic autonomy systems
+    try:
+        from apps.content.seo.seo_engine import get_seo_engine
+        get_seo_engine()
+        logger.info("SEO Engine initialized")
+    except Exception as exc:
+        logger.error("Error iniciando SEOEngine: %s", exc)
+
+    try:
+        from apps.content.blog.content_calendar import get_content_calendar
+        get_content_calendar()
+        logger.info("Content Calendar initialized")
+    except Exception as exc:
+        logger.error("Error iniciando ContentCalendar: %s", exc)
+
+    try:
+        from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
+        get_flash_sale_engine()
+        logger.info("Flash Sale Engine initialized")
+    except Exception as exc:
+        logger.error("Error iniciando FlashSaleEngine: %s", exc)
+
+    try:
+        from apps.shopify.revenue.cart_recovery import get_cart_recovery_engine
+        get_cart_recovery_engine()
+        logger.info("Cart Recovery Engine initialized")
+    except Exception as exc:
+        logger.error("Error iniciando CartRecoveryEngine: %s", exc)
+
+    try:
+        from apps.conversion.quiz.quiz_engine import get_quiz_engine
+        get_quiz_engine()
+        logger.info("Quiz Engine initialized")
+    except Exception as exc:
+        logger.error("Error iniciando QuizEngine: %s", exc)
+
+    try:
+        from apps.conversion.quiz.lead_scorer import get_lead_scorer
+        get_lead_scorer()
+        logger.info("Lead Scorer initialized")
+    except Exception as exc:
+        logger.error("Error iniciando LeadScorer: %s", exc)
+
+    try:
+        from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+        get_retargeting_engine()
+        logger.info("Retargeting Engine initialized")
+    except Exception as exc:
+        logger.error("Error iniciando RetargetingEngine: %s", exc)
+
+    try:
+        from apps.ads.audiences.audience_segmenter import get_audience_segmenter
+        get_audience_segmenter()
+        logger.info("Audience Segmenter initialized")
+    except Exception as exc:
+        logger.error("Error iniciando AudienceSegmenter: %s", exc)
+
+    try:
+        from apps.learning.optimization.reinforcement_optimizer import get_reinforcement_optimizer
+        get_reinforcement_optimizer()
+        logger.info("Reinforcement Optimizer initialized (UCB1 bandit)")
+    except Exception as exc:
+        logger.error("Error iniciando ReinforcementOptimizer: %s", exc)
+
+    try:
+        from apps.market.intelligence.market_intelligence import get_market_intelligence
+        get_market_intelligence()
+        logger.info("Market Intelligence initialized")
+    except Exception as exc:
+        logger.error("Error iniciando MarketIntelligence: %s", exc)
+
+    try:
+        from apps.orchestration.growth_orchestrator import get_growth_orchestrator
+        get_growth_orchestrator()
+        logger.info("Growth Orchestrator initialized (central economic brain)")
+    except Exception as exc:
+        logger.error("Error iniciando GrowthOrchestrator: %s", exc)
+
+    try:
+        from apps.orchestration.resource_allocator import get_resource_allocator
+        get_resource_allocator()
+        logger.info("Resource Allocator initialized")
+    except Exception as exc:
+        logger.error("Error iniciando ResourceAllocator: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -1269,6 +1354,121 @@ async def runtime_task_stats():
     try:
         from apps.runtime.celery.task_runner import get_task_runner
         return await get_task_runner().task_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── Phase 9 Economic Autonomy Endpoints ──────────────────────────────────────
+
+@app.get("/api/v1/content/seo")
+async def seo_stats():
+    """SEO engine keyword opportunities and stats."""
+    try:
+        from apps.content.seo.seo_engine import get_seo_engine
+        return get_seo_engine().stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/content/calendar")
+async def content_calendar():
+    """Upcoming content calendar slots."""
+    try:
+        from apps.content.blog.content_calendar import get_content_calendar
+        cal = get_content_calendar()
+        return {"this_week": cal.this_week(), "stats": cal.calendar_stats()}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/shopify/flash-sales")
+async def flash_sales():
+    """Active flash sales and analytics."""
+    try:
+        from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
+        return get_flash_sale_engine().sales_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/shopify/bundles")
+async def bundles():
+    """Active product bundles."""
+    try:
+        from apps.shopify.bundles.bundle_generator import get_bundle_generator
+        bg = get_bundle_generator()
+        return {"bundles": bg._bundles, "total": len(bg._bundles)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/conversion/quiz")
+async def quiz_analytics():
+    """Quiz engine analytics and active quizzes."""
+    try:
+        from apps.conversion.quiz.quiz_engine import get_quiz_engine
+        qe = get_quiz_engine()
+        return {"quizzes": qe.list_quizzes(), "total": len(qe._quizzes)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/conversion/leads")
+async def lead_funnel():
+    """Lead funnel report from Lead Scorer."""
+    try:
+        from apps.conversion.quiz.lead_scorer import get_lead_scorer
+        return get_lead_scorer().lead_funnel_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/ads/retargeting")
+async def retargeting_analytics():
+    """Retargeting campaign analytics."""
+    try:
+        from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+        return get_retargeting_engine().campaign_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/orchestration/growth")
+async def growth_analytics():
+    """Growth orchestrator analytics."""
+    try:
+        from apps.orchestration.growth_orchestrator import get_growth_orchestrator
+        return get_growth_orchestrator().growth_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/orchestration/cycle")
+async def autonomous_growth_cycle(niche: str = "general"):
+    """Trigger autonomous growth cycle for a given niche."""
+    try:
+        from apps.orchestration.growth_orchestrator import get_growth_orchestrator
+        return await get_growth_orchestrator().autonomous_growth_cycle(niche)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/orchestration/report")
+async def strategic_report():
+    """Full strategic growth report."""
+    try:
+        from apps.orchestration.growth_orchestrator import get_growth_orchestrator
+        return await get_growth_orchestrator().strategic_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/learning/reinforcement")
+async def reinforcement_report():
+    """UCB1 reinforcement optimizer arm rankings and report."""
+    try:
+        from apps.learning.optimization.reinforcement_optimizer import get_reinforcement_optimizer
+        return get_reinforcement_optimizer().optimization_report()
     except Exception as exc:
         return {"error": str(exc)}
 
