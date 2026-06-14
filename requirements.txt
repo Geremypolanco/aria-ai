@@ -10,3 +10,10 @@ uvicorn
 pydantic
 aiohttp
 openai
+# Phase 8 — Cognitive Infrastructure
+qdrant-client
+networkx
+celery[redis]
+dspy
+arize-phoenix
+openinference-instrumentation-openai

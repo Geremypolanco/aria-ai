@@ -497,6 +497,56 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando BusinessAnalytics: %s", exc)
 
+    # 8. Phase 8 cognitive infrastructure upgrade
+    try:
+        from apps.cognition.langgraph.cognitive_agent import get_cognitive_agent
+        get_cognitive_agent()
+        logger.info("Cognitive Agent initialized (LangGraph StateGraph + fallback)")
+    except Exception as exc:
+        logger.error("Error iniciando CognitiveAgent: %s", exc)
+
+    try:
+        from apps.cognition.dspy.optimizer import get_prompt_optimizer
+        get_prompt_optimizer()
+        logger.info("Prompt Optimizer initialized (DSPy + fallback)")
+    except Exception as exc:
+        logger.error("Error iniciando PromptOptimizer: %s", exc)
+
+    try:
+        from apps.memory.vector.memory_retriever import get_memory_retriever
+        get_memory_retriever()
+        logger.info("Memory Retriever initialized (Qdrant vector store + in-memory fallback)")
+    except Exception as exc:
+        logger.error("Error iniciando MemoryRetriever: %s", exc)
+
+    try:
+        from apps.memory.graph.knowledge_graph import get_knowledge_graph
+        get_knowledge_graph()
+        logger.info("Knowledge Graph initialized (NetworkX + Neo4j optional)")
+    except Exception as exc:
+        logger.error("Error iniciando KnowledgeGraph: %s", exc)
+
+    try:
+        from apps.evaluation.phoenix.tracer import get_cognition_tracer
+        get_cognition_tracer()
+        logger.info("Cognition Tracer initialized (Arize Phoenix + in-memory)")
+    except Exception as exc:
+        logger.error("Error iniciando CognitionTracer: %s", exc)
+
+    try:
+        from apps.evaluation.phoenix.evaluator import get_ai_evaluator
+        get_ai_evaluator()
+        logger.info("AI Evaluator initialized (6-dimension quality + hallucination scoring)")
+    except Exception as exc:
+        logger.error("Error iniciando AIEvaluator: %s", exc)
+
+    try:
+        from apps.runtime.celery.task_runner import get_task_runner
+        get_task_runner()
+        logger.info("Task Runner initialized (Celery distributed + inline fallback)")
+    except Exception as exc:
+        logger.error("Error iniciando TaskRunner: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -1154,6 +1204,71 @@ async def business_cashflow():
             "runway_months": engine.runway_months(),
             "monthly_summary": engine.monthly_summary(),
         }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/cognition/agent")
+async def cognition_agent_status():
+    """LangGraph cognitive agent summary."""
+    try:
+        from apps.cognition.langgraph.cognitive_agent import get_cognitive_agent
+        return get_cognitive_agent().summary()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/cognition/run")
+async def cognition_run(task: str, context: dict = {}):
+    """Run a task through the LangGraph cognitive workflow."""
+    try:
+        from apps.cognition.langgraph.cognitive_agent import get_cognitive_agent
+        return await get_cognitive_agent().run(task, context)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/memory/status")
+async def memory_status():
+    """Vector memory and knowledge graph status."""
+    try:
+        from apps.memory.vector.memory_retriever import get_memory_retriever
+        from apps.memory.graph.knowledge_graph import get_knowledge_graph
+        return {
+            "vector_memory": get_memory_retriever().status(),
+            "knowledge_graph": get_knowledge_graph().summary(),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/evaluation/analytics")
+async def evaluation_analytics():
+    """AI trace analytics and quality metrics."""
+    try:
+        from apps.evaluation.phoenix.tracer import get_cognition_tracer
+        return await get_cognition_tracer().analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/evaluation/evaluate")
+async def evaluate_content(content: str, prompt: str = ""):
+    """Evaluate AI response quality across 6 dimensions."""
+    try:
+        from apps.evaluation.phoenix.evaluator import get_ai_evaluator
+        result = get_ai_evaluator().evaluate(content, prompt)
+        return result.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/runtime/tasks")
+async def runtime_task_stats():
+    """Distributed task runner statistics."""
+    try:
+        from apps.runtime.celery.task_runner import get_task_runner
+        return await get_task_runner().task_stats()
     except Exception as exc:
         return {"error": str(exc)}
 
