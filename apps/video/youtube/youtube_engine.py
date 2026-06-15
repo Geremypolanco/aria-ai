@@ -368,7 +368,7 @@ class YouTubeEngine:
             model=AIModel.CREATIVE,
             max_tokens=800,
         )
-        if not resp.success or not script_body:
+        if not script_body:
             return script_body
 
         # Insert retention hooks between sections
@@ -380,11 +380,15 @@ class YouTubeEngine:
             "This next section changed everything for me...",
         ]
         for i, section in enumerate(script_body):
-            section_copy = dict(section)
+            optimized.append(dict(section))
             if i < len(script_body) - 1:
                 hook = retention_hooks[i % len(retention_hooks)]
-                section_copy["retention_hook"] = hook
-            optimized.append(section_copy)
+                optimized.append({
+                    "timestamp": "",
+                    "content": hook,
+                    "visual": "retention_hook",
+                    "is_hook": True,
+                })
         return optimized
 
     def channel_analytics(self) -> dict:

@@ -745,6 +745,126 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando ProposalEngine: %s", exc)
 
+    # 11. Phase 11: Extended Economic Autonomy
+    try:
+        from apps.video.youtube.youtube_engine import get_youtube_engine
+        get_youtube_engine()
+        logger.info("YouTube Engine initialized (SEO + scripts + calendar)")
+    except Exception as exc:
+        logger.error("Error iniciando YouTubeEngine: %s", exc)
+
+    try:
+        from apps.video.shorts.shorts_engine import get_shorts_engine
+        get_shorts_engine()
+        logger.info("Shorts Engine initialized (TikTok/Reels/YouTube Shorts)")
+    except Exception as exc:
+        logger.error("Error iniciando ShortsEngine: %s", exc)
+
+    try:
+        from apps.video.automation.publishing_pipeline import get_publishing_pipeline
+        get_publishing_pipeline()
+        logger.info("Publishing Pipeline initialized (scheduled video publishing)")
+    except Exception as exc:
+        logger.error("Error iniciando PublishingPipeline: %s", exc)
+
+    try:
+        from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+        get_linkedin_outreach()
+        logger.info("LinkedIn Outreach initialized (AI prospecting + sequences)")
+    except Exception as exc:
+        logger.error("Error iniciando LinkedInOutreach: %s", exc)
+
+    try:
+        from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+        get_upwork_bidder()
+        logger.info("Upwork Bidder initialized (job evaluation + proposals)")
+    except Exception as exc:
+        logger.error("Error iniciando UpworkBidder: %s", exc)
+
+    try:
+        from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
+        get_fiverr_optimizer()
+        logger.info("Fiverr Optimizer initialized (gig creation + SEO)")
+    except Exception as exc:
+        logger.error("Error iniciando FiverrOptimizer: %s", exc)
+
+    try:
+        from apps.acquisition.outreach.outreach_sequencer import get_outreach_sequencer
+        get_outreach_sequencer()
+        logger.info("Outreach Sequencer initialized (multi-channel sequences)")
+    except Exception as exc:
+        logger.error("Error iniciando OutreachSequencer: %s", exc)
+
+    try:
+        from apps.learning.roi.roi_learner import get_roi_learner
+        get_roi_learner()
+        logger.info("ROI Learner initialized (cross-channel pattern detection)")
+    except Exception as exc:
+        logger.error("Error iniciando ROILearner: %s", exc)
+
+    try:
+        from apps.learning.prioritization.priority_engine import get_priority_engine as get_p11_priority_engine
+        get_p11_priority_engine()
+        logger.info("Priority Engine (P11) initialized (urgency + ROI boost scoring)")
+    except Exception as exc:
+        logger.error("Error iniciando PriorityEngine P11: %s", exc)
+
+    try:
+        from apps.conversion.sms.sms_capture import get_sms_capture_engine
+        get_sms_capture_engine()
+        logger.info("SMS Capture Engine initialized (Klaviyo SMS sync)")
+    except Exception as exc:
+        logger.error("Error iniciando SMSCaptureEngine: %s", exc)
+
+    try:
+        from apps.conversion.funnels.funnel_engine import get_funnel_engine
+        get_funnel_engine()
+        logger.info("Funnel Engine initialized (ecommerce/lead_gen/saas/quiz)")
+    except Exception as exc:
+        logger.error("Error iniciando FunnelEngine: %s", exc)
+
+    try:
+        from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+        get_pricing_intelligence()
+        logger.info("Pricing Intelligence initialized (competitor benchmarking)")
+    except Exception as exc:
+        logger.error("Error iniciando PricingIntelligence: %s", exc)
+
+    try:
+        from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+        get_linking_optimizer()
+        logger.info("Linking Optimizer initialized (pillar-cluster SEO)")
+    except Exception as exc:
+        logger.error("Error iniciando LinkingOptimizer: %s", exc)
+
+    try:
+        from apps.content.distribution.distribution_engine import get_distribution_engine
+        get_distribution_engine()
+        logger.info("Distribution Engine initialized (multi-channel adaptation)")
+    except Exception as exc:
+        logger.error("Error iniciando DistributionEngine: %s", exc)
+
+    try:
+        from apps.memory.economic.economic_memory import get_economic_memory
+        get_economic_memory()
+        logger.info("Economic Memory initialized (profitable patterns + failed strategies)")
+    except Exception as exc:
+        logger.error("Error iniciando EconomicMemory: %s", exc)
+
+    try:
+        from apps.memory.client.client_memory import get_client_memory
+        get_client_memory()
+        logger.info("Client Memory initialized (VIP/at-risk segmentation)")
+    except Exception as exc:
+        logger.error("Error iniciando ClientMemory: %s", exc)
+
+    try:
+        from apps.memory.workflow.workflow_memory import get_workflow_memory
+        get_workflow_memory()
+        logger.info("Workflow Memory initialized (success/failure pattern learning)")
+    except Exception as exc:
+        logger.error("Error iniciando WorkflowMemory: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -1746,6 +1866,162 @@ async def proposals():
         from apps.marketplace.proposal_engine import get_proposal_engine
         pe = get_proposal_engine()
         return {"analytics": pe.proposal_analytics(), "recent": pe.recent_proposals(limit=10)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── Phase 11 Extended Economic Autonomy Endpoints ────────────────────────────
+
+@app.get("/api/v1/video/youtube/stats")
+async def youtube_stats():
+    try:
+        from apps.video.youtube.youtube_engine import get_youtube_engine
+        return get_youtube_engine().channel_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/video/youtube/metadata")
+async def youtube_metadata(topic: str, keyword: str = ""):
+    try:
+        from apps.video.youtube.youtube_engine import get_youtube_engine
+        meta = await get_youtube_engine().create_video_metadata(topic, keyword or topic)
+        return meta.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/video/shorts/stats")
+async def shorts_stats():
+    try:
+        from apps.video.shorts.shorts_engine import get_shorts_engine
+        return get_shorts_engine().shorts_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/video/pipeline/stats")
+async def video_pipeline_stats():
+    try:
+        from apps.video.automation.publishing_pipeline import get_publishing_pipeline
+        return get_publishing_pipeline().pipeline_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/acquisition/linkedin/analytics")
+async def linkedin_analytics():
+    try:
+        from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+        return get_linkedin_outreach().outreach_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/acquisition/upwork/analytics")
+async def upwork_analytics():
+    try:
+        from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+        return get_upwork_bidder().bidding_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/acquisition/fiverr/analytics")
+async def fiverr_analytics():
+    try:
+        from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
+        return get_fiverr_optimizer().gig_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/acquisition/outreach/analytics")
+async def outreach_analytics():
+    try:
+        from apps.acquisition.outreach.outreach_sequencer import get_outreach_sequencer
+        return get_outreach_sequencer().sequence_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/learning/roi")
+async def roi_learning_report():
+    try:
+        from apps.learning.roi.roi_learner import get_roi_learner
+        return get_roi_learner().learning_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/conversion/sms/stats")
+async def sms_stats():
+    try:
+        from apps.conversion.sms.sms_capture import get_sms_capture_engine
+        return get_sms_capture_engine().capture_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/conversion/funnels/analytics")
+async def funnels_analytics():
+    try:
+        from apps.conversion.funnels.funnel_engine import get_funnel_engine
+        return get_funnel_engine().funnel_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/market/pricing/dashboard")
+async def pricing_dashboard():
+    try:
+        from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+        return get_pricing_intelligence().pricing_dashboard()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/content/linking/stats")
+async def linking_stats():
+    try:
+        from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+        return get_linking_optimizer().linking_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/content/distribution/stats")
+async def content_distribution_stats():
+    try:
+        from apps.content.distribution.distribution_engine import get_distribution_engine
+        return get_distribution_engine().distribution_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/memory/economic/summary")
+async def economic_memory_summary():
+    try:
+        from apps.memory.economic.economic_memory import get_economic_memory
+        return get_economic_memory().memory_summary()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/memory/clients/summary")
+async def client_memory_summary():
+    try:
+        from apps.memory.client.client_memory import get_client_memory
+        return get_client_memory().client_memory_summary()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/memory/workflows/analytics")
+async def workflow_memory_analytics():
+    try:
+        from apps.memory.workflow.workflow_memory import get_workflow_memory
+        return get_workflow_memory().workflow_analytics()
     except Exception as exc:
         return {"error": str(exc)}
 
