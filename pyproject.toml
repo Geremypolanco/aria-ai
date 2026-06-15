@@ -1,40 +1,11 @@
 [project]
 name = "aria-ai"
 version = "0.1.0"
-description = "ARIA - Autonomous AI Agent System with MEGAN runtime"
-readme = "README.md"
 requires-python = ">=3.11"
+
 dependencies = [
-    "python-telegram-bot>=21.4",
-    "python-dotenv",
-    "supabase",
-    "ShopifyAPI",
-    "requests",
-    "langchain",
+    "anthropic",
     "langgraph",
-    "fastapi",
-    "uvicorn[standard]",
-    "pydantic>=2.0",
-    "aiohttp",
-    "openai",
+    "pydantic",
     "structlog",
-    "tenacity",
-    "alembic",
-    "psycopg2-binary",
 ]
-
-[tool.uv]
-dev-dependencies = [
-    "pytest",
-    "black",
-    "ruff",
-    "mypy",
-    "pre-commit",
-]
-
-[tool.ruff]
-line-length = 100
-select = ["E", "F", "B", "I", "UP"]
-
-[tool.pytest.ini_options]
-pythonpath = ["."]
