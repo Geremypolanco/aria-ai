@@ -632,6 +632,119 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando ResourceAllocator: %s", exc)
 
+    # 10. Phase 10: Autonomous AI-Native Economic Organization
+    try:
+        from apps.executive.ceo_agent import get_ceo_agent
+        get_ceo_agent()
+        logger.info("CEO Agent initialized")
+    except Exception as exc:
+        logger.error("Error iniciando CEOAgent: %s", exc)
+
+    try:
+        from apps.executive.coo_agent import get_coo_agent
+        get_coo_agent()
+        logger.info("COO Agent initialized")
+    except Exception as exc:
+        logger.error("Error iniciando COOAgent: %s", exc)
+
+    try:
+        from apps.executive.cto_agent import get_cto_agent
+        get_cto_agent()
+        logger.info("CTO Agent initialized")
+    except Exception as exc:
+        logger.error("Error iniciando CTOAgent: %s", exc)
+
+    try:
+        from apps.executive.cfo_agent import get_cfo_agent
+        get_cfo_agent()
+        logger.info("CFO Agent initialized")
+    except Exception as exc:
+        logger.error("Error iniciando CFOAgent: %s", exc)
+
+    try:
+        from apps.executive.cmo_agent import get_cmo_agent
+        get_cmo_agent()
+        logger.info("CMO Agent initialized")
+    except Exception as exc:
+        logger.error("Error iniciando CMOAgent: %s", exc)
+
+    try:
+        from apps.executive.executive_council import get_executive_council
+        get_executive_council()
+        logger.info("Executive Council initialized (CEO+COO+CTO+CFO+CMO)")
+    except Exception as exc:
+        logger.error("Error iniciando ExecutiveCouncil: %s", exc)
+
+    try:
+        from apps.workforce.engineering.engineering_division import get_engineering_division
+        get_engineering_division()
+        logger.info("Engineering Division initialized (6 agents)")
+    except Exception as exc:
+        logger.error("Error iniciando EngineeringDivision: %s", exc)
+
+    try:
+        from apps.workforce.design.design_division import get_design_division
+        get_design_division()
+        logger.info("Design Division initialized (6 agents)")
+    except Exception as exc:
+        logger.error("Error iniciando DesignDivision: %s", exc)
+
+    try:
+        from apps.workforce.marketing.marketing_division import get_marketing_division
+        get_marketing_division()
+        logger.info("Marketing Division initialized")
+    except Exception as exc:
+        logger.error("Error iniciando MarketingDivision: %s", exc)
+
+    try:
+        from apps.workforce.content.content_division import get_content_division
+        get_content_division()
+        logger.info("Content Division initialized")
+    except Exception as exc:
+        logger.error("Error iniciando ContentDivision: %s", exc)
+
+    try:
+        from apps.workforce.operations.operations_division import get_operations_division
+        get_operations_division()
+        logger.info("Operations Division initialized")
+    except Exception as exc:
+        logger.error("Error iniciando OperationsDivision: %s", exc)
+
+    try:
+        from apps.workforce.analytics.analytics_division import get_analytics_division
+        get_analytics_division()
+        logger.info("Analytics Division initialized")
+    except Exception as exc:
+        logger.error("Error iniciando AnalyticsDivision: %s", exc)
+
+    try:
+        from apps.economics.economic_intelligence import get_economic_intelligence
+        get_economic_intelligence()
+        logger.info("Economic Intelligence initialized")
+    except Exception as exc:
+        logger.error("Error iniciando EconomicIntelligence: %s", exc)
+
+    try:
+        from apps.economics.roi_tracker import get_roi_tracker
+        get_roi_tracker()
+        logger.info("ROI Tracker initialized")
+    except Exception as exc:
+        logger.error("Error iniciando ROITracker: %s", exc)
+
+    try:
+        from apps.marketplace.client_acquisition import get_client_acquisition
+        get_client_acquisition()
+        logger.info("Client Acquisition initialized")
+    except Exception as exc:
+        logger.error("Error iniciando ClientAcquisition: %s", exc)
+
+    try:
+        from apps.marketplace.proposal_engine import get_proposal_engine
+        get_proposal_engine()
+        logger.info("Proposal Engine initialized")
+    except Exception as exc:
+        logger.error("Error iniciando ProposalEngine: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -1469,6 +1582,170 @@ async def reinforcement_report():
     try:
         from apps.learning.optimization.reinforcement_optimizer import get_reinforcement_optimizer
         return get_reinforcement_optimizer().optimization_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── Phase 10 Executive Layer Endpoints ───────────────────────────────────────
+
+@app.get("/api/v1/executive/summary")
+async def executive_summary():
+    """Strategic summary across all C-suite agents."""
+    try:
+        from apps.executive.ceo_agent import get_ceo_agent
+        from apps.executive.coo_agent import get_coo_agent
+        from apps.executive.cfo_agent import get_cfo_agent
+        return {
+            "ceo": get_ceo_agent().strategic_summary(),
+            "coo": get_coo_agent().operations_report(),
+            "cfo": get_cfo_agent().profitability_report(),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/executive/council")
+async def convene_council(niche: str = "general"):
+    """Convene the Executive Council for a unified growth report."""
+    try:
+        from apps.executive.executive_council import get_executive_council
+        report = await get_executive_council().convene(niche, {})
+        return report.to_dict() if hasattr(report, "to_dict") else report
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/executive/cto/tech-radar")
+async def tech_radar():
+    """CTO tech radar — adopt/trial/hold/avoid."""
+    try:
+        from apps.executive.cto_agent import get_cto_agent
+        return get_cto_agent().tech_radar()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── Phase 10 Workforce Endpoints ─────────────────────────────────────────────
+
+@app.get("/api/v1/workforce/engineering/stats")
+async def engineering_stats():
+    """Engineering division task stats."""
+    try:
+        from apps.workforce.engineering.engineering_division import get_engineering_division
+        return get_engineering_division().engineering_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/workforce/engineering/task")
+async def engineering_task(task_type: str, title: str, spec: str = "{}"):
+    """Run an engineering task (frontend/backend/mlops/api/qa/automation)."""
+    try:
+        import json
+        from apps.workforce.engineering.engineering_division import get_engineering_division
+        div = get_engineering_division()
+        spec_dict = json.loads(spec)
+        method = getattr(div, f"{task_type}_task", None)
+        if not method:
+            return {"error": f"Unknown task_type: {task_type}"}
+        task = await method(title, spec_dict)
+        return task.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/workforce/design/stats")
+async def design_stats():
+    """Design division asset stats."""
+    try:
+        from apps.workforce.design.design_division import get_design_division
+        return get_design_division().design_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/workforce/marketing/stats")
+async def marketing_stats():
+    """Marketing division campaign stats."""
+    try:
+        from apps.workforce.marketing.marketing_division import get_marketing_division
+        return get_marketing_division().marketing_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/workforce/content/stats")
+async def content_stats():
+    """Content division production stats."""
+    try:
+        from apps.workforce.content.content_division import get_content_division
+        return get_content_division().content_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/workforce/analytics/stats")
+async def analytics_division_stats():
+    """Analytics division report stats."""
+    try:
+        from apps.workforce.analytics.analytics_division import get_analytics_division
+        return get_analytics_division().analytics_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── Phase 10 Economics Endpoints ─────────────────────────────────────────────
+
+@app.get("/api/v1/economics/dashboard")
+async def economics_dashboard():
+    """Full economic intelligence dashboard."""
+    try:
+        from apps.economics.economic_intelligence import get_economic_intelligence
+        return get_economic_intelligence().economic_dashboard()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/economics/roi")
+async def roi_summary():
+    """ROI tracker summary across all tracked investments."""
+    try:
+        from apps.economics.roi_tracker import get_roi_tracker
+        return get_roi_tracker().roi_summary()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/economics/snapshot")
+async def economics_snapshot(period: str = "7d"):
+    """Generate economic snapshot for a period."""
+    try:
+        from apps.economics.economic_intelligence import get_economic_intelligence
+        snap = await get_economic_intelligence().snapshot(period)
+        return snap.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── Phase 10 Marketplace Endpoints ───────────────────────────────────────────
+
+@app.get("/api/v1/marketplace/pipeline")
+async def pipeline_report():
+    """Client acquisition pipeline report."""
+    try:
+        from apps.marketplace.client_acquisition import get_client_acquisition
+        return get_client_acquisition().pipeline_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/marketplace/proposals")
+async def proposals():
+    """Recent proposals and analytics."""
+    try:
+        from apps.marketplace.proposal_engine import get_proposal_engine
+        pe = get_proposal_engine()
+        return {"analytics": pe.proposal_analytics(), "recent": pe.recent_proposals(limit=10)}
     except Exception as exc:
         return {"error": str(exc)}
 
