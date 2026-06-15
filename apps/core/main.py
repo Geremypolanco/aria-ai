@@ -865,6 +865,28 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando WorkflowMemory: %s", exc)
 
+    # ── Phase 12 — Revenue Activation ─────────────────────────────────────────
+    try:
+        from apps.shopify.seo.product_seo import get_product_seo_optimizer
+        get_product_seo_optimizer()
+        logger.info("Product SEO Optimizer initialized (Shopify organic traffic)")
+    except Exception as exc:
+        logger.error("Error iniciando ProductSEOOptimizer: %s", exc)
+
+    try:
+        from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+        get_shopify_funnel_engine()
+        logger.info("Shopify Funnel Engine initialized (upsells, abandoned cart, landing pages)")
+    except Exception as exc:
+        logger.error("Error iniciando ShopifyFunnelEngine: %s", exc)
+
+    try:
+        from apps.execution.daily_runtime import get_daily_runtime
+        get_daily_runtime()
+        logger.info("Daily Runtime initialized (autonomous daily execution orchestrator)")
+    except Exception as exc:
+        logger.error("Error iniciando DailyRuntime: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -2022,6 +2044,123 @@ async def workflow_memory_analytics():
     try:
         from apps.memory.workflow.workflow_memory import get_workflow_memory
         return get_workflow_memory().workflow_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── Phase 12 Revenue Activation Endpoints ────────────────────────────────────
+
+@app.get("/api/v1/shopify/seo/stats")
+async def shopify_seo_stats():
+    try:
+        from apps.shopify.seo.product_seo import get_product_seo_optimizer
+        return get_product_seo_optimizer().seo_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/shopify/seo/optimize")
+async def shopify_seo_optimize(product_id: str, name: str, title: str = "", description: str = "", category: str = "general"):
+    try:
+        from apps.shopify.seo.product_seo import get_product_seo_optimizer
+        seo = await get_product_seo_optimizer().optimize_product(product_id, name, title, description, category)
+        return seo.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/shopify/seo/keywords")
+async def shopify_seo_keywords(niche: str):
+    try:
+        from apps.shopify.seo.product_seo import get_product_seo_optimizer
+        return await get_product_seo_optimizer().audit_keywords(niche)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/shopify/funnels/stats")
+async def shopify_funnel_stats():
+    try:
+        from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+        return get_shopify_funnel_engine().funnel_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/shopify/funnels/upsell")
+async def shopify_upsell(original: str, original_price: float, upsell: str, upsell_price: float):
+    try:
+        from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+        offer = await get_shopify_funnel_engine().create_upsell_flow(original, original_price, upsell, upsell_price)
+        return offer.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/shopify/funnels/abandoned-cart")
+async def shopify_abandoned_cart(product: str, price: float, discount_pct: float = 10.0):
+    try:
+        from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+        funnel = await get_shopify_funnel_engine().create_abandoned_cart_sequence(product, price, discount_pct)
+        return funnel.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/shopify/funnels/landing-page")
+async def shopify_landing_page(product: str, offer: str, audience: str, price: float = 0.0):
+    try:
+        from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+        funnel = await get_shopify_funnel_engine().create_landing_page(product, offer, audience, price)
+        return funnel.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/execution/plan")
+async def execution_plan():
+    try:
+        from apps.execution.daily_runtime import get_daily_runtime
+        tasks = get_daily_runtime().plan_day()
+        return {"tasks": [t.to_dict() for t in tasks], "total": len(tasks)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/execution/run-daily")
+async def run_daily_execution(max_tasks: int = 18):
+    try:
+        from apps.execution.daily_runtime import get_daily_runtime
+        report = await get_daily_runtime().run_daily(max_tasks=max_tasks)
+        return report.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/execution/report")
+async def execution_report():
+    try:
+        from apps.execution.daily_runtime import get_daily_runtime
+        report = await get_daily_runtime().generate_report()
+        return report.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/execution/stats")
+async def execution_stats():
+    try:
+        from apps.execution.daily_runtime import get_daily_runtime
+        return get_daily_runtime().runtime_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/execution/recent-reports")
+async def execution_recent_reports(limit: int = 7):
+    try:
+        from apps.execution.daily_runtime import get_daily_runtime
+        return get_daily_runtime().recent_reports(limit=limit)
     except Exception as exc:
         return {"error": str(exc)}
 
