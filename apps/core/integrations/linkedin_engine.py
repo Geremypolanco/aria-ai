@@ -1,6 +1,6 @@
 import requests
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger("aria.linkedin_engine")
 

@@ -192,11 +192,11 @@ class TestTracingNoOp:
             assert get_trace_id() == ""
 
     def test_setup_tracing_idempotent(self):
-        from apps.core.observability.tracing import setup_tracing, _tracer_provider
-        # First call initializes
-        setup_tracing()
-        first_provider = _tracer_provider
-        # Second call is a no-op
-        setup_tracing()
         from apps.core.observability import tracing
+        from apps.core.observability.tracing import setup_tracing
+        # First call initializes (or is a no-op if already initialized)
+        setup_tracing()
+        first_provider = tracing._tracer_provider
+        # Second call must be a no-op — provider must not change
+        setup_tracing()
         assert tracing._tracer_provider is first_provider

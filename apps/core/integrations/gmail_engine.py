@@ -2,9 +2,17 @@ import os
 import base64
 import logging
 from typing import List, Optional
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+
+try:
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+    _GOOGLE_AVAILABLE = True
+except ImportError:
+    _GOOGLE_AVAILABLE = False
+    Credentials = None
+    build = None
+    HttpError = Exception
 
 logger = logging.getLogger("aria.gmail_engine")
 
@@ -13,6 +21,10 @@ class GmailEngine:
     
     def __init__(self, credentials_path: str = "token.json"):
         self.creds = None
+        self.service = None
+        if not _GOOGLE_AVAILABLE:
+            logger.warning("google-auth / google-api-python-client not installed — GmailEngine disabled")
+            return
         if os.path.exists(credentials_path):
             self.creds = Credentials.from_authorized_user_file(credentials_path)
         self.service = build('gmail', 'v1', credentials=self.creds) if self.creds else None

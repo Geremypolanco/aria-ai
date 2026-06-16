@@ -20,13 +20,13 @@ from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from apps.core.agents.aria_orchestrator import AriaOrchestrator
+from apps.core.agents.orchestrator import Orchestrator as AriaOrchestrator
 from apps.core.agents.enhanced_dev_agent import EnhancedDevAgent
 from apps.core.agents.research_agent import ResearchAgent
 from apps.core.agents.interaction_agent import InteractionAgent
 from apps.core.sandbox.universal_sandbox import SandboxManager
 from apps.core.integrations.mcp_client import mcp_manager
-from apps.core.config.secrets_manager import secrets_manager, env_manager, config_manager
+from apps.core.config_pkg.secrets_manager import secrets_manager, env_manager, config_manager
 from apps.core.deployment.deployment_orchestrator import deployment_orchestrator, DeploymentPlatform
 from apps.api.webhooks import router as webhooks_router
 from apps.core.integrations.hf_connector import hf_connector

@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 from apps.core.agents.base_agent import BaseAgent
 from apps.core.tools.ai_client import AIModel, get_ai_client
 from apps.core.sandbox.universal_sandbox import SandboxManager
-from apps.core.config.secrets_manager import secrets_manager # Para acceso a tokens si es necesario
+from apps.core.config_pkg.secrets_manager import secrets_manager  # Para acceso a tokens si es necesario
 
 logger = logging.getLogger("aria.code_reflector")
 

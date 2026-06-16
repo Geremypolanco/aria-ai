@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
-from apps.core.agents.aria_orchestrator import AriaOrchestrator
+from apps.core.agents.orchestrator import Orchestrator as AriaOrchestrator
 
 logger = logging.getLogger("aria.webhooks")
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
