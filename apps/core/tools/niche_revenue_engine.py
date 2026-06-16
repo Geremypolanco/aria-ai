@@ -1535,7 +1535,7 @@ class NicheRevenueEngine:
             errors.append(f"Zapier: {exc}")
 
         listing.status = "live" if published_urls else "published_partial"
-        self._save_listing(listing)
+        await self._save_listing(listing)
 
         return NicheRunResult(
             niche_key=niche_key,
