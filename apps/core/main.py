@@ -951,6 +951,50 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando DailyBusinessLoop: %s", exc)
 
+    # ── Phase 14: Real-World Execution Layer ───────────────────────────────
+    try:
+        from apps.distribution.publishers.api_publisher import get_api_publisher
+        get_api_publisher()
+        logger.info("RealAPIPublisher initialized (Twitter/LinkedIn/TikTok live publishing)")
+    except Exception as exc:
+        logger.error("Error iniciando RealAPIPublisher: %s", exc)
+
+    try:
+        from apps.shopify.api_client import get_shopify_api_client
+        get_shopify_api_client()
+        logger.info("ShopifyAPIClient initialized (Shopify Admin API integration)")
+    except Exception as exc:
+        logger.error("Error iniciando ShopifyAPIClient: %s", exc)
+
+    try:
+        from apps.economics.dashboard import get_economic_dashboard
+        get_economic_dashboard()
+        logger.info("EconomicDashboard initialized (CTR/CAC/LTV/ROAS tracking)")
+    except Exception as exc:
+        logger.error("Error iniciando EconomicDashboard: %s", exc)
+
+    try:
+        from apps.acquisition.scraper.lead_scraper import get_lead_scraper
+        get_lead_scraper()
+        logger.info("LeadScraper initialized (web-based B2B lead discovery)")
+    except Exception as exc:
+        logger.error("Error iniciando LeadScraper: %s", exc)
+
+    try:
+        from apps.video.media.media_pipeline import get_media_pipeline
+        get_media_pipeline()
+        logger.info("MediaPipeline initialized (FFmpeg + ElevenLabs video generation)")
+    except Exception as exc:
+        logger.error("Error iniciando MediaPipeline: %s", exc)
+
+    try:
+        from apps.runtime.scheduler import get_aria_scheduler
+        aria_sched = get_aria_scheduler()
+        await aria_sched.start()
+        logger.info("ARIAScheduler started (APScheduler cron: morning/midday/daily/leads/analytics)")
+    except Exception as exc:
+        logger.error("Error iniciando ARIAScheduler: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -2417,6 +2461,229 @@ async def runtime_loop_stats():
     try:
         from apps.runtime.daily_business_loop import get_daily_business_loop
         return get_daily_business_loop().loop_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── Phase 14: Real-World Execution API ───────────────────────────────────────
+
+
+@app.post("/api/v1/publish/twitter")
+async def publish_twitter(request: Request):
+    try:
+        body = await request.json()
+        from apps.distribution.publishers.api_publisher import get_api_publisher
+        pub = get_api_publisher()
+        result = await pub.publish_to_twitter(body.get("content", ""), body.get("reply_to_id", ""))
+        return result.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/publish/linkedin")
+async def publish_linkedin(request: Request):
+    try:
+        body = await request.json()
+        from apps.distribution.publishers.api_publisher import get_api_publisher
+        pub = get_api_publisher()
+        result = await pub.publish_to_linkedin(body.get("content", ""), body.get("visibility", "PUBLIC"))
+        return result.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/publish/tiktok")
+async def publish_tiktok(request: Request):
+    try:
+        body = await request.json()
+        from apps.distribution.publishers.api_publisher import get_api_publisher
+        pub = get_api_publisher()
+        result = await pub.publish_to_tiktok(body.get("video_url", ""), body.get("caption", ""))
+        return result.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/publish/thread")
+async def publish_thread(request: Request):
+    try:
+        body = await request.json()
+        from apps.distribution.publishers.api_publisher import get_api_publisher
+        pub = get_api_publisher()
+        results = await pub.publish_thread_to_twitter(body.get("tweets", []))
+        return {"results": [r.to_dict() for r in results], "total": len(results)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/publish/stats")
+async def publish_stats():
+    try:
+        from apps.distribution.publishers.api_publisher import get_api_publisher
+        return get_api_publisher().publishing_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/shopify/products")
+async def shopify_products():
+    try:
+        from apps.shopify.api_client import get_shopify_api_client
+        products = await get_shopify_api_client().get_products()
+        return {"products": [p.to_dict() for p in products], "total": len(products)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/shopify/orders")
+async def shopify_orders():
+    try:
+        from apps.shopify.api_client import get_shopify_api_client
+        orders = await get_shopify_api_client().get_orders()
+        return {"orders": [o.to_dict() for o in orders], "total": len(orders)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/shopify/analytics")
+async def shopify_analytics():
+    try:
+        from apps.shopify.api_client import get_shopify_api_client
+        analytics = await get_shopify_api_client().get_revenue_analytics()
+        return analytics.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/shopify/status")
+async def shopify_status():
+    try:
+        from apps.shopify.api_client import get_shopify_api_client
+        return get_shopify_api_client().client_status()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/economics/track")
+async def economics_track(request: Request):
+    try:
+        body = await request.json()
+        from apps.economics.dashboard import get_economic_dashboard
+        event = await get_economic_dashboard().track_event(
+            body.get("event_type", "impression"),
+            body.get("channel", "unknown"),
+            float(body.get("amount", 0.0)),
+            body.get("metadata", {}),
+        )
+        return event.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/economics/snapshot")
+async def economics_snapshot():
+    try:
+        from apps.economics.dashboard import get_economic_dashboard
+        snap = await get_economic_dashboard().snapshot_today()
+        return snap.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/economics/summary")
+async def economics_summary():
+    try:
+        from apps.economics.dashboard import get_economic_dashboard
+        return get_economic_dashboard().dashboard_summary()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/economics/weekly-report")
+async def economics_weekly_report():
+    try:
+        from apps.economics.dashboard import get_economic_dashboard
+        return await get_economic_dashboard().weekly_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/leads/scrape")
+async def leads_scrape(request: Request):
+    try:
+        body = await request.json()
+        from apps.acquisition.scraper.lead_scraper import get_lead_scraper
+        batch = await get_lead_scraper().scrape_leads(
+            body.get("niche", "ecommerce"),
+            int(body.get("count", 10)),
+            body.get("location", "US"),
+        )
+        return batch.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/leads/scraper-stats")
+async def leads_scraper_stats():
+    try:
+        from apps.acquisition.scraper.lead_scraper import get_lead_scraper
+        return get_lead_scraper().scraper_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/media/generate-script")
+async def media_generate_script(request: Request):
+    try:
+        body = await request.json()
+        from apps.video.media.media_pipeline import get_media_pipeline
+        script = await get_media_pipeline().generate_script(
+            body.get("topic", "AI for business"),
+            body.get("platform", "tiktok"),
+            int(body.get("duration_s", 60)),
+        )
+        return script.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/media/run-pipeline")
+async def media_run_pipeline(request: Request):
+    try:
+        body = await request.json()
+        from apps.video.media.media_pipeline import get_media_pipeline
+        result = await get_media_pipeline().run_pipeline(
+            body.get("topic", "AI business tips"),
+            body.get("platform", "tiktok"),
+        )
+        return result.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/media/pipeline-stats")
+async def media_pipeline_stats():
+    try:
+        from apps.video.media.media_pipeline import get_media_pipeline
+        return get_media_pipeline().pipeline_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/scheduler/status")
+async def scheduler_status_endpoint():
+    try:
+        from apps.runtime.scheduler import get_aria_scheduler
+        return get_aria_scheduler().scheduler_status()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/scheduler/executions")
+async def scheduler_executions():
+    try:
+        from apps.runtime.scheduler import get_aria_scheduler
+        return {"executions": get_aria_scheduler().recent_executions(limit=20)}
     except Exception as exc:
         return {"error": str(exc)}
 
