@@ -264,7 +264,7 @@ class ShopifySEOOptimizer:
         try:
             from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
 
-            ai = await get_ai_client()
+            ai = get_ai_client()
             prompt = (
                 f"Generate SEO meta tags for a Shopify product.\n"
                 f"Product: {product_title}\n"

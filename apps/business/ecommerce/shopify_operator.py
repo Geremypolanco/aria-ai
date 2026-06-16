@@ -289,7 +289,7 @@ class ShopifyOperator:
         try:
             from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
 
-            ai = await get_ai_client()
+            ai = get_ai_client()
             features_str = ", ".join(features) if features else "various useful features"
             prompt = (
                 f"Write a compelling, SEO-optimised product description of 200–300 words "

@@ -99,6 +99,11 @@ class AriaCache:
         result = await self._cmd("RPUSH", key, *values)
         return result or 0
 
+    async def lpush(self, key: str, *values: str) -> int:
+        """Prepend one or more values to the head of a list."""
+        result = await self._cmd("LPUSH", key, *values)
+        return result or 0
+
     async def lrange(self, key: str, start: int, stop: int) -> list:
         """Return a slice of the list stored at key."""
         result = await self._cmd("LRANGE", key, start, stop)
@@ -113,6 +118,11 @@ class AriaCache:
         """Return the length of the list stored at key."""
         result = await self._cmd("LLEN", key)
         return result or 0
+
+    async def expire(self, key: str, seconds: int) -> bool:
+        """Set a timeout on key in seconds."""
+        result = await self._cmd("EXPIRE", key, seconds)
+        return result == 1
 
     # ── ESTADO DE AGENTES ─────────────────────────────────
     async def set_agent_status(self, agent_name: str, status: dict) -> bool:
