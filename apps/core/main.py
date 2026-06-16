@@ -1079,7 +1079,30 @@ async def telegram_webhook(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "ts": datetime.now(timezone.utc).isoformat()}
+    """Liveness + lightweight component readiness probe."""
+    components: dict[str, str] = {}
+
+    # Redis (Upstash) reachability — non-fatal
+    try:
+        cache = get_cache()
+        await cache.get("health:ping")
+        components["redis"] = "ok"
+    except Exception:
+        components["redis"] = "unavailable"
+
+    # AI client availability — non-fatal
+    try:
+        components["ai"] = "ok" if get_ai_client() is not None else "unavailable"
+    except Exception:
+        components["ai"] = "unavailable"
+
+    status = "ok" if all(v == "ok" for v in components.values()) else "degraded"
+    return {
+        "status": status,
+        "version": app.version,
+        "components": components,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @app.get("/metrics", response_class=PlainTextResponse)

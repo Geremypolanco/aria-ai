@@ -128,6 +128,10 @@ class HypothesisManager:
 
         logger.info("[HypothesisEngine] Starting competition %s: %s", comp_id, question[:80])
 
+        # No AI client → genuine low-confidence fallback (cannot reason)
+        if not self._ai:
+            return self._no_op_competition(comp_id, question, context)
+
         # Phase 1: Generate competing hypotheses
         hypotheses = await self._generate_hypotheses(question, context, n_hypotheses)
         if not hypotheses:

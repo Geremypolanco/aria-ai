@@ -524,12 +524,13 @@ class IncomeCycleRequest(BaseModel):
 
 
 @router.post("/income/cycle", dependencies=[Depends(verify_api_key)])
-async def api_income_run_cycle(req: IncomeCycleRequest) -> dict:
+async def api_income_run_cycle(req: IncomeCycleRequest | None = None) -> dict:
     """Execute one income cycle immediately (optionally with a specific strategy)."""
     try:
         from apps.core.tools.income_loop import get_income_loop
         loop = get_income_loop()
-        result = await loop._run_one_cycle(force_strategy=req.strategy)
+        strategy = req.strategy if req else None
+        result = await loop._run_one_cycle(force_strategy=strategy)
         _log_activity("info", f"Income cycle: {result.strategy} — {result.summary[:60]}", "income")
         return {
             "cycle_id": result.cycle_id,

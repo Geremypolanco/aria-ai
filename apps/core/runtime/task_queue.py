@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
+from apps.core.memory.redis_client import get_cache
+
 logger = logging.getLogger("aria.task_queue")
 
 STREAM_PREFIX = "aria:tasks"
@@ -206,7 +208,6 @@ class TaskQueue:
 
     async def _process_pending(self, stream_keys: list[str]) -> bool:
         """Check all streams and process one task from the highest-priority non-empty stream."""
-        from apps.core.memory.redis_client import get_cache
         cache = get_cache()
         if not cache:
             return False
@@ -303,7 +304,6 @@ class TaskQueue:
 
     async def _load_result(self, task_id: str) -> Optional[dict]:
         try:
-            from apps.core.memory.redis_client import get_cache
             cache = get_cache()
             if cache:
                 raw = await cache.get(f"{RESULT_PREFIX}:{task_id}")
@@ -322,7 +322,6 @@ class TaskQueue:
         we use RPUSH as a reliable ordered queue instead.
         """
         try:
-            from apps.core.memory.redis_client import get_cache
             cache = get_cache()
             if cache:
                 data = json.dumps({"data": json.dumps(task.to_dict())})
@@ -343,7 +342,6 @@ class TaskQueue:
 
     async def _write_to_dlq(self, task: Task) -> None:
         try:
-            from apps.core.memory.redis_client import get_cache
             cache = get_cache()
             if cache:
                 await cache.rpush(DLQ_STREAM, json.dumps(task.to_dict()))
@@ -362,7 +360,6 @@ class TaskQueue:
     async def queue_depths(self) -> dict[str, int]:
         depths = {}
         try:
-            from apps.core.memory.redis_client import get_cache
             cache = get_cache()
             if cache:
                 for p in TaskPriority:
