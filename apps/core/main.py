@@ -887,6 +887,70 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando DailyRuntime: %s", exc)
 
+    # ── Phase 13 — Distribution + Acquisition Scale ────────────────────────────
+    try:
+        from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+        get_linkedin_publisher()
+        logger.info("LinkedIn Publisher initialized (authority content + B2B lead generation)")
+    except Exception as exc:
+        logger.error("Error iniciando LinkedInPublisher: %s", exc)
+
+    try:
+        from apps.distribution.twitter.twitter_engine import get_twitter_engine
+        get_twitter_engine()
+        logger.info("Twitter Engine initialized (viral threads + X distribution)")
+    except Exception as exc:
+        logger.error("Error iniciando TwitterEngine: %s", exc)
+
+    try:
+        from apps.distribution.tiktok.tiktok_engine import get_tiktok_engine
+        get_tiktok_engine()
+        logger.info("TikTok Engine initialized (short-form video factory)")
+    except Exception as exc:
+        logger.error("Error iniciando TikTokEngine: %s", exc)
+
+    try:
+        from apps.distribution.blog.blog_publisher import get_blog_publisher
+        get_blog_publisher()
+        logger.info("Blog Publisher initialized (SEO content + organic traffic)")
+    except Exception as exc:
+        logger.error("Error iniciando BlogPublisher: %s", exc)
+
+    try:
+        from apps.acquisition.leads.lead_engine import get_lead_engine
+        get_lead_engine()
+        logger.info("Lead Engine initialized (autonomous lead discovery + scoring)")
+    except Exception as exc:
+        logger.error("Error iniciando LeadEngine: %s", exc)
+
+    try:
+        from apps.acquisition.crm.crm_engine import get_crm_engine
+        get_crm_engine()
+        logger.info("CRM Engine initialized (pipeline tracking + revenue attribution)")
+    except Exception as exc:
+        logger.error("Error iniciando CRMEngine: %s", exc)
+
+    try:
+        from apps.conversion.landing_pages.landing_page_engine import get_landing_page_engine
+        get_landing_page_engine()
+        logger.info("Landing Page Engine initialized (A/B conversion optimization)")
+    except Exception as exc:
+        logger.error("Error iniciando LandingPageEngine: %s", exc)
+
+    try:
+        from apps.conversion.email_sequences.email_nurture import get_email_nurture_engine
+        get_email_nurture_engine()
+        logger.info("Email Nurture Engine initialized (automated lead → customer sequences)")
+    except Exception as exc:
+        logger.error("Error iniciando EmailNurtureEngine: %s", exc)
+
+    try:
+        from apps.runtime.daily_business_loop import get_daily_business_loop
+        get_daily_business_loop()
+        logger.info("Daily Business Loop initialized (full autonomous daily execution)")
+    except Exception as exc:
+        logger.error("Error iniciando DailyBusinessLoop: %s", exc)
+
     logger.info("Aria OS activo.")
     yield
 
@@ -2161,6 +2225,198 @@ async def execution_recent_reports(limit: int = 7):
     try:
         from apps.execution.daily_runtime import get_daily_runtime
         return get_daily_runtime().recent_reports(limit=limit)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ── Phase 13 Distribution + Acquisition Endpoints ────────────────────────────
+
+@app.post("/api/v1/distribution/linkedin/post")
+async def linkedin_create_post(topic: str, objective: str = "thought_leadership"):
+    try:
+        from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+        post = await get_linkedin_publisher().create_post(topic, objective)
+        return post.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/distribution/linkedin/analytics")
+async def linkedin_publisher_analytics():
+    try:
+        from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+        return get_linkedin_publisher().post_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/distribution/twitter/thread")
+async def twitter_create_thread(topic: str, angle: str = "educational", num_tweets: int = 7):
+    try:
+        from apps.distribution.twitter.twitter_engine import get_twitter_engine
+        thread = await get_twitter_engine().create_thread(topic, angle, num_tweets)
+        return thread.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/distribution/twitter/analytics")
+async def twitter_analytics():
+    try:
+        from apps.distribution.twitter.twitter_engine import get_twitter_engine
+        return get_twitter_engine().twitter_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/distribution/tiktok/script")
+async def tiktok_generate_script(topic: str, niche: str, platform: str = "tiktok"):
+    try:
+        from apps.distribution.tiktok.tiktok_engine import get_tiktok_engine
+        script = await get_tiktok_engine().generate_script(topic, niche, platform)
+        return script.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/distribution/tiktok/analytics")
+async def tiktok_analytics():
+    try:
+        from apps.distribution.tiktok.tiktok_engine import get_tiktok_engine
+        return get_tiktok_engine().tiktok_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/distribution/blog/write")
+async def blog_write_post(topic: str, keyword: str, audience: str = "general", word_target: int = 1200):
+    try:
+        from apps.distribution.blog.blog_publisher import get_blog_publisher
+        post = await get_blog_publisher().write_post(topic, keyword, audience, word_target)
+        return post.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/distribution/blog/stats")
+async def blog_stats():
+    try:
+        from apps.distribution.blog.blog_publisher import get_blog_publisher
+        return get_blog_publisher().blog_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/acquisition/leads/discover")
+async def discover_leads(niche: str, count: int = 10):
+    try:
+        from apps.acquisition.leads.lead_engine import get_lead_engine
+        leads = await get_lead_engine().discover_leads(niche, count)
+        return {"leads": [l.to_dict() for l in leads], "total": len(leads)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/acquisition/leads/analytics")
+async def lead_analytics():
+    try:
+        from apps.acquisition.leads.lead_engine import get_lead_engine
+        return get_lead_engine().lead_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/acquisition/crm/contact")
+async def crm_add_contact(name: str, company: str, email: str = "", niche: str = "", deal_value: float = 500.0):
+    try:
+        from apps.acquisition.crm.crm_engine import get_crm_engine
+        contact = await get_crm_engine().add_contact(name, company, email, niche, deal_value_usd=deal_value)
+        return contact.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/acquisition/crm/dashboard")
+async def crm_dashboard():
+    try:
+        from apps.acquisition.crm.crm_engine import get_crm_engine
+        return get_crm_engine().crm_dashboard()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/conversion/landing-page")
+async def create_landing_page(product: str, offer: str, audience: str, price: float = 0.0):
+    try:
+        from apps.conversion.landing_pages.landing_page_engine import get_landing_page_engine
+        page = await get_landing_page_engine().create_page(product, offer, audience, price)
+        return page.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/conversion/landing-pages/stats")
+async def landing_page_stats():
+    try:
+        from apps.conversion.landing_pages.landing_page_engine import get_landing_page_engine
+        return get_landing_page_engine().page_stats()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/conversion/email-sequence")
+async def create_email_sequence(niche: str, goal: str, audience: str, num_emails: int = 7):
+    try:
+        from apps.conversion.email_sequences.email_nurture import get_email_nurture_engine
+        seq = await get_email_nurture_engine().create_sequence(niche, goal, audience, num_emails)
+        return seq.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/conversion/email-sequences/analytics")
+async def email_sequence_analytics():
+    try:
+        from apps.conversion.email_sequences.email_nurture import get_email_nurture_engine
+        return get_email_nurture_engine().sequence_analytics()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/runtime/run-daily")
+async def run_daily_business_loop(max_ops: int = 18):
+    try:
+        from apps.runtime.daily_business_loop import get_daily_business_loop
+        report = await get_daily_business_loop().run(max_ops=max_ops)
+        return report.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/api/v1/runtime/morning")
+async def run_morning_session():
+    try:
+        from apps.runtime.daily_business_loop import get_daily_business_loop
+        ops = await get_daily_business_loop().run_morning_session()
+        return {"ops": [o.to_dict() for o in ops], "total": len(ops)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/runtime/status")
+async def runtime_status():
+    try:
+        from apps.runtime.daily_business_loop import get_daily_business_loop
+        return await get_daily_business_loop().generate_status_report()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/v1/runtime/stats")
+async def runtime_loop_stats():
+    try:
+        from apps.runtime.daily_business_loop import get_daily_business_loop
+        return get_daily_business_loop().loop_stats()
     except Exception as exc:
         return {"error": str(exc)}
 
