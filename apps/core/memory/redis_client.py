@@ -93,6 +93,27 @@ class AriaCache:
                 pass
         return tasks
 
+    # ── LIST OPERATIONS ──────────────────────────────────
+    async def rpush(self, key: str, *values: str) -> int:
+        """Append one or more values to the tail of a list."""
+        result = await self._cmd("RPUSH", key, *values)
+        return result or 0
+
+    async def lrange(self, key: str, start: int, stop: int) -> list:
+        """Return a slice of the list stored at key."""
+        result = await self._cmd("LRANGE", key, start, stop)
+        return result if isinstance(result, list) else []
+
+    async def ltrim(self, key: str, start: int, stop: int) -> bool:
+        """Trim a list to the specified range."""
+        result = await self._cmd("LTRIM", key, start, stop)
+        return result == "OK"
+
+    async def llen(self, key: str) -> int:
+        """Return the length of the list stored at key."""
+        result = await self._cmd("LLEN", key)
+        return result or 0
+
     # ── ESTADO DE AGENTES ─────────────────────────────────
     async def set_agent_status(self, agent_name: str, status: dict) -> bool:
         return await self.set(f"agent:{agent_name}:status", status, ttl_seconds=300)

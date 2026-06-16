@@ -332,7 +332,7 @@ class TaskQueue:
     async def _read_stream(self, cache, stream_key: str) -> list[dict]:
         """Read and remove one task from the front of the list."""
         try:
-            items = cache.lrange(stream_key, 0, 0)  # peek at head
+            items = await cache.lrange(stream_key, 0, 0)  # peek at head
             if items:
                 await cache.ltrim(stream_key, 1, -1)  # pop head
                 return [json.loads(item) for item in items]
@@ -364,7 +364,7 @@ class TaskQueue:
             if cache:
                 for p in TaskPriority:
                     key = f"{STREAM_PREFIX}:{p.value}"
-                    items = cache.lrange(key, 0, -1)
+                    items = await cache.lrange(key, 0, -1)
                     depths[p.value] = len(items)
         except Exception:
             pass
