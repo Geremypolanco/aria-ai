@@ -1097,7 +1097,7 @@ class AriaMind:
             # ── INCOME LOOP 24/7 ──────────────────────────────────────────
             elif tool == "income_loop_status":
                 from apps.core.tools.income_loop import get_income_loop
-                return get_income_loop().get_status(), {}
+                return await get_income_loop().get_status(), {}
 
             elif tool == "start_income_loop":
                 from apps.core.tools.income_loop import get_income_loop

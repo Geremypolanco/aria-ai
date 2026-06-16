@@ -513,7 +513,7 @@ async def api_income_status() -> dict:
     try:
         from apps.core.tools.income_loop import get_income_loop
         loop = get_income_loop()
-        return loop.get_status_dict()
+        return await loop.get_status_dict()
     except Exception as exc:
         logger.error("[API /income] %s", exc)
         return {"error": str(exc)}

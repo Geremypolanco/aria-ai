@@ -116,7 +116,7 @@ class IncomeLoop:
                 break
             except Exception as exc:
                 logger.error("[IncomeLoop] Unhandled error: %s", exc, exc_info=True)
-                self._save_error(str(exc))
+                await self._save_error(str(exc))
                 await asyncio.sleep(ERROR_BACKOFF)
                 continue
 
@@ -152,7 +152,7 @@ class IncomeLoop:
         finally:
             result.elapsed_seconds = int(time.time() - start)
 
-        self._save_result(result)
+        await self._save_result(result)
 
         # Notify on wins
         if result.success and result.urls_created:
@@ -228,10 +228,10 @@ class IncomeLoop:
                 candidates = all_keys
             # Load from Redis on first use to survive restarts
             if self._niche_idx == 0:
-                self._niche_idx = self._load_niche_idx()
+                self._niche_idx = await self._load_niche_idx()
             target = candidates[self._niche_idx % len(candidates)]
             self._niche_idx += 1
-            self._save_niche_idx()
+            await self._save_niche_idx()
 
             result = await engine.launch_niche(target)
             urls   = [u["url"] for u in result.published_urls + result.seo_article_urls if u.get("url")]
@@ -406,10 +406,15 @@ Output JSON:
                 opportunities = []
 
             # Save to Redis queue
-            r = self._redis()
-            if r and opportunities:
-                for opp in opportunities:
-                    r.rpush("aria:income:opportunity_queue", json.dumps(opp))
+            if opportunities:
+                try:
+                    from apps.core.memory.redis_client import get_cache
+                    cache = get_cache()
+                    if cache:
+                        for opp in opportunities:
+                            await cache.rpush("aria:income:opportunity_queue", json.dumps(opp))
+                except Exception:
+                    pass
 
             summaries = [f"{o.get('name','')} ({o.get('time_to_first_dollar','')})" for o in opportunities[:3]]
             return {
@@ -748,55 +753,52 @@ JSON:
 
     # ── Persistence ───────────────────────────────────────────────────────
 
-    def _load_niche_idx(self) -> int:
+    async def _load_niche_idx(self) -> int:
         try:
-            r = self._redis()
-            if r:
-                val = r.get("aria:income:niche_idx")
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if cache:
+                val = await cache.get("aria:income:niche_idx")
                 return int(val) if val else 0
         except Exception:
             pass
         return 0
 
-    def _save_niche_idx(self) -> None:
+    async def _save_niche_idx(self) -> None:
         try:
-            r = self._redis()
-            if r:
-                r.set("aria:income:niche_idx", self._niche_idx)
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if cache:
+                await cache.set("aria:income:niche_idx", str(self._niche_idx), ttl_seconds=86400 * 90)
         except Exception:
             pass
 
-    def _redis(self):
+    async def _save_result(self, result: CycleResult) -> None:
         try:
-            from apps.core.tools.knowledge_base import get_knowledge_base
-            return get_knowledge_base()._redis
-        except Exception:
-            return None
-
-    def _save_result(self, result: CycleResult) -> None:
-        r = self._redis()
-        if not r:
-            return
-        try:
-            r.rpush("aria:income:loop_history", json.dumps(asdict(result)))
-            r.ltrim("aria:income:loop_history", -200, -1)  # Keep last 200
-            r.set("aria:income:last_cycle", json.dumps(asdict(result)))
-            r.incr("aria:income:total_cycles")
-            if result.success:
-                r.incr("aria:income:successful_cycles")
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if cache:
+                data = json.dumps(asdict(result))
+                await cache.rpush("aria:income:loop_history", data)
+                await cache.ltrim("aria:income:loop_history", -200, -1)
+                await cache.set("aria:income:last_cycle", data, ttl_seconds=86400 * 30)
+                await cache.increment("aria:income:total_cycles")
+                if result.success:
+                    await cache.increment("aria:income:successful_cycles")
         except Exception as exc:
             logger.warning("[IncomeLoop] Redis save: %s", exc)
 
-    def _save_error(self, error: str) -> None:
-        r = self._redis()
-        if r:
-            try:
-                r.rpush("aria:income:errors", json.dumps({
+    async def _save_error(self, error: str) -> None:
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if cache:
+                await cache.rpush("aria:income:errors", json.dumps({
                     "error": error, "ts": datetime.now(timezone.utc).isoformat()
                 }))
-                r.ltrim("aria:income:errors", -50, -1)
-            except Exception:
-                pass
+                await cache.ltrim("aria:income:errors", -50, -1)
+        except Exception:
+            pass
 
     # ── Notifications ─────────────────────────────────────────────────────
 
@@ -821,9 +823,8 @@ JSON:
 
     # ── Status ────────────────────────────────────────────────────────────
 
-    def get_status_dict(self) -> dict:
+    async def get_status_dict(self) -> dict:
         """Return structured status dict for API/dashboard consumption."""
-        r = self._redis()
         total_cycles    = 0
         success_count   = 0
         error_count     = 0
@@ -832,33 +833,37 @@ JSON:
         opportunities   = []
         total_revenue   = 0.0
 
-        if r:
-            try:
-                total_cycles  = int(r.get("aria:income:total_cycles") or 0)
-                success_count = int(r.get("aria:income:successful_cycles") or 0)
-                error_count   = int(r.get("aria:income:errors") or 0)
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if cache:
+                total_cycles  = int(await cache.get("aria:income:total_cycles") or 0)
+                success_count = int(await cache.get("aria:income:successful_cycles") or 0)
+                err_len       = await cache.llen("aria:income:errors")
+                error_count   = err_len or 0
 
-                last_raw = r.get("aria:income:last_cycle")
+                last_raw = await cache.get("aria:income:last_cycle")
                 if last_raw:
-                    last_cycle_data = json.loads(last_raw if isinstance(last_raw, str) else last_raw.decode())
+                    last_cycle_data = json.loads(last_raw) if isinstance(last_raw, str) else last_raw
 
-                history_raw = r.lrange("aria:income:loop_history", -20, -1)
+                history_raw = await cache.lrange("aria:income:loop_history", -20, -1)
                 for raw in reversed(history_raw or []):
                     try:
-                        c = json.loads(raw if isinstance(raw, str) else raw.decode())
-                        recent_cycles.append(c)
-                        total_revenue += c.get("revenue_potential", 0)
+                        c = json.loads(raw) if isinstance(raw, str) else raw
+                        if isinstance(c, dict):
+                            recent_cycles.append(c)
+                            total_revenue += c.get("revenue_potential", 0)
                     except Exception:
                         pass
 
-                opp_raw = r.lrange("aria:income:opportunity_queue", 0, 9)
+                opp_raw = await cache.lrange("aria:income:opportunity_queue", 0, 9)
                 for raw in (opp_raw or []):
                     try:
-                        opportunities.append(json.loads(raw if isinstance(raw, str) else raw.decode()))
+                        opportunities.append(json.loads(raw) if isinstance(raw, str) else raw)
                     except Exception:
                         pass
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         return {
             "running": self.is_running,
@@ -874,32 +879,34 @@ JSON:
             "interval_minutes": INTERVAL_SECONDS // 60,
         }
 
-    def get_status(self) -> str:
-        r = self._redis()
+    async def get_status(self) -> str:
         total_cycles = 0
         success_rate = 0.0
         last_cycle   = {}
         recent_urls  = []
 
-        if r:
-            try:
-                total_cycles  = int(r.get("aria:income:total_cycles") or 0)
-                success_count = int(r.get("aria:income:successful_cycles") or 0)
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if cache:
+                total_cycles  = int(await cache.get("aria:income:total_cycles") or 0)
+                success_count = int(await cache.get("aria:income:successful_cycles") or 0)
                 success_rate  = (success_count / total_cycles * 100) if total_cycles else 0
 
-                last_raw = r.get("aria:income:last_cycle")
+                last_raw = await cache.get("aria:income:last_cycle")
                 if last_raw:
-                    last_cycle = json.loads(last_raw if isinstance(last_raw, str) else last_raw.decode())
+                    last_cycle = json.loads(last_raw) if isinstance(last_raw, str) else last_raw
 
-                history_raw = r.lrange("aria:income:loop_history", -10, -1)
+                history_raw = await cache.lrange("aria:income:loop_history", -10, -1)
                 for raw in (history_raw or []):
                     try:
-                        cycle = json.loads(raw if isinstance(raw, str) else raw.decode())
-                        recent_urls.extend(cycle.get("urls_created", []))
+                        cycle = json.loads(raw) if isinstance(raw, str) else raw
+                        if isinstance(cycle, dict):
+                            recent_urls.extend(cycle.get("urls_created", []))
                     except Exception:
                         pass
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         next_run = INTERVAL_SECONDS - ((self._cycle * INTERVAL_SECONDS) % INTERVAL_SECONDS) if self._cycle else FIRST_RUN_DELAY
         status_label = "🟢 RUNNING" if self.is_running else "🔴 STOPPED"
