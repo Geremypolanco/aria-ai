@@ -1359,31 +1359,39 @@ class NicheRevenueEngine:
         self._checklist = PrePublicationChecklist()
         self._publisher  = NichePublisher()
 
-    def _redis(self):
+    async def _save_listing(self, listing: ServiceListing) -> None:
+        """Persist listing to Redis as part of the all-listings JSON array."""
         try:
-            from apps.core.tools.knowledge_base import get_knowledge_base
-            return get_knowledge_base()._redis
-        except Exception:
-            return None
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return
+            existing = await cache.get("aria:income:listings_v2") or []
+            if isinstance(existing, str):
+                existing = json.loads(existing)
+            # Upsert by id
+            updated = [l for l in existing if l.get("id") != listing.id]
+            updated.append(asdict(listing))
+            await cache.set("aria:income:listings_v2", json.dumps(updated), ttl_seconds=86400 * 90)
+        except Exception as exc:
+            logger.debug("[NicheEngine] _save_listing error: %s", exc)
 
-    def _save_listing(self, listing: ServiceListing) -> None:
-        r = self._redis()
-        if r:
-            try:
-                r.hset("aria:income:listings", listing.id, json.dumps(asdict(listing)))
-            except Exception:
-                pass
-
-    def _load_listings(self) -> list[ServiceListing]:
-        r = self._redis()
-        if not r:
-            return []
+    async def _load_listings(self) -> list[ServiceListing]:
+        """Load all listings from Redis."""
         try:
-            raw = r.hgetall("aria:income:listings") or {}
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return []
+            raw = await cache.get("aria:income:listings_v2")
+            if not raw:
+                return []
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            if not isinstance(data, list):
+                return []
             result = []
-            for v in raw.values():
+            for d in data:
                 try:
-                    d = json.loads(v if isinstance(v, str) else v.decode())
                     result.append(ServiceListing(**d))
                 except Exception:
                     pass
@@ -1391,20 +1399,23 @@ class NicheRevenueEngine:
         except Exception:
             return []
 
-    def _record_revenue(self, niche_key: str, amount: float, platform: str) -> None:
-        r = self._redis()
-        if not r:
-            return
+    async def _record_revenue(self, niche_key: str, amount: float, platform: str) -> None:
+        """Record revenue for a niche."""
         try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return
             key = f"aria:income:revenue:{niche_key}"
-            existing = float(r.get(key) or 0)
-            r.set(key, existing + amount)
-            r.rpush("aria:income:log", json.dumps({
+            existing = float(await cache.get(key) or 0)
+            await cache.set(key, str(existing + amount), ttl_seconds=86400 * 365)
+            await cache.rpush("aria:income:log", json.dumps({
                 "niche": niche_key, "amount": amount,
                 "platform": platform, "ts": datetime.now(timezone.utc).isoformat()
             }))
-        except Exception:
-            pass
+            await cache.ltrim("aria:income:log", -500, -1)
+        except Exception as exc:
+            logger.debug("[NicheEngine] _record_revenue error: %s", exc)
 
     def get_top_niches_by_potential(self, n: int = 5, category: str = None) -> list[dict]:
         """Returns top N niches ranked by market size × speed × competition inverse."""
@@ -1474,7 +1485,7 @@ class NicheRevenueEngine:
 
         if not checklist.passed and checklist.score < 70:
             errors.append(f"Checklist failed ({checklist.score}/100). Failed gates: {checklist.gates_failed}")
-            self._save_listing(listing)
+            await self._save_listing(listing)
             return NicheRunResult(
                 niche_key=niche_key, niche_name=niche_data["name"], listing=listing,
                 checklist=checklist, published_urls=[], seo_article_urls=[],
@@ -1578,9 +1589,9 @@ class NicheRevenueEngine:
             "elapsed_seconds": int(time.time() - start),
         }
 
-    def income_dashboard(self) -> str:
+    async def income_dashboard(self) -> str:
         """Returns a formatted income dashboard from Redis state."""
-        listings = self._load_listings()
+        listings = await self._load_listings()
 
         # Platform summary
         platform_counts: dict[str, int] = {}
@@ -1593,19 +1604,22 @@ class NicheRevenueEngine:
         for ls in listings:
             cat_counts[ls.category] = cat_counts.get(ls.category, 0) + 1
 
-        # Revenue from Redis
-        r = self._redis()
+        # Revenue from Redis — iterate known niches (no scan_iter needed)
         total_rev = 0.0
         niche_rev = {}
-        if r:
-            try:
-                for key in r.scan_iter("aria:income:revenue:*"):
-                    niche_name = key.decode().split(":")[-1] if isinstance(key, bytes) else key.split(":")[-1]
-                    val = float(r.get(key) or 0)
-                    niche_rev[niche_name] = val
-                    total_rev += val
-            except Exception:
-                pass
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if cache:
+                for niche_key in NICHE_CATALOG:
+                    val = await cache.get(f"aria:income:revenue:{niche_key}")
+                    if val:
+                        amount = float(val)
+                        if amount > 0:
+                            niche_rev[niche_key] = amount
+                            total_rev += amount
+        except Exception:
+            pass
 
         lines = [
             "📊 **ARIA Income Dashboard**",

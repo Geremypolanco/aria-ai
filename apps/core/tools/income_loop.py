@@ -218,7 +218,7 @@ class IncomeLoop:
                 get_niche_revenue_engine, NICHE_CATALOG
             )
             engine  = get_niche_revenue_engine()
-            launched = {ls.niche_key for ls in engine._load_listings()}
+            launched = {ls.niche_key for ls in await engine._load_listings()}
             all_keys = list(NICHE_CATALOG.keys())
 
             # Find next unlaunched niche (round-robin)
@@ -434,7 +434,7 @@ Output JSON:
             from apps.core.tools.zapier_connector import ZapierConnector
 
             engine   = get_niche_revenue_engine()
-            listings = engine._load_listings()
+            listings = await engine._load_listings()
             live     = [ls for ls in listings if ls.listing_urls]
 
             if not live:

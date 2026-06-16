@@ -1060,7 +1060,7 @@ class AriaMind:
 
             elif tool == "income_dashboard":
                 from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
-                return get_niche_revenue_engine().income_dashboard(), {}
+                return await get_niche_revenue_engine().income_dashboard(), {}
 
             elif tool == "list_niches":
                 category = args.get("category", None)
