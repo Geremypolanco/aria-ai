@@ -266,7 +266,7 @@ class IncomeLoop:
                 return {"success": False, "summary": "AI client unavailable"}
 
             # Generate ebook content
-            resp = await ai.complete(
+            product_data = await ai.complete_json(
                 system=(
                     "You are a bestselling digital product creator. "
                     "Write complete, actionable content. No fluff. Output JSON only."
@@ -285,16 +285,10 @@ Output JSON:
 }}""",
                 model=AIModel.CREATIVE,
                 max_tokens=2000,
-                temperature=0.8,
             )
 
-            if not resp or not resp.success or not resp.content:
+            if not product_data:
                 return {"success": False, "summary": "AI generation failed"}
-
-            try:
-                product_data = json.loads(resp.content.strip())
-            except Exception:
-                return {"success": False, "summary": "AI returned invalid JSON"}
 
             # Create on Gumroad
             gt     = GumroadTools()
@@ -371,7 +365,7 @@ Output JSON:
                 for r in all_results[:12]
             )
 
-            resp = await ai.complete(
+            opp_data = await ai.complete_json(
                 system="You are an income opportunity analyst. Be specific and actionable. Output JSON only.",
                 user=f"""Analyze these search results and extract 3 SPECIFIC income opportunities:
 
@@ -393,17 +387,9 @@ Output JSON:
 }}""",
                 model=AIModel.STRATEGY,
                 max_tokens=1000,
-                temperature=0.5,
             )
 
-            if not resp or not resp.success:
-                return {"success": False, "summary": "AI analysis failed"}
-
-            try:
-                data = json.loads(resp.content.strip())
-                opportunities = data.get("opportunities", [])
-            except Exception:
-                opportunities = []
+            opportunities = (opp_data or {}).get("opportunities", [])
 
             # Save to Redis queue
             if opportunities:
@@ -491,7 +477,7 @@ Output JSON:
             if not ai:
                 return {"success": False, "summary": "AI unavailable"}
 
-            resp = await ai.complete(
+            offer = await ai.complete_json(
                 system="You are a B2B sales expert. Create premium service packages that command $500-$5000. Output JSON only.",
                 user=f"""Create a premium B2B consulting offer based on this market insight:
 {context}
@@ -510,16 +496,10 @@ JSON:
 }}""",
                 model=AIModel.STRATEGY,
                 max_tokens=1500,
-                temperature=0.6,
             )
 
-            if not resp or not resp.success:
+            if not offer:
                 return {"success": False, "summary": "AI failed"}
-
-            try:
-                offer = json.loads(resp.content.strip())
-            except Exception:
-                return {"success": False, "summary": "AI returned invalid JSON"}
 
             # Publish to Gumroad as consulting package
             gt = GumroadTools()
@@ -561,7 +541,7 @@ JSON:
             if not ai:
                 return {"success": False, "summary": "AI unavailable"}
 
-            resp = await ai.complete(
+            product = await ai.complete_json(
                 system="You are a Shopify product expert. Create compelling digital product listings. Output JSON only.",
                 user=f"""Create a Shopify digital product listing for the trending topic: "{topic}"
 
@@ -576,16 +556,10 @@ JSON:
 }}""",
                 model=AIModel.FAST,
                 max_tokens=800,
-                temperature=0.6,
             )
 
-            if not resp or not resp.success:
+            if not product:
                 return {"success": False, "summary": "AI failed to generate product"}
-
-            try:
-                product = json.loads(resp.content.strip())
-            except Exception:
-                return {"success": False, "summary": "Invalid product JSON from AI"}
 
             ct    = get_commerce_tools()
             price = float(product.get("price", "29.99"))
@@ -629,7 +603,7 @@ JSON:
             if not ai:
                 return {"success": False, "summary": "AI unavailable"}
 
-            resp = await ai.complete(
+            ebook = await ai.complete_json(
                 system="You are a bestselling ebook author. Create detailed, valuable ebooks that people buy. Output JSON only.",
                 user=f"""Create a complete sellable ebook on: "{topic}"
 
@@ -645,16 +619,10 @@ JSON:
 }}""",
                 model=AIModel.STRATEGY,
                 max_tokens=1500,
-                temperature=0.7,
             )
 
-            if not resp or not resp.success:
+            if not ebook:
                 return {"success": False, "summary": "AI failed to generate ebook"}
-
-            try:
-                ebook = json.loads(resp.content.strip())
-            except Exception:
-                return {"success": False, "summary": "Invalid ebook JSON"}
 
             # Enrich description with TOC
             toc = ebook.get("table_of_contents", [])
@@ -707,7 +675,7 @@ JSON:
             if not ai:
                 return {"success": False, "summary": "AI unavailable"}
 
-            resp = await ai.complete(
+            email_data = await ai.complete_json(
                 system="You are an email marketing expert. Write high-converting email campaigns. Output JSON only.",
                 user="""Create an email campaign promoting AI productivity tools and digital products.
 
@@ -719,16 +687,10 @@ JSON:
 }""",
                 model=AIModel.FAST,
                 max_tokens=1200,
-                temperature=0.7,
             )
 
-            if not resp or not resp.success:
+            if not email_data:
                 return {"success": False, "summary": "AI failed to generate email"}
-
-            try:
-                email_data = json.loads(resp.content.strip())
-            except Exception:
-                return {"success": False, "summary": "Invalid email JSON"}
 
             result = await mc.create_campaign(
                 list_id=list_id,
