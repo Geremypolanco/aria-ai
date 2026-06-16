@@ -1272,23 +1272,27 @@ class NichePublisher:
             return {"success": False, "error": str(exc)}
 
     async def publish_article(self, article: dict) -> list[dict]:
-        """Publish SEO article to Medium/dev.to/Hashnode."""
+        """Publish SEO article to Medium/dev.to/Hashnode in parallel."""
         try:
             from apps.core.tools.publishing_tools import PublishingTools
-            pub  = PublishingTools()
-            results = []
-            for coro, platform in [
-                (pub.publish_devto(article), "devto"),
-                (pub.publish_medium(article), "medium"),
-                (pub.publish_hashnode(article), "hashnode"),
-            ]:
+            pub = PublishingTools()
+
+            async def _safe_publish(coro, platform: str):
                 try:
                     r = await asyncio.wait_for(coro, timeout=30)
                     if isinstance(r, dict) and r.get("success"):
-                        results.append({"platform": platform, "url": r.get("url", "")})
+                        return {"platform": platform, "url": r.get("url", "")}
                 except Exception as exc:
                     logger.warning("[Publisher] Article %s: %s", platform, exc)
-            return results
+                return None
+
+            outcomes = await asyncio.gather(
+                _safe_publish(pub.publish_devto(article), "devto"),
+                _safe_publish(pub.publish_medium(article), "medium"),
+                _safe_publish(pub.publish_hashnode(article), "hashnode"),
+                return_exceptions=False,
+            )
+            return [r for r in outcomes if r]
         except Exception as exc:
             logger.error("[Publisher] publish_article: %s", exc)
             return []

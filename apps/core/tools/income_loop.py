@@ -733,8 +733,10 @@ JSON:
             result = await mc.create_campaign(
                 list_id=list_id,
                 subject=email_data.get("subject", "Discover AI Tools That Make You Money"),
+                from_name=getattr(settings, "MAILCHIMP_FROM_NAME", None) or "ARIA AI",
+                reply_to=getattr(settings, "MAILCHIMP_REPLY_TO", None) or getattr(settings, "CONTACT_EMAIL", "noreply@aria.ai"),
                 preview_text=email_data.get("preview_text", "Exclusive offer inside"),
-                html_body=email_data.get("html_body", "<p>Check out our latest products!</p>"),
+                body_html=email_data.get("html_body", "<p>Check out our latest products!</p>"),
             )
 
             if result.get("success"):

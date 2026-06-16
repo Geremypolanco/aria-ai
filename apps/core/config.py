@@ -104,6 +104,9 @@ class Settings(BaseSettings):
     AIRTABLE_TOKEN: Optional[str] = None
     MAILCHIMP_API_KEY: Optional[str] = None
     MAILCHIMP_DC: Optional[str] = None
+    MAILCHIMP_FROM_NAME: Optional[str] = "ARIA AI"
+    MAILCHIMP_REPLY_TO: Optional[str] = None
+    CONTACT_EMAIL: Optional[str] = None
 
     # Twitter / X
     TWITTER_API_KEY: Optional[str] = None
