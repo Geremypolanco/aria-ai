@@ -72,7 +72,7 @@ class RetentionEngine:
 
     async def _load_campaigns(self) -> dict[str, RetentionCampaign]:
         try:
-            cache = await get_cache()
+            cache = get_cache()
             data = await cache.get(_CAMPAIGNS_KEY)
             if data and isinstance(data, dict):
                 return {k: RetentionCampaign.from_dict(v) for k, v in data.items()}
@@ -82,14 +82,14 @@ class RetentionEngine:
 
     async def _save_campaigns(self, campaigns: dict[str, RetentionCampaign]) -> None:
         try:
-            cache = await get_cache()
+            cache = get_cache()
             await cache.set(_CAMPAIGNS_KEY, {k: v.to_dict() for k, v in campaigns.items()}, ttl_seconds=_CAMPAIGNS_TTL)
         except Exception:
             pass
 
     async def _queue_outreach(self, items: list[dict]) -> None:
         try:
-            cache = await get_cache()
+            cache = get_cache()
             existing = await cache.get(_OUTREACH_QUEUE_KEY) or []
             existing.extend(items)
             await cache.set(_OUTREACH_QUEUE_KEY, existing[-1000:], ttl_seconds=_CAMPAIGNS_TTL)

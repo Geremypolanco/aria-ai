@@ -154,7 +154,7 @@ class AutonomousScheduler:
 
     async def _load_objectives(self) -> dict[str, StrategicObjective]:
         try:
-            cache = await get_cache()
+            cache = get_cache()
             data = await cache.get(_OBJECTIVES_KEY)
             if data and isinstance(data, dict):
                 return {k: StrategicObjective.from_dict(v) for k, v in data.items()}
@@ -164,14 +164,14 @@ class AutonomousScheduler:
 
     async def _save_objectives(self, objectives: dict[str, StrategicObjective]) -> None:
         try:
-            cache = await get_cache()
+            cache = get_cache()
             await cache.set(_OBJECTIVES_KEY, {k: v.to_dict() for k, v in objectives.items()}, ttl_seconds=_OBJECTIVES_TTL)
         except Exception:
             pass
 
     async def _load_history(self) -> list[ExecutionRecord]:
         try:
-            cache = await get_cache()
+            cache = get_cache()
             data = await cache.get(_HISTORY_KEY)
             if data and isinstance(data, list):
                 return [ExecutionRecord.from_dict(r) for r in data]
@@ -181,7 +181,7 @@ class AutonomousScheduler:
 
     async def _save_history(self, records: list[ExecutionRecord]) -> None:
         try:
-            cache = await get_cache()
+            cache = get_cache()
             await cache.set(_HISTORY_KEY, [r.to_dict() for r in records[-500:]], ttl_seconds=_HISTORY_TTL)
         except Exception:
             pass

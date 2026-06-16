@@ -152,7 +152,7 @@ class ShopifyOperator:
         try:
             from apps.core.memory.redis_client import get_cache  # type: ignore
 
-            cache = await get_cache()
+            cache = get_cache()
             data = await cache.get(self.CACHE_KEY)
             if data and isinstance(data, dict):
                 for pid, pd in data.items():
@@ -164,7 +164,7 @@ class ShopifyOperator:
         try:
             from apps.core.memory.redis_client import get_cache  # type: ignore
 
-            cache = await get_cache()
+            cache = get_cache()
             serializable = {
                 pid: {
                     "product_id": pp.product_id,
