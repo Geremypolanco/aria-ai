@@ -24,6 +24,11 @@ secrets.json
 *.pem
 *.key
 
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
 # Fly.io
 .fly/
 
@@ -52,5 +57,24 @@ htmlcov/
 # Jupyter
 .ipynb_checkpoints/
 
-# Claude Code
+# Claude Code / Cursor / AI tools
 .claude/
+.cursor/
+
+# Cache & temp
+*.cache
+__pycache__/
+tmp/
+
+# Supabase / local data
+supabase/
+database/migrations/
+
+# Byte-compiled / optimized / DLL files
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/__pycache__/
+
+# C extensions
+*.so
