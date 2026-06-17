@@ -67,14 +67,14 @@ class ARIAScheduler:
         self._job_log: list[dict] = []
         self._running: bool = False
 
-    # ── Lazy scheduler init ───────────────────────────────────────────────────
+    # ── Lazy scheduler init ─────────────────────────────────────────────
 
     def _get_scheduler(self) -> AsyncIOScheduler:
         if self._scheduler is None:
             self._scheduler = AsyncIOScheduler(timezone="UTC")
         return self._scheduler
 
-    # ── Job log persistence ───────────────────────────────────────────────────
+    # ── Job log persistence ────────────────────────────────────────────
 
     async def _log_job(
         self,
@@ -106,7 +106,7 @@ class ARIAScheduler:
         except Exception as exc:
             logger.warning("ARIAScheduler: could not persist job log: %s", exc)
 
-    # ── Scheduled job handlers ────────────────────────────────────────────────
+    # ── Scheduled job handlers ──────────────────────────────────────────
 
     async def _run_morning_session(self) -> None:
         job_name = "morning_session"
@@ -195,6 +195,23 @@ class ARIAScheduler:
                 job_name, "Lead Discovery", False, time.time() - start, str(exc)
             )
 
+    async def _run_autonomous_objectives(self) -> None:
+        job_name = "autonomous_objectives"
+        start = time.time()
+        try:
+            from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler  # noqa: PLC0415
+
+            sched = get_autonomous_scheduler()
+            results = await sched.run_due_objectives()
+            done = sum(1 for r in results if r.success)
+            logger.info("ARIAScheduler [autonomous]: %d/%d objectives ran", done, len(results))
+            await self._log_job(job_name, "Autonomous Strategic Objectives", True, time.time() - start)
+        except Exception as exc:
+            logger.error("ARIAScheduler [autonomous] failed: %s", exc)
+            await self._log_job(
+                job_name, "Autonomous Strategic Objectives", False, time.time() - start, str(exc)
+            )
+
     async def _run_analytics_refresh(self) -> None:
         job_name = "analytics_refresh"
         start = time.time()
@@ -225,7 +242,7 @@ class ARIAScheduler:
                 job_name, "Economic Analytics Refresh", False, time.time() - start, str(exc)
             )
 
-    # ── Lifecycle ─────────────────────────────────────────────────────────────
+    # ── Lifecycle ──────────────────────────────────────────────────
 
     async def start(self) -> None:
         if self._running:
@@ -289,6 +306,14 @@ class ARIAScheduler:
             replace_existing=True,
             misfire_grace_time=900,
         )
+        scheduler.add_job(
+            self._run_autonomous_objectives,
+            trigger=IntervalTrigger(hours=1),
+            id="autonomous_objectives",
+            name="Autonomous Strategic Objectives",
+            replace_existing=True,
+            misfire_grace_time=1800,
+        )
 
         scheduler.start()
         self._running = True
@@ -317,7 +342,7 @@ class ARIAScheduler:
             self._running = False
             logger.info("ARIAScheduler: stopped")
 
-    # ── Status / introspection ────────────────────────────────────────────────
+    # ── Status / introspection ──────────────────────────────────────────
 
     def scheduler_status(self) -> dict:
         scheduler = self._get_scheduler()
@@ -340,7 +365,7 @@ class ARIAScheduler:
         return self._job_log[-limit:] if self._job_log else []
 
 
-# ── Singleton ─────────────────────────────────────────────────────────────────
+# ── Singleton ─────────────────────────────────────────────────────
 
 _scheduler_instance: ARIAScheduler | None = None
 

@@ -352,10 +352,62 @@ class AutonomousScheduler:
 _scheduler_instance: AutonomousScheduler | None = None
 
 
+def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
+    """Wire up income-generating handlers for all 6 strategic objectives."""
+
+    async def _growth_loops_cycle(obj: StrategicObjective) -> dict:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        results = []
+        total_value = 0.0
+        for strategy in ("niche_rotator", "social_blitz"):
+            r = await loop._run_one_cycle(force_strategy=strategy)
+            results.append({"strategy": strategy, "success": r.success, "summary": r.summary})
+            total_value += r.revenue_potential
+        success = any(r["success"] for r in results)
+        return {"success": success, "summary": f"Growth loops: {len(results)} strategies", "value_usd": total_value}
+
+    async def _shopify_optimization(obj: StrategicObjective) -> dict:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        r = await loop._run_one_cycle(force_strategy="shopify_listing")
+        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
+
+    async def _content_generation(obj: StrategicObjective) -> dict:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        r = await loop._run_one_cycle(force_strategy="content_pipeline")
+        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
+
+    async def _market_intelligence(obj: StrategicObjective) -> dict:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        r = await loop._run_one_cycle(force_strategy="opportunity_scan")
+        return {"success": r.success, "summary": r.summary, "value_usd": 0.0}
+
+    async def _crm_nurture(obj: StrategicObjective) -> dict:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        r = await loop._run_one_cycle(force_strategy="email_campaign")
+        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
+
+    async def _economic_rebalancing(obj: StrategicObjective) -> dict:
+        await scheduler.reprioritize()
+        return {"success": True, "summary": "Strategic objectives reprioritized by ROI", "value_usd": 0.0}
+
+    scheduler.register_handler("growth_loops_cycle", _growth_loops_cycle)
+    scheduler.register_handler("shopify_optimization", _shopify_optimization)
+    scheduler.register_handler("content_generation", _content_generation)
+    scheduler.register_handler("market_intelligence", _market_intelligence)
+    scheduler.register_handler("crm_nurture", _crm_nurture)
+    scheduler.register_handler("economic_rebalancing", _economic_rebalancing)
+
+
 def get_autonomous_scheduler() -> AutonomousScheduler:
     global _scheduler_instance
     if _scheduler_instance is None:
         _scheduler_instance = AutonomousScheduler()
         for obj in _scheduler_instance._default_objectives():
             _scheduler_instance.register_objective(obj)
+        _register_default_handlers(_scheduler_instance)
     return _scheduler_instance
