@@ -1033,6 +1033,7 @@ class NicheTeam:
             model=AIModel.STRATEGY,
             max_tokens=max_tokens,
             temperature=0.7,
+            json_mode=True,
             agent_name=f"niche_{self.niche_key}",
         )
         return resp.content.strip() if resp and resp.success and resp.content else ""
