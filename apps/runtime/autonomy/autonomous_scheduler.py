@@ -352,7 +352,7 @@ class AutonomousScheduler:
 _scheduler_instance: AutonomousScheduler | None = None
 
 
-async def get_autonomous_scheduler() -> AutonomousScheduler:
+def get_autonomous_scheduler() -> AutonomousScheduler:
     global _scheduler_instance
     if _scheduler_instance is None:
         _scheduler_instance = AutonomousScheduler()
