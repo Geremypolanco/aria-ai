@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # ── Base de Datos Principal ────────────────────────────────────────────────
+  # Asumiendo que usas Supabase Cloud, pero si necesitas Postgres local:
+  # db:
+  #   image: postgres:15
+  #   environment:
+  #     POSTGRES_PASSWORD: password
+
+  # ── Capa Memory & Knowledge (Graphiti) ─────────────────────────────────────
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: aria-falkordb
+    ports:
+      - "6379:6379"
+    volumes:
+      - falkordb_data:/data
+    restart: unless-stopped
+
+  # ── Capa Observability ─────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aria-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aria-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: aria-otel
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    volumes:
+      - ./config/otel-collector.yml:/etc/otelcol/config.yaml
+    restart: unless-stopped
+
+  # ── Capa Business Intelligence ─────────────────────────────────────────────
+  metabase:
+    image: metabase/metabase:latest
+    container_name: aria-metabase
+    ports:
+      - "3001:3000"
+    volumes:
+      - metabase_data:/metabase-data
+    environment:
+      - MB_DB_FILE=/metabase-data/metabase.db
+    restart: unless-stopped
+
+  # Superset (simplificado, para prod requiere redis y db externa)
+  superset:
+    image: apache/superset:latest
+    container_name: aria-superset
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset_data:/app/superset_home
+    environment:
+      - SUPERSET_SECRET_KEY=aria-secret-key-123
+    restart: unless-stopped
+    # Nota: Requiere inicialización (superset-init) después de levantar
+
+  # ── Capa Revenue & Growth (GrowthBook) ─────────────────────────────────────
+  growthbook:
+    image: growthbook/growthbook:latest
+    container_name: aria-growthbook
+    ports:
+      - "3100:3100"
+      - "3200:3200"
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/growthbook
+      - JWT_SECRET=aria-jwt-secret-123
+      - ENCRYPTION_KEY=aria-enc-key-123
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:latest
+    container_name: aria-mongo
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  falkordb_data:
+  prometheus_data:
+  grafana_data:
+  metabase_data:
+  superset_data:
+  mongo_data:

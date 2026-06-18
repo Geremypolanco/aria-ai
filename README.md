@@ -9,6 +9,48 @@ Specialist personas that play a single role with a single perspective. Each pers
 | [test-engineer](test-engineer.md) | QA Engineer | Test strategy, coverage analysis, Prove-It pattern |
 | [web-performance-auditor](web-performance-auditor.md) | Web Performance Engineer | Core Web Vitals audit, loading/rendering/network analysis |
 
+## 🚀 Integraciones Open Source (Aria Executive Architecture)
+
+Aria AI ha sido expandida con una arquitectura milimétrica de integraciones open source de nivel empresarial, dividida en 7 capas fundamentales:
+
+### 1. Executive / Decision Layer
+- **PocketFlow**: Motor de decisiones mediante flujos complejos y árboles de decisión.
+- **PydanticAI**: Framework de agentes con tipado fuerte, validación y workflows auditables para agentes críticos.
+
+### 2. Memory & Knowledge Layer
+- **Graphiti**: Memoria basada en grafos temporales (vía FalkorDB) ideal para *Revenue Attribution* (ej. video → lead → email → venta).
+- **Zep**: Memoria de largo plazo para agentes, complementando a Supabase para historial de interacciones y recuperación de contexto sub-200ms.
+
+### 3. Market Intelligence Layer
+- **Crawl4AI**: Scraping asíncrono y estructurado para análisis de competidores y extracción de contenido sin depender de navegación basada en prompts.
+- **Firecrawl**: Conversión de webs completas a datos limpios, mapeo de sitios y auditorías SEO automáticas.
+
+### 4. Revenue & Growth Layer
+- **GrowthBook**: Motor de A/B testing profesional para experimentar y aprender qué estrategias generan más ingresos.
+- **PostHog**: Sistema de analítica de producto (funnels, conversiones, cohortes, retención) obligatorio para un Revenue Engine.
+
+### 5. Observability Layer
+- **OpenTelemetry**: Rastreo distribuido (tracing) de absolutamente todas las operaciones y llamadas a LLMs.
+- **Prometheus**: Recolección de métricas de negocio (revenue, ventas, leads) y sistema.
+- **Grafana**: Visualización de métricas en tiempo real.
+
+### 6. Autonomous Coding Layer
+- **Aider**: Modificación autónoma de código, refactors y creación de PRs.
+- **SWE-agent**: Resolución autónoma de tareas de ingeniería y GitHub issues.
+
+### 7. Business Intelligence Layer
+- **Metabase**: Dashboarding open source accesible para reportes rápidos.
+- **Apache Superset**: Análisis multidimensional avanzado para el futuro *Executive Dashboard* de Aria.
+
+### 🛠️ Despliegue de Infraestructura
+
+Todos los servicios de soporte (Graphiti, Metabase, Superset, Prometheus, Grafana, GrowthBook) están configurados vía Docker Compose:
+
+```bash
+# Levantar toda la infraestructura de soporte
+docker-compose up -d
+```
+
 ## How personas relate to skills and commands
 
 Three layers, each with a distinct job:
