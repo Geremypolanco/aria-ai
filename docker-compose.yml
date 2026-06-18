@@ -109,3 +109,46 @@ volumes:
   metabase_data:
   superset_data:
   mongo_data:
+
+  # ── Capa de Conocimiento (Neo4j) ───────────────────────────────────────────
+  neo4j:
+    image: neo4j:latest
+    container_name: aria-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    volumes:
+      - neo4j_data:/data
+    restart: unless-stopped
+
+  # ── Capa de Orquestación (Temporal) ────────────────────────────────────────
+  temporal:
+    image: temporalio/auto-setup:latest
+    container_name: aria-temporal
+    ports:
+      - "7233:7233"
+      - "8080:8080"
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PWD=password
+      - POSTGRES_SEEDS=db
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: postgres:15
+    container_name: aria-postgres
+    environment:
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  neo4j_data:
+  postgres_data:

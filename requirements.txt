@@ -44,3 +44,32 @@ sweagent
 # ── Capa Business Intelligence ───────────────────────────────────────────────
 # Metabase y Superset se conectan vía API REST (httpx), 
 # pero sus servicios se despliegan vía Docker.
+
+# ── Fase 2: Organización Autónoma ────────────────────────────────────────────
+# Evaluación
+deepeval
+inspect-ai
+
+# Conocimiento e Investigación
+neo4j
+llama-index
+llama-index-llms-openai
+
+# Operación Web
+playwright
+browser-use
+
+# Orquestación de Workflows
+temporalio
+prefect
+
+# Analítica y Datos
+duckdb
+rudder-sdk-python
+pandas
+
+# Multimedia
+openai-whisper
+torch
+torchvision
+torchaudio

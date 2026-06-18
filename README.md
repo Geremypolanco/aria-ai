@@ -163,3 +163,32 @@ Plugin agents do not support `hooks`, `mcpServers`, or `permissionMode` frontmat
 3. Add a **Composition** block at the bottom (Invoke directly when / Invoke via / Do not invoke from another persona).
 4. Add the persona to the table at the top of this file.
 5. If the persona enables a new orchestration pattern, document it in `references/orchestration-patterns.md` rather than inventing the pattern in the persona file itself.
+
+## 🚀 Fase 2: Capacidades de Organización Autónoma (Next Level)
+
+Aria ha evolucionado de un sistema de agentes a una organización autónoma con capacidades avanzadas de auto-juicio, razonamiento relacional y operación web real.
+
+### 8. Capa de Evaluación (Self-Judging)
+- **OpenEvals / Inspect AI / DeepEval**: Aria ahora puede juzgar la calidad de sus propias respuestas y decisiones antes de ejecutarlas, asegurando un estándar de calidad corporativo.
+
+### 9. Conocimiento y Razonamiento Relacional
+- **Neo4j**: Mapeo de relaciones complejas entre clientes, productos y campañas para una visión 360° del negocio.
+- **LlamaIndex**: Investigación profunda y agentes documentales para procesar bibliotecas enteras de conocimiento.
+
+### 10. Operación Web (Navegación Humana)
+- **Browser Use / Playwright**: Capacidad para operar aplicaciones SaaS y sitios web reales, realizando acciones como clicks, inputs y navegación compleja.
+
+### 11. Workflows tipo CEO (Procesos de Larga Duración)
+- **Temporal / Prefect**: Gestión de procesos que duran días o semanas con persistencia garantizada y reintentos automáticos.
+
+### 12. Inteligencia Económica y Multimedia
+- **DuckDB**: Análisis de datos ultra-rápido para reporting financiero.
+- **Whisper / ComfyUI**: Transcripción de audio y generación avanzada de activos visuales para marketing.
+- **Self-Refine / Reflexion**: Bucles de auto-mejora donde Aria critica y perfecciona su propio trabajo.
+
+### 🛠️ Infraestructura Expandida
+
+```bash
+# Levantar la infraestructura completa (incluye Neo4j, Temporal y Postgres)
+docker-compose up -d
+```
