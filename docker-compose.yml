@@ -152,3 +152,27 @@ volumes:
 volumes:
   neo4j_data:
   postgres_data:
+
+  # ── Almacén Vectorial (Qdrant) ─────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: aria-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  # ── Observabilidad LLM (Langfuse - requiere DB externa o dedicada) ─────────
+  # langfuse:
+  #   image: langfuse/langfuse:latest
+  #   ports:
+  #     - "3005:3000"
+  #   environment:
+  #     - DATABASE_URL=postgresql://postgres:password@db:5432/langfuse
+  #     - NEXTAUTH_SECRET=aria-secret-123
+  #     - SALT=aria-salt-123
+
+volumes:
+  qdrant_data:

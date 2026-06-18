@@ -73,3 +73,25 @@ openai-whisper
 torch
 torchvision
 torchaudio
+
+# ── Fase 3: Diferenciación Total (Devin/Manus/HubSpot Level) ──────────────────
+# Memoria y Vectores
+mem0ai
+qdrant-client
+weaviate-client
+
+# Investigación Profunda y Grafos
+graphrag
+gpt-researcher
+
+# Orquestación Multi-Agente
+crewai
+pyautogen
+agentops
+
+# Observabilidad
+langfuse
+
+# Voz Avanzada
+faster-whisper
+piper-tts
