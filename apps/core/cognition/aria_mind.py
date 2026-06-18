@@ -495,8 +495,11 @@ class AriaMind:
                 r = await CreativeEngine().generate_video(prompt)
                 if r.get("success"):
                     import base64 as _b64
-                    raw = r.get("video_bytes") or (
-                        _b64.b64decode(r["video_b64"]) if r.get("video_b64") else None)
+                    raw = r.get("video_bytes")
+                    if not raw:
+                        v64 = r.get("video_b64") or r.get("video_base64")
+                        if v64:
+                            raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
                     if raw:
                         return f"Video generado ({len(raw)//1024}KB)", {"video_bytes": raw}
                 return r.get("error", "Video no disponible"), {}
@@ -511,7 +514,9 @@ class AriaMind:
                     import base64 as _b64
                     ab64 = r.get("audio_base64") or r.get("audio_b64")
                     if ab64:
-                        return f"Música generada ({dur}s)", {"audio_bytes": _b64.b64decode(ab64)}
+                        # Si ya es bytes (por alguna razón) no decodificar, si es str, decodificar
+                        audio_data = ab64 if isinstance(ab64, bytes) else _b64.b64decode(ab64)
+                        return f"Música generada ({dur}s)", {"audio_bytes": audio_data}
                 return r.get("error", "MusicGen no respondió"), {}
 
             # ── BÚSQUEDA WEB ──────────────────────────────────────────────
