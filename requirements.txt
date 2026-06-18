@@ -95,3 +95,22 @@ langfuse
 # Voz Avanzada
 faster-whisper
 piper-tts
+
+# ── Fase 4: Business Operating System (Digital Twin & World Model) ───────────
+# Digital Twin y Modelado
+networkx
+scipy
+
+# Razonamiento Probabilístico
+pymc
+pyro-ppl
+
+# Inteligencia de Enjambre y RL
+mesa
+ray[rllib]
+pettingzoo
+
+# Operación Empresarial
+erpnext-client
+python-odoo
+twenty-crm-sdk
