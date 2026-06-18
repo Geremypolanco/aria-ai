@@ -486,7 +486,21 @@ class AriaMind:
                 if r.get("success") and r.get("image_bytes"):
                     model_short = model_id.split("/")[-1]
                     return f"Imagen generada con {model_short}", {"image_bytes": r["image_bytes"]}
-                return r.get("error", "HuggingFace no respondió"), {}
+                
+                # FALLBACK A POLLINATIONS SI HF FALLA (No requiere API Key)
+                logger.info("[AriaMind] HF imagen fallo o sin token, intentando Pollinations fallback...")
+                try:
+                    import httpx
+                    poll_url = f"https://image.pollinations.ai/prompt/{prompt.replace(' ', '%20')}?width=1024&height=1024&nologo=true"
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        resp = await client.get(poll_url)
+                        if resp.status_code == 200:
+                            logger.info("[AriaMind] Imagen generada exitosamente via Pollinations")
+                            return f"Imagen generada (via Pollinations)", {"image_bytes": resp.content}
+                except Exception as e:
+                    logger.error("[AriaMind] Pollinations fallback fallo: %s", e)
+
+                return f"⚠️ No pude generar la imagen en este momento ({r.get('error', 'Proveedor no disponible')}). Por favor, verifica que HF_TOKEN esté configurado correctamente.", {}
 
             # ── VIDEO ─────────────────────────────────────────────────────
             elif tool == "generate_video":
@@ -502,7 +516,7 @@ class AriaMind:
                             raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
                     if raw:
                         return f"Video generado ({len(raw)//1024}KB)", {"video_bytes": raw}
-                return r.get("error", "Video no disponible"), {}
+                return f"⚠️ Error en generación de video: {r.get('error', 'Proveedor no disponible')}", {}
 
             # ── MÚSICA ────────────────────────────────────────────────────
             elif tool == "generate_music":
@@ -517,7 +531,7 @@ class AriaMind:
                         # Si ya es bytes (por alguna razón) no decodificar, si es str, decodificar
                         audio_data = ab64 if isinstance(ab64, bytes) else _b64.b64decode(ab64)
                         return f"Música generada ({dur}s)", {"audio_bytes": audio_data}
-                return r.get("error", "MusicGen no respondió"), {}
+                return f"⚠️ Error en generación de música: {r.get('error', 'Proveedor no disponible')}", {}
 
             # ── BÚSQUEDA WEB ──────────────────────────────────────────────
             elif tool == "web_search":

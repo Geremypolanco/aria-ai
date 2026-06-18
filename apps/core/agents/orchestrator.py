@@ -49,18 +49,22 @@ class Orchestrator(BaseAgent):
         """Ejecuta una misión específica bajo demanda (ej: desde Telegram)."""
         logger.info("[Orchestrator] Ejecutando misión: %s", mission_text)
         
-        # Misión de creación multimedia/software
-        if "create" in mission_text.lower():
-            parts = mission_text.split()
-            fmt = parts[1] if len(parts) > 1 else "image"
-            topic = " ".join(parts[3:]) if len(parts) > 3 else "negocios digitales"
+        # Misión de creación multimedia/software mejorada
+        m_lower = mission_text.lower()
+        if any(x in m_lower for x in ["create", "genera", "crea", "haz", "dibuja"]):
+            # Identificar formato
+            fmt = "image"
+            if any(x in m_lower for x in ["video", "clip", "película"]): fmt = "video"
+            elif any(x in m_lower for x in ["música", "canción", "audio", "music"]): fmt = "music"
+            elif any(x in m_lower for x in ["software", "código", "app"]): fmt = "software"
             
             agent = await self._get_agent("content")
             if agent:
+                logger.info(f"[Orchestrator] Delegando creación de {fmt} al ContentAgent")
                 return await agent.execute({
                     "task": "creative_creation",
                     "format": fmt,
-                    "topic": topic
+                    "topic": mission_text
                 })
         
         return {"success": False, "error": "Misión no reconocida o agente no disponible"}
