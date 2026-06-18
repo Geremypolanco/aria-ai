@@ -1,116 +1,38 @@
-# ARIA AI - Dependencias Core Existentes
-python-telegram-bot==21.4
-python-dotenv
-supabase
-ShopifyAPI
-requests
-langchain
-langgraph
-fastapi
-uvicorn
-pydantic
-aiohttp
-openai
 
-# ── Capa Executive/Decision ──────────────────────────────────────────────────
-pocketflow
-pydantic-ai
+# ── ARIA OS: Arquitectura Final (Organización Autónoma Digital) ──────────────
+# Cognition & Optimization
+dspy-ai
+pymc
+graphrag
 
-# ── Capa Memory & Knowledge ──────────────────────────────────────────────────
-graphiti-core[falkordb]
-zep-cloud
-
-# ── Capa Market Intelligence ─────────────────────────────────────────────────
-crawl4ai
-firecrawl-py
-httpx
-beautifulsoup4
-
-# ── Capa Revenue & Growth ────────────────────────────────────────────────────
-growthbook
+# Economics & Analytics
+duckdb
+openbb
+stripe
+shopify-api-python
 posthog
 
-# ── Capa Observability ───────────────────────────────────────────────────────
-opentelemetry-api
-opentelemetry-sdk
-opentelemetry-exporter-otlp
-opentelemetry-instrumentation-fastapi
-prometheus-client
-
-# ── Capa Autonomous Coding ───────────────────────────────────────────────────
-aider-chat
-sweagent
-
-# ── Capa Business Intelligence ───────────────────────────────────────────────
-# Metabase y Superset se conectan vía API REST (httpx), 
-# pero sus servicios se despliegan vía Docker.
-
-# ── Fase 2: Organización Autónoma ────────────────────────────────────────────
-# Evaluación
-deepeval
-inspect-ai
-
-# Conocimiento e Investigación
-neo4j
-llama-index
-llama-index-llms-openai
-
-# Operación Web
-playwright
-browser-use
-
-# Orquestación de Workflows
+# Execution & Swarm
 temporalio
 prefect
-
-# Analítica y Datos
-duckdb
-rudder-sdk-python
-pandas
-
-# Multimedia
-openai-whisper
-torch
-torchvision
-torchaudio
-
-# ── Fase 3: Diferenciación Total (Devin/Manus/HubSpot Level) ──────────────────
-# Memoria y Vectores
-mem0ai
-qdrant-client
-weaviate-client
-
-# Investigación Profunda y Grafos
-graphrag
-gpt-researcher
-
-# Orquestación Multi-Agente
 crewai
 pyautogen
+langgraph
+
+# Perception & Internet
+firecrawl-py
+crawl4ai
+playwright
+httpx
+
+# Memory & Graphs
+neo4j
+graphiti-ai
+mem0ai
+qdrant-client
+
+# Governance & Self-Improvement
+aider-chat
+sweagent
 agentops
-
-# Observabilidad
 langfuse
-
-# Voz Avanzada
-faster-whisper
-piper-tts
-
-# ── Fase 4: Business Operating System (Digital Twin & World Model) ───────────
-# Digital Twin y Modelado
-networkx
-scipy
-
-# Razonamiento Probabilístico
-pymc
-pyro-ppl
-
-# Inteligencia de Enjambre y RL
-mesa
-ray[rllib]
-pettingzoo
-
-# Operación Empresarial
-erpnext-client
-python-odoo
-twenty-crm-sdk
