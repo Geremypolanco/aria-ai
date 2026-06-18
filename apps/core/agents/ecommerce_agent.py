@@ -132,14 +132,24 @@ class EcommerceAgent(BaseAgent):
 
     async def _full_ecommerce_pipeline(self, topic: str) -> Dict[str, Any]:
         """
-        Pipeline completo de e-commerce:
-        1. Investigar tendencias y oportunidades de mercado.
-        2. Generar idea de producto con IA.
-        3. Crear listing optimizado en Shopify.
-        4. Configurar automatizaciones de Zapier.
-        5. Crear embudo de ventas High-Ticket.
+        Pipeline completo de e-commerce (Protocolo Claude Code):
+        1. Verificar entregabilidad (No vender lo imposible).
+        2. Investigar tendencias y oportunidades de mercado.
+        3. Generar idea de producto con IA.
+        4. Crear listing optimizado en Shopify.
+        5. Configurar automatizaciones de Zapier.
+        6. Crear embudo de ventas High-Ticket.
         """
         results = {}
+
+        # Paso 0: Verificación de Entregabilidad
+        is_physical = any(k in topic.lower() for k in ["casa", "físico", "hardware", "gadget", "envío"])
+        if is_physical and "digital" not in topic.lower():
+            return {
+                "success": False, 
+                "error": f"Misión abortada: No puedo vender '{topic}' porque es un producto físico y Aria solo opera con activos digitales o servicios verificables.",
+                "agent": "ecommerce"
+            }
 
         # Paso 1: Investigar el mercado
         market_data = await self._research_market(topic)

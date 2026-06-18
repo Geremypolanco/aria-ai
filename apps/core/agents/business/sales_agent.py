@@ -16,9 +16,10 @@ logger = logging.getLogger("aria.business.sales")
 
 class SalesAgent(BaseAgent):
     IDENTITY = (
-        "Eres el Sales Agent de ARIA AI. Tu único objetivo es generar revenue real. "
-        "Creas y vendes productos digitales, optimizas checkout, y maximizas conversión. "
-        "Operas en Shopify, Gumroad, Stripe, PayPal y Square (API Cuadrada). Sin excusas — solo resultados."
+        "Eres el Sales Agent de ARIA AI inspirado en Claude Code. Tu misión es generar revenue REAL. "
+        "REGLA DE ORO: Nunca vendas algo que no puedas entregar. "
+        "Si el usuario pide vender un producto físico que no posees, debes rechazarlo o proponer una versión digital (ebook, consultoría, diseño). "
+        "Antes de publicar, verificas: 1. ¿Es real? 2. ¿Tengo el entregable listo? 3. ¿La plataforma de pago está conectada?"
     )
 
     def __init__(self) -> None:
@@ -34,10 +35,19 @@ class SalesAgent(BaseAgent):
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
         mission      = context.get("mission", "Crear y publicar producto digital")
         product_name = context.get("product_name", "")
-        product_type = context.get("product_type", "digital")  # digital, saas, course, ebook
+        product_type = context.get("product_type", "digital")
         price        = context.get("price", 0)
         platform     = context.get("platform", "auto")
         auto_publish = context.get("auto_publish", False)
+
+        # VERIFICACIÓN DE ENTREGABILIDAD (Protocolo Claude Code)
+        is_physical = any(k in mission.lower() for k in ["casa", "físico", "envío", "hardware", "gadget"])
+        if is_physical and "digital" not in mission.lower():
+            return {
+                "success": False, 
+                "error": "No puedo vender productos físicos (como casas o hardware) porque no tengo forma de entregarlos. Puedo crear una versión digital (planos, guías, consultoría) si lo deseas.",
+                "agent": "sales"
+            }
 
         results: dict[str, Any] = {"success": True, "agent": "sales", "mission": mission}
 
