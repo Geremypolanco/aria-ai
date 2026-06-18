@@ -115,6 +115,9 @@ class AriaAgent:
     def _get_tools_desc(self) -> str:
         """Genera descripción de herramientas para el prompt."""
         tools = tool_registry.list_tools()
-        # Añadir herramientas core
-        tools.extend(["web_search", "execute_code", "github_view", "shopify_create"])
+        # Añadir herramientas core e infraestructura
+        tools.extend([
+            "web_search", "execute_code", "github_view", "shopify_create",
+            "manage_files", "execute_system_command", "monitor_api_health", "analyze_viral_content"
+        ])
         return ", ".join(tools)

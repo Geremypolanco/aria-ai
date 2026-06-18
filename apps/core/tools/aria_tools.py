@@ -342,6 +342,8 @@ class ToolRegistry:
     """Registro central de herramientas disponibles."""
 
     def __init__(self):
+        from apps.core.tools.infra_tools import InfraTools
+        from apps.core.tools.viral_analyzer import ViralAnalyzer
         self.tools: Dict[str, Any] = {
             "github": GitHubTool(),
             "docker": DockerTool(),
@@ -349,6 +351,8 @@ class ToolRegistry:
             "web_scraping": WebScrapingTool(),
             "api_discovery": APIDiscoveryTool(),
             "zapier": ZapierTool(),
+            "infra": InfraTools(),
+            "viral": ViralAnalyzer(),
         }
 
     def get_tool(self, tool_name: str) -> Optional[Any]:
