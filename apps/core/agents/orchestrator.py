@@ -234,6 +234,7 @@ AGENTES DISPONIBLES:
 - content: genera articulos SEO con links de afiliado.
 - pm: investiga nichos rentables y estrategias de automatizacion Zapier.
 - social: distribuye contenido en redes via Buffer.
+- investor: busca capital real, contacta VCs/Angels y crea pitch decks.
 
 Genera el plan de monetizacion detallado. JSON esperado:
 {{
@@ -405,11 +406,13 @@ Genera el plan de monetizacion detallado. JSON esperado:
             from apps.core.agents.cfo_agent import CFOAgent
             from apps.core.agents.pm_agent import PMAgent
             from apps.core.agents.ecommerce_agent import EcommerceAgent
+            from apps.core.agents.business.investor_agent import InvestorAgent
             
             self._agents["content"] = ContentAgent()
             self._agents["cfo"] = CFOAgent()
             self._agents["pm"] = PMAgent()
             self._agents["ecommerce"] = EcommerceAgent()
+            self._agents["investor"] = InvestorAgent()
             
             # Agentes opcionales o en desarrollo
             try:

@@ -91,15 +91,16 @@ class EcommerceAgent(BaseAgent):
         super().__init__(
             name="ecommerce",
             description="Agente de e-commerce: Shopify, Zapier, listings, inventario y High-Ticket",
-            capabilities=[
-                "shopify_product_creation",
-                "listing_optimization",
-                "inventory_management",
-                "zapier_automation",
-                "high_ticket_sales",
-                "market_research",
-                "content_creation",
-            ],
+    capabilities=[
+        "shopify_product_creation",
+        "listing_optimization",
+        "inventory_management",
+        "zapier_automation",
+        "high_ticket_sales",
+        "market_research",
+        "content_creation",
+        "landing_page_generation",
+    ],
         )
         self.knowledge = ECOMMERCE_KNOWLEDGE
         self._zapier = None # Zapier deshabilitado a petición del usuario
@@ -120,6 +121,8 @@ class EcommerceAgent(BaseAgent):
             return await self._setup_zapier_automations()
         elif task == "high_ticket_funnel":
             return await self._create_high_ticket_funnel(topic)
+        elif task == "create_landing_page":
+            return await self._create_landing_page(topic, context.get("description", ""))
         elif task == "full_ecommerce_pipeline":
             return await self._full_ecommerce_pipeline(topic)
         else:
@@ -472,3 +475,37 @@ Genera el JSON con este formato:
                 "zapier_automation": "Form submission → Calendly → Gmail confirmation → HubSpot CRM",
             }
         }
+
+    async def _create_landing_page(self, name: str, description: str) -> Dict[str, Any]:
+        """Genera una landing page profesional usando el WebsiteEngine."""
+        from apps.core.tools.website_engine import WebsiteEngine
+        engine = WebsiteEngine()
+        
+        # Secciones recomendadas para una landing page de alto nivel
+        sections = ["hero", "features", "pricing", "testimonials", "faq", "cta", "footer"]
+        
+        # Generar el sitio web
+        result = await engine.generate_website(
+            name=name,
+            description=description,
+            sections=sections,
+            template="landing"
+        )
+        
+        if result.get("success"):
+            # En una implementación real, aquí se subiría a Shopify vía API (Assets API)
+            # Por ahora, guardamos el HTML y lo reportamos
+            html_path = f"/home/ubuntu/aria-ai/public/{result['filename']}"
+            import os
+            os.makedirs(os.path.dirname(html_path), exist_ok=True)
+            with open(html_path, "w") as f:
+                f.write(result["html"])
+            
+            return {
+                "success": True,
+                "html_path": html_path,
+                "filename": result["filename"],
+                "message": f"Landing page '{name}' generada exitosamente. Lista para subir a Shopify."
+            }
+        
+        return {"success": False, "error": "No se pudo generar la landing page."}
