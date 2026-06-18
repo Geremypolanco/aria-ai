@@ -321,11 +321,18 @@ class SocialMediaManager:
             logger.error("[SocialMedia] disconnect_account error: %s", exc)
             return False
 
-    async def post_content(self, platform: str, content: str, image_url: Optional[str] = None) -> dict:
-        """Publica contenido en la plataforma indicada."""
+    async def post_content(self, platform: str, content: str, image_url: Optional[str] = None, viral_dna: dict = None) -> dict:
+        """
+        Publica contenido en la plataforma indicada.
+        Si viral_dna está presente, aplica mimetismo viral antes de publicar.
+        """
         token = await self.get_account_token(platform)
         if not token:
             return {"success": False, "error": f"No hay cuenta de {platform} conectada. Usa /conectar {platform}"}
+
+        # Aplicar ADN Viral si existe
+        if viral_dna:
+            content = await self._apply_viral_dna(content, viral_dna)
 
         try:
             if platform == "facebook":
@@ -336,11 +343,34 @@ class SocialMediaManager:
                 return await self._post_tiktok(token, content)
             elif platform == "linkedin":
                 return await self._post_linkedin(token, content, image_url)
+            elif platform == "google":
+                return await self._post_google(token, content, image_url)
             else:
                 return {"success": False, "error": f"Plataforma {platform} no soportada"}
         except Exception as exc:
             logger.error("[SocialMedia] post_content error for %s: %s", platform, exc)
             return {"success": False, "error": str(exc)}
+
+    async def _apply_viral_dna(self, content: str, dna: dict) -> str:
+        """Reescribe el contenido usando IA para mimetizar formatos virales."""
+        from apps.core.tools.ai_client import get_ai_client, AIModel
+        prompt = (
+            f"Actúa como un experto en viralidad. Reescribe el siguiente contenido siguiendo este ADN viral:\n"
+            f"ADN: {json.dumps(dna)}\n\n"
+            f"CONTENIDO ORIGINAL: {content}\n\n"
+            f"Asegúrate de mantener el valor pero cambiar la estructura, ganchos y CTA para maximizar el engagement."
+        )
+        resp = await get_ai_client().complete(
+            system="Eres un experto en Growth Hacking y Viralidad.",
+            user=prompt,
+            model=AIModel.STRATEGY
+        )
+        return resp.content if resp.success else content
+
+    async def _post_google(self, token: str, content: str, image_url: Optional[str]) -> dict:
+        """Simulación de publicación en Google Business Profile (Placeholder para API real)."""
+        # Aquí iría la lógica de Google My Business API
+        return {"success": True, "platform": "google", "status": "simulated_success"}
 
     async def _post_facebook(self, token: str, content: str, image_url: Optional[str]) -> dict:
         """Publica en Facebook Pages."""
