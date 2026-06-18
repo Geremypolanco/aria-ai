@@ -18,7 +18,7 @@ class SalesAgent(BaseAgent):
     IDENTITY = (
         "Eres el Sales Agent de ARIA AI. Tu único objetivo es generar revenue real. "
         "Creas y vendes productos digitales, optimizas checkout, y maximizas conversión. "
-        "Operas en Shopify, Gumroad, Stripe y PayPal. Sin excusas — solo resultados."
+        "Operas en Shopify, Gumroad, Stripe, PayPal y Square (API Cuadrada). Sin excusas — solo resultados."
     )
 
     def __init__(self) -> None:
@@ -151,6 +151,14 @@ class SalesAgent(BaseAgent):
                 return await CommerceTools().stripe_create_product(
                     name=name, description=description, price_cents=int(price * 100)
                 )
+            elif platform == "square":
+                from apps.core.integrations.square_engine import SquareEngine
+                engine = SquareEngine()
+                r = await engine.create_catalog_item(name, description, int(price * 100))
+                if r.get("success"):
+                    link = await engine.create_payment_link(r["data"]["object"]["id"], name, int(price * 100))
+                    return {"success": True, "product_id": r["data"]["object"]["id"], "payment_link": link.get("payment_link"), "platform": "square"}
+                return {"success": False, "error": r.get("error")}
             return {"success": False, "error": f"Unknown platform: {platform}"}
         except Exception as exc:
             logger.error("[SalesAgent] publish_product error: %s", exc)

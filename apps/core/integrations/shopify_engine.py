@@ -20,7 +20,10 @@ class ShopifyEngine:
     def __init__(self, shop_name: str, access_token: str):
         self.shop_name = shop_name
         self.access_token = access_token
-        self.base_url = f"https://{shop_name}.myshopify.com/admin/api/2024-01"
+        if ".myshopify.com" in shop_name:
+            self.base_url = f"https://{shop_name}/admin/api/2024-01"
+        else:
+            self.base_url = f"https://{shop_name}.myshopify.com/admin/api/2024-01"
         self.headers = {
             "X-Shopify-Access-Token": access_token,
             "Content-Type": "application/json"

@@ -578,6 +578,19 @@ class AriaMind:
                 return (f"Ciclo completado en {t:.0f}s — "
                         f"Revenue: ${rev:.2f} — Publicaciones: {pub}"), {}
 
+            # ── SQUARE (API CUADRADA) ─────────────────────────────────────
+            elif tool == "square_sell":
+                from apps.core.integrations.square_engine import SquareEngine
+                engine = SquareEngine()
+                name = args.get("name", "Producto Aria")
+                desc = args.get("description", "Generado por Aria AI")
+                price = int(args.get("price", 1000)) # cents
+                r = await engine.create_catalog_item(name, desc, price)
+                if r.get("success"):
+                    link = await engine.create_payment_link(r["data"]["object"]["id"], name, price)
+                    return f"Producto creado en Square: {name}. Link de pago: {link.get('payment_link')}", {}
+                return f"Error en Square: {r.get('error')}", {}
+
             # ── TEXT-TO-SPEECH (BARK) ─────────────────────────────────────────
             elif tool == "speak":
                 text_input = args.get("text", "")

@@ -79,6 +79,28 @@ class ScheduleRequest(BaseModel):
 # ── ENDPOINTS ─────────────────────────────────────────────────────────────────
 
 
+@router.get("/auth/callback/{platform}")
+async def auth_callback(platform: str, code: str, state: Optional[str] = None) -> dict:
+    """Callback para OAuth de redes sociales."""
+    from apps.core.tools.social_media import SocialMediaManager
+    sm = SocialMediaManager()
+    token_data = await sm.exchange_code_for_token(platform, code)
+    if not token_data:
+        return {"success": False, "error": "Fallo en el intercambio de token"}
+    
+    profile = await sm.get_user_profile(platform, token_data["access_token"])
+    if not profile:
+        return {"success": False, "error": "No se pudo obtener el perfil"}
+    
+    ok = await sm.save_account(
+        platform=platform,
+        access_token=token_data["access_token"],
+        refresh_token=token_data.get("refresh_token"),
+        expires_in=token_data.get("expires_in"),
+        profile=profile
+    )
+    return {"success": ok, "platform": platform, "profile": profile}
+
 @router.get("/status", dependencies=[Depends(verify_api_key)])
 async def api_status() -> dict:
     """Full system status: trainer, agents, scheduler."""
