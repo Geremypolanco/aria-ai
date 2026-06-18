@@ -180,6 +180,7 @@ INSTRUCCIÓN:
 Responde SOLO con JSON válido. Sin markdown. Sin texto extra. El esquema es exactamente:
 {{
   "thought": "razonamiento paso a paso — qué quiere el usuario, qué información necesita, qué herramienta usar y por qué",
+  "autonomous_execution": true, // pon true si la tarea requiere múltiples pasos, investigación o ejecución real
   "tool": "nombre_herramienta o null si es conversación directa",
   "tool_args": {{"clave": "valor"}} o null,
   "reply": "mi respuesta en español — puede ser vacío si el resultado de la herramienta será la respuesta. Si respondo directamente, que sea completo y útil.",
@@ -291,6 +292,25 @@ class AriaMind:
             plan = await self._reason(text, history, state, goals, learned)
             if not plan:
                 return MindResponse(text="No pude procesar eso. Inténtalo de nuevo.")
+
+            # DETECTAR NECESIDAD DE AUTONOMÍA (Estilo Claude Code / Agente de Propósito General)
+            # Si el plan indica una tarea compleja o el usuario pide ejecución real
+            if plan.get("autonomous_execution") or "ejecuta" in text.lower() or "haz" in text.lower():
+                from apps.core.cognition.aria_agent import AriaAgent
+                agent = AriaAgent(identity=SYSTEM_TEMPLATE.format(
+                    owner=getattr(settings, "OWNER_NAME", "su dueño"),
+                    focus=state.get("focus", "ejecución autónoma"),
+                    confidence="100%",
+                    interaction_count=state.get("interaction_count", 0),
+                    goals="\n".join([g["text"] for g in goals]),
+                    learned="\n".join(learned),
+                    history="",
+                ))
+                agent_result = await agent.run(text)
+                if agent_result["success"]:
+                    return MindResponse(text=agent_result["output"])
+                else:
+                    return MindResponse(text=f"Lo intenté de forma autónoma pero fallé: {agent_result['error']}")
 
             tool     = plan.get("tool")
             tool_args = plan.get("tool_args") or {}
