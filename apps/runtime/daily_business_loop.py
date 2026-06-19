@@ -55,6 +55,7 @@ _AFTERNOON_OPS = [
     ("Analyze pricing vs competitors", "market", "indirect"),
     ("Generate email nurture sequence", "conversion", "indirect"),
     ("Run landing page A/B test generation", "conversion", "indirect"),
+    ("Run customer retention campaigns", "retention", "direct"),
     ("Extract economic insights", "learning", "learning"),
     ("Update ROI patterns", "learning", "learning"),
     ("Generate content calendar for tomorrow", "planning", "learning"),
@@ -213,6 +214,8 @@ class DailyBusinessLoop:
             return await self._conversion_op(name)
         if category == "market":
             return await self._market_op(name)
+        if category == "retention":
+            return await self._retention_op(name)
         if category in ("learning", "planning"):
             return await self._learning_op(name)
         return {"status": "no_handler"}
@@ -221,31 +224,45 @@ class DailyBusinessLoop:
         if "TikTok" in name or "Reels" in name:
             from apps.distribution.tiktok.tiktok_engine import get_tiktok_engine
             eng = get_tiktok_engine()
-            await eng._load()
-            return {"status": "done", "analytics": eng.tiktok_analytics()}
+            scripts = await eng.batch_generate(
+                topics=["AI productivity tools", "make money online 2024", "passive income ideas"],
+                niche="digital_products",
+            )
+            return {"status": "done", "scripts_generated": len(scripts), "titles": [s.topic for s in scripts]}
         if "blog" in name.lower():
             from apps.distribution.blog.blog_publisher import get_blog_publisher
             eng = get_blog_publisher()
-            await eng._load()
-            return {"status": "done", "stats": eng.blog_stats()}
+            post = await eng.write_post(
+                topic="AI tools for income generation",
+                target_keyword="best AI tools to make money",
+                target_audience="entrepreneurs and solopreneurs",
+                word_target=1200,
+            )
+            return {"status": "done", "post_title": post.title, "word_count": post.word_count, "seo_score": post.seo_score}
         if "LinkedIn" in name:
             from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
             eng = get_linkedin_publisher()
-            await eng._load()
-            return {"status": "done", "analytics": eng.post_analytics()}
+            post = await eng.create_post(
+                topic="AI automation for small businesses",
+                objective="thought_leadership",
+            )
+            return {"status": "done", "post_id": post.post_id, "word_count": post.word_count}
         if "Twitter" in name:
             from apps.distribution.twitter.twitter_engine import get_twitter_engine
             eng = get_twitter_engine()
-            await eng._load()
-            return {"status": "done", "analytics": eng.twitter_analytics()}
+            thread = await eng.create_thread(
+                topic="How to generate passive income with AI in 2024",
+                num_tweets=7,
+            )
+            return {"status": "done", "tweets": thread.total_tweets, "topic": "AI passive income"}
         return {"status": "done", "name": name}
 
     async def _acquisition_op(self, name: str) -> dict:
         if "leads" in name.lower() or "Discover" in name:
             from apps.acquisition.leads.lead_engine import get_lead_engine
             eng = get_lead_engine()
-            await eng._load()
-            return {"status": "done", "analytics": eng.lead_analytics()}
+            leads = await eng.discover_leads("ecommerce", count=10)
+            return {"status": "done", "leads_discovered": len(leads), "niches": list({l.niche for l in leads})}
         if "Score" in name or "qualify" in name.lower():
             from apps.acquisition.leads.lead_engine import get_lead_engine
             eng = get_lead_engine()
@@ -253,10 +270,17 @@ class DailyBusinessLoop:
             qualified = eng.qualified_leads()
             return {"status": "done", "qualified_count": len(qualified)}
         if "outreach" in name.lower() or "CRM" in name:
-            from apps.acquisition.crm.crm_engine import get_crm_engine
-            eng = get_crm_engine()
-            await eng._load()
-            return {"status": "done", "dashboard": eng.crm_dashboard()}
+            from apps.acquisition.outreach.outreach_sequencer import get_outreach_sequencer
+            sequencer = get_outreach_sequencer()
+            await sequencer._load()
+            due = sequencer.contacts_due_today()[:10]
+            advanced = 0
+            for c in due:
+                if sequencer.advance_contact(c.get("contact_id", "")):
+                    advanced += 1
+            if advanced > 0:
+                await sequencer._save()
+            return {"status": "done", "contacts_advanced": advanced, "due_count": len(due)}
         return {"status": "done", "name": name}
 
     async def _shopify_op(self, name: str) -> dict:
@@ -294,6 +318,33 @@ class DailyBusinessLoop:
             await eng._load()
             return {"status": "done", "stats": eng.page_stats()}
         return {"status": "done", "name": name}
+
+    async def _retention_op(self, name: str) -> dict:
+        from apps.business.crm.retention import get_retention_engine
+        from apps.business.crm.crm_engine import get_crm_engine
+        engine = get_retention_engine()
+        crm = get_crm_engine()
+        at_risk = await crm.high_risk_customers()
+        candidates = await crm.retention_candidates()
+        all_customers = list({c.customer_id: c for c in at_risk + candidates}.values())
+        customer_dicts = [
+            {
+                "email": c.email,
+                "name": c.name,
+                "segment": (c.segments[0] if c.segments else ""),
+                "total_spent_usd": c.total_spent_usd,
+                "last_purchase_ts": c.last_purchase_ts,
+                "churn_risk": c.churn_risk.value if hasattr(c.churn_risk, "value") else str(c.churn_risk),
+            }
+            for c in all_customers[:100]
+        ]
+        win_back = await engine.run_win_back(customer_dicts)
+        loyalty = await engine.run_loyalty_rewards(customer_dicts)
+        return {
+            "status": "done",
+            "win_back_targeted": win_back.get("targeted", 0),
+            "loyalty_targeted": loyalty.get("targeted", 0),
+        }
 
     async def _market_op(self, name: str) -> dict:
         if "pricing" in name.lower():

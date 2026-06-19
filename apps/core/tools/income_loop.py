@@ -34,6 +34,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+from apps.core.config import settings
+
 logger = logging.getLogger("aria.income_loop")
 
 INTERVAL_SECONDS  = 1800   # 30 minutes between cycles

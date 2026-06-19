@@ -387,8 +387,26 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
 
     async def _crm_nurture(obj: StrategicObjective) -> dict:
         from apps.core.tools.income_loop import get_income_loop
+        from apps.business.crm.retention import get_retention_engine
+        from apps.business.crm.crm_engine import get_crm_engine
         loop = get_income_loop()
         r = await loop._run_one_cycle(force_strategy="email_campaign")
+        # Also run retention campaigns against high-risk CRM customers
+        crm = get_crm_engine()
+        at_risk = await crm.high_risk_customers()
+        customer_dicts = [
+            {
+                "email": c.email,
+                "name": c.name,
+                "segment": (c.segments[0] if c.segments else ""),
+                "total_spent_usd": c.total_spent_usd,
+                "last_purchase_ts": c.last_purchase_ts,
+                "churn_risk": c.churn_risk.value if hasattr(c.churn_risk, "value") else "medium",
+            }
+            for c in at_risk[:50]
+        ]
+        retention = get_retention_engine()
+        await retention.run_win_back(customer_dicts)
         return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
 
     async def _economic_rebalancing(obj: StrategicObjective) -> dict:
