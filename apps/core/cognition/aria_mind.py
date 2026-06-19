@@ -152,6 +152,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - human_login      → inicia sesión en una plataforma como un humano real (stealth, sin ser detectada). Args: {{"platform": "gumroad|devto|linkedin|twitter|hashnode", "email": "...", "password": "...", "username": "..."}}
 - human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
 - human_action     → ejecuta acciones humanas en el browser stealth: click, type, scroll. Args: {{"session": "nombre", "steps": [{{"action": "click|type|scroll|wait|get_text|screenshot", "selector": "...", "value": "...", "pixels": 300}}]}}
+- diagnose_income  → muestra qué canales de ingresos están activos y cuáles necesitan credenciales. Muestra exactamente qué secrets añadir en Fly.io para activar cada canal. Args: {{}}
 
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
 Tienes acceso a tus propias credenciales de plataformas vía variables de entorno ARIA_EMAIL y ARIA_PASSWORD.
@@ -200,6 +201,7 @@ REGLAS DE RAZONAMIENTO:
 34. Para navegar con stealth completo (anti-detección, curvas Bézier, timing humano) → usa human_browse en lugar de browse_page cuando la plataforma tiene bot detection.
 35. Para ejecutar una secuencia de acciones humanas (hacer clic, escribir, scrollear) en una sesión stealth activa → usa human_action con la lista de pasos.
 36. PROHIBIDO usar reply para declinar herramientas. Si el usuario pide algo que corresponde a una herramienta de la lista, siempre pon tool="herramienta" y tool_args con los parámetros, y deja reply vacío.
+37. Si el usuario pregunta qué canales de ingresos están activos, qué le falta para ganar dinero, qué credenciales configurar, o por qué ARIA no está generando ingresos → usa diagnose_income.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1418,6 +1420,40 @@ class AriaMind:
                     except Exception as exc:
                         results.append(f"{action}: FAIL — {str(exc)[:80]}")
                 return f"[STEALTH ACTIONS — {session}]\n" + "\n".join(results), {}
+
+            elif tool == "diagnose_income":
+                from apps.core.tools.income_loop import get_income_loop
+                loop = get_income_loop()
+                creds = loop.check_credentials()
+                active   = creds.get("active", {})
+                inactive = creds.get("inactive", {})
+                lines = [
+                    "**DIAGNÓSTICO DE CANALES DE INGRESOS**",
+                    "",
+                    f"✅ Canales ACTIVOS ({len(active)}):",
+                ]
+                for ch, info in active.items():
+                    channels = ", ".join(info.get("revenue_channels", [])[:2])
+                    lines.append(f"  • {ch}: {channels}")
+                lines += ["", f"❌ Canales INACTIVOS ({len(inactive)}) — necesitan credenciales:"]
+                for ch, info in inactive.items():
+                    keys = ", ".join(info.get("keys_needed", []))
+                    channels = ", ".join(info.get("revenue_channels", [])[:2])
+                    lines.append(f"  • {ch} ({channels})")
+                    lines.append(f"    → Añade en Fly.io: fly secrets set {keys.replace(', ', '=... ')}=...")
+                lines += [
+                    "",
+                    "**Para activar el canal más rentable (Gumroad):**",
+                    "1. Ve a gumroad.com → Settings → Advanced → API",
+                    "2. Copia tu Access Token",
+                    "3. Ejecuta: fly secrets set GUMROAD_TOKEN=tu_token -a aria-ai",
+                    "",
+                    "**Para publicar artículos (Dev.to — gratis y rápido):**",
+                    "1. Ve a dev.to/settings/extensions",
+                    "2. Genera un API key",
+                    "3. Ejecuta: fly secrets set DEVTO_API_KEY=tu_key -a aria-ai",
+                ]
+                return "\n".join(lines), {}
 
             elif tool == "run_objective":
                 obj_key = args.get("objective", "content_generation")
