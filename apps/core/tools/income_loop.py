@@ -82,7 +82,7 @@ class IncomeLoop:
         self._cycle      = 0
         self._niche_idx  = 0    # Round-robin through niche catalog (loaded from Redis in first cycle)
 
-    # ── Control ───────────────────────────────────────────────────────────
+    # ── Control ─────────────────────────────────────────────────────
 
     async def start(self) -> None:
         """Launch the income loop as a background coroutine."""
@@ -103,7 +103,7 @@ class IncomeLoop:
     def is_running(self) -> bool:
         return self._running and (self._task is not None) and (not self._task.done())
 
-    # ── Main loop ─────────────────────────────────────────────────────────
+    # ── Main loop ─────────────────────────────────────────────────────
 
     async def _run_forever(self) -> None:
         """Infinite loop. Never crashes. Always resumes."""
@@ -172,7 +172,7 @@ class IncomeLoop:
         weights = [s[1] for s in STRATEGIES]
         return random.choices(names, weights=weights, k=1)[0]
 
-    # ── Strategy Executors ─────────────────────────────────────────────────
+    # ── Strategy Executors ───────────────────────────────────────────────────
 
     async def _execute(self, strategy: str) -> dict:
         if strategy == "content_pipeline":
@@ -267,23 +267,22 @@ class IncomeLoop:
             if not ai:
                 return {"success": False, "summary": "AI client unavailable"}
 
-            # Generate ebook content
             product_data = await ai.complete_json(
                 system=(
                     "You are a bestselling digital product creator. "
                     "Write complete, actionable content. No fluff. Output JSON only."
                 ),
-                user=f"""Create a complete digital product for the trending topic: "{title}"
+                user=f"""Create a complete digital product for the trending topic: \"{title}\"
 Category: {cat}
 
 Output JSON:
 {{
-  "product_name": "Compelling title with keyword",
-  "tagline": "One-line value proposition",
-  "description": "300+ word sales description with pain points, solution, benefits, social proof, CTA",
-  "table_of_contents": ["Chapter 1: ...", "Chapter 2: ...", "Chapter 3: ...", "Chapter 4: ...", "Chapter 5: ..."],
-  "price_cents": 1997,
-  "tags": ["tag1", "tag2", "tag3"]
+  \"product_name\": \"Compelling title with keyword\",
+  \"tagline\": \"One-line value proposition\",
+  \"description\": \"300+ word sales description with pain points, solution, benefits, social proof, CTA\",
+  \"table_of_contents\": [\"Chapter 1: ...\", \"Chapter 2: ...\", \"Chapter 3: ...\", \"Chapter 4: ...\", \"Chapter 5: ...\"],
+  \"price_cents\": 1997,
+  \"tags\": [\"tag1\", \"tag2\", \"tag3\"]
 }}""",
                 model=AIModel.CREATIVE,
                 max_tokens=2000,
@@ -292,7 +291,6 @@ Output JSON:
             if not product_data:
                 return {"success": False, "summary": "AI generation failed"}
 
-            # Create on Gumroad
             gt     = GumroadTools()
             gr_res = await gt.create_product(
                 name=product_data.get("product_name", title),
@@ -303,7 +301,6 @@ Output JSON:
 
             if gr_res.get("success"):
                 url = gr_res.get("url", "")
-                # Fire Zapier event to distribute
                 try:
                     from apps.core.tools.zapier_connector import ZapierConnector
                     await ZapierConnector().dispatch_event(
@@ -334,10 +331,7 @@ Output JSON:
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_opportunity_scan(self) -> dict:
-        """
-        Web research to discover NEW income opportunities ARIA hasn't tried yet.
-        Saves discoveries to Redis queue for the niche_rotator to pick up.
-        """
+        """Web research to discover NEW income opportunities ARIA hasn't tried yet."""
         try:
             from apps.core.tools.web_tools import WebTools
             from apps.core.tools.ai_client import get_ai_client, AIModel
@@ -357,7 +351,6 @@ Output JSON:
             if not all_results:
                 return {"success": False, "summary": "No search results for opportunity scan"}
 
-            # AI analysis of opportunities
             ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "AI unavailable for opportunity analysis"}
@@ -375,15 +368,15 @@ Output JSON:
 
 Output JSON:
 {{
-  "opportunities": [
+  \"opportunities\": [
     {{
-      "name": "specific opportunity name",
-      "niche_key": "snake_case_key",
-      "description": "what exactly to do",
-      "platform": "where to sell",
-      "time_to_first_dollar": "X days",
-      "estimated_monthly_revenue": 500,
-      "difficulty": "easy|medium|hard"
+      \"name\": \"specific opportunity name\",
+      \"niche_key\": \"snake_case_key\",
+      \"description\": \"what exactly to do\",
+      \"platform\": \"where to sell\",
+      \"time_to_first_dollar\": \"X days\",
+      \"estimated_monthly_revenue\": 500,
+      \"difficulty\": \"easy|medium|hard\"
     }}
   ]
 }}""",
@@ -393,7 +386,6 @@ Output JSON:
 
             opportunities = (opp_data or {}).get("opportunities", [])
 
-            # Save to Redis queue
             if opportunities:
                 try:
                     from apps.core.memory.redis_client import get_cache
@@ -404,7 +396,7 @@ Output JSON:
                 except Exception:
                     pass
 
-            summaries = [f"{o.get('name','')} ({o.get('time_to_first_dollar','')})" for o in opportunities[:3]]
+            summaries = [f"{o.get('name','')} ({o.get('time_to_first_dollar','')}" for o in opportunities[:3]]
             return {
                 "success": True,
                 "summary": f"Found {len(opportunities)} opportunities: {', '.join(summaries)}",
@@ -430,7 +422,7 @@ Output JSON:
 
             zc   = ZapierConnector()
             sent = 0
-            for ls in live[:5]:  # Limit to 5 to avoid spam
+            for ls in live[:5]:
                 try:
                     await zc.dispatch_event(
                         "CONTENT_READY",
@@ -444,7 +436,7 @@ Output JSON:
                         },
                     )
                     sent += 1
-                    await asyncio.sleep(2)  # Rate limit
+                    await asyncio.sleep(2)
                 except Exception:
                     pass
 
@@ -459,16 +451,12 @@ Output JSON:
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_premium_offer(self) -> dict:
-        """
-        Create a high-ticket B2B service offer.
-        These generate $500-$5,000+ per client.
-        """
+        """Create a high-ticket B2B service offer ($500-$5,000+)."""
         try:
             from apps.core.tools.ai_client import get_ai_client, AIModel
             from apps.core.tools.gumroad_tools import GumroadTools
             from apps.core.tools.web_tools import WebTools
 
-            # Find a trending B2B pain point
             wt = WebTools()
             r  = await wt.search_web("business automation AI consulting demand 2025", num_results=5)
             context = ""
@@ -488,13 +476,13 @@ Focus on AI automation / business efficiency / revenue growth.
 
 JSON:
 {{
-  "offer_name": "Premium offer title",
-  "tagline": "ROI-focused one-liner",
-  "description": "Compelling 250+ word description. Lead with ROI. Include what's included, who it's for, transformation promised.",
-  "what_included": ["Deliverable 1", "Deliverable 2", "Deliverable 3", "Deliverable 4"],
-  "price_cents": 149700,
-  "target_client": "Description of ideal B2B client",
-  "tags": ["consulting", "automation", "ai", "b2b"]
+  \"offer_name\": \"Premium offer title\",
+  \"tagline\": \"ROI-focused one-liner\",
+  \"description\": \"Compelling 250+ word description. Lead with ROI.\",
+  \"what_included\": [\"Deliverable 1\", \"Deliverable 2\", \"Deliverable 3\", \"Deliverable 4\"],
+  \"price_cents\": 149700,
+  \"target_client\": \"Description of ideal B2B client\",
+  \"tags\": [\"consulting\", \"automation\", \"ai\", \"b2b\"]
 }}""",
                 model=AIModel.STRATEGY,
                 max_tokens=1500,
@@ -503,7 +491,6 @@ JSON:
             if not offer:
                 return {"success": False, "summary": "AI failed"}
 
-            # Publish to Gumroad as consulting package
             gt = GumroadTools()
             gr = await gt.create_product(
                 name=offer.get("offer_name", "Premium AI Consulting"),
@@ -526,10 +513,7 @@ JSON:
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_shopify_listing(self) -> dict:
-        """
-        Create a Shopify product listing for a trending digital item.
-        Targets print-on-demand, digital downloads, or info products.
-        """
+        """Create a Shopify product listing for a trending digital item."""
         try:
             from apps.core.tools.ai_client import get_ai_client, AIModel
             from apps.core.tools.commerce_tools import get_commerce_tools
@@ -545,16 +529,16 @@ JSON:
 
             product = await ai.complete_json(
                 system="You are a Shopify product expert. Create compelling digital product listings. Output JSON only.",
-                user=f"""Create a Shopify digital product listing for the trending topic: "{topic}"
+                user=f"""Create a Shopify digital product listing for the trending topic: \"{topic}\"
 
 JSON:
 {{
-  "title": "Product title (60 chars max)",
-  "description": "Compelling HTML product description (200+ words). Include benefits, what's included, who it's for.",
-  "price": "29.99",
-  "product_type": "Digital Download",
-  "tags": ["digital", "download", "productivity"],
-  "status": "active"
+  \"title\": \"Product title (60 chars max)\",
+  \"description\": \"Compelling HTML product description (200+ words).\",
+  \"price\": \"29.99\",
+  \"product_type\": \"Digital Download\",
+  \"tags\": [\"digital\", \"download\", \"productivity\"],
+  \"status\": \"active\"
 }}""",
                 model=AIModel.FAST,
                 max_tokens=800,
@@ -587,11 +571,7 @@ JSON:
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_ebook_factory(self) -> dict:
-        """
-        Generate a complete ebook/guide on a trending topic and sell it on Gumroad.
-        AI writes a full table of contents + introduction + 3 sample chapters.
-        Price: $7-$27 (impulse buy range).
-        """
+        """Generate a complete ebook on a trending topic and sell it on Gumroad at $7-$27."""
         try:
             from apps.core.tools.ai_client import get_ai_client, AIModel
             from apps.core.tools.gumroad_tools import GumroadTools
@@ -607,17 +587,17 @@ JSON:
 
             ebook = await ai.complete_json(
                 system="You are a bestselling ebook author. Create detailed, valuable ebooks that people buy. Output JSON only.",
-                user=f"""Create a complete sellable ebook on: "{topic}"
+                user=f"""Create a complete sellable ebook on: \"{topic}\"
 
 JSON:
 {{
-  "title": "Compelling ebook title (60 chars max)",
-  "subtitle": "Subtitle explaining the value (80 chars)",
-  "description": "Sales page description (300+ words). Lead with transformation. Include what they'll learn, who it's for, what problems it solves. Include testimonial-style outcomes.",
-  "table_of_contents": ["Chapter 1: ...", "Chapter 2: ...", "Chapter 3: ...", "Chapter 4: ...", "Chapter 5: ..."],
-  "price_cents": 1700,
-  "tags": ["ebook", "guide", "productivity"],
-  "category": "Self-Help"
+  \"title\": \"Compelling ebook title (60 chars max)\",
+  \"subtitle\": \"Subtitle explaining the value (80 chars)\",
+  \"description\": \"Sales page description (300+ words). Lead with transformation.\",
+  \"table_of_contents\": [\"Chapter 1: ...\", \"Chapter 2: ...\", \"Chapter 3: ...\", \"Chapter 4: ...\", \"Chapter 5: ...\"],
+  \"price_cents\": 1700,
+  \"tags\": [\"ebook\", \"guide\", \"productivity\"],
+  \"category\": \"Self-Help\"
 }}""",
                 model=AIModel.STRATEGY,
                 max_tokens=1500,
@@ -626,7 +606,6 @@ JSON:
             if not ebook:
                 return {"success": False, "summary": "AI failed to generate ebook"}
 
-            # Enrich description with TOC
             toc = ebook.get("table_of_contents", [])
             full_description = ebook.get("description", "")
             if toc:
@@ -656,10 +635,7 @@ JSON:
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_email_campaign(self) -> dict:
-        """
-        Create and send a Mailchimp email campaign promoting ARIA's latest products.
-        Email list = owned audience = free traffic = recurring revenue.
-        """
+        """Create and send a Mailchimp email campaign promoting ARIA's latest products."""
         try:
             from apps.core.tools.mailchimp_tools import MailchimpTools
             from apps.core.tools.ai_client import get_ai_client, AIModel
@@ -683,9 +659,9 @@ JSON:
 
 JSON:
 {
-  "subject": "Email subject line (compelling, under 60 chars)",
-  "preview_text": "Preview text (50 chars max)",
-  "html_body": "Full HTML email body (300+ words). Include CTA button. Professional and persuasive."
+  \"subject\": \"Email subject line (compelling, under 60 chars)\",
+  \"preview_text\": \"Preview text (50 chars max)\",
+  \"html_body\": \"Full HTML email body (300+ words). Include CTA button. Professional and persuasive.\"
 }""",
                 model=AIModel.FAST,
                 max_tokens=1200,
@@ -717,7 +693,7 @@ JSON:
             logger.error("[IncomeLoop] email_campaign: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
-    # ── Persistence ───────────────────────────────────────────────────────
+    # ── Persistence ─────────────────────────────────────────────────────
 
     async def _load_niche_idx(self) -> int:
         try:
@@ -766,7 +742,7 @@ JSON:
         except Exception:
             pass
 
-    # ── Notifications ─────────────────────────────────────────────────────
+    # ── Notifications ───────────────────────────────────────────────────
 
     async def _notify_win(self, result: CycleResult) -> None:
         """Notify via Telegram only when something valuable was created."""
@@ -787,7 +763,7 @@ JSON:
         except Exception:
             pass
 
-    # ── Status ────────────────────────────────────────────────────────────
+    # ── Status ──────────────────────────────────────────────────────────
 
     async def get_status_dict(self) -> dict:
         """Return structured status dict for API/dashboard consumption."""
@@ -915,7 +891,7 @@ JSON:
         return "\n".join(lines)
 
 
-# ── Singleton ──────────────────────────────────────────────────────────────
+# ── Singleton ──────────────────────────────────────────────────────
 
 _loop: Optional[IncomeLoop] = None
 
