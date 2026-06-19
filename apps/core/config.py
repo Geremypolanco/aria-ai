@@ -178,6 +178,10 @@ class Settings(BaseSettings):
     # ── API PÚBLICA ───────────────────────────────────────
     ARIA_API_KEY: Optional[str] = None
 
+    # ── CREDENCIALES DE ARIA (para login stealth en plataformas) ──────────
+    ARIA_EMAIL: Optional[str] = None
+    ARIA_PASSWORD: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

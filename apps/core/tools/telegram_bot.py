@@ -284,6 +284,12 @@ class AriaTelegramBot:
             except Exception as exc:
                 logger.error("[Bot] CommandRouter error: %s", exc)
 
+        # Direct tool dispatcher — routes known tool intents to Python modules directly
+        direct_result = await self._direct_dispatch(text, chat_id)
+        if direct_result is not None:
+            await self._edit_or_send(chat_id, placeholder_id, direct_result)
+            return
+
         # Everything through AriaMind
         try:
             from apps.core.cognition.aria_mind import get_aria_mind
@@ -374,6 +380,158 @@ class AriaTelegramBot:
             await self._handle_message(fake_msg)
 
     # ── Media input processing ─────────────────────────────────────────────
+
+    async def _direct_dispatch(self, text: str, chat_id: str) -> Optional[str]:
+        """
+        Intercepts known tool intents and executes them directly,
+        routing to Python modules without going through the LLM reasoning layer.
+        Returns the result string, or None if not matched.
+        """
+        t = text.lower().strip()
+
+        # ── LOGIN INTENTS ──────────────────────────────────────────────────
+        _LOGIN_KEYWORDS = [
+            "inicia sesión", "iniciar sesión", "login", "log in", "sign in",
+            "entra a", "accede a", "conecta a", "loguea",
+        ]
+        _PLATFORMS = {
+            "gumroad":  "gumroad",
+            "dev.to":   "devto",
+            "devto":    "devto",
+            "medium":   "medium",
+            "hashnode": "hashnode",
+            "linkedin": "linkedin",
+            "twitter":  "twitter",
+            "x.com":    "twitter",
+        }
+        is_login = any(kw in t for kw in _LOGIN_KEYWORDS)
+        if is_login:
+            platform_key = next((v for k, v in _PLATFORMS.items() if k in t), None)
+            if platform_key:
+                return await self._do_login(platform_key)
+
+        # ── DAILY CYCLE ────────────────────────────────────────────────────
+        _DAILY_KW = ["ciclo diario", "ciclo del día", "operaciones del día",
+                     "ejecuta todo hoy", "run daily", "daily cycle"]
+        if any(kw in t for kw in _DAILY_KW):
+            return await self._do_daily_cycle()
+
+        # ── INCOME CYCLE ───────────────────────────────────────────────────
+        _INCOME_KW = ["ciclo de ingresos", "run income", "income cycle",
+                      "ejecuta ingresos", "genera ingresos ahora"]
+        if any(kw in t for kw in _INCOME_KW):
+            return await self._do_income_cycle()
+
+        # ── ACQUISITION ────────────────────────────────────────────────────
+        _ACQUIRE_KW = ["busca leads", "descubre leads", "encuentra prospectos",
+                       "run acquisition", "new leads"]
+        if any(kw in t for kw in _ACQUIRE_KW):
+            return await self._do_acquisition()
+
+        # ── RETENTION ──────────────────────────────────────────────────────
+        _RETAIN_KW = ["retención", "retencion", "win-back", "winback",
+                      "clientes inactivos", "recupera clientes", "loyalty"]
+        if any(kw in t for kw in _RETAIN_KW):
+            return await self._do_retention()
+
+        return None
+
+    async def _do_login(self, platform: str) -> str:
+        try:
+            from apps.core.config import settings
+            email    = getattr(settings, "ARIA_EMAIL", "") or getattr(settings, "aria_email", "")
+            password = getattr(settings, "ARIA_PASSWORD", "") or getattr(settings, "aria_password", "")
+            if not email or not password:
+                return ("⚠️ No encontré las credenciales.\n"
+                        "Agrega <code>ARIA_EMAIL</code> y <code>ARIA_PASSWORD</code> "
+                        "como secrets en Fly.io → Secrets.")
+            from apps.core.tools.human_browser import get_platform_login
+            pl = await get_platform_login()
+            login_fns = {
+                "gumroad":  pl.gumroad,
+                "devto":    pl.devto,
+                "medium":   pl.medium,
+                "hashnode": pl.hashnode,
+                "linkedin": pl.linkedin,
+                "twitter":  pl.twitter,
+            }
+            fn = login_fns.get(platform)
+            if not fn:
+                return f"Plataforma no soportada: {platform}"
+            page = await fn(email, password)
+            return (f"✅ <b>Login exitoso en {platform.upper()}</b>\n"
+                    f"URL: <code>{page.url}</code>\n"
+                    f"Sesión guardada — no necesitaré volver a iniciar sesión.")
+        except Exception as exc:
+            logger.error("[Bot] _do_login %s: %s", platform, exc)
+            return f"❌ Error al iniciar sesión en {platform}: {str(exc)[:200]}"
+
+    async def _do_daily_cycle(self) -> str:
+        try:
+            from apps.runtime.daily_business_loop import get_daily_business_loop
+            loop   = get_daily_business_loop()
+            report = await loop.run()
+            return (f"✅ <b>Ciclo Diario Completado — {report.date}</b>\n"
+                    f"Ops: {report.ops_completed}/{report.ops_total} "
+                    f"(score: {report.execution_score:.0%})\n"
+                    f"Contenido: {report.content_pieces_generated} piezas\n"
+                    f"Leads: {report.leads_discovered} | Outreach: {report.outreach_sent}\n"
+                    + (f"\n💡 {report.top_insight}" if report.top_insight else "")
+                    + (f"\n🎯 Mañana: {report.tomorrow_priority}" if report.tomorrow_priority else ""))
+        except Exception as exc:
+            logger.error("[Bot] _do_daily_cycle: %s", exc)
+            return f"❌ Error en ciclo diario: {str(exc)[:200]}"
+
+    async def _do_income_cycle(self) -> str:
+        try:
+            from apps.core.tools.income_loop import get_income_loop
+            loop   = get_income_loop()
+            result = await loop._run_one_cycle()
+            return (f"✅ <b>Ciclo de Ingresos</b>\n"
+                    f"Estrategia: {result.strategy_used}\n"
+                    f"Éxito: {'✅' if result.success else '❌'}\n"
+                    f"Resumen: {result.summary}\n"
+                    f"Revenue potencial: ${result.revenue_potential:.0f}")
+        except Exception as exc:
+            logger.error("[Bot] _do_income_cycle: %s", exc)
+            return f"❌ Error en ciclo de ingresos: {str(exc)[:200]}"
+
+    async def _do_acquisition(self) -> str:
+        try:
+            from apps.acquisition.leads.lead_engine import get_lead_engine
+            eng   = get_lead_engine()
+            leads = await eng.discover_leads("ecommerce", count=10)
+            return (f"✅ <b>Adquisición de Leads</b>\n"
+                    f"Leads descubiertos: {len(leads)}\n"
+                    f"Nichos: {', '.join({l.niche for l in leads})}")
+        except Exception as exc:
+            logger.error("[Bot] _do_acquisition: %s", exc)
+            return f"❌ Error en adquisición: {str(exc)[:200]}"
+
+    async def _do_retention(self) -> str:
+        try:
+            from apps.business.crm.retention import get_retention_engine
+            from apps.business.crm.crm_engine import get_crm_engine
+            engine     = get_retention_engine()
+            crm        = get_crm_engine()
+            at_risk    = await crm.high_risk_customers()
+            candidates = await crm.retention_candidates()
+            all_c      = list({c.customer_id: c for c in at_risk + candidates}.values())
+            dicts = [{"email": c.email, "name": c.name,
+                      "segment": (c.segments[0] if c.segments else ""),
+                      "total_spent_usd": c.total_spent_usd,
+                      "last_purchase_ts": c.last_purchase_ts,
+                      "churn_risk": c.churn_risk.value if hasattr(c.churn_risk, "value") else "medium"}
+                     for c in all_c[:100]]
+            wb  = await engine.run_win_back(dicts)
+            loy = await engine.run_loyalty_rewards(dicts)
+            return (f"✅ <b>Retención de Clientes</b>\n"
+                    f"Clientes en riesgo: {len(at_risk)}\n"
+                    f"Win-back targets: {wb.get('targeted', 0)}\n"
+                    f"Loyalty rewards: {loy.get('targeted', 0)}")
+        except Exception as exc:
+            logger.error("[Bot] _do_retention: %s", exc)
+            return f"❌ Error en retención: {str(exc)[:200]}"
 
     async def _describe_user_photo(self, msg: dict[str, Any], chat_id: str) -> str:
         try:
