@@ -35,16 +35,20 @@ TELEGRAM_API = "https://api.telegram.org/bot"
 QUICK_ACTIONS_KB = {
     "inline_keyboard": [
         [
-            {"text": "🔍 Buscar en web",      "callback_data": "quick_search"},
-            {"text": "🎨 Generar imagen",      "callback_data": "quick_image"},
+            {"text": "💰 Ciclo de ingresos",   "callback_data": "quick_income"},
+            {"text": "📅 Ciclo diario",         "callback_data": "quick_daily"},
         ],
         [
-            {"text": "📊 Estado del sistema",  "callback_data": "quick_status"},
-            {"text": "🧠 Razonamiento profundo","callback_data": "quick_think"},
+            {"text": "🔍 Buscar en web",        "callback_data": "quick_search"},
+            {"text": "🎨 Generar imagen",        "callback_data": "quick_image"},
         ],
         [
-            {"text": "📚 Base de conocimiento","callback_data": "quick_kb"},
-            {"text": "⚙️ Ver mis capacidades", "callback_data": "quick_help"},
+            {"text": "📊 Estado del sistema",   "callback_data": "quick_status"},
+            {"text": "🎯 Objetivos autónomos",  "callback_data": "quick_objectives"},
+        ],
+        [
+            {"text": "📚 Base de conocimiento", "callback_data": "quick_kb"},
+            {"text": "⚙️ Ver capacidades",      "callback_data": "quick_help"},
         ],
     ]
 }
@@ -64,14 +68,20 @@ START_KB = {
 # ── Bot commands to register ───────────────────────────────────────────────
 
 BOT_COMMANDS = [
-    {"command": "start",    "description": "Bienvenida e introducción a ARIA"},
-    {"command": "ayuda",    "description": "Ver todas las capacidades"},
-    {"command": "estado",   "description": "Estado del sistema en tiempo real"},
-    {"command": "limpiar",  "description": "Limpiar historial de la conversación"},
-    {"command": "busca",    "description": "Buscar algo en internet"},
-    {"command": "imagen",   "description": "Generar una imagen con IA"},
-    {"command": "piensa",   "description": "Razonamiento profundo sobre un tema"},
-    {"command": "metas",    "description": "Ver metas activas de ARIA"},
+    {"command": "start",       "description": "Bienvenida e introducción a ARIA"},
+    {"command": "ayuda",       "description": "Ver todas las capacidades"},
+    {"command": "estado",      "description": "Estado del sistema en tiempo real"},
+    {"command": "limpiar",     "description": "Limpiar historial de la conversación"},
+    {"command": "ingresos",    "description": "Ejecutar ciclo de ingresos ahora"},
+    {"command": "ciclo_diario","description": "Ejecutar ciclo completo de negocio del día"},
+    {"command": "objetivos",   "description": "Ver objetivos estratégicos autónomos"},
+    {"command": "leads",       "description": "Descubrir leads y avanzar CRM"},
+    {"command": "retencion",   "description": "Lanzar campañas de retención de clientes"},
+    {"command": "shopify",     "description": "Optimizar tienda Shopify"},
+    {"command": "busca",       "description": "Buscar algo en internet"},
+    {"command": "imagen",      "description": "Generar una imagen con IA"},
+    {"command": "piensa",      "description": "Razonamiento profundo sobre un tema"},
+    {"command": "metas",       "description": "Ver metas activas de ARIA"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -82,14 +92,18 @@ WELCOME_MESSAGE = """\
 Soy tu inteligencia operativa personal — no un chatbot genérico.
 
 <b>Lo que puedo hacer ahora mismo:</b>
+• 💰 Ejecutar ciclos de ingresos autónomos (income loop 24/7)
+• 📅 Correr el ciclo diario completo: contenido + leads + outreach + retención
+• 🎯 Gestionar objetivos estratégicos autónomos (6 objetivos en piloto automático)
+• 👥 Descubrir leads, avanzar CRM y enviar outreach personalizado
+• 🔄 Campañas de retención: win-back a inactivos + loyalty rewards a VIPs
+• 🛒 Optimizar tienda Shopify: SEO, bundles, flash sales
 • 🔍 Buscar e investigar en internet en tiempo real
 • 🎨 Generar imágenes, música y video con IA
-• 💻 Escribir, revisar y mejorar código
-• 📊 Analizar datos y tomar decisiones estratégicas
-• 🤖 Coordinar equipos de agentes especializados
-• 📁 Leer y mejorar mi propio código fuente
-• 🌐 Crear sitios web, presentaciones y PDFs
-• 📧 Enviar emails y publicar contenido
+• 💻 Navegar la web como un humano (click, formularios, screenshots)
+• 🌐 Crear sitios web, presentaciones, PDFs y software completo
+• 🤖 Coordinar equipos de agentes especializados (CEO, CMO, CFO, Dev)
+• 📧 Publicar contenido en blog, LinkedIn, Twitter, TikTok
 
 <i>Habla conmigo en lenguaje natural. Sin comandos especiales.</i>"""
 
@@ -235,6 +249,28 @@ class AriaTelegramBot:
         # Send placeholder "thinking" message
         placeholder_id = await self._send_placeholder(chat_id)
 
+        # Quick slash command → natural language translation for AriaMind
+        _SLASH_TRANSLATIONS: dict[str, str] = {
+            "/ingresos":     "ejecuta un ciclo de ingresos ahora mismo usando run_income_cycle",
+            "/ciclo_diario": "ejecuta el ciclo completo de negocio del día usando run_daily_cycle",
+            "/objetivos":    "muéstrame el estado de todos los objetivos estratégicos autónomos usando check_objectives",
+            "/leads":        "descubre 10 leads nuevos y avanza los contactos del CRM usando run_acquisition",
+            "/retencion":    "lanza las campañas de retención de clientes: win-back e inactivos usando run_retention",
+            "/shopify":      "optimiza el SEO de los productos de Shopify usando shopify_optimize con operation seo",
+            "/busca":        "busca en internet: ",
+            "/imagen":       "genera una imagen de: ",
+            "/piensa":       "usa razonamiento profundo para analizar: ",
+            "/metas":        "muéstrame mis metas activas usando get_status",
+        }
+        for cmd, translated in _SLASH_TRANSLATIONS.items():
+            if text == cmd or text.startswith(cmd + " "):
+                suffix = text[len(cmd):].strip()
+                if translated.endswith(": "):
+                    text = translated + suffix
+                else:
+                    text = (translated + " " + suffix).strip() if suffix else translated
+                break
+
         # Slash commands → CommandRouter (before AriaMind)
         if text.startswith("/") and text not in ("/start",):
             try:
@@ -316,13 +352,16 @@ class AriaTelegramBot:
         await self._answer_callback(cb_id)
 
         mapping = {
-            "quick_search": "busca las últimas tendencias en inteligencia artificial",
-            "quick_image":  "genera una imagen de un paisaje futurista con IA",
-            "quick_status": "/estado",
-            "quick_think":  "usa razonamiento profundo para explicar qué es la computación cuántica",
-            "quick_kb":     "¿qué hay en mi base de conocimiento?",
-            "quick_help":   "/ayuda",
-            "example_trends": "busca las últimas noticias sobre modelos de lenguaje grandes",
+            "quick_income":     "ejecuta un ciclo de ingresos ahora mismo",
+            "quick_daily":      "ejecuta el ciclo completo de negocio del día",
+            "quick_search":     "busca las últimas tendencias en inteligencia artificial",
+            "quick_image":      "genera una imagen de un paisaje futurista con IA",
+            "quick_status":     "/estado",
+            "quick_objectives": "muéstrame el estado de los objetivos estratégicos autónomos",
+            "quick_think":      "usa razonamiento profundo para explicar qué es la computación cuántica",
+            "quick_kb":         "¿qué hay en mi base de conocimiento?",
+            "quick_help":       "/ayuda",
+            "example_trends":   "busca las últimas noticias sobre modelos de lenguaje grandes",
         }
 
         user_text = mapping.get(data)

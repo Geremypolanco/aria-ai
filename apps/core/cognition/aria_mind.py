@@ -141,6 +141,14 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - github_issues    → crea o lista issues. Args: {{"action": "issues|create_issue", "owner": "...", "repo": "...", "title": "...", "body": "..."}}
 - github_search    → busca repos, código o issues en GitHub. Args: {{"query": "...", "type": "repos|code|issues"}}
 - github_self      → accedo a MI PROPIO código fuente (Geremypolanco/aria-ai). Puedo ver mi estructura, leer mis archivos y mejorar mi propio código. Args: {{"sub": "structure|read|commit", "path": "", "content": "...", "message": "refactor: ..."}}
+- run_daily_cycle  → ejecuta el ciclo completo de negocio del día: genera contenido TikTok/blog/LinkedIn/Twitter, descubre leads, avanza outreach, optimiza Shopify, lanza retención. Un ciclo completo de 19 operaciones. Args: {{}}
+- run_acquisition  → descubre leads en un nicho, califica prospectos y avanza contactos en el pipeline CRM de outreach. Args: {{"niche": "ecommerce", "count": 10}}
+- run_retention    → ejecuta campañas de retención: win-back a clientes inactivos 60+ días + loyalty rewards a VIPs. Args: {{}}
+- shopify_optimize → ejecuta optimizaciones de Shopify: SEO de productos, generación de bundles o flash sale. Args: {{"operation": "seo|bundles|flash_sale"}}
+- run_funnel       → analiza y devuelve estado de funnels de conversión, abandono de carrito y secuencias de email. Args: {{}}
+- check_objectives → muestra el estado de los 6 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo). Args: {{}}
+- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing"}}
+- daily_report     → muestra el reporte de ejecución del día: operaciones completadas, score de ejecución, insight y prioridad de mañana. Args: {{}}
 
 REGLAS DE RAZONAMIENTO:
 1. Usa tu campo "thought" para razonar paso a paso antes de decidir qué hacer.
@@ -166,6 +174,15 @@ REGLAS DE RAZONAMIENTO:
 21. Si el usuario pide ver el estado del loop de ingresos o quiere saber qué está haciendo ARIA en segundo plano → usa income_loop_status.
 22. Si el usuario pide ejecutar una estrategia de ingresos específica ahora mismo → usa run_income_cycle con la estrategia.
 23. ARIA tiene un loop 24/7 que ya corre en segundo plano. No es necesario lanzarlo manualmente a menos que el usuario lo pida explícitamente.
+24. Si el usuario pide ejecutar el ciclo diario completo de negocio, todas las operaciones del día, o "hacer todo lo de hoy" → usa run_daily_cycle.
+25. Si el usuario pide buscar leads, prospectos, contactos nuevos o avanzar el CRM → usa run_acquisition con el nicho relevante.
+26. Si el usuario pide retener clientes, recuperar clientes perdidos, win-back, o loyalty → usa run_retention.
+27. Si el usuario pide optimizar Shopify, los productos de la tienda o generar bundles → usa shopify_optimize con la operación correcta.
+28. Si el usuario pregunta por los objetivos autónomos, qué está haciendo ARIA en piloto automático, o el estado de los agentes estratégicos → usa check_objectives.
+29. Si el usuario quiere lanzar un objetivo estratégico específico ahora → usa run_objective con el nombre del objetivo.
+30. Si el usuario pide el reporte del día, resultados de hoy, o qué hizo ARIA hoy → usa daily_report.
+31. Para tareas de browsing como buscar precios competidores, revisar perfiles de LinkedIn, navegar sitios para extraer datos → usa browse_page e interact_browser en secuencia.
+32. ARIA puede actuar como un humano en una PC: puede abrir URLs, hacer clic en botones, llenar formularios, tomar screenshots y extraer texto de páginas — usa interact_browser con los pasos necesarios.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1146,6 +1163,186 @@ class AriaMind:
                 gh_action = action_map[tool]
                 obs = await github_dispatch(gh_action, args)
                 return obs, {}
+
+            # ── DAILY BUSINESS CYCLE ──────────────────────────────────────
+            elif tool == "run_daily_cycle":
+                from apps.runtime.daily_business_loop import get_daily_business_loop
+                loop = get_daily_business_loop()
+                report = await loop.run()
+                lines = [
+                    f"[CICLO DIARIO — {report.date}]",
+                    f"Operaciones: {report.ops_completed}/{report.ops_total} ✅  ({report.ops_failed} ❌)",
+                    f"Score de ejecución: {report.execution_score:.0%}",
+                    f"Contenido generado: {report.content_pieces_generated}",
+                    f"Leads descubiertos: {report.leads_discovered}",
+                    f"Outreach enviado: {report.outreach_sent}",
+                    f"Optimizaciones Shopify: {report.shopify_optimizations}",
+                    f"Funnels optimizados: {report.funnels_optimized}",
+                ]
+                if report.top_insight:
+                    lines.append(f"\n💡 Insight: {report.top_insight}")
+                if report.tomorrow_priority:
+                    lines.append(f"🎯 Prioridad mañana: {report.tomorrow_priority}")
+                return "\n".join(lines), {}
+
+            elif tool == "daily_report":
+                from apps.runtime.daily_business_loop import get_daily_business_loop
+                loop = get_daily_business_loop()
+                await loop._load()
+                reports = loop.recent_reports(limit=1)
+                if not reports:
+                    status = await loop.generate_status_report()
+                    return (f"[ESTADO HOY — {status['date']}]\n"
+                            f"Ops completadas: {status['ops_done']}/{status['ops_today']}\n"
+                            f"Score: {status['execution_score']:.0%}\n"
+                            f"Total reportes históricos: {status['total_reports']}"), {}
+                r = reports[0]
+                lines = [
+                    f"[REPORTE — {r.get('date', 'hoy')}]",
+                    f"Score: {r.get('execution_score', 0):.0%}  ({r.get('ops_completed', 0)}/{r.get('ops_total', 0)} ops)",
+                    f"Contenido: {r.get('content_pieces_generated', 0)} piezas  |  Leads: {r.get('leads_discovered', 0)}",
+                    f"Outreach: {r.get('outreach_sent', 0)}  |  Shopify: {r.get('shopify_optimizations', 0)}",
+                ]
+                if r.get("top_insight"):
+                    lines.append(f"💡 {r['top_insight']}")
+                if r.get("tomorrow_priority"):
+                    lines.append(f"🎯 Mañana: {r['tomorrow_priority']}")
+                return "\n".join(lines), {}
+
+            # ── ACQUISITION (LEADS + CRM OUTREACH) ───────────────────────
+            elif tool == "run_acquisition":
+                niche = args.get("niche", "ecommerce")
+                count = int(args.get("count", 10))
+                from apps.acquisition.leads.lead_engine import get_lead_engine
+                from apps.acquisition.outreach.outreach_sequencer import get_outreach_sequencer
+                eng = get_lead_engine()
+                leads = await eng.discover_leads(niche, count=count)
+                sequencer = get_outreach_sequencer()
+                await sequencer._load()
+                due = sequencer.contacts_due_today()[:10]
+                advanced = 0
+                for c in due:
+                    if sequencer.advance_contact(c.get("contact_id", "")):
+                        advanced += 1
+                if advanced > 0:
+                    await sequencer._save()
+                return (f"[ADQUISICIÓN]\n"
+                        f"Leads descubiertos en '{niche}': {len(leads)}\n"
+                        f"Contactos avanzados en CRM: {advanced}/{len(due)}"), {}
+
+            # ── RETENTION ────────────────────────────────────────────────
+            elif tool == "run_retention":
+                from apps.business.crm.retention import get_retention_engine
+                from apps.business.crm.crm_engine import get_crm_engine
+                engine = get_retention_engine()
+                crm = get_crm_engine()
+                at_risk = await crm.high_risk_customers()
+                candidates = await crm.retention_candidates()
+                all_customers = list({c.customer_id: c for c in at_risk + candidates}.values())
+                customer_dicts = [
+                    {
+                        "email": c.email,
+                        "name": c.name,
+                        "segment": (c.segments[0] if c.segments else ""),
+                        "total_spent_usd": c.total_spent_usd,
+                        "last_purchase_ts": c.last_purchase_ts,
+                        "churn_risk": c.churn_risk.value if hasattr(c.churn_risk, "value") else str(c.churn_risk),
+                    }
+                    for c in all_customers[:100]
+                ]
+                win_back = await engine.run_win_back(customer_dicts)
+                loyalty = await engine.run_loyalty_rewards(customer_dicts)
+                summary = await engine.campaign_summary()
+                return (f"[RETENCIÓN]\n"
+                        f"Clientes en riesgo analizados: {len(at_risk)}\n"
+                        f"Win-back targets: {win_back.get('targeted', 0)}\n"
+                        f"Loyalty reward targets: {loyalty.get('targeted', 0)}\n"
+                        f"Campañas activas totales: {summary.get('active_campaigns', 0)}\n"
+                        f"Revenue recuperado total: ${summary.get('total_recovered_revenue', 0):.2f}"), {}
+
+            # ── SHOPIFY OPTIMIZE ──────────────────────────────────────────
+            elif tool == "shopify_optimize":
+                operation = args.get("operation", "seo")
+                if operation == "seo":
+                    from apps.shopify.seo.product_seo import get_product_seo_optimizer
+                    eng = get_product_seo_optimizer()
+                    await eng._load()
+                    stats = eng.seo_stats()
+                    return f"[SHOPIFY SEO]\n{stats}", {}
+                elif operation == "bundles":
+                    from apps.shopify.bundles.bundle_generator import get_bundle_generator
+                    eng = get_bundle_generator()
+                    await eng._load()
+                    stats = eng.bundle_stats() if hasattr(eng, "bundle_stats") else {"status": "loaded"}
+                    return f"[SHOPIFY BUNDLES]\n{stats}", {}
+                elif operation == "flash_sale":
+                    from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
+                    eng = get_flash_sale_engine()
+                    await eng._load()
+                    stats = eng.sale_stats() if hasattr(eng, "sale_stats") else {"status": "loaded"}
+                    return f"[SHOPIFY FLASH SALE]\n{stats}", {}
+                return f"Operación Shopify desconocida: {operation}. Usa seo|bundles|flash_sale", {}
+
+            # ── CONVERSION FUNNELS ────────────────────────────────────────
+            elif tool == "run_funnel":
+                from apps.conversion.funnels.funnel_engine import get_funnel_engine
+                from apps.conversion.email_sequences.email_nurture import get_email_nurture_engine
+                funnel_eng = get_funnel_engine()
+                await funnel_eng._load()
+                analytics = funnel_eng.funnel_analytics()
+                email_eng = get_email_nurture_engine()
+                await email_eng._load()
+                email_analytics = email_eng.sequence_analytics()
+                return (f"[FUNNELS DE CONVERSIÓN]\n{analytics}\n\n"
+                        f"[SECUENCIAS EMAIL]\n{email_analytics}"), {}
+
+            # ── AUTONOMOUS OBJECTIVES ─────────────────────────────────────
+            elif tool == "check_objectives":
+                from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+                scheduler = get_autonomous_scheduler()
+                objs = await scheduler.get_objectives()
+                summary = scheduler.summary()
+                lines = [
+                    f"[OBJETIVOS ESTRATÉGICOS — {summary['active']} activos / {summary['total_objectives']} total]",
+                    f"Valor total generado: ${summary['total_value_generated_usd']:.2f}",
+                    f"Tasa de éxito global: {summary['success_rate_overall']:.0%}",
+                    "",
+                ]
+                import time as _time
+                for obj in sorted(objs, key=lambda o: o.priority):
+                    due_in = max(0, obj.next_run_ts - _time.time())
+                    due_str = f"vence en {due_in/3600:.1f}h" if due_in > 0 else "VENCE AHORA"
+                    lines.append(
+                        f"• [{obj.status.value.upper()}] {obj.name} (c/{obj.frequency_hours}h) — "
+                        f"runs: {obj.total_runs} | ok: {obj.success_count} | "
+                        f"${obj.total_value_usd:.0f} | {due_str}"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "run_objective":
+                obj_key = args.get("objective", "content_generation")
+                valid_keys = [
+                    "growth_loops_cycle", "shopify_optimization", "content_generation",
+                    "market_intelligence", "crm_nurture", "economic_rebalancing",
+                ]
+                if obj_key not in valid_keys:
+                    return (f"Objetivo inválido: '{obj_key}'. "
+                            f"Opciones: {', '.join(valid_keys)}"), {}
+                from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+                scheduler = get_autonomous_scheduler()
+                objs = await scheduler.get_objectives()
+                target = next((o for o in objs if o.obj_id == obj_key), None)
+                if not target:
+                    return f"Objetivo '{obj_key}' no encontrado en el scheduler.", {}
+                record = await scheduler._run_objective(target)
+                all_objs = {o.obj_id: o for o in objs}
+                all_objs[target.obj_id] = target
+                await scheduler._save_objectives(all_objs)
+                status = "✅" if record.success else "❌"
+                return (f"[OBJETIVO: {target.name}] {status}\n"
+                        f"Output: {record.output}\n"
+                        f"Valor: ${record.value_generated_usd:.2f}\n"
+                        f"Error: {record.error or 'ninguno'}"), {}
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
