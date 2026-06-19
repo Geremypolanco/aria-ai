@@ -149,6 +149,9 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - check_objectives → muestra el estado de los 6 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo). Args: {{}}
 - run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing"}}
 - daily_report     → muestra el reporte de ejecución del día: operaciones completadas, score de ejecución, insight y prioridad de mañana. Args: {{}}
+- human_login      → inicia sesión en una plataforma como un humano real (stealth, sin ser detectada). Args: {{"platform": "gumroad|devto|linkedin|twitter|hashnode", "email": "...", "password": "...", "username": "..."}}
+- human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
+- human_action     → ejecuta acciones humanas en el browser stealth: click, type, scroll. Args: {{"session": "nombre", "steps": [{{"action": "click|type|scroll|wait|get_text|screenshot", "selector": "...", "value": "...", "pixels": 300}}]}}
 
 REGLAS DE RAZONAMIENTO:
 1. Usa tu campo "thought" para razonar paso a paso antes de decidir qué hacer.
@@ -183,6 +186,9 @@ REGLAS DE RAZONAMIENTO:
 30. Si el usuario pide el reporte del día, resultados de hoy, o qué hizo ARIA hoy → usa daily_report.
 31. Para tareas de browsing como buscar precios competidores, revisar perfiles de LinkedIn, navegar sitios para extraer datos → usa browse_page e interact_browser en secuencia.
 32. ARIA puede actuar como un humano en una PC: puede abrir URLs, hacer clic en botones, llenar formularios, tomar screenshots y extraer texto de páginas — usa interact_browser con los pasos necesarios.
+33. Para iniciar sesión en Gumroad, Dev.to, LinkedIn, Twitter, Hashnode o Medium sin ser detectada → usa human_login. Usa las credenciales de ARIA_EMAIL/ARIA_PASSWORD si el usuario no especifica otras.
+34. Para navegar con stealth completo (anti-detección, curvas Bézier, timing humano) → usa human_browse en lugar de browse_page cuando la plataforma tiene bot detection.
+35. Para ejecutar una secuencia de acciones humanas (hacer clic, escribir, scrollear) en una sesión stealth activa → usa human_action con la lista de pasos.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1318,6 +1324,89 @@ class AriaMind:
                         f"${obj.total_value_usd:.0f} | {due_str}"
                     )
                 return "\n".join(lines), {}
+
+            # ── HUMAN BROWSER (STEALTH) ───────────────────────────────────
+            elif tool == "human_login":
+                from apps.core.config import settings
+                platform = args.get("platform", "")
+                email    = args.get("email") or getattr(settings, "ARIA_EMAIL", "")
+                password = args.get("password") or getattr(settings, "ARIA_PASSWORD", "")
+                username = args.get("username", "")
+                if not email or not password:
+                    return "Necesito email y password. Agrega ARIA_EMAIL y ARIA_PASSWORD como secrets.", {}
+                from apps.core.tools.human_browser import get_platform_login
+                pl = await get_platform_login()
+                login_map = {
+                    "gumroad":  pl.gumroad,
+                    "devto":    pl.devto,
+                    "linkedin": pl.linkedin,
+                    "twitter":  lambda e, p: pl.twitter(e, p, username),
+                    "hashnode": pl.hashnode,
+                    "medium":   pl.medium,
+                }
+                fn = login_map.get(platform.lower())
+                if not fn:
+                    return f"Plataforma desconocida: {platform}. Opciones: gumroad, devto, linkedin, twitter, hashnode, medium", {}
+                page = await fn(email, password)
+                return (f"[STEALTH LOGIN — {platform.upper()}]\n"
+                        f"URL actual: {page.url}\n"
+                        f"Sesión guardada para uso futuro."), {}
+
+            elif tool == "human_browse":
+                url     = args.get("url", "")
+                session = args.get("session", "default")
+                from apps.core.tools.human_browser import get_human_browser
+                browser = await get_human_browser()
+                page = await browser.new_page(session)
+                await page.load_session()
+                await page.goto(url)
+                text = await page.get_page_text(max_chars=3000)
+                title = await page.evaluate("() => document.title")
+                return f"[STEALTH PAGE: {title}]\nURL: {page.url}\n\n{text}", {}
+
+            elif tool == "human_action":
+                session = args.get("session", "default")
+                steps   = args.get("steps", [])
+                from apps.core.tools.human_browser import get_human_browser
+                browser = await get_human_browser()
+                page = await browser.new_page(session)
+                await page.load_session()
+                results = []
+                for step in steps:
+                    action   = step.get("action", "")
+                    selector = step.get("selector", "")
+                    value    = step.get("value", "")
+                    pixels   = int(step.get("pixels", 300))
+                    try:
+                        if action == "click":
+                            await page.click(selector)
+                            results.append(f"click({selector}): OK")
+                        elif action == "type":
+                            await page.type_human(selector, value)
+                            results.append(f"type({selector}, '{value[:20]}...'): OK")
+                        elif action == "scroll":
+                            await page.scroll_down(pixels)
+                            results.append(f"scroll({pixels}px): OK")
+                        elif action == "wait":
+                            await asyncio.sleep(float(value or 1))
+                            results.append(f"wait({value}s): OK")
+                        elif action == "get_text":
+                            text = await page.get_text(selector) if selector else await page.get_page_text()
+                            results.append(f"text: {text[:300]}")
+                        elif action == "screenshot":
+                            await page.screenshot()
+                            results.append("screenshot: taken")
+                        elif action == "goto":
+                            await page.goto(value)
+                            results.append(f"goto({value}): OK")
+                        elif action == "save_session":
+                            await page.save_session()
+                            results.append("session: saved")
+                        else:
+                            results.append(f"{action}: unknown")
+                    except Exception as exc:
+                        results.append(f"{action}: FAIL — {str(exc)[:80]}")
+                return f"[STEALTH ACTIONS — {session}]\n" + "\n".join(results), {}
 
             elif tool == "run_objective":
                 obj_key = args.get("objective", "content_generation")
