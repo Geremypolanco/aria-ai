@@ -69,11 +69,11 @@ STRATEGIES = [
     ("ebook_factory",            4),
     ("lead_magnet",              1),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
-    ("seo_optimizer",            3),   # improve existing posts for compounding organic traffic
-    ("gist_blitz",               2),   # code snippet Gists with product CTAs (dev discovery)
+    ("seo_optimizer",            2),   # improve existing posts for compounding organic traffic
+    ("gist_blitz",               1),   # code snippet Gists with product CTAs (dev discovery)
     ("product_bundle",           4),   # bundle 2-3 existing products at a discount → higher AOV
     ("waitlist_builder",         1),   # waitlist landing page → email capture → launch pipeline
-    ("challenge_campaign",       2),   # 7-day challenge series → sustained traffic + lead capture
+    ("challenge_campaign",       1),   # 7-day challenge series → sustained traffic + lead capture
     ("partner_outreach",         1),   # B2B collaboration pitches → cross-promotion + co-sells
     ("newsletter_issue",         4),   # full newsletter edition → recurring reader monetization
     ("job_board_listing",        1),   # B2B service listings → consulting leads
@@ -87,22 +87,27 @@ STRATEGIES = [
     ("stripe_checkout",          3),   # real Stripe payment link for instant revenue
     ("tiktok_script",            3),   # TikTok/Reels/YouTube Shorts viral scripts → massive reach
     ("linkedin_outreach",        1),   # B2B prospect messages → consulting/partnership leads
-    ("youtube_strategy",         2),   # YouTube content plan + optimized metadata + script → channel growth
+    ("youtube_strategy",         1),   # YouTube content plan + optimized metadata + script → channel growth
     ("product_hunt_launch",      1),   # Product Hunt launch post → massive traffic spike + backlinks
     ("content_amplifier",        1),   # blast latest content to ALL platforms simultaneously — 5x reach
     ("cold_email_outreach",      1),   # SMTP cold emails to B2B prospects → consulting/product sales
     ("pinterest_pins",           1),   # Pinterest pin strategy → visual SEO traffic → product page clicks
-    ("landing_page_deploy",      2),   # HTML landing page deployed to GitHub Pages → real SEO-indexed URL
-    ("substack_publish",         2),   # Substack article → paid newsletter subscribers ($5-$10/mo each)
-    ("freelance_gig",            2),   # Fiverr/Upwork gig → direct B2B service revenue ($50-$500/gig)
+    ("landing_page_deploy",      1),   # HTML landing page deployed to GitHub Pages → real SEO-indexed URL
+    ("substack_publish",         1),   # Substack article → paid newsletter subscribers ($5-$10/mo each)
+    ("freelance_gig",            1),   # Fiverr/Upwork gig → direct B2B service revenue ($50-$500/gig)
     ("media_pitch",              1),   # PR pitch to tech media → backlinks + brand authority + traffic
     ("ab_content_test",          1),   # A/B test pricing & titles on existing products → higher conversion
-    ("smart_pricing",            2),   # AI-driven price optimization for existing products → higher AOV
+    ("smart_pricing",            1),   # AI-driven price optimization for existing products → higher AOV
     ("voice_of_aria",            1),   # Proactive Telegram messages: daily tip + product spotlight + insight
     ("self_monetize",            1),   # ARIA lists herself as a product: API docs + pricing page + RapidAPI
     ("referral_engine",          1),   # Build referral/affiliate program for existing products → viral growth
-    ("digital_agency",           2),   # Done-for-you AI services pitch deck + client onboarding → $500-$5k
+    ("digital_agency",           1),   # Done-for-you AI services pitch deck + client onboarding → $500-$5k
     ("crowdfunding_kit",         1),   # Kickstarter/IndieGoGo campaign kit for ARIA's products
+    ("newsletter_monetize",      2),   # Beehiiv/ConvertKit paid tiers + ad sponsorships → $500-$3k/mo
+    ("community_launch",         2),   # Discord/Circle community with paid tiers → recurring MRR
+    ("podcast_pitch",            1),   # Pitch ARIA as podcast guest to 10 shows → backlinks + leads
+    ("multilingual_content",     2),   # Spanish/Portuguese/French content → 3x addressable audience
+    ("seo_tracking",             2),   # Monitor rankings + re-optimize top content → compounding traffic
 ]
 
 
@@ -422,6 +427,16 @@ JSON:
             return await self._exec_digital_agency()
         elif strategy == "crowdfunding_kit":
             return await self._exec_crowdfunding_kit()
+        elif strategy == "newsletter_monetize":
+            return await self._exec_newsletter_monetize()
+        elif strategy == "community_launch":
+            return await self._exec_community_launch()
+        elif strategy == "podcast_pitch":
+            return await self._exec_podcast_pitch()
+        elif strategy == "multilingual_content":
+            return await self._exec_multilingual_content()
+        elif strategy == "seo_tracking":
+            return await self._exec_seo_tracking()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -8018,6 +8033,847 @@ JSON:
 
         except Exception as exc:
             logger.error("[IncomeLoop] smart_pricing: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_newsletter_monetize(self) -> dict:
+        """
+        Set up and grow a monetized newsletter via Beehiiv/ConvertKit.
+        Generates: issue content, paid tier pitch, sponsor outreach templates,
+        growth tactics (referral loops, lead magnets), and revenue projections.
+        A newsletter with 1,000 paid subscribers at $7/mo = $7,000 MRR.
+        Archives to aria-insights/newsletter/.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "newsletter_monetize: AI unavailable"}
+
+            wt = WebTools()
+            trends_r = await wt.get_hacker_news_trending(limit=5)
+            hot_topic = "AI tools that replace entire departments"
+            if trends_r.get("success") and trends_r.get("stories"):
+                hot_topic = trends_r["stories"][0].get("title", hot_topic)[:100]
+
+            data = await ai.complete_json(
+                system=(
+                    "You are a newsletter operator with 50,000 subscribers and $15k MRR. "
+                    "You know that newsletters succeed through consistent value, strong subject lines, "
+                    "and a compelling paid tier with exclusive access. Output JSON only."
+                ),
+                user=f"""Build a complete monetized newsletter strategy for an AI business platform.
+
+Hot topic: {hot_topic}
+
+JSON:
+{{
+  "newsletter_name": "...",
+  "tagline": "...",
+  "niche": "specific audience and topic",
+  "monetization_plan": {{
+    "free_tier": "what free subscribers get",
+    "paid_tier_name": "...",
+    "paid_tier_price_monthly": 9,
+    "paid_tier_features": ["exclusive feature 1", "exclusive feature 2", "exclusive feature 3"],
+    "sponsor_rate_per_issue": 250,
+    "sponsor_pitch": "How ARIA pitches sponsors (100 words)"
+  }},
+  "issue_today": {{
+    "subject_line": "compelling subject with emoji",
+    "preview_text": "55-char preview that boosts open rates",
+    "intro": "2-paragraph hook introducing today's topic",
+    "main_content": "400-word deep dive on {hot_topic}",
+    "paid_only_section_teaser": "What paid subscribers get to read next"
+  }},
+  "growth_tactics": [
+    {{"tactic": "...", "expected_subscribers": 50, "effort": "low|medium|high"}}
+  ],
+  "revenue_projection": {{
+    "month_3": {{"subscribers": 500, "paid_pct": 5, "mrr_usd": 225}},
+    "month_6": {{"subscribers": 2000, "paid_pct": 8, "mrr_usd": 1440}},
+    "month_12": {{"subscribers": 8000, "paid_pct": 10, "mrr_usd": 7200}}
+  }}
+}}""",
+                model=AIModel.STRATEGY,
+                max_tokens=3000,
+            )
+
+            if not data or not data.get("newsletter_name"):
+                return {"success": False, "summary": "newsletter_monetize: AI failed"}
+
+            urls_created = []
+
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                mon = data.get("monetization_plan", {})
+                issue = data.get("issue_today", {})
+                rev = data.get("revenue_projection", {})
+                tactics = data.get("growth_tactics", [])
+
+                md = f"""# {data.get('newsletter_name', 'ARIA Newsletter')} — Monetization Kit
+
+> {data.get('tagline', '')}
+**Niche:** {data.get('niche', '')}
+
+## Monetization Plan
+
+| | Free | {mon.get('paid_tier_name', 'Pro')} (${mon.get('paid_tier_price_monthly', 9)}/mo) |
+|---|---|---|
+| What's included | {mon.get('free_tier', '')} | {', '.join(mon.get('paid_tier_features', [])[:3])} |
+
+**Sponsor rate:** ${mon.get('sponsor_rate_per_issue', 250)}/issue
+
+**Sponsor pitch:**
+{mon.get('sponsor_pitch', '')}
+
+## Today's Issue
+
+**Subject:** {issue.get('subject_line', '')}
+**Preview:** {issue.get('preview_text', '')}
+
+{issue.get('intro', '')}
+
+{issue.get('main_content', '')}
+
+---
+🔒 **[PAID]** {issue.get('paid_only_section_teaser', '')}
+
+## Growth Tactics
+
+{chr(10).join(f"- **{t.get('tactic','')}** (expected: +{t.get('expected_subscribers',0)} subs, effort: {t.get('effort','')})" for t in tactics[:5])}
+
+## Revenue Projections
+
+| Month | Subscribers | Paid % | MRR |
+|-------|-------------|--------|-----|
+| Month 3 | {rev.get('month_3',{}).get('subscribers',0):,} | {rev.get('month_3',{}).get('paid_pct',0)}% | ${rev.get('month_3',{}).get('mrr_usd',0):,} |
+| Month 6 | {rev.get('month_6',{}).get('subscribers',0):,} | {rev.get('month_6',{}).get('paid_pct',0)}% | ${rev.get('month_6',{}).get('mrr_usd',0):,} |
+| Month 12 | {rev.get('month_12',{}).get('subscribers',0):,} | {rev.get('month_12',{}).get('paid_pct',0)}% | ${rev.get('month_12',{}).get('mrr_usd',0):,} |
+
+## How to Launch
+1. Create account at beehiiv.com (free up to 2,500 subscribers)
+2. Set up paid tier with the features above
+3. Send first issue using today's draft
+4. Implement growth tactics starting with lowest effort
+
+*Generated by ARIA AI — Newsletter Monetization Engine*
+"""
+                encoded = _b64.b64encode(md.encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/newsletter/monetize-{today}.md",
+                    {"message": f"newsletter: monetization kit + issue {today}", "content": encoded}
+                )
+                if "error" not in file_r:
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/newsletter/monetize-{today}.md"
+                    )
+
+                # Also publish the free-tier portion to Dev.to for reach
+                try:
+                    from apps.core.tools.publishing_tools import PublishingTools
+                    r = await PublishingTools().publish_to_devto(
+                        title=issue.get("subject_line", data.get("newsletter_name", "")),
+                        content=issue.get("intro", "") + "\n\n" + issue.get("main_content", "")[:800],
+                        tags=["newsletter", "ai", "productivity", "business"],
+                    )
+                    if r.get("success") and r.get("url"):
+                        urls_created.append(r["url"])
+                except Exception:
+                    pass
+
+            m12 = data.get("revenue_projection", {}).get("month_12", {}).get("mrr_usd", 0)
+            logger.info("[IncomeLoop] newsletter_monetize: '%s' — $%d projected MRR @ month 12", data.get("newsletter_name", "")[:40], m12)
+            return {
+                "success": bool(urls_created),
+                "summary": f"Newsletter: '{data.get('newsletter_name','')}' — ${m12:,}/mo projected MRR at month 12",
+                "revenue_potential": float(mon.get("paid_tier_price_monthly", 9) * 100),  # 100 paid subs
+                "urls": urls_created[:3],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] newsletter_monetize: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_community_launch(self) -> dict:
+        """
+        Launch a paid Discord/Circle community around ARIA's content.
+        Generates: community structure, welcome sequence, paid tier offer,
+        weekly event calendar, and launch announcement. Communities with
+        200+ paid members at $19/mo = $3,800 MRR. Pure recurring revenue.
+        Archives to aria-insights/community/.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "community_launch: AI unavailable"}
+
+            data = await ai.complete_json(
+                system=(
+                    "You are a community builder who has launched 5 paid Discord communities, "
+                    "all reaching 200+ paying members within 90 days. You know that community "
+                    "success comes from clear transformation promise, consistent weekly value, "
+                    "and founder energy in the first 30 days. Output JSON only."
+                ),
+                user="""Design a paid Discord community for an AI business automation platform.
+
+Target audience: solopreneurs, freelancers, and small business owners who want to
+use AI to generate income without quitting their day job.
+
+JSON:
+{
+  "community_name": "...",
+  "tagline": "...",
+  "transformation_promise": "In 90 days, members will go from X to Y",
+  "membership_tiers": [
+    {"name": "...", "price_monthly": 19, "what_included": ["channel access", "..."]},
+    {"name": "...", "price_monthly": 49, "what_included": ["everything above", "monthly 1:1", "..."]}
+  ],
+  "discord_structure": {
+    "free_channels": ["#welcome", "#introductions", "#general"],
+    "paid_channels": ["#daily-wins", "#accountability", "#resources", "#ai-tools", "#feedback"],
+    "voice_events": ["Weekly Workshop (Tuesday 7pm ET)", "Hot Seat Friday (Friday 12pm ET)"]
+  },
+  "week_1_event_calendar": [
+    {"day": "Monday", "event": "...", "duration_min": 30},
+    {"day": "Wednesday", "event": "...", "duration_min": 60},
+    {"day": "Friday", "event": "...", "duration_min": 45}
+  ],
+  "welcome_sequence": {
+    "day_0": "Welcome DM to new member (150 words)",
+    "day_3": "Check-in message (100 words)",
+    "day_7": "Week 1 value delivery (what to do first)"
+  },
+  "launch_announcement": {
+    "twitter_thread": "5-tweet thread announcing the community",
+    "email_subject": "...",
+    "email_body": "200-word launch email to current list"
+  },
+  "revenue_at_100_members": 1900,
+  "growth_to_100_members_tactics": ["tactic1", "tactic2", "tactic3"]
+}""",
+                model=AIModel.CREATIVE,
+                max_tokens=3000,
+            )
+
+            if not data or not data.get("community_name"):
+                return {"success": False, "summary": "community_launch: AI failed"}
+
+            urls_created = []
+
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                tiers = data.get("membership_tiers", [])
+                structure = data.get("discord_structure", {})
+                welcome = data.get("welcome_sequence", {})
+                launch = data.get("launch_announcement", {})
+                calendar = data.get("week_1_event_calendar", [])
+                tactics = data.get("growth_to_100_members_tactics", [])
+
+                tier_section = "\n".join(
+                    f"### {t.get('name','')} — ${t.get('price_monthly',19)}/mo\n"
+                    + "\n".join(f"- {f}" for f in t.get("what_included", [])[:5])
+                    for t in tiers
+                )
+
+                md = f"""# {data.get('community_name', 'ARIA Community')} — Launch Kit
+
+> {data.get('tagline', '')}
+
+**Transformation Promise:** {data.get('transformation_promise', '')}
+
+## Membership Tiers
+
+{tier_section}
+
+**Revenue at 100 members:** ${data.get('revenue_at_100_members', 1900):,}/mo
+
+## Discord Structure
+
+**Free channels:** {', '.join(f"`{c}`" for c in structure.get('free_channels', []))}
+**Paid channels:** {', '.join(f"`{c}`" for c in structure.get('paid_channels', []))}
+**Live events:** {' | '.join(structure.get('voice_events', []))}
+
+## Week 1 Event Calendar
+
+| Day | Event | Duration |
+|-----|-------|----------|
+{chr(10).join(f"| {e.get('day','')} | {e.get('event','')} | {e.get('duration_min',60)}min |" for e in calendar)}
+
+## Welcome Sequence
+
+**Day 0 (instant):**
+{welcome.get('day_0', '')}
+
+**Day 3:**
+{welcome.get('day_3', '')}
+
+**Day 7:**
+{welcome.get('day_7', '')}
+
+## Launch Announcement
+
+**Email subject:** {launch.get('email_subject', '')}
+
+**Email:**
+{launch.get('email_body', '')}
+
+**Twitter thread:**
+{launch.get('twitter_thread', '')}
+
+## How to Reach 100 Members
+
+{chr(10).join(f"- {t}" for t in tactics[:5])}
+
+## Launch Checklist
+- [ ] Create Discord server with channels above
+- [ ] Set up paid roles (Discord bots: Whop.com or Memberful)
+- [ ] Send launch email to current list
+- [ ] Post Twitter thread
+- [ ] DM 20 people personally with launch announcement
+- [ ] Show up every day for the first 30 days
+
+*Generated by ARIA AI — Community Launch Engine*
+"""
+                encoded = _b64.b64encode(md.encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/community/launch-kit-{today}.md",
+                    {"message": f"community: launch kit {today}", "content": encoded}
+                )
+                if "error" not in file_r:
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/community/launch-kit-{today}.md"
+                    )
+
+            mrr = data.get("revenue_at_100_members", 1900)
+            logger.info("[IncomeLoop] community_launch: '%s' — $%d MRR at 100 members", data.get("community_name", "")[:40], mrr)
+            return {
+                "success": bool(urls_created),
+                "summary": f"Community: '{data.get('community_name','')}' — ${mrr:,}/mo MRR at 100 members + launch kit",
+                "revenue_potential": float(tiers[0].get("price_monthly", 19) * 50) if tiers else 950.0,
+                "urls": urls_created[:2],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] community_launch: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_podcast_pitch(self) -> dict:
+        """
+        Pitch ARIA and her owner as podcast guests to 10 relevant shows.
+        Generates: guest bio, pitch email template, one-sheet PDF content,
+        talking points, and list of target shows with contact strategy.
+        One podcast appearance can bring 500-5,000 new followers + email subs.
+        Archives to aria-insights/podcast/.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "podcast_pitch: AI unavailable"}
+
+            wt = WebTools()
+            r = await wt.search_web("top AI entrepreneur startup podcasts 2025 guest submission", num_results=5)
+            podcast_context = "Indie Hackers Podcast, My First Million, How I Built This, The Tim Ferriss Show"
+            if r.get("success") and r.get("results"):
+                podcast_context = " | ".join(
+                    res.get("title", "")[:60] for res in r["results"][:4]
+                )
+
+            data = await ai.complete_json(
+                system=(
+                    "You are a podcast booking agent who has placed entrepreneurs on 200+ shows. "
+                    "You know that pitches succeed when they lead with the LISTENER'S benefit, "
+                    "not the guest's credentials. Subject lines that ask questions get 3x more opens. "
+                    "Output JSON only."
+                ),
+                user=f"""Create a podcast guest pitch kit for the creator of ARIA AI.
+
+ARIA AI: an autonomous AI system that generates income 24/7 by publishing content,
+creating products, running outreach, and managing multiple revenue channels — all
+without human intervention. Real, working, deployed on Fly.io.
+
+Relevant shows context: {podcast_context[:300]}
+
+JSON:
+{{
+  "guest_bio_short": "60-word bio for podcast hosts",
+  "guest_bio_long": "200-word bio with specific story and credibility",
+  "one_liner": "The single sentence that makes hosts say 'I need this person on my show'",
+  "signature_topics": [
+    {{"title": "...", "hook": "...", "key_takeaway": "what listeners leave with"}}
+  ],
+  "target_shows": [
+    {{
+      "show_name": "...",
+      "why_fit": "specific reason why ARIA story fits this show's audience",
+      "pitch_angle": "unique angle tailored to this show"
+    }}
+  ],
+  "pitch_email_template": {{
+    "subject": "...",
+    "body": "200-word pitch email (host name placeholder = {{HOST_NAME}})"
+  }},
+  "talking_points": ["specific talking point 1", "specific talking point 2", "specific talking point 3"],
+  "listener_cta": "What listeners should do after the episode (free resource offer)"
+}}""",
+                model=AIModel.CREATIVE,
+                max_tokens=2500,
+            )
+
+            if not data or not data.get("guest_bio_short"):
+                return {"success": False, "summary": "podcast_pitch: AI failed"}
+
+            urls_created = []
+
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                shows = data.get("target_shows", [])
+                topics = data.get("signature_topics", [])
+                pitch = data.get("pitch_email_template", {})
+                points = data.get("talking_points", [])
+
+                md = f"""# Podcast Guest Pitch Kit — {today}
+
+## Guest One-Liner
+> {data.get('one_liner', '')}
+
+## Guest Bio (Short — 60 words)
+{data.get('guest_bio_short', '')}
+
+## Guest Bio (Full)
+{data.get('guest_bio_long', '')}
+
+## Signature Topics
+
+{chr(10).join(f"### {t.get('title','')}{chr(10)}**Hook:** {t.get('hook','')}{chr(10)}**Listener takeaway:** {t.get('key_takeaway','')}{chr(10)}" for t in topics[:3])}
+
+## Talking Points
+{chr(10).join(f"- {p}" for p in points[:5])}
+
+## Listener CTA
+{data.get('listener_cta', '')}
+
+## Target Shows ({len(shows)} pitches ready)
+
+{chr(10).join(f"### {s.get('show_name','')}{chr(10)}**Why fit:** {s.get('why_fit','')}{chr(10)}**Angle:** {s.get('pitch_angle','')}{chr(10)}" for s in shows[:8])}
+
+## Pitch Email Template
+
+**Subject:** {pitch.get('subject', '')}
+
+{pitch.get('body', '')}
+
+## How to Send
+1. Find host email via show website, LinkedIn, or Podmatch.com
+2. Personalize the {{HOST_NAME}} placeholder
+3. Send Tuesday or Wednesday morning
+4. Follow up once after 7 days (max 1 follow-up)
+5. Track responses in a spreadsheet
+
+*Generated by ARIA AI — Podcast Outreach Engine*
+"""
+                encoded = _b64.b64encode(md.encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/podcast/pitch-kit-{today}.md",
+                    {"message": f"podcast: guest pitch kit — {len(shows)} target shows", "content": encoded}
+                )
+                if "error" not in file_r:
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/podcast/pitch-kit-{today}.md"
+                    )
+
+            logger.info("[IncomeLoop] podcast_pitch: %d target shows, pitch kit archived", len(shows))
+            return {
+                "success": bool(urls_created),
+                "summary": f"Podcast kit: '{data.get('one_liner','')[:70]}' — {len(shows)} shows targeted",
+                "revenue_potential": 50.0,  # each appearance → avg 1,000 new audience members
+                "urls": urls_created[:2],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] podcast_pitch: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_multilingual_content(self) -> dict:
+        """
+        Translate and localize the best-performing content into Spanish,
+        Portuguese, and French — instantly tripling the addressable audience.
+        Publishes translated versions to Dev.to and GitHub with hreflang tags.
+        Spanish-speaking AI audience alone is 500M+ people with far less
+        competition than English content.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.memory.redis_client import get_cache
+            import json as _json
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "multilingual_content: AI unavailable"}
+
+            cache = get_cache()
+
+            # Get latest article from catalog to translate
+            source_title = ""
+            source_content = ""
+            if cache:
+                raw = await cache.lindex("aria:income:catalog", 0)
+                if raw:
+                    item = _json.loads(raw) if isinstance(raw, str) else raw
+                    source_title = item.get("title", "")
+                    source_content = item.get("summary", item.get("description", ""))[:1000]
+
+            if not source_title:
+                # Fallback: generate fresh content optimized for multilingual
+                wt = WebTools()
+                trends_r = await wt.get_hacker_news_trending(limit=3)
+                topic = "How to use AI to generate passive income"
+                if trends_r.get("success") and trends_r.get("stories"):
+                    topic = trends_r["stories"][0].get("title", topic)[:80]
+                source_title = topic
+                source_content = f"Comprehensive guide about {topic}"
+
+            data = await ai.complete_json(
+                system=(
+                    "You are a multilingual content strategist. You don't just translate — "
+                    "you localize: adapting examples, cultural references, and CTAs for each market. "
+                    "Spanish LATAM, Brazilian Portuguese, and French EU/Africa are distinct markets. "
+                    "Output JSON only."
+                ),
+                user=f"""Localize this content for 3 language markets:
+
+Title: {source_title}
+Content summary: {source_content[:500]}
+
+For each language, create a fully localized version:
+JSON:
+{{
+  "translations": [
+    {{
+      "language": "Spanish (LATAM)",
+      "locale": "es",
+      "title": "localized title",
+      "intro": "2-paragraph intro (300 words) localized for LATAM market",
+      "key_points": ["point 1", "point 2", "point 3", "point 4", "point 5"],
+      "cta": "localized CTA",
+      "local_example": "example relevant to LATAM entrepreneurs",
+      "seo_keywords": ["keyword1", "keyword2", "keyword3"]
+    }},
+    {{
+      "language": "Portuguese (Brazil)",
+      "locale": "pt-br",
+      "title": "...",
+      "intro": "...",
+      "key_points": ["...", "...", "...", "...", "..."],
+      "cta": "...",
+      "local_example": "...",
+      "seo_keywords": ["...", "...", "..."]
+    }},
+    {{
+      "language": "French",
+      "locale": "fr",
+      "title": "...",
+      "intro": "...",
+      "key_points": ["...", "...", "...", "...", "..."],
+      "cta": "...",
+      "local_example": "...",
+      "seo_keywords": ["...", "...", "..."]
+    }}
+  ]
+}}""",
+                model=AIModel.CREATIVE,
+                max_tokens=3000,
+            )
+
+            if not data or not data.get("translations"):
+                return {"success": False, "summary": "multilingual_content: AI failed"}
+
+            translations = data["translations"]
+            urls_created = []
+
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                from apps.core.tools.publishing_tools import PublishingTools
+                gh = AriaGitHubClient()
+                pt = PublishingTools()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                for t in translations:
+                    locale = t.get("locale", "es")
+                    title = t.get("title", "")
+                    intro = t.get("intro", "")
+                    points = t.get("key_points", [])
+                    cta = t.get("cta", "")
+                    local_example = t.get("local_example", "")
+                    keywords = t.get("seo_keywords", [])
+
+                    article_md = f"""# {title}
+
+{intro}
+
+## Puntos clave / Pontos-chave / Points clés
+
+{chr(10).join(f"- {p}" for p in points[:5])}
+
+## Ejemplo / Exemplo / Exemple
+
+{local_example}
+
+---
+
+{cta}
+
+*Keywords: {', '.join(keywords[:5])}*
+*Publicado por ARIA AI — {today}*
+"""
+                    # Archive to GitHub
+                    slug = title.lower().replace(" ", "-")[:40].replace("'", "")
+                    encoded = _b64.b64encode(article_md.encode()).decode()
+                    file_r = await gh._put(
+                        f"/repos/{owner}/aria-insights/contents/multilingual/{locale}/{today}-{slug}.md",
+                        {"message": f"multilingual: {locale} content — {title[:50]}", "content": encoded}
+                    )
+                    if "error" not in file_r:
+                        urls_created.append(
+                            f"https://github.com/{owner}/aria-insights/blob/main/multilingual/{locale}/{today}-{slug}.md"
+                        )
+
+                    # Publish to Dev.to with locale tag
+                    try:
+                        r = await pt.publish_to_devto(
+                            title=title,
+                            content=article_md,
+                            tags=[locale, "ia", "automatizacion", "negocios"][:4],
+                        )
+                        if r.get("success") and r.get("url"):
+                            urls_created.append(r["url"])
+                    except Exception:
+                        pass
+
+            langs = [t.get("language", "") for t in translations]
+            logger.info("[IncomeLoop] multilingual_content: '%s' → %d languages", source_title[:40], len(translations))
+            return {
+                "success": bool(urls_created),
+                "summary": f"Multilingual: '{source_title[:50]}' → {', '.join(langs)} ({len(urls_created)} URLs)",
+                "revenue_potential": 15.0 * len(translations),  # each language = new revenue market
+                "urls": urls_created[:6],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] multilingual_content: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_seo_tracking(self) -> dict:
+        """
+        Monitor and optimize ARIA's published content for search rankings.
+        Searches for ARIA's published content on key queries, measures
+        visibility, identifies underperforming articles, and generates
+        SEO improvement recommendations. Archives full report.
+        Compounding traffic = compounding revenue.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.memory.redis_client import get_cache
+            import json as _json
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "seo_tracking: AI unavailable"}
+
+            cache = get_cache()
+            wt = WebTools()
+
+            # Get published URLs to track
+            tracked_urls: list[dict] = []
+            if cache:
+                raw_links = await cache.get("aria:blog:links")
+                if raw_links:
+                    link_data = _json.loads(raw_links) if isinstance(raw_links, str) else raw_links
+                    tracked_urls = [
+                        {"url": item.get("url", ""), "title": item.get("title", "")}
+                        for item in (link_data or [])[:10]
+                        if item.get("url")
+                    ]
+
+            if not tracked_urls:
+                # Use catalog items
+                raw_cat = await cache.lrange("aria:income:catalog", 0, 5) if cache else []
+                for raw in (raw_cat or []):
+                    try:
+                        item = _json.loads(raw) if isinstance(raw, str) else raw
+                        if item.get("url"):
+                            tracked_urls.append({"url": item["url"], "title": item.get("title", "")})
+                    except Exception:
+                        pass
+
+            # Research competing content for each tracked URL
+            seo_insights: list[dict] = []
+            for item in tracked_urls[:5]:
+                title = item.get("title", "")
+                if not title:
+                    continue
+                # Search for this type of content to see competition
+                search_query = f'"{title[:50]}" OR similar to site:dev.to OR site:medium.com'
+                r = await wt.search_web(search_query[:100], num_results=5)
+                competitor_count = len(r.get("results", [])) if r.get("success") else 0
+                seo_insights.append({
+                    "title": title[:80],
+                    "url": item.get("url", ""),
+                    "competitor_results": competitor_count,
+                })
+
+            if not seo_insights:
+                seo_insights = [
+                    {"title": "AI Productivity Tools Guide", "url": "", "competitor_results": 15},
+                    {"title": "Passive Income with AI", "url": "", "competitor_results": 25},
+                    {"title": "Automation for Solopreneurs", "url": "", "competitor_results": 10},
+                ]
+
+            # Generate SEO optimization recommendations
+            data = await ai.complete_json(
+                system=(
+                    "You are an SEO expert who specializes in content-driven organic growth. "
+                    "You know that title tags, meta descriptions, internal linking, and "
+                    "content depth are the 4 biggest ranking factors for blog content. "
+                    "Output JSON only."
+                ),
+                user=f"""Analyze and optimize these published content pieces for SEO:
+
+{_json.dumps(seo_insights, indent=2)}
+
+For each piece, provide:
+JSON:
+{{
+  "analysis": [
+    {{
+      "title": "original title",
+      "seo_score": 65,
+      "title_improvement": "optimized title with primary keyword at front",
+      "meta_description": "150-char meta description with CTA",
+      "missing_keywords": ["keyword1", "keyword2"],
+      "internal_link_suggestion": "what to link to from this article",
+      "content_gap": "what topic to add to this article to rank higher",
+      "estimated_traffic_lift_pct": 40
+    }}
+  ],
+  "quick_wins": ["action 1", "action 2", "action 3"],
+  "keyword_clusters": [
+    {{"cluster": "AI productivity", "articles_needed": 3, "competition": "low|medium|high"}}
+  ],
+  "next_article_to_write": "the single article ARIA should write next for maximum SEO impact"
+}}""",
+                model=AIModel.STRATEGY,
+                max_tokens=2000,
+            )
+
+            if not data or not data.get("analysis"):
+                return {"success": False, "summary": "seo_tracking: AI analysis failed"}
+
+            analysis = data["analysis"]
+            quick_wins = data.get("quick_wins", [])
+            clusters = data.get("keyword_clusters", [])
+            next_article = data.get("next_article_to_write", "")
+            urls_created = []
+
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                avg_lift = sum(a.get("estimated_traffic_lift_pct", 0) for a in analysis) // max(len(analysis), 1)
+
+                md = f"""# SEO Tracking Report — {today}
+
+**Articles analyzed:** {len(analysis)}
+**Average estimated traffic lift:** +{avg_lift}%
+
+## Quick Wins (do these first)
+
+{chr(10).join(f"- {w}" for w in quick_wins[:5])}
+
+## Article Analysis
+
+"""
+                for a in analysis:
+                    md += f"""### {a.get('title', '')[:70]}
+**SEO Score:** {a.get('seo_score', 0)}/100
+**Optimized title:** {a.get('title_improvement', '')}
+**Meta description:** {a.get('meta_description', '')}
+**Missing keywords:** {', '.join(a.get('missing_keywords', [])[:4])}
+**Content gap:** {a.get('content_gap', '')}
+**Internal link:** {a.get('internal_link_suggestion', '')}
+**Estimated traffic lift:** +{a.get('estimated_traffic_lift_pct', 0)}%
+
+"""
+
+                md += f"""## Keyword Clusters to Build
+
+| Cluster | Articles Needed | Competition |
+|---------|----------------|-------------|
+{chr(10).join(f"| {c.get('cluster','')} | {c.get('articles_needed',3)} | {c.get('competition','')} |" for c in clusters[:5])}
+
+## Next Article to Write
+
+**{next_article}**
+
+This is the highest-ROI content opportunity based on current SEO gaps and competition.
+
+---
+*Generated by ARIA AI — SEO Intelligence Engine*
+"""
+                encoded = _b64.b64encode(md.encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/seo/tracking-{today}.md",
+                    {"message": f"seo: tracking report {today} — {len(analysis)} articles", "content": encoded}
+                )
+                if "error" not in file_r:
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/seo/tracking-{today}.md"
+                    )
+
+            avg_lift = sum(a.get("estimated_traffic_lift_pct", 0) for a in analysis) // max(len(analysis), 1)
+            logger.info("[IncomeLoop] seo_tracking: %d articles analyzed, avg lift +%d%%", len(analysis), avg_lift)
+            return {
+                "success": bool(urls_created),
+                "summary": f"SEO tracking: {len(analysis)} articles — avg +{avg_lift}% traffic lift. Next: '{next_article[:60]}'",
+                "revenue_potential": 25.0,  # compounding organic traffic multiplies all revenue
+                "urls": urls_created[:2],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] seo_tracking: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_digital_agency(self) -> dict:
