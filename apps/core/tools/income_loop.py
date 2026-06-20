@@ -60,8 +60,8 @@ STRATEGIES = [
     ("course_builder",           3),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        4),   # build own affiliate program, recruit promoters
     ("opportunity_scan",         5),
-    ("github_publish",           6),   # works with only GITHUB_TOKEN — always active
-    ("content_repurposer",       6),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
+    ("github_publish",           5),   # works with only GITHUB_TOKEN — always active
+    ("content_repurposer",       4),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               4),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          2),
     ("email_campaign",           2),
@@ -84,6 +84,7 @@ STRATEGIES = [
     ("twitter_thread",           3),   # direct Twitter API thread via api_publisher (real posts)
     ("linkedin_post",            3),   # direct LinkedIn API post via api_publisher (real posts)
     ("reddit_organic",           3),   # subreddit posts → massive organic traffic → affiliate rev
+    ("stripe_checkout",          3),   # real Stripe payment link for instant revenue
 ]
 
 
@@ -107,10 +108,12 @@ class IncomeLoop:
     """
 
     def __init__(self) -> None:
-        self._running    = False
-        self._task       = None
-        self._cycle      = 0
-        self._niche_idx  = 0    # Round-robin through niche catalog (loaded from Redis in first cycle)
+        self._running         = False
+        self._task            = None
+        self._cycle           = 0
+        self._niche_idx       = 0    # Round-robin through niche catalog (loaded from Redis in first cycle)
+        self._adaptive_weights: dict[str, float] = {}   # updated from Redis every 10 cycles
+        self._weights_refresh_cycle = 0
 
     # ── Control ─────────────────────────────────────────────────────
 
@@ -188,6 +191,11 @@ class IncomeLoop:
 
         await self._save_result(result)
 
+        # Refresh adaptive weights every 10 cycles
+        if self._cycle - self._weights_refresh_cycle >= 10:
+            self._weights_refresh_cycle = self._cycle
+            asyncio.create_task(self._refresh_adaptive_weights())
+
         # Notify on wins
         if result.success and result.urls_created:
             await self._notify_win(result)
@@ -207,10 +215,27 @@ class IncomeLoop:
         return result
 
     def _pick_strategy(self) -> str:
-        """Weighted random strategy selection."""
+        """Weighted random strategy selection — uses adaptive weights when available."""
         names   = [s[0] for s in STRATEGIES]
-        weights = [s[1] for s in STRATEGIES]
+        if self._adaptive_weights:
+            # Merge: adaptive weights override defaults where available
+            weights = [self._adaptive_weights.get(n, w) for n, w in STRATEGIES]
+        else:
+            weights = [s[1] for s in STRATEGIES]
         return random.choices(names, weights=weights, k=1)[0]
+
+    async def _refresh_adaptive_weights(self) -> None:
+        """Load optimizer weights from Redis (written by strategy_optimizer objective)."""
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if cache:
+                raw = await cache.get("aria:income:adaptive_weights")
+                if raw and isinstance(raw, dict):
+                    self._adaptive_weights = {k: float(v) for k, v in raw.items()}
+                    logger.info("[IncomeLoop] Adaptive weights loaded (%d strategies)", len(self._adaptive_weights))
+        except Exception:
+            pass
 
     async def _announce_product_on_blog(self, result: CycleResult) -> None:
         """Write a blog post announcing a newly created product — drives organic traffic to it."""
@@ -314,6 +339,8 @@ JSON:
             return await self._exec_linkedin_post()
         elif strategy == "reddit_organic":
             return await self._exec_reddit_organic()
+        elif strategy == "stripe_checkout":
+            return await self._exec_stripe_checkout()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -4921,6 +4948,194 @@ JSON:
             logger.error("[IncomeLoop] reddit_organic: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
+    async def _exec_stripe_checkout(self) -> dict:
+        """
+        Create a real Stripe product + payment link for instant revenue.
+        Falls back to LemonSqueezy if LEMONSQUEEZY_API_KEY is set.
+        Falls back to GitHub product announcement when no payment processor is available.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "stripe_checkout: AI unavailable"}
+
+            wt = WebTools()
+            r = await wt.search_web("best selling digital products entrepreneurs 2025 AI tools", num_results=5)
+            inspiration = "AI Automation Blueprint: 10 tools to 10x your output"
+            if r.get("success") and r.get("results"):
+                inspiration = r["results"][0].get("title", inspiration)[:100]
+
+            # Generate a compelling product
+            product_data = await ai.complete_json(
+                system=(
+                    "You are a digital product expert who creates high-converting offers. "
+                    "Create a product that solves a real pain and is priced to sell. "
+                    "Output JSON only."
+                ),
+                user=f"""Create a digital product inspired by: "{inspiration}"
+
+Target: entrepreneurs and small business owners who want to automate and earn more.
+
+JSON:
+{{
+  "name": "compelling product name (max 60 chars)",
+  "tagline": "one-line value proposition (max 100 chars)",
+  "description": "product description for payment page (200-300 words). Cover the pain it solves, what's included, and who it's for.",
+  "price_cents": 2700,
+  "currency": "usd",
+  "features": ["feature 1", "feature 2", "feature 3", "feature 4", "feature 5"],
+  "category": "automation|productivity|marketing|finance|content"
+}}""",
+                model=AIModel.FAST,
+                max_tokens=1000,
+            )
+
+            if not product_data:
+                return {"success": False, "summary": "stripe_checkout: AI failed to generate product"}
+
+            product_name = product_data.get("name", "AI Automation Blueprint")
+            product_desc = product_data.get("description", "")
+            price_cents  = int(product_data.get("price_cents", 2700))
+            tagline      = product_data.get("tagline", "")
+            features     = product_data.get("features", [])
+
+            urls_created = []
+            platform_used = ""
+
+            # Try Stripe first
+            stripe_key = getattr(settings, "STRIPE_SECRET_KEY", None)
+            if stripe_key:
+                try:
+                    import httpx as _httpx
+                    async with _httpx.AsyncClient(timeout=20.0) as _client:
+                        # Create Stripe product
+                        prod_r = await _client.post(
+                            "https://api.stripe.com/v1/products",
+                            data={"name": product_name, "description": product_desc[:500]},
+                            auth=(stripe_key, ""),
+                        )
+                        if prod_r.status_code == 200:
+                            stripe_product_id = prod_r.json().get("id", "")
+                            # Create price
+                            price_r = await _client.post(
+                                "https://api.stripe.com/v1/prices",
+                                data={
+                                    "product": stripe_product_id,
+                                    "unit_amount": str(price_cents),
+                                    "currency": "usd",
+                                },
+                                auth=(stripe_key, ""),
+                            )
+                            if price_r.status_code == 200:
+                                stripe_price_id = price_r.json().get("id", "")
+                                # Create payment link
+                                link_r = await _client.post(
+                                    "https://api.stripe.com/v1/payment_links",
+                                    data={f"line_items[0][price]": stripe_price_id, "line_items[0][quantity]": "1"},
+                                    auth=(stripe_key, ""),
+                                )
+                                if link_r.status_code == 200:
+                                    checkout_url = link_r.json().get("url", "")
+                                    if checkout_url:
+                                        urls_created.append(checkout_url)
+                                        platform_used = "Stripe"
+                except Exception as _se:
+                    logger.debug("[IncomeLoop] Stripe checkout: %s", _se)
+
+            # Try LemonSqueezy if Stripe failed
+            if not urls_created:
+                ls_key  = getattr(settings, "LEMONSQUEEZY_API_KEY", None)
+                ls_store = getattr(settings, "LEMONSQUEEZY_STORE_ID", None)
+                if ls_key and ls_store:
+                    try:
+                        from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+                        ls = LemonSqueezyTools()
+                        ls_r = await ls.create_product(
+                            name=product_name,
+                            description=product_desc,
+                            price_cents=price_cents,
+                            store_id=ls_store,
+                        )
+                        if ls_r.get("success") and ls_r.get("url"):
+                            urls_created.append(ls_r["url"])
+                            platform_used = "LemonSqueezy"
+                    except Exception as _le:
+                        logger.debug("[IncomeLoop] LemonSqueezy: %s", _le)
+
+            # Try Gumroad as last resort
+            if not urls_created:
+                if settings.GUMROAD_TOKEN:
+                    try:
+                        from apps.core.tools.gumroad_tools import GumroadTools
+                        gumroad = GumroadTools()
+                        gr = await gumroad.create_product(
+                            name=product_name,
+                            description=product_desc + "\n\n" + "\n".join(f"✅ {f}" for f in features[:5]),
+                            price_cents=price_cents,
+                            tags=["AI", "automation", "digital", product_data.get("category", "productivity")],
+                        )
+                        if gr.get("success") and gr.get("url"):
+                            urls_created.append(gr["url"])
+                            platform_used = "Gumroad"
+                    except Exception as _ge:
+                        logger.debug("[IncomeLoop] Gumroad: %s", _ge)
+
+            # Always publish product to GitHub with payment link
+            if settings.GITHUB_TOKEN:
+                try:
+                    from apps.core.tools.github_client import AriaGitHubClient
+                    import base64 as _b64
+                    from datetime import datetime, timezone
+                    gh = AriaGitHubClient()
+                    owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    slug  = product_name[:35].lower().replace(" ", "-").replace("'", "")
+                    payment_link = urls_created[0] if urls_created else ""
+                    features_md = "\n".join(f"- ✅ {f}" for f in features[:6])
+                    md = (
+                        f"# {product_name}\n\n"
+                        f"*{tagline}*\n\n"
+                        f"**Price: ${price_cents/100:.0f}**"
+                        + (f" | [Buy Now →]({payment_link})" if payment_link else "")
+                        + f"\n\n{product_desc}\n\n"
+                        f"## What's Included\n\n{features_md}\n\n"
+                        f"---\n\n*[Get instant access]({payment_link if payment_link else '#'})*\n"
+                        f"*Created by [ARIA AI](https://github.com/{owner}/aria-portfolio)*\n"
+                    )
+                    encoded = _b64.b64encode(md.encode()).decode()
+                    file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/products/{today}-{slug}.md", {
+                        "message": f"product: {product_name[:60]}",
+                        "content": encoded,
+                    })
+                    if "error" not in file_r:
+                        gh_url = f"https://github.com/{owner}/aria-insights/blob/main/products/{today}-{slug}.md"
+                        urls_created.append(gh_url)
+                except Exception:
+                    pass
+
+            if not urls_created:
+                return {
+                    "success": False,
+                    "summary": f"stripe_checkout: product '{product_name}' created but no payment processor configured. Add STRIPE_SECRET_KEY, LEMONSQUEEZY_API_KEY, or GUMROAD_TOKEN."
+                }
+
+            price_display = f"${price_cents/100:.0f}"
+            platform_note = f" via {platform_used}" if platform_used else " (GitHub only — add STRIPE_SECRET_KEY for live checkout)"
+            logger.info("[IncomeLoop] stripe_checkout: '%s' %s %s", product_name, price_display, platform_used)
+            return {
+                "success": True,
+                "summary": f"Product created: '{product_name}' at {price_display}{platform_note}",
+                "revenue_potential": float(price_cents / 100) * 5,  # estimated 5 sales
+                "urls": urls_created[:4],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] stripe_checkout: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
     def check_credentials(self) -> dict:
         """Returns which income channels are configured vs. missing."""
         channels = {
@@ -5037,6 +5252,11 @@ JSON:
                 ),
                 "keys_needed": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_REFRESH_TOKEN", "REDDIT_USERNAME"],
                 "revenue_channels": ["organic Reddit traffic", "subreddit reach", "affiliate link traffic"],
+            },
+            "stripe": {
+                "active": bool(getattr(settings, "STRIPE_SECRET_KEY", None)),
+                "keys_needed": ["STRIPE_SECRET_KEY"],
+                "revenue_channels": ["real checkout links", "payment processing", "product sales"],
             },
         }
         active   = {k: v for k, v in channels.items() if v["active"]}

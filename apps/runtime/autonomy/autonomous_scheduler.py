@@ -418,6 +418,15 @@ class AutonomousScheduler:
                 handler_key="social_organic",
                 next_run_ts=now + 3600 * 2,  # first run 2h after startup
             ),
+            StrategicObjective(
+                obj_id="strategy_optimizer",
+                name="Strategy Self-Optimizer",
+                description="Reads per-strategy ROI data from Redis every 24h and updates adaptive weights — ARIA learns what makes the most money",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=24.0,
+                handler_key="strategy_optimizer",
+                next_run_ts=now + 3600 * 23,  # first optimization after 23h (enough data)
+            ),
         ]
 
 
@@ -992,12 +1001,80 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             "value_usd": total_value,
         }
 
+    async def _strategy_optimizer(obj: StrategicObjective) -> dict:
+        """
+        Every 24h: reads per-strategy Redis stats, computes ROI scores,
+        derives new weights, and stores them in Redis for the income loop
+        to use on next pick. TRUE self-learning — ARIA optimizes what it does.
+        """
+        from apps.core.tools.income_loop import STRATEGIES
+        try:
+            from apps.core.memory.redis_client import get_cache
+            _cache = get_cache()
+            if not _cache:
+                return {"success": False, "summary": "strategy_optimizer: no Redis", "value_usd": 0.0}
+
+            strategy_stats: list[dict] = []
+            for name, default_weight in STRATEGIES:
+                runs = int(await _cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                wins = int(await _cache.get(f"aria:income:strategy:{name}:successes") or 0)
+                raw_rev = await _cache.get(f"aria:income:strategy:{name}:revenue")
+                revenue = float(raw_rev) if raw_rev else 0.0
+                success_rate = wins / max(runs, 1)
+                rev_per_run  = revenue / max(runs, 1)
+                # ROI score: 40% success rate + 60% revenue per run (normalized to $10)
+                roi_score = (success_rate * 0.4) + min(rev_per_run / 10.0, 1.0) * 0.6
+                strategy_stats.append({
+                    "name": name,
+                    "runs": runs,
+                    "roi_score": roi_score,
+                    "default_weight": default_weight,
+                    "revenue": revenue,
+                })
+
+            # Only optimize strategies that have enough data (min 3 runs)
+            with_data    = [s for s in strategy_stats if s["runs"] >= 3]
+            without_data = [s for s in strategy_stats if s["runs"] < 3]
+
+            if not with_data:
+                return {"success": False, "summary": "strategy_optimizer: not enough data yet (need 3+ runs per strategy)", "value_usd": 0.0}
+
+            # Compute adaptive weights: scale ROI scores to sum=100
+            total_default_weight = sum(s["default_weight"] for s in strategy_stats)
+            # For strategies WITH data: use ROI score × default_weight
+            # For strategies WITHOUT data: use default weight (exploration)
+            raw_weights: dict[str, float] = {}
+            for s in with_data:
+                raw_weights[s["name"]] = max(s["roi_score"] * s["default_weight"] * 2.0, 0.5)
+            for s in without_data:
+                raw_weights[s["name"]] = float(s["default_weight"])
+
+            # Normalize to sum=100
+            total_raw = sum(raw_weights.values())
+            if total_raw > 0:
+                normalized = {k: round(v / total_raw * 100, 2) for k, v in raw_weights.items()}
+            else:
+                normalized = {name: float(w) for name, w in STRATEGIES}
+
+            # Save to Redis
+            await _cache.set("aria:income:adaptive_weights", normalized, ttl_seconds=86400 * 7)
+
+            # Log top performers
+            top = sorted(with_data, key=lambda s: -s["roi_score"])[:5]
+            summary = "Optimizer: top=" + ", ".join(f"{s['name']}({s['roi_score']:.2f})" for s in top[:3])
+
+            return {"success": True, "summary": summary, "value_usd": 0.0}
+
+        except Exception as exc:
+            return {"success": False, "summary": f"strategy_optimizer error: {exc}", "value_usd": 0.0}
+
     scheduler.register_handler("daily_revenue_digest", _daily_revenue_digest)
     scheduler.register_handler("bundle_and_waitlist", _bundle_and_waitlist)
     scheduler.register_handler("challenge_day_sequencer", _challenge_day_sequencer)
     scheduler.register_handler("partner_outreach_cycle", _partner_outreach_cycle)
     scheduler.register_handler("proactive_analysis", _proactive_analysis)
     scheduler.register_handler("social_organic", _social_organic)
+    scheduler.register_handler("strategy_optimizer", _strategy_optimizer)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
