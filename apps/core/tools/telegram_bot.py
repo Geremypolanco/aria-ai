@@ -106,6 +106,9 @@ BOT_COMMANDS = [
     {"command": "traccion",    "description": "Ver stars/forks en GitHub — presencia en el mercado"},
     {"command": "gists",       "description": "Publicar snippets de código en GitHub Gists (backlinks dev)"},
     {"command": "sponsors",    "description": "Configurar GitHub Sponsors en todos los repos"},
+    {"command": "proyeccion",  "description": "Proyección de ingresos a 7 y 30 días"},
+    {"command": "saas",        "description": "Lanzar una micro-SaaS con pricing y API docs"},
+    {"command": "curso",       "description": "Crear mini-curso con syllabus completo y precio"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -297,6 +300,9 @@ class AriaTelegramBot:
             "/traccion":     "muéstrame la tracción en GitHub: stars, forks y presencia en el mercado usando get_github_traction",
             "/gists":        "publica snippets de código en GitHub Gists con CTAs usando run_income_cycle con strategy gist_blitz",
             "/sponsors":     "configura GitHub Sponsors en todos los repos de ARIA usando run_income_cycle con strategy github_sponsors_setup",
+            "/proyeccion":   "muéstrame la proyección de ingresos a 7 y 30 días basada en el rendimiento actual usando get_income_analytics",
+            "/saas":         "lanza una micro-SaaS con pricing y API docs usando run_income_cycle con strategy micro_saas",
+            "/curso":        "crea un mini-curso con syllabus completo y precio usando run_income_cycle con strategy course_builder",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):

@@ -707,6 +707,41 @@ async def api_income_analytics() -> dict:
         return {"error": str(exc)}
 
 
+@router.get("/income/projection", dependencies=[Depends(verify_api_key)])
+async def api_income_projection() -> dict:
+    """Revenue projection based on actual cycle performance."""
+    try:
+        from apps.core.tools.income_loop import INTERVAL_SECONDS
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            return {"error": "Redis unavailable"}
+        total_cycles   = int(await cache.get("aria:income:total_cycles") or 0)
+        total_urls     = int(await cache.get("aria:income:total_urls_published") or 0)
+        from apps.core.tools.income_loop import STRATEGIES
+        total_rev = 0.0
+        for name, _ in STRATEGIES:
+            raw_r = await cache.get(f"aria:income:strategy:{name}:revenue")
+            if raw_r:
+                total_rev += float(raw_r)
+        if total_cycles == 0:
+            return {"message": "No cycles yet — loop hasn't started", "projected_7d": 0, "projected_30d": 0}
+        cycles_per_day = (24 * 3600) / INTERVAL_SECONDS
+        rev_per_cycle  = total_rev / total_cycles
+        return {
+            "total_cycles": total_cycles,
+            "total_revenue_potential": round(total_rev, 2),
+            "revenue_per_cycle": round(rev_per_cycle, 4),
+            "cycles_per_day": round(cycles_per_day, 1),
+            "projected_7d": round(rev_per_cycle * cycles_per_day * 7, 2),
+            "projected_30d": round(rev_per_cycle * cycles_per_day * 30, 2),
+            "projected_90d": round(rev_per_cycle * cycles_per_day * 90, 2),
+            "total_urls_published": total_urls,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @router.get("/github/traction", dependencies=[Depends(verify_api_key)])
 async def api_github_traction() -> dict:
     """Monitor star/fork/watcher counts on ARIA's public repos."""

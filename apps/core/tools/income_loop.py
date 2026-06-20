@@ -54,15 +54,16 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",        10),
-    ("niche_rotator",           10),
-    ("product_factory",         10),
+    ("content_pipeline",         9),
+    ("niche_rotator",            8),
+    ("product_factory",          8),
+    ("course_builder",           8),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("opportunity_scan",         8),
     ("github_publish",           7),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       7),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
-    ("micro_saas",               6),   # full micro-SaaS product launch: README + API docs + pricing
-    ("shopify_listing",          5),
-    ("email_campaign",           5),
+    ("micro_saas",               5),   # full micro-SaaS product launch: README + API docs + pricing
+    ("shopify_listing",          4),
+    ("email_campaign",           4),
     ("affiliate_content",        5),   # review/comparison articles with affiliate links
     ("ebook_factory",            5),
     ("lead_magnet",              4),   # free resource funnel → email capture → upsell
@@ -273,6 +274,8 @@ JSON:
             return await self._exec_seo_optimizer()
         elif strategy == "content_repurposer":
             return await self._exec_content_repurposer()
+        elif strategy == "course_builder":
+            return await self._exec_course_builder()
         elif strategy == "micro_saas":
             return await self._exec_micro_saas()
         elif strategy == "gist_blitz":
@@ -2537,6 +2540,182 @@ Generate output using AI.
 
         except Exception as exc:
             logger.error("[IncomeLoop] micro_saas: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_course_builder(self) -> dict:
+        """
+        Build a complete mini-course outline and publish it as a GitHub repo.
+        Includes: course overview, module breakdowns, pricing, sales page copy.
+        Sellable on Gumroad/LemonSqueezy. GitHub version acts as a free preview.
+        Requires: GITHUB_TOKEN
+        """
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "course_builder: needs GITHUB_TOKEN"}
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            course_topics = [
+                ("AI Automation for Business Owners", "ai-automation-course", 97),
+                ("Build Your First SaaS in 30 Days", "saas-30days-course", 127),
+                ("Freelancing with AI Tools", "ai-freelance-course", 79),
+                ("SEO Mastery with AI in 2025", "ai-seo-course", 97),
+                ("No-Code AI Business Blueprint", "nocode-ai-course", 89),
+                ("Digital Products That Sell Themselves", "digital-products-course", 67),
+                ("Content Marketing Machine: AI Edition", "ai-content-course", 87),
+            ]
+
+            pick = course_topics[self._niche_idx % len(course_topics)]
+            title, slug, price = pick
+
+            course_data = await complete_json(
+                f"""Create a complete mini-course for: "{title}"
+Price: ${price}
+
+Return JSON:
+{{
+  "subtitle": "compelling subtitle under 80 chars",
+  "promise": "the ONE transformation this course delivers (under 30 words)",
+  "target_audience": "who exactly should buy this",
+  "modules": [
+    {{"number": 1, "title": "Module 1 Title", "duration": "45 min", "lessons": ["Lesson 1.1", "Lesson 1.2", "Lesson 1.3"]}},
+    {{"number": 2, "title": "Module 2 Title", "duration": "60 min", "lessons": ["Lesson 2.1", "Lesson 2.2"]}},
+    {{"number": 3, "title": "Module 3 Title", "duration": "50 min", "lessons": ["Lesson 3.1", "Lesson 3.2", "Lesson 3.3"]}},
+    {{"number": 4, "title": "Module 4 Title", "duration": "45 min", "lessons": ["Lesson 4.1", "Lesson 4.2"]}},
+    {{"number": 5, "title": "Module 5 Title", "duration": "30 min", "lessons": ["Lesson 5.1", "Lesson 5.2"]}}
+  ],
+  "bonuses": ["Bonus 1: description", "Bonus 2: description"],
+  "testimonial_placeholder": "This course changed the way I... [Student Name, Role]",
+  "faq": [
+    {{"q": "How long do I have access?", "a": "Lifetime access with all future updates."}},
+    {{"q": "Is there a money-back guarantee?", "a": "Yes, 30-day full refund, no questions asked."}}
+  ]
+}}""",
+                model="fast",
+            )
+
+            subtitle   = course_data.get("subtitle", "")
+            promise    = course_data.get("promise", "")
+            audience   = course_data.get("target_audience", "")
+            modules    = course_data.get("modules", [])
+            bonuses    = course_data.get("bonuses", [])
+            faq        = course_data.get("faq", [])
+
+            total_duration = sum(
+                int(m.get("duration", "0 min").split()[0]) for m in modules if m.get("duration")
+            )
+
+            # Course syllabus markdown
+            modules_md = ""
+            for m in modules:
+                lessons = "\n".join(f"  - {l}" for l in m.get("lessons", []))
+                modules_md += f"\n### Module {m.get('number', '')}: {m.get('title', '')}\n⏱ {m.get('duration', '')}\n\n{lessons}\n"
+
+            faq_md = "\n".join(f"**Q: {f['q']}**\n\nA: {f['a']}\n" for f in faq)
+            bonuses_md = "\n".join(f"- 🎁 {b}" for b in bonuses)
+
+            readme = f"""# {title}
+
+### {subtitle}
+
+> **{promise}**
+
+[![Price](https://img.shields.io/badge/Price-${price}-brightgreen)](https://github.com/{owner}/aria-portfolio)
+[![Duration](https://img.shields.io/badge/Duration-{total_duration}%20min-blue)](#curriculum)
+[![Modules](https://img.shields.io/badge/Modules-{len(modules)}-orange)](#curriculum)
+
+---
+
+## 👥 Who Is This For?
+
+{audience}
+
+---
+
+## 📚 Curriculum ({len(modules)} modules · {total_duration} min)
+{modules_md}
+
+---
+
+## 🎁 Bonuses
+
+{bonuses_md}
+
+---
+
+## 💰 Investment
+
+**${price}** (one-time) — Lifetime access + all future updates
+
+[**→ Enroll Now**](https://github.com/{owner}/aria-portfolio)
+
+---
+
+## ❓ FAQ
+
+{faq_md}
+
+---
+
+*Course content generated by [ARIA AI](https://github.com/{owner}/aria-ai) — autonomous business agent*
+
+⭐ **Star this repo** to stay updated on course launches!
+"""
+
+            repo_name = slug
+            r_create = await gh._post("/user/repos", {
+                "name": repo_name,
+                "description": f"{subtitle} | {promise}",
+                "private": False, "auto_init": False,
+            })
+
+            if "html_url" in r_create or r_create.get("status") == 422:
+                await gh._put(f"/repos/{owner}/{repo_name}/contents/README.md", {
+                    "message": f"launch: {title} course",
+                    "content": _b64.b64encode(readme.encode()).decode(),
+                })
+                repo_url = f"https://github.com/{owner}/{repo_name}"
+                logger.info("[IncomeLoop] Course published: %s", repo_url)
+
+                # Try to sell on Gumroad/LemonSqueezy
+                sale_url = repo_url
+                try:
+                    if settings.GUMROAD_TOKEN:
+                        from apps.core.tools.gumroad_tools import GumroadTools
+                        gt = GumroadTools()
+                        gr = await gt.create_product(
+                            name=title, description=f"{promise}\n\n{subtitle}",
+                            price_cents=price * 100,
+                        )
+                        if gr.get("success") and gr.get("url"):
+                            sale_url = gr["url"]
+                    elif getattr(settings, "LEMONSQUEEZY_API_KEY", None):
+                        from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+                        ls = LemonSqueezyTools()
+                        lr = await ls.create_product(
+                            name=title, description=promise,
+                            price_cents=price * 100,
+                        )
+                        if lr.get("success") and lr.get("url"):
+                            sale_url = lr["url"]
+                except Exception:
+                    pass
+
+                return {
+                    "success": True,
+                    "summary": f"Course '{title}' at ${price} — {sale_url}",
+                    "revenue_potential": float(price),
+                    "urls": [sale_url],
+                }
+
+            return {"success": False, "summary": "course_builder: could not create repo"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] course_builder: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_gist_blitz(self) -> dict:
