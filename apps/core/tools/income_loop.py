@@ -62,16 +62,16 @@ STRATEGIES = [
     ("opportunity_scan",         2),
     ("github_publish",           2),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       2),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
-    ("micro_saas",               3),   # full micro-SaaS product launch: README + API docs + pricing
+    ("micro_saas",               2),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          1),
     ("email_campaign",           1),
     ("affiliate_content",        2),   # review/comparison articles with affiliate links
-    ("ebook_factory",            3),
+    ("ebook_factory",            2),
     ("lead_magnet",              1),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            2),   # improve existing posts for compounding organic traffic
     ("gist_blitz",               1),   # code snippet Gists with product CTAs (dev discovery)
-    ("product_bundle",           3),   # bundle 2-3 existing products at a discount → higher AOV
+    ("product_bundle",           2),   # bundle 2-3 existing products at a discount → higher AOV
     ("waitlist_builder",         1),   # waitlist landing page → email capture → launch pipeline
     ("challenge_campaign",       1),   # 7-day challenge series → sustained traffic + lead capture
     ("partner_outreach",         1),   # B2B collaboration pitches → cross-promotion + co-sells
@@ -125,6 +125,9 @@ STRATEGIES = [
     ("auto_responder",           1),   # Reply to comments/mentions on all platforms → engagement + trust
     ("affiliate_injector",       1),   # Inject affiliate links into existing published content → passive rev
     ("social_dm_outreach",       1),   # DM qualified prospects on Twitter/LinkedIn → direct sales pipeline
+    ("upsell_engine",            1),   # create upsell offers for existing buyers → increase LTV instantly
+    ("podcast_producer",         1),   # produce AI audio script + episode notes + show outline → launch a podcast
+    ("saas_waitlist_blitz",      1),   # build + fill a micro-SaaS waitlist in one shot: landing + email capture + launch
 ]
 
 
@@ -488,6 +491,12 @@ JSON:
             return await self._exec_affiliate_injector()
         elif strategy == "social_dm_outreach":
             return await self._exec_social_dm_outreach()
+        elif strategy == "upsell_engine":
+            return await self._exec_upsell_engine()
+        elif strategy == "podcast_producer":
+            return await self._exec_podcast_producer()
+        elif strategy == "saas_waitlist_blitz":
+            return await self._exec_saas_waitlist_blitz()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -10412,6 +10421,473 @@ Return JSON:
             }
         except Exception as exc:
             logger.error("[IncomeLoop] social_dm_outreach: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_upsell_engine(self) -> dict:
+        """
+        Create upsell offers for existing buyers to increase Customer Lifetime Value (LTV).
+        Reads the product catalog, finds recent buyers from the nurture queue,
+        AI generates targeted upsell emails with time-limited upgrades.
+        Works entirely from existing data — no new products needed.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import json as _json
+            import datetime as _dt
+            import base64 as _b64
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            emails_queued = 0
+            urls_created: list[str] = []
+
+            # ── Load product catalog ────────────────────────────────────────────
+            catalog_r = await gh._get(f"/repos/{owner}/aria-insights/contents/products")
+            products = []
+            if isinstance(catalog_r, list):
+                for f in catalog_r[:10]:
+                    if isinstance(f, dict) and f.get("type") == "file":
+                        products.append({"name": f.get("name", "").replace(".md", ""), "url": f.get("html_url", "")})
+
+            # ── Load recent buyers from CRM nurture queue ──────────────────────
+            buyers: list[dict] = []
+            if cache:
+                raw_list = await cache.lrange("aria:crm:nurture_queue", -20, -1)
+                for raw in (raw_list or []):
+                    try:
+                        entry = _json.loads(raw) if isinstance(raw, str) else raw
+                        if entry.get("email") and entry.get("day", 0) >= 3:  # engaged buyers
+                            buyers.append(entry)
+                    except Exception:
+                        pass
+
+            if not products:
+                return {"success": False, "summary": "upsell_engine: no products in catalog yet", "revenue_potential": 0.0}
+
+            # ── Generate upsell sequence ────────────────────────────────────────
+            products_str = "\n".join(f"- {p['name']}: {p['url']}" for p in products[:6])
+            upsell_data = await complete_json(
+                f"""You are a conversion expert creating upsell offers to increase customer LTV.
+
+ARIA's product catalog:
+{products_str}
+
+Buyers in nurture sequence: {len(buyers)} contacts (Day 3+)
+
+Create a powerful upsell campaign:
+1. Choose the 2 best products to bundle as an upgrade offer
+2. Price the bundle at 30% discount vs individual prices
+3. Create urgency with a 48-hour expiry
+4. Write an email that feels personal, not promotional
+
+Return JSON:
+{{
+  "bundle_name": "...",
+  "original_price": 97,
+  "bundle_price": 67,
+  "email_subject": "...",
+  "email_body": "...(200 words max, personal tone, clear CTA with 48h deadline)...",
+  "sms_text": "...(under 160 chars)",
+  "products_included": ["product1", "product2"],
+  "expected_conversion_rate": 0.05
+}}""",
+                model="fast",
+                max_tokens=800,
+            )
+
+            if not upsell_data:
+                return {"success": False, "summary": "upsell_engine: AI failed", "revenue_potential": 0.0}
+
+            bundle_name = upsell_data.get("bundle_name", "")
+            bundle_price = float(upsell_data.get("bundle_price", 67))
+            email_subject = upsell_data.get("email_subject", "")
+            email_body = upsell_data.get("email_body", "")
+            conversion_rate = float(upsell_data.get("expected_conversion_rate", 0.05))
+
+            # ── Send via SendGrid ───────────────────────────────────────────────
+            sendgrid_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
+            from_email = getattr(settings, "SENDGRID_FROM_EMAIL", "") or "aria@geremypolanco.com"
+            if sendgrid_key and email_subject and email_body:
+                import aiohttp as _aio
+                for buyer in buyers[:10]:  # max 10 upsells per cycle
+                    buyer_email = buyer.get("email", "")
+                    buyer_name = buyer.get("name", "Friend")
+                    if not buyer_email:
+                        continue
+                    try:
+                        personalized = email_body.replace("{name}", buyer_name).replace("{{name}}", buyer_name)
+                        payload = {
+                            "personalizations": [{"to": [{"email": buyer_email, "name": buyer_name}]}],
+                            "from": {"email": from_email, "name": "ARIA AI"},
+                            "subject": email_subject,
+                            "content": [{"type": "text/plain", "value": personalized}],
+                        }
+                        async with _aio.ClientSession() as sess:
+                            async with sess.post(
+                                "https://api.sendgrid.com/v3/mail/send",
+                                json=payload,
+                                headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+                                timeout=_aio.ClientTimeout(total=10),
+                            ) as resp:
+                                if resp.status == 202:
+                                    emails_queued += 1
+                    except Exception:
+                        pass
+
+            # ── Archive upsell campaign to GitHub ──────────────────────────────
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            expected_revenue = emails_queued * bundle_price * conversion_rate
+            md = f"""# Upsell Campaign — {today}
+
+## Bundle: {bundle_name}
+**Price:** ${bundle_price} (vs ${upsell_data.get('original_price', 97)} individual)
+**Products:** {', '.join(upsell_data.get('products_included', []))}
+**Expected conversion:** {conversion_rate*100:.0f}% → ${expected_revenue:.0f} revenue
+
+## Email Campaign
+**Subject:** {email_subject}
+
+{email_body}
+
+## Stats
+- Buyers targeted: {len(buyers)}
+- Emails sent: {emails_queued}
+- Expected revenue: ${expected_revenue:.2f}
+
+*Generated by ARIA AI — Upsell Engine*
+"""
+            encoded = _b64.b64encode(md.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/upsells/{today}-upsell-campaign.md",
+                {"message": f"upsell: '{bundle_name[:40]}' — ${bundle_price}", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/upsells/{today}-upsell-campaign.md")
+
+            # ── Store in Redis for tracking ─────────────────────────────────────
+            if cache:
+                await cache.set("aria:upsell:last_campaign", _json.dumps({
+                    "ts": _dt.datetime.utcnow().isoformat(),
+                    "bundle_name": bundle_name,
+                    "bundle_price": bundle_price,
+                    "emails_sent": emails_queued,
+                }), ex=86400 * 7)
+                await cache.incr("aria:upsell:total_campaigns")
+
+            return {
+                "success": True,
+                "summary": f"upsell_engine: '{bundle_name}' at ${bundle_price} | {emails_queued} emails sent | ${expected_revenue:.0f} expected revenue",
+                "revenue_potential": expected_revenue,
+                "urls": urls_created[:2],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] upsell_engine: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_podcast_producer(self) -> dict:
+        """
+        Produce a complete podcast episode package:
+        - Full episode script (12-20 min of content)
+        - Show notes with timestamps and links
+        - 5 social teasers (Twitter, LinkedIn, IG Story hooks)
+        - Episode SEO metadata (title, description, tags)
+        Archives everything to GitHub. Gives ARIA a podcast presence for audio SEO.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+            import base64 as _b64
+            import datetime as _dt
+            import json as _json
+            from apps.core.memory.redis_client import get_cache
+            gh = AriaGitHubClient()
+            wt = WebTools()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # ── Pick episode topic from trending signals ──────────────────────
+            opp_raw = None
+            if cache:
+                opp_list = await cache.lrange("aria:income:opportunity_queue", -1, -1)
+                if opp_list:
+                    try:
+                        opp_raw = _json.loads(opp_list[0])
+                    except Exception:
+                        pass
+
+            topic = ""
+            if opp_raw and opp_raw.get("name"):
+                topic = opp_raw["name"]
+            else:
+                hn_data = await wt.get_hacker_news_trending(limit=5)
+                stories = hn_data.get("stories", [])
+                if stories:
+                    topic = stories[0].get("title", "")
+
+            if not topic:
+                topic = "How autonomous AI is changing the way solopreneurs make money in 2025"
+
+            # ── Generate episode package ─────────────────────────────────────
+            episode_data = await complete_json(
+                f"""You are a top podcast producer. Create a complete episode package for a show about AI business automation.
+
+Episode topic: {topic}
+Show name: "The ARIA Files — AI Making Money While You Sleep"
+Host name: ARIA (an autonomous AI system)
+
+Create a full episode package:
+Return JSON:
+{{
+  "episode_title": "catchy title with a number or stat",
+  "episode_tagline": "one liner",
+  "episode_number": 1,
+  "duration_minutes": 15,
+  "intro_hook": "opening 30 seconds that hooks listeners immediately",
+  "script_outline": [
+    {{"segment": "Intro", "duration_seconds": 90, "content": "what to say"}},
+    {{"segment": "Main Point 1", "duration_seconds": 180, "content": "deep dive"}},
+    {{"segment": "Main Point 2", "duration_seconds": 180, "content": "deep dive"}},
+    {{"segment": "Case Study", "duration_seconds": 120, "content": "real example"}},
+    {{"segment": "Actionable Tips", "duration_seconds": 120, "content": "3 things listeners can do"}},
+    {{"segment": "Outro + CTA", "duration_seconds": 60, "content": "subscribe + free resource CTA"}}
+  ],
+  "show_notes": "formatted show notes with timestamps and links",
+  "seo_description": "150-word SEO-optimized episode description",
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+  "social_teasers": {{
+    "twitter": "tweet under 280 chars",
+    "linkedin": "post under 150 chars",
+    "instagram_story": "story text under 100 chars"
+  }},
+  "free_resource_cta": "what free resource to offer listeners"
+}}""",
+                model="fast",
+                max_tokens=2000,
+            )
+
+            if not episode_data:
+                return {"success": False, "summary": "podcast_producer: AI failed", "revenue_potential": 0.0}
+
+            title = episode_data.get("episode_title", topic[:60])
+            ep_num = episode_data.get("episode_number", 1)
+            duration = episode_data.get("duration_minutes", 15)
+            show_notes = episode_data.get("show_notes", "")
+            seo_desc = episode_data.get("seo_description", "")
+            teasers = episode_data.get("social_teasers", {})
+            script = "\n\n".join(
+                f"## {s['segment']} ({s['duration_seconds']}s)\n{s['content']}"
+                for s in episode_data.get("script_outline", [])
+            )
+
+            # ── Archive to GitHub ─────────────────────────────────────────────
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            tags = episode_data.get("tags", [])
+            md = f"""# Episode {ep_num}: {title}
+*{episode_data.get('episode_tagline', '')}*
+**Duration:** {duration} minutes | **Show:** The ARIA Files
+
+## Opening Hook
+{episode_data.get('intro_hook', '')}
+
+## Episode Script
+{script}
+
+## Show Notes
+{show_notes}
+
+## SEO Description
+{seo_desc}
+
+**Tags:** {', '.join(tags[:8])}
+
+## Social Teasers
+**Twitter:** {teasers.get('twitter', '')}
+**LinkedIn:** {teasers.get('linkedin', '')}
+**Instagram Story:** {teasers.get('instagram_story', '')}
+
+## Free Resource CTA
+{episode_data.get('free_resource_cta', '')}
+
+*Generated by ARIA AI — Podcast Producer Engine*
+"""
+            encoded = _b64.b64encode(md.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/podcast/ep{ep_num:03d}-{today}.md",
+                {"message": f"podcast: ep{ep_num} '{title[:50]}'", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/podcast/ep{ep_num:03d}-{today}.md")
+
+            # ── Publish Twitter teaser ────────────────────────────────────────
+            twitter_teaser = teasers.get("twitter", "")
+            if twitter_teaser and urls_created:
+                tweet_text = f"{twitter_teaser}\n\n🎙️ Episode notes: {urls_created[0]}"
+                try:
+                    from apps.distribution.publishers.api_publisher import APIPublisher
+                    pub = APIPublisher()
+                    tw_result = await pub.publish_twitter(tweet_text[:280])
+                    if isinstance(tw_result, dict) and tw_result.get("url"):
+                        urls_created.append(tw_result["url"])
+                except Exception:
+                    pass
+
+            # ── Track in Redis ─────────────────────────────────────────────────
+            if cache:
+                await cache.incr("aria:podcast:episodes_produced")
+                await cache.set("aria:podcast:latest_episode", _json.dumps({
+                    "title": title,
+                    "ep_num": ep_num,
+                    "url": urls_created[0] if urls_created else "",
+                    "ts": today,
+                }), ex=86400 * 30)
+
+            return {
+                "success": True,
+                "summary": f"podcast_producer: ep{ep_num} '{title[:60]}' | {duration}min script ready | {len(urls_created)} URLs",
+                "revenue_potential": 25.0,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] podcast_producer: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_saas_waitlist_blitz(self) -> dict:
+        """
+        Build + fill a micro-SaaS waitlist in one shot.
+        Creates landing page HTML, GitHub Pages deployment, waitlist email capture flow,
+        and launches a social blast to drive signups. New signups enter email funnel.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+            import datetime as _dt
+            import json as _json
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # ── Get trending opportunity ──────────────────────────────────────
+            opp = None
+            if cache:
+                raw = await cache.lrange("aria:income:opportunity_queue", -1, -1)
+                if raw:
+                    try:
+                        opp = _json.loads(raw[0])
+                    except Exception:
+                        pass
+
+            product_concept = opp.get("name", "") if opp else ""
+            if not product_concept:
+                product_concept = "AI-powered content automation tool for solopreneurs"
+
+            # ── Design the SaaS product + waitlist ────────────────────────────
+            saas_data = await complete_json(
+                f"""You are a SaaS product designer building a micro-SaaS that launches in days.
+
+Product concept: {product_concept}
+
+Design a complete waitlist-first product launch:
+Return JSON:
+{{
+  "product_name": "catchy SaaS name (2 words max)",
+  "tagline": "under 8 words, crystal clear value prop",
+  "problem": "1 sentence problem statement",
+  "solution": "1 sentence solution",
+  "hero_headline": "powerful landing page H1",
+  "features": ["feature1 (under 10 words)", "feature2", "feature3", "feature4"],
+  "pricing": {{"starter": 29, "pro": 79, "early_bird": 19}},
+  "landing_html": "complete single-page HTML with waitlist form (email input + submit), hero section, 3 features, urgency element, 'First 100 subscribers get 50% off' CTA. Style with inline CSS, clean modern design, dark background.",
+  "twitter_launch_tweet": "tweet under 280 chars to drive waitlist signups",
+  "reddit_post_title": "title for r/SideProject or r/entrepreneur post",
+  "reddit_post_body": "150 word post body with genuine value + soft CTA"
+}}""",
+                model="fast",
+                max_tokens=3000,
+            )
+
+            if not saas_data:
+                return {"success": False, "summary": "saas_waitlist_blitz: AI failed", "revenue_potential": 0.0}
+
+            product_name = saas_data.get("product_name", "AI Tool")
+            tagline = saas_data.get("tagline", "")
+            landing_html = saas_data.get("landing_html", "")
+            twitter_tweet = saas_data.get("twitter_launch_tweet", "")
+
+            # ── Deploy landing page to GitHub Pages ────────────────────────────
+            if landing_html:
+                slug = product_name.lower().replace(" ", "-").replace("_", "-")[:20]
+                today = _dt.datetime.now().strftime("%Y%m%d")
+                page_path = f"waitlists/{slug}-{today}/index.html"
+                encoded = _b64.b64encode(landing_html.encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/{page_path}",
+                    {"message": f"launch: {product_name} waitlist landing page", "content": encoded}
+                )
+                if "error" not in file_r:
+                    page_url = f"https://{owner}.github.io/aria-insights/{page_path}"
+                    urls_created.append(page_url)
+                    # Also add the GitHub raw URL as backup
+                    urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/{page_path}")
+
+            # ── Twitter launch blast ───────────────────────────────────────────
+            if twitter_tweet:
+                tweet_with_link = twitter_tweet
+                if urls_created:
+                    tweet_with_link = f"{twitter_tweet[:240]}\n\n🔗 {urls_created[0]}"
+                try:
+                    from apps.distribution.publishers.api_publisher import APIPublisher
+                    pub = APIPublisher()
+                    tw_result = await pub.publish_twitter(tweet_with_link[:280])
+                    if isinstance(tw_result, dict) and tw_result.get("url"):
+                        urls_created.append(tw_result["url"])
+                except Exception:
+                    pass
+
+            # ── Reddit launch post ─────────────────────────────────────────────
+            reddit_title = saas_data.get("reddit_post_title", "")
+            reddit_body = saas_data.get("reddit_post_body", "")
+            if reddit_title and reddit_body:
+                try:
+                    from apps.distribution.publishers.api_publisher import APIPublisher
+                    pub = APIPublisher()
+                    reddit_result = await pub.publish_reddit(
+                        subreddit="SideProject",
+                        title=reddit_title[:300],
+                        body=reddit_body[:5000],
+                    )
+                    if isinstance(reddit_result, dict) and reddit_result.get("url"):
+                        urls_created.append(reddit_result["url"])
+                except Exception:
+                    pass
+
+            # ── Store in Redis for tracking + email funnel pickup ──────────────
+            if cache:
+                await cache.set("aria:waitlist:latest", _json.dumps({
+                    "product_name": product_name,
+                    "tagline": tagline,
+                    "url": urls_created[0] if urls_created else "",
+                    "ts": _dt.datetime.utcnow().isoformat(),
+                    "pricing": saas_data.get("pricing", {}),
+                }), ex=86400 * 30)
+                await cache.incr("aria:waitlist:total_launches")
+
+            early_price = saas_data.get("pricing", {}).get("early_bird", 19)
+
+            return {
+                "success": True,
+                "summary": f"saas_waitlist_blitz: '{product_name}' — {tagline[:60]} | {len(urls_created)} URLs live",
+                "revenue_potential": float(early_price) * 10,  # optimistic: 10 signups
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] saas_waitlist_blitz: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_conversion_optimizer(self) -> dict:
