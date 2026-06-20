@@ -122,6 +122,8 @@ BOT_COMMANDS = [
     {"command": "digest",      "description": "Recibir el digest de ingresos del día ahora"},
     {"command": "challenge",   "description": "Lanzar challenge de 7 días → audiencia + upsell"},
     {"command": "socios",      "description": "Generar kit de outreach B2B y propuestas de partnership"},
+    {"command": "newsletter",  "description": "Publicar edición de newsletter con contenido editorial"},
+    {"command": "servicios",   "description": "Publicar oferta de servicios de consultoría AI"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -321,6 +323,8 @@ class AriaTelegramBot:
             "/digest":       "muéstrame el digest de ingresos del día con revenue, URLs publicadas y proyección usando run_objective con objective daily_revenue_digest",
             "/challenge":    "lanza un challenge de 7 días con contenido diario, CTA y upsell al final usando run_income_cycle con strategy challenge_campaign",
             "/socios":       "genera kit de outreach B2B con propuestas de partnership y templates de email usando run_income_cycle con strategy partner_outreach",
+            "/newsletter":   "publica una edición completa de newsletter con insights y recomendaciones de productos usando run_income_cycle con strategy newsletter_issue",
+            "/servicios":    "publica una oferta de servicios de consultoría AI para generar leads B2B usando run_income_cycle con strategy job_board_listing",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):

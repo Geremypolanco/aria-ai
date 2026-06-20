@@ -55,17 +55,17 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
     ("content_pipeline",         6),
-    ("niche_rotator",            6),
-    ("product_factory",          6),
+    ("niche_rotator",            5),
+    ("product_factory",          5),
     ("course_builder",           4),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        4),   # build own affiliate program, recruit promoters
-    ("opportunity_scan",         6),
+    ("opportunity_scan",         5),
     ("github_publish",           6),   # works with only GITHUB_TOKEN — always active
-    ("content_repurposer",       7),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
+    ("content_repurposer",       6),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               4),   # full micro-SaaS product launch: README + API docs + pricing
-    ("shopify_listing",          4),
-    ("email_campaign",           4),
-    ("affiliate_content",        5),   # review/comparison articles with affiliate links
+    ("shopify_listing",          3),
+    ("email_campaign",           3),
+    ("affiliate_content",        4),   # review/comparison articles with affiliate links
     ("ebook_factory",            5),
     ("lead_magnet",              4),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           3),   # live AI demo on HuggingFace Spaces (free, massive community)
@@ -75,6 +75,8 @@ STRATEGIES = [
     ("waitlist_builder",         3),   # waitlist landing page → email capture → launch pipeline
     ("challenge_campaign",       4),   # 7-day challenge series → sustained traffic + lead capture
     ("partner_outreach",         3),   # B2B collaboration pitches → cross-promotion + co-sells
+    ("newsletter_issue",         4),   # full newsletter edition → recurring reader monetization
+    ("job_board_listing",        3),   # B2B service listings → consulting leads
     ("github_sponsors_setup",    1),   # passive income via GitHub Sponsors + FUNDING.yml
     ("social_blitz",             2),
     ("premium_offer",            1),
@@ -297,6 +299,10 @@ JSON:
             return await self._exec_challenge_campaign()
         elif strategy == "partner_outreach":
             return await self._exec_partner_outreach()
+        elif strategy == "newsletter_issue":
+            return await self._exec_newsletter_issue()
+        elif strategy == "job_board_listing":
+            return await self._exec_job_board_listing()
         elif strategy == "viral_thread":
             return await self._exec_viral_thread()
         return {"success": False, "summary": "Unknown strategy"}
@@ -4248,6 +4254,364 @@ We're actively seeking collaborators in the {niche} space.
 
         except Exception as exc:
             logger.error("[IncomeLoop] partner_outreach: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_newsletter_issue(self) -> dict:
+        """
+        Publish a full newsletter edition: curated insights + product recommendations.
+        Posted to aria-newsletter repo on GitHub and cross-posted to aria-insights.
+        Recurring readers = recurring revenue through embedded affiliate + product CTAs.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            ai    = get_ai_client()
+            gh    = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            if not ai or not settings.GITHUB_TOKEN:
+                return {"success": False, "summary": "newsletter_issue: need AI + GITHUB_TOKEN"}
+
+            from datetime import datetime, timezone
+            now   = datetime.now(timezone.utc)
+            today = now.strftime("%Y-%m-%d")
+            month = now.strftime("%B %Y")
+
+            # Track issue numbers
+            issue_num = 1
+            if cache:
+                raw_num = await cache.get("aria:income:newsletter_issue_count")
+                issue_num = int(raw_num) + 1 if raw_num else 1
+
+            newsletter_data = await ai.complete_json(
+                system="You write premium newsletters that people look forward to. Concise, actionable, monetized. Output JSON only.",
+                user=f"""Write a newsletter issue for ARIA's weekly digest.
+
+Theme: Tech + business + AI productivity for entrepreneurs and developers.
+Issue number: #{issue_num}
+Month: {month}
+
+JSON:
+{{
+  "subject_line": "Newsletter subject (10 words max, curiosity-driven)",
+  "preview_text": "Email preview text (20 words)",
+  "big_idea": "The main insight or takeaway this week (1-2 sentences)",
+  "sections": [
+    {{
+      "title": "📊 This Week's Insight",
+      "content": "3-4 paragraphs of valuable, specific insight. Include real-world examples."
+    }},
+    {{
+      "title": "🛠️ Tool of the Week",
+      "content": "Short review of a specific tool/resource with pros, cons, and use case. Include affiliate CTA placeholder."
+    }},
+    {{
+      "title": "💡 Quick Win",
+      "content": "One immediately actionable tip (100 words max). Something readers can do TODAY."
+    }},
+    {{
+      "title": "📈 ARIA's Pick",
+      "content": "Recommend one ARIA product or resource relevant to this week's theme. Include price and value proposition."
+    }}
+  ],
+  "closing": "Warm, personal closing paragraph (80 words max)",
+  "ps_line": "P.S. One more value-add or teaser for next issue"
+}}""",
+                model=AIModel.FAST,
+                max_tokens=3000,
+            )
+
+            if not newsletter_data:
+                return {"success": False, "summary": "newsletter_issue: AI generation failed"}
+
+            subject    = newsletter_data.get("subject_line", f"ARIA Weekly #{issue_num}")
+            big_idea   = newsletter_data.get("big_idea", "")
+            sections   = newsletter_data.get("sections", [])
+            closing    = newsletter_data.get("closing", "")
+            ps_line    = newsletter_data.get("ps_line", "")
+            portfolio_url = f"https://github.com/{owner}/aria-portfolio"
+
+            # Build full newsletter markdown
+            full_issue = f"""# ARIA Weekly — Issue #{issue_num}: {subject}
+
+*{newsletter_data.get('preview_text', '')}*
+
+---
+
+> **{big_idea}**
+
+---
+
+"""
+            for section in sections:
+                full_issue += f"## {section.get('title', '')}\n\n{section.get('content', '')}\n\n---\n\n"
+
+            full_issue += f"""
+{closing}
+
+*P.S. {ps_line}*
+
+---
+
+**[Browse all ARIA tools & resources →]({portfolio_url})**
+
+*You're receiving this because you subscribed to ARIA Weekly. | [Unsubscribe](https://github.com/{owner}/aria-newsletter)*
+"""
+
+            urls_created = []
+
+            # Ensure aria-newsletter repo exists
+            repo_name = "aria-newsletter"
+            existing  = await gh._get(f"/repos/{owner}/{repo_name}")
+            if "error" in existing:
+                create_r = await gh._post("/user/repos", {
+                    "name": repo_name,
+                    "description": "ARIA Weekly — tech + business insights for AI-first entrepreneurs",
+                    "private": False,
+                    "auto_init": True,
+                    "has_issues": False,
+                })
+                if "error" not in create_r:
+                    await asyncio.sleep(2)
+
+            # Publish newsletter issue
+            filename = f"issues/{today}-issue-{issue_num:03d}.md"
+            encoded  = _b64.b64encode(full_issue.encode()).decode()
+            file_r   = await gh._put(f"/repos/{owner}/{repo_name}/contents/{filename}", {
+                "message": f"newsletter #{issue_num}: {subject[:60]}",
+                "content": encoded,
+            })
+            if "error" not in file_r:
+                url = f"https://github.com/{owner}/{repo_name}/blob/main/{filename}"
+                urls_created.append(url)
+
+            # Cross-post summary to aria-insights
+            teaser = f"""# Newsletter #{issue_num}: {subject}
+
+> {big_idea}
+
+*{newsletter_data.get('preview_text', '')}*
+
+[Read the full issue →]({urls_created[0] if urls_created else portfolio_url})
+
+---
+
+**Subscribe to ARIA Weekly:** [GitHub](https://github.com/{owner}/{repo_name}) | [Portfolio]({portfolio_url})
+"""
+            teaser_file = f"newsletter-teasers/{today}-issue-{issue_num:03d}.md"
+            teaser_enc  = _b64.b64encode(teaser.encode()).decode()
+            await gh._put(f"/repos/{owner}/aria-insights/contents/{teaser_file}", {
+                "message": f"newsletter teaser #{issue_num}",
+                "content": teaser_enc,
+            })
+            if urls_created:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/{teaser_file}")
+
+            # Also try Mailchimp
+            mailchimp_ok = False
+            if getattr(settings, "MAILCHIMP_API_KEY", None):
+                try:
+                    from apps.core.tools.mailchimp_tools import MailchimpTools
+                    mc   = MailchimpTools()
+                    mc_r = await mc.create_campaign(
+                        subject=f"ARIA Weekly #{issue_num}: {subject}",
+                        body=full_issue,
+                    )
+                    if mc_r and mc_r.get("id"):
+                        mailchimp_ok = True
+                except Exception:
+                    pass
+
+            if not urls_created:
+                return {"success": False, "summary": "newsletter_issue: publish failed"}
+
+            if cache:
+                await cache.set("aria:income:newsletter_issue_count", str(issue_num), ttl_seconds=86400 * 365)
+
+            platform_str = "GitHub" + (" + Mailchimp" if mailchimp_ok else "")
+            logger.info("[IncomeLoop] Newsletter issue #%d published: %s", issue_num, subject)
+            return {
+                "success": True,
+                "summary": f"Newsletter #{issue_num} published to {platform_str}: '{subject}'",
+                "revenue_potential": 6.0,  # subscriber growth → product conversions
+                "urls": urls_created,
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] newsletter_issue: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_job_board_listing(self) -> dict:
+        """
+        Post ARIA's consulting/service listings to job boards and marketplaces.
+        Targets GitHub repos that aggregate freelance AI work, dev communities,
+        and service directories. Generates inbound B2B consulting inquiries.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            ai    = get_ai_client()
+            gh    = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            if not ai or not settings.GITHUB_TOKEN:
+                return {"success": False, "summary": "job_board_listing: need AI + GITHUB_TOKEN"}
+
+            # Rotate service categories
+            existing_services: list = []
+            if cache:
+                raw = await cache.get("aria:income:service_listings")
+                existing_services = json.loads(raw) if raw else []
+
+            avoid_str = ", ".join(existing_services[-5:]) if existing_services else "none yet"
+
+            listing_data = await ai.complete_json(
+                system="You write compelling B2B service listings that attract high-value clients. Output JSON only.",
+                user=f"""Create a professional service listing for ARIA AI consulting services.
+
+Already listed: {avoid_str}
+Pick a new service angle: AI automation, content strategy, digital product creation, SaaS development, growth hacking, data analysis, prompt engineering, AI integration.
+
+JSON:
+{{
+  "service_title": "Service name (6 words max)",
+  "service_category": "single category keyword",
+  "tagline": "One-line value proposition (12 words max)",
+  "what_you_get": ["Deliverable 1", "Deliverable 2", "Deliverable 3", "Deliverable 4"],
+  "ideal_client": "Who should hire ARIA (2 sentences)",
+  "process": ["Step 1", "Step 2", "Step 3"],
+  "timeline": "Delivery timeline (e.g., '3-5 business days')",
+  "price_range": "Price range (e.g., '$500-$2,000')",
+  "guarantee": "Risk reversal / guarantee statement",
+  "slug": "url-friendly-slug",
+  "listing_md": "Full service listing (500+ words markdown). Professional tone. Include: problem it solves, solution, deliverables table, process, timeline, pricing, FAQ, CTA."
+}}""",
+                model=AIModel.FAST,
+                max_tokens=3000,
+            )
+
+            if not listing_data:
+                return {"success": False, "summary": "job_board_listing: AI generation failed"}
+
+            service_title    = listing_data.get("service_title", "AI Automation Service")
+            service_category = listing_data.get("service_category", "automation")
+            slug             = listing_data.get("slug", "ai-service")
+            price_range      = listing_data.get("price_range", "$500-$2,000")
+            listing_md       = listing_data.get("listing_md", "")
+
+            if service_category in existing_services:
+                return {"success": False, "summary": f"job_board_listing: '{service_category}' already listed"}
+
+            from datetime import datetime, timezone
+            today         = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            portfolio_url = f"https://github.com/{owner}/aria-portfolio"
+            repo_name     = "aria-services"
+
+            full_listing = f"""# {service_title}
+
+> {listing_data.get('tagline', '')}
+
+**Price:** {price_range}
+**Timeline:** {listing_data.get('timeline', '3-5 days')}
+
+{listing_md}
+
+---
+
+## 📩 Hire ARIA
+
+To start a project, open a GitHub Issue:
+[**Request this service →**](https://github.com/{owner}/{repo_name}/issues/new?title=Service+Request%3A+{service_title.replace(' ', '+')}&body=Project+description%3A%0ABudget+range%3A%0ATimeline+needed%3A)
+
+Or contact via [portfolio]({portfolio_url}).
+
+---
+
+*Service provided by [ARIA AI]({portfolio_url}) | {today}*
+"""
+
+            urls_created = []
+
+            # Ensure aria-services repo exists
+            existing = await gh._get(f"/repos/{owner}/{repo_name}")
+            if "error" in existing:
+                create_r = await gh._post("/user/repos", {
+                    "name": repo_name,
+                    "description": "ARIA AI consulting & automation services — hire ARIA for your projects",
+                    "private": False,
+                    "auto_init": True,
+                    "has_issues": True,
+                })
+                if "error" not in create_r:
+                    await asyncio.sleep(2)
+
+            # Publish service listing
+            filename = f"services/{today}-{slug}.md"
+            encoded  = _b64.b64encode(full_listing.encode()).decode()
+            file_r   = await gh._put(f"/repos/{owner}/{repo_name}/contents/{filename}", {
+                "message": f"service: {service_title[:60]}",
+                "content": encoded,
+            })
+            if "error" not in file_r:
+                url = f"https://github.com/{owner}/{repo_name}/blob/main/{filename}"
+                urls_created.append(url)
+
+            # Add service summary to portfolio
+            try:
+                service_blurb = f"""### {service_title}
+
+{listing_data.get('tagline', '')} | {price_range}
+
+**[View service →]({urls_created[0] if urls_created else '#'})** | [Hire me](https://github.com/{owner}/{repo_name}/issues/new)
+"""
+                portfolio_readme = await gh._get(f"/repos/{owner}/aria-portfolio/contents/README.md")
+                if "content" in portfolio_readme:
+                    import base64 as _b64p
+                    current = _b64p.b64decode(portfolio_readme["content"].replace("\n", "")).decode("utf-8", errors="replace")
+                    sha = portfolio_readme.get("sha", "")
+                    services_marker = "## 💼 Services"
+                    if services_marker not in current:
+                        new_readme = current.rstrip() + f"\n\n## 💼 Services\n\n{service_blurb}"
+                    else:
+                        idx = current.index(services_marker)
+                        next_h2 = current.find("\n## ", idx + 1)
+                        if next_h2 == -1:
+                            new_readme = current[:idx] + f"{services_marker}\n\n{service_blurb}"
+                        else:
+                            new_readme = current[:idx] + f"{services_marker}\n\n{service_blurb}\n" + current[next_h2:]
+                    await gh._put(f"/repos/{owner}/aria-portfolio/contents/README.md", {
+                        "message": f"add service: {service_title[:50]}",
+                        "content": _b64p.b64encode(new_readme.encode()).decode(),
+                        "sha": sha,
+                    })
+            except Exception:
+                pass
+
+            if not urls_created:
+                return {"success": False, "summary": "job_board_listing: publish failed"}
+
+            if cache:
+                existing_services.append(service_category)
+                await cache.set("aria:income:service_listings", json.dumps(existing_services[-30:]), ttl_seconds=86400 * 90)
+
+            logger.info("[IncomeLoop] Service listing published: %s (%s)", service_title, price_range)
+            return {
+                "success": True,
+                "summary": f"Service listed: '{service_title}' | {price_range} | aria-services repo",
+                "revenue_potential": 20.0,  # one consulting inquiry = potential $500-$2k deal
+                "urls": urls_created,
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] job_board_listing: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     def check_credentials(self) -> dict:

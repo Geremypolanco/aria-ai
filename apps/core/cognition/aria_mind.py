@@ -224,6 +224,8 @@ REGLAS DE RAZONAMIENTO:
 53. Si el usuario pide crear una lista de espera, waitlist, capturar leads antes del lanzamiento, recopilar emails de interesados, o crear una página de "próximamente" para un producto → usa run_income_cycle con strategy="waitlist_builder".
 54. Si el usuario pide crear un challenge, reto de 7 días, campaña de desafío, serie de contenido diario, reto de habilidad, o estrategia de gamificación para capturar leads → usa run_income_cycle con strategy="challenge_campaign".
 55. Si el usuario pide buscar socios, hacer outreach B2B, proponer colaboraciones, escribir pitches de partnership, crear kit de alianzas, buscar co-marketing, o conseguir afiliados influyentes → usa run_income_cycle con strategy="partner_outreach".
+56. Si el usuario pide crear un newsletter, publicar una edición de correo, escribir un boletín semanal, o generar una campaña de email con contenido editorial → usa run_income_cycle con strategy="newsletter_issue".
+57. Si el usuario pide publicar servicios de consultoría, crear una oferta de servicios, listar servicios en un directorio, crear una ficha de servicio profesional, o generar leads B2B para trabajo de consultoría → usa run_income_cycle con strategy="job_board_listing".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
