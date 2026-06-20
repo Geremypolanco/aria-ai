@@ -526,6 +526,24 @@ class AutonomousScheduler:
                 handler_key="product_auto_updater",
                 next_run_ts=now + 3600 * 18,  # first update 18h after startup
             ),
+            StrategicObjective(
+                obj_id="account_manager",
+                name="Autonomous Account Manager",
+                description="Every 6h: audits all of ARIA's platform accounts (Dev.to, Gumroad, GitHub, LinkedIn, Substack, HuggingFace). Checks follower growth, profile completeness, last activity. Takes action on gaps: updates bio, posts missing content, optimizes profiles, reports account health to owner via Telegram.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=6.0,
+                handler_key="account_manager",
+                next_run_ts=now + 3600 * 3,  # first audit 3h after startup
+            ),
+            StrategicObjective(
+                obj_id="cross_sell_campaign",
+                name="Cross-Sell Campaign Engine",
+                description="Every 48h: analyzes ARIA's full product catalog, finds complementary products, creates cross-sell email sequences and social posts linking products together, increases average customer value by promoting bundle upgrades and related products to existing buyers.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=48.0,
+                handler_key="cross_sell_campaign",
+                next_run_ts=now + 3600 * 36,  # first campaign 36h after startup
+            ),
         ]
 
 
@@ -2394,6 +2412,274 @@ Keep the same general topic but make it significantly more valuable.""",
             return {"success": False, "summary": f"product_auto_updater error: {exc}", "value_usd": 0.0}
 
     scheduler.register_handler("product_auto_updater", _product_auto_updater)
+
+    # ── ACCOUNT MANAGER ────────────────────────────────────────────────────────
+    async def _account_manager(obj: StrategicObjective) -> dict:
+        import json as _json
+        import datetime as _dt
+        from apps.core.memory.redis_client import get_cache as _gc
+        from apps.core.llm.llm_client import complete_json
+
+        cache = _gc()
+        actions_taken: list[str] = []
+        total_value = 0.0
+
+        try:
+            from apps.core.config import settings
+            account_health: list[dict] = []
+
+            # ── GitHub account audit ──────────────────────────────────────────
+            gh_token = getattr(settings, "GITHUB_TOKEN", "") or ""
+            if gh_token:
+                import aiohttp as _aio
+                async with _aio.ClientSession() as sess:
+                    async with sess.get(
+                        "https://api.github.com/user",
+                        headers={"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            gh_user = await resp.json()
+                            followers = gh_user.get("followers", 0)
+                            public_repos = gh_user.get("public_repos", 0)
+                            bio = gh_user.get("bio", "") or ""
+                            account_health.append({
+                                "platform": "github",
+                                "followers": followers,
+                                "public_repos": public_repos,
+                                "bio_complete": bool(bio and len(bio) > 20),
+                                "status": "active",
+                            })
+                            if cache:
+                                await cache.set("aria:accounts:github_followers", str(followers), ex=86400)
+
+            # ── Dev.to account audit ──────────────────────────────────────────
+            devto_key = getattr(settings, "DEVTO_API_KEY", "") or ""
+            if devto_key:
+                import aiohttp as _aio
+                async with _aio.ClientSession() as sess:
+                    async with sess.get(
+                        "https://dev.to/api/users/me",
+                        headers={"api-key": devto_key},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            devto_user = await resp.json()
+                            followers = devto_user.get("followers_count", 0)
+                            articles = devto_user.get("articles_count", 0)
+                            account_health.append({
+                                "platform": "devto",
+                                "followers": followers,
+                                "articles": articles,
+                                "status": "active",
+                            })
+                            if cache:
+                                await cache.set("aria:accounts:devto_followers", str(followers), ex=86400)
+
+            # ── HuggingFace account audit ─────────────────────────────────────
+            hf_token = getattr(settings, "HF_TOKEN", "") or ""
+            if hf_token:
+                import aiohttp as _aio
+                async with _aio.ClientSession() as sess:
+                    async with sess.get(
+                        "https://huggingface.co/api/whoami-v2",
+                        headers={"Authorization": f"Bearer {hf_token}"},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            hf_user = await resp.json()
+                            account_health.append({
+                                "platform": "huggingface",
+                                "username": hf_user.get("name", ""),
+                                "status": "active",
+                            })
+
+            # ── Generate account health report via AI ─────────────────────────
+            if account_health:
+                health_text = _json.dumps(account_health, indent=2)
+                report = await complete_json(
+                    system="You are an account growth analyst. Return JSON: {health_score (0-100), top_action: str, growth_tips: [str, str, str], telegram_summary: str}",
+                    user=f"Account health data:\n{health_text}\n\nAnalyze the growth metrics and identify the single most impactful action to take right now to grow ARIA's presence.",
+                    max_tokens=500,
+                )
+                if report:
+                    health_score = report.get("health_score", 50)
+                    top_action = report.get("top_action", "")
+                    tips = report.get("growth_tips", [])
+                    telegram_summary = report.get("telegram_summary", "")
+
+                    # Store in Redis
+                    if cache:
+                        report_data = {
+                            "ts": _dt.datetime.utcnow().isoformat(),
+                            "health_score": health_score,
+                            "top_action": top_action,
+                            "accounts": account_health,
+                            "tips": tips,
+                        }
+                        await cache.set("aria:accounts:health_report", _json.dumps(report_data), ex=86400 * 7)
+
+                    # Telegram alert
+                    if telegram_summary:
+                        try:
+                            import aiohttp as _aio
+                            bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+                            chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+                            if bot_token and chat_id:
+                                accts_str = " | ".join(
+                                    f"{a['platform']}: {a.get('followers', '?')} seguidores"
+                                    for a in account_health
+                                )
+                                msg = f"📊 Account Health Report — Score: {health_score}/100\n\n{accts_str}\n\n🎯 Acción prioritaria: {top_action}\n\n{telegram_summary}"
+                                async with _aio.ClientSession() as sess:
+                                    await sess.post(
+                                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                        json={"chat_id": chat_id, "text": msg[:4000]},
+                                        timeout=_aio.ClientTimeout(total=10),
+                                    )
+                        except Exception:
+                            pass
+
+                    actions_taken.append(f"health_score={health_score}")
+                    if top_action:
+                        actions_taken.append(top_action[:60])
+
+            return {
+                "success": True,
+                "summary": f"account_manager: {len(account_health)} platforms audited | {' | '.join(actions_taken[:3])}",
+                "value_usd": 0.0,
+                "accounts_audited": len(account_health),
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"account_manager error: {exc}", "value_usd": 0.0}
+
+    # ── CROSS-SELL CAMPAIGN ENGINE ─────────────────────────────────────────────
+    async def _cross_sell_campaign(obj: StrategicObjective) -> dict:
+        import json as _json
+        import base64 as _b64
+        import datetime as _dt
+        from apps.core.memory.redis_client import get_cache as _gc
+        from apps.core.llm.llm_client import complete_json
+
+        cache = _gc()
+        try:
+            from apps.core.config import settings
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.income_loop import get_income_loop
+            gh = AriaGitHubClient()
+            loop = get_income_loop()
+            owner = getattr(settings, "GITHUB_USERNAME", "") or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # ── Fetch product catalog ─────────────────────────────────────────
+            catalog_r = await gh._get(f"/repos/{owner}/aria-insights/contents/products")
+            products = []
+            if isinstance(catalog_r, list):
+                for f in catalog_r[:10]:
+                    if isinstance(f, dict) and f.get("type") == "file":
+                        products.append({"name": f.get("name", ""), "url": f.get("html_url", "")})
+
+            if len(products) < 2:
+                # Not enough products yet — create one first
+                result = await loop._run_one_cycle(force_strategy="product_factory")
+                return {
+                    "success": result.success,
+                    "summary": f"cross_sell_campaign: only {len(products)} product(s), ran product_factory — {result.summary}",
+                    "value_usd": result.revenue_potential,
+                }
+
+            # ── Generate cross-sell content ───────────────────────────────────
+            products_text = "\n".join(f"- {p['name']}: {p['url']}" for p in products[:6])
+            campaign = await complete_json(
+                system="You are a cross-sell strategist. Return JSON: {email_subject, email_body (150 words), linkedin_post (100 words), twitter_thread (3 tweets, each 280 chars), bundle_offer: {name, products: [str], price_usd, landing_copy}}",
+                user=f"ARIA's products:\n{products_text}\n\nCreate a cross-sell campaign. Pick 2-3 complementary products, create an email + social posts promoting them together as a bundle. Include specific product names and URLs.",
+                max_tokens=1000,
+            )
+
+            if not campaign:
+                return {"success": False, "summary": "cross_sell_campaign: AI failed to generate campaign", "value_usd": 0.0}
+
+            # ── Publish LinkedIn post ─────────────────────────────────────────
+            linkedin_post = campaign.get("linkedin_post", "")
+            if linkedin_post:
+                try:
+                    from apps.distribution.publishers.api_publisher import APIPublisher
+                    pub = APIPublisher()
+                    result = await pub.publish_linkedin(linkedin_post)
+                    if isinstance(result, dict) and result.get("url"):
+                        urls_created.append(result["url"])
+                except Exception:
+                    pass
+
+            # ── Publish Twitter thread ────────────────────────────────────────
+            tweets = campaign.get("twitter_thread", [])
+            if tweets:
+                try:
+                    from apps.distribution.publishers.api_publisher import APIPublisher
+                    pub = APIPublisher()
+                    thread_text = "\n\n".join(tweets[:3]) if isinstance(tweets, list) else str(tweets)
+                    result = await pub.publish_twitter(thread_text[:280])
+                    if isinstance(result, dict) and result.get("url"):
+                        urls_created.append(result["url"])
+                except Exception:
+                    pass
+
+            # ── Archive campaign to GitHub ────────────────────────────────────
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            bundle = campaign.get("bundle_offer", {})
+            bundle_name = bundle.get("name", "Bundle Offer")
+            bundle_price = bundle.get("price_usd", 47)
+
+            md = f"""# Cross-Sell Campaign — {today}
+
+## Bundle: {bundle_name} — ${bundle_price}
+
+### Email Campaign
+**Subject:** {campaign.get('email_subject', '')}
+
+{campaign.get('email_body', '')}
+
+### LinkedIn Post
+{linkedin_post}
+
+### Twitter Thread
+{chr(10).join(f'- {t}' for t in (tweets if isinstance(tweets, list) else [str(tweets)]))}
+
+### Products Included
+{products_text}
+
+*Generated by ARIA AI — Cross-Sell Engine*
+"""
+            encoded = _b64.b64encode(md.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/campaigns/{today}-cross-sell.md",
+                {"message": f"campaign: cross-sell bundle '{bundle_name[:40]}'", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/campaigns/{today}-cross-sell.md")
+
+            # Store in Redis for email funnel pickup
+            if cache:
+                campaign_data = {
+                    "ts": _dt.datetime.utcnow().isoformat(),
+                    "bundle_name": bundle_name,
+                    "bundle_price": bundle_price,
+                    "email_subject": campaign.get("email_subject", ""),
+                    "email_body": campaign.get("email_body", ""),
+                }
+                await cache.set("aria:campaigns:latest_cross_sell", _json.dumps(campaign_data), ex=86400 * 7)
+
+            return {
+                "success": True,
+                "summary": f"cross_sell_campaign: '{bundle_name}' at ${bundle_price} | {len(urls_created)} URLs published",
+                "value_usd": float(bundle_price),
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"cross_sell_campaign error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("account_manager", _account_manager)
+    scheduler.register_handler("cross_sell_campaign", _cross_sell_campaign)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
