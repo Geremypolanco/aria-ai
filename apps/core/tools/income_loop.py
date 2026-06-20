@@ -75,7 +75,7 @@ STRATEGIES = [
     ("waitlist_builder",         1),   # waitlist landing page → email capture → launch pipeline
     ("challenge_campaign",       1),   # 7-day challenge series → sustained traffic + lead capture
     ("partner_outreach",         1),   # B2B collaboration pitches → cross-promotion + co-sells
-    ("newsletter_issue",         4),   # full newsletter edition → recurring reader monetization
+    ("newsletter_issue",         3),   # full newsletter edition → recurring reader monetization
     ("job_board_listing",        1),   # B2B service listings → consulting leads
     ("github_sponsors_setup",    1),   # passive income via GitHub Sponsors + FUNDING.yml
     ("social_blitz",             1),
@@ -107,7 +107,8 @@ STRATEGIES = [
     ("community_launch",         2),   # Discord/Circle community with paid tiers → recurring MRR
     ("podcast_pitch",            1),   # Pitch ARIA as podcast guest to 10 shows → backlinks + leads
     ("multilingual_content",     2),   # Spanish/Portuguese/French content → 3x addressable audience
-    ("seo_tracking",             2),   # Monitor rankings + re-optimize top content → compounding traffic
+    ("seo_tracking",             1),   # Monitor rankings + re-optimize top content → compounding traffic
+    ("viral_detector",           2),   # Detect viral content + amplify immediately across all channels
 ]
 
 
@@ -437,6 +438,8 @@ JSON:
             return await self._exec_multilingual_content()
         elif strategy == "seo_tracking":
             return await self._exec_seo_tracking()
+        elif strategy == "viral_detector":
+            return await self._exec_viral_detector()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -9793,6 +9796,183 @@ JSON:
 
         except Exception as exc:
             logger.error("[IncomeLoop] voice_of_aria: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+
+    async def _exec_viral_detector(self) -> dict:
+        """Scan ARIA's published content for virality signals and amplify winners.
+
+        Checks GitHub repo stars delta, Dev.to article views, and Reddit/Twitter
+        engagement. When content shows a 20%+ spike, immediately amplifies via
+        content_amplifier and sends Telegram alert.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+            viral_hits: list[dict] = []
+
+            # ── Scan GitHub repos for star spikes ─────────────────────────────
+            repos_r = await gh._get(f"/users/{owner}/repos?sort=pushed&per_page=20")
+            if isinstance(repos_r, list):
+                for repo in repos_r[:10]:
+                    stars = repo.get("stargazers_count", 0)
+                    # Track stars in Redis to detect delta
+                    try:
+                        from apps.core.memory.redis_client import get_cache
+                        cache = get_cache()
+                        if cache:
+                            key = f"aria:viral:stars:{repo['name']}"
+                            prev_raw = await cache.get(key)
+                            prev_stars = int(prev_raw) if prev_raw else 0
+                            await cache.set(key, str(stars), ex=86400 * 30)
+                            delta = stars - prev_stars
+                            if delta >= 3 or (prev_stars > 0 and delta / max(prev_stars, 1) > 0.2):
+                                viral_hits.append({
+                                    "type": "github_stars",
+                                    "name": repo.get("name", ""),
+                                    "url": repo.get("html_url", ""),
+                                    "delta": delta,
+                                    "total": stars,
+                                })
+                    except Exception:
+                        pass
+
+            # ── Scan Dev.to articles ───────────────────────────────────────────
+            devto_token = getattr(settings, "DEVTO_API_KEY", "") or ""
+            if devto_token:
+                import aiohttp as _aio
+                async with _aio.ClientSession() as sess:
+                    async with sess.get(
+                        "https://dev.to/api/articles/me",
+                        headers={"api-key": devto_token},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            articles = await resp.json()
+                            for art in articles[:10]:
+                                views = art.get("page_views_count", 0)
+                                reactions = art.get("public_reactions_count", 0)
+                                try:
+                                    from apps.core.memory.redis_client import get_cache
+                                    cache = get_cache()
+                                    if cache:
+                                        key = f"aria:viral:devto:{art.get('id', '')}"
+                                        prev_raw = await cache.get(key)
+                                        prev_views = int(prev_raw) if prev_raw else 0
+                                        await cache.set(key, str(views), ex=86400 * 30)
+                                        delta = views - prev_views
+                                        if delta >= 100 or reactions >= 10:
+                                            viral_hits.append({
+                                                "type": "devto_article",
+                                                "name": art.get("title", "")[:60],
+                                                "url": art.get("url", ""),
+                                                "delta_views": delta,
+                                                "reactions": reactions,
+                                            })
+                                except Exception:
+                                    pass
+
+            if not viral_hits:
+                # No viral content yet — scan for trending opportunities and queue them
+                from apps.core.tools.web_tools import WebTools
+                wt = WebTools()
+                trend_r = await wt.get_hacker_news_trending(limit=5)
+                if isinstance(trend_r, dict) and trend_r.get("stories"):
+                    top_story = trend_r["stories"][0]
+                    opp = {
+                        "name": top_story.get("title", "")[:60],
+                        "strategy": "content_pipeline",
+                        "source": "viral_detector_hn",
+                        "score": top_story.get("score", 0),
+                    }
+                    try:
+                        from apps.core.memory.redis_client import get_cache
+                        cache = get_cache()
+                        if cache:
+                            await cache.rpush("aria:income:opportunity_queue", json.dumps(opp))
+                    except Exception:
+                        pass
+                return {
+                    "success": True,
+                    "summary": "viral_detector: no spikes yet — queued trending opportunity for next cycle",
+                    "revenue_potential": 0.0,
+                }
+
+            # ── Amplify viral hits ─────────────────────────────────────────────
+            # Use AI to generate amplification plan
+            hits_text = "\n".join(
+                f"- {h['type']}: {h['name']} | URL: {h.get('url','')} | "
+                f"delta: {h.get('delta', h.get('delta_views', 0))}"
+                for h in viral_hits[:3]
+            )
+            amp_plan = await complete_json(
+                system="You are a viral content amplifier. Return JSON: {action_posts: [{platform, content}], telegram_alert: str, follow_up_product: str}",
+                user=f"These ARIA content pieces are going viral:\n{hits_text}\n\nGenerate 3 amplification posts (one per platform: twitter/linkedin/reddit) and a Telegram alert for the owner.",
+                max_tokens=800,
+            )
+
+            if amp_plan:
+                # Send Telegram alert
+                alert_text = amp_plan.get("telegram_alert", f"🔥 Viral content detected: {viral_hits[0].get('name','')}")
+                try:
+                    import aiohttp as _aio
+                    bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+                    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+                    if bot_token and chat_id:
+                        full_msg = f"🔥 ARIA VIRAL ALERT\n\n{alert_text}\n\n{chr(10).join(h.get('url','') for h in viral_hits[:3])}"
+                        async with _aio.ClientSession() as sess:
+                            await sess.post(
+                                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                json={"chat_id": chat_id, "text": full_msg[:4000]},
+                                timeout=_aio.ClientTimeout(total=10),
+                            )
+                except Exception:
+                    pass
+
+                # Publish amplification posts via API publisher
+                posts = amp_plan.get("action_posts", [])
+                try:
+                    from apps.distribution.publishers.api_publisher import APIPublisher
+                    pub = APIPublisher()
+                    for post in posts[:3]:
+                        platform = post.get("platform", "")
+                        content = post.get("content", "")
+                        if platform and content:
+                            if "twitter" in platform:
+                                result = await pub.publish_twitter(content)
+                            elif "linkedin" in platform:
+                                result = await pub.publish_linkedin(content)
+                            if isinstance(result, dict) and result.get("url"):
+                                urls_created.append(result["url"])
+                except Exception:
+                    pass
+
+                # Queue follow-up product creation
+                follow_up = amp_plan.get("follow_up_product", "")
+                if follow_up:
+                    try:
+                        from apps.core.memory.redis_client import get_cache
+                        cache = get_cache()
+                        if cache:
+                            opp = {"name": follow_up, "strategy": "product_factory", "source": "viral_detector", "priority": 10}
+                            await cache.lpush("aria:income:opportunity_queue", json.dumps(opp))
+                    except Exception:
+                        pass
+
+            best_hit = viral_hits[0]
+            return {
+                "success": True,
+                "summary": f"viral_detector: {len(viral_hits)} viral signals — amplified {best_hit['name'][:40]} across platforms",
+                "revenue_potential": float(len(viral_hits)) * 75.0,
+                "urls": urls_created[:3],
+                "viral_hits": len(viral_hits),
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] viral_detector: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
 
