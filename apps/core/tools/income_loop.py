@@ -1234,7 +1234,48 @@ JSON:
                     "revenue_potential": price,
                     "urls": [url] if url else [],
                 }
-            return {"success": False, "summary": f"Shopify: {res.get('error', 'failed')}"}
+
+            # Fallback: LemonSqueezy
+            try:
+                from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+                ls = LemonSqueezyTools()
+                if ls._configured():
+                    ls_res = await ls.create_product(
+                        name=product.get("title", f"Digital: {str(topic)[:40]}"),
+                        description=product.get("description", ""),
+                        price_cents=int(price * 100),
+                    )
+                    if ls_res.get("success"):
+                        return {
+                            "success": True,
+                            "summary": f"LemonSqueezy product '{product.get('title','')[:50]}' at ${price:.2f}",
+                            "revenue_potential": price,
+                            "urls": [ls_res.get("url", "")] if ls_res.get("url") else [],
+                        }
+            except Exception:
+                pass
+
+            # Fallback: Gumroad
+            try:
+                from apps.core.tools.gumroad_tools import GumroadTools
+                gt = GumroadTools()
+                gr = await gt.create_product(
+                    name=product.get("title", f"Digital: {str(topic)[:40]}"),
+                    description=product.get("description", ""),
+                    price_cents=int(price * 100),
+                    tags=product.get("tags", ["digital", "download"]),
+                )
+                if gr.get("success"):
+                    return {
+                        "success": True,
+                        "summary": f"Gumroad product '{product.get('title','')[:50]}' at ${price:.2f} (Shopify unavailable)",
+                        "revenue_potential": price,
+                        "urls": [gr.get("url", "")] if gr.get("url") else [],
+                    }
+            except Exception:
+                pass
+
+            return {"success": False, "summary": f"Shopify: {res.get('error', 'failed')} — add SHOPIFY_ADMIN_TOKEN or GUMROAD_TOKEN"}
 
         except Exception as exc:
             logger.error("[IncomeLoop] shopify_listing: %s", exc)
