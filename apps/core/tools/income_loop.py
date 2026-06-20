@@ -54,14 +54,15 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",         9),
-    ("niche_rotator",            8),
-    ("product_factory",          8),
-    ("course_builder",           8),   # mini-course with syllabus + pricing (avg $79-$127/sale)
-    ("opportunity_scan",         8),
+    ("content_pipeline",         7),
+    ("niche_rotator",            7),
+    ("product_factory",          7),
+    ("course_builder",           7),   # mini-course with syllabus + pricing (avg $79-$127/sale)
+    ("affiliate_network",        7),   # build own affiliate program, recruit promoters
+    ("opportunity_scan",         7),
     ("github_publish",           7),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       7),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
-    ("micro_saas",               5),   # full micro-SaaS product launch: README + API docs + pricing
+    ("micro_saas",               4),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          4),
     ("email_campaign",           4),
     ("affiliate_content",        5),   # review/comparison articles with affiliate links
@@ -276,6 +277,8 @@ JSON:
             return await self._exec_content_repurposer()
         elif strategy == "course_builder":
             return await self._exec_course_builder()
+        elif strategy == "affiliate_network":
+            return await self._exec_affiliate_network_builder()
         elif strategy == "micro_saas":
             return await self._exec_micro_saas()
         elif strategy == "gist_blitz":
@@ -2540,6 +2543,152 @@ Generate output using AI.
 
         except Exception as exc:
             logger.error("[IncomeLoop] micro_saas: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_affiliate_network_builder(self) -> dict:
+        """
+        Create a public affiliate program for ARIA's products on GitHub.
+        Publishes an AFFILIATE.md and a referral tracking repo that:
+        - Explains commission structure (30% recurring)
+        - Lists all ARIA products available for promotion
+        - Provides referral link generation instructions
+        - Positions ARIA as a vendor with a real partner program
+        Requires: GITHUB_TOKEN
+        """
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "affiliate_network: needs GITHUB_TOKEN"}
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            cache = get_cache()
+
+            # Load product catalog for the affiliate program
+            catalog_items: list = []
+            if cache:
+                raw_items = await cache.lrange("aria:products:catalog", -20, -1)
+                for raw in (raw_items or []):
+                    try:
+                        item = json.loads(raw) if isinstance(raw, str) else raw
+                        if item.get("urls"):
+                            catalog_items.append(item)
+                    except Exception:
+                        pass
+
+            product_list_md = ""
+            if catalog_items:
+                product_list_md = "## 🛒 Products Available for Promotion\n\n"
+                for item in catalog_items[-8:]:
+                    title   = item.get("title", "")[:70]
+                    rev     = item.get("revenue", 0)
+                    urls    = item.get("urls", [])
+                    link    = urls[0] if urls else ""
+                    commission = round(rev * 0.30, 2)
+                    product_list_md += f"| [{title}]({link}) | ${rev:.0f} | ${commission:.2f}/sale |\n"
+                product_list_md = "| Product | Price | Your Commission |\n|---------|-------|-----------------|\n" + product_list_md
+            else:
+                product_list_md = "*(Products will be listed here as they are created)*"
+
+            affiliate_md = f"""# ARIA AI — Affiliate Partner Program
+
+> Earn 30% commission on every sale you refer. Recurring commissions on subscriptions.
+
+## 💰 Commission Structure
+
+| Tier | Commission | Threshold |
+|------|-----------|-----------|
+| **Starter** | 20% per sale | $0 — first sale |
+| **Pro** | 30% per sale | $500 referred |
+| **Elite** | 40% per sale | $2,000 referred |
+
+All commissions are **recurring** on subscription products.
+One-time products pay on first purchase.
+
+## 🚀 How to Join
+
+1. **Star this repo** to show intent
+2. Open an **Issue** with title: `[AFFILIATE] Your Name — Your Channel`
+3. Describe your audience (blog, YouTube, newsletter, Twitter, etc.)
+4. We'll send you a personalized referral link within 24h
+
+## 📊 Promotional Materials
+
+We provide:
+- ✅ Product descriptions and screenshots
+- ✅ Email swipe copy (3 variations per product)
+- ✅ Social media captions
+- ✅ Video script outlines
+- ✅ Banner images
+
+## {product_list_md}
+
+## 💳 Payment
+
+- Minimum payout: **$50**
+- Payment method: PayPal, Wise, or crypto
+- Payment cycle: Monthly (1st of each month)
+- Cookie duration: **90 days**
+
+## 📧 Contact
+
+Open an issue or reach out at the portfolio: https://github.com/{owner}/aria-portfolio
+
+---
+
+*Program managed by [ARIA AI](https://github.com/{owner}/aria-ai) — autonomous AI business platform*
+
+⭐ **Star this repo** to stay updated on new products and commission increases!
+"""
+
+            # Add AFFILIATE.md to the portfolio repo too
+            repos_to_update = ["aria-portfolio", "aria-ai"]
+            published_urls  = []
+
+            # Create dedicated affiliate program repo
+            affiliate_repo = "aria-affiliate-program"
+            r_create = await gh._post("/user/repos", {
+                "name": affiliate_repo,
+                "description": "ARIA AI Affiliate Program — Earn 30% commissions promoting AI products",
+                "private": False, "auto_init": False,
+            })
+            if "html_url" in r_create or r_create.get("status") == 422:
+                await gh._put(f"/repos/{owner}/{affiliate_repo}/contents/README.md", {
+                    "message": "launch: ARIA affiliate program",
+                    "content": _b64.b64encode(affiliate_md.encode()).decode(),
+                })
+                published_urls.append(f"https://github.com/{owner}/{affiliate_repo}")
+
+            # Also put AFFILIATE.md in main aria-ai repo
+            for repo in repos_to_update:
+                try:
+                    existing = await gh._get(f"/repos/{owner}/{repo}/contents/AFFILIATE.md")
+                    sha = existing.get("sha") if "error" not in existing else None
+                    body: dict = {
+                        "message": "chore: add affiliate program link",
+                        "content": _b64.b64encode(affiliate_md.encode()).decode(),
+                    }
+                    if sha:
+                        body["sha"] = sha
+                    await gh._put(f"/repos/{owner}/{repo}/contents/AFFILIATE.md", body)
+                except Exception:
+                    pass
+
+            if published_urls:
+                logger.info("[IncomeLoop] Affiliate program published: %s", published_urls[0])
+                return {
+                    "success": True,
+                    "summary": f"Affiliate program launched: 30% commissions, {len(catalog_items)} products available",
+                    "revenue_potential": 15.0,
+                    "urls": published_urls,
+                }
+            return {"success": False, "summary": "affiliate_network: could not publish"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] affiliate_network: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_course_builder(self) -> dict:
