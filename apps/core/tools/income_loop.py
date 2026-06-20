@@ -65,9 +65,9 @@ STRATEGIES = [
     ("micro_saas",               4),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          2),
     ("email_campaign",           2),
-    ("affiliate_content",        4),   # review/comparison articles with affiliate links
+    ("affiliate_content",        3),   # review/comparison articles with affiliate links
     ("ebook_factory",            4),
-    ("lead_magnet",              3),   # free resource funnel → email capture → upsell
+    ("lead_magnet",              2),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           2),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            4),   # improve existing posts for compounding organic traffic
     ("gist_blitz",               2),   # code snippet Gists with product CTAs (dev discovery)
@@ -91,6 +91,7 @@ STRATEGIES = [
     ("product_hunt_launch",      2),   # Product Hunt launch post → massive traffic spike + backlinks
     ("content_amplifier",        3),   # blast latest content to ALL platforms simultaneously — 5x reach
     ("cold_email_outreach",      2),   # SMTP cold emails to B2B prospects → consulting/product sales
+    ("pinterest_pins",           2),   # Pinterest pin strategy → visual SEO traffic → product page clicks
 ]
 
 
@@ -359,6 +360,8 @@ JSON:
             return await self._exec_content_amplifier()
         elif strategy == "cold_email_outreach":
             return await self._exec_cold_email_outreach()
+        elif strategy == "pinterest_pins":
+            return await self._exec_pinterest_pins()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -5525,6 +5528,14 @@ JSON:
                 "keys_needed": ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"],
                 "revenue_channels": ["cold email outreach", "newsletter sending", "B2B sales", "consulting leads"],
             },
+            "pinterest": {
+                "active": bool(
+                    getattr(settings, "PINTEREST_ACCESS_TOKEN", None) and
+                    getattr(settings, "PINTEREST_BOARD_ID", None)
+                ),
+                "keys_needed": ["PINTEREST_ACCESS_TOKEN", "PINTEREST_BOARD_ID"],
+                "revenue_channels": ["visual SEO traffic", "product page clicks", "affiliate traffic", "450M monthly users"],
+            },
         }
         active   = {k: v for k, v in channels.items() if v["active"]}
         inactive = {k: v for k, v in channels.items() if not v["active"]}
@@ -6034,6 +6045,161 @@ JSON:
             logger.error("[IncomeLoop] analytics_report: %s", exc)
             return f"⚠️ Error al generar reporte: {exc}"
 
+
+    async def _exec_pinterest_pins(self) -> dict:
+        """
+        Create Pinterest pins for 5 income-generating topics.
+        Uses Pinterest API v5 if PINTEREST_ACCESS_TOKEN + PINTEREST_BOARD_ID are set.
+        Always archives pin strategy to aria-insights/pinterest/ on GitHub.
+        Requires: PINTEREST_ACCESS_TOKEN + PINTEREST_BOARD_ID (for real pins);
+                  GITHUB_TOKEN (for archiving — always runs).
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+            import httpx as _hx
+
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            pinterest_token    = getattr(settings, "PINTEREST_ACCESS_TOKEN", None)
+            pinterest_board_id = getattr(settings, "PINTEREST_BOARD_ID", None)
+            can_pin = bool(pinterest_token and pinterest_board_id)
+
+            # Latest product URL for click destination
+            latest_url = f"https://github.com/{owner}/aria-portfolio"
+            try:
+                from apps.core.memory.redis_client import get_cache
+                import json as _json
+                _cache = get_cache()
+                if _cache:
+                    raw_items = await _cache.lrange("aria:products:catalog", -3, -1)
+                    for raw in reversed(raw_items or []):
+                        item = _json.loads(raw) if isinstance(raw, str) else raw
+                        if item.get("urls"):
+                            latest_url = item["urls"][0]
+                            break
+            except Exception:
+                pass
+
+            # Generate 5 pin concepts
+            pins_data = await complete_json(
+                f"""Create 5 high-performing Pinterest pin concepts for income-generating content.
+Each pin should drive clicks to: {latest_url}
+
+Pinterest best practices:
+- Vertical format (2:3 ratio) — tall pins get more reach
+- Text overlay: clear value proposition
+- Rich description with keywords
+- Strong CTA
+
+Return JSON array:
+[
+  {{
+    "title": "pin title under 100 chars",
+    "description": "SEO-rich pin description (500 chars). Include keywords, hashtags.",
+    "alt_text": "image alt text for accessibility (125 chars)",
+    "image_concept": "detailed description of the visual (what to show, colors, text overlay)",
+    "board_section": "category this pin belongs to",
+    "link": "{latest_url}",
+    "keywords": ["keyword1", "keyword2", "keyword3"]
+  }}
+]""",
+                model="fast",
+            )
+
+            if not isinstance(pins_data, list):
+                pins_data = []
+
+            pins_created = 0
+            pin_ids: list[str] = []
+            archive_lines = [
+                f"# Pinterest Strategy — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
+                f"**Board ID:** {pinterest_board_id or 'not configured'}",
+                f"**API Status:** {'Connected' if can_pin else 'Archived only (set PINTEREST_ACCESS_TOKEN + PINTEREST_BOARD_ID)'}",
+                "",
+            ]
+
+            for i, pin in enumerate(pins_data[:5], 1):
+                title       = pin.get("title", f"Pin {i}")
+                description = pin.get("description", "")
+                alt_text    = pin.get("alt_text", "")
+                img_concept = pin.get("image_concept", "")
+                link        = pin.get("link", latest_url)
+                keywords    = pin.get("keywords", [])
+
+                archive_lines += [
+                    f"## Pin {i}: {title}",
+                    f"**Description:** {description}",
+                    f"**Alt text:** {alt_text}",
+                    f"**Image concept:** {img_concept}",
+                    f"**Link:** {link}",
+                    f"**Keywords:** {', '.join(keywords)}",
+                    "",
+                ]
+
+                if can_pin:
+                    try:
+                        async with _hx.AsyncClient(timeout=15.0) as hc:
+                            r = await hc.post(
+                                "https://api.pinterest.com/v5/pins",
+                                headers={
+                                    "Authorization": f"Bearer {pinterest_token}",
+                                    "Content-Type": "application/json",
+                                },
+                                json={
+                                    "board_id": pinterest_board_id,
+                                    "title": title[:100],
+                                    "description": description[:500],
+                                    "alt_text": alt_text[:125],
+                                    "link": link,
+                                    "media_source": {
+                                        "source_type": "image_url",
+                                        "url": f"https://via.placeholder.com/735x1102?text={title[:20].replace(' ', '+')}",
+                                    },
+                                },
+                            )
+                            if r.status_code in (200, 201):
+                                pin_data = r.json()
+                                pin_id = pin_data.get("id", "")
+                                if pin_id:
+                                    pin_ids.append(pin_id)
+                                    pins_created += 1
+                    except Exception as exc:
+                        logger.warning("[IncomeLoop] pinterest pin %d: %s", i, exc)
+
+            # Archive to GitHub
+            slug = f"pinterest-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
+            path = f"pinterest/{slug}.md"
+            await gh._post("/user/repos", {"name": "aria-insights", "private": False, "auto_init": False})
+            existing = await gh._get(f"/repos/{owner}/aria-insights/contents/{path}")
+            sha = existing.get("sha") if "error" not in existing else None
+            body_put: dict = {
+                "message": f"feat: Pinterest pin strategy {slug}",
+                "content": _b64.b64encode("\n".join(archive_lines).encode()).decode(),
+            }
+            if sha:
+                body_put["sha"] = sha
+            await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+
+            archive_url = f"https://github.com/{owner}/aria-insights/blob/main/{path}"
+
+            if can_pin:
+                summary = f"Pinterest: {pins_created}/{len(pins_data)} pins created (IDs: {', '.join(pin_ids[:3])})"
+            else:
+                summary = f"Pinterest: {len(pins_data)} pin concepts ready — add PINTEREST_ACCESS_TOKEN + PINTEREST_BOARD_ID to post them"
+
+            return {
+                "success": True,
+                "summary": summary,
+                "revenue_potential": float(pins_created * 15 + len(pins_data) * 2),
+                "urls": [archive_url],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] pinterest_pins: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_cold_email_outreach(self) -> dict:
         """
