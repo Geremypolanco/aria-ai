@@ -169,7 +169,7 @@ class IncomeLoop:
 
     async def _run_one_cycle(self, force_strategy: str | None = None) -> "CycleResult":
         self._cycle += 1
-        strategy = force_strategy if force_strategy else self._pick_strategy()
+        strategy = force_strategy if force_strategy else await self._pick_strategy_smart()
         start    = time.time()
         logger.info("[IncomeLoop] Cycle #%d — strategy: %s", self._cycle, strategy)
 
@@ -221,6 +221,33 @@ class IncomeLoop:
             self._cycle, result.elapsed_seconds, result.success, result.summary[:80]
         )
         return result
+
+    async def _pick_strategy_smart(self) -> str:
+        """
+        Intelligent strategy selection:
+        1. On every 3rd cycle check the trend_detector queue — if there's a high-urgency
+           opportunity, route to its recommended strategy immediately.
+        2. Otherwise fall back to weighted random (with adaptive weights).
+        """
+        if self._cycle % 3 == 0:
+            try:
+                from apps.core.memory.redis_client import get_cache
+                cache = get_cache()
+                if cache:
+                    raw = await cache.lpop("aria:income:opportunity_queue")
+                    if raw:
+                        opp = json.loads(raw) if isinstance(raw, str) else raw
+                        recommended = opp.get("strategy", "")
+                        valid = [s[0] for s in STRATEGIES]
+                        if recommended in valid:
+                            logger.info(
+                                "[IncomeLoop] Trend queue: running '%s' for '%s' (urgency=%s)",
+                                recommended, opp.get("name", "?")[:40], opp.get("urgency", "?"),
+                            )
+                            return recommended
+            except Exception:
+                pass
+        return self._pick_strategy()
 
     def _pick_strategy(self) -> str:
         """Weighted random strategy selection — uses adaptive weights when available."""
