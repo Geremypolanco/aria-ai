@@ -276,6 +276,16 @@ class IncomeLoop:
                     await gh._post(f"/repos/{owner}/{repo}/pages", {
                         "source": {"branch": "main", "path": "/"},
                     })
+                    # Add FUNDING.yml for Sponsor button
+                    import base64 as _b64blog
+                    funding_yml = (
+                        f"github: [{owner}]\n"
+                        f"custom: [\"https://github.com/{owner}/aria-portfolio\"]\n"
+                    )
+                    await gh._put(f"/repos/{owner}/{repo}/contents/.github/FUNDING.yml", {
+                        "message": "chore: add FUNDING.yml",
+                        "content": _b64blog.b64encode(funding_yml.encode()).decode(),
+                    })
                     # Add minimal Jekyll config
                     jekyll_config = (
                         "title: ARIA Insights\n"
@@ -1274,6 +1284,30 @@ JSON:
                 await gh._post(f"/repos/{owner}/{repo_name}/pages", {
                     "source": {"branch": "main", "path": "/"},
                 })
+            except Exception:
+                pass
+
+            # Add FUNDING.yml — enables the "Sponsor" button on GitHub
+            try:
+                import base64 as _b64f
+                assoc = getattr(settings, "AMAZON_ASSOCIATE_TAG", None) or ""
+                funding_content = (
+                    f"# ARIA AI Open Source Funding\n"
+                    f"# Support our AI projects\n"
+                    f"github: [{owner}]\n"
+                    f"custom: [\"https://github.com/{owner}/aria-portfolio\"]\n"
+                )
+                if assoc:
+                    funding_content += f"# amazon_wishlist: {assoc}\n"
+                existing_funding = await gh._get(f"/repos/{owner}/{repo_name}/contents/.github/FUNDING.yml")
+                sha_f = existing_funding.get("sha", "") if "error" not in existing_funding else ""
+                put_f: dict = {
+                    "message": "chore: add FUNDING.yml",
+                    "content": _b64f.b64encode(funding_content.encode()).decode(),
+                }
+                if sha_f:
+                    put_f["sha"] = sha_f
+                await gh._put(f"/repos/{owner}/{repo_name}/contents/.github/FUNDING.yml", put_f)
             except Exception:
                 pass
 
