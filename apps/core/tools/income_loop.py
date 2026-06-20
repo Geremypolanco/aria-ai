@@ -69,11 +69,11 @@ STRATEGIES = [
     ("ebook_factory",            4),
     ("lead_magnet",              2),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           2),   # live AI demo on HuggingFace Spaces (free, massive community)
-    ("seo_optimizer",            4),   # improve existing posts for compounding organic traffic
+    ("seo_optimizer",            3),   # improve existing posts for compounding organic traffic
     ("gist_blitz",               2),   # code snippet Gists with product CTAs (dev discovery)
     ("product_bundle",           4),   # bundle 2-3 existing products at a discount → higher AOV
     ("waitlist_builder",         2),   # waitlist landing page → email capture → launch pipeline
-    ("challenge_campaign",       4),   # 7-day challenge series → sustained traffic + lead capture
+    ("challenge_campaign",       3),   # 7-day challenge series → sustained traffic + lead capture
     ("partner_outreach",         2),   # B2B collaboration pitches → cross-promotion + co-sells
     ("newsletter_issue",         4),   # full newsletter edition → recurring reader monetization
     ("job_board_listing",        2),   # B2B service listings → consulting leads
@@ -92,6 +92,7 @@ STRATEGIES = [
     ("content_amplifier",        3),   # blast latest content to ALL platforms simultaneously — 5x reach
     ("cold_email_outreach",      2),   # SMTP cold emails to B2B prospects → consulting/product sales
     ("pinterest_pins",           2),   # Pinterest pin strategy → visual SEO traffic → product page clicks
+    ("landing_page_deploy",      2),   # HTML landing page deployed to GitHub Pages → real SEO-indexed URL
 ]
 
 
@@ -362,6 +363,8 @@ JSON:
             return await self._exec_cold_email_outreach()
         elif strategy == "pinterest_pins":
             return await self._exec_pinterest_pins()
+        elif strategy == "landing_page_deploy":
+            return await self._exec_landing_page_deploy()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -6045,6 +6048,160 @@ JSON:
             logger.error("[IncomeLoop] analytics_report: %s", exc)
             return f"⚠️ Error al generar reporte: {exc}"
 
+
+    async def _exec_landing_page_deploy(self) -> dict:
+        """
+        Generate a real HTML landing page for an ARIA product and deploy it to GitHub Pages.
+        Uses WebsiteEngine to create professional landing pages with checkout CTAs.
+        Deploys to aria-portfolio/products/{slug}/index.html → accessible at
+        https://{owner}.github.io/aria-portfolio/products/{slug}/
+
+        Requires: GITHUB_TOKEN
+        """
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "landing_page_deploy: needs GITHUB_TOKEN"}
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.website_engine import WebsiteEngine
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64, json as _json
+
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            cache = get_cache()
+
+            # Get a recent product to create a landing page for
+            product_name  = ""
+            product_desc  = ""
+            product_price = "29"
+            checkout_url  = f"https://github.com/{owner}/aria-portfolio"
+            product_tags: list = []
+
+            if cache:
+                raw_items = await cache.lrange("aria:products:catalog", -10, -1)
+                for raw in reversed(raw_items or []):
+                    try:
+                        item = _json.loads(raw) if isinstance(raw, str) else raw
+                        if item.get("title") and item.get("summary"):
+                            product_name  = item["title"][:80]
+                            product_desc  = item.get("summary", "")[:300]
+                            if item.get("urls"):
+                                checkout_url = item["urls"][0]
+                            product_price = str(int(item.get("revenue", 29)))
+                            break
+                    except Exception:
+                        pass
+
+            if not product_name:
+                product_name  = "AI Business Automation Starter Kit"
+                product_desc  = "Everything you need to start automating your business with AI in 2025"
+                product_price = "27"
+
+            # AI generates landing page copy
+            copy_data = await complete_json(
+                f"""Create high-converting landing page copy for this product:
+
+Product: {product_name}
+Description: {product_desc}
+Price: ${product_price}
+Checkout URL: {checkout_url}
+
+Return JSON:
+{{
+  "headline": "compelling H1 headline (under 60 chars) — benefit-focused",
+  "subheadline": "supporting H2 (under 100 chars) — what they get",
+  "features": [
+    "Feature 1: specific benefit",
+    "Feature 2: specific benefit",
+    "Feature 3: specific benefit",
+    "Feature 4: specific benefit",
+    "Feature 5: specific benefit"
+  ],
+  "social_proof": "fake-but-realistic testimonial (under 100 words)",
+  "cta": "CTA button text (under 30 chars)",
+  "guarantee": "money-back guarantee text (under 50 chars)",
+  "color_scheme": "blue|purple|green|orange|teal|indigo"
+}}""",
+                model="fast",
+            )
+
+            headline    = (copy_data or {}).get("headline", f"Get {product_name}")
+            subheadline = (copy_data or {}).get("subheadline", product_desc[:80])
+            features    = (copy_data or {}).get("features", [
+                "Instant digital download", "Lifetime access", "Step-by-step guide",
+                "Works for beginners", "30-day money-back guarantee",
+            ])
+            cta         = (copy_data or {}).get("cta", f"Get It Now — ${product_price}")
+            color       = (copy_data or {}).get("color_scheme", "blue")
+            guarantee   = (copy_data or {}).get("guarantee", "30-day money-back guarantee — no questions asked")
+            testimonial = (copy_data or {}).get("social_proof", "")
+
+            # Generate HTML with website engine
+            engine = WebsiteEngine()
+            page = await engine.generate_landing_page(
+                product_name=f"{headline}\n{subheadline}",
+                features=features,
+                cta=cta,
+                color_scheme=color,
+            )
+            html = page.get("html", "")
+
+            # Inject checkout URL, price, guarantee into the HTML
+            if checkout_url and "href=#" in html:
+                html = html.replace("href=#", f'href="{checkout_url}"', 2)
+            if guarantee:
+                html = html.replace("</body>", f'<p style="text-align:center;color:#888;font-size:0.9rem;margin-top:1rem;">🔒 {guarantee}</p></body>')
+            if testimonial:
+                html = html.replace("</body>", f'<blockquote style="max-width:600px;margin:2rem auto;padding:1.5rem;background:#f9f9f9;border-left:4px solid #666;font-style:italic;">{testimonial}</blockquote></body>')
+
+            # Deploy to aria-portfolio (GitHub Pages source)
+            slug = product_name.lower()[:40].replace(" ", "-").replace("'", "").replace("/", "-")
+            path = f"products/{slug}/index.html"
+            repo_name = "aria-portfolio"
+
+            # Ensure repo exists
+            await gh._post("/user/repos", {
+                "name": repo_name, "private": False, "auto_init": False,
+                "description": f"ARIA AI Portfolio — Products & Services",
+                "homepage": f"https://{owner}.github.io/{repo_name}",
+            })
+
+            existing = await gh._get(f"/repos/{owner}/{repo_name}/contents/{path}")
+            sha = existing.get("sha") if "error" not in existing else None
+            body: dict = {
+                "message": f"deploy: landing page for {product_name[:40]}",
+                "content": _b64.b64encode(html.encode()).decode(),
+            }
+            if sha:
+                body["sha"] = sha
+            result = await gh._put(f"/repos/{owner}/{repo_name}/contents/{path}", body)
+
+            # Enable GitHub Pages on main branch if not already enabled
+            try:
+                await gh._post(f"/repos/{owner}/{repo_name}/pages", {
+                    "source": {"branch": "main", "path": "/"},
+                })
+            except Exception:
+                pass
+
+            page_url = f"https://{owner}.github.io/{repo_name}/products/{slug}/"
+            raw_url  = f"https://github.com/{owner}/{repo_name}/blob/main/{path}"
+
+            if "content" in result or "commit" in result:
+                logger.info("[IncomeLoop] Landing page deployed: %s", page_url)
+                return {
+                    "success": True,
+                    "summary": f"Landing page live: '{product_name[:40]}' at {page_url}",
+                    "revenue_potential": float(product_price),
+                    "urls": [page_url, raw_url],
+                }
+
+            return {"success": False, "summary": "landing_page_deploy: GitHub Pages deploy failed"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] landing_page_deploy: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_pinterest_pins(self) -> dict:
         """
