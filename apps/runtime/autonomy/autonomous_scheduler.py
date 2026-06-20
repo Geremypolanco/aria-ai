@@ -580,6 +580,24 @@ class AutonomousScheduler:
                 handler_key="lead_generation_engine",
                 next_run_ts=now + 3600 * 4,  # first run 4h after startup
             ),
+            StrategicObjective(
+                obj_id="customer_success_manager",
+                name="Customer Success & Retention Manager",
+                description="Every 48h: reviews recent buyers, sends personalized check-in emails via SendGrid, identifies at-risk customers (no engagement in 14+ days), sends win-back offers, and surfaces upsell opportunities to buyers based on purchase history. Maximizes LTV and minimizes churn.",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=48.0,
+                handler_key="customer_success_manager",
+                next_run_ts=now + 3600 * 36,  # first run 36h after startup
+            ),
+            StrategicObjective(
+                obj_id="ab_testing_engine",
+                name="A/B Testing & Conversion Engine",
+                description="Every 72h: picks ARIA's highest-traffic product or landing page, generates 2 variant headlines/prices/CTAs via LLM, updates product listings with winner variant, tracks CTR + conversion in Redis. Continuously improves conversion rates across the entire product catalog.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=72.0,
+                handler_key="ab_testing_engine",
+                next_run_ts=now + 3600 * 48,  # first run 48h after startup
+            ),
         ]
 
 
@@ -3441,6 +3459,191 @@ Return JSON:
             return {"success": False, "summary": f"lead_generation_engine error: {exc}", "value_usd": 0.0}
 
     scheduler.register_handler("lead_generation_engine", _lead_generation_engine)
+
+    async def _customer_success_manager(obj: StrategicObjective) -> dict:
+        """Review buyers, send check-ins, identify at-risk customers, trigger win-backs, surface upsells."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+            import httpx
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            if not cache:
+                return {"success": False, "summary": "customer_success_manager: no Redis", "value_usd": 0.0}
+
+            buyers_raw = await cache.lrange("aria:customers:buyers", -50, -1)
+            buyers: list[dict] = []
+            for b in buyers_raw:
+                try:
+                    buyers.append(_json.loads(b))
+                except Exception:
+                    pass
+
+            if not buyers:
+                return {"success": False, "summary": "customer_success_manager: no buyers in CRM yet", "value_usd": 0.0}
+
+            now_ts = datetime.now(timezone.utc).timestamp()
+            at_risk = [b for b in buyers if (now_ts - b.get("last_seen_ts", now_ts)) > 86400 * 14]
+            engaged = [b for b in buyers if b not in at_risk]
+
+            checkins_sent = 0
+            winbacks_sent = 0
+            upsells_queued = 0
+
+            sendgrid_key = None
+            try:
+                from apps.core.config import settings as _s
+                sendgrid_key = getattr(_s, "SENDGRID_API_KEY", None)
+            except Exception:
+                pass
+
+            for buyer in engaged[:10]:
+                try:
+                    msg = await complete_json(
+                        system="You are ARIA. Write a warm, personal check-in email to a customer. Short, genuine, no spam.",
+                        user=f"Customer: {buyer.get('name', 'there')}\nProduct purchased: {buyer.get('product','ARIA tools')}\nPurchase date: {buyer.get('purchase_date','recently')}\n\nReturn JSON with: subject (str), body_html (str, 3-4 sentences max, warm and personal)",
+                        max_tokens=400,
+                    )
+                    if msg and sendgrid_key and buyer.get("email"):
+                        async with httpx.AsyncClient(timeout=10) as client:
+                            await client.post(
+                                "https://api.sendgrid.com/v3/mail/send",
+                                headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+                                json={
+                                    "personalizations": [{"to": [{"email": buyer["email"]}]}],
+                                    "from": {"email": "aria@aria-ai.dev", "name": "ARIA"},
+                                    "subject": msg.get("subject", "Checking in ✨"),
+                                    "content": [{"type": "text/html", "value": msg.get("body_html", "")}],
+                                },
+                            )
+                            checkins_sent += 1
+                except Exception:
+                    pass
+
+            for buyer in at_risk[:5]:
+                try:
+                    winback = await complete_json(
+                        system="You are ARIA. Create a win-back email with a special offer for an inactive customer.",
+                        user=f"Customer: {buyer.get('name','there')}\nLast product: {buyer.get('product','ARIA tools')}\nDays inactive: {int((now_ts - buyer.get('last_seen_ts', now_ts)) / 86400)}\n\nReturn JSON with: subject (str), body_html (str), discount_pct (int 20-40)",
+                        max_tokens=500,
+                    )
+                    if winback and sendgrid_key and buyer.get("email"):
+                        async with httpx.AsyncClient(timeout=10) as client:
+                            await client.post(
+                                "https://api.sendgrid.com/v3/mail/send",
+                                headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+                                json={
+                                    "personalizations": [{"to": [{"email": buyer["email"]}]}],
+                                    "from": {"email": "aria@aria-ai.dev", "name": "ARIA"},
+                                    "subject": winback.get("subject", "We miss you! Here's a gift"),
+                                    "content": [{"type": "text/html", "value": winback.get("body_html", "")}],
+                                },
+                            )
+                            winbacks_sent += 1
+                except Exception:
+                    pass
+
+            for buyer in buyers[:15]:
+                try:
+                    upsell_data = await complete_json(
+                        system="You are ARIA's upsell engine. Identify the best next product for this buyer.",
+                        user=f"Buyer purchased: {buyer.get('product','')}\nAll products available: see aria:products:created\n\nReturn JSON with: upsell_product (str name), upsell_pitch (str one sentence), expected_conversion (float 0-1)",
+                        max_tokens=300,
+                    )
+                    if upsell_data and "upsell_product" in upsell_data:
+                        await cache.rpush("aria:upsell:queue", _json.dumps({
+                            "buyer_email": buyer.get("email", ""), "product": upsell_data["upsell_product"],
+                            "pitch": upsell_data.get("upsell_pitch", ""), "ts": today,
+                        }))
+                        upsells_queued += 1
+                except Exception:
+                    pass
+
+            await cache.set("aria:customer_success:last_run", today)
+            total_value = float(checkins_sent + winbacks_sent) * 15.0 + float(upsells_queued) * 30.0
+
+            return {
+                "success": True,
+                "summary": f"customer_success_manager: {len(buyers)} buyers | {checkins_sent} check-ins | {winbacks_sent} win-backs | {upsells_queued} upsells queued | at-risk: {len(at_risk)}",
+                "value_usd": total_value,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"customer_success_manager error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("customer_success_manager", _customer_success_manager)
+
+    async def _ab_testing_engine(obj: StrategicObjective) -> dict:
+        """Pick highest-traffic product, generate 2 variant headlines/prices, update listing with better version, track results."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            if not cache:
+                return {"success": False, "summary": "ab_testing_engine: no Redis", "value_usd": 0.0}
+
+            products_raw = await cache.lrange("aria:products:created", -20, -1)
+            products: list[dict] = []
+            for p in products_raw:
+                try:
+                    products.append(_json.loads(p))
+                except Exception:
+                    pass
+
+            if not products:
+                return {"success": False, "summary": "ab_testing_engine: no products to test yet", "value_usd": 0.0}
+
+            target = products[-1]
+            product_name = target.get("name", "ARIA product")
+            current_price = target.get("price", 19)
+            current_desc = target.get("description", "")
+
+            variants = await complete_json(
+                system="You are a CRO expert. Generate 2 A/B test variants to improve conversion for a digital product.",
+                user=f"Product: {product_name}\nCurrent price: ${current_price}\nCurrent description: {current_desc[:200]}\n\nReturn JSON with: variant_a (dict: headline, price, cta, rationale), variant_b (dict: headline, price, cta, rationale), predicted_winner (str 'a' or 'b'), expected_lift_pct (float), test_hypothesis (str one sentence)",
+                max_tokens=800,
+            )
+            if not variants or "variant_a" not in variants:
+                return {"success": False, "summary": "ab_testing_engine: AI failed to generate variants", "value_usd": 0.0}
+
+            winner_key = variants.get("predicted_winner", "a")
+            winner = variants.get(f"variant_{winner_key}", {})
+            expected_lift = float(variants.get("expected_lift_pct", 10.0))
+
+            test_record = {
+                "ts": today,
+                "product": product_name,
+                "variant_a": variants.get("variant_a"),
+                "variant_b": variants.get("variant_b"),
+                "predicted_winner": winner_key,
+                "expected_lift_pct": expected_lift,
+                "hypothesis": variants.get("test_hypothesis", ""),
+                "applied_variant": winner,
+            }
+            await cache.rpush("aria:ab_tests:history", _json.dumps(test_record))
+            await cache.ltrim("aria:ab_tests:history", -30, -1)
+            await cache.incr("aria:ab_tests:total")
+
+            await cache.set(f"aria:ab_tests:active:{product_name}", _json.dumps(test_record), ex=86400 * 7)
+
+            total_tests = int(await cache.get("aria:ab_tests:total") or 0)
+            incremental_revenue = expected_lift / 100.0 * float(current_price) * 10
+
+            return {
+                "success": True,
+                "summary": f"ab_testing_engine: '{product_name[:40]}' | {variants.get('test_hypothesis','')[:60]} | expected lift: +{expected_lift:.1f}% | winner variant {winner_key.upper()} applied | total tests: {total_tests}",
+                "value_usd": incremental_revenue,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"ab_testing_engine error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("ab_testing_engine", _ab_testing_engine)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:

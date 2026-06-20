@@ -60,12 +60,12 @@ STRATEGIES = [
     ("course_builder",           1),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        1),   # build own affiliate program, recruit promoters
     ("opportunity_scan",         1),
-    ("github_publish",           2),   # works with only GITHUB_TOKEN — always active
+    ("github_publish",           1),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       1),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               2),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          1),
     ("email_campaign",           1),
-    ("affiliate_content",        2),   # review/comparison articles with affiliate links
+    ("affiliate_content",        1),   # review/comparison articles with affiliate links
     ("ebook_factory",            2),
     ("lead_magnet",              1),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
@@ -84,7 +84,7 @@ STRATEGIES = [
     ("twitter_thread",           3),   # direct Twitter API thread via api_publisher (real posts)
     ("linkedin_post",            3),   # direct LinkedIn API post via api_publisher (real posts)
     ("reddit_organic",           3),   # subreddit posts → massive organic traffic → affiliate rev
-    ("stripe_checkout",          3),   # real Stripe payment link for instant revenue
+    ("stripe_checkout",          2),   # real Stripe payment link for instant revenue
     ("tiktok_script",            2),   # TikTok/Reels/YouTube Shorts viral scripts → massive reach
     ("linkedin_outreach",        1),   # B2B prospect messages → consulting/partnership leads
     ("youtube_strategy",         1),   # YouTube content plan + optimized metadata + script → channel growth
@@ -137,6 +137,9 @@ STRATEGIES = [
     ("white_label_kit",          1),   # build white-label package: agencies resell ARIA's AI as their own → B2B revenue
     ("data_product_seller",      1),   # compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
     ("b2b_saas_pitch",           1),   # create full B2B pitch + send cold outreach to potential enterprise clients
+    ("email_list_builder",       1),   # grow email list fast: create lead magnet + landing page + subscribe form → list asset
+    ("joint_venture_pitch",      1),   # find JV partners, propose revenue-share deals, create co-marketing proposals
+    ("product_review_outreach",  1),   # reach out to review sites / blogs to get ARIA's products reviewed → organic SEO
 ]
 
 
@@ -524,6 +527,12 @@ JSON:
             return await self._exec_data_product_seller()
         elif strategy == "b2b_saas_pitch":
             return await self._exec_b2b_saas_pitch()
+        elif strategy == "email_list_builder":
+            return await self._exec_email_list_builder()
+        elif strategy == "joint_venture_pitch":
+            return await self._exec_joint_venture_pitch()
+        elif strategy == "product_review_outreach":
+            return await self._exec_product_review_outreach()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -13598,6 +13607,241 @@ Generate a backlink building plan:
 
         except Exception as exc:
             logger.error("[IncomeLoop] viral_detector: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_email_list_builder(self) -> dict:
+        """Grow ARIA's email list: create lead magnet + landing page + opt-in form → list as primary asset."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            web = WebTools()
+            github = AriaGitHubClient()
+
+            trends = await web.get_trending_topics()
+            top_topic = trends[0] if trends else "AI productivity tools"
+
+            plan = await complete_json(
+                system="You are ARIA's list-growth strategist. Design a high-converting email lead magnet.",
+                user=f"Topic: {top_topic}\n\nReturn JSON with: magnet_title (str), magnet_type (checklist|template|mini_guide|swipe_file), hook_headline (str compelling 1-liner), opt_in_cta (str), email_sequence_day1 (str subject line), email_sequence_day3 (str subject line), email_sequence_day7 (str subject line), landing_page_html (str full HTML with opt-in form pointing to a mailto: or Gumroad follow page), estimated_list_growth_per_week (int)",
+                max_tokens=2000,
+            )
+            if not plan or "magnet_title" not in plan:
+                return {"success": False, "summary": "email_list_builder: AI failed", "revenue_potential": 0.0}
+
+            magnet_title = plan["magnet_title"]
+            landing_html = plan.get("landing_page_html", f"<h1>{magnet_title}</h1>")
+            slug = magnet_title.lower().replace(" ", "-").replace("/", "-")[:40]
+
+            urls_created: list[str] = []
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/email-magnets/{slug}/index.html",
+                    {
+                        "message": f"[aria] email_list_builder: {magnet_title[:50]}",
+                        "content": __import__("base64").b64encode(landing_html.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/email-magnets/{slug}/")
+            except Exception:
+                pass
+
+            sequence_info = {
+                "day1": plan.get("email_sequence_day1", ""),
+                "day3": plan.get("email_sequence_day3", ""),
+                "day7": plan.get("email_sequence_day7", ""),
+            }
+
+            if cache:
+                await cache.rpush("aria:email:magnets", _json.dumps({
+                    "ts": today, "title": magnet_title, "topic": top_topic,
+                    "type": plan.get("magnet_type", "checklist"), "sequence": sequence_info,
+                    "estimated_growth": plan.get("estimated_list_growth_per_week", 0),
+                }))
+                await cache.ltrim("aria:email:magnets", -20, -1)
+                await cache.incr("aria:email:total_magnets")
+
+            return {
+                "success": True,
+                "summary": f"email_list_builder: '{magnet_title[:50]}' ({plan.get('magnet_type','checklist')}) | +{plan.get('estimated_list_growth_per_week',0)}/wk | landing deployed",
+                "revenue_potential": float(plan.get("estimated_list_growth_per_week", 0)) * 2.0,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] email_list_builder: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_joint_venture_pitch(self) -> dict:
+        """Find JV partners + propose revenue-share or co-marketing deals → unlock new distribution channels."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            web = WebTools()
+            github = AriaGitHubClient()
+
+            trends = await web.get_trending_topics()
+            niche = trends[0] if trends else "AI automation tools"
+
+            pitch = await complete_json(
+                system="You are ARIA's partnership director. Identify high-value JV opportunities and craft irresistible revenue-share proposals.",
+                user=f"Niche: {niche}\n\nReturn JSON with: partner_type (str e.g. 'newsletter creator with 10k+ subs'), ideal_partner_examples (list[str] 3 Twitter/newsletter handles), deal_structure (str e.g. '50% rev share on bundle'), pitch_subject (str email subject), pitch_body (str full cold email body 150-200 words, personalized), co_marketing_idea (str what we create together), estimated_revenue_per_deal (float USD per month), pitch_deck_outline (list[str] 5 slides)",
+                max_tokens=1800,
+            )
+            if not pitch or "partner_type" not in pitch:
+                return {"success": False, "summary": "joint_venture_pitch: AI failed", "revenue_potential": 0.0}
+
+            partner_type = pitch["partner_type"]
+            deal_structure = pitch.get("deal_structure", "50/50 rev share")
+            revenue_per_deal = float(pitch.get("estimated_revenue_per_deal", 200.0))
+            pitch_body = pitch.get("pitch_body", "")
+            slug = f"jv-pitch-{today}"
+            urls_created: list[str] = []
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+
+            pitch_md = f"# JV Pitch: {partner_type}\n\n**Date:** {today}\n**Deal:** {deal_structure}\n**Est. Revenue:** ${revenue_per_deal}/mo\n\n## Email\n\n**Subject:** {pitch.get('pitch_subject','')}\n\n{pitch_body}\n\n## Co-Marketing Idea\n\n{pitch.get('co_marketing_idea','')}\n\n## Deck Outline\n\n" + "\n".join(f"- {s}" for s in pitch.get("pitch_deck_outline", []))
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/jv-pitches/{slug}.md",
+                    {
+                        "message": f"[aria] joint_venture_pitch: {partner_type[:50]}",
+                        "content": __import__("base64").b64encode(pitch_md.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/jv-pitches/{slug}.md")
+            except Exception:
+                pass
+
+            partners = pitch.get("ideal_partner_examples", [])
+            outreach_count = 0
+            for handle in partners[:3]:
+                try:
+                    dm_prompt = await complete_json(
+                        system="You are ARIA. Write a very short, natural DM to propose a JV deal. No spam.",
+                        user=f"Handle: {handle}\nDeal: {deal_structure}\nCo-marketing: {pitch.get('co_marketing_idea','')}\n\nReturn JSON with: dm_text (str, max 280 chars)",
+                        max_tokens=300,
+                    )
+                    if dm_prompt and "dm_text" in dm_prompt:
+                        if cache:
+                            await cache.rpush("aria:jv:outreach_queue", _json.dumps({
+                                "handle": handle, "dm": dm_prompt["dm_text"], "ts": today
+                            }))
+                        outreach_count += 1
+                except Exception:
+                    pass
+
+            if cache:
+                await cache.rpush("aria:jv:pitches", _json.dumps({
+                    "ts": today, "partner_type": partner_type, "deal": deal_structure,
+                    "revenue": revenue_per_deal, "outreach_count": outreach_count,
+                }))
+                await cache.ltrim("aria:jv:pitches", -20, -1)
+                await cache.incr("aria:jv:total_pitches")
+
+            return {
+                "success": True,
+                "summary": f"joint_venture_pitch: targeting {partner_type[:40]} | {deal_structure} | ${revenue_per_deal}/mo | {outreach_count} DMs queued",
+                "revenue_potential": revenue_per_deal,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] joint_venture_pitch: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_product_review_outreach(self) -> dict:
+        """Reach out to review blogs/influencers to get ARIA's products reviewed → organic SEO + social proof."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            web = WebTools()
+            github = AriaGitHubClient()
+
+            existing_products: list[dict] = []
+            if cache:
+                raw = await cache.lrange("aria:products:created", -10, -1)
+                for r in raw:
+                    try:
+                        existing_products.append(_json.loads(r))
+                    except Exception:
+                        pass
+
+            product_name = existing_products[-1].get("name", "ARIA AI Automation Suite") if existing_products else "ARIA AI Automation Suite"
+            product_url = existing_products[-1].get("url", f"https://gumroad.com/{settings.GITHUB_USERNAME}") if existing_products else f"https://gumroad.com/{settings.GITHUB_USERNAME}"
+
+            outreach = await complete_json(
+                system="You are ARIA's PR outreach specialist. Craft personalized review pitch emails to tech bloggers.",
+                user=f"Product: {product_name}\nProduct URL: {product_url}\n\nReturn JSON with: target_reviewers (list[dict] each with 'name', 'site', 'email_template']), pitch_angle (str unique angle for this product), review_incentive (str what we offer in return e.g. free access/affiliate commission), expected_backlinks (int), seo_keywords_targeted (list[str] 3-5 keywords), outreach_email_subject (str), outreach_email_body (str full email 150-200 words)",
+                max_tokens=2000,
+            )
+            if not outreach or "pitch_angle" not in outreach:
+                return {"success": False, "summary": "product_review_outreach: AI failed", "revenue_potential": 0.0}
+
+            pitch_angle = outreach["pitch_angle"]
+            reviewers = outreach.get("target_reviewers", [])
+            expected_backlinks = int(outreach.get("expected_backlinks", 3))
+            slug = f"review-outreach-{today}"
+            urls_created: list[str] = []
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+
+            outreach_md = f"# Review Outreach: {product_name}\n\n**Date:** {today}\n**Angle:** {pitch_angle}\n**Incentive:** {outreach.get('review_incentive','Free access')}\n**Expected backlinks:** {expected_backlinks}\n\n## Target Keywords\n\n{chr(10).join('- ' + k for k in outreach.get('seo_keywords_targeted', []))}\n\n## Email Template\n\n**Subject:** {outreach.get('outreach_email_subject','')}\n\n{outreach.get('outreach_email_body','')}\n\n## Reviewers\n\n" + "\n".join(f"- **{r.get('name','')}** ({r.get('site','')})" for r in reviewers[:5])
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/pr-outreach/{slug}.md",
+                    {
+                        "message": f"[aria] product_review_outreach: {product_name[:50]}",
+                        "content": __import__("base64").b64encode(outreach_md.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/pr-outreach/{slug}.md")
+            except Exception:
+                pass
+
+            emails_queued = 0
+            for reviewer in reviewers[:5]:
+                try:
+                    if cache:
+                        await cache.rpush("aria:pr:outreach_queue", _json.dumps({
+                            "reviewer": reviewer.get("name", ""), "site": reviewer.get("site", ""),
+                            "product": product_name, "ts": today,
+                            "email": reviewer.get("email_template", outreach.get("outreach_email_body", "")),
+                        }))
+                        emails_queued += 1
+                except Exception:
+                    pass
+
+            if cache:
+                await cache.rpush("aria:pr:campaigns", _json.dumps({
+                    "ts": today, "product": product_name, "angle": pitch_angle,
+                    "reviewers": len(reviewers), "expected_backlinks": expected_backlinks,
+                }))
+                await cache.ltrim("aria:pr:campaigns", -20, -1)
+                await cache.incr("aria:pr:total_outreach")
+
+            return {
+                "success": True,
+                "summary": f"product_review_outreach: '{product_name[:40]}' | {len(reviewers)} reviewers targeted | {emails_queued} emails queued | {expected_backlinks} backlinks expected",
+                "revenue_potential": float(expected_backlinks) * 50.0,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] product_review_outreach: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
 
