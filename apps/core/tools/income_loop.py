@@ -302,15 +302,40 @@ class IncomeLoop:
                 except Exception:
                     pass  # Pages may already be enabled or not available on free plan
 
+            # Load published topics for deduplication
+            published_topics: set = set()
+            try:
+                from apps.core.memory.redis_client import get_cache as _get_cache
+                _cache = _get_cache()
+                if _cache:
+                    raw_topics = await _cache.get("aria:blog:published_topics")
+                    if raw_topics:
+                        published_topics = set(json.loads(raw_topics) if isinstance(raw_topics, str) else raw_topics)
+            except Exception:
+                pass
+
             # Get a trending topic if no articles provided
             if not existing_articles:
                 if not ai:
                     return {"success": False, "summary": "AI unavailable"}
                 wt = WebTools()
-                r  = await wt.search_web("trending tech AI productivity 2025 tutorial", num_results=5)
+                r  = await wt.search_web("trending tech AI productivity 2025 tutorial", num_results=8)
                 topic = "AI Productivity Guide 2025"
+                # Pick first result not already published
                 if r.get("success") and r.get("results"):
-                    topic = r["results"][0].get("title", topic)[:80]
+                    for res in r["results"]:
+                        candidate = res.get("title", "")[:80]
+                        # Simple dedup: skip if a very similar title was already published
+                        candidate_words = set(candidate.lower().split())
+                        already_published = any(
+                            len(candidate_words & set(pt.lower().split())) >= 3
+                            for pt in published_topics
+                        )
+                        if not already_published:
+                            topic = candidate
+                            break
+                    else:
+                        topic = r["results"][0].get("title", topic)[:80]
 
                 article_json = await ai.complete_json(
                     system=(
@@ -377,11 +402,20 @@ JSON:
                     published_urls.append(f"https://github.com/{owner}/{repo}/blob/main/{filename}")
 
             if published_urls:
-                # Update the blog index and sitemap in the background
+                # Update the blog index, sitemap, and published topics cache
                 try:
                     published_titles = [art.get("title", "Article") for art in existing_articles[:len(published_urls)]]
                     await self._update_blog_index(gh, owner, repo, published_titles, published_urls)
                     await self._update_sitemap(gh, owner, repo)
+                    # Track published topics to avoid duplication
+                    try:
+                        from apps.core.memory.redis_client import get_cache as _gc2
+                        _c2 = _gc2()
+                        if _c2:
+                            updated_topics = list(published_topics | set(published_titles))[-100:]
+                            await _c2.set("aria:blog:published_topics", json.dumps(updated_topics), ttl_seconds=86400 * 90)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
 
