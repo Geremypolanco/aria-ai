@@ -1332,6 +1332,110 @@ async def api_intelligence_dashboard() -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── INCOME GOALS ──────────────────────────────────────────────────────────────
+
+
+class SetGoalRequest(BaseModel):
+    daily_revenue_usd: float = 100.0
+    weekly_revenue_usd: float = 700.0
+
+
+@router.post(
+    "/goals/revenue",
+    dependencies=[Depends(verify_api_key)],
+    summary="Set daily and weekly revenue goals for ARIA",
+)
+async def api_set_revenue_goals(req: SetGoalRequest) -> dict:
+    """Sets ARIA's income targets. daily_goal_tracker strategy will use these."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+        await cache.set("aria:goals:daily_revenue_usd", str(req.daily_revenue_usd), ex=86400 * 365)
+        await cache.set("aria:goals:weekly_revenue_usd", str(req.weekly_revenue_usd), ex=86400 * 365)
+        return {
+            "daily_goal_usd": req.daily_revenue_usd,
+            "weekly_goal_usd": req.weekly_revenue_usd,
+            "message": "Goals set. ARIA will auto-trigger high-conversion strategies when behind.",
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get(
+    "/goals/revenue",
+    dependencies=[Depends(verify_api_key)],
+    summary="View current revenue goals and daily performance",
+)
+async def api_get_revenue_goals() -> dict:
+    """Returns current revenue goals and today's progress."""
+    try:
+        import json as _json
+        import datetime as _dt
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+        daily_raw = await cache.get("aria:goals:daily_revenue_usd")
+        weekly_raw = await cache.get("aria:goals:weekly_revenue_usd")
+        daily_goal = float(daily_raw) if daily_raw else 100.0
+        weekly_goal = float(weekly_raw) if weekly_raw else 700.0
+
+        today_str = _dt.datetime.utcnow().strftime("%Y-%m-%d")
+        today_snap_raw = await cache.get(f"aria:goals:daily:{today_str}")
+        today_snap = _json.loads(today_snap_raw) if today_snap_raw else {}
+
+        weekly_snaps_raw = await cache.get("aria:goals:weekly_snaps")
+        weekly_snaps = _json.loads(weekly_snaps_raw) if weekly_snaps_raw else {}
+        week_total = sum(v.get("revenue_usd", 0) for v in list(weekly_snaps.values())[-7:])
+
+        return {
+            "daily_goal_usd": daily_goal,
+            "weekly_goal_usd": weekly_goal,
+            "today": today_snap,
+            "week_total_usd": round(week_total, 2),
+            "week_to_goal_pct": round(week_total / weekly_goal * 100, 1) if weekly_goal > 0 else 0,
+            "days_tracked": len(weekly_snaps),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get(
+    "/goals/weekly-performance",
+    dependencies=[Depends(verify_api_key)],
+    summary="14-day rolling revenue performance vs goals",
+)
+async def api_weekly_performance() -> dict:
+    """Returns 14-day daily revenue vs goals for trend analysis."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+        snaps_raw = await cache.get("aria:goals:weekly_snaps")
+        snaps = _json.loads(snaps_raw) if snaps_raw else {}
+        daily_raw = await cache.get("aria:goals:daily_revenue_usd")
+        daily_goal = float(daily_raw) if daily_raw else 100.0
+        return {
+            "daily_goal_usd": daily_goal,
+            "snapshots": snaps,
+            "days_on_track": sum(1 for v in snaps.values() if v.get("on_track", False)),
+            "days_tracked": len(snaps),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 
 
