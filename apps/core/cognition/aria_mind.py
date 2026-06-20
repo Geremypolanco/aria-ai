@@ -126,7 +126,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
 - income_loop_status → muestra el estado del loop de ingresos 24/7: ciclos completados, tasa de éxito, última estrategia ejecutada, URLs creadas. Args: {{}}
 - start_income_loop → inicia el loop autónomo de ingresos 24/7 si no está corriendo. Corre cada 30 min indefinidamente. Args: {{}}
-- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder|twitter_thread|linkedin_post|reddit_organic (opcional)"}}
+- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder|twitter_thread|linkedin_post|reddit_organic|stripe_checkout|tiktok_script|linkedin_outreach|youtube_strategy|product_hunt_launch (opcional)"}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
 - deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
@@ -158,8 +158,8 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - run_retention    → ejecuta campañas de retención: win-back a clientes inactivos 60+ días + loyalty rewards a VIPs. Args: {{}}
 - shopify_optimize → ejecuta optimizaciones de Shopify: SEO de productos, generación de bundles o flash sale. Args: {{"operation": "seo|bundles|flash_sale"}}
 - run_funnel       → analiza y devuelve estado de funnels de conversión, abandono de carrito y secuencias de email. Args: {{}}
-- check_objectives → muestra el estado de los 15 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis, social_organic). Args: {{}}
-- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis|social_organic"}}
+- check_objectives → muestra el estado de los 19 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis, social_organic, strategy_optimizer, self_improve, youtube_cycle, product_hunt_cycle). Args: {{}}
+- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis|social_organic|strategy_optimizer|self_improve|youtube_cycle|product_hunt_cycle"}}
 - daily_report     → muestra el reporte de ejecución del día: operaciones completadas, score de ejecución, insight y prioridad de mañana. Args: {{}}
 - human_login      → inicia sesión en una plataforma como un humano real (stealth, sin ser detectada). Args: {{"platform": "gumroad|devto|linkedin|twitter|hashnode", "email": "...", "password": "...", "username": "..."}}
 - human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
@@ -248,6 +248,8 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 59. Si el usuario pide publicar en Twitter, postear un hilo, o usar la API de Twitter directamente → usa run_income_cycle con strategy="twitter_thread".
 60. Si el usuario pide publicar en LinkedIn, escribir un post de LinkedIn o usar la API de LinkedIn → usa run_income_cycle con strategy="linkedin_post".
 61. Si el usuario pide generar tráfico orgánico de Reddit, publicar en subreddits, o crear posts para r/Entrepreneur o r/SideProject → usa run_income_cycle con strategy="reddit_organic".
+62. Si el usuario pide crear una estrategia de YouTube, generar scripts de video, plan de canal, calendario de contenido para YouTube, o metadata SEO optimizada → usa run_income_cycle con strategy="youtube_strategy".
+63. Si el usuario pide lanzar en Product Hunt, crear un lanzamiento PH, preparar el kit de lanzamiento, o generar tráfico masivo de un día con Product Hunt → usa run_income_cycle con strategy="product_hunt_launch".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1510,6 +1512,44 @@ class AriaMind:
                     "1. huggingface.co → Settings → Access Tokens → New token (role: write)",
                     "2. `fly secrets set HF_TOKEN=hf_tu_token -a aria-ai`",
                     "→ ARIA crea Spaces de Gradio con demos interactivos que generan tráfico y posicionamiento",
+                    "",
+                    "**💳 Para cobros reales vía Stripe (checkout links instantáneos):**",
+                    "1. stripe.com → Dashboard → Developers → API keys",
+                    "2. Copia la Secret key (sk_live_...)",
+                    "3. `fly secrets set STRIPE_SECRET_KEY=sk_live_... -a aria-ai`",
+                    "→ ARIA crea productos y genera checkout links reales que tus clientes pueden pagar",
+                    "",
+                    "**🐦 Para publicar en Twitter/X directamente (sin Zapier):**",
+                    "1. developer.twitter.com → Create App → Keys and tokens",
+                    "2. Genera API Key + API Secret + Access Token + Access Token Secret",
+                    "3. `fly secrets set TWITTER_API_KEY=... TWITTER_API_SECRET=... TWITTER_ACCESS_TOKEN=... TWITTER_ACCESS_SECRET=... -a aria-ai`",
+                    "→ ARIA publica threads virales en X automáticamente con las estrategias twitter_thread",
+                    "",
+                    "**💼 Para publicar en LinkedIn directamente (posts de alto engagement B2B):**",
+                    "1. linkedin.com/developers → Create App → Auth → OAuth 2.0 tokens",
+                    "2. Genera Access Token con permisos: w_member_social, r_liteprofile",
+                    "3. Tu Person URN: linkedin.com/in/tu-perfil → inspeccionar → busca 'id'",
+                    "4. `fly secrets set LINKEDIN_ACCESS_TOKEN=... LINKEDIN_PERSON_URN=urn:li:person:XXXXX -a aria-ai`",
+                    "→ ARIA publica posts de liderazgo de pensamiento en LinkedIn para leads B2B",
+                    "",
+                    "**🟠 Para publicar en Reddit orgánicamente (tráfico masivo gratuito):**",
+                    "1. reddit.com/prefs/apps → Create App (tipo: script)",
+                    "2. Obtén Client ID (debajo del nombre) + Client Secret",
+                    "3. Genera refresh token via OAuth2 flow",
+                    "4. `fly secrets set REDDIT_CLIENT_ID=... REDDIT_CLIENT_SECRET=... REDDIT_REFRESH_TOKEN=... REDDIT_USERNAME=tu_usuario -a aria-ai`",
+                    "→ ARIA publica contenido de valor en subreddits relevantes con links a tus productos",
+                    "",
+                    "**▶️ Para estrategia de YouTube (scripts, SEO, calendarios de contenido + AdSense):**",
+                    "1. console.cloud.google.com → APIs → YouTube Data API v3 → Crear credencial",
+                    "2. Genera API Key",
+                    "3. `fly secrets set YOUTUBE_API_KEY=AIza... -a aria-ai`",
+                    "→ ARIA genera scripts completos, metadata SEO optimizada, calendarios de 4 semanas y planes de monetización para tu canal",
+                    "→ Sin YOUTUBE_API_KEY, ARIA igual genera todo el contenido y lo archiva en GitHub (funciona siempre)",
+                    "",
+                    "**🚀 Para lanzamientos en Product Hunt (5k-50k visitantes en 1 día):**",
+                    "→ No requiere API key — ARIA genera el kit completo de lanzamiento:",
+                    "  Tagline, descripción, primer comentario del maker, DM para hunters, checklist de lanzamiento",
+                    "→ Ejecuta: /income_cycle strategy=product_hunt_launch",
                 ]
                 return "\n".join(lines), {}
 
@@ -1679,6 +1719,8 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     "daily_revenue_digest", "bundle_and_waitlist",
                     "challenge_day_sequencer", "partner_outreach_cycle",
                     "proactive_analysis", "social_organic",
+                    "strategy_optimizer", "self_improve",
+                    "youtube_cycle", "product_hunt_cycle",
                 ]
                 if obj_key not in valid_keys:
                     return (f"Objetivo inválido: '{obj_key}'. "

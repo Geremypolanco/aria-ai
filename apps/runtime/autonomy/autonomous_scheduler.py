@@ -436,6 +436,24 @@ class AutonomousScheduler:
                 handler_key="self_improve",
                 next_run_ts=now + 3600 * 36,  # first self-improvement after 36h
             ),
+            StrategicObjective(
+                obj_id="youtube_cycle",
+                name="YouTube Content Engine",
+                description="Every 12h generates a complete YouTube content package: optimized title, script, metadata, 4-week calendar, monetization strategy — archived to aria-insights",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=12.0,
+                handler_key="youtube_cycle",
+                next_run_ts=now + 3600 * 4,  # first run 4h after startup
+            ),
+            StrategicObjective(
+                obj_id="product_hunt_cycle",
+                name="Product Hunt Launch Engine",
+                description="Every 72h creates a complete Product Hunt launch kit for the latest ARIA product: tagline, description, maker comment, hunter DM, upvote strategy — archived to aria-insights",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=72.0,
+                handler_key="product_hunt_cycle",
+                next_run_ts=now + 3600 * 48,  # first launch kit after 48h
+            ),
         ]
 
 
@@ -1154,6 +1172,50 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
         except Exception as exc:
             return {"success": False, "summary": f"self_improve error: {exc}", "value_usd": 0.0}
 
+    async def _youtube_cycle(obj: StrategicObjective) -> dict:
+        """Generate a YouTube content strategy and archive it every 12 hours."""
+        try:
+            from apps.core.tools.income_loop import get_income_loop
+            loop   = get_income_loop()
+            result = await loop._exec_youtube_strategy()
+            return {
+                "success": result.get("success", False),
+                "summary": result.get("summary", "youtube_cycle completed"),
+                "value_usd": result.get("revenue_potential", 0.0),
+                "urls": result.get("urls", []),
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"youtube_cycle error: {exc}", "value_usd": 0.0}
+
+    async def _product_hunt_cycle(obj: StrategicObjective) -> dict:
+        """Create a complete Product Hunt launch kit every 72 hours."""
+        try:
+            from apps.core.tools.income_loop import get_income_loop
+            loop   = get_income_loop()
+            result = await loop._exec_product_hunt_launch()
+            # Telegram ping on success (major event)
+            if result.get("success"):
+                try:
+                    from apps.core.tools.telegram_bot import get_telegram_bot
+                    bot = get_telegram_bot()
+                    urls = result.get("urls", [])
+                    url_line = f"\n🔗 {urls[0]}" if urls else ""
+                    await bot.send_message(
+                        f"🚀 <b>Product Hunt Launch Kit Ready!</b>\n"
+                        f"{result.get('summary', '')}{url_line}\n"
+                        f"<i>Kit archivado — revisa y lanza cuando estés listo.</i>"
+                    )
+                except Exception:
+                    pass
+            return {
+                "success": result.get("success", False),
+                "summary": result.get("summary", "product_hunt_cycle completed"),
+                "value_usd": result.get("revenue_potential", 0.0),
+                "urls": result.get("urls", []),
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"product_hunt_cycle error: {exc}", "value_usd": 0.0}
+
     scheduler.register_handler("daily_revenue_digest", _daily_revenue_digest)
     scheduler.register_handler("bundle_and_waitlist", _bundle_and_waitlist)
     scheduler.register_handler("challenge_day_sequencer", _challenge_day_sequencer)
@@ -1162,6 +1224,8 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
     scheduler.register_handler("social_organic", _social_organic)
     scheduler.register_handler("strategy_optimizer", _strategy_optimizer)
     scheduler.register_handler("self_improve", _self_improve)
+    scheduler.register_handler("youtube_cycle", _youtube_cycle)
+    scheduler.register_handler("product_hunt_cycle", _product_hunt_cycle)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:

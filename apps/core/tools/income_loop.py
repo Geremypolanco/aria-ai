@@ -54,13 +54,13 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",         5),
+    ("content_pipeline",         4),
     ("niche_rotator",            4),
-    ("product_factory",          5),
+    ("product_factory",          4),
     ("course_builder",           3),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        3),   # build own affiliate program, recruit promoters
-    ("opportunity_scan",         5),
-    ("github_publish",           5),   # works with only GITHUB_TOKEN — always active
+    ("opportunity_scan",         4),
+    ("github_publish",           4),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       4),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               4),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          2),
@@ -87,6 +87,8 @@ STRATEGIES = [
     ("stripe_checkout",          3),   # real Stripe payment link for instant revenue
     ("tiktok_script",            3),   # TikTok/Reels/YouTube Shorts viral scripts → massive reach
     ("linkedin_outreach",        2),   # B2B prospect messages → consulting/partnership leads
+    ("youtube_strategy",         2),   # YouTube content plan + optimized metadata + script → channel growth
+    ("product_hunt_launch",      2),   # Product Hunt launch post → massive traffic spike + backlinks
 ]
 
 
@@ -347,6 +349,10 @@ JSON:
             return await self._exec_tiktok_script()
         elif strategy == "linkedin_outreach":
             return await self._exec_linkedin_outreach()
+        elif strategy == "youtube_strategy":
+            return await self._exec_youtube_strategy()
+        elif strategy == "product_hunt_launch":
+            return await self._exec_product_hunt_launch()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -5499,6 +5505,11 @@ JSON:
                 "keys_needed": ["STRIPE_SECRET_KEY"],
                 "revenue_channels": ["real checkout links", "payment processing", "product sales"],
             },
+            "youtube": {
+                "active": bool(getattr(settings, "YOUTUBE_API_KEY", None)),
+                "keys_needed": ["YOUTUBE_API_KEY"],
+                "revenue_channels": ["AdSense revenue", "sponsored videos", "product CTAs", "channel membership"],
+            },
         }
         active   = {k: v for k, v in channels.items() if v["active"]}
         inactive = {k: v for k, v in channels.items() if not v["active"]}
@@ -6007,6 +6018,368 @@ JSON:
         except Exception as exc:
             logger.error("[IncomeLoop] analytics_report: %s", exc)
             return f"⚠️ Error al generar reporte: {exc}"
+
+
+    async def _exec_youtube_strategy(self) -> dict:
+        """
+        Generate a complete YouTube content strategy: optimized metadata, full script,
+        content calendar, and SEO plan. Archives everything to aria-insights/youtube/.
+        Uses YouTubeEngine for title optimization and script generation.
+        Requires: GITHUB_TOKEN (always archives); YOUTUBE_API_KEY optional for upload metadata.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.video.youtube.youtube_engine import YouTubeEngine
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+
+            gh     = AriaGitHubClient()
+            owner  = settings.GITHUB_USERNAME or "Geremypolanco"
+            engine = YouTubeEngine()
+
+            # Pick a niche + topic
+            niches = [
+                ("AI Tools for Productivity", "ai productivity tools 2025"),
+                ("Make Money Online with AI", "ai side income strategies"),
+                ("Automation for Entrepreneurs", "business automation tutorial"),
+                ("No-Code SaaS Building", "build saas without code"),
+                ("Freelancing with AI", "ai freelancing tips"),
+                ("Digital Products That Sell", "create digital products online"),
+                ("YouTube Growth Hacks", "grow youtube channel fast 2025"),
+            ]
+            niche, keyword = niches[self._cycle % len(niches)]
+
+            # 1. Generate optimized title
+            title = await engine.optimize_title(niche, keyword)
+
+            # 2. Generate full video metadata
+            metadata = await engine.create_video_metadata(niche, keyword, content_type="tutorial")
+
+            # 3. Generate full video script
+            script = await engine.create_script(
+                title=title,
+                keyword=keyword,
+                duration_minutes=10,
+                content_type="tutorial",
+            )
+
+            # 4. Generate content calendar (AI)
+            calendar_data = await complete_json(
+                f"""Create a 4-week YouTube content calendar for the niche: "{niche}"
+Keyword focus: "{keyword}"
+
+Return JSON:
+{{
+  "channel_name": "channel name suggestion",
+  "channel_description": "YouTube channel description (500 chars)",
+  "week1": ["Video 1 title", "Video 2 title", "Video 3 title"],
+  "week2": ["Video 4 title", "Video 5 title", "Video 6 title"],
+  "week3": ["Video 7 title", "Video 8 title", "Video 9 title"],
+  "week4": ["Video 10 title", "Video 11 title", "Video 12 title"],
+  "monetization_strategy": "how to monetize this channel (100 words)",
+  "thumbnail_formula": "thumbnail design formula that gets high CTR",
+  "cta_strategy": "end screen / card strategy to drive subscriptions"
+}}""",
+                model="strategy",
+            )
+
+            channel_name = calendar_data.get("channel_name", f"ARIA — {niche}")
+            weeks = {f"week{i}": calendar_data.get(f"week{i}", []) for i in range(1, 5)}
+            monetization = calendar_data.get("monetization_strategy", "")
+            thumb_formula = calendar_data.get("thumbnail_formula", "")
+
+            # Build archive content
+            cal_md_rows = ""
+            for week_key, videos in weeks.items():
+                week_num = week_key.replace("week", "Week ")
+                cal_md_rows += f"\n### {week_num}\n"
+                for v in videos:
+                    cal_md_rows += f"- [ ] {v}\n"
+
+            script_text = ""
+            if hasattr(script, "hook"):
+                script_text = f"**Hook:**\n{script.hook}\n\n**Intro:**\n{script.intro}\n\n"
+                for i, section in enumerate(script.body or [], 1):
+                    script_text += f"**Section {i}:**\n{section}\n\n"
+                script_text += f"**CTA:**\n{script.cta}"
+            else:
+                script_text = str(script)
+
+            archive_md = f"""# YouTube Strategy — {niche}
+## Channel: {channel_name}
+**Keyword:** {keyword}
+**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d')}
+
+---
+
+## 🎯 First Video: {title}
+
+**Metadata:**
+- Title: {title}
+- Tags: {', '.join(metadata.tags[:10]) if hasattr(metadata, 'tags') else keyword}
+- Hook: {metadata.hook_line if hasattr(metadata, 'hook_line') else ''}
+- CTA: {metadata.cta if hasattr(metadata, 'cta') else ''}
+
+**Script:**
+{script_text}
+
+---
+
+## 📅 4-Week Content Calendar
+{cal_md_rows}
+
+---
+
+## 💰 Monetization Strategy
+{monetization}
+
+---
+
+## 🖼 Thumbnail Formula
+{thumb_formula}
+
+---
+
+## 📊 SEO Description (First Video)
+{metadata.description[:800] if hasattr(metadata, 'description') else ''}
+
+---
+*Generated by ARIA AI — autonomous business intelligence system*
+"""
+
+            slug = f"{keyword.replace(' ', '-')[:40]}-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+            path = f"youtube/{slug}.md"
+
+            # Archive to aria-insights
+            insights_repo = "aria-insights"
+            r_repo = await gh._post("/user/repos", {
+                "name": insights_repo, "private": False, "auto_init": False,
+            })
+            existing = await gh._get(f"/repos/{owner}/{insights_repo}/contents/{path}")
+            sha = existing.get("sha") if "error" not in existing else None
+            body: dict = {
+                "message": f"feat: YouTube strategy for {niche[:40]}",
+                "content": _b64.b64encode(archive_md.encode()).decode(),
+            }
+            if sha:
+                body["sha"] = sha
+            result = await gh._put(f"/repos/{owner}/{insights_repo}/contents/{path}", body)
+
+            archive_url = f"https://github.com/{owner}/{insights_repo}/blob/main/{path}"
+
+            if "content" in result or "commit" in result:
+                logger.info("[IncomeLoop] YouTube strategy archived: %s", archive_url)
+                return {
+                    "success": True,
+                    "summary": f"YouTube strategy '{title[:50]}' — 4-week calendar, full script, SEO plan",
+                    "revenue_potential": 50.0,
+                    "urls": [archive_url],
+                }
+
+            return {
+                "success": True,
+                "summary": f"YouTube strategy generated: {title[:60]} (archive failed, data in memory)",
+                "revenue_potential": 10.0,
+                "urls": [],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] youtube_strategy: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_product_hunt_launch(self) -> dict:
+        """
+        Create a complete Product Hunt launch package for an ARIA product.
+        Generates: tagline, description, first comment, hunter message, upvote strategy.
+        Archives the launch kit to aria-insights/product_hunt/ and publishes a blog post.
+        Drives massive traffic spikes (PH can send 5k-50k visitors in a single day).
+        Requires: GITHUB_TOKEN
+        """
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "product_hunt_launch: needs GITHUB_TOKEN"}
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            cache = get_cache()
+
+            # Grab latest product from catalog
+            product_title = ""
+            product_url   = ""
+            product_desc  = ""
+            if cache:
+                raw_items = await cache.lrange("aria:products:catalog", -5, -1)
+                for raw in reversed(raw_items or []):
+                    try:
+                        item = json.loads(raw) if isinstance(raw, str) else raw
+                        if item.get("title") and item.get("urls"):
+                            product_title = item["title"][:80]
+                            product_url   = item["urls"][0]
+                            product_desc  = item.get("summary", "")[:200]
+                            break
+                    except Exception:
+                        pass
+
+            if not product_title:
+                product_title = "ARIA AI — Autonomous Income Generation Platform"
+                product_url   = f"https://github.com/{owner}/aria-ai"
+                product_desc  = "The autonomous AI that generates income 24/7 while you sleep."
+
+            launch_data = await complete_json(
+                f"""Create a complete Product Hunt launch package for this product:
+
+Product: {product_title}
+URL: {product_url}
+Description: {product_desc}
+
+Return JSON:
+{{
+  "tagline": "compelling PH tagline under 60 chars — no hype, be specific",
+  "description": "PH product description (260 chars max) — lead with the outcome, not the feature",
+  "first_comment": "The maker's first comment (500 words). Story of why you built it, what problem it solves, early traction, what you want feedback on. Personal and authentic.",
+  "hunter_message": "DM to send a top hunter asking them to hunt your product (150 words)",
+  "upvote_ask": "Tweet/LinkedIn post asking followers to upvote (280 chars)",
+  "launch_checklist": ["Checklist item 1", "Checklist item 2", "Checklist item 3", "Checklist item 4", "Checklist item 5"],
+  "best_launch_day": "Tuesday, Wednesday, or Thursday — and why",
+  "launch_time": "12:01 AM PST — and why",
+  "categories": ["category1", "category2"],
+  "shoutout_communities": ["Subreddit 1 or community 1", "Community 2", "Community 3"]
+}}""",
+                model="strategy",
+            )
+
+            tagline     = launch_data.get("tagline", f"The AI that generates income while you sleep")
+            description = launch_data.get("description", product_desc)
+            first_comment = launch_data.get("first_comment", "")
+            hunter_msg  = launch_data.get("hunter_message", "")
+            upvote_ask  = launch_data.get("upvote_ask", "")
+            checklist   = launch_data.get("launch_checklist", [])
+            best_day    = launch_data.get("best_launch_day", "Tuesday")
+            launch_time = launch_data.get("launch_time", "12:01 AM PST")
+            communities = launch_data.get("shoutout_communities", [])
+
+            checklist_md = "\n".join(f"- [ ] {c}" for c in checklist)
+            communities_md = "\n".join(f"- {c}" for c in communities)
+
+            launch_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            slug        = f"ph-launch-{product_title[:30].lower().replace(' ', '-').replace('/', '-')}-{launch_date}"
+
+            kit_md = f"""# 🚀 Product Hunt Launch Kit — {product_title}
+**Launch Date:** {best_day} at {launch_time}
+**Generated:** {launch_date}
+
+---
+
+## 🏷 Tagline (60 chars max)
+> {tagline}
+
+## 📝 Description (260 chars)
+{description}
+
+## 🔗 Product URL
+{product_url}
+
+---
+
+## 💬 First Comment (Maker's Comment)
+{first_comment}
+
+---
+
+## 🎯 Hunter Outreach DM
+{hunter_msg}
+
+---
+
+## 📣 Upvote Ask (Twitter/LinkedIn)
+{upvote_ask}
+
+---
+
+## ✅ Launch Day Checklist
+{checklist_md}
+
+---
+
+## 🌐 Communities to Notify
+{communities_md}
+
+---
+
+## 📅 Launch Strategy
+- **Best day:** {best_day}
+- **Launch time:** {launch_time}
+- **Goal:** Top 5 Product of the Day (5k+ visitors)
+- **Fallback:** Top 10 gets ~2k visitors — still massive
+
+---
+
+## 📊 Expected Impact
+- 🔥 Day 1: 2,000–15,000 unique visitors
+- 📧 Email captures: 200–1,500 signups
+- 🔗 Backlinks: 50–200 from PH aggregators
+- ⭐ GitHub stars: +50–500
+
+---
+*Launch kit generated by ARIA AI — autonomous business system*
+"""
+
+            # Archive to aria-insights
+            path = f"product_hunt/{slug}.md"
+            insights_repo = "aria-insights"
+            await gh._post("/user/repos", {
+                "name": insights_repo, "private": False, "auto_init": False,
+            })
+            existing = await gh._get(f"/repos/{owner}/{insights_repo}/contents/{path}")
+            sha = existing.get("sha") if "error" not in existing else None
+            body: dict = {
+                "message": f"feat: Product Hunt launch kit for {product_title[:40]}",
+                "content": _b64.b64encode(kit_md.encode()).decode(),
+            }
+            if sha:
+                body["sha"] = sha
+            result = await gh._put(f"/repos/{owner}/{insights_repo}/contents/{path}", body)
+
+            archive_url = f"https://github.com/{owner}/{insights_repo}/blob/main/{path}"
+
+            # Also publish a blog post to drive pre-launch awareness
+            asyncio.create_task(self._exec_github_blog([{
+                "title": f"We're Launching on Product Hunt: {tagline}",
+                "slug": f"product-hunt-{launch_date}",
+                "description": description[:155],
+                "tags": ["product-hunt", "launch", "ai", "saas"],
+                "content": (
+                    f"# We're Launching on Product Hunt!\n\n"
+                    f"> {tagline}\n\n"
+                    f"{description}\n\n"
+                    f"## Support the Launch\n\n"
+                    f"{upvote_ask}\n\n"
+                    f"**Launch URL:** {product_url}\n"
+                ),
+            }]))
+
+            if "content" in result or "commit" in result:
+                return {
+                    "success": True,
+                    "summary": f"Product Hunt kit ready: '{tagline}' — launch {best_day} at {launch_time}",
+                    "revenue_potential": 200.0,
+                    "urls": [archive_url],
+                }
+
+            return {
+                "success": True,
+                "summary": f"Product Hunt launch kit generated (archive failed): {tagline}",
+                "revenue_potential": 100.0,
+                "urls": [],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] product_hunt_launch: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
 
 
 # ── Singleton ──────────────────────────────────────────────────────
