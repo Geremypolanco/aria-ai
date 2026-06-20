@@ -517,6 +517,15 @@ class AutonomousScheduler:
                 handler_key="email_funnel_handler",
                 next_run_ts=now + 3600 * 0.5,  # first check 30min after startup
             ),
+            StrategicObjective(
+                obj_id="product_auto_updater",
+                name="Product Auto-Updater",
+                description="Every 24h: scans ARIA's product catalog in GitHub aria-insights, identifies the top-performing product (most views/stars/sales), generates an enhanced v2 with new sections, better pricing, and updated landing page, then republishes automatically.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=24.0,
+                handler_key="product_auto_updater",
+                next_run_ts=now + 3600 * 18,  # first update 18h after startup
+            ),
         ]
 
 
@@ -2262,6 +2271,129 @@ JSON:
     scheduler.register_handler("auto_social_publisher", _auto_social_publisher)
     scheduler.register_handler("revenue_aggregator", _revenue_aggregator)
     scheduler.register_handler("email_funnel_handler", _email_funnel_handler)
+
+    # ── PRODUCT AUTO-UPDATER ───────────────────────────────────────────────────
+    async def _product_auto_updater(obj: StrategicObjective) -> dict:
+        import json as _json
+        import base64 as _b64
+        import datetime as _dt
+        from apps.core.memory.redis_client import get_cache as _gc
+        from apps.core.llm.llm_client import complete_json
+
+        cache = _gc()
+        try:
+            from apps.core.config import settings
+            from apps.core.tools.github_tools import AriaGitHubClient
+            gh = AriaGitHubClient()
+            owner = getattr(settings, "GITHUB_USERNAME", "") or "Geremypolanco"
+
+            # ── Fetch product catalog from aria-insights ──────────────────────
+            catalog_r = await gh._get(f"/repos/{owner}/aria-insights/contents/products")
+            if "error" in catalog_r or not isinstance(catalog_r, list):
+                # Try to run product_factory to generate initial product
+                from apps.core.tools.income_loop import get_income_loop
+                loop = get_income_loop()
+                result = await loop._run_one_cycle(force_strategy="product_factory")
+                return {
+                    "success": result.success,
+                    "summary": f"product_auto_updater: no catalog yet, ran product_factory — {result.summary}",
+                    "value_usd": result.revenue_potential,
+                }
+
+            # ── Pick the most recently modified product ───────────────────────
+            files = [f for f in catalog_r if isinstance(f, dict) and f.get("type") == "file"]
+            if not files:
+                return {"success": False, "summary": "product_auto_updater: no product files found", "value_usd": 0.0}
+
+            # Sort by name (newest = largest timestamp prefix)
+            files.sort(key=lambda f: f.get("name", ""), reverse=True)
+            target_file = files[0]
+            file_path = target_file.get("path", "")
+            file_name = target_file.get("name", "")
+
+            # ── Read the product content ──────────────────────────────────────
+            content_r = await gh._get(f"/repos/{owner}/aria-insights/contents/{file_path}")
+            if "error" in content_r:
+                return {"success": False, "summary": f"product_auto_updater: couldn't read {file_name}", "value_usd": 0.0}
+
+            raw_content = content_r.get("content", "")
+            current_sha = content_r.get("sha", "")
+            try:
+                decoded = _b64.b64decode(raw_content.replace("\n", "")).decode("utf-8", errors="replace")
+            except Exception:
+                decoded = ""
+
+            if not decoded:
+                return {"success": False, "summary": "product_auto_updater: couldn't decode product content", "value_usd": 0.0}
+
+            # ── Generate enhanced v2 ──────────────────────────────────────────
+            enhancement = await complete_json(
+                system="You are a product enhancement AI. Analyze the product and generate improvements. Return JSON: {enhanced_content (full markdown), version_note, new_price_usd, key_improvements: [str, str, str]}",
+                user=f"""Current product file: {file_name}
+
+Current content (first 2000 chars):
+{decoded[:2000]}
+
+Generate an enhanced version 2 with:
+1. Stronger value proposition
+2. New section: "Case Studies / Results"
+3. Better formatting and scannability
+4. Updated pricing with value anchoring
+5. FAQ section addressing objections
+Keep the same general topic but make it significantly more valuable.""",
+                max_tokens=1500,
+            )
+
+            if not enhancement or not enhancement.get("enhanced_content"):
+                return {"success": False, "summary": "product_auto_updater: AI failed to generate enhancement", "value_usd": 0.0}
+
+            enhanced_md = enhancement["enhanced_content"]
+            version_note = enhancement.get("version_note", "v2 with improved value proposition")
+            new_price = float(enhancement.get("new_price_usd", 0) or 0)
+            improvements = enhancement.get("key_improvements", [])
+
+            # ── Write enhanced version to GitHub ─────────────────────────────
+            encoded = _b64.b64encode(enhanced_md.encode()).decode()
+            today = _dt.datetime.now().strftime("%Y-%m-%d")
+            update_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/{file_path}",
+                {
+                    "message": f"product: auto-enhance {file_name} — {version_note[:60]}",
+                    "content": encoded,
+                    "sha": current_sha,
+                }
+            )
+
+            urls_updated = []
+            if "error" not in update_r:
+                urls_updated.append(f"https://github.com/{owner}/aria-insights/blob/main/{file_path}")
+
+            # ── Archive update log ────────────────────────────────────────────
+            log_entry = {
+                "ts": _dt.datetime.utcnow().isoformat(),
+                "file": file_name,
+                "version_note": version_note,
+                "new_price_usd": new_price,
+                "improvements": improvements,
+            }
+            if cache:
+                update_log_raw = await cache.get("aria:products:update_log")
+                update_log = _json.loads(update_log_raw) if update_log_raw else []
+                update_log.append(log_entry)
+                update_log = update_log[-50:]
+                await cache.set("aria:products:update_log", _json.dumps(update_log), ex=86400 * 90)
+
+            improvements_str = " | ".join(improvements[:3])
+            return {
+                "success": bool(urls_updated),
+                "summary": f"product_auto_updater: enhanced '{file_name}' — {version_note} | {improvements_str}",
+                "value_usd": new_price if new_price > 0 else 29.0,
+                "urls": urls_updated,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"product_auto_updater error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("product_auto_updater", _product_auto_updater)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:

@@ -1167,6 +1167,154 @@ async def api_revenue_notify() -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── GUMROAD WEBHOOK ───────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/webhooks/gumroad",
+    summary="Gumroad sale webhook — ARIA reacts to product sales instantly",
+    include_in_schema=False,
+)
+async def gumroad_webhook(request: Request) -> dict:
+    """
+    Gumroad sends a POST on every sale. ARIA:
+    1. Logs the sale to Redis revenue history
+    2. Sends Telegram alert with product name + amount
+    3. Queues buyer email for nurture sequence
+    """
+    try:
+        import json as _json
+        import datetime as _dt
+        from apps.core.config import settings
+        from apps.core.memory.redis_client import get_cache
+
+        # Gumroad sends form-encoded data
+        form = await request.form()
+        sale_id = form.get("sale_id", "")
+        price = float(form.get("price", "0") or "0") / 100  # cents to dollars
+        product_name = form.get("product_name", "Unknown Product")
+        buyer_email = form.get("email", "")
+        buyer_name = form.get("full_name", "")
+
+        if price <= 0:
+            return {"received": True}
+
+        cache = get_cache()
+        if cache:
+            entry = {
+                "ts": _dt.datetime.utcnow().isoformat(),
+                "total_usd": price,
+                "source": "gumroad_webhook",
+                "sale_id": sale_id,
+                "product": product_name,
+            }
+            history_raw = await cache.get("aria:revenue:history")
+            history = _json.loads(history_raw) if history_raw else []
+            history.append(entry)
+            history = history[-120:]
+            await cache.set("aria:revenue:history", _json.dumps(history), ex=86400 * 35)
+
+            latest_raw = await cache.get("aria:revenue:latest")
+            latest = _json.loads(latest_raw) if latest_raw else {"total_usd": 0.0, "channels": []}
+            latest["total_usd"] = round(latest.get("total_usd", 0) + price, 2)
+            latest["last_payment_usd"] = price
+            latest["last_payment_ts"] = entry["ts"]
+            latest["last_payment_product"] = product_name
+            await cache.set("aria:revenue:latest", _json.dumps(latest), ex=86400 * 7)
+
+            if buyer_email:
+                sub = _json.dumps({"email": buyer_email, "name": buyer_name, "product": product_name})
+                await cache.rpush("aria:waitlist:new", sub)
+
+        # Telegram alert
+        try:
+            import aiohttp as _aio
+            bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+            chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+            if bot_token and chat_id:
+                msg = f"🛒 VENTA EN GUMROAD — ${price:.2f}\n\n📦 Producto: {product_name}\n👤 Comprador: {buyer_name or buyer_email or 'anónimo'}\n\n¡ARIA generó ingresos reales! 🚀"
+                async with _aio.ClientSession() as sess:
+                    await sess.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={"chat_id": chat_id, "text": msg},
+                        timeout=_aio.ClientTimeout(total=10),
+                    )
+        except Exception:
+            pass
+
+        return {"received": True}
+    except Exception as exc:
+        logger.warning("gumroad_webhook error: %s", exc)
+        return {"received": True}
+
+
+# ── ARIA INTELLIGENCE DASHBOARD ───────────────────────────────────────────────
+
+
+@router.get(
+    "/intelligence",
+    dependencies=[Depends(verify_api_key)],
+    summary="ARIA full operational intelligence: revenue + objectives + content + competitors",
+)
+async def api_intelligence_dashboard() -> dict:
+    """One-stop intelligence endpoint combining all ARIA's active intelligence streams."""
+    try:
+        import json as _json
+        import datetime as _dt
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+
+        result: dict = {"generated_at": _dt.datetime.utcnow().isoformat()}
+
+        if not cache:
+            result["error"] = "Redis unavailable"
+            return result
+
+        # Revenue
+        rev_raw = await cache.get("aria:revenue:latest")
+        result["revenue"] = _json.loads(rev_raw) if rev_raw else {"total_usd": 0.0}
+
+        # Competitor intel
+        intel_raw = await cache.get("aria:intel:competitor_latest")
+        result["competitor_intel"] = _json.loads(intel_raw) if intel_raw else None
+
+        # Content calendar
+        cal_raw = await cache.get("aria:schedule:content_calendar")
+        if cal_raw:
+            cal = _json.loads(cal_raw)
+            result["content_calendar"] = {
+                "theme": cal.get("theme", ""),
+                "entries_count": len(cal.get("entries", [])),
+                "generated_at": cal.get("generated_at", ""),
+            }
+
+        # Smart prices
+        prices_raw = await cache.get("aria:income:smart_prices")
+        result["smart_prices"] = _json.loads(prices_raw) if prices_raw else None
+
+        # Opportunity queue length
+        opp_len = await cache.llen("aria:income:opportunity_queue")
+        result["opportunity_queue_depth"] = opp_len or 0
+
+        # Income loop stats
+        stats_raw = await cache.get("aria:income:stats")
+        result["income_loop_stats"] = _json.loads(stats_raw) if stats_raw else None
+
+        # Published posts tracker
+        pub_raw = await cache.get("aria:social:published_ids")
+        pub_ids = _json.loads(pub_raw) if pub_raw else []
+        result["posts_published"] = len(pub_ids)
+
+        # Nurture queue size
+        nurture_raw = await cache.get("aria:email:nurture_queue")
+        nurture = _json.loads(nurture_raw) if nurture_raw else {}
+        result["email_nurture_contacts"] = len(nurture)
+
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 
 
