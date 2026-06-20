@@ -617,6 +617,137 @@ async def api_income_credentials() -> dict:
         return {"error": str(exc)}
 
 
+@router.get("/income/catalog", dependencies=[Depends(verify_api_key)])
+async def api_income_catalog(limit: int = 50) -> dict:
+    """Return the product catalog — all published products, articles, and resources."""
+    try:
+        from apps.core.tools.income_loop import get_income_loop
+        from apps.core.memory.redis_client import get_cache
+        import json as _json
+        cache = get_cache()
+        if not cache:
+            return {"items": [], "total": 0, "error": "Redis unavailable"}
+        raw_items = await cache.lrange("aria:products:catalog", -limit, -1)
+        items = []
+        total_revenue = 0.0
+        for raw in reversed(raw_items or []):
+            try:
+                item = _json.loads(raw) if isinstance(raw, str) else raw
+                items.append(item)
+                total_revenue += item.get("revenue", 0)
+            except Exception:
+                pass
+        return {
+            "total": len(items),
+            "total_revenue_potential": round(total_revenue, 2),
+            "items": items,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@router.post("/income/run/{strategy}", dependencies=[Depends(verify_api_key)])
+async def api_income_run_strategy(strategy: str) -> dict:
+    """Immediately run a specific income strategy."""
+    from apps.core.tools.income_loop import get_income_loop, STRATEGIES
+    valid = [s[0] for s in STRATEGIES]
+    if strategy not in valid:
+        raise HTTPException(status_code=400, detail=f"Unknown strategy '{strategy}'. Valid: {valid}")
+    try:
+        loop   = get_income_loop()
+        result = await loop._run_one_cycle(force_strategy=strategy)
+        return {
+            "strategy": result.strategy,
+            "success": result.success,
+            "summary": result.summary,
+            "revenue_potential": result.revenue_potential,
+            "urls_created": result.urls_created,
+            "elapsed_seconds": result.elapsed_seconds,
+        }
+    except Exception as exc:
+        return {"error": str(exc), "strategy": strategy}
+
+
+@router.get("/income/analytics", dependencies=[Depends(verify_api_key)])
+async def api_income_analytics() -> dict:
+    """Per-strategy analytics: runs, success rate, revenue, URLs published."""
+    try:
+        from apps.core.tools.income_loop import get_income_loop, STRATEGIES
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            return {"error": "Redis unavailable"}
+        loop = get_income_loop()
+        total_cycles   = int(await cache.get("aria:income:total_cycles") or 0)
+        success_cycles = int(await cache.get("aria:income:successful_cycles") or 0)
+        total_urls     = int(await cache.get("aria:income:total_urls_published") or 0)
+        per_strategy = []
+        for name, weight in STRATEGIES:
+            runs  = int(await cache.get(f"aria:income:strategy:{name}:runs") or 0)
+            wins  = int(await cache.get(f"aria:income:strategy:{name}:successes") or 0)
+            raw_r = await cache.get(f"aria:income:strategy:{name}:revenue")
+            rev   = float(raw_r) if raw_r else 0.0
+            per_strategy.append({
+                "strategy": name,
+                "weight": weight,
+                "runs": runs,
+                "successes": wins,
+                "win_rate": round(wins / runs * 100, 1) if runs else 0,
+                "revenue": round(rev, 2),
+            })
+        per_strategy.sort(key=lambda x: (-x["revenue"], -x["runs"]))
+        return {
+            "total_cycles": total_cycles,
+            "successful_cycles": success_cycles,
+            "overall_success_rate": round(success_cycles / total_cycles * 100, 1) if total_cycles else 0,
+            "total_urls_published": total_urls,
+            "per_strategy": per_strategy,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@router.get("/github/traction", dependencies=[Depends(verify_api_key)])
+async def api_github_traction() -> dict:
+    """Monitor star/fork/watcher counts on ARIA's public repos."""
+    try:
+        from apps.core.tools.github_client import AriaGitHubClient
+        from apps.core.config_pkg import settings as _s
+        gh    = AriaGitHubClient()
+        owner = _s.GITHUB_USERNAME or "Geremypolanco"
+
+        # Repos ARIA creates autonomously
+        aria_repos = [
+            "aria-insights", "aria-portfolio", "aria-free-resources",
+            "aria-newsletter", "aria-ai",
+        ]
+        traction = []
+        total_stars = 0
+        for repo in aria_repos:
+            info = await gh.get_repo(owner, repo)
+            if "error" not in info:
+                stars = info.get("stargazers_count", 0)
+                forks = info.get("forks_count", 0)
+                total_stars += stars
+                traction.append({
+                    "repo": repo,
+                    "stars": stars,
+                    "forks": forks,
+                    "watchers": info.get("watchers_count", 0),
+                    "open_issues": info.get("open_issues_count", 0),
+                    "url": info.get("html_url", ""),
+                })
+        traction.sort(key=lambda x: -x["stars"])
+        return {
+            "owner": owner,
+            "repos_tracked": len(traction),
+            "total_stars": total_stars,
+            "repos": traction,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 
 
