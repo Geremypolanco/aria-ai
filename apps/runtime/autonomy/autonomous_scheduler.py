@@ -562,6 +562,15 @@ class AutonomousScheduler:
                 handler_key="reputation_builder",
                 next_run_ts=now + 3600 * 7,  # first run 7h after startup
             ),
+            StrategicObjective(
+                obj_id="financial_controller",
+                name="Financial Controller & Cashflow Forecaster",
+                description="Every 24h: aggregates all revenue streams, computes cashflow projections for 7/30/90 days, auto-adjusts strategy weights in Redis for highest-ROI channels, generates P&L snapshot, sends financial report via Telegram. ARIA's autonomous CFO.",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=24.0,
+                handler_key="financial_controller",
+                next_run_ts=now + 3600 * 22,  # first run ~10pm
+            ),
         ]
 
 
@@ -3111,6 +3120,185 @@ Return JSON: {{"comment": "text"}}""",
             return {"success": False, "summary": f"reputation_builder error: {exc}", "value_usd": 0.0}
 
     scheduler.register_handler("reputation_builder", _reputation_builder)
+
+    # ── FINANCIAL CONTROLLER ───────────────────────────────────────────────────
+    async def _financial_controller(obj: StrategicObjective) -> dict:
+        """
+        ARIA's autonomous CFO:
+        1. Aggregates all revenue from Redis (Stripe webhooks, Gumroad, GitHub Sponsors, income loop)
+        2. Computes cashflow projections at 7/30/90 day horizons
+        3. Auto-adjusts strategy weights for best ROI channels
+        4. Generates P&L snapshot and sends financial report via Telegram
+        """
+        import json as _json
+        import datetime as _dt
+        from apps.core.memory.redis_client import get_cache as _gc
+        from apps.core.llm.llm_client import complete_json
+        from apps.core.config import settings
+        from apps.core.tools.income_loop import STRATEGIES
+
+        cache = _gc()
+        if not cache:
+            return {"success": False, "summary": "financial_controller: no Redis", "value_usd": 0.0}
+
+        try:
+            # ── 1. Aggregate all revenue signals ─────────────────────────────
+            total_revenue_usd = 0.0
+            revenue_sources: dict[str, float] = {}
+
+            # Income loop accumulated revenue
+            loop_rev = 0.0
+            for name, _ in STRATEGIES:
+                raw_rev = await cache.get(f"aria:income:strategy:{name}:revenue")
+                rev = float(raw_rev) if raw_rev else 0.0
+                loop_rev += rev
+                if rev > 0:
+                    revenue_sources[name] = rev
+            total_revenue_usd += loop_rev
+
+            # Real payment webhooks (Stripe)
+            raw_stripe = await cache.get("aria:revenue:stripe_total")
+            stripe_total = float(raw_stripe) if raw_stripe else 0.0
+            if stripe_total:
+                revenue_sources["stripe_payments"] = stripe_total
+                total_revenue_usd += stripe_total
+
+            # Gumroad
+            raw_gumroad = await cache.get("aria:revenue:gumroad_total")
+            gumroad_total = float(raw_gumroad) if raw_gumroad else 0.0
+            if gumroad_total:
+                revenue_sources["gumroad_sales"] = gumroad_total
+                total_revenue_usd += gumroad_total
+
+            # Revenue history for trend calculation
+            history_raw = await cache.get("aria:revenue:history")
+            history: list[dict] = _json.loads(history_raw) if history_raw else []
+            recent_snapshots = history[-14:] if history else []  # last 14 snapshots
+            daily_avg = (sum(s.get("total_usd", 0) for s in recent_snapshots) / len(recent_snapshots)) if recent_snapshots else 0
+
+            # Income loop cycle stats
+            total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
+            success_cycles = int(await cache.get("aria:income:successful_cycles") or 0)
+            total_urls = int(await cache.get("aria:income:total_urls_published") or 0)
+
+            # ── 2. Compute projections ─────────────────────────────────────────
+            proj_7d = daily_avg * 7
+            proj_30d = daily_avg * 30
+            proj_90d = daily_avg * 90
+
+            # ── 3. Identify top 5 and bottom 5 strategies by revenue ──────────
+            sorted_strats = sorted(revenue_sources.items(), key=lambda x: -x[1])
+            top_5 = sorted_strats[:5]
+            bottom_5 = [(s, revenue_sources.get(s, 0.0)) for s, _ in STRATEGIES if revenue_sources.get(s, 0.0) == 0.0][:5]
+
+            # ── 4. Auto-adjust adaptive weights for next income loop cycle ─────
+            raw_weights = await cache.get("aria:income:adaptive_weights")
+            current_weights: dict[str, float] = _json.loads(raw_weights) if raw_weights else {}
+
+            if top_5 and len(top_5) >= 2:
+                # Boost top performers by 20%, reduce zero-revenue strategies by 10%
+                adjusted: dict[str, float] = {}
+                for name, default_w in STRATEGIES:
+                    cur_w = current_weights.get(name, float(default_w))
+                    rev = revenue_sources.get(name, 0.0)
+                    if rev > 0 and (name, rev) in top_5:
+                        adjusted[name] = min(cur_w * 1.2, 10.0)  # boost top performers
+                    elif rev == 0.0:
+                        adjusted[name] = max(cur_w * 0.9, 0.5)  # reduce untested
+                    else:
+                        adjusted[name] = cur_w
+
+                # Normalize to sum=100
+                total_adj = sum(adjusted.values())
+                if total_adj > 0:
+                    normalized = {k: round(v / total_adj * 100, 2) for k, v in adjusted.items()}
+                    await cache.set("aria:income:adaptive_weights", _json.dumps(normalized), ex=86400 * 7)
+
+            # ── 5. Build P&L snapshot ─────────────────────────────────────────
+            now_str = _dt.datetime.utcnow().isoformat()
+            pnl = {
+                "timestamp": now_str,
+                "total_revenue_usd": round(total_revenue_usd, 2),
+                "daily_average_usd": round(daily_avg, 2),
+                "projections": {
+                    "7_days": round(proj_7d, 2),
+                    "30_days": round(proj_30d, 2),
+                    "90_days": round(proj_90d, 2),
+                },
+                "top_revenue_channels": [{"channel": n, "revenue": round(r, 2)} for n, r in top_5],
+                "cycle_stats": {
+                    "total_cycles": total_cycles,
+                    "success_rate": f"{success_cycles/max(total_cycles,1)*100:.1f}%",
+                    "total_urls": total_urls,
+                },
+            }
+            await cache.set("aria:finance:pnl_latest", _json.dumps(pnl), ex=86400 * 30)
+
+            # Rolling P&L history
+            pnl_hist_raw = await cache.get("aria:finance:pnl_history")
+            pnl_hist: list = _json.loads(pnl_hist_raw) if pnl_hist_raw else []
+            pnl_hist.append({"ts": now_str, "total_usd": round(total_revenue_usd, 2), "daily_avg": round(daily_avg, 2)})
+            pnl_hist = pnl_hist[-90:]  # keep 90 days
+            await cache.set("aria:finance:pnl_history", _json.dumps(pnl_hist), ex=86400 * 95)
+
+            # ── 6. Generate AI financial insight ──────────────────────────────
+            top_text = ", ".join(f"{n}(${r:.1f})" for n, r in top_5[:3])
+            insight_data = await complete_json(
+                f"""You are ARIA's financial advisor. Analyze this performance snapshot and give ONE actionable insight.
+
+Revenue: ${total_revenue_usd:.2f} total | ${daily_avg:.2f}/day avg
+Top channels: {top_text}
+7-day projection: ${proj_7d:.2f}
+Total cycles: {total_cycles} | Success: {success_cycles/max(total_cycles,1)*100:.1f}%
+
+Return JSON: {{"insight": "one specific actionable recommendation (under 100 chars)", "risk": "low|medium|high"}}""",
+                model="fast",
+                max_tokens=100,
+            )
+            insight = insight_data.get("insight", "") if insight_data else ""
+            risk = insight_data.get("risk", "low") if insight_data else "low"
+
+            # ── 7. Telegram financial report ──────────────────────────────────
+            import aiohttp as _aio
+            bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+            chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+            if bot_token and chat_id:
+                top_ch = "\n".join(f"  • {n}: ${r:.2f}" for n, r in top_5[:5])
+                report_msg = (
+                    f"💰 <b>ARIA Financial Report</b>\n"
+                    f"<i>{_dt.datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC</i>\n\n"
+                    f"<b>Total Revenue:</b> ${total_revenue_usd:.2f}\n"
+                    f"<b>Daily Average:</b> ${daily_avg:.2f}/day\n\n"
+                    f"<b>📈 Projections:</b>\n"
+                    f"  • 7 days: ${proj_7d:.2f}\n"
+                    f"  • 30 days: ${proj_30d:.2f}\n"
+                    f"  • 90 days: ${proj_90d:.2f}\n\n"
+                    f"<b>🏆 Top Channels:</b>\n{top_ch}\n\n"
+                    f"<b>⚙️ Cycles:</b> {total_cycles} ({success_cycles/max(total_cycles,1)*100:.0f}% success) | {total_urls} URLs\n\n"
+                    f"<b>💡 Insight:</b> {insight}\n"
+                    f"<b>Risk level:</b> {risk.upper()}"
+                )
+                try:
+                    async with _aio.ClientSession() as sess:
+                        await sess.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={"chat_id": chat_id, "text": report_msg[:4000], "parse_mode": "HTML"},
+                            timeout=_aio.ClientTimeout(total=10),
+                        )
+                except Exception:
+                    pass
+
+            return {
+                "success": True,
+                "summary": f"financial_controller: ${total_revenue_usd:.2f} total | ${daily_avg:.2f}/day | ${proj_30d:.2f} 30d proj | weights updated | '{insight[:60]}'",
+                "value_usd": total_revenue_usd,
+                "pnl": pnl,
+            }
+
+        except Exception as exc:
+            return {"success": False, "summary": f"financial_controller error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("financial_controller", _financial_controller)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:

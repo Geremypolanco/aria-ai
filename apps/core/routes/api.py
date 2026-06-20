@@ -1624,6 +1624,46 @@ async def api_pipeline() -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get(
+    "/finance",
+    dependencies=[Depends(verify_api_key)],
+    summary="Financial controller P&L snapshot and projections",
+)
+async def api_finance() -> dict:
+    """Returns latest P&L, cashflow projections, and rolling financial history."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+
+        pnl_raw = await cache.get("aria:finance:pnl_latest")
+        pnl = _json.loads(pnl_raw) if pnl_raw else {}
+
+        hist_raw = await cache.get("aria:finance:pnl_history")
+        history: list = _json.loads(hist_raw) if hist_raw else []
+
+        # Compute growth trend
+        if len(history) >= 2:
+            oldest = history[0].get("daily_avg", 0)
+            newest = history[-1].get("daily_avg", 0)
+            growth_pct = ((newest - oldest) / oldest * 100) if oldest > 0 else 0
+        else:
+            growth_pct = 0
+
+        return {
+            "pnl": pnl,
+            "growth_trend_pct": round(growth_pct, 1),
+            "snapshots_count": len(history),
+            "history_preview": history[-7:],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.post(
     "/triggers/run-due",
     dependencies=[Depends(verify_api_key)],

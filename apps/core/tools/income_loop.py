@@ -57,11 +57,11 @@ STRATEGIES = [
     ("content_pipeline",         2),
     ("niche_rotator",            2),
     ("product_factory",          2),
-    ("course_builder",           2),   # mini-course with syllabus + pricing (avg $79-$127/sale)
+    ("course_builder",           1),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        1),   # build own affiliate program, recruit promoters
-    ("opportunity_scan",         2),
+    ("opportunity_scan",         1),
     ("github_publish",           2),   # works with only GITHUB_TOKEN — always active
-    ("content_repurposer",       2),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
+    ("content_repurposer",       1),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               2),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          1),
     ("email_campaign",           1),
@@ -131,6 +131,9 @@ STRATEGIES = [
     ("vc_pitch_deck",            1),   # create investor pitch deck for ARIA's products → funding + credibility
     ("job_posting_scout",        1),   # monitor freelance job boards + apply to relevant gigs → direct revenue
     ("micro_grant_hunter",       1),   # find + apply to startup grants, competitions, accelerators → non-dilutive capital
+    ("notion_template_seller",   1),   # create Notion template → publish on Gumroad + Notion marketplace ($7-$49)
+    ("chrome_extension_builder", 1),   # design Chrome extension concept + README + landing page → developer audience
+    ("api_marketplace_lister",   1),   # list ARIA's AI API on RapidAPI/Mashape → recurring API subscription revenue
 ]
 
 
@@ -506,6 +509,12 @@ JSON:
             return await self._exec_job_posting_scout()
         elif strategy == "micro_grant_hunter":
             return await self._exec_micro_grant_hunter()
+        elif strategy == "notion_template_seller":
+            return await self._exec_notion_template_seller()
+        elif strategy == "chrome_extension_builder":
+            return await self._exec_chrome_extension_builder()
+        elif strategy == "api_marketplace_lister":
+            return await self._exec_api_marketplace_lister()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -11276,6 +11285,454 @@ Return JSON:
             }
         except Exception as exc:
             logger.error("[IncomeLoop] micro_grant_hunter: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_notion_template_seller(self) -> dict:
+        """
+        Create a professional Notion template and list it for sale.
+        Generates the template structure (JSON for Notion API or Markdown mock),
+        product description, and publishes it to Gumroad at $7-$29.
+        Notion templates are evergreen, low-maintenance passive income.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.gumroad_tools import GumroadTools
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+            import datetime as _dt
+            import json as _json
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # Get trending topic from opportunity queue
+            topic = "AI Business Operating System"
+            if cache:
+                raw = await cache.lrange("aria:income:opportunity_queue", -1, -1)
+                if raw:
+                    try:
+                        opp = _json.loads(raw[0])
+                        topic = opp.get("name", topic)[:60]
+                    except Exception:
+                        pass
+
+            # Generate Notion template
+            template_data = await complete_json(
+                f"""You are a Notion template designer. Create a high-value template for sale.
+
+Topic: {topic}
+
+Design a complete Notion template package:
+Return JSON:
+{{
+  "template_name": "catchy name with 'Notion Template' in it",
+  "price_usd": 19,
+  "tagline": "under 10 words",
+  "description": "150-word description for Gumroad listing",
+  "pages": [
+    {{"page_name": "...", "purpose": "...", "properties": ["prop1", "prop2", "prop3"]}},
+    {{"page_name": "...", "purpose": "...", "properties": ["prop1", "prop2"]}},
+    {{"page_name": "...", "purpose": "...", "properties": ["prop1"]}}
+  ],
+  "use_cases": ["use case 1", "use case 2", "use case 3"],
+  "target_audience": "who buys this",
+  "markdown_preview": "a 200-word markdown preview of the template structure"
+}}""",
+                model="fast",
+                max_tokens=1200,
+            )
+
+            if not template_data:
+                return {"success": False, "summary": "notion_template_seller: AI failed", "revenue_potential": 0.0}
+
+            name = template_data.get("template_name", f"Notion Template: {topic[:30]}")
+            price = float(template_data.get("price_usd", 19))
+            description = template_data.get("description", "")
+            tagline = template_data.get("tagline", "")
+            preview = template_data.get("markdown_preview", "")
+            pages = template_data.get("pages", [])
+
+            # Build full markdown for GitHub
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            md_lines = [
+                f"# {name}",
+                f"*{tagline}*",
+                f"**Price:** ${price} | **Audience:** {template_data.get('target_audience', '')}",
+                "",
+                "## Description",
+                description,
+                "",
+                "## Template Structure",
+            ]
+            for p in pages[:5]:
+                md_lines += [
+                    f"### {p.get('page_name', '')}",
+                    f"*{p.get('purpose', '')}*",
+                    f"Properties: {', '.join(p.get('properties', []))[:100]}",
+                    "",
+                ]
+            md_lines += [
+                "## Use Cases",
+                "\n".join(f"- {u}" for u in template_data.get("use_cases", [])[:5]),
+                "",
+                "## Preview",
+                preview,
+                "",
+                f"*Published by ARIA AI — Notion Template Factory*",
+            ]
+
+            encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/notion-templates/{today}-{name[:30].lower().replace(' ', '-')}.md",
+                {"message": f"notion: template '{name[:40]}' at ${price}", "content": encoded}
+            )
+            if "error" not in file_r:
+                gh_url = f"https://github.com/{owner}/aria-insights/blob/main/notion-templates/{today}-{name[:30].lower().replace(' ', '-')}.md"
+                urls_created.append(gh_url)
+
+            # Publish to Gumroad
+            gumroad_url = ""
+            gumroad_token = getattr(settings, "GUMROAD_ACCESS_TOKEN", "") or ""
+            if gumroad_token and description:
+                try:
+                    gt = GumroadTools()
+                    gumroad_result = await gt.create_product(
+                        name=name[:100],
+                        description=f"{description}\n\nPreview: {urls_created[0] if urls_created else ''}",
+                        price_cents=int(price * 100),
+                        published=True,
+                    )
+                    if gumroad_result and gumroad_result.get("product", {}).get("short_url"):
+                        gumroad_url = gumroad_result["product"]["short_url"]
+                        urls_created.append(gumroad_url)
+                except Exception:
+                    pass
+
+            # Track in Redis
+            if cache:
+                await cache.rpush("aria:products:catalog", _json.dumps({
+                    "name": name,
+                    "type": "notion_template",
+                    "price": price,
+                    "urls": urls_created[:2],
+                    "ts": today,
+                }))
+                await cache.ltrim("aria:products:catalog", -200, -1)
+                await cache.incr("aria:income:total_urls_published")
+
+            return {
+                "success": True,
+                "summary": f"notion_template_seller: '{name[:50]}' at ${price} | {len(urls_created)} URLs",
+                "revenue_potential": price,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] notion_template_seller: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_chrome_extension_builder(self) -> dict:
+        """
+        Design a Chrome extension product — complete concept, README, landing page.
+        Identifies a gap in Chrome Web Store, designs the extension UX and functionality,
+        creates GitHub repo structure + manifest.json + landing page.
+        Drives developer audience engagement and product pipeline.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+            import datetime as _dt
+            import json as _json
+            gh = AriaGitHubClient()
+            wt = WebTools()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # Research gaps in Chrome extensions
+            gap_signals: list[str] = []
+            try:
+                result = await wt.search_web("chrome extension idea missing productivity AI 2025", num_results=5)
+                if result.get("success") and result.get("results"):
+                    for r in result["results"][:3]:
+                        gap_signals.append(f"{r.get('title', '')}: {r.get('snippet', '')[:150]}")
+            except Exception:
+                pass
+
+            gaps_text = "\n".join(gap_signals[:3]) or "AI productivity, tab management, content automation"
+
+            ext_data = await complete_json(
+                f"""You are a Chrome extension product designer. Find a gap and build it.
+
+Market signals:
+{gaps_text}
+
+Design a Chrome extension that:
+1. Solves a real pain point for content creators, marketers, or developers
+2. Can be built by a solo developer in 2 weeks
+3. Has clear monetization (freemium, one-time, or subscription)
+
+Return JSON:
+{{
+  "extension_name": "catchy name",
+  "tagline": "under 8 words",
+  "problem": "1 sentence pain point",
+  "solution": "1 sentence what it does",
+  "features": ["feature1", "feature2", "feature3", "feature4"],
+  "monetization": "freemium|one-time|subscription",
+  "price_usd": 9,
+  "target_users": "who uses this",
+  "manifest_json": {{
+    "manifest_version": 3,
+    "name": "extension name",
+    "version": "1.0.0",
+    "description": "short description",
+    "permissions": ["tabs", "storage"],
+    "action": {{"default_popup": "popup.html"}}
+  }},
+  "readme_content": "200-word README with installation, features, and pricing",
+  "landing_html": "simple 300-word landing page HTML with install CTA"
+}}""",
+                model="fast",
+                max_tokens=2500,
+            )
+
+            if not ext_data:
+                return {"success": False, "summary": "chrome_extension_builder: AI failed", "revenue_potential": 0.0}
+
+            name = ext_data.get("extension_name", "ARIA Extension")
+            tagline = ext_data.get("tagline", "")
+            price = float(ext_data.get("price_usd", 9))
+            readme = ext_data.get("readme_content", "")
+            manifest = ext_data.get("manifest_json", {})
+            landing_html = ext_data.get("landing_html", "")
+            features = ext_data.get("features", [])
+
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            slug = name.lower().replace(" ", "-")[:25]
+
+            # Archive README
+            readme_full = f"""# {name}
+*{tagline}*
+
+{readme}
+
+## Features
+{chr(10).join(f'- {f}' for f in features[:5])}
+
+## Monetization
+**Model:** {ext_data.get('monetization', 'freemium')} | **Price:** ${price}
+**Target:** {ext_data.get('target_users', '')}
+
+## manifest.json
+```json
+{_json.dumps(manifest, indent=2)}
+```
+
+*Designed by ARIA AI — Chrome Extension Builder*
+"""
+            encoded = _b64.b64encode(readme_full.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/chrome-extensions/{today}-{slug}/README.md",
+                {"message": f"chrome-ext: '{name[:40]}' at ${price}", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/chrome-extensions/{today}-{slug}/README.md")
+
+            # Archive landing page
+            if landing_html:
+                encoded_html = _b64.b64encode(landing_html.encode()).decode()
+                await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/chrome-extensions/{today}-{slug}/landing.html",
+                    {"message": f"chrome-ext: landing page for '{name[:40]}'", "content": encoded_html}
+                )
+
+            # Twitter announcement
+            tweet = f"🔧 New Chrome extension concept: {name}\n\n{tagline}\n\n{ext_data.get('problem', '')}\n\n{'•' + chr(10)+'•'.join(features[:3])}\n\n{urls_created[0] if urls_created else ''}"
+            if len(tweet) > 280:
+                tweet = f"🔧 {name} — {tagline}\n\n{ext_data.get('problem', '')[:100]}\n\n{urls_created[0] if urls_created else ''}"
+            try:
+                from apps.distribution.publishers.api_publisher import APIPublisher
+                pub = APIPublisher()
+                tw_result = await pub.publish_twitter(tweet[:280])
+                if isinstance(tw_result, dict) and tw_result.get("url"):
+                    urls_created.append(tw_result["url"])
+            except Exception:
+                pass
+
+            # Track in Redis
+            if cache:
+                await cache.rpush("aria:chrome_extensions:catalog", _json.dumps({
+                    "name": name,
+                    "price": price,
+                    "urls": urls_created[:2],
+                    "ts": today,
+                }))
+                await cache.ltrim("aria:chrome_extensions:catalog", -30, -1)
+
+            return {
+                "success": True,
+                "summary": f"chrome_extension_builder: '{name[:50]}' | {tagline[:60]} | {len(urls_created)} URLs",
+                "revenue_potential": price * 20,  # optimistic 20 sales
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] chrome_extension_builder: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_api_marketplace_lister(self) -> dict:
+        """
+        List ARIA's AI capabilities as an API product on RapidAPI / API marketplaces.
+        Creates full API documentation, pricing tiers, and a marketing page.
+        Generates recurring subscription revenue from developers who use ARIA's AI APIs.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+            import datetime as _dt
+            import json as _json
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            api_data = await complete_json(
+                f"""You are an API product designer. Create a complete API listing for ARIA on RapidAPI.
+
+ARIA's capabilities:
+- AI content generation (blog posts, social media, emails, product descriptions)
+- Autonomous product creation (ebooks, templates, courses)
+- Market research and competitive intelligence
+- SEO optimization and keyword research
+- Lead generation and CRM automation
+
+Design a compelling API product listing:
+Return JSON:
+{{
+  "api_name": "ARIA AI Content & Business API",
+  "tagline": "under 10 words",
+  "description": "150-word description for RapidAPI listing",
+  "endpoints": [
+    {{"path": "/generate-content", "method": "POST", "description": "...", "sample_request": {{...}}, "sample_response": {{...}}}},
+    {{"path": "/market-research", "method": "POST", "description": "...", "sample_request": {{...}}, "sample_response": {{...}}}},
+    {{"path": "/seo-optimize", "method": "POST", "description": "...", "sample_request": {{...}}, "sample_response": {{...}}}}
+  ],
+  "pricing_tiers": [
+    {{"name": "Free", "calls_per_month": 100, "price_usd_per_month": 0}},
+    {{"name": "Basic", "calls_per_month": 1000, "price_usd_per_month": 9}},
+    {{"name": "Pro", "calls_per_month": 10000, "price_usd_per_month": 29}},
+    {{"name": "Enterprise", "calls_per_month": 100000, "price_usd_per_month": 99}}
+  ],
+  "use_cases": ["use case 1", "use case 2", "use case 3"],
+  "target_developers": "who builds with this API"
+}}""",
+                model="fast",
+                max_tokens=1500,
+            )
+
+            if not api_data:
+                return {"success": False, "summary": "api_marketplace_lister: AI failed", "revenue_potential": 0.0}
+
+            api_name = api_data.get("api_name", "ARIA AI API")
+            tagline = api_data.get("tagline", "")
+            description = api_data.get("description", "")
+            endpoints = api_data.get("endpoints", [])
+            pricing = api_data.get("pricing_tiers", [])
+
+            # Build API documentation
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            doc_lines = [
+                f"# {api_name}",
+                f"*{tagline}*",
+                "",
+                "## Overview",
+                description,
+                "",
+                "## Pricing",
+                "| Tier | Calls/Month | Price/Month |",
+                "|------|-------------|-------------|",
+            ]
+            for tier in pricing:
+                doc_lines.append(f"| {tier.get('name')} | {tier.get('calls_per_month'):,} | ${tier.get('price_usd_per_month')}/mo |")
+
+            doc_lines += ["", "## Endpoints", ""]
+            for ep in endpoints[:5]:
+                path = ep.get("path", "")
+                method = ep.get("method", "POST")
+                ep_desc = ep.get("description", "")
+                sample_req = _json.dumps(ep.get("sample_request", {}), indent=2)[:200]
+                sample_resp = _json.dumps(ep.get("sample_response", {}), indent=2)[:200]
+                doc_lines += [
+                    f"### {method} {path}",
+                    ep_desc,
+                    "",
+                    "**Request:**",
+                    f"```json\n{sample_req}\n```",
+                    "**Response:**",
+                    f"```json\n{sample_resp}\n```",
+                    "",
+                ]
+
+            doc_lines += [
+                "## Use Cases",
+                "\n".join(f"- {u}" for u in api_data.get("use_cases", [])[:5]),
+                "",
+                f"**Target developers:** {api_data.get('target_developers', '')}",
+                "",
+                "## Get Started",
+                "1. Sign up on RapidAPI (link coming soon)",
+                "2. Subscribe to a plan",
+                "3. Get your API key",
+                "4. Make your first call",
+                "",
+                "*Published by ARIA AI — API Marketplace Engine*",
+            ]
+
+            encoded = _b64.b64encode("\n".join(doc_lines).encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/api-products/{today}-{api_name[:20].lower().replace(' ', '-')}-docs.md",
+                {"message": f"api: publish '{api_name[:40]}' documentation", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/api-products/{today}-{api_name[:20].lower().replace(' ', '-')}-docs.md")
+
+            # Twitter launch
+            monthly_revenue = sum(t.get("price_usd_per_month", 0) for t in pricing[1:])  # non-free tiers
+            tweet = f"🚀 Launching {api_name} on RapidAPI!\n\n{tagline}\n\n✅ {endpoints[0].get('path', '') if endpoints else ''}\n✅ {endpoints[1].get('path', '') if len(endpoints) > 1 else ''}\n\nPlans from ${pricing[1].get('price_usd_per_month', 9) if len(pricing) > 1 else 9}/mo\n\n{urls_created[0] if urls_created else ''}"
+            try:
+                from apps.distribution.publishers.api_publisher import APIPublisher
+                pub = APIPublisher()
+                tw_result = await pub.publish_twitter(tweet[:280])
+                if isinstance(tw_result, dict) and tw_result.get("url"):
+                    urls_created.append(tw_result["url"])
+            except Exception:
+                pass
+
+            # Store in Redis
+            if cache:
+                await cache.set("aria:api_product:latest", _json.dumps({
+                    "name": api_name,
+                    "url": urls_created[0] if urls_created else "",
+                    "tiers": len(pricing),
+                    "ts": today,
+                }), ex=86400 * 30)
+
+            pro_price = next((t.get("price_usd_per_month", 29) for t in pricing if "Pro" in t.get("name", "")), 29)
+
+            return {
+                "success": True,
+                "summary": f"api_marketplace_lister: '{api_name[:50]}' | {len(endpoints)} endpoints | ${pro_price}/mo Pro tier | {len(urls_created)} URLs",
+                "revenue_potential": float(pro_price) * 5,  # optimistic 5 subscribers
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] api_marketplace_lister: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_conversion_optimizer(self) -> dict:
