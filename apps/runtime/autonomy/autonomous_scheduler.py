@@ -400,6 +400,15 @@ class AutonomousScheduler:
                 handler_key="partner_outreach_cycle",
                 next_run_ts=now + 3600 * 4,
             ),
+            StrategicObjective(
+                obj_id="proactive_analysis",
+                name="Proactive System Analysis",
+                description="Scans Shopify, income loop and objectives every 6h, identifies gaps and executes highest-value action autonomously",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=6.0,
+                handler_key="proactive_analysis",
+                next_run_ts=now + 3600 * 3,  # first run 3h after startup
+            ),
         ]
 
 
@@ -852,10 +861,106 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         r = await loop._run_one_cycle(force_strategy="partner_outreach")
         return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
 
+    async def _proactive_analysis(obj: StrategicObjective) -> dict:
+        """
+        Every 6h: scan income loop + Shopify + objectives, find what's lagging,
+        execute the most valuable action, and send a brief Telegram status ping.
+        """
+        import json as _json
+        import random as _rnd
+        from apps.core.tools.income_loop import get_income_loop, STRATEGIES
+
+        loop = get_income_loop()
+        action_taken = ""
+        total_value = 0.0
+
+        try:
+            # 1. Check which strategies haven't run recently (underweight)
+            from apps.core.memory.redis_client import get_cache
+            _cache = get_cache()
+            strategy_runs: dict[str, int] = {}
+            if _cache:
+                for name, _ in STRATEGIES:
+                    runs = int(await _cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                    strategy_runs[name] = runs
+
+            # Find least-run strategies (excluding viral_thread/social_blitz — too spammy)
+            exclude = {"viral_thread", "social_blitz", "github_sponsors_setup"}
+            sorted_strats = sorted(
+                [(n, r) for n, r in strategy_runs.items() if n not in exclude],
+                key=lambda x: x[1]
+            )
+
+            # Pick least-run strategy with decent weight
+            weight_map = {name: w for name, w in STRATEGIES}
+            best_strategy = None
+            for name, _runs in sorted_strats[:5]:
+                if weight_map.get(name, 0) >= 3:
+                    best_strategy = name
+                    break
+            if not best_strategy:
+                best_strategy = _rnd.choices(
+                    [n for n, _ in STRATEGIES if n not in exclude],
+                    weights=[w for n, w in STRATEGIES if n not in exclude],
+                    k=1
+                )[0]
+
+            # 2. Execute best strategy
+            result = await loop._run_one_cycle(force_strategy=best_strategy)
+            total_value = result.revenue_potential
+            action_taken = f"{best_strategy}: {'✅' if result.success else '❌'} — {result.summary}"
+
+            # 3. Also check if any Shopify SEO is due (stale > 12h)
+            last_shopify_run = 0.0
+            if _cache:
+                raw_ts = await _cache.get("aria:shopify:last_seo_run")
+                last_shopify_run = float(raw_ts or 0)
+            shopify_ran = False
+            if time.time() - last_shopify_run > 12 * 3600:
+                try:
+                    shopify_r = await loop._run_one_cycle(force_strategy="shopify_listing")
+                    total_value += shopify_r.revenue_potential
+                    shopify_ran = True
+                    if _cache:
+                        await _cache.set("aria:shopify:last_seo_run", str(time.time()), ttl_seconds=86400)
+                except Exception:
+                    pass
+
+            # 4. Send brief Telegram ping (non-blocking — don't fail if no bot)
+            try:
+                from apps.core.tools.telegram_bot import get_bot
+                bot = get_bot()
+                msg_parts = [
+                    "🤖 <b>ARIA — Análisis Proactivo</b>",
+                    "",
+                    f"▶️ Ejecuté: <code>{best_strategy}</code>",
+                    f"{'✅' if result.success else '❌'} {result.summary[:200]}",
+                ]
+                if shopify_ran:
+                    msg_parts.append("🛒 Shopify SEO actualizado")
+                if result.urls_created:
+                    msg_parts.append("📎 URLs publicadas:")
+                    for u in result.urls_created[:3]:
+                        msg_parts.append(f"  • {u}")
+                msg_parts.append(f"\n💰 Revenue potencial: ${total_value:.2f}")
+                await bot.notify_owner("\n".join(msg_parts))
+            except Exception:
+                pass
+
+        except Exception as exc:
+            return {"success": False, "summary": f"proactive_analysis error: {exc}", "value_usd": 0.0}
+
+        return {
+            "success": True,
+            "summary": f"Proactive analysis: {action_taken}",
+            "value_usd": total_value,
+        }
+
     scheduler.register_handler("daily_revenue_digest", _daily_revenue_digest)
     scheduler.register_handler("bundle_and_waitlist", _bundle_and_waitlist)
     scheduler.register_handler("challenge_day_sequencer", _challenge_day_sequencer)
     scheduler.register_handler("partner_outreach_cycle", _partner_outreach_cycle)
+    scheduler.register_handler("proactive_analysis", _proactive_analysis)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:

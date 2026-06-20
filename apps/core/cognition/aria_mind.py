@@ -158,8 +158,8 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - run_retention    → ejecuta campañas de retención: win-back a clientes inactivos 60+ días + loyalty rewards a VIPs. Args: {{}}
 - shopify_optimize → ejecuta optimizaciones de Shopify: SEO de productos, generación de bundles o flash sale. Args: {{"operation": "seo|bundles|flash_sale"}}
 - run_funnel       → analiza y devuelve estado de funnels de conversión, abandono de carrito y secuencias de email. Args: {{}}
-- check_objectives → muestra el estado de los 8 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz). Args: {{}}
-- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz"}}
+- check_objectives → muestra el estado de los 13 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis). Args: {{}}
+- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis"}}
 - daily_report     → muestra el reporte de ejecución del día: operaciones completadas, score de ejecución, insight y prioridad de mañana. Args: {{}}
 - human_login      → inicia sesión en una plataforma como un humano real (stealth, sin ser detectada). Args: {{"platform": "gumroad|devto|linkedin|twitter|hashnode", "email": "...", "password": "...", "username": "..."}}
 - human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
@@ -169,6 +169,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - get_income_analytics → reporte de analíticas por estrategia: cuántas veces corrió cada estrategia, tasa de éxito, revenue acumulado, mejores estrategias. Úsalo cuando el usuario pida el reporte, estadísticas de ingresos, qué estrategia funciona mejor o analíticas. Args: {{}}
 - get_product_catalog → catálogo completo de todos los productos, artículos, demos y recursos publicados por ARIA con sus URLs y revenue potencial. Úsalo cuando el usuario pida ver los productos, el catálogo, qué ha publicado ARIA o cuánto ha generado. Args: {{"limit": 20}}
 - get_github_traction → muestra stars, forks y watchers de todos los repos públicos de ARIA para medir la presencia en el mercado y crecimiento de comunidad. Args: {{}}
+- run_proactive_analysis → análisis autónomo completo: ARIA escanea Shopify, income loop, objetivos estratégicos y GitHub, identifica qué está faltando o rinde menos, y ejecuta la acción más valiosa inmediatamente sin necesidad de instrucción. Args: {{"focus": "shopify|income|github|all (default: all)"}}
 
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
 Tienes acceso a tus propias credenciales de plataformas vía variables de entorno ARIA_EMAIL y ARIA_PASSWORD.
@@ -243,6 +244,7 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 55. Si el usuario pide buscar socios, hacer outreach B2B, proponer colaboraciones, escribir pitches de partnership, crear kit de alianzas, buscar co-marketing, o conseguir afiliados influyentes → usa run_income_cycle con strategy="partner_outreach".
 56. Si el usuario pide crear un newsletter, publicar una edición de correo, escribir un boletín semanal, o generar una campaña de email con contenido editorial → usa run_income_cycle con strategy="newsletter_issue".
 57. Si el usuario pide publicar servicios de consultoría, crear una oferta de servicios, listar servicios en un directorio, crear una ficha de servicio profesional, o generar leads B2B para trabajo de consultoría → usa run_income_cycle con strategy="job_board_listing".
+58. Si el usuario dice "analiza qué necesitas hacer", "inspecciona la tienda", "haz algo útil", "qué puedes mejorar", "actúa por tu cuenta" o "toma la iniciativa" → usa run_proactive_analysis con focus="all". Esta herramienta ARIA la puede invocar también por iniciativa propia cuando no hay instrucción clara pero hay cosas por hacer.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -347,23 +349,6 @@ class AriaMind:
 
     async def handle(self, text: str, chat_id: str) -> MindResponse:
         try:
-            # Fast-path for built-in commands
-            stripped = text.strip().lower()
-            if stripped in ("/help", "/ayuda", "help", "ayuda"):
-                return MindResponse(text=_HELP_TEXT)
-            if stripped in ("/clear", "/limpiar", "/reset"):
-                return MindResponse(text="🗑 Conversación reiniciada. ¿En qué te ayudo?", silent=False)
-            if stripped in ("/status", "/estado", "status"):
-                return await self._build_status()
-
-            # Cognitive commands — planner + reasoning engine
-            if stripped.startswith("/plan ") or stripped.startswith("/planear "):
-                goal = text.split(" ", 1)[1].strip()
-                return await self._handle_plan_command(goal)
-            if stripped.startswith("/think ") or stripped.startswith("/razona ") or stripped.startswith("/reason "):
-                question = text.split(" ", 1)[1].strip()
-                return await self._handle_think_command(question)
-
             # Cargar todo el contexto cognitivo
             history, state, goals, learned = await asyncio.gather(
                 self._load_history(chat_id),
@@ -1688,6 +1673,9 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     "growth_loops_cycle", "shopify_optimization", "content_generation",
                     "market_intelligence", "crm_nurture", "economic_rebalancing",
                     "morning_briefing", "product_launch_blitz",
+                    "daily_revenue_digest", "bundle_and_waitlist",
+                    "challenge_day_sequencer", "partner_outreach_cycle",
+                    "proactive_analysis",
                 ]
                 if obj_key not in valid_keys:
                     return (f"Objetivo inválido: '{obj_key}'. "
@@ -1707,6 +1695,129 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                         f"Output: {record.output}\n"
                         f"Valor: ${record.value_generated_usd:.2f}\n"
                         f"Error: {record.error or 'ninguno'}"), {}
+
+            # ── ANÁLISIS PROACTIVO AUTÓNOMO ───────────────────────────────
+            elif tool == "run_proactive_analysis":
+                focus = args.get("focus", "all")
+                findings: list[str] = ["[ANÁLISIS PROACTIVO AUTÓNOMO]", ""]
+                action_taken = ""
+                action_value = 0.0
+
+                # 1. Income loop status
+                if focus in ("income", "all"):
+                    try:
+                        from apps.core.tools.income_loop import get_income_loop
+                        loop = get_income_loop()
+                        status_str = await loop.get_status()
+                        findings.append("**INCOME LOOP:**")
+                        findings.append(status_str[:600])
+                        findings.append("")
+
+                        # Check analytics for underperforming strategies
+                        report = await loop.get_analytics_report()
+                        findings.append("**ANALÍTICAS DE INGRESOS:**")
+                        findings.append(report[:400])
+                        findings.append("")
+                    except Exception as _e:
+                        findings.append(f"Income loop: {_e}")
+
+                # 2. Shopify analysis
+                if focus in ("shopify", "all"):
+                    try:
+                        from apps.shopify.seo.product_seo import get_product_seo_optimizer
+                        seo_eng = get_product_seo_optimizer()
+                        await seo_eng._load()
+                        seo_stats = seo_eng.seo_stats()
+                        findings.append("**SHOPIFY SEO:**")
+                        findings.append(str(seo_stats)[:400])
+                        findings.append("")
+                    except Exception as _e:
+                        findings.append(f"Shopify SEO: {_e}")
+
+                # 3. Strategic objectives status
+                if focus in ("all",):
+                    try:
+                        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+                        import time as _time
+                        scheduler = get_autonomous_scheduler()
+                        objs = await scheduler.get_objectives()
+                        overdue = [o for o in objs if o.next_run_ts <= _time.time()]
+                        upcoming_1h = [o for o in objs if 0 < (o.next_run_ts - _time.time()) <= 3600]
+                        if overdue:
+                            findings.append(f"**OBJETIVOS VENCIDOS ({len(overdue)}):** " +
+                                          ", ".join(o.obj_id for o in overdue[:5]))
+                            findings.append("")
+                        if upcoming_1h:
+                            findings.append(f"**VENCEN EN <1H ({len(upcoming_1h)}):** " +
+                                          ", ".join(o.obj_id for o in upcoming_1h[:3]))
+                            findings.append("")
+                    except Exception as _e:
+                        findings.append(f"Objectives: {_e}")
+                        overdue = []
+
+                # 4. GitHub traction check
+                if focus in ("github", "all"):
+                    try:
+                        from apps.core.tools.github_client import AriaGitHubClient
+                        from apps.core.config import settings as _s
+                        gh = AriaGitHubClient()
+                        owner = _s.GITHUB_USERNAME or "Geremypolanco"
+                        repo_check = await gh._get(f"/repos/{owner}/aria-insights")
+                        stars = repo_check.get("stargazers_count", 0)
+                        open_issues = repo_check.get("open_issues_count", 0)
+                        findings.append(f"**GITHUB aria-insights:** ⭐{stars} | issues:{open_issues}")
+                        findings.append("")
+                    except Exception as _e:
+                        findings.append(f"GitHub: {_e}")
+
+                # 5. Decide best action and execute it
+                findings.append("---")
+                findings.append("**ACCIÓN EJECUTADA:**")
+                try:
+                    # Priority: run overdue objective > income cycle > shopify SEO
+                    if focus in ("all",) and 'overdue' in dir() and overdue:
+                        # Pick highest priority overdue objective
+                        best_obj = min(overdue, key=lambda o: o.priority)
+                        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+                        scheduler = get_autonomous_scheduler()
+                        record = await scheduler._run_objective(best_obj)
+                        all_objs_map = {o.obj_id: o for o in objs}
+                        all_objs_map[best_obj.obj_id] = best_obj
+                        await scheduler._save_objectives(all_objs_map)
+                        status_icon = "✅" if record.success else "❌"
+                        action_taken = f"Ejecuté objetivo vencido: **{best_obj.name}** {status_icon}"
+                        action_value = record.value_generated_usd
+                        findings.append(action_taken)
+                        findings.append(f"Output: {record.output[:300]}")
+                        findings.append(f"Valor: ${action_value:.2f}")
+                    elif focus in ("shopify",) or focus == "all":
+                        # Run a shopify SEO optimization
+                        from apps.core.tools.income_loop import get_income_loop
+                        loop = get_income_loop()
+                        cycle_result = await loop._execute("shopify_listing")
+                        action_taken = f"Ejecuté ciclo de ingresos: **shopify_listing** {'✅' if cycle_result.get('success') else '❌'}"
+                        action_value = float(cycle_result.get("revenue_potential", 0))
+                        findings.append(action_taken)
+                        if cycle_result.get("urls"):
+                            for u in cycle_result["urls"][:3]:
+                                findings.append(f"  • {u}")
+                    else:
+                        # Default: run content pipeline
+                        from apps.core.tools.income_loop import get_income_loop
+                        loop = get_income_loop()
+                        cycle_result = await loop._execute("content_pipeline")
+                        action_taken = f"Ejecuté ciclo: **content_pipeline** {'✅' if cycle_result.get('success') else '❌'}"
+                        action_value = float(cycle_result.get("revenue_potential", 0))
+                        findings.append(action_taken)
+                        if cycle_result.get("urls"):
+                            for u in cycle_result["urls"][:3]:
+                                findings.append(f"  • {u}")
+                except Exception as _exec_e:
+                    findings.append(f"No pude ejecutar acción: {_exec_e}")
+
+                findings.append("")
+                findings.append(f"**Revenue generado esta ronda: ${action_value:.2f}**")
+                return "\n".join(findings), {}
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
