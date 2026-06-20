@@ -716,6 +716,26 @@ Output JSON:
                     "urls": [url] if url else [],
                 }
 
+            # LemonSqueezy fallback (alternative payment processor, lower fees)
+            try:
+                from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+                ls = LemonSqueezyTools()
+                if ls._configured():
+                    ls_res = await ls.create_product(
+                        name=product_data.get("product_name", title),
+                        description=product_data.get("description", ""),
+                        price_cents=product_data.get("price_cents", 997),
+                    )
+                    if ls_res.get("success"):
+                        return {
+                            "success": True,
+                            "summary": f"Product '{product_data.get('product_name',title)[:50]}' at ${product_data.get('price_cents',997)/100:.0f} on LemonSqueezy",
+                            "revenue_potential": product_data.get("price_cents", 997) / 100,
+                            "urls": [ls_res.get("url", "")] if ls_res.get("url") else [],
+                        }
+            except Exception:
+                pass
+
             # Fallback: publish as free GitHub repo (builds credibility + traffic)
             if settings.GITHUB_TOKEN:
                 logger.info("[IncomeLoop] Gumroad unavailable — publishing product as GitHub repo")
@@ -1140,6 +1160,27 @@ JSON:
                     "urls": [gr.get("url", "")] if gr.get("url") else [],
                 }
 
+            # LemonSqueezy fallback for ebook
+            try:
+                from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+                ls = LemonSqueezyTools()
+                if ls._configured():
+                    ls_res = await ls.create_product(
+                        name=ebook.get("title", f"Guide to {topic_str[:30]}"),
+                        description=full_description,
+                        price_cents=ebook.get("price_cents", 1700),
+                    )
+                    if ls_res.get("success"):
+                        price = ebook.get("price_cents", 1700) / 100
+                        return {
+                            "success": True,
+                            "summary": f"Ebook '{ebook.get('title','')[:50]}' at ${price:.2f} on LemonSqueezy",
+                            "revenue_potential": price,
+                            "urls": [ls_res.get("url", "")] if ls_res.get("url") else [],
+                        }
+            except Exception:
+                pass
+
             # Fallback: generate real PDF with actual chapter content
             logger.info("[IncomeLoop] Gumroad unavailable — generating real PDF ebook")
             try:
@@ -1215,62 +1256,150 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_email_campaign(self) -> dict:
-        """Create and send a Mailchimp email campaign promoting ARIA's latest products."""
+        """Create and send a Mailchimp email campaign; falls back to GitHub newsletter edition."""
+        # Primary: Mailchimp
         try:
             from apps.core.tools.mailchimp_tools import MailchimpTools
             from apps.core.tools.ai_client import get_ai_client, AIModel
 
             mc = MailchimpTools()
-            if not mc._configured():
-                return {"success": False, "summary": "Mailchimp not configured (MAILCHIMP_API_KEY missing)"}
+            if mc._configured():
+                lists = await mc.get_lists()
+                if lists.get("lists"):
+                    list_id = lists["lists"][0]["id"]
+                    ai = get_ai_client()
+                    if ai:
+                        email_data = await ai.complete_json(
+                            system="You are an email marketing expert. Write high-converting email campaigns. Output JSON only.",
+                            user="""Create an email campaign promoting AI productivity tools and digital products.
 
-            lists = await mc.get_lists()
-            if not lists.get("lists"):
-                return {"success": False, "summary": "No Mailchimp lists found"}
-            list_id = lists["lists"][0]["id"]
+JSON:
+{
+  "subject": "Email subject line (compelling, under 60 chars)",
+  "preview_text": "Preview text (50 chars max)",
+  "html_body": "Full HTML email body (300+ words). Include CTA button. Professional and persuasive."
+}""",
+                            model=AIModel.FAST,
+                            max_tokens=1200,
+                        )
+                        if email_data:
+                            result = await mc.create_campaign(
+                                list_id=list_id,
+                                subject=email_data.get("subject", "Discover AI Tools That Make You Money"),
+                                from_name=getattr(settings, "MAILCHIMP_FROM_NAME", None) or "ARIA AI",
+                                reply_to=getattr(settings, "MAILCHIMP_REPLY_TO", None) or "noreply@aria.ai",
+                                preview_text=email_data.get("preview_text", "Exclusive offer inside"),
+                                body_html=email_data.get("html_body", "<p>Check out our latest products!</p>"),
+                            )
+                            if result.get("success"):
+                                return {
+                                    "success": True,
+                                    "summary": f"Email campaign '{email_data.get('subject','')[:50]}' → {list_id}",
+                                    "revenue_potential": 150.0,
+                                    "urls": [],
+                                }
+        except Exception:
+            pass
+
+        # Fallback: publish a newsletter edition to GitHub (public, indexed by Google)
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "Email campaign: add MAILCHIMP_API_KEY; GitHub newsletter requires GITHUB_TOKEN"}
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+            from datetime import datetime, timezone
 
             ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "AI unavailable"}
 
-            email_data = await ai.complete_json(
-                system="You are an email marketing expert. Write high-converting email campaigns. Output JSON only.",
-                user="""Create an email campaign promoting AI productivity tools and digital products.
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            repo  = "aria-newsletter"
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            month = datetime.now(timezone.utc).strftime("%B %Y")
+
+            edition = await ai.complete_json(
+                system="You write valuable newsletter editions that people forward to their friends. Output JSON only.",
+                user=f"""Write a monthly newsletter edition for {month} about AI tools, productivity, and making money online.
+
+The newsletter is from ARIA AI — an autonomous AI business platform.
 
 JSON:
-{
-  \"subject\": \"Email subject line (compelling, under 60 chars)\",
-  \"preview_text\": \"Preview text (50 chars max)\",
-  \"html_body\": \"Full HTML email body (300+ words). Include CTA button. Professional and persuasive.\"
-}""",
-                model=AIModel.FAST,
-                max_tokens=1200,
+{{
+  "subject": "Newsletter subject (catchy, 60 chars max)",
+  "headline": "Main headline for this edition",
+  "intro": "Opening paragraph — hook the reader (100 words)",
+  "section_1_title": "First section title",
+  "section_1_body": "First section content (200+ words). Actionable insights.",
+  "section_2_title": "Second section title",
+  "section_2_body": "Second section content (200+ words). Tips or tools.",
+  "tool_of_month": "One specific tool or resource recommendation with why",
+  "cta": "Call to action paragraph with link to https://github.com/{owner}/aria-portfolio"
+}}""",
+                model=AIModel.STRATEGY,
+                max_tokens=2500,
             )
 
-            if not email_data:
-                return {"success": False, "summary": "AI failed to generate email"}
+            if not edition:
+                return {"success": False, "summary": "AI failed to generate newsletter"}
 
-            result = await mc.create_campaign(
-                list_id=list_id,
-                subject=email_data.get("subject", "Discover AI Tools That Make You Money"),
-                from_name=getattr(settings, "MAILCHIMP_FROM_NAME", None) or "ARIA AI",
-                reply_to=getattr(settings, "MAILCHIMP_REPLY_TO", None) or getattr(settings, "CONTACT_EMAIL", "noreply@aria.ai"),
-                preview_text=email_data.get("preview_text", "Exclusive offer inside"),
-                body_html=email_data.get("html_body", "<p>Check out our latest products!</p>"),
+            assoc = getattr(settings, "AMAZON_ASSOCIATE_TAG", None) or ""
+            aff_link = f"https://amazon.com/s?k=ai+tools+productivity&tag={assoc}" if assoc else "https://github.com/{owner}/aria-insights"
+
+            newsletter_md = (
+                f"# {edition.get('headline', f'ARIA AI Newsletter — {month}')}\n\n"
+                f"*{edition.get('subject', f'{month} Edition')}*\n\n"
+                f"---\n\n"
+                f"{edition.get('intro', '')}\n\n"
+                f"## {edition.get('section_1_title', 'This Month in AI')}\n\n"
+                f"{edition.get('section_1_body', '')}\n\n"
+                f"## {edition.get('section_2_title', 'Tools & Resources')}\n\n"
+                f"{edition.get('section_2_body', '')}\n\n"
+                f"## 🔧 Tool of the Month\n\n"
+                f"{edition.get('tool_of_month', '')}\n\n"
+                f"## Resources\n\n"
+                + (f"- [Best AI Tools on Amazon]({aff_link})\n" if assoc else "")
+                + f"- [ARIA Portfolio](https://github.com/{owner}/aria-portfolio)\n"
+                f"- [ARIA Insights Blog](https://github.com/{owner}/aria-insights)\n\n"
+                f"---\n\n"
+                f"{edition.get('cta', '')}\n\n"
+                f"*Newsletter by [ARIA AI](https://github.com/{owner}/aria-portfolio) — Published {today}*"
             )
 
-            if result.get("success"):
-                campaign_id = result.get("campaign_id", "")
+            gh = AriaGitHubClient()
+            existing = await gh._get(f"/repos/{owner}/{repo}")
+            if "error" in existing:
+                await gh._post("/user/repos", {
+                    "name": repo,
+                    "description": f"ARIA AI Monthly Newsletter — AI tools, productivity, and online income",
+                    "private": False, "auto_init": True,
+                })
+                await asyncio.sleep(2)
+                try:
+                    await gh._post(f"/repos/{owner}/{repo}/pages", {"source": {"branch": "main", "path": "/"}})
+                    await gh._put(f"/repos/{owner}/{repo}/topics", {"names": ["newsletter", "ai", "productivity", "income", "tools"]})
+                except Exception:
+                    pass
+
+            filename = f"editions/{today}-newsletter.md"
+            file_r   = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
+                "message": f"newsletter: {edition.get('subject', month)[:60]}",
+                "content": _b64.b64encode(newsletter_md.encode()).decode(),
+            })
+
+            if "error" not in file_r:
+                url = f"https://github.com/{owner}/{repo}/blob/main/{filename}"
                 return {
                     "success": True,
-                    "summary": f"Email campaign '{email_data.get('subject','')[:50]}' → list {list_id}",
-                    "revenue_potential": 150.0,
-                    "urls": [f"https://mailchimp.com/campaigns/{campaign_id}"] if campaign_id else [],
+                    "summary": f"Newsletter '{edition.get('subject','')[:50]}' published to GitHub (add MAILCHIMP_API_KEY to send to subscribers)",
+                    "revenue_potential": 5.0,
+                    "urls": [url],
                 }
-            return {"success": False, "summary": f"Mailchimp: {result.get('error', 'failed')}"}
+            return {"success": False, "summary": "Email campaign: Mailchimp not configured; GitHub newsletter push failed"}
 
         except Exception as exc:
-            logger.error("[IncomeLoop] email_campaign: %s", exc)
+            logger.error("[IncomeLoop] email_campaign fallback: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_github_publish(self) -> dict:
@@ -1479,13 +1608,16 @@ JSON:
 
             # Build topic from category
             category_topics = {
-                "tech":     "best tech accessories for developers and entrepreneurs 2025",
-                "ai":       "best AI tools and hardware for machine learning 2025",
-                "business": "best business tools for entrepreneurs and solopreneurs 2025",
-                "finance":  "best finance tools and resources for investors 2025",
-                "fitness":  "best fitness trackers and health gadgets 2025",
-                "marketing": "best marketing tools and resources for digital marketers 2025",
-                "crypto":   "best crypto tools and resources for investors 2025",
+                "tech":             "best tech accessories for developers and entrepreneurs 2025",
+                "ai":               "best AI tools and hardware for machine learning 2025",
+                "business":         "best business tools for entrepreneurs and solopreneurs 2025",
+                "finance":          "best finance books and tools for building wealth 2025",
+                "fitness":          "best fitness trackers and health gadgets for productivity 2025",
+                "marketing":        "best marketing tools and books for digital marketers 2025",
+                "crypto":           "best crypto hardware wallets and resources for investors 2025",
+                "productivity":     "best productivity tools and books for high performers 2025",
+                "ecommerce":        "best tools and equipment for starting an ecommerce business 2025",
+                "content_creator":  "best gear and equipment for content creators and streamers 2025",
             }
             topic = category_topics.get(category, f"best {category} products and tools 2025")
 
@@ -1841,6 +1973,12 @@ JSON:
                 "active": bool(settings.GUMROAD_TOKEN),
                 "keys_needed": ["GUMROAD_TOKEN"],
                 "revenue_channels": ["ebook sales", "digital products", "courses", "templates"],
+            },
+            "lemonsqueezy": {
+                "active": bool(getattr(settings, "LEMONSQUEEZY_API_KEY", None) and
+                               getattr(settings, "LEMONSQUEEZY_STORE_ID", None)),
+                "keys_needed": ["LEMONSQUEEZY_API_KEY", "LEMONSQUEEZY_STORE_ID"],
+                "revenue_channels": ["digital products", "subscriptions", "lower fees than Gumroad (5%+$0.50)"],
             },
             "medium": {
                 "active": bool(getattr(settings, "MEDIUM_TOKEN", None)),
