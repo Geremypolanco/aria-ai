@@ -463,6 +463,15 @@ class AutonomousScheduler:
                 handler_key="trend_detector",
                 next_run_ts=now + 3600 * 1,  # first trend scan 1h after startup
             ),
+            StrategicObjective(
+                obj_id="weekly_review",
+                name="Weekly Performance Review",
+                description="Every 7 days: comprehensive performance report with revenue breakdown, top strategies, content URLs, market intelligence, and next-week action plan — sent via Telegram and archived to GitHub",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=168.0,  # 7 days
+                handler_key="weekly_review",
+                next_run_ts=now + 3600 * 120,  # first review after 5 days (allows data to accumulate)
+            ),
         ]
 
 
@@ -635,13 +644,15 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                 "→ Di <code>diagnostico</code> para ver cómo activarlos",
             ]
 
+        strategy_count = len(STRATEGIES)
         lines += [
             "",
             "<b>🤖 Agenda autónoma de hoy:</b>",
             f"• 🔥 Trend scan cada 4h | Social organic cada 8h",
-            f"• 📹 YouTube content cada 12h | Content amplifier cada 30min",
-            f"• 🚀 37 estrategias de ingresos rotando cada 30min",
+            f"• 📹 YouTube content cada 12h | Pinterest + Landing pages automático",
+            f"• 🚀 {strategy_count} estrategias de ingresos rotando cada 30min",
             f"• 🧠 Self-improvement cada 48h | Strategy optimizer cada 24h",
+            f"• 📊 Weekly review cada 7 días | Daily digest cada 24h",
         ]
 
         message = "\n".join(lines)
@@ -654,29 +665,33 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             return {"success": False, "summary": f"Failed to send briefing: {e}", "value_usd": 0.0}
 
     async def _product_launch_blitz(obj: StrategicObjective) -> dict:
-        """Create a product, announce it on blog, and blast to social channels."""
+        """
+        Full product launch sequence: trend scan → product → landing page → content amplifier.
+        More powerful than the original blitz: landing page + 8-platform amplification.
+        """
         from apps.core.tools.income_loop import get_income_loop
         loop = get_income_loop()
         results = []
         total_value = 0.0
-        # 1. Scan for best opportunity
+        # 1. Scan trends to find best opportunity
         scan_r = await loop._run_one_cycle(force_strategy="opportunity_scan")
         results.append({"step": "scan", "success": scan_r.success})
         # 2. Create a product based on discovered opportunity
         prod_r = await loop._run_one_cycle(force_strategy="product_factory")
         results.append({"step": "product", "success": prod_r.success, "summary": prod_r.summary})
         total_value += prod_r.revenue_potential
-        # 3. Publish affiliate content to drive traffic
-        aff_r = await loop._run_one_cycle(force_strategy="affiliate_content")
-        results.append({"step": "content", "success": aff_r.success})
-        total_value += aff_r.revenue_potential
-        # 4. Viral thread to amplify
-        thread_r = await loop._run_one_cycle(force_strategy="viral_thread")
-        results.append({"step": "thread", "success": thread_r.success})
+        # 3. Deploy a landing page for the product
+        page_r = await loop._run_one_cycle(force_strategy="landing_page_deploy")
+        results.append({"step": "landing_page", "success": page_r.success})
+        total_value += page_r.revenue_potential
+        # 4. Blast the product + landing page to ALL platforms
+        amp_r = await loop._run_one_cycle(force_strategy="content_amplifier")
+        results.append({"step": "amplify", "success": amp_r.success})
+        total_value += amp_r.revenue_potential
         successes = sum(1 for r in results if r.get("success"))
         return {
             "success": successes >= 2,
-            "summary": f"Launch blitz: {successes}/{len(results)} steps | ${total_value:.1f}",
+            "summary": f"Launch blitz v2: {successes}/{len(results)} steps | ${total_value:.1f} | product + landing page + 8-platform blast",
             "value_usd": total_value,
         }
 
@@ -1402,9 +1417,146 @@ Return JSON array:
         except Exception as exc:
             return {"success": False, "summary": f"trend_detector error: {exc}", "value_usd": 0.0}
 
+    async def _weekly_review(obj: StrategicObjective) -> dict:
+        """
+        Comprehensive weekly performance review:
+        1. Revenue breakdown by strategy (top 10)
+        2. Total URLs published this week
+        3. Channels active vs inactive
+        4. Next-week action plan (AI-generated based on data)
+        5. Archive report to aria-insights/reports/ + Telegram notification
+        """
+        import datetime as _dt, json as _json
+        from apps.core.tools.income_loop import get_income_loop, STRATEGIES, INTERVAL_SECONDS
+        loop = get_income_loop()
+
+        total_cycles = 0
+        success_count = 0
+        total_urls = 0
+        total_rev = 0.0
+        strategy_rows: list[dict] = []
+        catalog_count = 0
+
+        try:
+            from apps.core.memory.redis_client import get_cache
+            _cache = get_cache()
+            if _cache:
+                total_cycles  = int(await _cache.get("aria:income:total_cycles") or 0)
+                success_count = int(await _cache.get("aria:income:successful_cycles") or 0)
+                total_urls    = int(await _cache.get("aria:income:total_urls_published") or 0)
+                catalog_raw   = await _cache.lrange("aria:products:catalog", -50, -1)
+                catalog_count = len(catalog_raw or [])
+
+                for name, weight in STRATEGIES:
+                    runs  = int(await _cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                    wins  = int(await _cache.get(f"aria:income:strategy:{name}:successes") or 0)
+                    raw_r = await _cache.get(f"aria:income:strategy:{name}:revenue")
+                    rev   = float(raw_r) if raw_r else 0.0
+                    total_rev += rev
+                    if runs > 0:
+                        strategy_rows.append({"name": name, "runs": runs, "wins": wins, "rev": rev})
+
+                strategy_rows.sort(key=lambda r: -r["rev"])
+        except Exception:
+            pass
+
+        success_rate = (success_count / total_cycles * 100) if total_cycles else 0
+        cycles_per_day = (24 * 3600) / INTERVAL_SECONDS
+        proj_7d = (total_rev / max(total_cycles, 1)) * cycles_per_day * 7
+        proj_30d = proj_7d * 30 / 7
+
+        # AI next-week action plan
+        action_plan = ""
+        try:
+            from apps.core.llm.llm_client import complete_json
+            top_5 = [f"{r['name']}: ${r['rev']:.1f} ({r['wins']}/{r['runs']} wins)" for r in strategy_rows[:5]]
+            bottom_5 = [r['name'] for r in strategy_rows[-5:] if r['runs'] > 0]
+            plan_data = await complete_json(
+                f"""ARIA is an autonomous AI income system. Here's the weekly performance summary:
+
+Total cycles: {total_cycles} | Success rate: {success_rate:.1f}% | Total URLs: {total_urls}
+Top strategies: {', '.join(top_5[:3])}
+Underperforming: {', '.join(bottom_5[:3])}
+Total products in catalog: {catalog_count}
+
+Generate a CONCRETE action plan for next week (3 bullet points, each under 80 chars).
+Focus on the highest-ROI actions. Be specific about which strategies and why.
+
+Return JSON: {{"plan": ["Action 1", "Action 2", "Action 3"], "key_insight": "one sentence insight"}}""",
+                model="fast",
+            )
+            if plan_data:
+                plan_items = plan_data.get("plan", [])
+                key_insight = plan_data.get("key_insight", "")
+                action_plan = "\n".join(f"  • {p}" for p in plan_items[:3])
+                if key_insight:
+                    action_plan = f"💡 {key_insight}\n\n" + action_plan
+        except Exception:
+            action_plan = "• Keep running top-performing strategies\n• Activate new channels for more reach"
+
+        week_str = _dt.datetime.now().strftime("%Y-W%U")
+        report_lines = [
+            f"📊 <b>ARIA Weekly Review — {week_str}</b>",
+            "",
+            f"<b>🔢 Overall:</b>",
+            f"• Income cycles: <b>{total_cycles}</b> ({success_rate:.0f}% success)",
+            f"• URLs published: <b>{total_urls}</b>",
+            f"• Products in catalog: <b>{catalog_count}</b>",
+            f"• Revenue potential: <b>${total_rev:.2f}</b>",
+            "",
+            f"<b>📈 Projections (cumulative potential):</b>",
+            f"• Next 7 days: <b>${proj_7d:.2f}</b>",
+            f"• Next 30 days: <b>${proj_30d:.2f}</b>",
+            "",
+            f"<b>🏆 Top 5 Strategies:</b>",
+        ]
+        for row in strategy_rows[:5]:
+            win_rate = (row["wins"] / row["runs"] * 100) if row["runs"] else 0
+            report_lines.append(f"  {row['name']}: ${row['rev']:.1f} ({win_rate:.0f}% win rate, {row['runs']} runs)")
+
+        creds = loop.check_credentials()
+        active_ch = list(creds.get("active", {}).keys())
+        inactive_ch = list(creds.get("inactive", {}).keys())
+        report_lines += [
+            "",
+            f"<b>📡 Active channels ({len(active_ch)}):</b> {', '.join(active_ch[:6])}",
+            f"<b>❌ Missing ({len(inactive_ch)}):</b> {', '.join(inactive_ch[:4])}",
+            "",
+            "<b>📋 Next Week Action Plan:</b>",
+            action_plan,
+        ]
+
+        message = "\n".join(report_lines)
+
+        # Archive to GitHub
+        try:
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+            from apps.core.config import settings
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            path  = f"reports/weekly/{week_str}.md"
+            await gh._post("/user/repos", {"name": "aria-insights", "private": False, "auto_init": False})
+            body_put: dict = {
+                "message": f"feat: weekly review {week_str}",
+                "content": _b64.b64encode(message.replace("<b>", "**").replace("</b>", "**").replace("<i>", "_").replace("</i>", "_").encode()).decode(),
+            }
+            await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+        except Exception:
+            pass
+
+        try:
+            from apps.core.tools.telegram_bot import get_bot
+            bot = get_bot()
+            await bot.notify_owner(message)
+            return {"success": True, "summary": f"Weekly review sent: {total_cycles} cycles, ${total_rev:.2f} potential", "value_usd": 0.0}
+        except Exception as e:
+            return {"success": False, "summary": f"Weekly review: {e}", "value_usd": 0.0}
+
     scheduler.register_handler("youtube_cycle", _youtube_cycle)
     scheduler.register_handler("product_hunt_cycle", _product_hunt_cycle)
     scheduler.register_handler("trend_detector", _trend_detector)
+    scheduler.register_handler("weekly_review", _weekly_review)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
