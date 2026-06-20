@@ -63,6 +63,10 @@ QUICK_ACTIONS_KB = {
             {"text": "⏳ Crear Waitlist",        "callback_data": "quick_waitlist"},
         ],
         [
+            {"text": "🔥 Challenge 7 Días",     "callback_data": "quick_challenge"},
+            {"text": "🤝 Buscar Socios B2B",    "callback_data": "quick_socios"},
+        ],
+        [
             {"text": "📚 Base de conocimiento", "callback_data": "quick_kb"},
             {"text": "⚙️ Ver capacidades",      "callback_data": "quick_help"},
         ],
@@ -116,6 +120,8 @@ BOT_COMMANDS = [
     {"command": "bundle",      "description": "Crear bundle de productos (mayor valor por venta)"},
     {"command": "waitlist",    "description": "Crear waitlist para próximo producto (captura leads)"},
     {"command": "digest",      "description": "Recibir el digest de ingresos del día ahora"},
+    {"command": "challenge",   "description": "Lanzar challenge de 7 días → audiencia + upsell"},
+    {"command": "socios",      "description": "Generar kit de outreach B2B y propuestas de partnership"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -313,6 +319,8 @@ class AriaTelegramBot:
             "/bundle":       "crea un bundle de productos combinando los mejores productos del catálogo a precio especial usando run_income_cycle con strategy product_bundle",
             "/waitlist":     "crea una lista de espera para un próximo producto con early bird offer usando run_income_cycle con strategy waitlist_builder",
             "/digest":       "muéstrame el digest de ingresos del día con revenue, URLs publicadas y proyección usando run_objective con objective daily_revenue_digest",
+            "/challenge":    "lanza un challenge de 7 días con contenido diario, CTA y upsell al final usando run_income_cycle con strategy challenge_campaign",
+            "/socios":       "genera kit de outreach B2B con propuestas de partnership y templates de email usando run_income_cycle con strategy partner_outreach",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):
@@ -422,6 +430,8 @@ class AriaTelegramBot:
             "quick_catalogo":     "muéstrame el catálogo completo de productos y publicaciones de ARIA usando get_product_catalog",
             "quick_bundle":       "crea un bundle de productos combinando los mejores del catálogo a precio especial usando run_income_cycle con strategy product_bundle",
             "quick_waitlist":     "crea una lista de espera para un próximo producto con early bird offer usando run_income_cycle con strategy waitlist_builder",
+            "quick_challenge":    "lanza un challenge de 7 días con contenido diario, CTA y upsell usando run_income_cycle con strategy challenge_campaign",
+            "quick_socios":       "genera kit de outreach B2B con propuestas de partnership usando run_income_cycle con strategy partner_outreach",
             "example_trends":     "busca las últimas noticias sobre modelos de lenguaje grandes",
         }
 

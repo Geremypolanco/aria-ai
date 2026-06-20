@@ -222,6 +222,8 @@ REGLAS DE RAZONAMIENTO:
 51. Si el usuario pide crear un programa de afiliados, reclutar promotores, configurar comisiones, o crear una red de distribución de sus productos → usa run_income_cycle con strategy="affiliate_network".
 52. Si el usuario pide crear un bundle, paquete de productos, oferta combinada, agrupar productos, descuento especial, o aumentar el valor promedio de pedido → usa run_income_cycle con strategy="product_bundle".
 53. Si el usuario pide crear una lista de espera, waitlist, capturar leads antes del lanzamiento, recopilar emails de interesados, o crear una página de "próximamente" para un producto → usa run_income_cycle con strategy="waitlist_builder".
+54. Si el usuario pide crear un challenge, reto de 7 días, campaña de desafío, serie de contenido diario, reto de habilidad, o estrategia de gamificación para capturar leads → usa run_income_cycle con strategy="challenge_campaign".
+55. Si el usuario pide buscar socios, hacer outreach B2B, proponer colaboraciones, escribir pitches de partnership, crear kit de alianzas, buscar co-marketing, o conseguir afiliados influyentes → usa run_income_cycle con strategy="partner_outreach".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}

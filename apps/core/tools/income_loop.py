@@ -54,13 +54,13 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",         7),
-    ("niche_rotator",            7),
-    ("product_factory",          7),
-    ("course_builder",           5),   # mini-course with syllabus + pricing (avg $79-$127/sale)
-    ("affiliate_network",        5),   # build own affiliate program, recruit promoters
-    ("opportunity_scan",         7),
-    ("github_publish",           7),   # works with only GITHUB_TOKEN — always active
+    ("content_pipeline",         6),
+    ("niche_rotator",            6),
+    ("product_factory",          6),
+    ("course_builder",           4),   # mini-course with syllabus + pricing (avg $79-$127/sale)
+    ("affiliate_network",        4),   # build own affiliate program, recruit promoters
+    ("opportunity_scan",         6),
+    ("github_publish",           6),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       7),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               4),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          4),
@@ -73,6 +73,8 @@ STRATEGIES = [
     ("gist_blitz",               3),   # code snippet Gists with product CTAs (dev discovery)
     ("product_bundle",           4),   # bundle 2-3 existing products at a discount → higher AOV
     ("waitlist_builder",         3),   # waitlist landing page → email capture → launch pipeline
+    ("challenge_campaign",       4),   # 7-day challenge series → sustained traffic + lead capture
+    ("partner_outreach",         3),   # B2B collaboration pitches → cross-promotion + co-sells
     ("github_sponsors_setup",    1),   # passive income via GitHub Sponsors + FUNDING.yml
     ("social_blitz",             2),
     ("premium_offer",            1),
@@ -291,6 +293,10 @@ JSON:
             return await self._exec_product_bundle()
         elif strategy == "waitlist_builder":
             return await self._exec_waitlist_builder()
+        elif strategy == "challenge_campaign":
+            return await self._exec_challenge_campaign()
+        elif strategy == "partner_outreach":
+            return await self._exec_partner_outreach()
         elif strategy == "viral_thread":
             return await self._exec_viral_thread()
         return {"success": False, "summary": "Unknown strategy"}
@@ -3848,6 +3854,400 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
 
         except Exception as exc:
             logger.error("[IncomeLoop] waitlist_builder: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_challenge_campaign(self) -> dict:
+        """
+        Create a 7-day challenge series: one content piece per day for a week.
+        Each challenge day = one GitHub article + cross-post.
+        Sustained organic traffic over 7+ days + email list growth via GitHub Issues.
+        Converts browsers into community members who become buyers.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            ai    = get_ai_client()
+            gh    = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            if not ai or not settings.GITHUB_TOKEN:
+                return {"success": False, "summary": "challenge_campaign: need AI + GITHUB_TOKEN"}
+
+            # Avoid duplicate challenge topics
+            existing_challenges: list = []
+            if cache:
+                raw = await cache.get("aria:income:challenge_topics")
+                existing_challenges = json.loads(raw) if raw else []
+
+            avoid_str = ", ".join(existing_challenges[-8:]) if existing_challenges else "none yet"
+
+            challenge_data = await ai.complete_json(
+                system="You create viral 7-day challenge campaigns that build audiences and drive sales. Output JSON only.",
+                user=f"""Design a 7-day challenge campaign with daily content.
+
+Already done: {avoid_str}
+Pick a fresh skill/goal in: productivity, Python, AI tools, freelancing, content creation, no-code, personal finance, entrepreneurship.
+
+The challenge should:
+- Have a clear transformation (where participants start vs. where they finish)
+- Each day = one actionable task (15-30 minutes max)
+- Build a community around ARIA's brand
+- Lead naturally to a paid product at the end
+
+JSON:
+{{
+  "challenge_name": "7-Day [Name] Challenge",
+  "tagline": "One sentence hook",
+  "transformation": "From X to Y in 7 days",
+  "target_audience": "Who this is for",
+  "slug": "url-friendly-slug",
+  "topic": "single keyword",
+  "upsell_product": "What paid product this leads to (e.g., full course, ebook, toolkit)",
+  "upsell_price": 47,
+  "days": [
+    {{
+      "day": 1,
+      "title": "Day 1 title",
+      "task": "Specific actionable task (2-3 sentences)",
+      "outcome": "What participants achieve today",
+      "content_md": "Full day content (300+ words markdown). Include: why this matters, step-by-step task, expected result, teaser for day 2."
+    }}
+  ],
+  "landing_page_md": "Full challenge landing page (400+ words). Include: headline, what you'll achieve, day-by-day overview table, how to join (GitHub Issues), upsell CTA at bottom."
+}}""",
+                model=AIModel.FAST,
+                max_tokens=4000,
+            )
+
+            if not challenge_data or "days" not in challenge_data:
+                return {"success": False, "summary": "challenge_campaign: AI generation failed"}
+
+            challenge_name = challenge_data.get("challenge_name", "7-Day Challenge")
+            slug           = challenge_data.get("slug", "7-day-challenge")
+            topic          = challenge_data.get("topic", slug)
+            days           = challenge_data.get("days", [])
+            upsell_product = challenge_data.get("upsell_product", "Full Course")
+            upsell_price   = challenge_data.get("upsell_price", 47)
+            landing_md     = challenge_data.get("landing_page_md", "")
+
+            if topic in existing_challenges:
+                return {"success": False, "summary": f"challenge_campaign: '{topic}' already done"}
+
+            if not days:
+                return {"success": False, "summary": "challenge_campaign: no days generated"}
+
+            from datetime import datetime, timezone
+            today    = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            repo     = "aria-insights"
+            urls_created = []
+
+            # Publish landing page
+            portfolio_url = f"https://github.com/{owner}/aria-portfolio"
+            full_landing  = f"""# {challenge_name}
+
+> {challenge_data.get('tagline', '')}
+
+**Transformation:** {challenge_data.get('transformation', '')}
+
+{landing_md}
+
+---
+
+## 📅 Day-by-Day Overview
+
+| Day | Title | Task |
+|-----|-------|------|
+""" + "\n".join(
+    f"| Day {d.get('day',i+1)} | {d.get('title','')} | {d.get('task','')[:80]} |"
+    for i, d in enumerate(days[:7])
+) + f"""
+
+---
+
+## ✉️ How to Join
+
+1. **[Click here to join](https://github.com/{owner}/aria-waitlists/issues/new?title=Join+{challenge_name.replace(' ', '+')}&body=I+want+to+join+the+challenge!)** — open a GitHub Issue
+2. You'll get Day 1 in your email / GitHub notifications
+3. Complete each day's task and share your progress
+
+## 🎯 Finish Strong → Get {upsell_product}
+
+Challenge completers get **50% off** [{upsell_product}](https://github.com/{owner}/aria-portfolio) — normally ${upsell_price}. Your price: **${int(upsell_price * 0.5)}**.
+
+---
+
+*Challenge by [ARIA AI]({portfolio_url}) | Started {today}*
+"""
+
+            landing_filename = f"challenges/{today}-{slug}-landing.md"
+            encoded          = _b64.b64encode(full_landing.encode()).decode()
+            file_r           = await gh._put(f"/repos/{owner}/{repo}/contents/{landing_filename}", {
+                "message": f"challenge: {challenge_name[:60]}",
+                "content": encoded,
+            })
+            if "error" not in file_r:
+                landing_url = f"https://github.com/{owner}/{repo}/blob/main/{landing_filename}"
+                urls_created.append(landing_url)
+
+            # Publish Day 1 immediately (start the challenge)
+            if days:
+                day1 = days[0]
+                day1_content = f"""# {challenge_name}: {day1.get('title', 'Day 1')}
+
+> Day 1 of 7 | [{challenge_name}]({urls_created[0] if urls_created else '#'})
+
+{day1.get('content_md', '')}
+
+---
+
+**Tomorrow:** Day 2 of the challenge drops tomorrow — [subscribe to the challenge]({urls_created[0] if urls_created else '#'}) to get notified.
+
+**After 7 days:** Get 50% off [{upsell_product}](https://github.com/{owner}/aria-portfolio) — normally ${upsell_price}.
+
+*[ARIA AI](https://github.com/{owner}/aria-portfolio)*
+"""
+                day1_filename = f"challenges/{today}-{slug}-day1.md"
+                day1_encoded  = _b64.b64encode(day1_content.encode()).decode()
+                day1_r        = await gh._put(f"/repos/{owner}/{repo}/contents/{day1_filename}", {
+                    "message": f"challenge day 1: {day1.get('title', '')[:60]}",
+                    "content": day1_encoded,
+                })
+                if "error" not in day1_r:
+                    day1_url = f"https://github.com/{owner}/{repo}/blob/main/{day1_filename}"
+                    urls_created.append(day1_url)
+
+            if not urls_created:
+                return {"success": False, "summary": "challenge_campaign: publish failed"}
+
+            # Track topic
+            if cache:
+                existing_challenges.append(topic)
+                await cache.set("aria:income:challenge_topics", json.dumps(existing_challenges[-30:]), ttl_seconds=86400 * 90)
+
+                # Store challenge metadata for future days
+                challenge_meta = {
+                    "name": challenge_name,
+                    "slug": slug,
+                    "topic": topic,
+                    "url": urls_created[0],
+                    "days_total": len(days),
+                    "days_published": 1,
+                    "upsell_product": upsell_product,
+                    "upsell_price": upsell_price,
+                    "started_at": today,
+                    "remaining_days": json.dumps(days[1:]),  # save for future cycles
+                }
+                await cache.rpush("aria:income:challenges_active", json.dumps(challenge_meta))
+                await cache.ltrim("aria:income:challenges_active", -20, -1)
+
+            logger.info("[IncomeLoop] Challenge launched: %s (%d days)", challenge_name, len(days))
+            return {
+                "success": True,
+                "summary": f"'{challenge_name}' launched — Day 1 published, {len(days)} days planned → upsell: {upsell_product} at ${upsell_price}",
+                "revenue_potential": float(upsell_price) * 3,  # 3 expected conversions
+                "urls": urls_created,
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] challenge_campaign: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_partner_outreach(self) -> dict:
+        """
+        Generate B2B collaboration proposals for cross-promotion and co-selling.
+        Creates partnership pitch templates targeting newsletter writers,
+        YouTubers, course creators, and software companies in adjacent niches.
+        Published to GitHub for discoverability; potential for exponential reach.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            ai    = get_ai_client()
+            gh    = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            if not ai or not settings.GITHUB_TOKEN:
+                return {"success": False, "summary": "partner_outreach: need AI + GITHUB_TOKEN"}
+
+            # Avoid repeating the same niche outreach
+            existing_niches: list = []
+            if cache:
+                raw = await cache.get("aria:income:outreach_niches")
+                existing_niches = json.loads(raw) if raw else []
+
+            avoid_str = ", ".join(existing_niches[-6:]) if existing_niches else "none yet"
+
+            outreach_data = await ai.complete_json(
+                system="You craft irresistible B2B partnership proposals that benefit both parties. Output JSON only.",
+                user=f"""Create a partnership outreach campaign for ARIA AI.
+
+ARIA is an autonomous AI platform that generates income through digital products, content, and SaaS.
+Already targeted: {avoid_str}
+
+Identify a new niche and create 3-4 personalized partnership pitches targeting:
+- Newsletter writers/bloggers
+- YouTube creators
+- Course creators/educators
+- Tool/SaaS companies
+
+Each pitch should propose mutual value: ARIA promotes their product, they promote ARIA's tools.
+
+JSON:
+{{
+  "niche": "single keyword for this outreach batch",
+  "partnership_angle": "Core value exchange (2 sentences)",
+  "pitches": [
+    {{
+      "partner_type": "Newsletter writer | YouTuber | Course creator | SaaS company",
+      "subject_line": "Email subject (8 words max)",
+      "pitch": "Cold outreach email (150-200 words). Personalized, specific benefits for THEM, clear CTA. Mention ARIA's audience/products.",
+      "mutual_benefit": "What ARIA gives | What ARIA receives",
+      "commission_offer": "Percentage or flat fee offered"
+    }}
+  ],
+  "slug": "url-friendly-slug",
+  "outreach_kit_md": "Full partnership kit in markdown (500+ words). Include: who ARIA is, current products/audience, partnership tiers (Bronze/Silver/Gold), commission structure, example collaboration ideas, how to apply."
+}}""",
+                model=AIModel.FAST,
+                max_tokens=3000,
+            )
+
+            if not outreach_data or "pitches" not in outreach_data:
+                return {"success": False, "summary": "partner_outreach: AI generation failed"}
+
+            niche        = outreach_data.get("niche", "tech")
+            slug         = outreach_data.get("slug", "partner-outreach")
+            pitches      = outreach_data.get("pitches", [])
+            kit_md       = outreach_data.get("outreach_kit_md", "")
+            partnership_angle = outreach_data.get("partnership_angle", "")
+
+            if niche in existing_niches:
+                return {"success": False, "summary": f"partner_outreach: niche '{niche}' already covered"}
+
+            from datetime import datetime, timezone
+            today        = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            repo_name    = "aria-partnerships"
+            portfolio_url = f"https://github.com/{owner}/aria-portfolio"
+
+            # Build the outreach kit page
+            pitches_section = ""
+            for i, pitch in enumerate(pitches[:4], 1):
+                pitches_section += f"""
+### Template {i}: {pitch.get('partner_type', 'Partner')}
+
+**Subject:** {pitch.get('subject_line', '')}
+
+**Email:**
+
+{pitch.get('pitch', '')}
+
+**Mutual benefit:** {pitch.get('mutual_benefit', '')}
+**Commission offered:** {pitch.get('commission_offer', '30%')}
+
+---
+"""
+
+            full_kit = f"""# ARIA Partnership Kit — {niche.title()} Niche
+
+> {partnership_angle}
+
+{kit_md}
+
+---
+
+## 📧 Outreach Templates
+
+{pitches_section}
+
+---
+
+## 🤝 Apply for Partnership
+
+Open a GitHub Issue: [Apply Here](https://github.com/{owner}/{repo_name}/issues/new?title=Partnership+Application&body=Partner+type%3A%0AYour+website%3A%0AYour+audience+size%3A%0AWhy+this+works%3A)
+
+*ARIA Portfolio: [{portfolio_url}]({portfolio_url}) | Outreach batch: {today}*
+"""
+
+            urls_created = []
+
+            # Ensure aria-partnerships repo exists
+            existing = await gh._get(f"/repos/{owner}/{repo_name}")
+            if "error" in existing:
+                create_r = await gh._post("/user/repos", {
+                    "name": repo_name,
+                    "description": "ARIA partnership program — collaborate, cross-promote, earn together",
+                    "private": False,
+                    "auto_init": True,
+                    "has_issues": True,
+                })
+                if "error" not in create_r:
+                    await asyncio.sleep(2)
+
+            # Publish outreach kit
+            filename = f"outreach/{today}-{slug}.md"
+            encoded  = _b64.b64encode(full_kit.encode()).decode()
+            file_r   = await gh._put(f"/repos/{owner}/{repo_name}/contents/{filename}", {
+                "message": f"outreach: {niche} partnership batch",
+                "content": encoded,
+            })
+            if "error" not in file_r:
+                url = f"https://github.com/{owner}/{repo_name}/blob/main/{filename}"
+                urls_created.append(url)
+
+            # Also add a "Partner with ARIA" section to aria-portfolio
+            try:
+                partner_blurb = f"""## 🤝 Partner with ARIA
+
+We're actively seeking collaborators in the {niche} space.
+
+**What we offer:** Revenue share, co-marketing, content collaboration, product integrations.
+
+**Apply:** [Open a partnership proposal]({urls_created[0] if urls_created else '#'})
+
+*[View partnership kit →]({urls_created[0] if urls_created else '#'})*
+"""
+                portfolio_readme = await gh._get(f"/repos/{owner}/aria-portfolio/contents/README.md")
+                if "content" in portfolio_readme:
+                    import base64 as _b64p
+                    current = _b64p.b64decode(portfolio_readme["content"].replace("\n", "")).decode("utf-8", errors="replace")
+                    sha = portfolio_readme.get("sha", "")
+                    marker = "## 🤝 Partner with ARIA"
+                    if marker not in current:
+                        new_readme = current.rstrip() + "\n\n" + partner_blurb
+                        await gh._put(f"/repos/{owner}/aria-portfolio/contents/README.md", {
+                            "message": "add: partnership section to portfolio",
+                            "content": _b64p.b64encode(new_readme.encode()).decode(),
+                            "sha": sha,
+                        })
+            except Exception:
+                pass
+
+            if not urls_created:
+                return {"success": False, "summary": "partner_outreach: publish failed"}
+
+            # Track niche
+            if cache:
+                existing_niches.append(niche)
+                await cache.set("aria:income:outreach_niches", json.dumps(existing_niches[-30:]), ttl_seconds=86400 * 90)
+
+            logger.info("[IncomeLoop] Partner outreach kit published for niche: %s (%d pitches)", niche, len(pitches))
+            return {
+                "success": True,
+                "summary": f"Partner outreach kit published ({niche} niche, {len(pitches)} email templates) → cross-promotion pipeline",
+                "revenue_potential": 15.0,  # conservative: 1 partnership deal
+                "urls": urls_created,
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] partner_outreach: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     def check_credentials(self) -> dict:
