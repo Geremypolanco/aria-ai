@@ -1237,9 +1237,21 @@ JSON:
                         "sha": sha,
                     })
 
-            # Set topics
+            # Set topics and homepage (GitHub Pages URL for better SEO)
             try:
                 await gh._put(f"/repos/{owner}/{repo_name}/topics", {"names": topics})
+            except Exception:
+                pass
+            try:
+                pages_url = f"https://{owner.lower()}.github.io/{repo_name}/"
+                await gh._patch(f"/repos/{owner}/{repo_name}", {
+                    "homepage": pages_url,
+                    "has_wiki": False,
+                })
+                # Enable GitHub Pages
+                await gh._post(f"/repos/{owner}/{repo_name}/pages", {
+                    "source": {"branch": "main", "path": "/"},
+                })
             except Exception:
                 pass
 

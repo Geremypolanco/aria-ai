@@ -73,6 +73,16 @@ class AriaGitHubClient:
             logger.error("[GitHub] POST %s: %s", path, exc)
             return {"error": str(exc)}
 
+    async def _patch(self, path: str, body: dict) -> dict:
+        try:
+            r = await self._http.patch(f"{GITHUB_API}{path}", json=body)
+            if r.status_code not in (200, 201):
+                return {"error": f"HTTP {r.status_code}: {r.text[:300]}", "status": r.status_code}
+            return r.json()
+        except Exception as exc:
+            logger.error("[GitHub] PATCH %s: %s", path, exc)
+            return {"error": str(exc)}
+
     # ── repo info ─────────────────────────────────────────────────────────
 
     async def get_repo(self, owner: str, repo: str) -> dict:
