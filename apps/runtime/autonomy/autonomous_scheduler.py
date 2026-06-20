@@ -1236,7 +1236,7 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
     async def _trend_detector(obj: StrategicObjective) -> dict:
         """
         Scan trending topics every 4h and queue them for income loop strategies.
-        Sources: web search trends + Reddit hot + product hunt today.
+        Sources: Hacker News + Reddit hot + Product Hunt + web search.
         Queued topics go into aria:income:opportunity_queue for content_pipeline / product_factory.
         """
         try:
@@ -1249,23 +1249,57 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
             cache = get_cache()
             trends_found: list[str] = []
 
-            # 1. Search for trending AI/tech/business topics
-            search_queries = [
-                "trending ai tools 2025 this week",
-                "viral side hustle trends reddit 2025",
-                "product hunt top products this week",
-            ]
-            for q in search_queries:
-                try:
-                    r = await wt.search_web(q, num_results=5)
-                    if r.get("success") and r.get("results"):
-                        for res in r["results"][:3]:
-                            title = res.get("title", "")
-                            snippet = res.get("snippet", "")
-                            if title and len(title) > 10:
-                                trends_found.append(f"{title}: {snippet[:120]}")
-                except Exception:
-                    pass
+            # 1. Hacker News trending
+            try:
+                hn_data = await wt.get_hacker_news_trending(limit=10)
+                for story in (hn_data.get("stories") or [])[:8]:
+                    t = story.get("title", "")
+                    if t:
+                        trends_found.append(f"[HN] {t}")
+            except Exception:
+                pass
+
+            # 2. Reddit hot posts across business/entrepreneur subreddits
+            try:
+                reddit_data = await wt.get_reddit_trending(
+                    subreddits=["Entrepreneur", "SideProject", "AITools", "marketing"],
+                    limit=8,
+                )
+                for post in (reddit_data.get("posts") or [])[:8]:
+                    t = post.get("title", "")
+                    if t:
+                        trends_found.append(f"[Reddit] {t}")
+            except Exception:
+                pass
+
+            # 3. Product Hunt trending
+            try:
+                ph_data = await wt.get_product_hunt_trending(limit=8)
+                for prod in (ph_data.get("products") or [])[:6]:
+                    t = prod.get("name", "")
+                    tagline = prod.get("tagline", "")
+                    if t:
+                        trends_found.append(f"[ProductHunt] {t}: {tagline[:80]}")
+            except Exception:
+                pass
+
+            # 4. Web search fallback if we got nothing
+            if len(trends_found) < 5:
+                search_queries = [
+                    "trending ai tools 2025 this week",
+                    "viral side hustle trends reddit 2025",
+                ]
+                for q in search_queries:
+                    try:
+                        r = await wt.search_web(q, num_results=5)
+                        if r.get("success") and r.get("results"):
+                            for res in r["results"][:3]:
+                                title = res.get("title", "")
+                                snippet = res.get("snippet", "")
+                                if title and len(title) > 10:
+                                    trends_found.append(f"{title}: {snippet[:120]}")
+                    except Exception:
+                        pass
 
             if not trends_found:
                 return {"success": False, "summary": "trend_detector: no trends found", "value_usd": 0.0}
