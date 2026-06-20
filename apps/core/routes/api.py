@@ -1436,6 +1436,249 @@ async def api_weekly_performance() -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── GROWTH & AUDIENCE METRICS ─────────────────────────────────────────────────
+
+
+@router.get(
+    "/growth",
+    dependencies=[Depends(verify_api_key)],
+    summary="Audience growth metrics across all platforms",
+)
+async def api_growth_metrics() -> dict:
+    """Returns follower counts, deltas, and audience builder history."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+
+        gh_followers = int(await cache.get("aria:growth:github_followers_prev") or 0)
+        devto_followers = int(await cache.get("aria:growth:devto_followers_prev") or 0)
+        last_run = await cache.get("aria:growth:last_run")
+        total_replies = int(await cache.get("aria:engagement:total_replies") or 0)
+        total_aff_injections = int(await cache.get("aria:affiliate:total_injections") or 0)
+
+        # Growth history (last 10 snapshots)
+        raw_hist = await cache.lrange("aria:growth:history", -10, -1)
+        history = []
+        for raw in (raw_hist or []):
+            try:
+                entry = _json.loads(raw) if isinstance(raw, str) else raw
+                history.append(entry)
+            except Exception:
+                pass
+
+        # DM outreach stats
+        total_dm_templates = int(await cache.get("aria:outreach:total_templates_generated") or 0)
+        raw_dms = await cache.get("aria:outreach:dm_templates")
+        dm_count = len(_json.loads(raw_dms)) if raw_dms else 0
+
+        return {
+            "platform_followers": {
+                "github": gh_followers,
+                "devto": devto_followers,
+            },
+            "engagement": {
+                "total_auto_replies": total_replies,
+                "affiliate_injections": total_aff_injections,
+                "dm_templates_generated": total_dm_templates,
+                "dm_templates_active": dm_count,
+            },
+            "last_audience_build_run": last_run,
+            "growth_history": history[-10:],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get(
+    "/reputation",
+    dependencies=[Depends(verify_api_key)],
+    summary="Reputation and community engagement metrics",
+)
+async def api_reputation_metrics() -> dict:
+    """Returns community engagement stats, HN comments queue, and reputation score."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+
+        total_engagements = int(await cache.get("aria:reputation:total_engagements") or 0)
+
+        # Recent reputation history
+        raw_hist = await cache.lrange("aria:reputation:history", -10, -1)
+        history = []
+        for raw in (raw_hist or []):
+            try:
+                entry = _json.loads(raw) if isinstance(raw, str) else raw
+                history.append(entry)
+            except Exception:
+                pass
+
+        # Queued HN comments
+        raw_hn = await cache.lrange("aria:reputation:hn_comments_queued", 0, -1)
+        hn_queue = []
+        for raw in (raw_hn or []):
+            try:
+                hn_queue.append(_json.loads(raw) if isinstance(raw, str) else raw)
+            except Exception:
+                pass
+
+        # Podcast stats
+        total_episodes = int(await cache.get("aria:podcast:episodes_produced") or 0)
+        latest_ep_raw = await cache.get("aria:podcast:latest_episode")
+        latest_episode = _json.loads(latest_ep_raw) if latest_ep_raw else None
+
+        return {
+            "total_community_engagements": total_engagements,
+            "podcast_episodes_produced": total_episodes,
+            "latest_episode": latest_episode,
+            "hn_comments_queued": len(hn_queue),
+            "hn_queue_preview": hn_queue[:3],
+            "reputation_history": history[-10:],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get(
+    "/pipeline",
+    dependencies=[Depends(verify_api_key)],
+    summary="Full business pipeline: grants, freelance, investor deck, waitlists",
+)
+async def api_pipeline() -> dict:
+    """Returns all pipeline stages: investor deck, grant applications, freelance proposals, SaaS waitlists."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+
+        # Grant pipeline
+        raw_grants = await cache.lrange("aria:grants:applications", -5, -1)
+        grants = []
+        for raw in (raw_grants or []):
+            try:
+                grants.append(_json.loads(raw) if isinstance(raw, str) else raw)
+            except Exception:
+                pass
+        grant_potential = float(await cache.get("aria:grants:total_potential") or 0)
+
+        # Freelance proposals
+        raw_proposals = await cache.lrange("aria:freelance:proposals", -5, -1)
+        proposals = []
+        for raw in (raw_proposals or []):
+            try:
+                proposals.append(_json.loads(raw) if isinstance(raw, str) else raw)
+            except Exception:
+                pass
+        total_proposals = int(await cache.get("aria:freelance:total_proposals") or 0)
+
+        # Investor deck
+        investor_raw = await cache.get("aria:investor:latest_deck")
+        investor_deck = _json.loads(investor_raw) if investor_raw else None
+
+        # Waitlists
+        waitlist_raw = await cache.get("aria:waitlist:latest")
+        latest_waitlist = _json.loads(waitlist_raw) if waitlist_raw else None
+        total_waitlists = int(await cache.get("aria:waitlist:total_launches") or 0)
+
+        # Upsell stats
+        upsell_raw = await cache.get("aria:upsell:last_campaign")
+        latest_upsell = _json.loads(upsell_raw) if upsell_raw else None
+        total_upsell_campaigns = int(await cache.get("aria:upsell:total_campaigns") or 0)
+
+        return {
+            "grants": {
+                "total_potential_usd": grant_potential,
+                "applications_count": len(grants),
+                "recent": grants[-3:],
+            },
+            "freelance": {
+                "total_proposals": total_proposals,
+                "recent_proposals": proposals[-3:],
+            },
+            "investor": {
+                "latest_deck": investor_deck,
+            },
+            "waitlists": {
+                "total_launched": total_waitlists,
+                "latest": latest_waitlist,
+            },
+            "upsell": {
+                "total_campaigns": total_upsell_campaigns,
+                "latest": latest_upsell,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post(
+    "/triggers/run-due",
+    dependencies=[Depends(verify_api_key)],
+    summary="Force run all due strategic objectives immediately",
+)
+async def api_run_due_objectives() -> dict:
+    """Triggers an immediate check + execution of all due strategic objectives."""
+    try:
+        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+        scheduler = get_autonomous_scheduler()
+        records = await scheduler.run_due_objectives()
+        return {
+            "objectives_run": len(records),
+            "successes": sum(1 for r in records if r.success),
+            "total_value_usd": round(sum(r.value_generated_usd for r in records), 2),
+            "results": [
+                {
+                    "obj_id": r.obj_id,
+                    "success": r.success,
+                    "value_usd": r.value_generated_usd,
+                    "summary": r.output.get("summary", r.error or "done"),
+                    "duration_s": round(r.completed_at - r.started_at, 1),
+                }
+                for r in records
+            ],
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post(
+    "/triggers/income-cycle",
+    dependencies=[Depends(verify_api_key)],
+    summary="Run one income loop cycle immediately",
+)
+async def api_run_income_cycle(body: dict) -> dict:
+    """Run one income loop cycle with optional strategy override."""
+    try:
+        from apps.core.tools.income_loop import get_income_loop
+        strategy = body.get("strategy") if body else None
+        loop = get_income_loop()
+        result = await loop._run_one_cycle(force_strategy=strategy)
+        return {
+            "cycle_id": result.cycle_id,
+            "strategy": result.strategy,
+            "success": result.success,
+            "summary": result.summary,
+            "revenue_potential": result.revenue_potential,
+            "urls_created": result.urls_created,
+            "elapsed_seconds": result.elapsed_seconds,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 
 
