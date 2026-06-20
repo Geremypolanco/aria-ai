@@ -783,6 +783,181 @@ async def api_github_traction() -> dict:
         return {"error": str(exc)}
 
 
+# ── AUTONOMOUS OBJECTIVES API ─────────────────────────────────────────────────
+
+
+@router.get(
+    "/income/objectives",
+    dependencies=[Depends(verify_api_key)],
+    summary="List all 22+ strategic objectives and their status",
+)
+async def api_income_objectives() -> dict:
+    """Returns the full list of autonomous strategic objectives with next-run times."""
+    try:
+        import time
+        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+        scheduler = get_autonomous_scheduler()
+        objs = await scheduler.get_objectives()
+        summary = scheduler.summary()
+        now = time.time()
+        return {
+            "summary": summary,
+            "objectives": [
+                {
+                    "id": o.obj_id,
+                    "name": o.name,
+                    "description": o.description,
+                    "status": o.status.value,
+                    "priority": o.priority.value,
+                    "frequency_hours": o.frequency_hours,
+                    "next_run_in_hours": max(0.0, round((o.next_run_ts - now) / 3600, 2)),
+                    "total_runs": o.total_runs,
+                    "success_count": o.success_count,
+                    "total_value_usd": round(o.total_value_usd, 2),
+                }
+                for o in sorted(objs, key=lambda o: o.priority.value)
+            ],
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class RunObjectiveRequest(BaseModel):
+    objective: str
+
+
+@router.post(
+    "/income/run-objective",
+    dependencies=[Depends(verify_api_key)],
+    summary="Trigger a strategic objective immediately",
+)
+async def api_income_run_objective(req: RunObjectiveRequest) -> dict:
+    """Runs a named strategic objective right now (bypasses scheduler timer)."""
+    try:
+        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+        scheduler = get_autonomous_scheduler()
+        objs = await scheduler.get_objectives()
+        target = next((o for o in objs if o.obj_id == req.objective), None)
+        if not target:
+            valid = [o.obj_id for o in objs]
+            raise HTTPException(
+                status_code=404,
+                detail=f"Objective '{req.objective}' not found. Valid: {valid}",
+            )
+        record = await scheduler._run_objective(target)
+        all_objs = {o.obj_id: o for o in objs}
+        all_objs[target.obj_id] = target
+        await scheduler._save_objectives(all_objs)
+        return {
+            "objective": req.objective,
+            "success": record.success,
+            "summary": record.summary,
+            "value_generated_usd": record.value_generated_usd,
+            "duration_seconds": record.duration_seconds,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post(
+    "/income/rapid-launch",
+    dependencies=[Depends(verify_api_key)],
+    summary="Rapid launch: trend → product → landing page → amplify (4-step pipeline)",
+)
+async def api_income_rapid_launch() -> dict:
+    """
+    Executes a full product launch pipeline in one API call:
+    1. opportunity_scan → find trending niche
+    2. product_factory → create a sellable product
+    3. landing_page_deploy → deploy HTML landing page to GitHub Pages
+    4. voice_of_aria → Telegram announcement + social post
+    Returns all URLs created.
+    """
+    try:
+        import asyncio
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        steps = [
+            "opportunity_scan",
+            "product_factory",
+            "landing_page_deploy",
+            "voice_of_aria",
+        ]
+        results = []
+        all_urls: list[str] = []
+        for step in steps:
+            r = await loop._run_one_cycle(force_strategy=step)
+            results.append({
+                "step": step,
+                "success": r.success,
+                "summary": r.summary,
+                "revenue_potential": r.revenue_potential,
+                "urls": r.urls_created,
+            })
+            all_urls.extend(r.urls_created)
+        successes = sum(1 for r in results if r["success"])
+        total_rev = sum(r["revenue_potential"] for r in results)
+        _log_activity("info", f"Rapid launch: {successes}/{len(steps)} steps, {len(all_urls)} URLs", "income")
+        return {
+            "success": successes >= 2,
+            "steps_completed": successes,
+            "steps_total": len(steps),
+            "total_revenue_potential": round(total_rev, 2),
+            "urls_created": all_urls,
+            "details": results,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get(
+    "/intel/competitor",
+    dependencies=[Depends(verify_api_key)],
+    summary="Get latest competitor intelligence scan",
+)
+async def api_intel_competitor() -> dict:
+    """Returns the latest competitor intel from the 12h automated scan."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+        raw = await cache.get("aria:intel:competitor_latest")
+        if not raw:
+            return {"status": "no_data", "message": "Run competitor_intel objective to generate data"}
+        return _json.loads(raw)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get(
+    "/schedule/content-calendar",
+    dependencies=[Depends(verify_api_key)],
+    summary="Get the active 30-day content calendar",
+)
+async def api_content_calendar() -> dict:
+    """Returns the current 30-day content calendar metadata and GitHub URL."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+        raw = await cache.get("aria:schedule:content_calendar")
+        if not raw:
+            return {"status": "no_data", "message": "Run content_calendar_builder objective to generate"}
+        return _json.loads(raw)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 
 
