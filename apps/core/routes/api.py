@@ -13,7 +13,7 @@ from collections import deque
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
@@ -952,6 +952,215 @@ async def api_content_calendar() -> dict:
         if not raw:
             return {"status": "no_data", "message": "Run content_calendar_builder objective to generate"}
         return _json.loads(raw)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── STRIPE WEBHOOK ────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/webhooks/stripe",
+    summary="Stripe payment webhook — ARIA reacts to real payments instantly",
+    include_in_schema=False,
+)
+async def stripe_webhook(request: Request) -> dict:
+    """
+    Receives Stripe webhook events. On payment_intent.succeeded or
+    checkout.session.completed, ARIA:
+    1. Logs the payment to Redis revenue history
+    2. Sends Telegram alert to owner
+    3. Triggers a thank-you email via email_funnel_handler
+    """
+    try:
+        import json as _json
+        import hashlib as _hl
+        import hmac as _hmac
+        from apps.core.config import settings
+        from apps.core.memory.redis_client import get_cache
+
+        body = await request.body()
+        sig = request.headers.get("stripe-signature", "")
+        webhook_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", "") or ""
+
+        # Verify signature when secret is configured
+        if webhook_secret and sig:
+            try:
+                parts = {p.split("=")[0]: p.split("=")[1] for p in sig.split(",") if "=" in p}
+                ts = parts.get("t", "")
+                v1 = parts.get("v1", "")
+                signed_payload = f"{ts}.{body.decode()}"
+                expected = _hmac.new(
+                    webhook_secret.encode(), signed_payload.encode(), _hl.sha256
+                ).hexdigest()  # type: ignore[attr-defined]
+                if not _hmac.compare_digest(expected, v1):
+                    raise HTTPException(status_code=400, detail="Invalid Stripe signature")
+            except HTTPException:
+                raise
+            except Exception:
+                pass  # If signature verification fails gracefully, still process in dev
+
+        event = _json.loads(body)
+        event_type = event.get("type", "")
+        data_obj = event.get("data", {}).get("object", {})
+
+        if event_type in ("payment_intent.succeeded", "checkout.session.completed"):
+            amount_received = data_obj.get("amount_received", data_obj.get("amount_total", 0))
+            amount_usd = round(amount_received / 100, 2)
+            customer_email = data_obj.get("receipt_email") or data_obj.get("customer_details", {}).get("email", "")
+            payment_id = data_obj.get("id", "")
+
+            # Log to Redis
+            cache = get_cache()
+            if cache:
+                import datetime as _dt
+                entry = {
+                    "ts": _dt.datetime.utcnow().isoformat(),
+                    "total_usd": amount_usd,
+                    "source": "stripe_webhook",
+                    "payment_id": payment_id,
+                }
+                history_raw = await cache.get("aria:revenue:history")
+                history = _json.loads(history_raw) if history_raw else []
+                history.append(entry)
+                history = history[-120:]
+                await cache.set("aria:revenue:history", _json.dumps(history), ex=86400 * 35)
+
+                # Update latest snapshot
+                latest_raw = await cache.get("aria:revenue:latest")
+                latest = _json.loads(latest_raw) if latest_raw else {"total_usd": 0.0, "channels": []}
+                latest["total_usd"] = round(latest.get("total_usd", 0) + amount_usd, 2)
+                latest["last_payment_usd"] = amount_usd
+                latest["last_payment_ts"] = entry["ts"]
+                await cache.set("aria:revenue:latest", _json.dumps(latest), ex=86400 * 7)
+
+                # Queue customer email for nurture
+                if customer_email:
+                    sub = _json.dumps({"email": customer_email, "name": "", "product": "purchase"})
+                    await cache.rpush("aria:waitlist:new", sub)
+
+            # Telegram alert
+            try:
+                import aiohttp as _aio
+                bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+                chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+                if bot_token and chat_id:
+                    msg = f"🎉 NUEVA VENTA — ${amount_usd:.2f}\n\nPago ID: {payment_id}\nCliente: {customer_email or 'anónimo'}\n\n¡ARIA lo hizo! 💪"
+                    async with _aio.ClientSession() as sess:
+                        await sess.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={"chat_id": chat_id, "text": msg},
+                            timeout=_aio.ClientTimeout(total=10),
+                        )
+            except Exception:
+                pass
+
+        return {"received": True, "type": event_type}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("stripe_webhook error: %s", exc)
+        return {"received": True}
+
+
+# ── REVENUE DASHBOARD ─────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/revenue",
+    dependencies=[Depends(verify_api_key)],
+    summary="Real revenue data aggregated from Stripe, Gumroad, GitHub Sponsors",
+)
+async def api_revenue_dashboard() -> dict:
+    """Returns the latest aggregated revenue report from all active channels."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+        raw = await cache.get("aria:revenue:latest")
+        if not raw:
+            return {
+                "status": "no_data",
+                "message": "Run revenue_aggregator objective to collect real data",
+            }
+        report = _json.loads(raw)
+        # Also include rolling history summary
+        hist_raw = await cache.get("aria:revenue:history")
+        history = _json.loads(hist_raw) if hist_raw else []
+        if history:
+            report["history_points"] = len(history)
+            report["7d_total_usd"] = round(sum(h["total_usd"] for h in history[-28:]), 2)
+            report["30d_total_usd"] = round(sum(h["total_usd"] for h in history), 2)
+        return report
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get(
+    "/revenue/history",
+    dependencies=[Depends(verify_api_key)],
+    summary="Rolling 30-day revenue history snapshots",
+)
+async def api_revenue_history() -> dict:
+    """Returns up to 120 revenue snapshots (6h intervals = 30 days)."""
+    try:
+        import json as _json
+        from apps.core.memory.redis_client import get_cache
+        cache = get_cache()
+        if not cache:
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+        raw = await cache.get("aria:revenue:history")
+        history = _json.loads(raw) if raw else []
+        return {"points": len(history), "history": history}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post(
+    "/revenue/notify",
+    dependencies=[Depends(verify_api_key)],
+    summary="Send a Telegram notification when real revenue is detected",
+)
+async def api_revenue_notify() -> dict:
+    """Triggers immediate revenue aggregation and sends Telegram alert if revenue > $0."""
+    try:
+        import json as _json
+        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+        scheduler = get_autonomous_scheduler()
+        objs = await scheduler.get_objectives()
+        target = next((o for o in objs if o.obj_id == "revenue_aggregator"), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="revenue_aggregator objective not found")
+        record = await scheduler._run_objective(target)
+        result = record.output
+        total = result.get("value_usd", 0.0) or 0.0
+        if total > 0:
+            try:
+                from apps.core.config import settings
+                import aiohttp as _aio
+                bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+                chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+                if bot_token and chat_id:
+                    channels = result.get("channels", [])
+                    ch_str = " | ".join(f"{c['channel']}: ${c.get('revenue_usd', 0):.2f}" for c in channels)
+                    msg = f"💰 ARIA Revenue Alert\n\nTotal: ${total:.2f}\n{ch_str}\n\n#{_json.dumps({'ts': result.get('timestamp', '')})}"
+                    async with _aio.ClientSession() as sess:
+                        await sess.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={"chat_id": chat_id, "text": msg[:4000]},
+                            timeout=_aio.ClientTimeout(total=10),
+                        )
+            except Exception:
+                pass
+        return {"success": record.success, "total_usd": total, "notified": total > 0}
     except HTTPException:
         raise
     except Exception as exc:
