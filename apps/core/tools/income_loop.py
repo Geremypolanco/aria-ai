@@ -57,8 +57,8 @@ STRATEGIES = [
     ("content_pipeline",         3),
     ("niche_rotator",            2),
     ("product_factory",          3),
-    ("course_builder",           3),   # mini-course with syllabus + pricing (avg $79-$127/sale)
-    ("affiliate_network",        3),   # build own affiliate program, recruit promoters
+    ("course_builder",           2),   # mini-course with syllabus + pricing (avg $79-$127/sale)
+    ("affiliate_network",        2),   # build own affiliate program, recruit promoters
     ("opportunity_scan",         3),
     ("github_publish",           3),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       3),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
@@ -114,6 +114,8 @@ STRATEGIES = [
     ("lead_closer",              1),   # Follow up with warm leads autonomously to close sales
     ("retargeting_campaign",     1),   # Re-engage visitors who didn't buy with personalized sequences
     ("influencer_outreach",      1),   # Pitch ARIA to micro-influencers for promotion deals
+    ("marketplace_lister",       1),   # List products on AppSumo, Envato, Gumroad marketplaces
+    ("daily_goal_tracker",       1),   # Track daily revenue vs target + take action on gaps
 ]
 
 
@@ -455,6 +457,10 @@ JSON:
             return await self._exec_retargeting_campaign()
         elif strategy == "influencer_outreach":
             return await self._exec_influencer_outreach()
+        elif strategy == "marketplace_lister":
+            return await self._exec_marketplace_lister()
+        elif strategy == "daily_goal_tracker":
+            return await self._exec_daily_goal_tracker()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -9813,6 +9819,227 @@ JSON:
             logger.error("[IncomeLoop] voice_of_aria: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
+
+    async def _exec_marketplace_lister(self) -> dict:
+        """List ARIA's best products on external marketplaces: AppSumo, Envato, Gumroad."""
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            import base64 as _b64
+            import datetime as _dt
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # ── Get best product from catalog ────────────────────────────────
+            catalog_r = await gh._get(f"/repos/{owner}/aria-insights/contents/products")
+            products = []
+            if isinstance(catalog_r, list):
+                for f in catalog_r[:10]:
+                    if isinstance(f, dict) and f.get("type") == "file":
+                        products.append({"name": f.get("name", ""), "url": f.get("html_url", "")})
+
+            if not products:
+                return {"success": False, "summary": "marketplace_lister: no products in catalog yet", "revenue_potential": 0.0}
+
+            best_product = products[0]
+            product_name = best_product["name"].replace("-", " ").replace(".md", "").title()
+
+            # ── Generate marketplace listings ─────────────────────────────────
+            listings = await complete_json(
+                system="You are a marketplace listing specialist. Return JSON: {appsumo_listing: {title, tagline, description (300 words), price_usd, category}, envato_listing: {title, description (200 words), tags: [str], price_usd}, gumroad_listing: {name, description (150 words), suggested_price_usd, cover_text}, submission_checklist: [str]}",
+                user=f"""Product: {product_name}
+GitHub URL: {best_product['url']}
+
+Create optimized marketplace listings for:
+1. AppSumo (lifetime deal marketplace, tech tools)
+2. Envato Market (digital assets)
+3. Gumroad (direct sales)
+
+Make each listing platform-specific with the right tone, keywords, and pricing strategy. AppSumo typically wants lifetime deals at $49-$97.""",
+                max_tokens=1000,
+            )
+
+            if not listings:
+                return {"success": False, "summary": "marketplace_lister: AI failed", "revenue_potential": 0.0}
+
+            appsumo = listings.get("appsumo_listing", {})
+            envato = listings.get("envato_listing", {})
+            gumroad = listings.get("gumroad_listing", {})
+            checklist = listings.get("submission_checklist", [])
+
+            # ── Publish to Gumroad if configured ─────────────────────────────
+            if settings.GUMROAD_TOKEN and gumroad:
+                try:
+                    from apps.core.tools.gumroad_tools import GumroadTools
+                    gt = GumroadTools()
+                    gumroad_price = int(float(gumroad.get("suggested_price_usd", 29)) * 100)
+                    gr_res = await gt.create_product(
+                        name=gumroad.get("name", product_name),
+                        description=gumroad.get("description", ""),
+                        price=gumroad_price,
+                    )
+                    if gr_res.get("product", {}).get("short_url"):
+                        urls_created.append(gr_res["product"]["short_url"])
+                except Exception:
+                    pass
+
+            # ── Archive all listings to GitHub ────────────────────────────────
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            appsumo_price = appsumo.get("price_usd", 67)
+            envato_price = envato.get("price_usd", 29)
+            gumroad_price = gumroad.get("suggested_price_usd", 29)
+
+            md = f"""# Marketplace Listings — {product_name} — {today}
+
+## AppSumo Listing
+**Title:** {appsumo.get('title', '')}
+**Tagline:** {appsumo.get('tagline', '')}
+**Price:** ${appsumo_price} (lifetime)
+**Category:** {appsumo.get('category', '')}
+
+{appsumo.get('description', '')}
+
+---
+
+## Envato Market Listing
+**Title:** {envato.get('title', '')}
+**Price:** ${envato_price}
+**Tags:** {', '.join(envato.get('tags', [])[:8])}
+
+{envato.get('description', '')}
+
+---
+
+## Gumroad Listing
+**Name:** {gumroad.get('name', '')}
+**Price:** ${gumroad_price}
+
+{gumroad.get('description', '')}
+
+---
+
+## Submission Checklist
+{chr(10).join(f"- [ ] {item}" for item in checklist[:8])}
+
+*Generated by ARIA AI — Marketplace Lister*
+"""
+            encoded = _b64.b64encode(md.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/listings/{today}-marketplace.md",
+                {"message": f"listing: {product_name} on AppSumo + Envato + Gumroad", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/listings/{today}-marketplace.md")
+
+            total_rev_potential = float(appsumo_price) + float(gumroad_price)
+            return {
+                "success": True,
+                "summary": f"marketplace_lister: {product_name} listed on 3 marketplaces | AppSumo ${appsumo_price} + Gumroad ${gumroad_price}",
+                "revenue_potential": total_rev_potential,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] marketplace_lister: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_daily_goal_tracker(self) -> dict:
+        """Track daily revenue vs target and take corrective action when behind."""
+        try:
+            import json as _json
+            import datetime as _dt
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return {"success": False, "summary": "daily_goal_tracker: no Redis", "revenue_potential": 0.0}
+
+            now = _dt.datetime.utcnow()
+            today_str = now.strftime("%Y-%m-%d")
+
+            # ── Get today's revenue from history ──────────────────────────────
+            hist_raw = await cache.get("aria:revenue:history")
+            history = _json.loads(hist_raw) if hist_raw else []
+
+            # Sum revenue entries from today
+            today_revenue = sum(
+                h.get("total_usd", 0)
+                for h in history
+                if h.get("ts", "").startswith(today_str)
+            )
+
+            # ── Get daily goal (default $100/day) ─────────────────────────────
+            goal_raw = await cache.get("aria:goals:daily_revenue_usd")
+            daily_goal = float(_json.loads(goal_raw)) if goal_raw else 100.0
+
+            # ── Compute gap ───────────────────────────────────────────────────
+            hours_elapsed = now.hour + now.minute / 60
+            expected_by_now = daily_goal * (hours_elapsed / 24)
+            gap = expected_by_now - today_revenue
+            on_track = today_revenue >= expected_by_now * 0.8  # within 20%
+
+            # ── Archive daily snapshot ────────────────────────────────────────
+            snapshot = {
+                "date": today_str,
+                "revenue_usd": round(today_revenue, 2),
+                "goal_usd": daily_goal,
+                "gap_usd": round(gap, 2),
+                "on_track": on_track,
+                "hour": now.hour,
+            }
+            await cache.set(f"aria:goals:daily:{today_str}", _json.dumps(snapshot), ex=86400 * 30)
+
+            # ── Build rolling weekly performance ──────────────────────────────
+            weekly_snaps_raw = await cache.get("aria:goals:weekly_snaps")
+            weekly_snaps = _json.loads(weekly_snaps_raw) if weekly_snaps_raw else {}
+            weekly_snaps[today_str] = snapshot
+            # Keep last 14 days
+            recent_keys = sorted(weekly_snaps.keys())[-14:]
+            weekly_snaps = {k: weekly_snaps[k] for k in recent_keys}
+            await cache.set("aria:goals:weekly_snaps", _json.dumps(weekly_snaps), ex=86400 * 20)
+
+            # ── Take action if behind ──────────────────────────────────────────
+            action_taken = ""
+            if not on_track and gap > 10 and hours_elapsed > 6:
+                # Behind — trigger the highest-conversion strategy
+                high_conv_strategies = ["stripe_checkout", "product_factory", "premium_offer", "lead_closer"]
+                force_strat = high_conv_strategies[now.hour % len(high_conv_strategies)]
+                result = await self._run_one_cycle(force_strategy=force_strat)
+                action_taken = f"Triggered {force_strat} to close gap: {result.summary[:60]}"
+
+            # ── Telegram report ────────────────────────────────────────────────
+            status_emoji = "✅" if on_track else "⚠️"
+            msg = (
+                f"{status_emoji} Daily Revenue Tracker — {today_str}\n\n"
+                f"Revenue today: ${today_revenue:.2f} / ${daily_goal:.0f} goal\n"
+                f"Expected by {now.hour:02d}:00 UTC: ${expected_by_now:.2f}\n"
+                f"Gap: ${gap:.2f}\n"
+            )
+            if action_taken:
+                msg += f"\n🎯 Action taken: {action_taken}"
+
+            try:
+                import aiohttp as _aio
+                bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+                chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+                if bot_token and chat_id:
+                    async with _aio.ClientSession() as sess:
+                        await sess.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={"chat_id": chat_id, "text": msg},
+                            timeout=_aio.ClientTimeout(total=10),
+                        )
+            except Exception:
+                pass
+
+            return {
+                "success": True,
+                "summary": f"daily_goal_tracker: ${today_revenue:.2f}/${daily_goal:.0f} | {'on track' if on_track else f'BEHIND by ${gap:.1f}'} | {action_taken[:50]}",
+                "revenue_potential": today_revenue,
+                "on_track": on_track,
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] daily_goal_tracker: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_retargeting_campaign(self) -> dict:
         """Re-engage visitors and leads who didn't convert with personalized email sequences."""
