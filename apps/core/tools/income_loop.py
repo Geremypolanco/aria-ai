@@ -54,8 +54,8 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",         2),
-    ("niche_rotator",            2),
+    ("content_pipeline",         1),
+    ("niche_rotator",            1),
     ("product_factory",          2),
     ("course_builder",           1),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        1),   # build own affiliate program, recruit promoters
@@ -69,7 +69,7 @@ STRATEGIES = [
     ("ebook_factory",            2),
     ("lead_magnet",              1),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
-    ("seo_optimizer",            2),   # improve existing posts for compounding organic traffic
+    ("seo_optimizer",            1),   # improve existing posts for compounding organic traffic
     ("gist_blitz",               1),   # code snippet Gists with product CTAs (dev discovery)
     ("product_bundle",           2),   # bundle 2-3 existing products at a discount → higher AOV
     ("waitlist_builder",         1),   # waitlist landing page → email capture → launch pipeline
@@ -134,6 +134,9 @@ STRATEGIES = [
     ("notion_template_seller",   1),   # create Notion template → publish on Gumroad + Notion marketplace ($7-$49)
     ("chrome_extension_builder", 1),   # design Chrome extension concept + README + landing page → developer audience
     ("api_marketplace_lister",   1),   # list ARIA's AI API on RapidAPI/Mashape → recurring API subscription revenue
+    ("white_label_kit",          1),   # build white-label package: agencies resell ARIA's AI as their own → B2B revenue
+    ("data_product_seller",      1),   # compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
+    ("b2b_saas_pitch",           1),   # create full B2B pitch + send cold outreach to potential enterprise clients
 ]
 
 
@@ -515,6 +518,12 @@ JSON:
             return await self._exec_chrome_extension_builder()
         elif strategy == "api_marketplace_lister":
             return await self._exec_api_marketplace_lister()
+        elif strategy == "white_label_kit":
+            return await self._exec_white_label_kit()
+        elif strategy == "data_product_seller":
+            return await self._exec_data_product_seller()
+        elif strategy == "b2b_saas_pitch":
+            return await self._exec_b2b_saas_pitch()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -11733,6 +11742,465 @@ Return JSON:
             }
         except Exception as exc:
             logger.error("[IncomeLoop] api_marketplace_lister: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_white_label_kit(self) -> dict:
+        """
+        Build a white-label package that agencies can resell as their own AI service.
+        Creates complete agency kit: proposal template, client onboarding docs, pricing guide,
+        case study template, and a branded landing page. Sells for $97-$497/kit.
+        B2B agencies pay premium for done-for-you packages they can resell at 10x.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.gumroad_tools import GumroadTools
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+            import datetime as _dt
+            import json as _json
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            kit_data = await complete_json(
+                f"""You are a B2B agency product designer. Create a white-label AI kit that marketing/content agencies can buy and resell to their clients.
+
+Create a complete white-label package:
+Return JSON:
+{{
+  "kit_name": "done-for-you AI content agency kit name",
+  "price_usd": 197,
+  "tagline": "under 10 words for agency owners",
+  "what_included": ["item1", "item2", "item3", "item4", "item5"],
+  "proposal_template": "500-word agency sales proposal template that the buyer can use with their own clients",
+  "pricing_guide": {{
+    "suggested_client_price": 1500,
+    "suggested_monthly_retainer": 2500,
+    "service_tiers": ["Starter ($800/mo): 4 posts/week", "Growth ($1500/mo): daily content + strategy", "Premium ($2500/mo): full AI content team"]
+  }},
+  "onboarding_checklist": ["step1", "step2", "step3", "step4", "step5"],
+  "case_study_template": "200-word case study template with [AGENCY], [CLIENT], [RESULTS] placeholders",
+  "target_buyer": "who buys this kit",
+  "gumroad_description": "150-word Gumroad listing description"
+}}""",
+                model="fast",
+                max_tokens=2000,
+            )
+
+            if not kit_data:
+                return {"success": False, "summary": "white_label_kit: AI failed", "revenue_potential": 0.0}
+
+            kit_name = kit_data.get("kit_name", "White-Label AI Agency Kit")
+            price = float(kit_data.get("price_usd", 197))
+            tagline = kit_data.get("tagline", "")
+            included = kit_data.get("what_included", [])
+            proposal = kit_data.get("proposal_template", "")
+            pricing = kit_data.get("pricing_guide", {})
+            onboarding = kit_data.get("onboarding_checklist", [])
+            case_study = kit_data.get("case_study_template", "")
+
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            slug = kit_name[:25].lower().replace(" ", "-")
+
+            # Full kit documentation
+            md_lines = [
+                f"# {kit_name}",
+                f"*{tagline}*",
+                f"**Price:** ${price} | **For:** {kit_data.get('target_buyer', 'Marketing Agencies')}",
+                "",
+                "## What's Included",
+                "\n".join(f"- {item}" for item in included[:8]),
+                "",
+                "## Agency Pricing Guide",
+                f"**Suggested client price:** ${pricing.get('suggested_client_price', 1500)}/project",
+                f"**Monthly retainer:** ${pricing.get('suggested_monthly_retainer', 2500)}/mo",
+                "",
+                "### Service Tiers",
+                "\n".join(f"- {t}" for t in pricing.get("service_tiers", [])[:3]),
+                "",
+                "## Client Onboarding Checklist",
+                "\n".join(f"- [ ] {step}" for step in onboarding[:8]),
+                "",
+                "## Proposal Template",
+                proposal[:1000],
+                "",
+                "## Case Study Template",
+                case_study[:500],
+                "",
+                "*White-Label Kit by ARIA AI — Agency Partner Program*",
+            ]
+
+            encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/agency-kits/{today}-{slug}.md",
+                {"message": f"agency-kit: '{kit_name[:40]}' at ${price}", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/agency-kits/{today}-{slug}.md")
+
+            # Publish to Gumroad
+            gumroad_desc = kit_data.get("gumroad_description", "")
+            gumroad_token = getattr(settings, "GUMROAD_ACCESS_TOKEN", "") or ""
+            if gumroad_token and gumroad_desc:
+                try:
+                    gt = GumroadTools()
+                    result = await gt.create_product(
+                        name=kit_name[:100],
+                        description=f"{gumroad_desc}\n\nPreview: {urls_created[0] if urls_created else ''}",
+                        price_cents=int(price * 100),
+                        published=True,
+                    )
+                    if result and result.get("product", {}).get("short_url"):
+                        urls_created.append(result["product"]["short_url"])
+                except Exception:
+                    pass
+
+            if cache:
+                await cache.rpush("aria:products:catalog", _json.dumps({
+                    "name": kit_name,
+                    "type": "white_label_kit",
+                    "price": price,
+                    "urls": urls_created[:2],
+                    "ts": today,
+                }))
+                await cache.ltrim("aria:products:catalog", -200, -1)
+                await cache.incr("aria:income:total_urls_published")
+
+            return {
+                "success": True,
+                "summary": f"white_label_kit: '{kit_name[:50]}' at ${price} | B2B agency resale kit | {len(urls_created)} URLs",
+                "revenue_potential": price,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] white_label_kit: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_data_product_seller(self) -> dict:
+        """
+        Compile and sell a curated data product: industry report, tool directory,
+        resource list, or market research compilation. Data products are evergreen
+        and easy to create at scale using web search + AI curation.
+        Priced $19-$97 as downloadable PDF or Notion doc.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.gumroad_tools import GumroadTools
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+            import datetime as _dt
+            import json as _json
+            wt = WebTools()
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # Get trending topic for the data product
+            topic = "AI tools for content creators 2025"
+            if cache:
+                raw = await cache.lrange("aria:income:opportunity_queue", -1, -1)
+                if raw:
+                    try:
+                        opp = _json.loads(raw[0])
+                        topic = opp.get("name", topic)[:60]
+                    except Exception:
+                        pass
+
+            # Research the topic
+            research_signals: list[str] = []
+            try:
+                result = await wt.search_web(f"best {topic} list comprehensive 2025", num_results=8)
+                if result.get("success") and result.get("results"):
+                    for r in result["results"][:5]:
+                        research_signals.append(f"• {r.get('title', '')}: {r.get('snippet', '')[:150]}")
+            except Exception:
+                pass
+
+            data_product = await complete_json(
+                f"""You are a data product creator. Create a valuable, curated data product for sale.
+
+Topic: {topic}
+Research signals:
+{chr(10).join(research_signals[:5]) or 'Use your knowledge about the topic'}
+
+Create a comprehensive data product:
+Return JSON:
+{{
+  "product_name": "specific, value-packed title with a number (e.g. '127 Best AI Tools for...')",
+  "price_usd": 29,
+  "tagline": "under 8 words",
+  "format": "curated list|market report|resource directory|comparison guide",
+  "description": "150-word Gumroad description",
+  "sections": [
+    {{"section": "section name", "item_count": 20, "preview_items": ["item1", "item2", "item3"]}},
+    {{"section": "section name", "item_count": 15, "preview_items": ["item1", "item2"]}},
+    {{"section": "section name", "item_count": 10, "preview_items": ["item1"]}}
+  ],
+  "total_items": 45,
+  "update_frequency": "quarterly|annually|one-time",
+  "target_buyer": "who needs this data"
+}}""",
+                model="fast",
+                max_tokens=1200,
+            )
+
+            if not data_product:
+                return {"success": False, "summary": "data_product_seller: AI failed", "revenue_potential": 0.0}
+
+            prod_name = data_product.get("product_name", f"The Ultimate {topic[:30]} Guide")
+            price = float(data_product.get("price_usd", 29))
+            tagline = data_product.get("tagline", "")
+            sections = data_product.get("sections", [])
+            total_items = data_product.get("total_items", 45)
+            description = data_product.get("description", "")
+
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            slug = prod_name[:25].lower().replace(" ", "-")
+
+            # Build the data product document
+            doc_lines = [
+                f"# {prod_name}",
+                f"*{tagline}*",
+                f"**{total_items} curated items** | **Format:** {data_product.get('format', 'curated list')} | **Price:** ${price}",
+                f"**Target:** {data_product.get('target_buyer', '')} | **Updates:** {data_product.get('update_frequency', 'annually')}",
+                "",
+                "## Overview",
+                description,
+                "",
+            ]
+            for s in sections[:5]:
+                doc_lines += [
+                    f"## {s.get('section', '')} ({s.get('item_count', 0)} items)",
+                    "",
+                    "Preview:",
+                    "\n".join(f"- {item}" for item in s.get("preview_items", [])[:3]),
+                    f"*... and {max(s.get('item_count', 0) - 3, 0)} more items in the full product*",
+                    "",
+                ]
+            doc_lines.append("*Curated by ARIA AI — Data Products Division*")
+
+            encoded = _b64.b64encode("\n".join(doc_lines).encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/data-products/{today}-{slug}.md",
+                {"message": f"data-product: '{prod_name[:40]}' at ${price}", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/data-products/{today}-{slug}.md")
+
+            # Publish to Gumroad
+            gumroad_token = getattr(settings, "GUMROAD_ACCESS_TOKEN", "") or ""
+            if gumroad_token and description:
+                try:
+                    gt = GumroadTools()
+                    result = await gt.create_product(
+                        name=prod_name[:100],
+                        description=f"{description}\n\nPreview: {urls_created[0] if urls_created else ''}",
+                        price_cents=int(price * 100),
+                        published=True,
+                    )
+                    if result and result.get("product", {}).get("short_url"):
+                        urls_created.append(result["product"]["short_url"])
+                except Exception:
+                    pass
+
+            if cache:
+                await cache.rpush("aria:products:catalog", _json.dumps({
+                    "name": prod_name,
+                    "type": "data_product",
+                    "price": price,
+                    "urls": urls_created[:2],
+                    "ts": today,
+                }))
+                await cache.ltrim("aria:products:catalog", -200, -1)
+                await cache.incr("aria:income:total_urls_published")
+
+            return {
+                "success": True,
+                "summary": f"data_product_seller: '{prod_name[:50]}' at ${price} | {total_items} curated items | {len(urls_created)} URLs",
+                "revenue_potential": price,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] data_product_seller: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_b2b_saas_pitch(self) -> dict:
+        """
+        Create a B2B SaaS pitch and send cold outreach to potential enterprise clients.
+        Identifies target companies, creates personalized pitch decks and emails,
+        uses SendGrid for delivery. Targets decision-makers at SMBs.
+        $500-$5,000/client deals for AI automation services.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+            import datetime as _dt
+            import json as _json
+            import aiohttp as _aio
+            wt = WebTools()
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # Research target companies
+            target_sectors = ["content marketing agency", "e-commerce brand", "SaaS company", "coaching business"]
+            import random
+            target_sector = random.choice(target_sectors)
+
+            prospects: list[str] = []
+            try:
+                result = await wt.search_web(f"growing {target_sector} hiring AI content 2025 site:linkedin.com OR site:crunchbase.com", num_results=5)
+                if result.get("success") and result.get("results"):
+                    for r in result["results"][:3]:
+                        title = r.get("title", "")
+                        snippet = r.get("snippet", "")
+                        if title:
+                            prospects.append(f"{title}: {snippet[:200]}")
+            except Exception:
+                pass
+
+            if not prospects:
+                prospects = [
+                    f"Example {target_sector} — Series A startup with 10-50 employees, looking to scale content",
+                    f"Growing {target_sector} — bootstrapped, $1M ARR, needs automation",
+                ]
+
+            pitch_data = await complete_json(
+                f"""You are a B2B sales expert. Create an outreach campaign for ARIA targeting {target_sector} companies.
+
+ARIA offers: AI content automation, autonomous product creation, market research, SEO, lead generation.
+
+Prospect signals:
+{chr(10).join(prospects[:3])}
+
+Create a complete B2B pitch:
+Return JSON:
+{{
+  "target_sector": "{target_sector}",
+  "offer_name": "ARIA AI Content & Automation for [sector]",
+  "offer_description": "what ARIA does for this sector",
+  "monthly_retainer_usd": 2000,
+  "email_subject": "cold email subject (under 50 chars, no 'RE:' or emoji)",
+  "email_body": "200-word cold email — opens with a specific insight about their business, offers one concrete outcome, single CTA (30-min call)",
+  "linkedin_message": "100-word LinkedIn message for the same prospect",
+  "follow_up_email": "100-word follow-up email for 5 days later",
+  "roi_calculator": {{
+    "hours_saved_per_month": 80,
+    "content_pieces_per_month": 30,
+    "leads_generated_per_month": 15
+  }}
+}}""",
+                model="fast",
+                max_tokens=1500,
+            )
+
+            if not pitch_data:
+                return {"success": False, "summary": "b2b_saas_pitch: AI failed", "revenue_potential": 0.0}
+
+            offer = pitch_data.get("offer_name", f"ARIA AI for {target_sector}")
+            email_subject = pitch_data.get("email_subject", "")
+            email_body = pitch_data.get("email_body", "")
+            monthly_retainer = float(pitch_data.get("monthly_retainer_usd", 2000))
+            roi = pitch_data.get("roi_calculator", {})
+            emails_sent = 0
+
+            # Archive the pitch to GitHub first
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            md_lines = [
+                f"# B2B Pitch: {offer}",
+                f"**Target:** {target_sector} | **Retainer:** ${monthly_retainer}/mo",
+                "",
+                "## ROI for Client",
+                f"- Hours saved: {roi.get('hours_saved_per_month', 0)}/month",
+                f"- Content pieces: {roi.get('content_pieces_per_month', 0)}/month",
+                f"- Leads generated: {roi.get('leads_generated_per_month', 0)}/month",
+                "",
+                "## Cold Email",
+                f"**Subject:** {email_subject}",
+                "",
+                email_body,
+                "",
+                "## LinkedIn Message",
+                pitch_data.get("linkedin_message", ""),
+                "",
+                "## Follow-Up Email (Day 5)",
+                pitch_data.get("follow_up_email", ""),
+                "",
+                "*Generated by ARIA AI — B2B Sales Engine*",
+            ]
+            encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/b2b-pitches/{today}-{target_sector[:20].replace(' ', '-')}.md",
+                {"message": f"b2b: pitch for {target_sector} | ${monthly_retainer}/mo", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/b2b-pitches/{today}-{target_sector[:20].replace(' ', '-')}.md")
+
+            # Send via SendGrid if configured
+            sendgrid_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
+            from_email = getattr(settings, "SENDGRID_FROM_EMAIL", "") or "aria@geremypolanco.com"
+            if sendgrid_key and email_subject and email_body:
+                # Get prospects from CRM
+                crm_prospects: list[dict] = []
+                if cache:
+                    raw_list = await cache.lrange("aria:crm:pipeline", -10, -1)
+                    for raw in (raw_list or []):
+                        try:
+                            p = _json.loads(raw) if isinstance(raw, str) else raw
+                            if p.get("email") and p.get("stage", "") in ("cold", "prospect"):
+                                crm_prospects.append(p)
+                        except Exception:
+                            pass
+
+                for prospect in crm_prospects[:5]:
+                    prospect_email = prospect.get("email", "")
+                    prospect_name = prospect.get("name", "there")
+                    if not prospect_email:
+                        continue
+                    try:
+                        body = email_body.replace("{name}", prospect_name).replace("{{name}}", prospect_name)
+                        payload = {
+                            "personalizations": [{"to": [{"email": prospect_email}]}],
+                            "from": {"email": from_email, "name": "Geremy | ARIA AI"},
+                            "subject": email_subject,
+                            "content": [{"type": "text/plain", "value": body}],
+                        }
+                        async with _aio.ClientSession() as sess:
+                            async with sess.post(
+                                "https://api.sendgrid.com/v3/mail/send",
+                                json=payload,
+                                headers={"Authorization": f"Bearer {sendgrid_key}"},
+                                timeout=_aio.ClientTimeout(total=10),
+                            ) as resp:
+                                if resp.status == 202:
+                                    emails_sent += 1
+                    except Exception:
+                        pass
+
+            if cache:
+                await cache.rpush("aria:b2b:pitches", _json.dumps({
+                    "ts": today, "sector": target_sector, "offer": offer, "retainer": monthly_retainer
+                }))
+                await cache.ltrim("aria:b2b:pitches", -30, -1)
+                await cache.incr("aria:b2b:total_pitches")
+
+            return {
+                "success": True,
+                "summary": f"b2b_saas_pitch: '{offer[:50]}' | ${monthly_retainer}/mo | {emails_sent} emails sent | archived to GitHub",
+                "revenue_potential": monthly_retainer,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] b2b_saas_pitch: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_conversion_optimizer(self) -> dict:
