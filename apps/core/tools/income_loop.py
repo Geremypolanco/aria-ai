@@ -180,6 +180,10 @@ class IncomeLoop:
         if result.success and result.urls_created and result.strategy in ("product_factory", "ebook_factory", "premium_offer"):
             asyncio.create_task(self._announce_product_on_blog(result))
 
+        # Persist to product catalog for all income-generating strategies
+        if result.success and result.urls_created and result.revenue_potential > 0:
+            asyncio.create_task(self._register_product(result))
+
         logger.info(
             "[IncomeLoop] Cycle #%d done in %ds | success=%s | %s",
             self._cycle, result.elapsed_seconds, result.success, result.summary[:80]
@@ -2800,6 +2804,77 @@ JSON:
             lines.append(f"  {weight}% — {name}")
 
         return "\n".join(lines)
+
+    async def _register_product(self, result: CycleResult) -> None:
+        """Persist a newly published product/URL to the product catalog in Redis."""
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return
+            entry = {
+                "title":     result.summary[:120],
+                "strategy":  result.strategy,
+                "urls":      result.urls_created,
+                "revenue":   result.revenue_potential,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await cache.rpush("aria:products:catalog", json.dumps(entry))
+            await cache.ltrim("aria:products:catalog", -500, -1)
+        except Exception as exc:
+            logger.debug("[IncomeLoop] register_product: %s", exc)
+
+    async def get_product_catalog(self, limit: int = 20) -> str:
+        """Return a formatted catalog of all products/URLs published by ARIA."""
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return "⚠️ Redis no disponible — sin catálogo de productos."
+
+            raw_items = await cache.lrange("aria:products:catalog", -limit, -1)
+            if not raw_items:
+                return (
+                    "📦 <b>Catálogo de Productos ARIA</b>\n\n"
+                    "⏳ Aún no hay productos registrados.\n"
+                    "El income loop irá llenando el catálogo con cada ciclo exitoso."
+                )
+
+            items = []
+            for raw in reversed(raw_items or []):
+                try:
+                    items.append(json.loads(raw) if isinstance(raw, str) else raw)
+                except Exception:
+                    pass
+
+            lines = [
+                "📦 <b>Catálogo de Productos ARIA</b>",
+                f"<i>{len(items)} productos/publicaciones</i>",
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            ]
+            for i, item in enumerate(items[:limit], 1):
+                title   = item.get("title", "")[:80]
+                strat   = item.get("strategy", "")
+                revenue = item.get("revenue", 0)
+                urls    = item.get("urls", [])
+                date    = item.get("created_at", "")[:10]
+                lines.append(f"\n<b>{i}. {title}</b>")
+                lines.append(f"   📅 {date}  |  📊 {strat}  |  💰 ${revenue:.0f} potencial")
+                for url in urls[:2]:
+                    if url:
+                        lines.append(f"   🔗 {url}")
+
+            total_rev = sum(i.get("revenue", 0) for i in items)
+            lines += [
+                "",
+                f"<b>Revenue potencial acumulado: ${total_rev:.2f}</b>",
+                f"<i>Actualizado automáticamente en cada ciclo exitoso</i>",
+            ]
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] product_catalog: %s", exc)
+            return f"⚠️ Error: {exc}"
 
     async def get_analytics_report(self) -> str:
         """Return a per-strategy performance breakdown from Redis analytics."""

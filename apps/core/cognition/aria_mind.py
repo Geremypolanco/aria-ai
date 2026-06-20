@@ -155,6 +155,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - diagnose_income  → muestra qué canales de ingresos están activos y cuáles necesitan credenciales. Muestra exactamente qué secrets añadir en Fly.io para activar cada canal. Args: {{}}
 - setup_portfolio  → crea o actualiza el portfolio profesional de ARIA en GitHub Pages (aria-portfolio). Incluye capacidades, productos publicados, artículos del blog, y links de afiliado. Args: {{}}
 - get_income_analytics → reporte de analíticas por estrategia: cuántas veces corrió cada estrategia, tasa de éxito, revenue acumulado, mejores estrategias. Úsalo cuando el usuario pida el reporte, estadísticas de ingresos, qué estrategia funciona mejor o analíticas. Args: {{}}
+- get_product_catalog → catálogo completo de todos los productos, artículos, demos y recursos publicados por ARIA con sus URLs y revenue potencial. Úsalo cuando el usuario pida ver los productos, el catálogo, qué ha publicado ARIA o cuánto ha generado. Args: {{"limit": 20}}
 
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
 Tienes acceso a tus propias credenciales de plataformas vía variables de entorno ARIA_EMAIL y ARIA_PASSWORD.
@@ -209,6 +210,7 @@ REGLAS DE RAZONAMIENTO:
 40. Si el usuario pide crear un hilo de Twitter, X thread, hilo viral, o contenido para redes sociales → usa run_income_cycle con strategy="viral_thread".
 41. Si el usuario pide el reporte de analíticas, estadísticas de ingresos, qué estrategia funciona mejor, qué porcentaje de éxito tiene cada estrategia, o quiere ver el performance del income loop → usa get_income_analytics.
 42. Si el usuario pide publicar un demo de IA, crear una Space en HuggingFace, o quiere mostrar el trabajo de ARIA con herramientas interactivas gratuitas → usa run_income_cycle con strategy="hf_spaces_demo".
+43. Si el usuario pide ver qué productos ha publicado ARIA, el catálogo, qué ha generado hasta ahora, o cuánto lleva acumulado → usa get_product_catalog.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1493,6 +1495,13 @@ class AriaMind:
                 loop   = get_income_loop()
                 report = await loop.get_analytics_report()
                 return report, {}
+
+            elif tool == "get_product_catalog":
+                from apps.core.tools.income_loop import get_income_loop
+                loop    = get_income_loop()
+                limit   = int(args.get("limit", 20))
+                catalog = await loop.get_product_catalog(limit=limit)
+                return catalog, {}
 
             elif tool == "setup_portfolio":
                 from apps.core.config import settings as _s

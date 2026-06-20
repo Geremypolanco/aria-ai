@@ -56,9 +56,10 @@ QUICK_ACTIONS_KB = {
         ],
         [
             {"text": "📈 Analíticas",            "callback_data": "quick_reporte"},
-            {"text": "📚 Base de conocimiento", "callback_data": "quick_kb"},
+            {"text": "📦 Catálogo",              "callback_data": "quick_catalogo"},
         ],
         [
+            {"text": "📚 Base de conocimiento", "callback_data": "quick_kb"},
             {"text": "⚙️ Ver capacidades",      "callback_data": "quick_help"},
         ],
     ]
@@ -101,6 +102,7 @@ BOT_COMMANDS = [
     {"command": "thread",      "description": "Crear hilo viral de Twitter/X"},
     {"command": "reporte",     "description": "Reporte de analíticas por estrategia de ingresos"},
     {"command": "demo",        "description": "Publicar demo de IA en HuggingFace Spaces (gratis)"},
+    {"command": "catalogo",    "description": "Ver todos los productos y publicaciones de ARIA"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -288,6 +290,7 @@ class AriaTelegramBot:
             "/thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
             "/reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
             "/demo":         "publica un demo de IA en HuggingFace Spaces usando run_income_cycle con strategy hf_spaces_demo",
+            "/catalogo":     "muéstrame el catálogo completo de productos y publicaciones de ARIA usando get_product_catalog",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):
@@ -394,6 +397,7 @@ class AriaTelegramBot:
             "quick_thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
             "quick_reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
             "quick_demo":         "publica un demo de IA en HuggingFace Spaces usando run_income_cycle con strategy hf_spaces_demo",
+            "quick_catalogo":     "muéstrame el catálogo completo de productos y publicaciones de ARIA usando get_product_catalog",
             "example_trends":     "busca las últimas noticias sobre modelos de lenguaje grandes",
         }
 
