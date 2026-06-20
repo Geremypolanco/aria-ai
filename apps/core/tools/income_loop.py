@@ -55,16 +55,17 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
     ("content_pipeline",        10),
-    ("niche_rotator",           11),
+    ("niche_rotator",           10),
     ("product_factory",         10),
     ("opportunity_scan",         8),
-    ("github_publish",           8),   # works with only GITHUB_TOKEN — always active
+    ("github_publish",           7),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       7),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
-    ("shopify_listing",          6),
-    ("email_campaign",           6),
-    ("affiliate_content",        6),   # review/comparison articles with affiliate links
+    ("micro_saas",               6),   # full micro-SaaS product launch: README + API docs + pricing
+    ("shopify_listing",          5),
+    ("email_campaign",           5),
+    ("affiliate_content",        5),   # review/comparison articles with affiliate links
     ("ebook_factory",            5),
-    ("lead_magnet",              5),   # free resource funnel → email capture → upsell
+    ("lead_magnet",              4),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           4),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            4),   # improve existing posts for compounding organic traffic
     ("gist_blitz",               4),   # code snippet Gists with product CTAs (dev discovery)
@@ -272,6 +273,8 @@ JSON:
             return await self._exec_seo_optimizer()
         elif strategy == "content_repurposer":
             return await self._exec_content_repurposer()
+        elif strategy == "micro_saas":
+            return await self._exec_micro_saas()
         elif strategy == "gist_blitz":
             return await self._exec_gist_blitz()
         elif strategy == "github_sponsors_setup":
@@ -2319,6 +2322,221 @@ Enter your text and see the magic happen.
 
         except Exception as exc:
             logger.error("[IncomeLoop] hf_spaces_demo: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_micro_saas(self) -> dict:
+        """
+        Create a micro-SaaS concept as a GitHub repo with full README, pricing table,
+        API docs, and a demo script. Positions ARIA as a software company with
+        licensable products. GitHub SEO drives organic discovery.
+        Requires: GITHUB_TOKEN
+        """
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "micro_saas: needs GITHUB_TOKEN"}
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            saas_concepts = [
+                ("AI Email Writer API", "email-writer-api", "REST API that writes personalized cold emails using AI"),
+                ("Content Calendar AI", "content-calendar-ai", "Auto-generate 30-day content calendar for any brand"),
+                ("SEO Audit Bot", "seo-audit-bot", "Automated SEO scoring and fix recommendations via API"),
+                ("AI Product Description Generator", "product-desc-gen", "Generate Shopify/Amazon product descriptions at scale"),
+                ("Competitor Monitor", "competitor-monitor", "Track competitor pricing, content, and social updates daily"),
+                ("AI Blog Factory", "blog-factory-api", "Generate SEO blog posts programmatically via REST API"),
+                ("Lead Qualifier AI", "lead-qualifier-ai", "Score and qualify leads using behavior + demographics"),
+            ]
+
+            concept = saas_concepts[self._niche_idx % len(saas_concepts)]
+            name, slug, desc = concept
+
+            saas_data = await complete_json(
+                f"""Create a compelling micro-SaaS product concept.
+
+Product: {name}
+Slug: {slug}
+Description: {desc}
+
+Generate complete product documentation. Return JSON:
+{{
+  "tagline": "one-line value proposition (under 80 chars)",
+  "pain_points": ["problem 1", "problem 2", "problem 3"],
+  "features": ["feature 1", "feature 2", "feature 3", "feature 4"],
+  "pricing_tiers": [
+    {{"name": "Starter", "price_monthly": 29, "limits": "1,000 requests/month", "features": ["core feature 1"]}},
+    {{"name": "Pro", "price_monthly": 79, "limits": "10,000 requests/month", "features": ["everything in Starter", "feature 2"]}},
+    {{"name": "Enterprise", "price_monthly": 299, "limits": "Unlimited", "features": ["everything in Pro", "SLA", "dedicated support"]}}
+  ],
+  "demo_code": "import requests\\n\\n# Quick start demo\\nresponse = requests.post('https://api.example.com/v1/generate', ...)\\nprint(response.json())",
+  "use_cases": ["use case 1", "use case 2"],
+  "target_customers": "who buys this"
+}}""",
+                model="fast",
+            )
+
+            tagline     = saas_data.get("tagline", desc)
+            features    = saas_data.get("features", [])
+            pricing     = saas_data.get("pricing_tiers", [])
+            pain_points = saas_data.get("pain_points", [])
+            demo_code   = saas_data.get("demo_code", "")
+            use_cases   = saas_data.get("use_cases", [])
+            target      = saas_data.get("target_customers", "")
+
+            # Build pricing table markdown
+            pricing_md = "| Plan | Price | Requests | Features |\n|------|-------|----------|----------|\n"
+            for tier in pricing:
+                feats = ", ".join(tier.get("features", [])[:2])
+                pricing_md += f"| {tier.get('name','')} | ${tier.get('price_monthly',0)}/mo | {tier.get('limits','')} | {feats} |\n"
+
+            readme = f"""# {name}
+
+> {tagline}
+
+[![GitHub Stars](https://img.shields.io/github/stars/{owner}/{slug}?style=social)](https://github.com/{owner}/{slug})
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+## 🎯 The Problem
+
+{chr(10).join(f'- {p}' for p in pain_points)}
+
+## ✨ Features
+
+{chr(10).join(f'- {f}' for f in features)}
+
+## 💰 Pricing
+
+{pricing_md}
+
+## 🚀 Quick Start
+
+```python
+{demo_code}
+```
+
+## 📦 Use Cases
+
+{chr(10).join(f'- {u}' for u in use_cases)}
+
+## 👥 Who Is This For?
+
+{target}
+
+## 🔗 Links
+
+- [Documentation](https://github.com/{owner}/{slug}/wiki)
+- [API Reference](https://github.com/{owner}/{slug}/blob/main/API.md)
+- [Portfolio](https://github.com/{owner}/aria-portfolio)
+
+---
+
+*Built by [ARIA AI](https://github.com/{owner}/aria-ai) — autonomous business intelligence*
+
+⭐ **Star this repo** if it solves a problem you have!
+"""
+
+            api_md = f"""# {name} — API Reference
+
+## Base URL
+
+```
+https://api.{slug}.io/v1
+```
+
+## Authentication
+
+All requests require an API key in the `Authorization` header:
+
+```
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Endpoints
+
+### POST /generate
+
+Generate output using AI.
+
+**Request:**
+```json
+{{
+  "input": "your text here",
+  "options": {{
+    "tone": "professional",
+    "length": "medium"
+  }}
+}}
+```
+
+**Response:**
+```json
+{{
+  "result": "generated output",
+  "tokens_used": 150,
+  "cost_usd": 0.0015
+}}
+```
+
+## Rate Limits
+
+| Plan | Requests/month | RPM |
+|------|---------------|-----|
+| Starter | 1,000 | 10 |
+| Pro | 10,000 | 60 |
+| Enterprise | Unlimited | 1,000 |
+
+## SDKs
+
+- Python: `pip install {slug}-python`
+- Node.js: `npm install {slug}-client`
+"""
+
+            repo_name = slug
+            r_create = await gh._post("/user/repos", {
+                "name": repo_name,
+                "description": f"{tagline} | {desc}",
+                "private": False, "auto_init": False,
+                "topics": ["ai", "saas", "api", "automation"],
+            })
+
+            if "html_url" in r_create or r_create.get("status") == 422:
+                files = {
+                    "README.md":  readme,
+                    "API.md":     api_md,
+                }
+                for fname, content in files.items():
+                    await gh._put(f"/repos/{owner}/{repo_name}/contents/{fname}", {
+                        "message": f"feat: {name} micro-SaaS launch",
+                        "content": _b64.b64encode(content.encode()).decode(),
+                    })
+
+                repo_url = f"https://github.com/{owner}/{repo_name}"
+                logger.info("[IncomeLoop] Micro-SaaS published: %s", repo_url)
+
+                # Announce on blog
+                asyncio.create_task(self._exec_github_blog([{
+                    "title": f"Introducing {name}: {tagline}",
+                    "slug": f"introducing-{slug}",
+                    "description": tagline,
+                    "content": f"# Introducing {name}\n\n{tagline}\n\n{desc}\n\n[View on GitHub →]({repo_url})\n\n## Pricing\n\n{pricing_md}",
+                    "tags": ["saas", "product", "ai", "launch"],
+                }]))
+
+                min_price = min(t.get("price_monthly", 0) for t in pricing) if pricing else 0
+                return {
+                    "success": True,
+                    "summary": f"Micro-SaaS '{name}' launched at ${min_price}/mo starting — {repo_url}",
+                    "revenue_potential": float(min_price),
+                    "urls": [repo_url],
+                }
+
+            return {"success": False, "summary": "micro_saas: could not create repo"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] micro_saas: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_gist_blitz(self) -> dict:
