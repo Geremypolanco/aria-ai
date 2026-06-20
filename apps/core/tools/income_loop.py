@@ -54,22 +54,24 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",   12),
-    ("niche_rotator",      12),
-    ("product_factory",    12),
-    ("opportunity_scan",    9),
-    ("github_publish",      8),   # works with only GITHUB_TOKEN — always active
-    ("content_repurposer",  7),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
-    ("shopify_listing",     6),
-    ("email_campaign",      6),
-    ("affiliate_content",   6),   # review/comparison articles with affiliate links
-    ("ebook_factory",       5),
-    ("lead_magnet",         5),   # free resource funnel → email capture → upsell
-    ("hf_spaces_demo",      4),   # live AI demo on HuggingFace Spaces (free, massive community)
-    ("seo_optimizer",       4),   # improve existing posts for compounding organic traffic
-    ("social_blitz",        2),
-    ("premium_offer",       1),
-    ("viral_thread",        1),   # Twitter/X thread optimized for virality
+    ("content_pipeline",        10),
+    ("niche_rotator",           11),
+    ("product_factory",         10),
+    ("opportunity_scan",         8),
+    ("github_publish",           8),   # works with only GITHUB_TOKEN — always active
+    ("content_repurposer",       7),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
+    ("shopify_listing",          6),
+    ("email_campaign",           6),
+    ("affiliate_content",        6),   # review/comparison articles with affiliate links
+    ("ebook_factory",            5),
+    ("lead_magnet",              5),   # free resource funnel → email capture → upsell
+    ("hf_spaces_demo",           4),   # live AI demo on HuggingFace Spaces (free, massive community)
+    ("seo_optimizer",            4),   # improve existing posts for compounding organic traffic
+    ("gist_blitz",               4),   # code snippet Gists with product CTAs (dev discovery)
+    ("github_sponsors_setup",    2),   # passive income via GitHub Sponsors + FUNDING.yml
+    ("social_blitz",             2),
+    ("premium_offer",            1),
+    ("viral_thread",             1),   # Twitter/X thread optimized for virality
 ]
 
 
@@ -270,6 +272,10 @@ JSON:
             return await self._exec_seo_optimizer()
         elif strategy == "content_repurposer":
             return await self._exec_content_repurposer()
+        elif strategy == "gist_blitz":
+            return await self._exec_gist_blitz()
+        elif strategy == "github_sponsors_setup":
+            return await self._exec_github_sponsors_setup()
         elif strategy == "viral_thread":
             return await self._exec_viral_thread()
         return {"success": False, "summary": "Unknown strategy"}
@@ -2315,6 +2321,169 @@ Enter your text and see the magic happen.
             logger.error("[IncomeLoop] hf_spaces_demo: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
+    async def _exec_gist_blitz(self) -> dict:
+        """
+        Create 3 useful code snippets as public GitHub Gists.
+        Each Gist includes a product CTA comment linking back to ARIA's tools.
+        Gists appear in GitHub search, Google snippets, and developer feeds.
+        Requires: GITHUB_TOKEN
+        """
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "gist_blitz: needs GITHUB_TOKEN"}
+        try:
+            from apps.core.llm.llm_client import complete_json
+            import httpx as _hx
+
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            portfolio_url = f"https://github.com/{owner}/aria-portfolio"
+
+            topics = [
+                ("python-productivity", "Python", "10 Python one-liners that will save you hours every week"),
+                ("ai-prompts-cheatsheet", "Markdown", "The ultimate AI prompts cheatsheet for developers (2025)"),
+                ("bash-automation", "Shell", "20 Bash aliases every developer should have"),
+                ("async-patterns", "Python", "Async/await patterns every Python dev should know"),
+                ("git-shortcuts", "Shell", "Git commands that make you look like a senior developer"),
+            ]
+            # Pick 2 topics randomly
+            picks = random.sample(topics, min(2, len(topics)))
+
+            published_gist_urls: list[str] = []
+            gh_token = settings.GITHUB_TOKEN
+
+            for slug, lang, topic in picks:
+                snippet_data = await complete_json(
+                    f"""Create a highly useful, complete code snippet for this topic:
+"{topic}"
+
+Requirements:
+- Language: {lang}
+- Length: 30-80 lines (complete and useful, not truncated)
+- Practical, copy-paste ready
+- Professional but accessible
+- Start with a 3-line comment header: title, description, by ARIA AI
+
+Return JSON:
+{{
+  "filename": "{slug}.{('py' if lang=='Python' else 'sh' if lang=='Shell' else 'md')}",
+  "code": "# full code here",
+  "description": "one-line description for the Gist"
+}}""",
+                    model="fast",
+                )
+                code     = snippet_data.get("code", "")
+                filename = snippet_data.get("filename", f"{slug}.txt")
+                desc     = snippet_data.get("description", topic)
+
+                if not code:
+                    continue
+
+                # Append CTA comment at the end
+                cta_sep  = "#" if lang in ("Python", "Shell") else "---"
+                cta_lang = "# " if lang != "Markdown" else ""
+                cta = (
+                    f"\n\n{cta_sep}{cta_sep}{cta_sep}\n"
+                    f"{cta_lang}🤖 Generated by ARIA AI — autonomous business agent\n"
+                    f"{cta_lang}More tools & resources: {portfolio_url}\n"
+                    f"{cta_lang}⭐ Star to support open-source AI tools\n"
+                )
+                full_code = code + cta
+
+                try:
+                    async with _hx.AsyncClient(timeout=20) as client:
+                        r = await client.post(
+                            "https://api.github.com/gists",
+                            json={
+                                "description": f"{desc} | by ARIA AI",
+                                "public": True,
+                                "files": {filename: {"content": full_code}},
+                            },
+                            headers={
+                                "Authorization": f"Bearer {gh_token}",
+                                "Accept": "application/vnd.github+json",
+                            },
+                        )
+                        if r.status_code == 201:
+                            gist_url = r.json().get("html_url", "")
+                            if gist_url:
+                                published_gist_urls.append(gist_url)
+                                logger.info("[IncomeLoop] Gist published: %s", gist_url)
+                except Exception as gist_exc:
+                    logger.debug("[IncomeLoop] gist create: %s", gist_exc)
+
+            if published_gist_urls:
+                return {
+                    "success": True,
+                    "summary": f"Gist blitz: {len(published_gist_urls)} code snippets published with product CTAs",
+                    "revenue_potential": len(published_gist_urls) * 1.0,
+                    "urls": published_gist_urls,
+                }
+            return {"success": False, "summary": "gist_blitz: no Gists created"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] gist_blitz: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_github_sponsors_setup(self) -> dict:
+        """
+        Set up FUNDING.yml in all ARIA repos to enable GitHub Sponsors.
+        Also pins aria-portfolio and aria-insights repos on the profile.
+        Passive income from supporters who find the repos.
+        Requires: GITHUB_TOKEN
+        """
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "sponsors_setup: needs GITHUB_TOKEN"}
+        try:
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            # FUNDING.yml content for GitHub Sponsors
+            funding_yml = (
+                "# ARIA AI — Support open-source AI automation\n"
+                "# These links appear as sponsor buttons on every repo\n\n"
+                f"github: [{owner}]\n"
+                "ko_fi: aria_ai\n"
+                "buy_me_a_coffee: aria_ai\n"
+                "custom:\n"
+                f"  - https://github.com/{owner}/aria-portfolio\n"
+            )
+
+            target_repos = ["aria-insights", "aria-portfolio", "aria-free-resources", "aria-ai"]
+            updated = []
+            for repo in target_repos:
+                try:
+                    path = ".github/FUNDING.yml"
+                    existing = await gh._get(f"/repos/{owner}/{repo}/contents/{path}")
+                    sha = existing.get("sha") if "error" not in existing else None
+
+                    body: dict = {
+                        "message": "chore: enable GitHub Sponsors button",
+                        "content": _b64.b64encode(funding_yml.encode()).decode(),
+                    }
+                    if sha:
+                        body["sha"] = sha
+
+                    r = await gh._put(f"/repos/{owner}/{repo}/contents/{path}", body)
+                    if "error" not in r:
+                        updated.append(repo)
+                except Exception:
+                    pass
+
+            if updated:
+                logger.info("[IncomeLoop] FUNDING.yml set on: %s", updated)
+                return {
+                    "success": True,
+                    "summary": f"GitHub Sponsors enabled on {len(updated)} repos: {', '.join(updated)}",
+                    "revenue_potential": 5.0,
+                    "urls": [f"https://github.com/{owner}/{r}" for r in updated],
+                }
+            return {"success": False, "summary": "sponsors_setup: no repos updated (create repos first)"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] sponsors_setup: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
     async def _exec_content_repurposer(self) -> dict:
         """
         Take ONE existing blog post and repurpose it into:
@@ -2840,6 +3009,16 @@ JSON:
                 "keys_needed": ["HF_TOKEN"],
                 "revenue_channels": ["AI demo traffic", "HuggingFace Spaces", "millions of AI community visitors"],
             },
+            "github_gists": {
+                "active": bool(settings.GITHUB_TOKEN),
+                "keys_needed": ["GITHUB_TOKEN"],
+                "revenue_channels": ["developer discovery", "backlinks", "code snippet SEO"],
+            },
+            "github_sponsors": {
+                "active": bool(settings.GITHUB_TOKEN),
+                "keys_needed": ["GITHUB_TOKEN"],
+                "revenue_channels": ["passive supporter income", "sponsorships", "ko-fi / buy-me-a-coffee"],
+            },
         }
         active   = {k: v for k, v in channels.items() if v["active"]}
         inactive = {k: v for k, v in channels.items() if not v["active"]}
@@ -2994,13 +3173,16 @@ JSON:
         try:
             from apps.core.tools.telegram_bot import get_bot
             urls_text = "\n".join(result.urls_created[:3])
-            emoji = "💰" if high_value else ("📝" if result.strategy in ("github_publish", "content_pipeline", "affiliate_content") else "✅")
+            emoji = "💰" if high_value else ("📝" if result.strategy in ("github_publish", "content_pipeline", "affiliate_content", "content_repurposer") else "✅")
+            is_product = result.strategy in ("product_factory", "ebook_factory", "premium_offer", "shopify_listing", "niche_rotator", "hf_spaces_demo", "lead_magnet")
             msg = (
                 f"{emoji} <b>ARIA publicó contenido nuevo</b>\n"
                 f"Estrategia: {result.strategy}\n"
                 f"Potencial: ${result.revenue_potential:.1f}\n"
                 f"{result.summary[:200]}"
                 + (f"\n\n{urls_text}" if urls_text else "")
+                + (f"\n\n📦 <i>Ver catálogo: /catalogo</i>" if is_product else "")
+                + (f"\n📊 <i>Analíticas: /reporte</i>" if high_value else "")
             )
             bot = get_bot()
             await bot.notify_owner(msg)
@@ -3321,6 +3503,20 @@ JSON:
                 best = rows[0] if rows else None
                 if best and best[1] > 0:
                     lines += ["", f"🏆 Mejor estrategia: <b>{best[0]}</b> (${best[3]:.2f} revenue)"]
+
+            # Revenue projection
+            if total_cycles > 0 and total_tracked_rev > 0:
+                cycles_per_day = (24 * 3600) / INTERVAL_SECONDS  # ~48 cycles/day
+                rev_per_cycle  = total_tracked_rev / max(total_cycles, 1)
+                proj_7d  = rev_per_cycle * cycles_per_day * 7
+                proj_30d = rev_per_cycle * cycles_per_day * 30
+                lines += [
+                    "",
+                    "📈 <b>Proyección de ingresos (potencial):</b>",
+                    f"  7 días:  <b>${proj_7d:.2f}</b>",
+                    f"  30 días: <b>${proj_30d:.2f}</b>",
+                    f"  <i>(basado en {total_cycles} ciclos @ ${rev_per_cycle:.3f}/ciclo)</i>",
+                ]
 
             lines += [
                 "",
