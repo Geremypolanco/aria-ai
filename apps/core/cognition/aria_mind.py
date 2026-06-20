@@ -114,7 +114,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
 - income_loop_status → muestra el estado del loop de ingresos 24/7: ciclos completados, tasa de éxito, última estrategia ejecutada, URLs creadas. Args: {{}}
 - start_income_loop → inicia el loop autónomo de ingresos 24/7 si no está corriendo. Corre cada 30 min indefinidamente. Args: {{}}
-- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|opportunity_scan|github_publish|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|social_blitz|premium_offer|viral_thread (opcional)"}}
+- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|opportunity_scan|github_publish|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|social_blitz|premium_offer|viral_thread (opcional)"}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
 - deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
@@ -208,6 +208,7 @@ REGLAS DE RAZONAMIENTO:
 39. Si el usuario pide crear un lead magnet, recurso gratis, checklist, template, o funnel de captación de emails → usa run_income_cycle con strategy="lead_magnet".
 40. Si el usuario pide crear un hilo de Twitter, X thread, hilo viral, o contenido para redes sociales → usa run_income_cycle con strategy="viral_thread".
 41. Si el usuario pide el reporte de analíticas, estadísticas de ingresos, qué estrategia funciona mejor, qué porcentaje de éxito tiene cada estrategia, o quiere ver el performance del income loop → usa get_income_analytics.
+42. Si el usuario pide publicar un demo de IA, crear una Space en HuggingFace, o quiere mostrar el trabajo de ARIA con herramientas interactivas gratuitas → usa run_income_cycle con strategy="hf_spaces_demo".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1474,6 +1475,16 @@ class AriaMind:
                     "",
                     "**🐦 Para distribución automática en Twitter/X via Zapier:**",
                     "`fly secrets set ZAPIER_WEBHOOK_URL=https://hooks.zapier.com/hooks/catch/... -a aria-ai`",
+                    "",
+                    "**📰 Para cross-posting en Hashnode (tech blog con gran audiencia):**",
+                    "1. hashnode.com → Settings → Developer → API Keys → New Token",
+                    "2. Tu Publication ID está en hashnode.com/dashboard (URL del blog)",
+                    "3. `fly secrets set HASHNODE_TOKEN=tu_token HASHNODE_PUBLICATION_ID=tu_pub_id -a aria-ai`",
+                    "",
+                    "**🤗 Para demos de IA en HuggingFace Spaces (millones de visitantes de comunidad IA — GRATIS):**",
+                    "1. huggingface.co → Settings → Access Tokens → New token (role: write)",
+                    "2. `fly secrets set HF_TOKEN=hf_tu_token -a aria-ai`",
+                    "→ ARIA crea Spaces de Gradio con demos interactivos que generan tráfico y posicionamiento",
                 ]
                 return "\n".join(lines), {}
 

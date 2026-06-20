@@ -100,6 +100,7 @@ BOT_COMMANDS = [
     {"command": "magnet",      "description": "Crear lead magnet gratuito → funnel de captura"},
     {"command": "thread",      "description": "Crear hilo viral de Twitter/X"},
     {"command": "reporte",     "description": "Reporte de analíticas por estrategia de ingresos"},
+    {"command": "demo",        "description": "Publicar demo de IA en HuggingFace Spaces (gratis)"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -286,6 +287,7 @@ class AriaTelegramBot:
             "/magnet":       "crea un lead magnet gratuito ahora mismo usando run_income_cycle con strategy lead_magnet",
             "/thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
             "/reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
+            "/demo":         "publica un demo de IA en HuggingFace Spaces usando run_income_cycle con strategy hf_spaces_demo",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):
@@ -391,6 +393,7 @@ class AriaTelegramBot:
             "quick_magnet":       "crea un lead magnet gratuito ahora mismo usando run_income_cycle con strategy lead_magnet",
             "quick_thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
             "quick_reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
+            "quick_demo":         "publica un demo de IA en HuggingFace Spaces usando run_income_cycle con strategy hf_spaces_demo",
             "example_trends":     "busca las últimas noticias sobre modelos de lenguaje grandes",
         }
 

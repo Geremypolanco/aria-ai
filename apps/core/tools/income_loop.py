@@ -54,7 +54,7 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",  18),
+    ("content_pipeline",  16),
     ("niche_rotator",     15),
     ("product_factory",   13),
     ("opportunity_scan",   9),
@@ -64,7 +64,8 @@ STRATEGIES = [
     ("affiliate_content",  6),   # review/comparison articles with affiliate links
     ("ebook_factory",      6),
     ("lead_magnet",        5),   # free resource funnel → email capture → upsell
-    ("social_blitz",       4),
+    ("hf_spaces_demo",     4),   # live AI demo on HuggingFace Spaces (free, massive community)
+    ("social_blitz",       2),
     ("premium_offer",      1),
     ("viral_thread",       1),   # Twitter/X thread optimized for virality
 ]
@@ -257,6 +258,8 @@ JSON:
             return await self._exec_affiliate_content()
         elif strategy == "lead_magnet":
             return await self._exec_lead_magnet()
+        elif strategy == "hf_spaces_demo":
+            return await self._exec_hf_spaces_demo()
         elif strategy == "viral_thread":
             return await self._exec_viral_thread()
         return {"success": False, "summary": "Unknown strategy"}
@@ -511,25 +514,82 @@ JSON:
                     except Exception:
                         pass
 
+                # Cross-post to Hashnode if configured
+                hn_token = getattr(settings, "HASHNODE_TOKEN", None)
+                hn_pub   = getattr(settings, "HASHNODE_PUBLICATION_ID", None)
+                hashnode_urls: list[str] = []
+                if hn_token and hn_pub:
+                    try:
+                        import httpx as _httpx_hn
+                        async with _httpx_hn.AsyncClient(timeout=20) as _hn:
+                            for art in existing_articles[:1]:
+                                art_title   = art.get("title", "")[:150]
+                                art_content = art.get("content", art.get("description", ""))
+                                art_tags    = [{"slug": t.replace(" ", "-").lower()} for t in art.get("tags", ["ai", "productivity"])[:5]]
+                                hn_mutation = """
+                                mutation PublishPost($input: PublishPostInput!) {
+                                  publishPost(input: $input) {
+                                    post { url }
+                                  }
+                                }"""
+                                hn_vars = {
+                                    "input": {
+                                        "title": art_title,
+                                        "contentMarkdown": f"# {art_title}\n\n{art_content}",
+                                        "publicationId": hn_pub,
+                                        "tags": art_tags,
+                                        "disableComments": False,
+                                        "originalArticleURL": published_urls[0] if published_urls else None,
+                                    }
+                                }
+                                hn_r = await _hn.post(
+                                    "https://gql.hashnode.com",
+                                    json={"query": hn_mutation, "variables": hn_vars},
+                                    headers={"Authorization": hn_token, "Content-Type": "application/json"},
+                                    timeout=20,
+                                )
+                                if hn_r.status_code == 200:
+                                    hn_url = (
+                                        hn_r.json()
+                                        .get("data", {})
+                                        .get("publishPost", {})
+                                        .get("post", {})
+                                        .get("url", "")
+                                    )
+                                    if hn_url:
+                                        hashnode_urls.append(hn_url)
+                    except Exception:
+                        pass
+
                 # Discord notification for new content
                 discord_url = getattr(settings, "DISCORD_WEBHOOK_URL", None)
                 if discord_url:
                     try:
                         import httpx as _httpx
                         async with _httpx.AsyncClient(timeout=10) as _client:
+                            extra = ""
+                            if devto_urls:
+                                extra += f"Dev.to: {devto_urls[0]}\n"
+                            if hashnode_urls:
+                                extra += f"Hashnode: {hashnode_urls[0]}\n"
                             await _client.post(discord_url, json={
                                 "content": (
                                     f"📝 **New article published!**\n"
                                     f"{published_urls[0]}\n"
-                                    + (f"Dev.to: {devto_urls[0]}\n" if devto_urls else "")
+                                    + extra
                                     + f"*ARIA Insights — AI-generated content*"
                                 )
                             })
                     except Exception:
                         pass
 
-                all_urls = published_urls + devto_urls
-                platforms = "GitHub" + (" + Dev.to" if devto_urls else "")
+                all_urls = published_urls + devto_urls + hashnode_urls
+                platform_parts = ["GitHub"]
+                if devto_urls:
+                    platform_parts.append("Dev.to")
+                if hashnode_urls:
+                    platform_parts.append("Hashnode")
+                platforms = " + ".join(platform_parts)
                 return {
                     "success": True,
                     "summary": f"Published {len(published_urls)} article(s) to {platforms}" +
@@ -2030,6 +2090,221 @@ JSON:
             logger.error("[IncomeLoop] lead_magnet: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
+    async def _exec_hf_spaces_demo(self) -> dict:
+        """
+        Publish a live Gradio AI demo to HuggingFace Spaces.
+        HF Spaces is free, indexed by search engines, and has millions of AI community visitors.
+        Requires: HF_TOKEN (HuggingFace API token) or GITHUB_TOKEN fallback.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            hf_token = getattr(settings, "HF_TOKEN", None)
+            owner    = getattr(settings, "GITHUB_USERNAME", None) or "Geremypolanco"
+
+            # Generate demo concept
+            niches = [
+                ("AI Content Generator", "content-generator", "Generate SEO-optimized blog posts with AI"),
+                ("Keyword Research Tool", "keyword-research", "Find profitable keywords for your niche"),
+                ("Product Description Writer", "product-writer", "Write compelling product descriptions instantly"),
+                ("Email Subject Line Optimizer", "email-optimizer", "A/B test email subject lines with AI scoring"),
+                ("AI Summarizer", "ai-summarizer", "Summarize any article or document in seconds"),
+                ("Headline Generator", "headline-gen", "Generate 10 viral headlines for any topic"),
+                ("SEO Score Analyzer", "seo-analyzer", "Analyze and score your content for SEO"),
+            ]
+            niche_idx   = self._niche_idx % len(niches)
+            demo_name, demo_slug, demo_desc = niches[niche_idx]
+            space_name  = f"aria-{demo_slug}"
+
+            # Generate the Gradio app code
+            demo_data = await complete_json(
+                f"""Create a simple but impressive Gradio demo for: {demo_name}
+Description: {demo_desc}
+Generate a Python Gradio app that:
+1. Takes 1-2 text inputs
+2. Processes them with a convincing AI simulation (pattern matching + templates)
+3. Returns useful output
+4. Looks professional with title, description, examples
+
+Return JSON:
+{{
+  "app_code": "import gradio as gr\\n\\ndef process(text):\\n    # ... return result",
+  "title": "{demo_name}",
+  "description": "{demo_desc}",
+  "examples": [["example input 1"], ["example input 2"]],
+  "tagline": "30-word compelling tagline for this tool"
+}}""",
+                model="fast",
+            )
+
+            app_code    = demo_data.get("app_code", "")
+            tagline     = demo_data.get("tagline", demo_desc)
+            examples    = demo_data.get("examples", [])
+
+            if not app_code:
+                # Default minimal app
+                app_code = f'''import gradio as gr
+
+def process(text: str) -> str:
+    """Simple {demo_name} demo."""
+    if not text.strip():
+        return "Please provide some input."
+    words = text.split()
+    return f"✅ Processed {{len(words)}} words. Result: {{text[:200]}}..."
+
+demo = gr.Interface(
+    fn=process,
+    inputs=gr.Textbox(label="Input", placeholder="Enter your text here..."),
+    outputs=gr.Textbox(label="Result"),
+    title="{demo_name}",
+    description="{demo_desc}",
+    examples={json.dumps(examples[:3]) if examples else '[["Sample text to process"]]'},
+)
+
+if __name__ == "__main__":
+    demo.launch()
+'''
+
+            readme_md = f"""---
+title: {demo_name}
+emoji: 🤖
+colorFrom: blue
+colorTo: purple
+sdk: gradio
+sdk_version: 4.44.1
+app_file: app.py
+pinned: false
+license: mit
+short_description: {tagline[:100]}
+---
+
+# {demo_name}
+
+{demo_desc}
+
+## About
+
+{tagline}
+
+Built with ❤️ by [ARIA AI](https://github.com/{owner}/aria-ai) — autonomous AI business agent.
+
+## Features
+
+- ⚡ Instant results
+- 🎯 AI-powered processing
+- 🔓 Free to use
+
+## Try it above!
+
+Enter your text and see the magic happen.
+"""
+
+            requirements_txt = "gradio>=4.44.1\n"
+
+            # Try to push to HuggingFace Spaces
+            space_url = ""
+            if hf_token:
+                try:
+                    import httpx as _hf_http
+                    hf_api = "https://huggingface.co/api"
+                    headers = {"Authorization": f"Bearer {hf_token}"}
+
+                    async with _hf_http.AsyncClient(timeout=30) as _hf:
+                        # Create space repo
+                        cr = await _hf.post(
+                            f"{hf_api}/repos/create",
+                            json={"type": "space", "name": space_name, "sdk": "gradio", "private": False},
+                            headers=headers,
+                        )
+                        repo_exists = cr.status_code in (200, 201, 409)  # 409 = already exists
+
+                        if repo_exists:
+                            import base64 as _b64
+
+                            def _hf_commit_file(path: str, content: str) -> dict:
+                                return {
+                                    "path": path,
+                                    "encoding": "base64",
+                                    "content": _b64.b64encode(content.encode()).decode(),
+                                }
+
+                            commit_r = await _hf.post(
+                                f"{hf_api}/{owner}/{space_name}/commit/main",
+                                json={
+                                    "summary": f"ARIA: deploy {demo_name} demo",
+                                    "files": [
+                                        _hf_commit_file("app.py", app_code),
+                                        _hf_commit_file("requirements.txt", requirements_txt),
+                                        _hf_commit_file("README.md", readme_md),
+                                    ],
+                                },
+                                headers=headers,
+                            )
+                            if commit_r.status_code in (200, 201):
+                                space_url = f"https://huggingface.co/spaces/{owner}/{space_name}"
+                                logger.info("[IncomeLoop] HF Space deployed: %s", space_url)
+                except Exception as hf_exc:
+                    logger.debug("[IncomeLoop] HF Spaces API: %s", hf_exc)
+
+            # GitHub fallback — create a demo repo with the Gradio code
+            if not space_url and settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                import base64 as _b64
+                gh    = AriaGitHubClient()
+                repo  = f"aria-demo-{demo_slug}"
+                desc  = f"{demo_name} — AI demo by ARIA"
+
+                # Create repo (POST /user/repos)
+                r_create = await gh._post("/user/repos", {
+                    "name": repo, "description": desc,
+                    "private": False, "auto_init": False,
+                })
+                if "html_url" in r_create or r_create.get("status") == 422:
+                    # 422 may mean repo already exists
+                    files = {
+                        "app.py":           app_code,
+                        "requirements.txt": requirements_txt,
+                        "README.md":        readme_md,
+                    }
+                    pushed = []
+                    for fname, fcontent in files.items():
+                        fr = await gh.create_or_update_file(
+                            owner=owner, repo=repo, path=fname,
+                            content=_b64.b64encode(fcontent.encode()).decode(),
+                            message=f"feat: {demo_name} AI demo",
+                        )
+                        if "content" in fr or fr.get("commit"):
+                            pushed.append(fname)
+                    if pushed:
+                        space_url = f"https://github.com/{owner}/{repo}"
+
+            if space_url:
+                # Announce on blog
+                asyncio.create_task(self._exec_github_blog([{
+                    "title":       f"Free {demo_name}: Live AI Demo",
+                    "slug":        f"free-{demo_slug}-ai-demo",
+                    "description": tagline,
+                    "content":     f"# Free {demo_name}\n\n{tagline}\n\n{demo_desc}\n\n[**Try the live demo →**]({space_url})\n\nBuilt with ARIA AI autonomous agent.\n",
+                    "tags":        ["ai", "demo", "free-tool", "productivity"],
+                }]))
+
+                return {
+                    "success": True,
+                    "summary": f"HF Space deployed: {demo_name} — {space_url}",
+                    "revenue_potential": 8.0,
+                    "urls": [space_url],
+                }
+
+            return {
+                "success": False,
+                "summary": "hf_spaces_demo: add HF_TOKEN to fly secrets for HuggingFace deployment",
+                "revenue_potential": 0,
+                "urls": [],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] hf_spaces_demo: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
     async def _exec_viral_thread(self) -> dict:
         """
         Generate a viral Twitter/X thread on a trending topic + post via Zapier.
@@ -2226,6 +2501,11 @@ JSON:
                 "active": bool(getattr(settings, "ZAPIER_WEBHOOK_URL", None)),
                 "keys_needed": ["ZAPIER_WEBHOOK_URL"],
                 "revenue_channels": ["social automation", "multi-platform distribution", "viral threads"],
+            },
+            "huggingface": {
+                "active": bool(getattr(settings, "HF_TOKEN", None)),
+                "keys_needed": ["HF_TOKEN"],
+                "revenue_channels": ["AI demo traffic", "HuggingFace Spaces", "millions of AI community visitors"],
             },
         }
         active   = {k: v for k, v in channels.items() if v["active"]}
