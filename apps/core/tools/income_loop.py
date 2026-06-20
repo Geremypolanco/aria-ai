@@ -54,9 +54,9 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",         4),
-    ("niche_rotator",            4),
-    ("product_factory",          4),
+    ("content_pipeline",         3),
+    ("niche_rotator",            3),
+    ("product_factory",          3),
     ("course_builder",           3),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        3),   # build own affiliate program, recruit promoters
     ("opportunity_scan",         4),
@@ -89,6 +89,7 @@ STRATEGIES = [
     ("linkedin_outreach",        2),   # B2B prospect messages → consulting/partnership leads
     ("youtube_strategy",         2),   # YouTube content plan + optimized metadata + script → channel growth
     ("product_hunt_launch",      2),   # Product Hunt launch post → massive traffic spike + backlinks
+    ("content_amplifier",        3),   # blast latest content to ALL platforms simultaneously — 5x reach
 ]
 
 
@@ -353,6 +354,8 @@ JSON:
             return await self._exec_youtube_strategy()
         elif strategy == "product_hunt_launch":
             return await self._exec_product_hunt_launch()
+        elif strategy == "content_amplifier":
+            return await self._exec_content_amplifier()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -6019,6 +6022,265 @@ JSON:
             logger.error("[IncomeLoop] analytics_report: %s", exc)
             return f"⚠️ Error al generar reporte: {exc}"
 
+
+    async def _exec_content_amplifier(self) -> dict:
+        """
+        Take the most recent successful content from the catalog and distribute it
+        simultaneously to ALL configured platforms:
+          - Twitter/X thread (direct API or Zapier)
+          - LinkedIn post (direct API)
+          - Reddit post (asyncpraw or archive)
+          - Dev.to article (API)
+          - Hashnode article (API)
+          - Discord announcement (webhook)
+          - Email campaign (Mailchimp)
+        Requires: at least GITHUB_TOKEN. More APIs = more reach.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+
+            cache = get_cache()
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            # 1. Get latest published content
+            source_item: dict = {}
+            if cache:
+                raw_items = await cache.lrange("aria:products:catalog", -10, -1)
+                for raw in reversed(raw_items or []):
+                    try:
+                        item = json.loads(raw) if isinstance(raw, str) else raw
+                        if item.get("title") and item.get("summary"):
+                            source_item = item
+                            break
+                    except Exception:
+                        pass
+
+            if not source_item:
+                # Fallback: generate fresh content to amplify
+                source_item = {
+                    "title": "10 AI Side Income Strategies That Actually Work in 2025",
+                    "summary": "Proven AI-powered income strategies for solopreneurs and creators",
+                    "urls": [f"https://github.com/{owner}/aria-insights"],
+                    "strategy": "content_pipeline",
+                }
+
+            title   = source_item.get("title", "")[:80]
+            summary = source_item.get("summary", "")[:300]
+            urls    = source_item.get("urls", [])
+            url     = urls[0] if urls else f"https://github.com/{owner}/aria-portfolio"
+
+            # 2. Generate platform-specific adaptations
+            adaptations = await complete_json(
+                f"""Create platform-specific content adaptations for this piece:
+
+Title: {title}
+Summary: {summary}
+URL: {url}
+
+Return JSON:
+{{
+  "twitter_thread": ["Tweet 1 (hook, 240 chars)", "Tweet 2 (key insight)", "Tweet 3 (actionable tip)", "Tweet 4 (CTA with URL)"],
+  "linkedin_post": "Full LinkedIn post (1500 chars). Start with bold hook. Use line breaks. End with CTA + URL.",
+  "reddit_post": {{
+    "subreddit": "Entrepreneur",
+    "title": "submission title (80 chars)",
+    "body": "post body (300 words). Valuable, no spam, link in comments)"
+  }},
+  "devto_article": {{
+    "title": "article title",
+    "tags": ["ai", "productivity", "startup"],
+    "content": "article body (300+ words markdown)"
+  }},
+  "email_subject": "email subject line (50 chars)",
+  "discord_message": "Discord announcement (280 chars)"
+}}""",
+                model="strategy",
+            )
+
+            if not adaptations:
+                adaptations = {}
+
+            published_to: list[str] = []
+            errors: list[str] = []
+
+            # 3. Twitter thread
+            try:
+                tweets = adaptations.get("twitter_thread", [])
+                if tweets:
+                    from apps.distribution.publishers.api_publisher import AriaAPIPublisher
+                    pub = AriaAPIPublisher()
+                    tw_key    = getattr(settings, "TWITTER_API_KEY", None)
+                    tw_secret = getattr(settings, "TWITTER_API_SECRET", None)
+                    tw_tok    = getattr(settings, "TWITTER_ACCESS_TOKEN", None)
+                    tw_sec    = getattr(settings, "TWITTER_ACCESS_SECRET", None)
+                    if all([tw_key, tw_secret, tw_tok, tw_sec]):
+                        ok = await pub.publish_thread_to_twitter(tweets)
+                        if ok:
+                            published_to.append("Twitter")
+                    # Zapier fallback
+                    if "Twitter" not in published_to:
+                        zapier_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None)
+                        if zapier_url:
+                            import httpx as _hx
+                            async with _hx.AsyncClient(timeout=10.0) as hc:
+                                r = await hc.post(zapier_url, json={"text": "\n\n".join(tweets[:4])})
+                                if r.status_code < 300:
+                                    published_to.append("Twitter/Zapier")
+            except Exception as exc:
+                errors.append(f"Twitter: {str(exc)[:50]}")
+
+            # 4. LinkedIn post
+            try:
+                lk_token = getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
+                lk_urn   = getattr(settings, "LINKEDIN_PERSON_URN", None)
+                if lk_token and lk_urn:
+                    from apps.distribution.publishers.api_publisher import AriaAPIPublisher
+                    pub = AriaAPIPublisher()
+                    li_text = adaptations.get("linkedin_post", f"{title}\n\n{summary}\n\n{url}")
+                    ok = await pub.publish_to_linkedin(li_text)
+                    if ok:
+                        published_to.append("LinkedIn")
+            except Exception as exc:
+                errors.append(f"LinkedIn: {str(exc)[:50]}")
+
+            # 5. Reddit post
+            try:
+                reddit_data = adaptations.get("reddit_post", {})
+                sub   = reddit_data.get("subreddit", "Entrepreneur")
+                rtitle = reddit_data.get("title", title)
+                rbody  = reddit_data.get("body", summary)
+                reddit_id     = getattr(settings, "REDDIT_CLIENT_ID", None)
+                reddit_secret = getattr(settings, "REDDIT_CLIENT_SECRET", None)
+                reddit_refresh= getattr(settings, "REDDIT_REFRESH_TOKEN", None)
+                reddit_user   = getattr(settings, "REDDIT_USERNAME", None)
+                if all([reddit_id, reddit_secret, reddit_refresh, reddit_user]):
+                    try:
+                        import asyncpraw
+                        reddit = asyncpraw.Reddit(
+                            client_id=reddit_id, client_secret=reddit_secret,
+                            refresh_token=reddit_refresh, user_agent=f"ARIA-Bot/1.0 by /u/{reddit_user}",
+                        )
+                        async with reddit:
+                            subreddit = await reddit.subreddit(sub)
+                            await subreddit.submit(rtitle, selftext=f"{rbody}\n\n{url}")
+                        published_to.append(f"Reddit r/{sub}")
+                    except Exception as exc:
+                        errors.append(f"Reddit: {str(exc)[:50]}")
+                # Always archive Reddit post to GitHub
+                reddit_slug = f"reddit-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
+                reddit_md = f"# r/{sub} — {rtitle}\n\n{rbody}\n\n**Link:** {url}\n"
+                existing_r = await gh._get(f"/repos/{owner}/aria-insights/contents/reddit/{reddit_slug}.md")
+                sha_r = existing_r.get("sha") if "error" not in existing_r else None
+                body_r: dict = {
+                    "message": f"feat: Reddit amplification post",
+                    "content": _b64.b64encode(reddit_md.encode()).decode(),
+                }
+                if sha_r:
+                    body_r["sha"] = sha_r
+                await gh._put(f"/repos/{owner}/aria-insights/contents/reddit/{reddit_slug}.md", body_r)
+                if "Reddit" not in " ".join(published_to):
+                    published_to.append("GitHub/Reddit-Archive")
+            except Exception as exc:
+                errors.append(f"Reddit: {str(exc)[:50]}")
+
+            # 6. Dev.to article
+            try:
+                devto_key = getattr(settings, "DEVTO_API_KEY", None)
+                if devto_key:
+                    devto_data = adaptations.get("devto_article", {})
+                    import httpx as _hx
+                    async with _hx.AsyncClient(timeout=15.0) as hc:
+                        r = await hc.post(
+                            "https://dev.to/api/articles",
+                            headers={"api-key": devto_key, "Content-Type": "application/json"},
+                            json={"article": {
+                                "title": devto_data.get("title", title),
+                                "published": True,
+                                "body_markdown": devto_data.get("content", f"{summary}\n\n[Read more]({url})"),
+                                "tags": devto_data.get("tags", ["ai", "productivity"]),
+                            }},
+                        )
+                        if r.status_code in (200, 201):
+                            art = r.json()
+                            published_to.append(f"Dev.to ({art.get('url', '')})")
+            except Exception as exc:
+                errors.append(f"Dev.to: {str(exc)[:50]}")
+
+            # 7. Hashnode article
+            try:
+                hn_token = getattr(settings, "HASHNODE_TOKEN", None)
+                hn_pub   = getattr(settings, "HASHNODE_PUBLICATION_ID", None)
+                if hn_token and hn_pub:
+                    hn_data = adaptations.get("devto_article", {})
+                    import httpx as _hx
+                    hn_mutation = """
+mutation CreatePost($input: CreateStoryInput!) {
+  createStory(input: $input) { post { url } }
+}"""
+                    async with _hx.AsyncClient(timeout=15.0) as hc:
+                        r = await hc.post(
+                            "https://gql.hashnode.com/",
+                            headers={"Authorization": hn_token},
+                            json={"query": hn_mutation, "variables": {"input": {
+                                "title": hn_data.get("title", title),
+                                "contentMarkdown": hn_data.get("content", f"{summary}\n\n[Read more]({url})"),
+                                "publicationId": hn_pub,
+                                "tags": [],
+                            }}},
+                        )
+                        if r.status_code == 200:
+                            hn_res = r.json()
+                            hn_url = hn_res.get("data", {}).get("createStory", {}).get("post", {}).get("url", "")
+                            published_to.append(f"Hashnode ({hn_url[:40]})" if hn_url else "Hashnode")
+            except Exception as exc:
+                errors.append(f"Hashnode: {str(exc)[:50]}")
+
+            # 8. Discord webhook
+            try:
+                discord_url = getattr(settings, "DISCORD_WEBHOOK_URL", None)
+                if discord_url:
+                    discord_msg = adaptations.get("discord_message", f"🚀 New: {title}\n{url}")
+                    import httpx as _hx
+                    async with _hx.AsyncClient(timeout=10.0) as hc:
+                        r = await hc.post(discord_url, json={"content": f"{discord_msg}"})
+                        if r.status_code in (200, 204):
+                            published_to.append("Discord")
+            except Exception as exc:
+                errors.append(f"Discord: {str(exc)[:50]}")
+
+            # 9. Mailchimp campaign
+            try:
+                mc_key = getattr(settings, "MAILCHIMP_API_KEY", None)
+                if mc_key:
+                    from apps.core.tools.mailchimp_tools import MailchimpTools
+                    mc = MailchimpTools()
+                    email_subj = adaptations.get("email_subject", f"New: {title[:40]}")
+                    mc_res = await mc.send_campaign(
+                        subject=email_subj,
+                        body=f"<h2>{title}</h2><p>{summary}</p><p><a href='{url}'>Read more →</a></p>",
+                    )
+                    if mc_res.get("success"):
+                        published_to.append("Email/Mailchimp")
+            except Exception as exc:
+                errors.append(f"Email: {str(exc)[:50]}")
+
+            platforms_str = " + ".join(published_to) if published_to else "GitHub only"
+            errors_str    = f" (errors: {'; '.join(errors[:3])})" if errors else ""
+
+            return {
+                "success": len(published_to) > 0,
+                "summary": f"Content amplified across {len(published_to)} platforms: {platforms_str}{errors_str}",
+                "revenue_potential": float(len(published_to) * 8),
+                "urls": [url],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] content_amplifier: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_youtube_strategy(self) -> dict:
         """
