@@ -1,18 +1,17 @@
 """
-AriaTelegramBot v7 — Elite Professional Edition.
+AriaTelegramBot v8 — Conversational Intelligence Edition.
 
-Diseño de clase mundial:
-  ✦ Typing indicator (sendChatAction) antes de cada respuesta
-  ✦ Placeholder → editMessageText para sensación de streaming
-  ✦ Comandos registrados con setMyCommands (/start, /ayuda, /estado, /limpiar)
-  ✦ Bienvenida rica con inline keyboard
-  ✦ Markdown → HTML conversion segura
-  ✦ Formateo específico por tipo de herramienta
-  ✦ Menú de acción rápida via inline keyboard
-  ✦ Manejo robusto de errores con mensajes claros
+ARIA no es un menú. Es una IA que razona, actúa y sigue el hilo.
 
-Todo input (texto libre O comandos) sigue pasando por AriaMind.
-El bot solo se encarga de I/O de alto nivel.
+Principios:
+  ✦ Sin teclados de botones — ARIA entiende lenguaje natural
+  ✦ Sin traducciones de slash commands — AriaMind maneja todo
+  ✦ Bienvenida proactiva: ARIA reporta qué ha estado haciendo
+  ✦ Contexto de conversación real — recordatorio de acciones previas
+  ✦ Typing indicator + placeholder para sensación de respuesta en vivo
+  ✦ Markdown → HTML seguro para Telegram
+
+Todo input pasa por AriaMind. El bot solo maneja I/O.
 """
 from __future__ import annotations
 
@@ -30,124 +29,16 @@ logger = logging.getLogger("aria.telegram_bot")
 
 TELEGRAM_API = "https://api.telegram.org/bot"
 
-# ── Inline keyboard layouts ────────────────────────────────────────────────
+# No keyboards — ARIA is conversational, not a menu app.
 
-QUICK_ACTIONS_KB = {
-    "inline_keyboard": [
-        [
-            {"text": "💰 Ciclo de ingresos",   "callback_data": "quick_income"},
-            {"text": "📅 Ciclo diario",         "callback_data": "quick_daily"},
-        ],
-        [
-            {"text": "🔍 Buscar en web",        "callback_data": "quick_search"},
-            {"text": "🎨 Generar imagen",        "callback_data": "quick_image"},
-        ],
-        [
-            {"text": "📊 Estado del sistema",   "callback_data": "quick_status"},
-            {"text": "🎯 Objetivos autónomos",  "callback_data": "quick_objectives"},
-        ],
-        [
-            {"text": "🌐 Portfolio GitHub",     "callback_data": "quick_portfolio"},
-            {"text": "🩺 Diagnóstico ingresos", "callback_data": "quick_diagnostico"},
-        ],
-        [
-            {"text": "🧲 Lead Magnet",          "callback_data": "quick_magnet"},
-            {"text": "🧵 Hilo Viral",            "callback_data": "quick_thread"},
-        ],
-        [
-            {"text": "📈 Analíticas",            "callback_data": "quick_reporte"},
-            {"text": "📦 Catálogo",              "callback_data": "quick_catalogo"},
-        ],
-        [
-            {"text": "🎁 Bundle de Productos",  "callback_data": "quick_bundle"},
-            {"text": "⏳ Crear Waitlist",        "callback_data": "quick_waitlist"},
-        ],
-        [
-            {"text": "🔥 Challenge 7 Días",     "callback_data": "quick_challenge"},
-            {"text": "🤝 Buscar Socios B2B",    "callback_data": "quick_socios"},
-        ],
-        [
-            {"text": "📚 Base de conocimiento", "callback_data": "quick_kb"},
-            {"text": "⚙️ Ver capacidades",      "callback_data": "quick_help"},
-        ],
-    ]
-}
-
-START_KB = {
-    "inline_keyboard": [
-        [
-            {"text": "⚡ Ver capacidades",     "callback_data": "quick_help"},
-            {"text": "📊 Estado",               "callback_data": "quick_status"},
-        ],
-        [
-            {"text": "💡 Ejemplo: busca tendencias de IA", "callback_data": "example_trends"},
-        ],
-    ]
-}
-
-# ── Bot commands to register ───────────────────────────────────────────────
+# ── Bot commands (minimal — ARIA understands natural language) ─────────────
 
 BOT_COMMANDS = [
-    {"command": "start",       "description": "Bienvenida e introducción a ARIA"},
-    {"command": "ayuda",       "description": "Ver todas las capacidades"},
-    {"command": "estado",      "description": "Estado del sistema en tiempo real"},
-    {"command": "limpiar",     "description": "Limpiar historial de la conversación"},
-    {"command": "ingresos",    "description": "Ejecutar ciclo de ingresos ahora"},
-    {"command": "ciclo_diario","description": "Ejecutar ciclo completo de negocio del día"},
-    {"command": "objetivos",   "description": "Ver objetivos estratégicos autónomos"},
-    {"command": "leads",       "description": "Descubrir leads y avanzar CRM"},
-    {"command": "retencion",   "description": "Lanzar campañas de retención de clientes"},
-    {"command": "shopify",     "description": "Optimizar tienda Shopify"},
-    {"command": "busca",       "description": "Buscar algo en internet"},
-    {"command": "imagen",      "description": "Generar una imagen con IA"},
-    {"command": "piensa",      "description": "Razonamiento profundo sobre un tema"},
-    {"command": "metas",       "description": "Ver metas activas de ARIA"},
-    {"command": "portfolio",   "description": "Crear/actualizar portfolio en GitHub Pages"},
-    {"command": "diagnostico", "description": "Diagnóstico de canales de ingresos activos"},
-    {"command": "briefing",    "description": "Resumen de negocio ahora mismo"},
-    {"command": "afiliado",    "description": "Publicar artículo de afiliado ahora"},
-    {"command": "magnet",      "description": "Crear lead magnet gratuito → funnel de captura"},
-    {"command": "thread",      "description": "Crear hilo viral de Twitter/X"},
-    {"command": "reporte",     "description": "Reporte de analíticas por estrategia de ingresos"},
-    {"command": "demo",        "description": "Publicar demo de IA en HuggingFace Spaces (gratis)"},
-    {"command": "catalogo",    "description": "Ver todos los productos y publicaciones de ARIA"},
-    {"command": "traccion",    "description": "Ver stars/forks en GitHub — presencia en el mercado"},
-    {"command": "gists",       "description": "Publicar snippets de código en GitHub Gists (backlinks dev)"},
-    {"command": "sponsors",    "description": "Configurar GitHub Sponsors en todos los repos"},
-    {"command": "proyeccion",  "description": "Proyección de ingresos a 7 y 30 días"},
-    {"command": "saas",        "description": "Lanzar una micro-SaaS con pricing y API docs"},
-    {"command": "curso",       "description": "Crear mini-curso con syllabus completo y precio"},
-    {"command": "bundle",      "description": "Crear bundle de productos (mayor valor por venta)"},
-    {"command": "waitlist",    "description": "Crear waitlist para próximo producto (captura leads)"},
-    {"command": "digest",      "description": "Recibir el digest de ingresos del día ahora"},
-    {"command": "challenge",   "description": "Lanzar challenge de 7 días → audiencia + upsell"},
-    {"command": "socios",      "description": "Generar kit de outreach B2B y propuestas de partnership"},
-    {"command": "newsletter",  "description": "Publicar edición de newsletter con contenido editorial"},
-    {"command": "servicios",   "description": "Publicar oferta de servicios de consultoría AI"},
+    {"command": "start",   "description": "Activar ARIA y ver qué ha estado haciendo"},
+    {"command": "limpiar", "description": "Borrar el historial de conversación"},
 ]
 
-# ── Welcome message ────────────────────────────────────────────────────────
-
-WELCOME_MESSAGE = """\
-<b>✦ ARIA está en línea</b>
-
-Soy tu inteligencia operativa personal — no un chatbot genérico.
-
-<b>Lo que puedo hacer ahora mismo:</b>
-• 💰 Ejecutar ciclos de ingresos autónomos (income loop 24/7)
-• 📅 Correr el ciclo diario completo: contenido + leads + outreach + retención
-• 🎯 Gestionar objetivos estratégicos autónomos (6 objetivos en piloto automático)
-• 👥 Descubrir leads, avanzar CRM y enviar outreach personalizado
-• 🔄 Campañas de retención: win-back a inactivos + loyalty rewards a VIPs
-• 🛒 Optimizar tienda Shopify: SEO, bundles, flash sales
-• 🔍 Buscar e investigar en internet en tiempo real
-• 🎨 Generar imágenes, música y video con IA
-• 💻 Navegar la web como un humano (click, formularios, screenshots)
-• 🌐 Crear sitios web, presentaciones, PDFs y software completo
-• 🤖 Coordinar equipos de agentes especializados (CEO, CMO, CFO, Dev)
-• 📧 Publicar contenido en blog, LinkedIn, Twitter, TikTok
-
-<i>Habla conmigo en lenguaje natural. Sin comandos especiales.</i>"""
+# ── Welcome handled dynamically by _send_welcome (proactive status report) ─
 
 
 class AriaTelegramBot:
@@ -291,64 +182,18 @@ class AriaTelegramBot:
         # Send placeholder "thinking" message
         placeholder_id = await self._send_placeholder(chat_id)
 
-        # Quick slash command → natural language translation for AriaMind
-        _SLASH_TRANSLATIONS: dict[str, str] = {
-            "/ingresos":     "ejecuta un ciclo de ingresos ahora mismo usando run_income_cycle",
-            "/ciclo_diario": "ejecuta el ciclo completo de negocio del día usando run_daily_cycle",
-            "/objetivos":    "muéstrame el estado de todos los objetivos estratégicos autónomos usando check_objectives",
-            "/leads":        "descubre 10 leads nuevos y avanza los contactos del CRM usando run_acquisition",
-            "/retencion":    "lanza las campañas de retención de clientes: win-back e inactivos usando run_retention",
-            "/shopify":      "optimiza el SEO de los productos de Shopify usando shopify_optimize con operation seo",
-            "/busca":        "busca en internet: ",
-            "/imagen":       "genera una imagen de: ",
-            "/piensa":       "usa razonamiento profundo para analizar: ",
-            "/metas":        "muéstrame mis metas activas usando get_status",
-            "/portfolio":    "crea o actualiza el portfolio profesional de ARIA en GitHub Pages usando setup_portfolio",
-            "/diagnostico":  "muéstrame el diagnóstico completo de todos los canales de ingresos usando diagnose_income",
-            "/briefing":     "ejecuta el morning briefing ahora mismo y envíame el resumen usando run_objective con objective morning_briefing",
-            "/afiliado":     "ejecuta una estrategia de contenido de afiliado ahora mismo usando run_income_cycle con strategy affiliate_content",
-            "/magnet":       "crea un lead magnet gratuito ahora mismo usando run_income_cycle con strategy lead_magnet",
-            "/thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
-            "/reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
-            "/demo":         "publica un demo de IA en HuggingFace Spaces usando run_income_cycle con strategy hf_spaces_demo",
-            "/catalogo":     "muéstrame el catálogo completo de productos y publicaciones de ARIA usando get_product_catalog",
-            "/traccion":     "muéstrame la tracción en GitHub: stars, forks y presencia en el mercado usando get_github_traction",
-            "/gists":        "publica snippets de código en GitHub Gists con CTAs usando run_income_cycle con strategy gist_blitz",
-            "/sponsors":     "configura GitHub Sponsors en todos los repos de ARIA usando run_income_cycle con strategy github_sponsors_setup",
-            "/proyeccion":   "muéstrame la proyección de ingresos a 7 y 30 días basada en el rendimiento actual usando get_income_analytics",
-            "/saas":         "lanza una micro-SaaS con pricing y API docs usando run_income_cycle con strategy micro_saas",
-            "/curso":        "crea un mini-curso con syllabus completo y precio usando run_income_cycle con strategy course_builder",
-            "/bundle":       "crea un bundle de productos combinando los mejores productos del catálogo a precio especial usando run_income_cycle con strategy product_bundle",
-            "/waitlist":     "crea una lista de espera para un próximo producto con early bird offer usando run_income_cycle con strategy waitlist_builder",
-            "/digest":       "muéstrame el digest de ingresos del día con revenue, URLs publicadas y proyección usando run_objective con objective daily_revenue_digest",
-            "/challenge":    "lanza un challenge de 7 días con contenido diario, CTA y upsell al final usando run_income_cycle con strategy challenge_campaign",
-            "/socios":       "genera kit de outreach B2B con propuestas de partnership y templates de email usando run_income_cycle con strategy partner_outreach",
-            "/newsletter":   "publica una edición completa de newsletter con insights y recomendaciones de productos usando run_income_cycle con strategy newsletter_issue",
-            "/servicios":    "publica una oferta de servicios de consultoría AI para generar leads B2B usando run_income_cycle con strategy job_board_listing",
-        }
-        for cmd, translated in _SLASH_TRANSLATIONS.items():
-            if text == cmd or text.startswith(cmd + " "):
-                suffix = text[len(cmd):].strip()
-                if translated.endswith(": "):
-                    text = translated + suffix
-                else:
-                    text = (translated + " " + suffix).strip() if suffix else translated
-                break
-
-        # Slash commands → CommandRouter (before AriaMind)
-        if text.startswith("/") and text not in ("/start",):
+        # /limpiar resets conversation history
+        if text.strip().lower() in ("/limpiar", "/clear", "/reset", "limpiar"):
             try:
-                from apps.core.commands.aria_commands import get_command_router
-                router = get_command_router()
-                if router.is_command(text):
-                    cmd_response = await router.handle(text, session_id=f"telegram:{chat_id}")
-                    if cmd_response:
-                        await self._edit_or_send(chat_id, placeholder_id, cmd_response)
-                        return
-            except Exception as exc:
-                logger.error("[Bot] CommandRouter error: %s", exc)
+                from apps.core.cognition.aria_mind import get_aria_mind
+                mind = get_aria_mind()
+                await mind._clear_history(chat_id)
+            except Exception:
+                pass
+            await self._edit_or_send(chat_id, placeholder_id, "🗑 Historial borrado. ¿En qué trabajamos ahora?")
+            return
 
-        # Everything through AriaMind
+        # Everything through AriaMind — no pre-programmed shortcuts
         try:
             from apps.core.cognition.aria_mind import get_aria_mind
             mind     = get_aria_mind()
@@ -404,49 +249,9 @@ class AriaTelegramBot:
             await self._edit_or_send(chat_id, placeholder_id, response.text)
 
     async def _handle_callback(self, cbq: dict[str, Any]) -> None:
-        """Handle inline keyboard button presses."""
-        chat_id   = str(cbq["message"]["chat"]["id"])
-        cb_id     = cbq["id"]
-        data      = cbq.get("data", "")
-
-        if not self._is_authorized(chat_id):
-            return
-
-        # Acknowledge the callback immediately
+        """Acknowledge any residual callback queries gracefully."""
+        cb_id = cbq.get("id", "")
         await self._answer_callback(cb_id)
-
-        mapping = {
-            "quick_income":       "ejecuta un ciclo de ingresos ahora mismo",
-            "quick_daily":        "ejecuta el ciclo completo de negocio del día",
-            "quick_search":       "busca las últimas tendencias en inteligencia artificial",
-            "quick_image":        "genera una imagen de un paisaje futurista con IA",
-            "quick_status":       "/estado",
-            "quick_objectives":   "muéstrame el estado de los objetivos estratégicos autónomos",
-            "quick_think":        "usa razonamiento profundo para explicar qué es la computación cuántica",
-            "quick_kb":           "¿qué hay en mi base de conocimiento?",
-            "quick_help":         "/ayuda",
-            "quick_portfolio":    "crea o actualiza el portfolio profesional de ARIA en GitHub Pages",
-            "quick_diagnostico":  "muéstrame el diagnóstico completo de canales de ingresos usando diagnose_income",
-            "quick_magnet":       "crea un lead magnet gratuito ahora mismo usando run_income_cycle con strategy lead_magnet",
-            "quick_thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
-            "quick_reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
-            "quick_demo":         "publica un demo de IA en HuggingFace Spaces usando run_income_cycle con strategy hf_spaces_demo",
-            "quick_catalogo":     "muéstrame el catálogo completo de productos y publicaciones de ARIA usando get_product_catalog",
-            "quick_bundle":       "crea un bundle de productos combinando los mejores del catálogo a precio especial usando run_income_cycle con strategy product_bundle",
-            "quick_waitlist":     "crea una lista de espera para un próximo producto con early bird offer usando run_income_cycle con strategy waitlist_builder",
-            "quick_challenge":    "lanza un challenge de 7 días con contenido diario, CTA y upsell usando run_income_cycle con strategy challenge_campaign",
-            "quick_socios":       "genera kit de outreach B2B con propuestas de partnership usando run_income_cycle con strategy partner_outreach",
-            "example_trends":     "busca las últimas noticias sobre modelos de lenguaje grandes",
-        }
-
-        user_text = mapping.get(data)
-        if user_text:
-            # Synthesize a fake message object and handle it
-            fake_msg = {
-                "chat": {"id": int(chat_id)},
-                "text": user_text,
-            }
-            await self._handle_message(fake_msg)
 
     # ── Media input processing ─────────────────────────────────────────────
 
@@ -559,20 +364,24 @@ class AriaTelegramBot:
     # ── Sending helpers ────────────────────────────────────────────────────
 
     async def _send_welcome(self, chat_id: str) -> None:
+        """Proactive welcome: ARIA reports what she's been doing, not a menu."""
         if not settings.telegram_token:
             return
         try:
-            await self._http.post(
-                f"{TELEGRAM_API}{settings.telegram_token}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": WELCOME_MESSAGE,
-                    "parse_mode": "HTML",
-                    "reply_markup": START_KB,
-                },
+            # Delegate the whole welcome to AriaMind so she can reason and report
+            from apps.core.cognition.aria_mind import get_aria_mind
+            mind = get_aria_mind()
+            response = await mind.handle(
+                "Hola, acabo de conectarme. Dame un reporte rápido de qué has estado haciendo "
+                "mientras estaba desconectado: ciclos de ingresos ejecutados, productos creados, "
+                "URLs publicadas, y qué planeas hacer ahora.",
+                chat_id,
             )
+            text = response.text or "ARIA en línea. ¿Qué hacemos?"
+            await self._send(chat_id, self._md_to_html(text), already_html=True)
         except Exception as exc:
             logger.error("[Bot] _send_welcome: %s", exc)
+            await self._send(chat_id, "ARIA en línea. Habla conmigo en lenguaje natural.")
 
     async def _send_action(self, chat_id: str, action: str = "typing") -> None:
         if not settings.telegram_token:
