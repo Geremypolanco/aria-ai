@@ -63,8 +63,8 @@ STRATEGIES = [
     ("github_publish",           4),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       4),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               4),   # full micro-SaaS product launch: README + API docs + pricing
-    ("shopify_listing",          2),
-    ("email_campaign",           2),
+    ("shopify_listing",          1),
+    ("email_campaign",           1),
     ("affiliate_content",        3),   # review/comparison articles with affiliate links
     ("ebook_factory",            4),
     ("lead_magnet",              2),   # free resource funnel → email capture → upsell
@@ -98,7 +98,9 @@ STRATEGIES = [
     ("media_pitch",              1),   # PR pitch to tech media → backlinks + brand authority + traffic
     ("ab_content_test",          1),   # A/B test pricing & titles on existing products → higher conversion
     ("smart_pricing",            2),   # AI-driven price optimization for existing products → higher AOV
-    ("voice_of_aria",            2),   # Proactive Telegram messages: daily tip + product spotlight + insight
+    ("voice_of_aria",            1),   # Proactive Telegram messages: daily tip + product spotlight + insight
+    ("self_monetize",            2),   # ARIA lists herself as a product: API docs + pricing page + RapidAPI
+    ("referral_engine",          1),   # Build referral/affiliate program for existing products → viral growth
 ]
 
 
@@ -410,6 +412,10 @@ JSON:
             return await self._exec_smart_pricing()
         elif strategy == "voice_of_aria":
             return await self._exec_voice_of_aria()
+        elif strategy == "self_monetize":
+            return await self._exec_self_monetize()
+        elif strategy == "referral_engine":
+            return await self._exec_referral_engine()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -8006,6 +8012,354 @@ JSON:
 
         except Exception as exc:
             logger.error("[IncomeLoop] smart_pricing: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_self_monetize(self) -> dict:
+        """
+        Lists ARIA herself as a product and service.
+        Generates: public API docs page, pricing tiers, RapidAPI listing,
+        Gumroad "hire ARIA" offer, and a developer onboarding guide.
+        ARIA is not just a tool — she's a product that generates passive income.
+        Archives everything to aria-portfolio and aria-insights.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "self_monetize: AI unavailable"}
+
+            listing_data = await ai.complete_json(
+                system=(
+                    "You are a product manager creating a commercial listing for an autonomous AI platform. "
+                    "The product is ARIA — an AI that runs 24/7 to generate income, publish content, "
+                    "manage social media, create products, and grow a business autonomously. "
+                    "Write compelling, specific copy that highlights unique value. Output JSON only."
+                ),
+                user="""Create the complete commercial listing for ARIA AI as a product/service.
+
+ARIA's actual capabilities:
+- 45+ monetization strategies running 24/7
+- 22 strategic objectives (content calendar, competitor intel, etc.)
+- Publishes to GitHub, Dev.to, Medium, Hashnode, Reddit, Twitter, LinkedIn, Pinterest
+- Creates ebooks, courses, Stripe products, landing pages, Gumroad listings
+- Sends Telegram briefings, manages CRM, does cold email outreach
+- Self-improves via reflection every 48h
+- Runs on Fly.io with Redis for state persistence
+
+JSON:
+{
+  "product_name": "ARIA AI — Autonomous Business Engine",
+  "tagline": "...",
+  "hero_description": "3-paragraph pitch (specific, no buzzwords)",
+  "pricing_tiers": [
+    {"name": "Starter", "price_monthly": 49, "features": ["...", "..."], "target": "solopreneur"},
+    {"name": "Growth", "price_monthly": 149, "features": ["...", "..."], "target": "small business"},
+    {"name": "Scale", "price_monthly": 497, "features": ["...", "..."], "target": "agency/team"}
+  ],
+  "api_endpoints_preview": [
+    {"method": "POST", "path": "/api/v1/chat", "description": "..."},
+    {"method": "POST", "path": "/api/v1/income/run-cycle", "description": "..."},
+    {"method": "GET",  "path": "/api/v1/income/status", "description": "..."}
+  ],
+  "rapidapi_listing": {
+    "category": "AI/Machine Learning",
+    "use_cases": ["...", "...", "..."],
+    "api_description": "200-word RapidAPI listing description"
+  },
+  "gumroad_offer": {
+    "title": "Hire ARIA AI for 30 Days",
+    "price": 297,
+    "description": "What they get in 30 days of running ARIA",
+    "testimonial_style": "what a satisfied customer would say"
+  },
+  "faq": [
+    {"q": "...", "a": "..."},
+    {"q": "...", "a": "..."}
+  ]
+}""",
+                model=AIModel.STRATEGY,
+                max_tokens=3000,
+            )
+
+            if not listing_data or not listing_data.get("product_name"):
+                return {"success": False, "summary": "self_monetize: AI failed"}
+
+            urls_created = []
+
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                # 1. Public pricing/product page for aria-portfolio
+                tiers = listing_data.get("pricing_tiers", [])
+                tier_rows = "\n".join(
+                    f"| {t.get('name')} | ${t.get('price_monthly')}/mo | {', '.join(t.get('features', [])[:3])} |"
+                    for t in tiers
+                )
+                api_eps = listing_data.get("api_endpoints_preview", [])
+                ep_rows = "\n".join(
+                    f"| `{e.get('method')}` | `{e.get('path')}` | {e.get('description', '')} |"
+                    for e in api_eps
+                )
+                faqs = listing_data.get("faq", [])
+                faq_block = "\n\n".join(
+                    f"**Q: {f.get('q', '')}**\nA: {f.get('a', '')}"
+                    for f in faqs[:4]
+                )
+                pricing_page = f"""# {listing_data.get('product_name', 'ARIA AI')}
+
+> {listing_data.get('tagline', '')}
+
+{listing_data.get('hero_description', '')}
+
+## Pricing
+
+| Plan | Price | Features |
+|------|-------|----------|
+{tier_rows}
+
+## API Reference (Preview)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+{ep_rows}
+
+## FAQ
+
+{faq_block}
+
+---
+
+*[ARIA AI](https://github.com/{owner}/aria-ai) — Built by autonomous AI, for autonomous business*
+"""
+                encoded = _b64.b64encode(pricing_page.encode()).decode()
+                # Update aria-portfolio pricing page
+                existing = await gh._get(f"/repos/{owner}/aria-portfolio/contents/pricing.md")
+                sha = existing.get("sha", "") if "error" not in existing else ""
+                put_body: dict = {"message": f"product: update ARIA pricing page {today}", "content": encoded}
+                if sha:
+                    put_body["sha"] = sha
+                r1 = await gh._put(f"/repos/{owner}/aria-portfolio/contents/pricing.md", put_body)
+                if "error" not in r1:
+                    urls_created.append(f"https://github.com/{owner}/aria-portfolio/blob/main/pricing.md")
+
+                # 2. RapidAPI listing + Gumroad offer in aria-insights
+                rapidapi = listing_data.get("rapidapi_listing", {})
+                gumroad = listing_data.get("gumroad_offer", {})
+                listings_md = f"""# ARIA AI — External Listings
+
+## RapidAPI Listing
+**Category:** {rapidapi.get('category', '')}
+**Use cases:** {', '.join(rapidapi.get('use_cases', [])[:3])}
+
+{rapidapi.get('api_description', '')}
+
+## Gumroad Offer: {gumroad.get('title', '')}
+**Price:** ${gumroad.get('price', 297)}
+
+{gumroad.get('description', '')}
+
+**Customer testimonial (style):**
+> {gumroad.get('testimonial_style', '')}
+
+---
+
+*Updated {today} by ARIA AI*
+"""
+                enc2 = _b64.b64encode(listings_md.encode()).decode()
+                r2 = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/product/aria-listings-{today}.md",
+                    {"message": f"product: ARIA self-monetize listings {today}", "content": enc2}
+                )
+                if "error" not in r2:
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/product/aria-listings-{today}.md"
+                    )
+
+            tagline = listing_data.get("tagline", "")
+            prices = [t.get("price_monthly", 0) for t in listing_data.get("pricing_tiers", [])]
+            logger.info("[IncomeLoop] self_monetize: pricing page + RapidAPI + Gumroad listing created")
+            return {
+                "success": bool(urls_created),
+                "summary": f"Self-monetize: '{tagline[:70]}' — pricing ${min(prices) if prices else 49}-${max(prices) if prices else 497}/mo",
+                "revenue_potential": 297.0,  # one Gumroad "hire ARIA" sale
+                "urls": urls_created[:3],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] self_monetize: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_referral_engine(self) -> dict:
+        """
+        Build a referral/affiliate program for ARIA's products.
+        Creates: affiliate kit (banners, copy, tracking links format),
+        recruiter email sequence, affiliate terms, leaderboard page.
+        Archives to GitHub. Designed so that affiliates promote ARIA's
+        products and earn 30-50% commission — turning buyers into sellers.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "referral_engine: AI unavailable"}
+
+            # Get catalog for products to create referral program for
+            catalog_items = []
+            try:
+                from apps.core.memory.redis_client import get_cache
+                import json as _json
+                cache = get_cache()
+                if cache:
+                    raw = await cache.lrange("aria:income:catalog", 0, 5)
+                    for item in (raw or []):
+                        try:
+                            catalog_items.append(_json.loads(item) if isinstance(item, str) else item)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            if not catalog_items:
+                catalog_items = [
+                    {"title": "AI Business Automation Masterclass", "price": 97},
+                    {"title": "Passive Income with AI Blueprint", "price": 47},
+                ]
+
+            referral_data = await ai.complete_json(
+                system=(
+                    "You are an affiliate marketing expert who has built referral programs "
+                    "that generate $100k+/month in affiliate revenue. You know that the right "
+                    "commission structure + email sequence converts buyers into top affiliates. "
+                    "Output JSON only."
+                ),
+                user=f"""Create a complete affiliate/referral program for these products:
+
+{[{'title': p.get('title'), 'price': p.get('price')} for p in catalog_items[:4]]}
+
+JSON:
+{{
+  "program_name": "ARIA Affiliate Program",
+  "commission_pct": 40,
+  "cookie_days": 60,
+  "payout_threshold_usd": 50,
+  "recruiter_email_sequence": [
+    {{
+      "subject": "Want to earn {commission_pct}% promoting AI tools?",
+      "body": "150-word email to potential affiliates"
+    }}
+  ],
+  "affiliate_kit": {{
+    "elevator_pitch": "How affiliates should explain ARIA in 2 sentences",
+    "email_swipe_1": "Promo email they can send to their list",
+    "twitter_swipe_1": "Tweet they can post",
+    "banner_copy": ["Ad headline 1", "Ad headline 2", "Ad headline 3"]
+  }},
+  "terms_summary": "3-paragraph affiliate terms (fair, professional)",
+  "leaderboard_incentives": ["First place wins...", "Top 10 get..."],
+  "tracking_link_format": "https://aria-ai.fly.dev/?ref={{affiliate_id}}"
+}}""",
+                model=AIModel.CREATIVE,
+                max_tokens=2500,
+            )
+
+            if not referral_data or not referral_data.get("program_name"):
+                return {"success": False, "summary": "referral_engine: AI failed"}
+
+            urls_created = []
+
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                import json as _json2
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                commission = referral_data.get("commission_pct", 40)
+                kit = referral_data.get("affiliate_kit", {})
+                seq = referral_data.get("recruiter_email_sequence", [])
+
+                md_lines = [
+                    f"# {referral_data.get('program_name', 'ARIA Affiliate Program')}",
+                    f"**Commission:** {commission}% | **Cookie:** {referral_data.get('cookie_days', 60)} days | "
+                    f"**Payout threshold:** ${referral_data.get('payout_threshold_usd', 50)}",
+                    "",
+                    "## Affiliate Elevator Pitch",
+                    kit.get("elevator_pitch", ""),
+                    "",
+                    "## Swipe Copy",
+                    "### Email Swipe",
+                    kit.get("email_swipe_1", ""),
+                    "",
+                    "### Twitter/X Swipe",
+                    f"> {kit.get('twitter_swipe_1', '')}",
+                    "",
+                    "### Ad Headlines",
+                ]
+                for h in kit.get("banner_copy", [])[:3]:
+                    md_lines.append(f"- **{h}**")
+                md_lines += [
+                    "",
+                    "## Recruiter Email Sequence",
+                ]
+                for i, email in enumerate(seq[:2], 1):
+                    md_lines += [
+                        f"### Email {i}",
+                        f"**Subject:** {email.get('subject', '')}",
+                        "",
+                        email.get("body", ""),
+                        "",
+                    ]
+                md_lines += [
+                    "## Program Terms",
+                    referral_data.get("terms_summary", ""),
+                    "",
+                    "## Leaderboard Incentives",
+                ]
+                for incentive in referral_data.get("leaderboard_incentives", [])[:3]:
+                    md_lines.append(f"- {incentive}")
+                md_lines += [
+                    "",
+                    f"**Tracking link format:** `{referral_data.get('tracking_link_format', '')}`",
+                    "",
+                    "## How to Launch",
+                    "1. Set up Gumroad affiliate program (Settings → Affiliates)",
+                    "2. Send recruiter email to your existing buyers",
+                    "3. Post affiliate signup link in relevant communities",
+                    "4. Pay affiliates monthly via PayPal/Stripe",
+                    "",
+                    "*Generated by ARIA AI — Referral Engine*",
+                ]
+
+                encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/affiliate/{today}-referral-program.md",
+                    {"message": f"affiliate: referral program kit {today}", "content": encoded}
+                )
+                if "error" not in file_r:
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/affiliate/{today}-referral-program.md"
+                    )
+
+            commission = referral_data.get("commission_pct", 40)
+            logger.info("[IncomeLoop] referral_engine: %d%% commission program created", commission)
+            return {
+                "success": bool(urls_created),
+                "summary": f"Referral engine: {commission}% affiliate program + kit + email sequence created",
+                "revenue_potential": 20.0,  # each affiliate recruited multiplies revenue
+                "urls": urls_created[:2],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] referral_engine: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_voice_of_aria(self) -> dict:
