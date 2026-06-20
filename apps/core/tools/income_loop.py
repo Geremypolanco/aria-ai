@@ -736,7 +736,7 @@ Output JSON:
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_social_blitz(self) -> dict:
-        """Fire Zapier events for ALL existing live products simultaneously."""
+        """Promote all live products via Zapier; falls back to Discord + GitHub cross-linking."""
         try:
             from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
             from apps.core.tools.zapier_connector import ZapierConnector
@@ -744,36 +744,54 @@ Output JSON:
             engine   = get_niche_revenue_engine()
             listings = await engine._load_listings()
             live     = [ls for ls in listings if ls.listing_urls]
-
-            if not live:
-                return {"success": False, "summary": "No live listings to promote"}
-
-            zc   = ZapierConnector()
             sent = 0
-            for ls in live[:5]:
+
+            if live:
+                zc = ZapierConnector()
+                for ls in live[:5]:
+                    try:
+                        await zc.dispatch_event(
+                            "CONTENT_READY",
+                            {
+                                "product_name": ls.title,
+                                "tagline": ls.tagline,
+                                "price": ls.pricing_tiers.get("basic", {}).get("price", 0),
+                                "urls": ls.listing_urls,
+                                "keywords": ", ".join(ls.keywords[:3]),
+                                "category": ls.category,
+                            },
+                        )
+                        sent += 1
+                        await asyncio.sleep(2)
+                    except Exception:
+                        pass
+
+            # Discord fallback: announce all recent GitHub content
+            discord_url = getattr(settings, "DISCORD_WEBHOOK_URL", None)
+            if discord_url and settings.GITHUB_TOKEN:
                 try:
-                    await zc.dispatch_event(
-                        "CONTENT_READY",
-                        {
-                            "product_name": ls.title,
-                            "tagline": ls.tagline,
-                            "price": ls.pricing_tiers.get("basic", {}).get("price", 0),
-                            "urls": ls.listing_urls,
-                            "keywords": ", ".join(ls.keywords[:3]),
-                            "category": ls.category,
-                        },
-                    )
-                    sent += 1
-                    await asyncio.sleep(2)
+                    owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                    import httpx as _httpx
+                    async with _httpx.AsyncClient(timeout=10) as _client:
+                        msg = (
+                            f"🚀 **ARIA Content Update**\n"
+                            f"📚 Blog: https://github.com/{owner}/aria-insights\n"
+                            f"🌐 Portfolio: https://github.com/{owner}/aria-portfolio\n"
+                            f"*New AI-generated content published — check it out!*"
+                        )
+                        await _client.post(discord_url, json={"content": msg})
+                        sent += 1
                 except Exception:
                     pass
 
-            return {
-                "success": sent > 0,
-                "summary": f"Promoted {sent}/{len(live)} listings via Zapier",
-                "revenue_potential": 0,
-                "urls": [],
-            }
+            if sent > 0:
+                return {
+                    "success": True,
+                    "summary": f"Social blitz: {sent} channels promoted",
+                    "revenue_potential": 0,
+                    "urls": [],
+                }
+            return {"success": False, "summary": "Social blitz: no channels available (add ZAPIER_WEBHOOK_URL or DISCORD_WEBHOOK_URL)"}
         except Exception as exc:
             logger.error("[IncomeLoop] social_blitz: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
@@ -834,7 +852,52 @@ JSON:
                     "revenue_potential": offer.get("price_cents", 149700) / 100,
                     "urls": [gr.get("url", "")] if gr.get("url") else [],
                 }
-            return {"success": False, "summary": f"Gumroad: {gr.get('error', 'failed')}"}
+
+            # GitHub fallback: create a consulting landing page repo
+            if settings.GITHUB_TOKEN:
+                try:
+                    from apps.core.tools.github_client import AriaGitHubClient
+                    import base64 as _b64
+                    gh    = AriaGitHubClient()
+                    owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                    repo_name = "ai-consulting-services"
+                    included = "\n".join(f"- {item}" for item in offer.get("what_included", []))
+                    readme = (
+                        f"# {offer.get('offer_name', 'AI Business Consulting')}\n\n"
+                        f"> {offer.get('tagline', 'Transform your business with AI')}\n\n"
+                        f"## About This Service\n\n{offer.get('description', '')}\n\n"
+                        f"## What's Included\n\n{included}\n\n"
+                        f"## Pricing\n\n**${offer.get('price_cents', 149700)/100:.0f}**\n\n"
+                        f"## Target Client\n\n{offer.get('target_client', 'B2B companies looking to leverage AI')}\n\n"
+                        f"## Contact\n\nOpen an issue or email us to inquire.\n\n"
+                        f"---\n*Service by ARIA AI — Autonomous AI Business Platform*"
+                    )
+                    existing = await gh._get(f"/repos/{owner}/{repo_name}")
+                    if "error" in existing:
+                        await gh._post("/user/repos", {
+                            "name": repo_name,
+                            "description": offer.get("tagline", "AI consulting services")[:100],
+                            "private": False, "auto_init": False,
+                        })
+                    existing_file = await gh._get(f"/repos/{owner}/{repo_name}/contents/README.md")
+                    sha = existing_file.get("sha", "") if "error" not in existing_file else ""
+                    put_args: dict = {
+                        "message": f"feat: update consulting offer — {offer.get('offer_name','')[:50]}",
+                        "content": _b64.b64encode(readme.encode()).decode(),
+                    }
+                    if sha:
+                        put_args["sha"] = sha
+                    await gh._put(f"/repos/{owner}/{repo_name}/contents/README.md", put_args)
+                    return {
+                        "success": True,
+                        "summary": f"Premium offer landing page: github.com/{owner}/{repo_name} (add GUMROAD_TOKEN to enable payments)",
+                        "revenue_potential": 50.0,
+                        "urls": [f"https://github.com/{owner}/{repo_name}"],
+                    }
+                except Exception:
+                    pass
+
+            return {"success": False, "summary": f"Gumroad: {gr.get('error', 'failed')} — add GUMROAD_TOKEN to Fly.io secrets"}
 
         except Exception as exc:
             logger.error("[IncomeLoop] premium_offer: %s", exc)
