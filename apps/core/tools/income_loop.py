@@ -54,21 +54,22 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",  15),
-    ("niche_rotator",     14),
-    ("product_factory",   12),
-    ("opportunity_scan",   9),
-    ("github_publish",     8),   # works with only GITHUB_TOKEN — always active
-    ("shopify_listing",    7),
-    ("email_campaign",     6),
-    ("affiliate_content",  6),   # review/comparison articles with affiliate links
-    ("ebook_factory",      6),
-    ("lead_magnet",        5),   # free resource funnel → email capture → upsell
-    ("hf_spaces_demo",     4),   # live AI demo on HuggingFace Spaces (free, massive community)
-    ("seo_optimizer",      4),   # improve existing posts for compounding organic traffic
-    ("social_blitz",       2),
-    ("premium_offer",      1),
-    ("viral_thread",       1),   # Twitter/X thread optimized for virality
+    ("content_pipeline",   12),
+    ("niche_rotator",      12),
+    ("product_factory",    12),
+    ("opportunity_scan",    9),
+    ("github_publish",      8),   # works with only GITHUB_TOKEN — always active
+    ("content_repurposer",  7),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
+    ("shopify_listing",     6),
+    ("email_campaign",      6),
+    ("affiliate_content",   6),   # review/comparison articles with affiliate links
+    ("ebook_factory",       5),
+    ("lead_magnet",         5),   # free resource funnel → email capture → upsell
+    ("hf_spaces_demo",      4),   # live AI demo on HuggingFace Spaces (free, massive community)
+    ("seo_optimizer",       4),   # improve existing posts for compounding organic traffic
+    ("social_blitz",        2),
+    ("premium_offer",       1),
+    ("viral_thread",        1),   # Twitter/X thread optimized for virality
 ]
 
 
@@ -267,6 +268,8 @@ JSON:
             return await self._exec_hf_spaces_demo()
         elif strategy == "seo_optimizer":
             return await self._exec_seo_optimizer()
+        elif strategy == "content_repurposer":
+            return await self._exec_content_repurposer()
         elif strategy == "viral_thread":
             return await self._exec_viral_thread()
         return {"success": False, "summary": "Unknown strategy"}
@@ -2310,6 +2313,206 @@ Enter your text and see the magic happen.
 
         except Exception as exc:
             logger.error("[IncomeLoop] hf_spaces_demo: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_content_repurposer(self) -> dict:
+        """
+        Take ONE existing blog post and repurpose it into:
+        1. LinkedIn long-form article (aria-linkedin-content repo)
+        2. Twitter/X thread via Zapier or aria-insights/threads/
+        3. Email newsletter snippet (aria-newsletter repo)
+        Triples the reach of each content piece with zero extra research.
+        """
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "content_repurposer: needs GITHUB_TOKEN"}
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            cache    = get_cache()
+            gh       = AriaGitHubClient()
+            owner    = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            # Get a recent blog post to repurpose
+            raw_links = await cache.get("aria:blog:links") if cache else None
+            existing_links: list = json.loads(raw_links) if raw_links else []
+
+            if not existing_links:
+                # Nothing to repurpose yet — generate fresh content first
+                return await self._exec_github_blog([], cp=None)
+
+            # Pick the most recent post not yet repurposed
+            repurposed_key = "aria:income:repurposed_slugs"
+            repurposed_set: set = set()
+            if cache:
+                raw_rep = await cache.get(repurposed_key)
+                if raw_rep:
+                    repurposed_set = set(json.loads(raw_rep) if isinstance(raw_rep, str) else raw_rep)
+
+            candidates = [l for l in existing_links if l.get("slug") not in repurposed_set]
+            if not candidates:
+                repurposed_set = set()
+                candidates = existing_links
+
+            source = candidates[-1]  # most recent
+            title  = source.get("title", "")
+            slug   = source.get("slug", "")
+            url    = source.get("url", "")
+
+            # Read the source post
+            file_data = await gh._get(f"/repos/{owner}/aria-insights/contents/posts/{slug}.md")
+            source_content = ""
+            if "content" in file_data:
+                source_content = _b64.b64decode(
+                    file_data["content"].replace("\n", "")
+                ).decode("utf-8", errors="replace")[:4000]
+
+            # Generate all repurposed formats
+            repurposed = await complete_json(
+                f"""Repurpose this blog post into 3 formats:
+
+Title: {title}
+URL: {url}
+Content:
+{source_content or title}
+
+Return JSON:
+{{
+  "linkedin_article": "LinkedIn long-form post (300-500 words, professional tone, starts with hook, ends with question for engagement, includes link back to original)",
+  "twitter_thread": "10-tweet thread. Format as tweet1\\n---\\ntweet2\\n---\\n... each under 280 chars. First tweet is the hook, last is CTA with link",
+  "email_snippet": "Email newsletter paragraph (150 words). Engaging, conversational, includes link",
+  "hashtags": ["#ai", "#productivity"]
+}}""",
+                model="fast",
+            )
+
+            published_urls  = []
+            platforms_used  = []
+
+            # 1. Publish LinkedIn content to GitHub repo
+            linkedin_content = repurposed.get("linkedin_article", "")
+            if linkedin_content:
+                li_repo = "aria-linkedin-content"
+                li_fname = f"posts/{slug}-linkedin.md"
+                li_md = f"# {title}\n\n*Source: {url}*\n\n---\n\n{linkedin_content}\n\n---\n*Published by ARIA AI*"
+
+                # Create repo if needed
+                await gh._post("/user/repos", {
+                    "name": li_repo, "description": "ARIA LinkedIn content — professional AI business insights",
+                    "private": False, "auto_init": False,
+                })
+                li_sha = None
+                existing = await gh._get(f"/repos/{owner}/{li_repo}/contents/{li_fname}")
+                if "sha" in existing:
+                    li_sha = existing["sha"]
+
+                push_body: dict = {
+                    "message": f"repurpose: LinkedIn — {title[:50]}",
+                    "content": _b64.b64encode(li_md.encode()).decode(),
+                }
+                if li_sha:
+                    push_body["sha"] = li_sha
+                li_r = await gh._put(f"/repos/{owner}/{li_repo}/contents/{li_fname}", push_body)
+                if "error" not in li_r:
+                    li_url = f"https://github.com/{owner}/{li_repo}/blob/main/{li_fname}"
+                    published_urls.append(li_url)
+                    platforms_used.append("LinkedIn/GitHub")
+
+            # 2. Post Twitter thread via Zapier or to GitHub threads/
+            thread_content = repurposed.get("twitter_thread", "")
+            hashtags       = " ".join(repurposed.get("hashtags", ["#ai"])[:3])
+            if thread_content:
+                zapier_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None)
+                if zapier_url:
+                    try:
+                        import httpx as _hx
+                        async with _hx.AsyncClient(timeout=10) as _zap:
+                            tweets = thread_content.split("---")
+                            first_tweet = tweets[0].strip()[:280] if tweets else f"🧵 {title}\n\n{hashtags}"
+                            await _zap.post(zapier_url, json={
+                                "action": "tweet",
+                                "text": first_tweet + f"\n\n{hashtags}",
+                                "thread": [t.strip()[:280] for t in tweets[1:5]],
+                            })
+                        platforms_used.append("Twitter/Zapier")
+                    except Exception:
+                        pass
+
+                # Always save thread to GitHub as fallback
+                thread_repo  = "aria-insights"
+                thread_fname = f"threads/{slug}-thread.md"
+                thread_md    = f"# 🧵 Thread: {title}\n\n*Source: {url}*\n\n---\n\n" + "\n\n---\n\n".join(
+                    f"**Tweet {i+1}:** {t.strip()}" for i, t in enumerate(thread_content.split("---")[:10])
+                )
+                t_sha = None
+                existing_t = await gh._get(f"/repos/{owner}/{thread_repo}/contents/{thread_fname}")
+                if "sha" in existing_t:
+                    t_sha = existing_t["sha"]
+                tb: dict = {
+                    "message": f"thread: {title[:50]}",
+                    "content": _b64.b64encode(thread_md.encode()).decode(),
+                }
+                if t_sha:
+                    tb["sha"] = t_sha
+                t_r = await gh._put(f"/repos/{owner}/{thread_repo}/contents/{thread_fname}", tb)
+                if "error" not in t_r:
+                    published_urls.append(f"https://github.com/{owner}/{thread_repo}/blob/main/{thread_fname}")
+                    if "Twitter/Zapier" not in platforms_used:
+                        platforms_used.append("Twitter/GitHub")
+
+            # 3. Add email snippet to newsletter
+            email_snippet = repurposed.get("email_snippet", "")
+            if email_snippet:
+                from datetime import datetime as _dt
+                month_key  = _dt.now().strftime("%Y-%m")
+                nl_repo    = "aria-newsletter"
+                nl_fname   = f"editions/{month_key}.md"
+
+                await gh._post("/user/repos", {
+                    "name": nl_repo, "description": "ARIA monthly newsletter editions",
+                    "private": False, "auto_init": False,
+                })
+                existing_nl = await gh._get(f"/repos/{owner}/{nl_repo}/contents/{nl_fname}")
+                current_nl  = ""
+                nl_sha      = None
+                if "content" in existing_nl:
+                    current_nl = _b64.b64decode(existing_nl["content"].replace("\n", "")).decode("utf-8", errors="replace")
+                    nl_sha     = existing_nl.get("sha")
+                else:
+                    current_nl = f"# ARIA Newsletter — {month_key}\n\n*AI business insights, products, and tools*\n\n"
+
+                current_nl += f"\n\n## 📝 {title}\n\n{email_snippet}\n\n[Read full article →]({url})\n"
+                nl_body: dict = {
+                    "message": f"newsletter: add '{title[:50]}'",
+                    "content": _b64.b64encode(current_nl.encode()).decode(),
+                }
+                if nl_sha:
+                    nl_body["sha"] = nl_sha
+                nl_r = await gh._put(f"/repos/{owner}/{nl_repo}/contents/{nl_fname}", nl_body)
+                if "error" not in nl_r:
+                    published_urls.append(f"https://github.com/{owner}/{nl_repo}/blob/main/{nl_fname}")
+                    platforms_used.append("Newsletter/GitHub")
+
+            if published_urls:
+                # Mark as repurposed
+                repurposed_set.add(slug)
+                if cache:
+                    await cache.set(repurposed_key, json.dumps(list(repurposed_set)), ttl_seconds=86400 * 60)
+
+                logger.info("[IncomeLoop] Repurposed '%s' → %s", title[:50], ", ".join(platforms_used))
+                return {
+                    "success": True,
+                    "summary": f"Repurposed '{title[:50]}' → {', '.join(platforms_used)}",
+                    "revenue_potential": len(published_urls) * 1.5,
+                    "urls": published_urls,
+                }
+
+            return {"success": False, "summary": "content_repurposer: no content published"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] content_repurposer: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_seo_optimizer(self) -> dict:
