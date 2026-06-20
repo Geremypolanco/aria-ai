@@ -539,71 +539,117 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         return {"success": True, "summary": "Strategic objectives reprioritized by ROI", "value_usd": 0.0}
 
     async def _morning_briefing(obj: StrategicObjective) -> dict:
-        import datetime, json
-        from apps.core.tools.income_loop import get_income_loop
+        import datetime as _dt, json as _json
+        from apps.core.tools.income_loop import get_income_loop, STRATEGIES
         loop = get_income_loop()
         creds = loop.check_credentials()
-        active_channels = list(creds.get("active", {}).keys())
+        active_channels  = list(creds.get("active", {}).keys())
         inactive_channels = list(creds.get("inactive", {}).keys())
-        history_records = await scheduler.history(limit=24)
+        history_records  = await scheduler.history(limit=24)
         recent_successes = sum(1 for r in history_records if r.success)
-        recent_value = sum(r.value_generated_usd for r in history_records)
-        # Get income loop stats
+        recent_value     = sum(r.value_generated_usd for r in history_records)
+
+        # Income loop stats + best strategy + pending opportunities
         income_total_cycles = 0
         income_success_rate = 0.0
         income_recent_urls: list = []
+        best_strategy = ""
+        best_strategy_rev = 0.0
+        pending_opps: list = []
+        total_urls_published = 0
+
         try:
             from apps.core.memory.redis_client import get_cache
             _cache = get_cache()
             if _cache:
-                income_total_cycles = int(await _cache.get("aria:income:total_cycles") or 0)
-                income_success = int(await _cache.get("aria:income:successful_cycles") or 0)
-                income_success_rate = (income_success / income_total_cycles * 100) if income_total_cycles else 0
+                income_total_cycles  = int(await _cache.get("aria:income:total_cycles") or 0)
+                income_success       = int(await _cache.get("aria:income:successful_cycles") or 0)
+                income_success_rate  = (income_success / income_total_cycles * 100) if income_total_cycles else 0
+                total_urls_published = int(await _cache.get("aria:income:total_urls_published") or 0)
+                # Best strategy by revenue
+                for sname, _ in STRATEGIES:
+                    raw_rev = await _cache.get(f"aria:income:strategy:{sname}:revenue")
+                    rev = float(raw_rev) if raw_rev else 0.0
+                    if rev > best_strategy_rev:
+                        best_strategy_rev = rev
+                        best_strategy = sname
+                # Pending opportunities from trend detector
+                raw_opps = await _cache.lrange("aria:income:opportunity_queue", -5, -1)
+                for raw in (raw_opps or []):
+                    try:
+                        opp = _json.loads(raw) if isinstance(raw, str) else raw
+                        pending_opps.append(opp.get("name", "")[:50])
+                    except Exception:
+                        pass
+                # Recent published URLs
                 raw_links = await _cache.get("aria:blog:links")
                 if raw_links:
-                    link_data = json.loads(raw_links) if isinstance(raw_links, str) else raw_links
+                    link_data = _json.loads(raw_links) if isinstance(raw_links, str) else raw_links
                     income_recent_urls = [item.get("url", "") for item in (link_data or [])[:3] if item.get("url")]
+                # Also check product catalog for today's additions
+                raw_prods = await _cache.lrange("aria:products:catalog", -3, -1)
+                for raw_p in reversed(raw_prods or []):
+                    try:
+                        prod = _json.loads(raw_p) if isinstance(raw_p, str) else raw_p
+                        prod_urls = prod.get("urls", [])
+                        if prod_urls and prod_urls[0] not in income_recent_urls:
+                            income_recent_urls.insert(0, prod_urls[0])
+                    except Exception:
+                        pass
+                income_recent_urls = income_recent_urls[:4]
         except Exception:
             pass
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        now_str = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
         lines = [
             f"☀️ <b>ARIA Morning Briefing</b> — {now_str}",
             "",
-            "<b>📊 Actividad de las últimas 24h:</b>",
-            f"• Objetivos estratégicos: {recent_successes}/{len(history_records)} exitosos",
-            f"• Ciclos de ingresos: {income_total_cycles} total ({income_success_rate:.0f}% éxito)",
-            f"• Valor generado: ${recent_value:.2f}",
+            "<b>📊 Últimas 24h — Income Loop:</b>",
+            f"• Ciclos totales: <b>{income_total_cycles}</b> ({income_success_rate:.0f}% éxito)",
+            f"• URLs publicadas: <b>{total_urls_published}</b>",
+            f"• Valor estratégico generado: <b>${recent_value:.2f}</b>",
         ]
+        if best_strategy:
+            lines.append(f"• 🏆 Mejor estrategia: <b>{best_strategy}</b> (${best_strategy_rev:.2f} acumulado)")
+
         if income_recent_urls:
-            lines += ["", "<b>📝 Contenido reciente publicado:</b>"]
-            for url in income_recent_urls:
+            lines += ["", "<b>📝 Publicaciones recientes:</b>"]
+            for url in income_recent_urls[:4]:
                 lines.append(f"• {url}")
+
+        if pending_opps:
+            lines += ["", "<b>🔥 Oportunidades detectadas (trend detector):</b>"]
+            for opp in pending_opps[:3]:
+                lines.append(f"  → {opp}")
+
         lines += [
             "",
-            f"<b>✅ Canales activos ({len(active_channels)}):</b> {', '.join(active_channels) or 'ninguno'}",
+            f"<b>📡 Objetivos estratégicos hoy:</b>",
+            f"• {recent_successes}/{len(history_records)} completados exitosamente",
+            "",
+            f"<b>✅ Canales activos ({len(active_channels)}):</b> {', '.join(active_channels[:6]) or 'ninguno'}",
         ]
         if inactive_channels:
             lines += [
-                f"<b>❌ Inactivos ({len(inactive_channels)}):</b> {', '.join(inactive_channels[:4])}",
-                "",
-                "<b>⚡ Para activar más canales:</b>",
-                "Envíame: <code>/diagnostico</code>",
+                f"<b>❌ Sin configurar ({len(inactive_channels)}):</b> {', '.join(inactive_channels[:4])}",
+                "→ Di <code>diagnostico</code> para ver cómo activarlos",
             ]
+
         lines += [
             "",
-            "<b>📅 Agenda de hoy (automático):</b>",
-            "• 🔁 Content + affiliate content cada 30min",
-            "• 🏆 Growth loops cada 6h",
-            "• 🛒 Shopify optimization cada 12h",
-            "• 🔍 Market intelligence cada 24h",
+            "<b>🤖 Agenda autónoma de hoy:</b>",
+            f"• 🔥 Trend scan cada 4h | Social organic cada 8h",
+            f"• 📹 YouTube content cada 12h | Content amplifier cada 30min",
+            f"• 🚀 37 estrategias de ingresos rotando cada 30min",
+            f"• 🧠 Self-improvement cada 48h | Strategy optimizer cada 24h",
         ]
-        message = "\
-".join(lines)
+
+        message = "\n".join(lines)
         try:
             from apps.core.tools.telegram_bot import get_bot
             bot = get_bot()
             await bot.notify_owner(message)
-            return {"success": True, "summary": "Morning briefing sent via Telegram", "value_usd": 0.0}
+            return {"success": True, "summary": "Morning briefing v2 sent via Telegram", "value_usd": 0.0}
         except Exception as e:
             return {"success": False, "summary": f"Failed to send briefing: {e}", "value_usd": 0.0}
 
