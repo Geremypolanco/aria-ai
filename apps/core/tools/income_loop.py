@@ -684,8 +684,10 @@ Output JSON:
                     from apps.core.memory.redis_client import get_cache
                     cache = get_cache()
                     if cache:
-                        for opp in opportunities:
-                            await cache.rpush("aria:income:opportunity_queue", json.dumps(opp))
+                        for i, opp in enumerate(opportunities):
+                            # Distribute: odd index → product_factory, even → ebook_factory
+                            queue = "aria:income:opportunity_queue" if i % 2 == 0 else "aria:income:ebook_queue"
+                            await cache.rpush(queue, json.dumps(opp))
                 except Exception:
                     pass
 
@@ -870,9 +872,27 @@ JSON:
             from apps.core.tools.gumroad_tools import GumroadTools
             from apps.core.tools.content_pipeline import ContentPipeline
 
-            cp     = ContentPipeline()
-            topics = await cp.get_trending_topics(limit=5)
-            topic  = topics[random.randint(0, min(2, len(topics)-1))] if topics else "AI side income strategies"
+            # Try opportunity queue first (same source as product_factory but dedicated key)
+            topic_str = ""
+            try:
+                from apps.core.memory.redis_client import get_cache
+                cache = get_cache()
+                if cache:
+                    raw = await cache.lpop("aria:income:ebook_queue")
+                    if raw:
+                        opp = json.loads(raw) if isinstance(raw, str) else raw
+                        topic_str = opp.get("name", "")
+            except Exception:
+                pass
+
+            if not topic_str:
+                cp     = ContentPipeline()
+                topics = await cp.get_trending_topics(limit=5)
+                if topics:
+                    raw_topic = topics[random.randint(0, min(2, len(topics)-1))]
+                    topic_str = raw_topic.get("title", str(raw_topic))[:80] if isinstance(raw_topic, dict) else str(raw_topic)[:80]
+                else:
+                    topic_str = "AI side income strategies for solopreneurs"
 
             ai = get_ai_client()
             if not ai:
@@ -880,7 +900,7 @@ JSON:
 
             ebook = await ai.complete_json(
                 system="You are a bestselling ebook author. Create detailed, valuable ebooks that people buy. Output JSON only.",
-                user=f"""Create a complete sellable ebook on: \"{topic}\"
+                user=f"""Create a complete sellable ebook on: \"{topic_str}\"
 
 JSON:
 {{
@@ -907,7 +927,7 @@ JSON:
 
             gt  = GumroadTools()
             gr  = await gt.create_product(
-                name=ebook.get("title", f"The Complete Guide to {topic[:30]}"),
+                name=ebook.get("title", f"The Complete Guide to {topic_str[:30]}"),
                 description=full_description,
                 price_cents=ebook.get("price_cents", 1700),
                 tags=ebook.get("tags", ["ebook", "guide"]),
