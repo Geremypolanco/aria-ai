@@ -427,6 +427,15 @@ class AutonomousScheduler:
                 handler_key="strategy_optimizer",
                 next_run_ts=now + 3600 * 23,  # first optimization after 23h (enough data)
             ),
+            StrategicObjective(
+                obj_id="self_improve",
+                name="ARIA Self-Improvement",
+                description="Every 48h ARIA reads its own performance, conversation quality, and business metrics to generate new learned rules that make it smarter",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=48.0,
+                handler_key="self_improve",
+                next_run_ts=now + 3600 * 36,  # first self-improvement after 36h
+            ),
         ]
 
 
@@ -1068,6 +1077,83 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         except Exception as exc:
             return {"success": False, "summary": f"strategy_optimizer error: {exc}", "value_usd": 0.0}
 
+    async def _self_improve(obj: StrategicObjective) -> dict:
+        """
+        Every 48h: ARIA reads its own income performance, analyzes what's working,
+        and stores new learned rules in Redis that get included in future system prompts.
+        This makes ARIA progressively smarter and more effective over time.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.income_loop import get_income_loop, STRATEGIES
+            from apps.core.memory.redis_client import get_cache
+            import json as _json
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "self_improve: AI unavailable", "value_usd": 0.0}
+
+            cache = get_cache()
+
+            # Gather performance data
+            strategy_data = []
+            if cache:
+                for name, _ in STRATEGIES:
+                    runs = int(await cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                    wins = int(await cache.get(f"aria:income:strategy:{name}:successes") or 0)
+                    rev  = float(await cache.get(f"aria:income:strategy:{name}:revenue") or 0)
+                    if runs > 0:
+                        strategy_data.append(f"{name}: {runs} runs, {wins/runs:.0%} success, ${rev:.1f} revenue")
+
+            total_cycles = int(await cache.get("aria:income:total_cycles") or 0) if cache else 0
+            total_urls   = int(await cache.get("aria:income:total_urls_published") or 0) if cache else 0
+
+            perf_summary = "\n".join(strategy_data[:15]) or "No data yet"
+
+            # Ask AI to generate learned rules from performance data
+            from apps.core.tools.ai_client import AIResponse
+            resp = await ai.complete(
+                system=(
+                    "You are analyzing ARIA's autonomous business performance. "
+                    "Based on the data, generate 3-5 concrete, actionable rules that ARIA should follow. "
+                    "Rules must be specific (not generic advice). Each rule must be one sentence starting with an action verb."
+                ),
+                user=f"""ARIA's income loop performance data:
+
+{perf_summary}
+
+Total cycles: {total_cycles} | URLs published: {total_urls}
+
+Generate 3-5 learned rules for ARIA to follow in its next interactions.
+Focus on: which strategies to prioritize, what topics get the best results, when to use which tools.
+Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Always, When, If).""",
+                model=AIModel.STANDARD,
+                max_tokens=400,
+            )
+
+            if not resp.success or not resp.content:
+                return {"success": False, "summary": "self_improve: AI didn't generate rules", "value_usd": 0.0}
+
+            new_rules = [line.strip() for line in resp.content.strip().split("\n") if line.strip() and len(line.strip()) > 20][:5]
+
+            # Store new learned rules in Redis (appended to existing)
+            if cache and new_rules:
+                existing_raw = await cache.get("aria:mind:learned") or []
+                existing: list = _json.loads(existing_raw) if isinstance(existing_raw, str) else (existing_raw if isinstance(existing_raw, list) else [])
+                # Append new rules (max 30 total)
+                updated = (existing + new_rules)[-30:]
+                await cache.set("aria:mind:learned", updated, ttl_seconds=86400 * 365)
+
+            rules_preview = " | ".join(new_rules[:3])[:200]
+            return {
+                "success": True,
+                "summary": f"Self-improvement: {len(new_rules)} new rules learned | {rules_preview}",
+                "value_usd": 0.0,
+            }
+
+        except Exception as exc:
+            return {"success": False, "summary": f"self_improve error: {exc}", "value_usd": 0.0}
+
     scheduler.register_handler("daily_revenue_digest", _daily_revenue_digest)
     scheduler.register_handler("bundle_and_waitlist", _bundle_and_waitlist)
     scheduler.register_handler("challenge_day_sequencer", _challenge_day_sequencer)
@@ -1075,6 +1161,7 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
     scheduler.register_handler("proactive_analysis", _proactive_analysis)
     scheduler.register_handler("social_organic", _social_organic)
     scheduler.register_handler("strategy_optimizer", _strategy_optimizer)
+    scheduler.register_handler("self_improve", _self_improve)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
