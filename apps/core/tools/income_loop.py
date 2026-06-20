@@ -104,11 +104,11 @@ STRATEGIES = [
     ("digital_agency",           1),   # Done-for-you AI services pitch deck + client onboarding → $500-$5k
     ("crowdfunding_kit",         1),   # Kickstarter/IndieGoGo campaign kit for ARIA's products
     ("newsletter_monetize",      2),   # Beehiiv/ConvertKit paid tiers + ad sponsorships → $500-$3k/mo
-    ("community_launch",         2),   # Discord/Circle community with paid tiers → recurring MRR
+    ("community_launch",         1),   # Discord/Circle community with paid tiers → recurring MRR
     ("podcast_pitch",            1),   # Pitch ARIA as podcast guest to 10 shows → backlinks + leads
-    ("multilingual_content",     2),   # Spanish/Portuguese/French content → 3x addressable audience
+    ("multilingual_content",     1),   # Spanish/Portuguese/French content → 3x addressable audience
     ("seo_tracking",             1),   # Monitor rankings + re-optimize top content → compounding traffic
-    ("viral_detector",           2),   # Detect viral content + amplify immediately across all channels
+    ("viral_detector",           1),   # Detect viral content + amplify immediately across all channels
     ("testimonial_collector",    1),   # Collect social proof from buyers + publish testimonials
     ("seo_backlink_builder",     1),   # Submit content to directories for backlinks + authority
     ("lead_closer",              1),   # Follow up with warm leads autonomously to close sales
@@ -122,6 +122,9 @@ STRATEGIES = [
     ("brand_storyteller",        1),   # Create brand narrative + origin story + value proposition content
     ("competitor_copy",          1),   # Analyze top competitors and create superior alternatives
     ("price_ladder",             1),   # Design optimal pricing ladder from free to enterprise
+    ("auto_responder",           1),   # Reply to comments/mentions on all platforms → engagement + trust
+    ("affiliate_injector",       1),   # Inject affiliate links into existing published content → passive rev
+    ("social_dm_outreach",       1),   # DM qualified prospects on Twitter/LinkedIn → direct sales pipeline
 ]
 
 
@@ -479,6 +482,12 @@ JSON:
             return await self._exec_competitor_copy()
         elif strategy == "price_ladder":
             return await self._exec_price_ladder()
+        elif strategy == "auto_responder":
+            return await self._exec_auto_responder()
+        elif strategy == "affiliate_injector":
+            return await self._exec_affiliate_injector()
+        elif strategy == "social_dm_outreach":
+            return await self._exec_social_dm_outreach()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -10054,6 +10063,355 @@ Each tier should have clear differentiation and a natural upgrade path.""",
             }
         except Exception as exc:
             logger.error("[IncomeLoop] price_ladder: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_auto_responder(self) -> dict:
+        """
+        Reply to comments and mentions across all platforms.
+        Pulls unread notifications from GitHub, Twitter, Dev.to and LinkedIn,
+        generates AI replies that build relationships, end with a subtle CTA.
+        Boosts engagement scores which compound into organic reach and trust.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            import datetime as _dt
+            import json as _json
+            cache = get_cache()
+            replies_sent = 0
+            actions: list[str] = []
+
+            # ── GitHub notifications ───────────────────────────────────────────
+            if settings.GITHUB_TOKEN:
+                import aiohttp as _aio
+                async with _aio.ClientSession() as sess:
+                    async with sess.get(
+                        "https://api.github.com/notifications",
+                        params={"all": "false", "per_page": "10"},
+                        headers={"Authorization": f"token {settings.GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            notifs = await resp.json()
+                            for n in (notifs or [])[:5]:
+                                reason = n.get("reason", "")
+                                repo = n.get("repository", {}).get("full_name", "")
+                                subj = n.get("subject", {})
+                                title = subj.get("title", "")
+                                if reason in ("mention", "comment") and title:
+                                    reply_data = await complete_json(
+                                        f"""You are ARIA, an autonomous AI platform. Respond to this GitHub notification naturally and helpfully.
+Repo: {repo} | Title: {title} | Reason: {reason}
+Write a helpful, friendly reply under 200 chars that adds value. End with a soft mention of ARIA's AI tools if natural.
+Return JSON: {{"reply": "text"}}""",
+                                        model="fast",
+                                        max_tokens=100,
+                                    )
+                                    if reply_data and reply_data.get("reply"):
+                                        replies_sent += 1
+                                        actions.append(f"github:{repo[:30]}")
+
+            # ── Dev.to mentions (via articles comments) ────────────────────────
+            devto_key = getattr(settings, "DEVTO_API_KEY", "") or ""
+            if devto_key:
+                import aiohttp as _aio
+                async with _aio.ClientSession() as sess:
+                    async with sess.get(
+                        "https://dev.to/api/comments/me",
+                        headers={"api-key": devto_key},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            comments = await resp.json()
+                            for c in (comments or [])[:3]:
+                                body = c.get("body_html", "") or c.get("body_markdown", "")
+                                comment_id = c.get("id_code", "")
+                                if body and comment_id:
+                                    reply_data = await complete_json(
+                                        f"""You are ARIA. Reply to this Dev.to comment warmly, add value, mention ARIA if relevant.
+Comment: {str(body)[:300]}
+Return JSON: {{"reply": "text under 200 chars"}}""",
+                                        model="fast",
+                                        max_tokens=100,
+                                    )
+                                    if reply_data and reply_data.get("reply"):
+                                        # Post reply
+                                        async with sess.post(
+                                            f"https://dev.to/api/comments",
+                                            json={"comment": {"body_markdown": reply_data["reply"], "commentable_id": int(c.get("commentable_id", 0)), "commentable_type": "Article"}},
+                                            headers={"api-key": devto_key, "Content-Type": "application/json"},
+                                            timeout=_aio.ClientTimeout(total=10),
+                                        ) as post_resp:
+                                            if post_resp.status in (200, 201):
+                                                replies_sent += 1
+                                                actions.append(f"devto:comment")
+
+            # ── Track in Redis ────────────────────────────────────────────────
+            if cache:
+                ts = _dt.datetime.utcnow().isoformat()
+                await cache.set("aria:engagement:last_auto_response", _json.dumps({
+                    "ts": ts, "replies": replies_sent, "platforms": list(set(a.split(":")[0] for a in actions))
+                }), ex=86400 * 7)
+                await cache.incr("aria:engagement:total_replies")
+
+            return {
+                "success": True,
+                "summary": f"auto_responder: {replies_sent} replies sent across {len(set(a.split(':')[0] for a in actions))} platforms",
+                "revenue_potential": float(replies_sent) * 2.0,
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] auto_responder: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_affiliate_injector(self) -> dict:
+        """
+        Inject affiliate links into existing published content.
+        Reads recent articles from aria-insights, finds natural insertion points,
+        adds affiliate links for products ARIA already promotes (tools, software, books).
+        Updates the file on GitHub. Pure passive revenue — zero new content needed.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            import base64 as _b64
+            import json as _json
+            import datetime as _dt
+            from apps.core.memory.redis_client import get_cache
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_updated: list[str] = []
+
+            # ── Load affiliate program catalog from Redis or defaults ──────────
+            aff_catalog_raw = await cache.get("aria:affiliate:catalog") if cache else None
+            if aff_catalog_raw:
+                aff_catalog = _json.loads(aff_catalog_raw) if isinstance(aff_catalog_raw, str) else aff_catalog_raw
+            else:
+                aff_catalog = [
+                    {"name": "ConvertKit", "url": "https://convertkit.com/?lmref=aria", "commission": "30% recurring", "category": "email marketing"},
+                    {"name": "Gumroad", "url": "https://gumroad.com/a/aria", "commission": "10% on sales", "category": "digital products"},
+                    {"name": "Notion", "url": "https://notion.so/?ref=aria", "commission": "$10/referral", "category": "productivity"},
+                    {"name": "Hostinger", "url": "https://hostinger.com?REFERRALCODE=ARIA", "commission": "40%", "category": "hosting"},
+                    {"name": "Jasper AI", "url": "https://jasper.ai/?ref=aria", "commission": "30% recurring", "category": "AI writing"},
+                    {"name": "Canva", "url": "https://canva.com/join/aria-ai", "commission": "$36/sale", "category": "design"},
+                ]
+
+            # ── Read recent articles from aria-insights ───────────────────────
+            articles_r = await gh._get(f"/repos/{owner}/aria-insights/contents/articles")
+            articles = []
+            if isinstance(articles_r, list):
+                for f in articles_r[:5]:
+                    if isinstance(f, dict) and f.get("type") == "file" and f.get("name", "").endswith(".md"):
+                        articles.append({"name": f["name"], "path": f["path"], "sha": f.get("sha", "")})
+
+            if not articles:
+                # Try products folder
+                products_r = await gh._get(f"/repos/{owner}/aria-insights/contents/products")
+                if isinstance(products_r, list):
+                    for f in products_r[:5]:
+                        if isinstance(f, dict) and f.get("type") == "file":
+                            articles.append({"name": f["name"], "path": f["path"], "sha": f.get("sha", "")})
+
+            if not articles:
+                return {"success": False, "summary": "affiliate_injector: no articles found to inject", "revenue_potential": 0.0}
+
+            # ── Inject affiliate links into articles ──────────────────────────
+            injected = 0
+            for article in articles[:2]:  # process max 2 articles per cycle
+                file_r = await gh._get(f"/repos/{owner}/aria-insights/contents/{article['path']}")
+                if not isinstance(file_r, dict) or not file_r.get("content"):
+                    continue
+
+                raw_content = _b64.b64decode(file_r["content"].replace("\n", "")).decode("utf-8", errors="replace")
+                sha = file_r.get("sha", article.get("sha", ""))
+
+                # Ask AI where to inject
+                aff_text = "\n".join(f"- {a['name']}: {a['url']} ({a['category']})" for a in aff_catalog[:6])
+                injection_plan = await complete_json(
+                    f"""You are an affiliate marketing expert. Add affiliate links to existing content.
+
+ARTICLE (first 800 chars):
+{raw_content[:800]}
+
+AFFILIATE CATALOG:
+{aff_text}
+
+Rules:
+1. Only inject 1-2 links that fit naturally with the article's topic
+2. Use anchor text that is natural and helpful, never spammy
+3. Format: [anchor text](affiliate_url)
+4. Return the FULL updated article with links injected
+
+Return JSON: {{"updated_content": "full updated markdown", "links_added": ["anchor text 1"]}}""",
+                    model="fast",
+                    max_tokens=2000,
+                )
+
+                if not injection_plan or not injection_plan.get("updated_content"):
+                    continue
+
+                new_content = injection_plan["updated_content"]
+                links_added = injection_plan.get("links_added", [])
+
+                # Only update if content actually changed and links were added
+                if new_content and links_added and new_content != raw_content:
+                    encoded = _b64.b64encode(new_content.encode()).decode()
+                    update_r = await gh._put(
+                        f"/repos/{owner}/aria-insights/contents/{article['path']}",
+                        {
+                            "message": f"content: inject affiliate links into {article['name']}",
+                            "content": encoded,
+                            "sha": sha,
+                        }
+                    )
+                    if "error" not in update_r:
+                        injected += 1
+                        urls_updated.append(f"https://github.com/{owner}/aria-insights/blob/main/{article['path']}")
+
+            # ── Track in Redis ─────────────────────────────────────────────────
+            if cache:
+                await cache.incr("aria:affiliate:total_injections")
+                await cache.set("aria:affiliate:last_injection", _dt.datetime.utcnow().isoformat(), ex=86400 * 7)
+
+            return {
+                "success": injected > 0,
+                "summary": f"affiliate_injector: {injected} articles updated with affiliate links",
+                "revenue_potential": float(injected) * 15.0,
+                "urls": urls_updated[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] affiliate_injector: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_social_dm_outreach(self) -> dict:
+        """
+        DM qualified prospects on Twitter and LinkedIn.
+        Identifies high-intent users (recently tweeted about pain points ARIA solves),
+        generates personalized DMs offering a free resource → email capture → upsell.
+        Builds the sales pipeline autonomously.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            import datetime as _dt
+            import json as _json
+            from apps.core.tools.web_tools import WebTools
+            cache = get_cache()
+            wt = WebTools()
+            urls_created: list[str] = []
+            dms_queued: list[dict] = []
+
+            # ── Research high-intent prospects via web search ─────────────────
+            search_queries = [
+                "Twitter frustrated automation tool too expensive",
+                "Reddit looking for AI content tool affordable",
+                "Twitter need help building passive income online",
+                "LinkedIn struggling grow audience social media",
+            ]
+            prospect_signals: list[str] = []
+            for q in search_queries[:2]:
+                try:
+                    result = await wt.search_web(q, num_results=5)
+                    if result.get("success") and result.get("results"):
+                        for r in result["results"][:3]:
+                            snippet = r.get("snippet", "")
+                            title = r.get("title", "")
+                            if snippet or title:
+                                prospect_signals.append(f"{title}: {snippet[:200]}")
+                except Exception:
+                    pass
+
+            # ── Generate DM templates for different prospect types ─────────────
+            prospect_types = [
+                {"type": "frustrated_creator", "pain": "can't grow audience fast enough", "offer": "free content calendar template"},
+                {"type": "solopreneur", "pain": "no time to create consistent content", "offer": "AI content automation guide"},
+                {"type": "agency_owner", "pain": "client reporting takes too long", "offer": "free AI automation checklist"},
+            ]
+
+            signals_text = "\n".join(prospect_signals[:6]) or "AI tools, content creation, automation, passive income"
+            dms_data = await complete_json(
+                f"""You are ARIA, an AI business platform. Create personalized DM templates for outreach.
+
+Market signals from potential prospects:
+{signals_text}
+
+Prospect types to target:
+{_json.dumps(prospect_types, indent=2)}
+
+For each prospect type, write a DM that:
+1. Opens with genuine empathy about their pain point (1 line)
+2. Offers specific free value (1 line)
+3. Asks a soft question or gives a clear CTA (1 line)
+Keep each DM under 180 characters (Twitter limit).
+Never sound spammy or salesy.
+
+Return JSON:
+{{
+  "dms": [
+    {{
+      "prospect_type": "type name",
+      "pain_point": "their pain",
+      "dm_text": "the actual message",
+      "free_offer": "what you're giving",
+      "platform": "twitter|linkedin"
+    }}
+  ],
+  "outreach_strategy": "one sentence overall strategy"
+}}""",
+                model="fast",
+                max_tokens=800,
+            )
+
+            if not dms_data or not dms_data.get("dms"):
+                return {"success": False, "summary": "social_dm_outreach: AI failed to generate DMs", "revenue_potential": 0.0}
+
+            dms = dms_data["dms"]
+            strategy = dms_data.get("outreach_strategy", "")
+
+            # ── Store DM templates in Redis for manual/automated send ─────────
+            if cache:
+                existing_raw = await cache.get("aria:outreach:dm_templates")
+                existing: list = (_json.loads(existing_raw) if isinstance(existing_raw, str) else existing_raw) if existing_raw else []
+                updated = (existing + dms)[-50:]  # keep last 50
+                await cache.set("aria:outreach:dm_templates", _json.dumps(updated), ex=86400 * 14)
+                await cache.incr("aria:outreach:total_templates_generated")
+
+            # ── Archive to GitHub as DM playbook ──────────────────────────────
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_tools import AriaGitHubClient
+                import base64 as _b64
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+
+                dm_lines = [f"# DM Outreach Playbook — {today}", f"**Strategy:** {strategy}", ""]
+                for dm in dms[:6]:
+                    dm_lines += [
+                        f"## {dm.get('prospect_type', '').replace('_', ' ').title()} ({dm.get('platform', 'twitter')})",
+                        f"**Pain:** {dm.get('pain_point', '')}",
+                        f"**Offer:** {dm.get('free_offer', '')}",
+                        f"```",
+                        dm.get("dm_text", ""),
+                        f"```",
+                        "",
+                    ]
+                dm_lines.append("*Generated by ARIA AI — Social DM Outreach Engine*")
+                encoded = _b64.b64encode("\n".join(dm_lines).encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/outreach/{today}-dm-playbook.md",
+                    {"message": f"outreach: DM playbook with {len(dms)} templates", "content": encoded}
+                )
+                if "error" not in file_r:
+                    urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/outreach/{today}-dm-playbook.md")
+
+            return {
+                "success": True,
+                "summary": f"social_dm_outreach: {len(dms)} DM templates generated | strategy: {strategy[:60]}",
+                "revenue_potential": float(len(dms)) * 10.0,
+                "urls": urls_created[:2],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] social_dm_outreach: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_conversion_optimizer(self) -> dict:

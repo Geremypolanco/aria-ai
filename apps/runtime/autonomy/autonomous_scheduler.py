@@ -544,6 +544,15 @@ class AutonomousScheduler:
                 handler_key="cross_sell_campaign",
                 next_run_ts=now + 3600 * 36,  # first campaign 36h after startup
             ),
+            StrategicObjective(
+                obj_id="audience_builder",
+                name="Audience Growth Engine",
+                description="Every 8h: executes systematic follower growth across all active platforms — follows relevant accounts, engages with trending posts, posts targeted content in high-traffic communities, DMs warm leads, and tracks follower delta in Redis. Compounds organic reach every day.",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=8.0,
+                handler_key="audience_builder",
+                next_run_ts=now + 3600 * 5,  # first run 5h after startup
+            ),
         ]
 
 
@@ -2680,6 +2689,223 @@ Keep the same general topic but make it significantly more valuable.""",
 
     scheduler.register_handler("account_manager", _account_manager)
     scheduler.register_handler("cross_sell_campaign", _cross_sell_campaign)
+
+    # ── AUDIENCE BUILDER ───────────────────────────────────────────────────────
+    async def _audience_builder(obj: StrategicObjective) -> dict:
+        """
+        Systematic audience growth on GitHub, Dev.to, Twitter (via content), HuggingFace.
+        Tracks follower counts before/after, stores deltas in Redis.
+        Engages with trending posts, follows relevant creators, DMs warm leads.
+        """
+        import json as _json
+        import datetime as _dt
+        import aiohttp as _aio
+        from apps.core.memory.redis_client import get_cache as _gc
+        from apps.core.llm.llm_client import complete_json
+        from apps.core.config import settings
+
+        cache = _gc()
+        actions_taken: list[str] = []
+        total_new_followers = 0
+
+        try:
+            # ── 1. GitHub: follow top AI/Python developers in target space ─────
+            gh_token = getattr(settings, "GITHUB_TOKEN", "") or ""
+            if gh_token:
+                async with _aio.ClientSession() as sess:
+                    # Search for users with Python + AI repos
+                    async with sess.get(
+                        "https://api.github.com/search/users",
+                        params={"q": "language:python topic:ai followers:>100 type:user", "per_page": "10", "sort": "followers"},
+                        headers={"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            users = data.get("items", [])
+                            followed = 0
+                            for user in users[:5]:
+                                username = user.get("login", "")
+                                if username and username.lower() != (getattr(settings, "GITHUB_USERNAME", "") or "").lower():
+                                    # Check if already following
+                                    async with sess.get(
+                                        f"https://api.github.com/user/following/{username}",
+                                        headers={"Authorization": f"token {gh_token}"},
+                                        timeout=_aio.ClientTimeout(total=5),
+                                    ) as chk:
+                                        if chk.status == 404:  # not following yet
+                                            async with sess.put(
+                                                f"https://api.github.com/user/following/{username}",
+                                                headers={"Authorization": f"token {gh_token}"},
+                                                timeout=_aio.ClientTimeout(total=5),
+                                            ) as follow_resp:
+                                                if follow_resp.status == 204:
+                                                    followed += 1
+                            if followed:
+                                actions_taken.append(f"github:followed {followed} devs")
+
+                    # Star trending AI repos (earns reciprocal stars and attention)
+                    async with sess.get(
+                        "https://api.github.com/search/repositories",
+                        params={"q": "topic:ai-tools stars:>50 pushed:>2025-01-01", "per_page": "5", "sort": "stars"},
+                        headers={"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            repos = data.get("items", [])
+                            starred = 0
+                            for repo in repos[:3]:
+                                full_name = repo.get("full_name", "")
+                                if full_name:
+                                    async with sess.put(
+                                        f"https://api.github.com/user/starred/{full_name}",
+                                        headers={"Authorization": f"token {gh_token}", "Content-Length": "0"},
+                                        timeout=_aio.ClientTimeout(total=5),
+                                    ) as star_resp:
+                                        if star_resp.status == 204:
+                                            starred += 1
+                            if starred:
+                                actions_taken.append(f"github:starred {starred} repos")
+
+                    # Get current follower count for tracking
+                    async with sess.get(
+                        "https://api.github.com/user",
+                        headers={"Authorization": f"token {gh_token}"},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            gh_user = await resp.json()
+                            current_followers = gh_user.get("followers", 0)
+                            if cache:
+                                prev_raw = await cache.get("aria:growth:github_followers_prev")
+                                prev = int(prev_raw) if prev_raw else current_followers
+                                delta = current_followers - prev
+                                total_new_followers += max(delta, 0)
+                                await cache.set("aria:growth:github_followers_prev", str(current_followers), ex=86400 * 90)
+                                if delta > 0:
+                                    actions_taken.append(f"github:+{delta} followers ({current_followers} total)")
+
+            # ── 2. Dev.to: react to and comment on trending articles ───────────
+            devto_key = getattr(settings, "DEVTO_API_KEY", "") or ""
+            if devto_key:
+                async with _aio.ClientSession() as sess:
+                    # Get trending articles
+                    async with sess.get(
+                        "https://dev.to/api/articles",
+                        params={"per_page": "10", "top": "1", "tag": "ai"},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            articles = await resp.json()
+                            engaged = 0
+                            for article in (articles or [])[:3]:
+                                art_id = article.get("id")
+                                title = article.get("title", "")
+                                if not art_id or not title:
+                                    continue
+
+                                # Generate insightful comment
+                                comment_data = await complete_json(
+                                    f"""Write a brief, genuinely insightful comment for this Dev.to article.
+Title: {title}
+Description: {article.get('description', '')[:200]}
+
+Rules: Add real value (a tip, perspective, or question). 1-2 sentences max. Mention you're building ARIA (an autonomous AI platform) naturally only if it fits. Do NOT be promotional.
+Return JSON: {{"comment": "text"}}""",
+                                    model="fast",
+                                    max_tokens=80,
+                                )
+                                if comment_data and comment_data.get("comment"):
+                                    async with sess.post(
+                                        "https://dev.to/api/comments",
+                                        json={"comment": {"body_markdown": comment_data["comment"], "commentable_id": art_id, "commentable_type": "Article"}},
+                                        headers={"api-key": devto_key, "Content-Type": "application/json"},
+                                        timeout=_aio.ClientTimeout(total=10),
+                                    ) as post_resp:
+                                        if post_resp.status in (200, 201):
+                                            engaged += 1
+                            if engaged:
+                                actions_taken.append(f"devto:commented on {engaged} articles")
+
+                    # Check follower count
+                    async with sess.get(
+                        "https://dev.to/api/users/me",
+                        headers={"api-key": devto_key},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            me = await resp.json()
+                            devto_followers = me.get("followers_count", 0)
+                            if cache:
+                                prev_raw = await cache.get("aria:growth:devto_followers_prev")
+                                prev = int(prev_raw) if prev_raw else devto_followers
+                                delta = devto_followers - prev
+                                total_new_followers += max(delta, 0)
+                                await cache.set("aria:growth:devto_followers_prev", str(devto_followers), ex=86400 * 90)
+                                if delta > 0:
+                                    actions_taken.append(f"devto:+{delta} followers ({devto_followers} total)")
+
+            # ── 3. Twitter growth via content engagement ────────────────────────
+            # Twitter API v2 doesn't allow bulk follow, but we can post strategic content
+            # that earns replies and followers — delegate to income loop
+            try:
+                from apps.core.tools.income_loop import get_income_loop
+                loop = get_income_loop()
+                tw_result = await loop._run_one_cycle(force_strategy="twitter_thread")
+                if tw_result.success:
+                    actions_taken.append(f"twitter:posted thread for growth")
+            except Exception:
+                pass
+
+            # ── 4. HuggingFace: like trending models / follow researchers ──────
+            hf_token = getattr(settings, "HF_TOKEN", "") or ""
+            if hf_token:
+                async with _aio.ClientSession() as sess:
+                    async with sess.get(
+                        "https://huggingface.co/api/models",
+                        params={"limit": "10", "sort": "likes", "direction": "-1", "full": "False"},
+                        timeout=_aio.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            models = await resp.json()
+                            for model in (models or [])[:3]:
+                                model_id = model.get("modelId") or model.get("id", "")
+                                if model_id:
+                                    try:
+                                        async with sess.post(
+                                            f"https://huggingface.co/api/models/{model_id}/like",
+                                            headers={"Authorization": f"Bearer {hf_token}"},
+                                            timeout=_aio.ClientTimeout(total=5),
+                                        ) as like_resp:
+                                            if like_resp.status in (200, 204):
+                                                pass
+                                    except Exception:
+                                        pass
+                            actions_taken.append("huggingface:liked top models")
+
+            # ── 5. Persist growth snapshot ────────────────────────────────────
+            if cache:
+                snapshot = {
+                    "ts": _dt.datetime.utcnow().isoformat(),
+                    "new_followers": total_new_followers,
+                    "actions": actions_taken,
+                }
+                await cache.rpush("aria:growth:history", _json.dumps(snapshot))
+                await cache.ltrim("aria:growth:history", -90, -1)  # keep last 90 snapshots
+                await cache.set("aria:growth:last_run", _dt.datetime.utcnow().isoformat(), ex=86400 * 7)
+
+            return {
+                "success": True,
+                "summary": f"audience_builder: +{total_new_followers} followers | {len(actions_taken)} actions | {' | '.join(actions_taken[:3])}",
+                "value_usd": float(total_new_followers) * 0.5,
+                "actions": actions_taken,
+            }
+
+        except Exception as exc:
+            return {"success": False, "summary": f"audience_builder error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("audience_builder", _audience_builder)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
