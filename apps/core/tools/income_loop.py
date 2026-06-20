@@ -57,8 +57,8 @@ STRATEGIES = [
     ("content_pipeline",         7),
     ("niche_rotator",            7),
     ("product_factory",          7),
-    ("course_builder",           7),   # mini-course with syllabus + pricing (avg $79-$127/sale)
-    ("affiliate_network",        7),   # build own affiliate program, recruit promoters
+    ("course_builder",           5),   # mini-course with syllabus + pricing (avg $79-$127/sale)
+    ("affiliate_network",        5),   # build own affiliate program, recruit promoters
     ("opportunity_scan",         7),
     ("github_publish",           7),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       7),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
@@ -68,10 +68,12 @@ STRATEGIES = [
     ("affiliate_content",        5),   # review/comparison articles with affiliate links
     ("ebook_factory",            5),
     ("lead_magnet",              4),   # free resource funnel → email capture → upsell
-    ("hf_spaces_demo",           4),   # live AI demo on HuggingFace Spaces (free, massive community)
+    ("hf_spaces_demo",           3),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            4),   # improve existing posts for compounding organic traffic
-    ("gist_blitz",               4),   # code snippet Gists with product CTAs (dev discovery)
-    ("github_sponsors_setup",    2),   # passive income via GitHub Sponsors + FUNDING.yml
+    ("gist_blitz",               3),   # code snippet Gists with product CTAs (dev discovery)
+    ("product_bundle",           4),   # bundle 2-3 existing products at a discount → higher AOV
+    ("waitlist_builder",         3),   # waitlist landing page → email capture → launch pipeline
+    ("github_sponsors_setup",    1),   # passive income via GitHub Sponsors + FUNDING.yml
     ("social_blitz",             2),
     ("premium_offer",            1),
     ("viral_thread",             1),   # Twitter/X thread optimized for virality
@@ -285,6 +287,10 @@ JSON:
             return await self._exec_gist_blitz()
         elif strategy == "github_sponsors_setup":
             return await self._exec_github_sponsors_setup()
+        elif strategy == "product_bundle":
+            return await self._exec_product_bundle()
+        elif strategy == "waitlist_builder":
+            return await self._exec_waitlist_builder()
         elif strategy == "viral_thread":
             return await self._exec_viral_thread()
         return {"success": False, "summary": "Unknown strategy"}
@@ -3473,6 +3479,375 @@ JSON:
 
         except Exception as exc:
             logger.error("[IncomeLoop] viral_thread: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_product_bundle(self) -> dict:
+        """
+        Bundle 2-3 existing ARIA products into a discounted package offer.
+        Higher average order value (AOV) from same traffic.
+        Publishes bundle page on GitHub + announces on blog.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            ai    = get_ai_client()
+            gh    = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            if not ai:
+                return {"success": False, "summary": "product_bundle: no AI client"}
+
+            # Load recent products from catalog
+            existing_products = []
+            if cache:
+                raw_items = await cache.lrange("aria:products:catalog", -30, -1)
+                for raw in (raw_items or []):
+                    try:
+                        item = json.loads(raw) if isinstance(raw, str) else raw
+                        if item.get("revenue", 0) > 0 and item.get("urls"):
+                            existing_products.append(item)
+                    except Exception:
+                        pass
+
+            # AI generates bundle concept (works even if no catalog yet)
+            catalog_summary = "\n".join(
+                f"- {p.get('title','')[:80]} (${p.get('revenue',0):.0f}, {p.get('strategy','')})"
+                for p in existing_products[-6:]
+            ) if existing_products else "No products yet — generate a hypothetical bundle for a trending niche"
+
+            bundle_data = await ai.complete_json(
+                system="You are a digital product bundling expert. Create irresistible value bundles. Output JSON only.",
+                user=f"""Create a product bundle offer combining existing digital products.
+
+Existing products:
+{catalog_summary}
+
+Design a bundle that:
+- Combines 2-4 complementary products/topics
+- Offers 40-60% discount vs. buying separately
+- Has a compelling theme/transformation promise
+- Targets a specific buyer persona
+
+JSON:
+{{
+  "bundle_name": "Name of the bundle (60 chars max)",
+  "tagline": "One sentence value proposition",
+  "theme": "Core theme (e.g., 'Python Mastery', 'Freelance Toolkit')",
+  "included_items": [
+    {{"title": "Product 1 name", "value": 47}},
+    {{"title": "Product 2 name", "value": 37}},
+    {{"title": "Product 3 name", "value": 27}}
+  ],
+  "total_value": 111,
+  "bundle_price": 47,
+  "discount_pct": 58,
+  "buyer_persona": "Who this is for (2 sentences)",
+  "transformation": "What the buyer achieves after using this bundle",
+  "bonuses": ["Bonus 1", "Bonus 2"],
+  "urgency": "Time/quantity scarcity reason",
+  "slug": "url-friendly-slug",
+  "description_md": "Full bundle sales page (600+ words, markdown). Include: headline, problem, solution, what's included table, bonuses, testimonial placeholders, FAQ, CTA."
+}}""",
+                model=AIModel.FAST,
+                max_tokens=3000,
+            )
+
+            if not bundle_data:
+                return {"success": False, "summary": "product_bundle: AI generation failed"}
+
+            bundle_name = bundle_data.get("bundle_name", "Ultimate AI Toolkit Bundle")
+            slug        = bundle_data.get("slug", "ultimate-bundle")
+            price       = bundle_data.get("bundle_price", 47)
+            discount    = bundle_data.get("discount_pct", 50)
+            total_val   = bundle_data.get("total_value", 100)
+            desc_md     = bundle_data.get("description_md", "")
+            items       = bundle_data.get("included_items", [])
+
+            if not desc_md:
+                return {"success": False, "summary": "product_bundle: empty description"}
+
+            # Build full bundle page
+            from datetime import datetime, timezone
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            portfolio_url = f"https://github.com/{owner}/aria-portfolio"
+
+            full_page = f"""# {bundle_name}
+
+> {bundle_data.get('tagline', '')}
+
+**Bundle Price: ${price}** ~~${total_val}~~ — Save {discount}%!
+
+{desc_md}
+
+---
+
+## 📦 What's Included
+
+| Product | Individual Value |
+|---------|-----------------|
+""" + "\n".join(
+    f"| {item.get('title', '')} | ${item.get('value', 0)} |"
+    for item in items
+) + f"""
+
+**TOTAL VALUE: ${total_val}**
+**YOUR PRICE: ${price}** (Save {discount}%!)
+
+---
+
+*Bundle curated by [ARIA AI]({portfolio_url}) | {today}*
+"""
+
+            urls_created = []
+
+            # Publish to GitHub aria-insights/bundles/
+            if settings.GITHUB_TOKEN:
+                repo     = "aria-insights"
+                filename = f"bundles/{today}-{slug}.md"
+                encoded  = _b64.b64encode(full_page.encode()).decode()
+                file_r   = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
+                    "message": f"bundle: {bundle_name[:60]}",
+                    "content": encoded,
+                })
+                if "error" not in file_r:
+                    url = f"https://github.com/{owner}/{repo}/blob/main/{filename}"
+                    urls_created.append(url)
+
+            # Try Gumroad
+            if settings.GUMROAD_TOKEN and urls_created:
+                try:
+                    from apps.core.tools.gumroad_tools import GumroadTools
+                    gr = GumroadTools()
+                    gr_result = await gr.create_product(
+                        name=bundle_name,
+                        description=bundle_data.get("tagline", "") + f"\n\nIncludes: {', '.join(i.get('title','') for i in items[:3])}",
+                        price_cents=int(price * 100),
+                        product_type="bundle",
+                    )
+                    if gr_result and gr_result.get("id"):
+                        gumroad_url = gr_result.get("short_url") or gr_result.get("url") or ""
+                        if gumroad_url:
+                            urls_created.insert(0, gumroad_url)
+                except Exception:
+                    pass
+
+            if not urls_created:
+                return {"success": False, "summary": "product_bundle: no GitHub token to publish"}
+
+            # Throttle-protect: track bundle slugs to avoid duplicates
+            if cache:
+                bundle_key = "aria:income:bundle_slugs"
+                existing_slugs_raw = await cache.get(bundle_key)
+                existing_slugs = json.loads(existing_slugs_raw) if existing_slugs_raw else []
+                if slug in existing_slugs:
+                    return {"success": False, "summary": f"product_bundle: bundle '{slug}' already published"}
+                existing_slugs.append(slug)
+                await cache.set(bundle_key, json.dumps(existing_slugs[-100:]), ttl_seconds=86400 * 90)
+
+            logger.info("[IncomeLoop] Bundle published: %s ($%s, %s%% off)", bundle_name, price, discount)
+            return {
+                "success": True,
+                "summary": f"Bundle '{bundle_name}' — ${price} (save {discount}%) | {len(items)} products included",
+                "revenue_potential": float(price) * 2,  # conservative estimate: 2 sales
+                "urls": urls_created,
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] product_bundle: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_waitlist_builder(self) -> dict:
+        """
+        Build an email waitlist for an upcoming product or service.
+        Creates a landing page, GitHub-hosted signup form,
+        and seeds future launch pipeline.
+        Converts cold traffic into warm leads before the product exists.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            ai    = get_ai_client()
+            gh    = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            if not ai or not settings.GITHUB_TOKEN:
+                return {"success": False, "summary": "waitlist_builder: need AI + GITHUB_TOKEN"}
+
+            # Deduplicate waitlist topics
+            existing_topics: list = []
+            if cache:
+                raw = await cache.get("aria:income:waitlist_topics")
+                existing_topics = json.loads(raw) if raw else []
+
+            avoid_str = ", ".join(existing_topics[-10:]) if existing_topics else "none yet"
+
+            waitlist_data = await ai.complete_json(
+                system="You build high-converting pre-launch waitlist pages. Output JSON only.",
+                user=f"""Create a waitlist landing page for an upcoming digital product/service.
+
+Topics already used: {avoid_str}
+Choose a fresh angle in: AI tools, productivity, business automation, developer tools, online income, no-code apps, personal finance, content creation.
+
+JSON:
+{{
+  "product_name": "Name of the upcoming product (6 words max)",
+  "tagline": "One sentence hook (max 100 chars)",
+  "problem": "Specific pain point this solves (2-3 sentences)",
+  "solution_teaser": "What this product will do WITHOUT revealing too much (2-3 sentences)",
+  "target_audience": "Exactly who this is for",
+  "launch_eta": "Expected launch timeframe (e.g., 'Q3 2025', 'in 8 weeks')",
+  "early_bird_offer": "Exclusive deal for waitlist signups (e.g., '50% off + bonus module')",
+  "benefits": ["Benefit 1", "Benefit 2", "Benefit 3", "Benefit 4"],
+  "faq": [
+    {{"q": "Question", "a": "Answer"}},
+    {{"q": "Question", "a": "Answer"}}
+  ],
+  "slug": "url-friendly-slug",
+  "topic_tag": "single keyword tag",
+  "landing_page_md": "Full waitlist landing page in markdown (500+ words). Include: compelling headline, problem section, solution teaser, benefits list, FAQ, waitlist signup CTA with instructions for GitHub Issues-based waitlist, social proof placeholders."
+}}""",
+                model=AIModel.FAST,
+                max_tokens=3000,
+            )
+
+            if not waitlist_data:
+                return {"success": False, "summary": "waitlist_builder: AI generation failed"}
+
+            product_name = waitlist_data.get("product_name", "Upcoming AI Tool")
+            slug         = waitlist_data.get("slug", "upcoming-product")
+            tagline      = waitlist_data.get("tagline", "")
+            early_bird   = waitlist_data.get("early_bird_offer", "50% early bird discount")
+            landing_md   = waitlist_data.get("landing_page_md", "")
+
+            if not landing_md:
+                return {"success": False, "summary": "waitlist_builder: empty landing page"}
+
+            from datetime import datetime, timezone
+            today    = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            topic    = waitlist_data.get("topic_tag", slug)
+
+            # Check deduplication
+            if topic in existing_topics:
+                return {"success": False, "summary": f"waitlist_builder: topic '{topic}' already has a waitlist"}
+
+            # Build the full page with signup instructions
+            portfolio_url = f"https://github.com/{owner}/aria-portfolio"
+            waitlist_repo = "aria-waitlists"
+
+            full_page = f"""# {product_name}
+
+> {tagline}
+
+**🚀 Join the Waitlist → Get {early_bird}**
+
+{landing_md}
+
+---
+
+## ✉️ How to Join the Waitlist
+
+1. **[Open a GitHub Issue](https://github.com/{owner}/{waitlist_repo}/issues/new?title=Waitlist%3A+{product_name.replace(' ', '+')}&body=I+want+early+access+to+{product_name.replace(' ', '+')})** with subject: `Waitlist: {product_name}`
+2. You'll receive an email when we launch
+3. **Early bird members get: {early_bird}**
+
+---
+
+*Built by [ARIA AI]({portfolio_url}) | Waitlist opened {today}*
+"""
+
+            urls_created = []
+
+            # Ensure aria-waitlists repo exists
+            existing = await gh._get(f"/repos/{owner}/{waitlist_repo}")
+            if "error" in existing:
+                create_r = await gh._post("/user/repos", {
+                    "name": waitlist_repo,
+                    "description": "Product waitlists — join early to get exclusive discounts",
+                    "private": False,
+                    "auto_init": True,
+                    "has_issues": True,
+                })
+                if "error" not in create_r:
+                    await asyncio.sleep(2)
+                    # Enable issues (for waitlist signups via GitHub Issues)
+                    try:
+                        await gh._patch(f"/repos/{owner}/{waitlist_repo}", {"has_issues": True})
+                    except Exception:
+                        pass
+
+            # Publish landing page
+            filename = f"waitlists/{today}-{slug}.md"
+            encoded  = _b64.b64encode(full_page.encode()).decode()
+            file_r   = await gh._put(f"/repos/{owner}/{waitlist_repo}/contents/{filename}", {
+                "message": f"waitlist: {product_name[:60]}",
+                "content": encoded,
+            })
+            if "error" not in file_r:
+                url = f"https://github.com/{owner}/{waitlist_repo}/blob/main/{filename}"
+                urls_created.append(url)
+
+            # Also cross-post to aria-insights as a "coming soon" teaser
+            teaser = f"""# Coming Soon: {product_name}
+
+> {tagline}
+
+We're building something new. **[Join the waitlist]({urls_created[0] if urls_created else '#'})** to get early access and {early_bird}.
+
+**What to expect:**
+{chr(10).join(f'- {b}' for b in waitlist_data.get('benefits', [])[:4])}
+
+**Launch:** {waitlist_data.get('launch_eta', 'Soon')}
+
+*[Join the waitlist →]({urls_created[0] if urls_created else '#'})*
+"""
+            teaser_file = f"coming-soon/{today}-{slug}-teaser.md"
+            teaser_enc  = _b64.b64encode(teaser.encode()).decode()
+            await gh._put(f"/repos/{owner}/aria-insights/contents/{teaser_file}", {
+                "message": f"teaser: {product_name[:60]} waitlist",
+                "content": teaser_enc,
+            })
+            if urls_created:
+                teaser_url = f"https://github.com/{owner}/aria-insights/blob/main/{teaser_file}"
+                urls_created.append(teaser_url)
+
+            if not urls_created:
+                return {"success": False, "summary": "waitlist_builder: failed to publish"}
+
+            # Track topic
+            if cache:
+                existing_topics.append(topic)
+                await cache.set("aria:income:waitlist_topics", json.dumps(existing_topics[-50:]), ttl_seconds=86400 * 90)
+
+                # Store waitlist info for future launch pipeline
+                waitlist_entry = {
+                    "product": product_name,
+                    "slug": slug,
+                    "url": urls_created[0],
+                    "early_bird": early_bird,
+                    "launch_eta": waitlist_data.get("launch_eta", ""),
+                    "created_at": today,
+                }
+                await cache.rpush("aria:income:waitlist_pipeline", json.dumps(waitlist_entry))
+                await cache.ltrim("aria:income:waitlist_pipeline", -50, -1)
+
+            logger.info("[IncomeLoop] Waitlist created: %s", product_name)
+            return {
+                "success": True,
+                "summary": f"Waitlist for '{product_name}' — early bird: {early_bird}",
+                "revenue_potential": 8.0,  # modest (lead capture, not direct sale)
+                "urls": urls_created,
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] waitlist_builder: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     def check_credentials(self) -> dict:

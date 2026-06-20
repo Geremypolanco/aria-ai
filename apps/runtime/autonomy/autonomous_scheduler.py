@@ -1,1 +1,744 @@
-from __future__ import annotations\n\nimport asyncio\nimport time\nimport uuid\nfrom dataclasses import dataclass, field\nfrom enum import IntEnum, Enum\nfrom typing import Callable\n\nfrom apps.core.memory.redis_client import get_cache\n\n_OBJECTIVES_KEY = "autonomy:objectives:v1"\n_HISTORY_KEY = "autonomy:history:v1"\n_OBJECTIVES_TTL = 86400 * 365\n_HISTORY_TTL = 86400 * 90\n\n\nclass ObjectivePriority(IntEnum):\n    CRITICAL = 1\n    HIGH = 2\n    NORMAL = 3\n    LOW = 4\n\n\nclass ObjectiveStatus(str, Enum):\n    ACTIVE = "active"\n    PAUSED = "paused"\n    COMPLETED = "completed"\n    FAILED = "failed"\n\n\n@dataclass\nclass StrategicObjective:\n    obj_id: str\n    name: str\n    description: str\n    priority: ObjectivePriority\n    frequency_hours: float\n    handler_key: str\n    enabled: bool = True\n    last_run_ts: float = 0.0\n    next_run_ts: float = 0.0\n    total_runs: int = 0\n    success_count: int = 0\n    fail_count: int = 0\n    total_value_usd: float = 0.0\n    status: ObjectiveStatus = ObjectiveStatus.ACTIVE\n\n    def is_due(self) -> bool:\n        return time.time() >= self.next_run_ts\n\n    @property\n    def success_rate(self) -> float:\n        total = self.success_count + self.fail_count\n        return self.success_count / total if total > 0 else 0.0\n\n    def schedule_next(self) -> None:\n        self.next_run_ts = time.time() + self.frequency_hours * 3600\n\n    def to_dict(self) -> dict:\n        return {\n            "obj_id": self.obj_id,\n            "name": self.name,\n            "description": self.description,\n            "priority": int(self.priority),\n            "frequency_hours": self.frequency_hours,\n            "handler_key": self.handler_key,\n            "enabled": self.enabled,\n            "last_run_ts": self.last_run_ts,\n            "next_run_ts": self.next_run_ts,\n            "total_runs": self.total_runs,\n            "success_count": self.success_count,\n            "fail_count": self.fail_count,\n            "total_value_usd": self.total_value_usd,\n            "status": self.status.value,\n        }\n\n    @classmethod\n    def from_dict(cls, d: dict) -> StrategicObjective:\n        return cls(\n            obj_id=d["obj_id"],\n            name=d["name"],\n            description=d["description"],\n            priority=ObjectivePriority(d["priority"]),\n            frequency_hours=d["frequency_hours"],\n            handler_key=d["handler_key"],\n            enabled=d.get("enabled", True),\n            last_run_ts=d.get("last_run_ts", 0.0),\n            next_run_ts=d.get("next_run_ts", 0.0),\n            total_runs=d.get("total_runs", 0),\n            success_count=d.get("success_count", 0),\n            fail_count=d.get("fail_count", 0),\n            total_value_usd=d.get("total_value_usd", 0.0),\n            status=ObjectiveStatus(d.get("status", ObjectiveStatus.ACTIVE.value)),\n        )\n\n\n@dataclass\nclass ExecutionRecord:\n    record_id: str = field(default_factory=lambda: str(uuid.uuid4()))\n    obj_id: str = ""\n    started_at: float = field(default_factory=time.time)\n    completed_at: float = 0.0\n    success: bool = False\n    value_generated_usd: float = 0.0\n    error: str = ""\n    output: dict = field(default_factory=dict)\n\n    def to_dict(self) -> dict:\n        return {\n            "record_id": self.record_id,\n            "obj_id": self.obj_id,\n            "started_at": self.started_at,\n            "completed_at": self.completed_at,\n            "success": self.success,\n            "value_generated_usd": self.value_generated_usd,\n            "error": self.error,\n            "output": self.output,\n        }\n\n    @classmethod\n    def from_dict(cls, d: dict) -> ExecutionRecord:\n        return cls(\n            record_id=d["record_id"],\n            obj_id=d["obj_id"],\n            started_at=d["started_at"],\n            completed_at=d.get("completed_at", 0.0),\n            success=d.get("success", False),\n            value_generated_usd=d.get("value_generated_usd", 0.0),\n            error=d.get("error", ""),\n            output=d.get("output", {}),\n        )\n\n\nclass AutonomousScheduler:\n    def __init__(self) -> None:\n        self._objectives: dict[str, StrategicObjective] = {}\n        self._handlers: dict[str, Callable] = {}\n        self._initialized = False\n\n    # ------------------------------------------------------------------\n    # Registration\n    # ------------------------------------------------------------------\n\n    def register_objective(self, obj: StrategicObjective) -> None:\n        self._objectives[obj.obj_id] = obj\n\n    def register_handler(self, key: str, handler: Callable) -> None:\n        self._handlers[key] = handler\n\n    # ------------------------------------------------------------------\n    # Persistence\n    # ------------------------------------------------------------------\n\n    async def _load_objectives(self) -> dict[str, StrategicObjective]:\n        try:\n            cache = get_cache()\n            data = await cache.get(_OBJECTIVES_KEY)\n            if data and isinstance(data, dict):\n                return {k: StrategicObjective.from_dict(v) for k, v in data.items()}\n        except Exception:\n            pass\n        return {}\n\n    async def _save_objectives(self, objectives: dict[str, StrategicObjective]) -> None:\n        try:\n            cache = get_cache()\n            await cache.set(_OBJECTIVES_KEY, {k: v.to_dict() for k, v in objectives.items()}, ttl_seconds=_OBJECTIVES_TTL)\n        except Exception:\n            pass\n\n    async def _load_history(self) -> list[ExecutionRecord]:\n        try:\n            cache = get_cache()\n            data = await cache.get(_HISTORY_KEY)\n            if data and isinstance(data, list):\n                return [ExecutionRecord.from_dict(r) for r in data]\n        except Exception:\n            pass\n        return []\n\n    async def _save_history(self, records: list[ExecutionRecord]) -> None:\n        try:\n            cache = get_cache()\n            await cache.set(_HISTORY_KEY, [r.to_dict() for r in records[-500:]], ttl_seconds=_HISTORY_TTL)\n        except Exception:\n            pass\n\n    # ------------------------------------------------------------------\n    # Core API\n    # ------------------------------------------------------------------\n\n    async def get_objectives(self) -> list[StrategicObjective]:\n        stored = await self._load_objectives()\n        # merge in-memory with persisted (in-memory takes precedence for registered)\n        merged = {**stored, **self._objectives}\n        return list(merged.values())\n\n    async def run_due_objectives(self) -> list[ExecutionRecord]:\n        objectives = await self.get_objectives()\n        due = [o for o in objectives if o.enabled and o.status == ObjectiveStatus.ACTIVE and o.is_due()]\n        if not due:\n            return []\n\n        results: list[ExecutionRecord] = list(\n            await asyncio.gather(*[self._run_objective(o) for o in due], return_exceptions=False)\n        )\n\n        # persist updated objectives\n        all_objs = {o.obj_id: o for o in objectives}\n        for obj in due:\n            all_objs[obj.obj_id] = obj\n        await self._save_objectives(all_objs)\n\n        # append to history\n        history = await self._load_history()\n        history.extend(results)\n        await self._save_history(history)\n\n        return results\n\n    async def _run_objective(self, obj: StrategicObjective) -> ExecutionRecord:\n        record = ExecutionRecord(obj_id=obj.obj_id, started_at=time.time())\n        handler = self._handlers.get(obj.handler_key)\n        try:\n            if handler is not None:\n                output = await handler(obj)\n            else:\n                output = {"skipped": True, "reason": f"No handler registered for '{obj.handler_key}'"}\n\n            record.success = True\n            record.output = output if isinstance(output, dict) else {"result": str(output)}\n            record.value_generated_usd = record.output.get("value_usd", 0.0)\n            obj.success_count += 1\n            obj.total_value_usd += record.value_generated_usd\n        except Exception as exc:\n            record.success = False\n            record.error = str(exc)\n            obj.fail_count += 1\n        finally:\n            record.completed_at = time.time()\n            obj.total_runs += 1\n            obj.last_run_ts = record.started_at\n            obj.schedule_next()\n\n        return record\n\n    async def continuous_loop(self, interval_seconds: int = 300) -> None:\n        while True:\n            try:\n                await self.run_due_objectives()\n            except Exception:\n                pass\n            await asyncio.sleep(interval_seconds)\n\n    async def reprioritize(self) -> None:\n        objectives = await self.get_objectives()\n        changed = False\n        for obj in objectives:\n            value_per_run = obj.total_value_usd / max(obj.total_runs, 1)\n            if value_per_run > 10 and obj.priority > ObjectivePriority.HIGH:\n                obj.priority = ObjectivePriority(int(obj.priority) - 1)\n                changed = True\n            if obj.total_runs >= 5 and obj.success_rate < 0.2 and obj.status == ObjectiveStatus.ACTIVE:\n                obj.status = ObjectiveStatus.PAUSED\n                changed = True\n        if changed:\n            all_objs = {o.obj_id: o for o in objectives}\n            await self._save_objectives(all_objs)\n\n    async def history(self, limit: int = 50) -> list[ExecutionRecord]:\n        records = await self._load_history()\n        return records[-limit:]\n\n    def summary(self) -> dict:\n        objs = list(self._objectives.values())\n        total_value = sum(o.total_value_usd for o in objs)\n        total_success = sum(o.success_count for o in objs)\n        total_runs = sum(o.total_runs for o in objs)\n        return {\n            "total_objectives": len(objs),\n            "active": sum(1 for o in objs if o.status == ObjectiveStatus.ACTIVE),\n            "paused": sum(1 for o in objs if o.status == ObjectiveStatus.PAUSED),\n            "total_value_generated_usd": total_value,\n            "success_rate_overall": total_success / max(total_runs, 1),\n        }\n\n    # ------------------------------------------------------------------\n    # Default objectives\n    # ------------------------------------------------------------------\n\n    def _default_objectives(self) -> list[StrategicObjective]:\n        now = time.time()\n        return [\n            StrategicObjective(\n                obj_id="growth_loops_cycle",\n                name="Growth Loops Cycle",\n                description="Runs viral growth loops across all channels to compound user acquisition",\n                priority=ObjectivePriority.HIGH,\n                frequency_hours=6.0,\n                handler_key="growth_loops_cycle",\n                next_run_ts=now,\n            ),\n            StrategicObjective(\n                obj_id="shopify_optimization",\n                name="Shopify Store Optimization",\n                description="Optimizes product listings, pricing, and conversions on Shopify",\n                priority=ObjectivePriority.HIGH,\n                frequency_hours=12.0,\n                handler_key="shopify_optimization",\n                next_run_ts=now,\n            ),\n            StrategicObjective(\n                obj_id="content_generation",\n                name="Content Generation",\n                description="Auto-generates and publishes high-value content across channels",\n                priority=ObjectivePriority.NORMAL,\n                frequency_hours=8.0,\n                handler_key="content_generation",\n                next_run_ts=now,\n            ),\n            StrategicObjective(\n                obj_id="market_intelligence",\n                name="Market Intelligence",\n                description="Gathers competitive intelligence and market trends",\n                priority=ObjectivePriority.NORMAL,\n                frequency_hours=24.0,\n                handler_key="market_intelligence",\n                next_run_ts=now,\n            ),\n            StrategicObjective(\n                obj_id="crm_nurture",\n                name="CRM Lead Nurture",\n                description="Automatically nurtures leads and retains high-value customers",\n                priority=ObjectivePriority.HIGH,\n                frequency_hours=12.0,\n                handler_key="crm_nurture",\n                next_run_ts=now,\n            ),\n            StrategicObjective(\n                obj_id="economic_rebalancing",\n                name="Economic Rebalancing",\n                description="Rebalances budget allocation across channels for maximum ROI",\n                priority=ObjectivePriority.NORMAL,\n                frequency_hours=24.0,\n                handler_key="economic_rebalancing",\n                next_run_ts=now,\n            ),\n            StrategicObjective(\n                obj_id="morning_briefing",\n                name="Morning Briefing",\n                description="Sends daily business summary to owner via Telegram",\n                priority=ObjectivePriority.HIGH,\n                frequency_hours=24.0,\n                handler_key="morning_briefing",\n                next_run_ts=now + 3600 * 8,\n            ),\n            StrategicObjective(\n                obj_id="product_launch_blitz",\n                name="Product Launch Blitz",\n                description="Creates products + publishes announcements + social promotion in one shot",\n                priority=ObjectivePriority.HIGH,\n                frequency_hours=48.0,\n                handler_key="product_launch_blitz",\n                next_run_ts=now + 3600 * 12,\n            ),\n        ]\n\n\n_scheduler_instance: AutonomousScheduler | None = None\n\n\ndef _register_default_handlers(scheduler: AutonomousScheduler) -> None:\n    """Wire up income-generating handlers for all 6 strategic objectives."""\n\n    async def _growth_loops_cycle(obj: StrategicObjective) -> dict:\n        import random as _rnd\n        from apps.core.tools.income_loop import get_income_loop\n        loop = get_income_loop()\n        results = []\n        total_value = 0.0\n        # Pick 3 diverse strategies each cycle: one viral, one product, one content\n        viral_pick = _rnd.choice(["social_blitz", "viral_thread"])\n        product_pick = _rnd.choice(["niche_rotator", "lead_magnet", "affiliate_content"])\n        content_pick = _rnd.choice(["github_publish", "affiliate_content", "ebook_factory"])\n        for strategy in (viral_pick, product_pick, content_pick):\n            try:\n                r = await loop._run_one_cycle(force_strategy=strategy)\n                results.append({"strategy": strategy, "success": r.success, "summary": r.summary})\n                total_value += r.revenue_potential\n            except Exception:\n                pass\n        success = any(r["success"] for r in results)\n        return {"success": success, "summary": f"Growth loops: {len(results)} strategies | ${total_value:.1f}", "value_usd": total_value}\n\n    async def _shopify_optimization(obj: StrategicObjective) -> dict:\n        from apps.core.tools.income_loop import get_income_loop\n        loop = get_income_loop()\n        r = await loop._run_one_cycle(force_strategy="shopify_listing")\n        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}\n\n    async def _content_generation(obj: StrategicObjective) -> dict:\n        from apps.core.tools.income_loop import get_income_loop\n        loop = get_income_loop()\n        r = await loop._run_one_cycle(force_strategy="content_pipeline")\n        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}\n\n    async def _market_intelligence(obj: StrategicObjective) -> dict:\n        from apps.core.tools.income_loop import get_income_loop\n        loop = get_income_loop()\n        r = await loop._run_one_cycle(force_strategy="opportunity_scan")\n        return {"success": r.success, "summary": r.summary, "value_usd": 0.0}\n\n    async def _crm_nurture(obj: StrategicObjective) -> dict:\n        from apps.core.tools.income_loop import get_income_loop\n        from apps.business.crm.retention import get_retention_engine\n        from apps.business.crm.crm_engine import get_crm_engine\n        loop = get_income_loop()\n        r = await loop._run_one_cycle(force_strategy="email_campaign")\n        # Also run retention campaigns against high-risk CRM customers\n        crm = get_crm_engine()\n        at_risk = await crm.high_risk_customers()\n        customer_dicts = [\n            {\n                "email": c.email,\n                "name": c.name,\n                "segment": (c.segments[0] if c.segments else ""),\n                "total_spent_usd": c.total_spent_usd,\n                "last_purchase_ts": c.last_purchase_ts,\n                "churn_risk": c.churn_risk.value if hasattr(c.churn_risk, "value") else "medium",\n            }\n            for c in at_risk[:50]\n        ]\n        retention = get_retention_engine()\n        await retention.run_win_back(customer_dicts)\n        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}\n\n    async def _economic_rebalancing(obj: StrategicObjective) -> dict:\n        await scheduler.reprioritize()\n        return {"success": True, "summary": "Strategic objectives reprioritized by ROI", "value_usd": 0.0}\n\n    async def _morning_briefing(obj: StrategicObjective) -> dict:\n        import datetime, json\n        from apps.core.tools.income_loop import get_income_loop\n        loop = get_income_loop()\n        creds = loop.check_credentials()\n        active_channels = list(creds.get("active", {}).keys())\n        inactive_channels = list(creds.get("inactive", {}).keys())\n        history_records = await scheduler.history(limit=24)\n        recent_successes = sum(1 for r in history_records if r.success)\n        recent_value = sum(r.value_generated_usd for r in history_records)\n        # Get income loop stats\n        income_total_cycles = 0\n        income_success_rate = 0.0\n        income_recent_urls: list = []\n        try:\n            from apps.core.memory.redis_client import get_cache\n            _cache = get_cache()\n            if _cache:\n                income_total_cycles = int(await _cache.get("aria:income:total_cycles") or 0)\n                income_success = int(await _cache.get("aria:income:successful_cycles") or 0)\n                income_success_rate = (income_success / income_total_cycles * 100) if income_total_cycles else 0\n                raw_links = await _cache.get("aria:blog:links")\n                if raw_links:\n                    link_data = json.loads(raw_links) if isinstance(raw_links, str) else raw_links\n                    income_recent_urls = [item.get("url", "") for item in (link_data or [])[:3] if item.get("url")]\n        except Exception:\n            pass\n        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")\n        lines = [\n            f"☀️ <b>ARIA Morning Briefing</b> — {now_str}",\n            "",\n            "<b>📊 Actividad de las últimas 24h:</b>",\n            f"• Objetivos estratégicos: {recent_successes}/{len(history_records)} exitosos",\n            f"• Ciclos de ingresos: {income_total_cycles} total ({income_success_rate:.0f}% éxito)",\n            f"• Valor generado: ${recent_value:.2f}",\n        ]\n        if income_recent_urls:\n            lines += ["", "<b>📝 Contenido reciente publicado:</b>"]\n            for url in income_recent_urls:\n                lines.append(f"• {url}")\n        lines += [\n            "",\n            f"<b>✅ Canales activos ({len(active_channels)}):</b> {', '.join(active_channels) or 'ninguno'}",\n        ]\n        if inactive_channels:\n            lines += [\n                f"<b>❌ Inactivos ({len(inactive_channels)}):</b> {', '.join(inactive_channels[:4])}",\n                "",\n                "<b>⚡ Para activar más canales:</b>",\n                "Envíame: <code>/diagnostico</code>",\n            ]\n        lines += [\n            "",\n            "<b>📅 Agenda de hoy (automático):</b>",\n            "• 🔁 Content + affiliate content cada 30min",\n            "• 🏆 Growth loops cada 6h",\n            "• 🛒 Shopify optimization cada 12h",\n            "• 🔍 Market intelligence cada 24h",\n        ]\n        message = "\\n".join(lines)\n        try:\n            from apps.core.tools.telegram_bot import get_bot\n            bot = get_bot()\n            await bot.notify_owner(message)\n            return {"success": True, "summary": "Morning briefing sent via Telegram", "value_usd": 0.0}\n        except Exception as e:\n            return {"success": False, "summary": f"Failed to send briefing: {e}", "value_usd": 0.0}\n\n    async def _product_launch_blitz(obj: StrategicObjective) -> dict:\n        """Create a product, announce it on blog, and blast to social channels."""\n        from apps.core.tools.income_loop import get_income_loop\n        loop = get_income_loop()\n        results = []\n        total_value = 0.0\n        # 1. Scan for best opportunity\n        scan_r = await loop._run_one_cycle(force_strategy="opportunity_scan")\n        results.append({"step": "scan", "success": scan_r.success})\n        # 2. Create a product based on discovered opportunity\n        prod_r = await loop._run_one_cycle(force_strategy="product_factory")\n        results.append({"step": "product", "success": prod_r.success, "summary": prod_r.summary})\n        total_value += prod_r.revenue_potential\n        # 3. Publish affiliate content to drive traffic\n        aff_r = await loop._run_one_cycle(force_strategy="affiliate_content")\n        results.append({"step": "content", "success": aff_r.success})\n        total_value += aff_r.revenue_potential\n        # 4. Viral thread to amplify\n        thread_r = await loop._run_one_cycle(force_strategy="viral_thread")\n        results.append({"step": "thread", "success": thread_r.success})\n        successes = sum(1 for r in results if r.get("success"))\n        return {\n            "success": successes >= 2,\n            "summary": f"Launch blitz: {successes}/{len(results)} steps | ${total_value:.1f}",\n            "value_usd": total_value,\n        }\n\n    scheduler.register_handler("growth_loops_cycle", _growth_loops_cycle)\n    scheduler.register_handler("shopify_optimization", _shopify_optimization)\n    scheduler.register_handler("content_generation", _content_generation)\n    scheduler.register_handler("market_intelligence", _market_intelligence)\n    scheduler.register_handler("crm_nurture", _crm_nurture)\n    scheduler.register_handler("economic_rebalancing", _economic_rebalancing)\n    scheduler.register_handler("morning_briefing", _morning_briefing)\n    scheduler.register_handler("product_launch_blitz", _product_launch_blitz)\n\n\ndef get_autonomous_scheduler() -> AutonomousScheduler:\n    global _scheduler_instance\n    if _scheduler_instance is None:\n        _scheduler_instance = AutonomousScheduler()\n        for obj in _scheduler_instance._default_objectives():\n            _scheduler_instance.register_objective(obj)\n        _register_default_handlers(_scheduler_instance)\n    return _scheduler_instance\n
+from __future__ import annotations
+
+import asyncio
+import time
+import uuid
+from dataclasses import dataclass, field
+from enum import IntEnum, Enum
+from typing import Callable
+
+from apps.core.memory.redis_client import get_cache
+
+_OBJECTIVES_KEY = "autonomy:objectives:v1"
+_HISTORY_KEY = "autonomy:history:v1"
+_OBJECTIVES_TTL = 86400 * 365
+_HISTORY_TTL = 86400 * 90
+
+
+class ObjectivePriority(IntEnum):
+    CRITICAL = 1
+    HIGH = 2
+    NORMAL = 3
+    LOW = 4
+
+
+class ObjectiveStatus(str, Enum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class StrategicObjective:
+    obj_id: str
+    name: str
+    description: str
+    priority: ObjectivePriority
+    frequency_hours: float
+    handler_key: str
+    enabled: bool = True
+    last_run_ts: float = 0.0
+    next_run_ts: float = 0.0
+    total_runs: int = 0
+    success_count: int = 0
+    fail_count: int = 0
+    total_value_usd: float = 0.0
+    status: ObjectiveStatus = ObjectiveStatus.ACTIVE
+
+    def is_due(self) -> bool:
+        return time.time() >= self.next_run_ts
+
+    @property
+    def success_rate(self) -> float:
+        total = self.success_count + self.fail_count
+        return self.success_count / total if total > 0 else 0.0
+
+    def schedule_next(self) -> None:
+        self.next_run_ts = time.time() + self.frequency_hours * 3600
+
+    def to_dict(self) -> dict:
+        return {
+            "obj_id": self.obj_id,
+            "name": self.name,
+            "description": self.description,
+            "priority": int(self.priority),
+            "frequency_hours": self.frequency_hours,
+            "handler_key": self.handler_key,
+            "enabled": self.enabled,
+            "last_run_ts": self.last_run_ts,
+            "next_run_ts": self.next_run_ts,
+            "total_runs": self.total_runs,
+            "success_count": self.success_count,
+            "fail_count": self.fail_count,
+            "total_value_usd": self.total_value_usd,
+            "status": self.status.value,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> StrategicObjective:
+        return cls(
+            obj_id=d["obj_id"],
+            name=d["name"],
+            description=d["description"],
+            priority=ObjectivePriority(d["priority"]),
+            frequency_hours=d["frequency_hours"],
+            handler_key=d["handler_key"],
+            enabled=d.get("enabled", True),
+            last_run_ts=d.get("last_run_ts", 0.0),
+            next_run_ts=d.get("next_run_ts", 0.0),
+            total_runs=d.get("total_runs", 0),
+            success_count=d.get("success_count", 0),
+            fail_count=d.get("fail_count", 0),
+            total_value_usd=d.get("total_value_usd", 0.0),
+            status=ObjectiveStatus(d.get("status", ObjectiveStatus.ACTIVE.value)),
+        )
+
+
+@dataclass
+class ExecutionRecord:
+    record_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    obj_id: str = ""
+    started_at: float = field(default_factory=time.time)
+    completed_at: float = 0.0
+    success: bool = False
+    value_generated_usd: float = 0.0
+    error: str = ""
+    output: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "record_id": self.record_id,
+            "obj_id": self.obj_id,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "success": self.success,
+            "value_generated_usd": self.value_generated_usd,
+            "error": self.error,
+            "output": self.output,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> ExecutionRecord:
+        return cls(
+            record_id=d["record_id"],
+            obj_id=d["obj_id"],
+            started_at=d["started_at"],
+            completed_at=d.get("completed_at", 0.0),
+            success=d.get("success", False),
+            value_generated_usd=d.get("value_generated_usd", 0.0),
+            error=d.get("error", ""),
+            output=d.get("output", {}),
+        )
+
+
+class AutonomousScheduler:
+    def __init__(self) -> None:
+        self._objectives: dict[str, StrategicObjective] = {}
+        self._handlers: dict[str, Callable] = {}
+        self._initialized = False
+
+    # ------------------------------------------------------------------
+    # Registration
+    # ------------------------------------------------------------------
+
+    def register_objective(self, obj: StrategicObjective) -> None:
+        self._objectives[obj.obj_id] = obj
+
+    def register_handler(self, key: str, handler: Callable) -> None:
+        self._handlers[key] = handler
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    async def _load_objectives(self) -> dict[str, StrategicObjective]:
+        try:
+            cache = get_cache()
+            data = await cache.get(_OBJECTIVES_KEY)
+            if data and isinstance(data, dict):
+                return {k: StrategicObjective.from_dict(v) for k, v in data.items()}
+        except Exception:
+            pass
+        return {}
+
+    async def _save_objectives(self, objectives: dict[str, StrategicObjective]) -> None:
+        try:
+            cache = get_cache()
+            await cache.set(_OBJECTIVES_KEY, {k: v.to_dict() for k, v in objectives.items()}, ttl_seconds=_OBJECTIVES_TTL)
+        except Exception:
+            pass
+
+    async def _load_history(self) -> list[ExecutionRecord]:
+        try:
+            cache = get_cache()
+            data = await cache.get(_HISTORY_KEY)
+            if data and isinstance(data, list):
+                return [ExecutionRecord.from_dict(r) for r in data]
+        except Exception:
+            pass
+        return []
+
+    async def _save_history(self, records: list[ExecutionRecord]) -> None:
+        try:
+            cache = get_cache()
+            await cache.set(_HISTORY_KEY, [r.to_dict() for r in records[-500:]], ttl_seconds=_HISTORY_TTL)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Core API
+    # ------------------------------------------------------------------
+
+    async def get_objectives(self) -> list[StrategicObjective]:
+        stored = await self._load_objectives()
+        # merge in-memory with persisted (in-memory takes precedence for registered)
+        merged = {**stored, **self._objectives}
+        return list(merged.values())
+
+    async def run_due_objectives(self) -> list[ExecutionRecord]:
+        objectives = await self.get_objectives()
+        due = [o for o in objectives if o.enabled and o.status == ObjectiveStatus.ACTIVE and o.is_due()]
+        if not due:
+            return []
+
+        results: list[ExecutionRecord] = list(
+            await asyncio.gather(*[self._run_objective(o) for o in due], return_exceptions=False)
+        )
+
+        # persist updated objectives
+        all_objs = {o.obj_id: o for o in objectives}
+        for obj in due:
+            all_objs[obj.obj_id] = obj
+        await self._save_objectives(all_objs)
+
+        # append to history
+        history = await self._load_history()
+        history.extend(results)
+        await self._save_history(history)
+
+        return results
+
+    async def _run_objective(self, obj: StrategicObjective) -> ExecutionRecord:
+        record = ExecutionRecord(obj_id=obj.obj_id, started_at=time.time())
+        handler = self._handlers.get(obj.handler_key)
+        try:
+            if handler is not None:
+                output = await handler(obj)
+            else:
+                output = {"skipped": True, "reason": f"No handler registered for '{obj.handler_key}'"}
+
+            record.success = True
+            record.output = output if isinstance(output, dict) else {"result": str(output)}
+            record.value_generated_usd = record.output.get("value_usd", 0.0)
+            obj.success_count += 1
+            obj.total_value_usd += record.value_generated_usd
+        except Exception as exc:
+            record.success = False
+            record.error = str(exc)
+            obj.fail_count += 1
+        finally:
+            record.completed_at = time.time()
+            obj.total_runs += 1
+            obj.last_run_ts = record.started_at
+            obj.schedule_next()
+
+        return record
+
+    async def continuous_loop(self, interval_seconds: int = 300) -> None:
+        while True:
+            try:
+                await self.run_due_objectives()
+            except Exception:
+                pass
+            await asyncio.sleep(interval_seconds)
+
+    async def reprioritize(self) -> None:
+        objectives = await self.get_objectives()
+        changed = False
+        for obj in objectives:
+            value_per_run = obj.total_value_usd / max(obj.total_runs, 1)
+            if value_per_run > 10 and obj.priority > ObjectivePriority.HIGH:
+                obj.priority = ObjectivePriority(int(obj.priority) - 1)
+                changed = True
+            if obj.total_runs >= 5 and obj.success_rate < 0.2 and obj.status == ObjectiveStatus.ACTIVE:
+                obj.status = ObjectiveStatus.PAUSED
+                changed = True
+        if changed:
+            all_objs = {o.obj_id: o for o in objectives}
+            await self._save_objectives(all_objs)
+
+    async def history(self, limit: int = 50) -> list[ExecutionRecord]:
+        records = await self._load_history()
+        return records[-limit:]
+
+    def summary(self) -> dict:
+        objs = list(self._objectives.values())
+        total_value = sum(o.total_value_usd for o in objs)
+        total_success = sum(o.success_count for o in objs)
+        total_runs = sum(o.total_runs for o in objs)
+        return {
+            "total_objectives": len(objs),
+            "active": sum(1 for o in objs if o.status == ObjectiveStatus.ACTIVE),
+            "paused": sum(1 for o in objs if o.status == ObjectiveStatus.PAUSED),
+            "total_value_generated_usd": total_value,
+            "success_rate_overall": total_success / max(total_runs, 1),
+        }
+
+    # ------------------------------------------------------------------
+    # Default objectives
+    # ------------------------------------------------------------------
+
+    def _default_objectives(self) -> list[StrategicObjective]:
+        now = time.time()
+        return [
+            StrategicObjective(
+                obj_id="growth_loops_cycle",
+                name="Growth Loops Cycle",
+                description="Runs viral growth loops across all channels to compound user acquisition",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=6.0,
+                handler_key="growth_loops_cycle",
+                next_run_ts=now,
+            ),
+            StrategicObjective(
+                obj_id="shopify_optimization",
+                name="Shopify Store Optimization",
+                description="Optimizes product listings, pricing, and conversions on Shopify",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=12.0,
+                handler_key="shopify_optimization",
+                next_run_ts=now,
+            ),
+            StrategicObjective(
+                obj_id="content_generation",
+                name="Content Generation",
+                description="Auto-generates and publishes high-value content across channels",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=8.0,
+                handler_key="content_generation",
+                next_run_ts=now,
+            ),
+            StrategicObjective(
+                obj_id="market_intelligence",
+                name="Market Intelligence",
+                description="Gathers competitive intelligence and market trends",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=24.0,
+                handler_key="market_intelligence",
+                next_run_ts=now,
+            ),
+            StrategicObjective(
+                obj_id="crm_nurture",
+                name="CRM Lead Nurture",
+                description="Automatically nurtures leads and retains high-value customers",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=12.0,
+                handler_key="crm_nurture",
+                next_run_ts=now,
+            ),
+            StrategicObjective(
+                obj_id="economic_rebalancing",
+                name="Economic Rebalancing",
+                description="Rebalances budget allocation across channels for maximum ROI",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=24.0,
+                handler_key="economic_rebalancing",
+                next_run_ts=now,
+            ),
+            StrategicObjective(
+                obj_id="morning_briefing",
+                name="Morning Briefing",
+                description="Sends daily business summary to owner via Telegram",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=24.0,
+                handler_key="morning_briefing",
+                next_run_ts=now + 3600 * 8,
+            ),
+            StrategicObjective(
+                obj_id="product_launch_blitz",
+                name="Product Launch Blitz",
+                description="Creates products + publishes announcements + social promotion in one shot",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=48.0,
+                handler_key="product_launch_blitz",
+                next_run_ts=now + 3600 * 12,
+            ),
+            StrategicObjective(
+                obj_id="daily_revenue_digest",
+                name="Daily Revenue Digest",
+                description="Evening digest: full revenue breakdown, top strategies, published URLs, and 7-day projection",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=24.0,
+                handler_key="daily_revenue_digest",
+                next_run_ts=now + 3600 * 20,  # first run ~8pm
+            ),
+            StrategicObjective(
+                obj_id="bundle_and_waitlist",
+                name="Bundle & Waitlist Cycle",
+                description="Creates product bundles and waitlist funnels every 48h to maximize AOV and capture leads",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=48.0,
+                handler_key="bundle_and_waitlist",
+                next_run_ts=now + 3600 * 6,
+            ),
+        ]
+
+
+_scheduler_instance: AutonomousScheduler | None = None
+
+
+def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
+    """Wire up income-generating handlers for all 6 strategic objectives."""
+
+    async def _growth_loops_cycle(obj: StrategicObjective) -> dict:
+        import random as _rnd
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        results = []
+        total_value = 0.0
+        # Pick 3 diverse strategies each cycle: one viral, one product, one content
+        viral_pick = _rnd.choice(["social_blitz", "viral_thread"])
+        product_pick = _rnd.choice(["niche_rotator", "lead_magnet", "affiliate_content"])
+        content_pick = _rnd.choice(["github_publish", "affiliate_content", "ebook_factory"])
+        for strategy in (viral_pick, product_pick, content_pick):
+            try:
+                r = await loop._run_one_cycle(force_strategy=strategy)
+                results.append({"strategy": strategy, "success": r.success, "summary": r.summary})
+                total_value += r.revenue_potential
+            except Exception:
+                pass
+        success = any(r["success"] for r in results)
+        return {"success": success, "summary": f"Growth loops: {len(results)} strategies | ${total_value:.1f}", "value_usd": total_value}
+
+    async def _shopify_optimization(obj: StrategicObjective) -> dict:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        r = await loop._run_one_cycle(force_strategy="shopify_listing")
+        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
+
+    async def _content_generation(obj: StrategicObjective) -> dict:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        r = await loop._run_one_cycle(force_strategy="content_pipeline")
+        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
+
+    async def _market_intelligence(obj: StrategicObjective) -> dict:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        r = await loop._run_one_cycle(force_strategy="opportunity_scan")
+        return {"success": r.success, "summary": r.summary, "value_usd": 0.0}
+
+    async def _crm_nurture(obj: StrategicObjective) -> dict:
+        from apps.core.tools.income_loop import get_income_loop
+        from apps.business.crm.retention import get_retention_engine
+        from apps.business.crm.crm_engine import get_crm_engine
+        loop = get_income_loop()
+        r = await loop._run_one_cycle(force_strategy="email_campaign")
+        # Also run retention campaigns against high-risk CRM customers
+        crm = get_crm_engine()
+        at_risk = await crm.high_risk_customers()
+        customer_dicts = [
+            {
+                "email": c.email,
+                "name": c.name,
+                "segment": (c.segments[0] if c.segments else ""),
+                "total_spent_usd": c.total_spent_usd,
+                "last_purchase_ts": c.last_purchase_ts,
+                "churn_risk": c.churn_risk.value if hasattr(c.churn_risk, "value") else "medium",
+            }
+            for c in at_risk[:50]
+        ]
+        retention = get_retention_engine()
+        await retention.run_win_back(customer_dicts)
+        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
+
+    async def _economic_rebalancing(obj: StrategicObjective) -> dict:
+        await scheduler.reprioritize()
+        return {"success": True, "summary": "Strategic objectives reprioritized by ROI", "value_usd": 0.0}
+
+    async def _morning_briefing(obj: StrategicObjective) -> dict:
+        import datetime, json
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        creds = loop.check_credentials()
+        active_channels = list(creds.get("active", {}).keys())
+        inactive_channels = list(creds.get("inactive", {}).keys())
+        history_records = await scheduler.history(limit=24)
+        recent_successes = sum(1 for r in history_records if r.success)
+        recent_value = sum(r.value_generated_usd for r in history_records)
+        # Get income loop stats
+        income_total_cycles = 0
+        income_success_rate = 0.0
+        income_recent_urls: list = []
+        try:
+            from apps.core.memory.redis_client import get_cache
+            _cache = get_cache()
+            if _cache:
+                income_total_cycles = int(await _cache.get("aria:income:total_cycles") or 0)
+                income_success = int(await _cache.get("aria:income:successful_cycles") or 0)
+                income_success_rate = (income_success / income_total_cycles * 100) if income_total_cycles else 0
+                raw_links = await _cache.get("aria:blog:links")
+                if raw_links:
+                    link_data = json.loads(raw_links) if isinstance(raw_links, str) else raw_links
+                    income_recent_urls = [item.get("url", "") for item in (link_data or [])[:3] if item.get("url")]
+        except Exception:
+            pass
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        lines = [
+            f"☀️ <b>ARIA Morning Briefing</b> — {now_str}",
+            "",
+            "<b>📊 Actividad de las últimas 24h:</b>",
+            f"• Objetivos estratégicos: {recent_successes}/{len(history_records)} exitosos",
+            f"• Ciclos de ingresos: {income_total_cycles} total ({income_success_rate:.0f}% éxito)",
+            f"• Valor generado: ${recent_value:.2f}",
+        ]
+        if income_recent_urls:
+            lines += ["", "<b>📝 Contenido reciente publicado:</b>"]
+            for url in income_recent_urls:
+                lines.append(f"• {url}")
+        lines += [
+            "",
+            f"<b>✅ Canales activos ({len(active_channels)}):</b> {', '.join(active_channels) or 'ninguno'}",
+        ]
+        if inactive_channels:
+            lines += [
+                f"<b>❌ Inactivos ({len(inactive_channels)}):</b> {', '.join(inactive_channels[:4])}",
+                "",
+                "<b>⚡ Para activar más canales:</b>",
+                "Envíame: <code>/diagnostico</code>",
+            ]
+        lines += [
+            "",
+            "<b>📅 Agenda de hoy (automático):</b>",
+            "• 🔁 Content + affiliate content cada 30min",
+            "• 🏆 Growth loops cada 6h",
+            "• 🛒 Shopify optimization cada 12h",
+            "• 🔍 Market intelligence cada 24h",
+        ]
+        message = "\
+".join(lines)
+        try:
+            from apps.core.tools.telegram_bot import get_bot
+            bot = get_bot()
+            await bot.notify_owner(message)
+            return {"success": True, "summary": "Morning briefing sent via Telegram", "value_usd": 0.0}
+        except Exception as e:
+            return {"success": False, "summary": f"Failed to send briefing: {e}", "value_usd": 0.0}
+
+    async def _product_launch_blitz(obj: StrategicObjective) -> dict:
+        """Create a product, announce it on blog, and blast to social channels."""
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        results = []
+        total_value = 0.0
+        # 1. Scan for best opportunity
+        scan_r = await loop._run_one_cycle(force_strategy="opportunity_scan")
+        results.append({"step": "scan", "success": scan_r.success})
+        # 2. Create a product based on discovered opportunity
+        prod_r = await loop._run_one_cycle(force_strategy="product_factory")
+        results.append({"step": "product", "success": prod_r.success, "summary": prod_r.summary})
+        total_value += prod_r.revenue_potential
+        # 3. Publish affiliate content to drive traffic
+        aff_r = await loop._run_one_cycle(force_strategy="affiliate_content")
+        results.append({"step": "content", "success": aff_r.success})
+        total_value += aff_r.revenue_potential
+        # 4. Viral thread to amplify
+        thread_r = await loop._run_one_cycle(force_strategy="viral_thread")
+        results.append({"step": "thread", "success": thread_r.success})
+        successes = sum(1 for r in results if r.get("success"))
+        return {
+            "success": successes >= 2,
+            "summary": f"Launch blitz: {successes}/{len(results)} steps | ${total_value:.1f}",
+            "value_usd": total_value,
+        }
+
+    async def _daily_revenue_digest(obj: StrategicObjective) -> dict:
+        """
+        Evening digest: full revenue breakdown + published URLs + 7d projection.
+        Sent proactively at ~8pm. Also archived to GitHub aria-insights/reports/.
+        """
+        import json as _json
+        import datetime as _dt
+        from apps.core.tools.income_loop import get_income_loop, STRATEGIES, INTERVAL_SECONDS
+        loop = get_income_loop()
+        today_str = _dt.datetime.now().strftime("%Y-%m-%d")
+
+        total_cycles = 0
+        success_count = 0
+        total_urls = 0
+        total_rev = 0.0
+        strategy_rows: list[dict] = []
+        recent_urls: list[str] = []
+        waitlist_count = 0
+        bundle_count = 0
+        catalog_count = 0
+
+        try:
+            from apps.core.memory.redis_client import get_cache
+            _cache = get_cache()
+            if _cache:
+                total_cycles  = int(await _cache.get("aria:income:total_cycles") or 0)
+                success_count = int(await _cache.get("aria:income:successful_cycles") or 0)
+                total_urls    = int(await _cache.get("aria:income:total_urls_published") or 0)
+
+                # Per-strategy revenue
+                for name, weight in STRATEGIES:
+                    runs  = int(await _cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                    wins  = int(await _cache.get(f"aria:income:strategy:{name}:successes") or 0)
+                    raw_r = await _cache.get(f"aria:income:strategy:{name}:revenue")
+                    rev   = float(raw_r) if raw_r else 0.0
+                    total_rev += rev
+                    if runs > 0:
+                        strategy_rows.append({"name": name, "runs": runs, "wins": wins, "rev": rev})
+
+                # Recent URLs
+                history_raw = await _cache.lrange("aria:income:loop_history", -48, -1)
+                for raw in (history_raw or []):
+                    try:
+                        c = _json.loads(raw) if isinstance(raw, str) else raw
+                        recent_urls.extend(c.get("urls_created", []))
+                    except Exception:
+                        pass
+                recent_urls = [u for u in recent_urls if u][:8]
+
+                # Pipeline counts
+                wl_raw = await _cache.lrange("aria:income:waitlist_pipeline", 0, -1)
+                waitlist_count = len(wl_raw or [])
+                catalog_raw = await _cache.lrange("aria:products:catalog", 0, -1)
+                catalog_count = len(catalog_raw or [])
+
+        except Exception:
+            pass
+
+        # Sort strategies by revenue
+        strategy_rows.sort(key=lambda r: (-r["rev"], -r["runs"]))
+        success_rate = (success_count / total_cycles * 100) if total_cycles else 0.0
+
+        # Revenue projection
+        cycles_per_day = (24 * 3600) / INTERVAL_SECONDS
+        rev_per_cycle  = total_rev / max(total_cycles, 1)
+        proj_7d  = rev_per_cycle * cycles_per_day * 7
+        proj_30d = rev_per_cycle * cycles_per_day * 30
+
+        lines = [
+            f"🌙 <b>ARIA Daily Revenue Digest</b> — {today_str}",
+            "",
+            "<b>📊 Resumen del día:</b>",
+            f"• Ciclos ejecutados: <b>{total_cycles}</b>  ({success_rate:.0f}% éxito)",
+            f"• URLs publicadas: <b>{total_urls}</b>",
+            f"• Productos en catálogo: <b>{catalog_count}</b>",
+            f"• Waitlists activas: <b>{waitlist_count}</b>",
+            f"• Revenue potencial acumulado: <b>${total_rev:.2f}</b>",
+            "",
+        ]
+
+        if strategy_rows:
+            lines.append("<b>🏆 Top estrategias por revenue:</b>")
+            for row in strategy_rows[:5]:
+                win_pct = (row["wins"] / row["runs"] * 100) if row["runs"] else 0
+                lines.append(
+                    f"  • <code>{row['name']:<22}</code>  ${row['rev']:.1f}  ({win_pct:.0f}% win)"
+                )
+            lines.append("")
+
+        if recent_urls:
+            lines.append("<b>📝 URLs publicadas hoy:</b>")
+            for url in recent_urls[:6]:
+                lines.append(f"  • {url}")
+            lines.append("")
+
+        lines += [
+            "<b>📈 Proyección de ingresos:</b>",
+            f"  7 días:  <b>${proj_7d:.2f}</b>",
+            f"  30 días: <b>${proj_30d:.2f}</b>",
+            "",
+            "<i>ARIA sigue trabajando durante la noche. Mañana más. 🚀</i>",
+            "",
+            f"<i>Usa /reporte para analíticas completas | /catalogo para ver productos</i>",
+        ]
+
+        message = "\n".join(lines)
+
+        # Archive to GitHub
+        try:
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.config import settings
+            import base64 as _b64
+            if settings.GITHUB_TOKEN:
+                gh    = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                report_md = (
+                    f"# ARIA Daily Revenue Digest — {today_str}\n\n"
+                    f"**Cycles:** {total_cycles} ({success_rate:.0f}% success rate)\n"
+                    f"**URLs published:** {total_urls}\n"
+                    f"**Products in catalog:** {catalog_count}\n"
+                    f"**Revenue potential:** ${total_rev:.2f}\n\n"
+                    f"## Top Strategies\n\n"
+                    + "\n".join(
+                        f"- {r['name']}: ${r['rev']:.1f} ({r['runs']} runs)"
+                        for r in strategy_rows[:8]
+                    )
+                    + f"\n\n## Revenue Projections\n\n"
+                    f"- 7 days: **${proj_7d:.2f}**\n"
+                    f"- 30 days: **${proj_30d:.2f}**\n"
+                    f"\n*Generated by ARIA AI — {today_str}*\n"
+                )
+                encoded = _b64.b64encode(report_md.encode()).decode()
+                await gh._put(f"/repos/{owner}/aria-insights/contents/reports/{today_str}-digest.md", {
+                    "message": f"digest: daily revenue report {today_str}",
+                    "content": encoded,
+                })
+        except Exception:
+            pass
+
+        try:
+            from apps.core.tools.telegram_bot import get_bot
+            bot = get_bot()
+            await bot.notify_owner(message)
+            return {"success": True, "summary": f"Daily digest sent — ${total_rev:.2f} revenue, {total_urls} URLs", "value_usd": 0.0}
+        except Exception as e:
+            return {"success": False, "summary": f"Daily digest failed: {e}", "value_usd": 0.0}
+
+    async def _bundle_and_waitlist(obj: StrategicObjective) -> dict:
+        """Run both product_bundle and waitlist_builder in one shot for maximum pipeline."""
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        total_value = 0.0
+        results = []
+
+        bundle_r = await loop._run_one_cycle(force_strategy="product_bundle")
+        results.append({"step": "bundle", "success": bundle_r.success, "summary": bundle_r.summary})
+        total_value += bundle_r.revenue_potential
+
+        waitlist_r = await loop._run_one_cycle(force_strategy="waitlist_builder")
+        results.append({"step": "waitlist", "success": waitlist_r.success, "summary": waitlist_r.summary})
+        total_value += waitlist_r.revenue_potential
+
+        successes = sum(1 for r in results if r.get("success"))
+        return {
+            "success": successes >= 1,
+            "summary": f"Bundle+Waitlist: {successes}/2 | ${total_value:.1f}",
+            "value_usd": total_value,
+        }
+
+    scheduler.register_handler("growth_loops_cycle", _growth_loops_cycle)
+    scheduler.register_handler("shopify_optimization", _shopify_optimization)
+    scheduler.register_handler("content_generation", _content_generation)
+    scheduler.register_handler("market_intelligence", _market_intelligence)
+    scheduler.register_handler("crm_nurture", _crm_nurture)
+    scheduler.register_handler("economic_rebalancing", _economic_rebalancing)
+    scheduler.register_handler("morning_briefing", _morning_briefing)
+    scheduler.register_handler("product_launch_blitz", _product_launch_blitz)
+    scheduler.register_handler("daily_revenue_digest", _daily_revenue_digest)
+    scheduler.register_handler("bundle_and_waitlist", _bundle_and_waitlist)
+
+
+def get_autonomous_scheduler() -> AutonomousScheduler:
+    global _scheduler_instance
+    if _scheduler_instance is None:
+        _scheduler_instance = AutonomousScheduler()
+        for obj in _scheduler_instance._default_objectives():
+            _scheduler_instance.register_objective(obj)
+        _register_default_handlers(_scheduler_instance)
+    return _scheduler_instance

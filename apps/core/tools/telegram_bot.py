@@ -59,6 +59,10 @@ QUICK_ACTIONS_KB = {
             {"text": "📦 Catálogo",              "callback_data": "quick_catalogo"},
         ],
         [
+            {"text": "🎁 Bundle de Productos",  "callback_data": "quick_bundle"},
+            {"text": "⏳ Crear Waitlist",        "callback_data": "quick_waitlist"},
+        ],
+        [
             {"text": "📚 Base de conocimiento", "callback_data": "quick_kb"},
             {"text": "⚙️ Ver capacidades",      "callback_data": "quick_help"},
         ],
@@ -109,6 +113,9 @@ BOT_COMMANDS = [
     {"command": "proyeccion",  "description": "Proyección de ingresos a 7 y 30 días"},
     {"command": "saas",        "description": "Lanzar una micro-SaaS con pricing y API docs"},
     {"command": "curso",       "description": "Crear mini-curso con syllabus completo y precio"},
+    {"command": "bundle",      "description": "Crear bundle de productos (mayor valor por venta)"},
+    {"command": "waitlist",    "description": "Crear waitlist para próximo producto (captura leads)"},
+    {"command": "digest",      "description": "Recibir el digest de ingresos del día ahora"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -303,6 +310,9 @@ class AriaTelegramBot:
             "/proyeccion":   "muéstrame la proyección de ingresos a 7 y 30 días basada en el rendimiento actual usando get_income_analytics",
             "/saas":         "lanza una micro-SaaS con pricing y API docs usando run_income_cycle con strategy micro_saas",
             "/curso":        "crea un mini-curso con syllabus completo y precio usando run_income_cycle con strategy course_builder",
+            "/bundle":       "crea un bundle de productos combinando los mejores productos del catálogo a precio especial usando run_income_cycle con strategy product_bundle",
+            "/waitlist":     "crea una lista de espera para un próximo producto con early bird offer usando run_income_cycle con strategy waitlist_builder",
+            "/digest":       "muéstrame el digest de ingresos del día con revenue, URLs publicadas y proyección usando run_objective con objective daily_revenue_digest",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):
@@ -410,6 +420,8 @@ class AriaTelegramBot:
             "quick_reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
             "quick_demo":         "publica un demo de IA en HuggingFace Spaces usando run_income_cycle con strategy hf_spaces_demo",
             "quick_catalogo":     "muéstrame el catálogo completo de productos y publicaciones de ARIA usando get_product_catalog",
+            "quick_bundle":       "crea un bundle de productos combinando los mejores del catálogo a precio especial usando run_income_cycle con strategy product_bundle",
+            "quick_waitlist":     "crea una lista de espera para un próximo producto con early bird offer usando run_income_cycle con strategy waitlist_builder",
             "example_trends":     "busca las últimas noticias sobre modelos de lenguaje grandes",
         }
 

@@ -114,7 +114,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
 - income_loop_status → muestra el estado del loop de ingresos 24/7: ciclos completados, tasa de éxito, última estrategia ejecutada, URLs creadas. Args: {{}}
 - start_income_loop → inicia el loop autónomo de ingresos 24/7 si no está corriendo. Corre cada 30 min indefinidamente. Args: {{}}
-- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread (opcional)"}}
+- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder (opcional)"}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
 - deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
@@ -220,6 +220,8 @@ REGLAS DE RAZONAMIENTO:
 49. Si el usuario pide lanzar una micro-app, crear un producto SaaS, publicar un producto de software con pricing, API docs o landing page técnica → usa run_income_cycle con strategy="micro_saas".
 50. Si el usuario pide crear un curso online, diseñar un mini-curso, crear contenido educativo o lanzar un curso con syllabus y precio → usa run_income_cycle con strategy="course_builder".
 51. Si el usuario pide crear un programa de afiliados, reclutar promotores, configurar comisiones, o crear una red de distribución de sus productos → usa run_income_cycle con strategy="affiliate_network".
+52. Si el usuario pide crear un bundle, paquete de productos, oferta combinada, agrupar productos, descuento especial, o aumentar el valor promedio de pedido → usa run_income_cycle con strategy="product_bundle".
+53. Si el usuario pide crear una lista de espera, waitlist, capturar leads antes del lanzamiento, recopilar emails de interesados, o crear una página de "próximamente" para un producto → usa run_income_cycle con strategy="waitlist_builder".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
