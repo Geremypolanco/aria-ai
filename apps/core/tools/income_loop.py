@@ -54,17 +54,18 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",  16),
-    ("niche_rotator",     15),
-    ("product_factory",   13),
+    ("content_pipeline",  15),
+    ("niche_rotator",     14),
+    ("product_factory",   12),
     ("opportunity_scan",   9),
     ("github_publish",     8),   # works with only GITHUB_TOKEN — always active
     ("shopify_listing",    7),
-    ("email_campaign",     7),
+    ("email_campaign",     6),
     ("affiliate_content",  6),   # review/comparison articles with affiliate links
     ("ebook_factory",      6),
     ("lead_magnet",        5),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",     4),   # live AI demo on HuggingFace Spaces (free, massive community)
+    ("seo_optimizer",      4),   # improve existing posts for compounding organic traffic
     ("social_blitz",       2),
     ("premium_offer",      1),
     ("viral_thread",       1),   # Twitter/X thread optimized for virality
@@ -264,6 +265,8 @@ JSON:
             return await self._exec_lead_magnet()
         elif strategy == "hf_spaces_demo":
             return await self._exec_hf_spaces_demo()
+        elif strategy == "seo_optimizer":
+            return await self._exec_seo_optimizer()
         elif strategy == "viral_thread":
             return await self._exec_viral_thread()
         return {"success": False, "summary": "Unknown strategy"}
@@ -2307,6 +2310,129 @@ Enter your text and see the magic happen.
 
         except Exception as exc:
             logger.error("[IncomeLoop] hf_spaces_demo: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_seo_optimizer(self) -> dict:
+        """
+        Revisit and improve existing GitHub blog posts:
+        - Expand thin content to 800+ words
+        - Add more SEO keywords, internal links, and call-to-action
+        - Update publication date to keep content fresh
+        Requires: GITHUB_TOKEN
+        """
+        if not settings.GITHUB_TOKEN:
+            return {"success": False, "summary": "seo_optimizer: needs GITHUB_TOKEN"}
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64
+
+            cache    = get_cache()
+            gh       = AriaGitHubClient()
+            owner    = settings.GITHUB_USERNAME or "Geremypolanco"
+            blog_repo = "aria-insights"
+
+            # Get existing articles from Redis
+            raw_links = await cache.get("aria:blog:links") if cache else None
+            existing_links: list = json.loads(raw_links) if raw_links else []
+
+            if not existing_links:
+                return {"success": False, "summary": "seo_optimizer: no existing articles to optimize"}
+
+            # Pick an article to optimize (oldest that hasn't been optimized recently)
+            opt_set_key = "aria:income:seo_optimized"
+            optimized_slugs: set = set()
+            if cache:
+                raw_opt = await cache.get(opt_set_key)
+                if raw_opt:
+                    optimized_slugs = set(json.loads(raw_opt) if isinstance(raw_opt, str) else raw_opt)
+
+            candidates = [l for l in existing_links if l.get("slug") not in optimized_slugs]
+            if not candidates:
+                # Reset if all optimized — start fresh cycle
+                optimized_slugs = set()
+                candidates = existing_links
+
+            target = candidates[0]
+            target_slug = target.get("slug", "")
+            target_title = target.get("title", "")
+            target_path  = f"posts/{target_slug}.md"
+
+            # Read the current file
+            file_data = await gh._get(f"/repos/{owner}/{blog_repo}/contents/{target_path}")
+            if "error" in file_data or "content" not in file_data:
+                return {"success": False, "summary": f"seo_optimizer: could not read {target_path}"}
+
+            current_content = _b64.b64decode(
+                file_data["content"].replace("\n", "")
+            ).decode("utf-8", errors="replace")
+
+            current_sha = file_data.get("sha", "")
+            word_count  = len(current_content.split())
+
+            # Generate improved version
+            improved = await complete_json(
+                f"""Improve this existing blog post for better SEO and reader value.
+
+Current post ({word_count} words):
+{current_content[:3000]}
+
+Requirements:
+1. Expand to at least 900 words if currently shorter
+2. Add 3-5 semantic SEO keywords naturally
+3. Add a "Key Takeaways" section at the top
+4. Add 2 internal CTA: "Want more AI tips? Follow ARIA Insights on GitHub"
+5. Add a FAQ section with 3 Q&A at the bottom
+6. Keep all existing links and affiliate tags
+7. Return full improved markdown
+
+Return JSON:
+{{
+  "improved_content": "# Title\\n\\n...",
+  "seo_score_estimate": 85,
+  "added_keywords": ["kw1", "kw2"],
+  "word_count": 950
+}}""",
+                model="fast",
+            )
+
+            new_content  = improved.get("improved_content", "")
+            seo_score    = improved.get("seo_score_estimate", 0)
+            new_word_count = improved.get("word_count", 0)
+
+            if not new_content or len(new_content) < len(current_content) * 0.8:
+                return {"success": False, "summary": "seo_optimizer: LLM returned degraded content — skipping"}
+
+            # Push updated file
+            update_r = await gh._put(
+                f"/repos/{owner}/{blog_repo}/contents/{target_path}",
+                {
+                    "message": f"seo: improve '{target_title[:50]}' (+{max(0, new_word_count - word_count)} words, SEO {seo_score}%)",
+                    "content": _b64.b64encode(new_content.encode()).decode(),
+                    "sha": current_sha,
+                },
+            )
+
+            if "error" not in update_r:
+                # Mark as optimized
+                optimized_slugs.add(target_slug)
+                if cache:
+                    await cache.set(opt_set_key, json.dumps(list(optimized_slugs)), ttl_seconds=86400 * 30)
+
+                logger.info("[IncomeLoop] SEO optimized: '%s' → %d words, SEO %d%%",
+                            target_title[:50], new_word_count, seo_score)
+                return {
+                    "success": True,
+                    "summary": f"SEO optimized: '{target_title[:50]}' ({word_count}→{new_word_count} words, SEO {seo_score}%)",
+                    "revenue_potential": 2.0,
+                    "urls": [target.get("url", "")],
+                }
+
+            return {"success": False, "summary": "seo_optimizer: GitHub push failed"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] seo_optimizer: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_viral_thread(self) -> dict:
