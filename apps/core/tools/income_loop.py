@@ -57,30 +57,33 @@ STRATEGIES = [
     ("content_pipeline",         6),
     ("niche_rotator",            5),
     ("product_factory",          5),
-    ("course_builder",           4),   # mini-course with syllabus + pricing (avg $79-$127/sale)
+    ("course_builder",           3),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        4),   # build own affiliate program, recruit promoters
     ("opportunity_scan",         5),
     ("github_publish",           6),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       6),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               4),   # full micro-SaaS product launch: README + API docs + pricing
-    ("shopify_listing",          3),
-    ("email_campaign",           3),
+    ("shopify_listing",          2),
+    ("email_campaign",           2),
     ("affiliate_content",        4),   # review/comparison articles with affiliate links
     ("ebook_factory",            5),
     ("lead_magnet",              4),   # free resource funnel → email capture → upsell
-    ("hf_spaces_demo",           3),   # live AI demo on HuggingFace Spaces (free, massive community)
+    ("hf_spaces_demo",           2),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            4),   # improve existing posts for compounding organic traffic
-    ("gist_blitz",               3),   # code snippet Gists with product CTAs (dev discovery)
+    ("gist_blitz",               2),   # code snippet Gists with product CTAs (dev discovery)
     ("product_bundle",           4),   # bundle 2-3 existing products at a discount → higher AOV
-    ("waitlist_builder",         3),   # waitlist landing page → email capture → launch pipeline
+    ("waitlist_builder",         2),   # waitlist landing page → email capture → launch pipeline
     ("challenge_campaign",       4),   # 7-day challenge series → sustained traffic + lead capture
-    ("partner_outreach",         3),   # B2B collaboration pitches → cross-promotion + co-sells
+    ("partner_outreach",         2),   # B2B collaboration pitches → cross-promotion + co-sells
     ("newsletter_issue",         4),   # full newsletter edition → recurring reader monetization
-    ("job_board_listing",        3),   # B2B service listings → consulting leads
+    ("job_board_listing",        2),   # B2B service listings → consulting leads
     ("github_sponsors_setup",    1),   # passive income via GitHub Sponsors + FUNDING.yml
-    ("social_blitz",             2),
+    ("social_blitz",             1),
     ("premium_offer",            1),
     ("viral_thread",             1),   # Twitter/X thread optimized for virality
+    ("twitter_thread",           3),   # direct Twitter API thread via api_publisher (real posts)
+    ("linkedin_post",            3),   # direct LinkedIn API post via api_publisher (real posts)
+    ("reddit_organic",           3),   # subreddit posts → massive organic traffic → affiliate rev
 ]
 
 
@@ -305,6 +308,12 @@ JSON:
             return await self._exec_job_board_listing()
         elif strategy == "viral_thread":
             return await self._exec_viral_thread()
+        elif strategy == "twitter_thread":
+            return await self._exec_twitter_thread()
+        elif strategy == "linkedin_post":
+            return await self._exec_linkedin_post()
+        elif strategy == "reddit_organic":
+            return await self._exec_reddit_organic()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -4614,6 +4623,304 @@ Or contact via [portfolio]({portfolio_url}).
             logger.error("[IncomeLoop] job_board_listing: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
+    async def _exec_twitter_thread(self) -> dict:
+        """
+        Generate a viral Twitter/X thread with TwitterEngine, then post it
+        via api_publisher (real Twitter API v2).
+        Falls back to GitHub when Twitter credentials aren't set.
+        """
+        try:
+            from apps.core.tools.web_tools import WebTools
+            from apps.distribution.twitter.twitter_engine import TwitterEngine
+            from apps.distribution.publishers.api_publisher import APIPublisher
+
+            wt = WebTools()
+            r = await wt.search_web("trending AI business automation productivity 2025", num_results=5)
+            topic = "AI is replacing human work faster than anyone admits"
+            if r.get("success") and r.get("results"):
+                topic = r["results"][0].get("title", topic)[:100]
+
+            engine = TwitterEngine()
+            thread = await engine.create_thread(topic, angle="educational", num_tweets=8)
+
+            tweet_texts = [t.get("content", "") for t in thread.tweets if t.get("content")]
+            if not tweet_texts:
+                return {"success": False, "summary": "twitter_thread: no tweets generated"}
+
+            pub = APIPublisher()
+            results = await pub.publish_thread_to_twitter(tweet_texts)
+            successful = [r for r in results if r.success]
+            urls_created = [r.url for r in successful if r.url]
+
+            if successful:
+                logger.info("[IncomeLoop] Twitter thread posted: %d/%d tweets", len(successful), len(results))
+                return {
+                    "success": True,
+                    "summary": f"Twitter thread: '{topic[:50]}' — {len(successful)}/{len(results)} tweets posted",
+                    "revenue_potential": 5.0,
+                    "urls": urls_created,
+                }
+
+            # Fallback: publish to GitHub aria-insights/threads/
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                import base64 as _b64
+                from datetime import datetime, timezone
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                slug = topic[:35].lower().replace(" ", "-").replace("'", "")
+                content = (
+                    f"# Twitter Thread: {topic}\n\n"
+                    f"*{len(tweet_texts)} tweets — optimized for virality*\n\n"
+                    + "\n\n---\n\n".join(f"**Tweet {i+1}:**\n\n{t}" for i, t in enumerate(tweet_texts))
+                    + f"\n\n---\n\n*Generated by [ARIA AI](https://github.com/{owner}/aria-portfolio)*\n"
+                    + "\n*To post: add TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET to Fly.io secrets*"
+                )
+                encoded = _b64.b64encode(content.encode()).decode()
+                file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/threads/{today}-{slug}.md", {
+                    "message": f"thread: {topic[:60]}",
+                    "content": encoded,
+                })
+                if "error" not in file_r:
+                    url = f"https://github.com/{owner}/aria-insights/blob/main/threads/{today}-{slug}.md"
+                    return {
+                        "success": True,
+                        "summary": f"Twitter thread archived to GitHub (add Twitter API keys to auto-post): {topic[:50]}",
+                        "revenue_potential": 1.5,
+                        "urls": [url],
+                    }
+
+            return {"success": False, "summary": "twitter_thread: add TWITTER_API_KEY to Fly.io secrets"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] twitter_thread: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_linkedin_post(self) -> dict:
+        """
+        Create a LinkedIn thought-leadership post with LinkedInPublisher,
+        then publish it via api_publisher (real LinkedIn API v2).
+        Falls back to GitHub when LinkedIn credentials aren't set.
+        """
+        try:
+            from apps.core.tools.web_tools import WebTools
+            from apps.distribution.linkedin.linkedin_publisher import LinkedInPublisher
+            from apps.distribution.publishers.api_publisher import APIPublisher
+
+            wt = WebTools()
+            r = await wt.search_web("B2B AI automation business strategy 2025 trending", num_results=5)
+            topic = "AI is transforming how companies operate — here's what leaders must know"
+            if r.get("success") and r.get("results"):
+                topic = r["results"][0].get("title", topic)[:120]
+
+            publisher = LinkedInPublisher()
+            post = await publisher.create_post(topic, objective="thought_leadership")
+
+            if not post.content:
+                return {"success": False, "summary": "linkedin_post: no content generated"}
+
+            pub = APIPublisher()
+            result = await pub.publish_to_linkedin(post.content, visibility="PUBLIC")
+
+            if result.success:
+                logger.info("[IncomeLoop] LinkedIn post published: %s", topic[:60])
+                return {
+                    "success": True,
+                    "summary": f"LinkedIn post published: '{topic[:60]}' — ~{post.estimated_impressions:,} impressions",
+                    "revenue_potential": 8.0,
+                    "urls": [result.url] if result.url else [],
+                }
+
+            # Fallback: archive to GitHub aria-insights/linkedin/
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                import base64 as _b64
+                from datetime import datetime, timezone
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                slug = topic[:35].lower().replace(" ", "-").replace("'", "")
+                md_content = (
+                    f"# LinkedIn Post: {topic}\n\n"
+                    f"*Engagement score: {post.engagement_score:.0%} | ~{post.estimated_impressions:,} impressions*\n\n"
+                    f"{post.content}\n\n"
+                    f"---\n\n*Generated by [ARIA AI](https://github.com/{owner}/aria-portfolio)*\n"
+                    f"*To auto-post: add LINKEDIN_ACCESS_TOKEN + LINKEDIN_PERSON_URN to Fly.io secrets*"
+                )
+                encoded = _b64.b64encode(md_content.encode()).decode()
+                file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/linkedin/{today}-{slug}.md", {
+                    "message": f"linkedin: {topic[:60]}",
+                    "content": encoded,
+                })
+                if "error" not in file_r:
+                    url = f"https://github.com/{owner}/aria-insights/blob/main/linkedin/{today}-{slug}.md"
+                    return {
+                        "success": True,
+                        "summary": f"LinkedIn post archived (add LINKEDIN_ACCESS_TOKEN to auto-post): {topic[:50]}",
+                        "revenue_potential": 2.0,
+                        "urls": [url],
+                    }
+
+            return {"success": False, "summary": f"linkedin_post: {result.error or 'add LINKEDIN_ACCESS_TOKEN + LINKEDIN_PERSON_URN'}"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] linkedin_post: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_reddit_organic(self) -> dict:
+        """
+        Generate high-value posts for relevant subreddits.
+        Posts via PRAW if REDDIT_CLIENT_ID/SECRET/REFRESH_TOKEN are set.
+        Falls back to GitHub archive with full Reddit-formatted content.
+
+        Target subreddits for max organic traffic:
+          r/Entrepreneur, r/SideProject, r/passive_income, r/artificial,
+          r/MachineLearning, r/learnprogramming, r/digitalnomad
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+            import os as _os
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "reddit_organic: AI unavailable"}
+
+            wt = WebTools()
+            r = await wt.search_web("top Reddit posts r/entrepreneur r/SideProject 2025 AI automation", num_results=5)
+            trending_topic = "How I automated my entire business with AI in 30 days (and what actually worked)"
+            if r.get("success") and r.get("results"):
+                trending_topic = r["results"][0].get("title", trending_topic)[:120]
+
+            # AI generates subreddit-tailored posts
+            post_data = await ai.complete_json(
+                system=(
+                    "You write Reddit posts that get thousands of upvotes. "
+                    "Format: value-first storytelling with real numbers, specific steps, "
+                    "no self-promotion unless very subtle at the end. "
+                    "Write posts that Reddit communities LOVE. Output JSON only."
+                ),
+                user=f"""Generate 3 Reddit posts on the theme: "{trending_topic}"
+
+Each post tailored to a different subreddit.
+
+JSON:
+{{
+  "posts": [
+    {{
+      "subreddit": "Entrepreneur",
+      "title": "post title (max 300 chars, compelling)",
+      "body": "post body (600-1000 words, first-person story format, real value, subtle CTA at end)",
+      "flair": "Story",
+      "tags": ["AI", "automation", "business"]
+    }},
+    {{
+      "subreddit": "SideProject",
+      "title": "Show r/SideProject: [compelling title]",
+      "body": "technical build story with outcomes (400-700 words)",
+      "flair": "Built",
+      "tags": ["AI", "indie", "saas"]
+    }},
+    {{
+      "subreddit": "passive_income",
+      "title": "earnings report title with real numbers",
+      "body": "income report format (400-600 words)",
+      "flair": "Update",
+      "tags": ["AI", "passive", "income"]
+    }}
+  ]
+}}""",
+                model=AIModel.CREATIVE,
+                max_tokens=3000,
+            )
+
+            if not post_data or not post_data.get("posts"):
+                return {"success": False, "summary": "reddit_organic: AI failed to generate posts"}
+
+            posts = post_data["posts"]
+            urls_created = []
+            posted_count = 0
+
+            # Try PRAW first (real Reddit posting)
+            reddit_client_id = _os.getenv("REDDIT_CLIENT_ID", "")
+            reddit_client_secret = _os.getenv("REDDIT_CLIENT_SECRET", "")
+            reddit_refresh_token = _os.getenv("REDDIT_REFRESH_TOKEN", "")
+            reddit_username = _os.getenv("REDDIT_USERNAME", "")
+
+            praw_available = all([reddit_client_id, reddit_client_secret, reddit_refresh_token, reddit_username])
+
+            if praw_available:
+                try:
+                    import asyncpraw  # type: ignore
+                    reddit = asyncpraw.Reddit(
+                        client_id=reddit_client_id,
+                        client_secret=reddit_client_secret,
+                        refresh_token=reddit_refresh_token,
+                        user_agent=f"ARIA AI Bot by /u/{reddit_username}",
+                    )
+                    for post in posts[:2]:  # max 2 posts per cycle to avoid spam
+                        try:
+                            subreddit = await reddit.subreddit(post["subreddit"])
+                            submission = await subreddit.submit(
+                                title=post["title"][:300],
+                                selftext=post["body"][:40000],
+                            )
+                            post_url = f"https://reddit.com{submission.permalink}"
+                            urls_created.append(post_url)
+                            posted_count += 1
+                            await asyncio.sleep(5)  # rate limit
+                        except Exception as _pe:
+                            logger.debug("[IncomeLoop] reddit PRAW post failed: %s", _pe)
+                    await reddit.close()
+                except ImportError:
+                    praw_available = False
+                except Exception as _re:
+                    logger.debug("[IncomeLoop] reddit PRAW: %s", _re)
+                    praw_available = False
+
+            # Always archive to GitHub (even if PRAW posted, for SEO + record)
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                import base64 as _b64
+                from datetime import datetime, timezone
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                for i, post in enumerate(posts):
+                    slug = post["title"][:35].lower().replace(" ", "-").replace("'", "").replace("[", "").replace("]", "")
+                    md = (
+                        f"# r/{post['subreddit']}: {post['title']}\n\n"
+                        f"*Subreddit: r/{post['subreddit']} | Flair: {post.get('flair', '')}*\n\n"
+                        f"{post['body']}\n\n"
+                        f"---\n\n*Generated by [ARIA AI](https://github.com/{owner}/aria-portfolio)*\n"
+                    )
+                    encoded = _b64.b64encode(md.encode()).decode()
+                    file_r = await gh._put(
+                        f"/repos/{owner}/aria-insights/contents/reddit/{today}-r-{post['subreddit']}-{i}.md",
+                        {"message": f"reddit: r/{post['subreddit']} — {post['title'][:50]}", "content": encoded}
+                    )
+                    if "error" not in file_r:
+                        url = f"https://github.com/{owner}/aria-insights/blob/main/reddit/{today}-r-{post['subreddit']}-{i}.md"
+                        urls_created.append(url)
+
+            if not urls_created and not posted_count:
+                return {"success": False, "summary": "reddit_organic: no output generated"}
+
+            praw_note = f" ({posted_count} posted to Reddit)" if posted_count else " (archived; add REDDIT_CLIENT_ID to auto-post)"
+            logger.info("[IncomeLoop] reddit_organic: %d posts created%s", len(posts), praw_note)
+            return {
+                "success": True,
+                "summary": f"Reddit organic: {len(posts)} posts for r/Entrepreneur, r/SideProject, r/passive_income{praw_note}",
+                "revenue_potential": 12.0 if posted_count else 3.0,
+                "urls": urls_created[:5],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] reddit_organic: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
     def check_credentials(self) -> dict:
         """Returns which income channels are configured vs. missing."""
         channels = {
@@ -4703,6 +5010,33 @@ Or contact via [portfolio]({portfolio_url}).
                 "active": bool(settings.GITHUB_TOKEN),
                 "keys_needed": ["GITHUB_TOKEN"],
                 "revenue_channels": ["passive supporter income", "sponsorships", "ko-fi / buy-me-a-coffee"],
+            },
+            "twitter_api": {
+                "active": bool(
+                    getattr(settings, "TWITTER_API_KEY", None) and
+                    getattr(settings, "TWITTER_API_SECRET", None) and
+                    getattr(settings, "TWITTER_ACCESS_TOKEN", None) and
+                    getattr(settings, "TWITTER_ACCESS_SECRET", None)
+                ),
+                "keys_needed": ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"],
+                "revenue_channels": ["viral threads", "direct Twitter posting", "audience building"],
+            },
+            "linkedin_api": {
+                "active": bool(
+                    getattr(settings, "LINKEDIN_ACCESS_TOKEN", None) and
+                    getattr(settings, "LINKEDIN_PERSON_URN", None)
+                ),
+                "keys_needed": ["LINKEDIN_ACCESS_TOKEN", "LINKEDIN_PERSON_URN"],
+                "revenue_channels": ["B2B leads", "LinkedIn articles", "thought leadership"],
+            },
+            "reddit": {
+                "active": bool(
+                    getattr(settings, "REDDIT_CLIENT_ID", None) and
+                    getattr(settings, "REDDIT_CLIENT_SECRET", None) and
+                    getattr(settings, "REDDIT_REFRESH_TOKEN", None)
+                ),
+                "keys_needed": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_REFRESH_TOKEN", "REDDIT_USERNAME"],
+                "revenue_channels": ["organic Reddit traffic", "subreddit reach", "affiliate link traffic"],
             },
         }
         active   = {k: v for k, v in channels.items() if v["active"]}

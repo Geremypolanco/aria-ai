@@ -126,7 +126,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
 - income_loop_status → muestra el estado del loop de ingresos 24/7: ciclos completados, tasa de éxito, última estrategia ejecutada, URLs creadas. Args: {{}}
 - start_income_loop → inicia el loop autónomo de ingresos 24/7 si no está corriendo. Corre cada 30 min indefinidamente. Args: {{}}
-- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder (opcional)"}}
+- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder|twitter_thread|linkedin_post|reddit_organic (opcional)"}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
 - deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
@@ -158,8 +158,8 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - run_retention    → ejecuta campañas de retención: win-back a clientes inactivos 60+ días + loyalty rewards a VIPs. Args: {{}}
 - shopify_optimize → ejecuta optimizaciones de Shopify: SEO de productos, generación de bundles o flash sale. Args: {{"operation": "seo|bundles|flash_sale"}}
 - run_funnel       → analiza y devuelve estado de funnels de conversión, abandono de carrito y secuencias de email. Args: {{}}
-- check_objectives → muestra el estado de los 13 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis). Args: {{}}
-- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis"}}
+- check_objectives → muestra el estado de los 15 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis, social_organic). Args: {{}}
+- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis|social_organic"}}
 - daily_report     → muestra el reporte de ejecución del día: operaciones completadas, score de ejecución, insight y prioridad de mañana. Args: {{}}
 - human_login      → inicia sesión en una plataforma como un humano real (stealth, sin ser detectada). Args: {{"platform": "gumroad|devto|linkedin|twitter|hashnode", "email": "...", "password": "...", "username": "..."}}
 - human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
@@ -245,6 +245,9 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 56. Si el usuario pide crear un newsletter, publicar una edición de correo, escribir un boletín semanal, o generar una campaña de email con contenido editorial → usa run_income_cycle con strategy="newsletter_issue".
 57. Si el usuario pide publicar servicios de consultoría, crear una oferta de servicios, listar servicios en un directorio, crear una ficha de servicio profesional, o generar leads B2B para trabajo de consultoría → usa run_income_cycle con strategy="job_board_listing".
 58. Si el usuario dice "analiza qué necesitas hacer", "inspecciona la tienda", "haz algo útil", "qué puedes mejorar", "actúa por tu cuenta" o "toma la iniciativa" → usa run_proactive_analysis con focus="all". Esta herramienta ARIA la puede invocar también por iniciativa propia cuando no hay instrucción clara pero hay cosas por hacer.
+59. Si el usuario pide publicar en Twitter, postear un hilo, o usar la API de Twitter directamente → usa run_income_cycle con strategy="twitter_thread".
+60. Si el usuario pide publicar en LinkedIn, escribir un post de LinkedIn o usar la API de LinkedIn → usa run_income_cycle con strategy="linkedin_post".
+61. Si el usuario pide generar tráfico orgánico de Reddit, publicar en subreddits, o crear posts para r/Entrepreneur o r/SideProject → usa run_income_cycle con strategy="reddit_organic".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1675,7 +1678,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     "morning_briefing", "product_launch_blitz",
                     "daily_revenue_digest", "bundle_and_waitlist",
                     "challenge_day_sequencer", "partner_outreach_cycle",
-                    "proactive_analysis",
+                    "proactive_analysis", "social_organic",
                 ]
                 if obj_key not in valid_keys:
                     return (f"Objetivo inválido: '{obj_key}'. "

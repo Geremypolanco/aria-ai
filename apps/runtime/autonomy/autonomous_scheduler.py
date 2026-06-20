@@ -409,6 +409,15 @@ class AutonomousScheduler:
                 handler_key="proactive_analysis",
                 next_run_ts=now + 3600 * 3,  # first run 3h after startup
             ),
+            StrategicObjective(
+                obj_id="social_organic",
+                name="Social Organic Distribution",
+                description="Posts Twitter threads, LinkedIn articles, and Reddit content every 8h to build real organic traffic without paid ads",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=8.0,
+                handler_key="social_organic",
+                next_run_ts=now + 3600 * 2,  # first run 2h after startup
+            ),
         ]
 
 
@@ -956,11 +965,39 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             "value_usd": total_value,
         }
 
+    async def _social_organic(obj: StrategicObjective) -> dict:
+        """
+        Every 8h: post a Twitter thread, a LinkedIn post, and Reddit content
+        to build organic traffic from all three platforms simultaneously.
+        """
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        total_value = 0.0
+        results = []
+
+        for strategy in ("twitter_thread", "linkedin_post", "reddit_organic"):
+            try:
+                r = await loop._run_one_cycle(force_strategy=strategy)
+                results.append({"strategy": strategy, "success": r.success, "summary": r.summary})
+                total_value += r.revenue_potential
+                await asyncio.sleep(3)  # small gap between posts
+            except Exception as _e:
+                results.append({"strategy": strategy, "success": False, "summary": str(_e)[:80]})
+
+        successes = sum(1 for r in results if r.get("success"))
+        summary = " | ".join(f"{r['strategy']}: {'✅' if r['success'] else '❌'}" for r in results)
+        return {
+            "success": successes >= 1,
+            "summary": f"Social organic: {summary} | ${total_value:.1f}",
+            "value_usd": total_value,
+        }
+
     scheduler.register_handler("daily_revenue_digest", _daily_revenue_digest)
     scheduler.register_handler("bundle_and_waitlist", _bundle_and_waitlist)
     scheduler.register_handler("challenge_day_sequencer", _challenge_day_sequencer)
     scheduler.register_handler("partner_outreach_cycle", _partner_outreach_cycle)
     scheduler.register_handler("proactive_analysis", _proactive_analysis)
+    scheduler.register_handler("social_organic", _social_organic)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
