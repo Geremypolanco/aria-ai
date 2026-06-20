@@ -51,6 +51,10 @@ QUICK_ACTIONS_KB = {
             {"text": "🩺 Diagnóstico ingresos", "callback_data": "quick_diagnostico"},
         ],
         [
+            {"text": "🧲 Lead Magnet",          "callback_data": "quick_magnet"},
+            {"text": "🧵 Hilo Viral",            "callback_data": "quick_thread"},
+        ],
+        [
             {"text": "📚 Base de conocimiento", "callback_data": "quick_kb"},
             {"text": "⚙️ Ver capacidades",      "callback_data": "quick_help"},
         ],
@@ -90,6 +94,8 @@ BOT_COMMANDS = [
     {"command": "diagnostico", "description": "Diagnóstico de canales de ingresos activos"},
     {"command": "briefing",    "description": "Resumen de negocio ahora mismo"},
     {"command": "afiliado",    "description": "Publicar artículo de afiliado ahora"},
+    {"command": "magnet",      "description": "Crear lead magnet gratuito → funnel de captura"},
+    {"command": "thread",      "description": "Crear hilo viral de Twitter/X"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -273,6 +279,8 @@ class AriaTelegramBot:
             "/diagnostico":  "muéstrame el diagnóstico completo de todos los canales de ingresos usando diagnose_income",
             "/briefing":     "ejecuta el morning briefing ahora mismo y envíame el resumen usando run_objective con objective morning_briefing",
             "/afiliado":     "ejecuta una estrategia de contenido de afiliado ahora mismo usando run_income_cycle con strategy affiliate_content",
+            "/magnet":       "crea un lead magnet gratuito ahora mismo usando run_income_cycle con strategy lead_magnet",
+            "/thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):
@@ -375,6 +383,8 @@ class AriaTelegramBot:
             "quick_help":         "/ayuda",
             "quick_portfolio":    "crea o actualiza el portfolio profesional de ARIA en GitHub Pages",
             "quick_diagnostico":  "muéstrame el diagnóstico completo de canales de ingresos usando diagnose_income",
+            "quick_magnet":       "crea un lead magnet gratuito ahora mismo usando run_income_cycle con strategy lead_magnet",
+            "quick_thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
             "example_trends":     "busca las últimas noticias sobre modelos de lenguaje grandes",
         }
 

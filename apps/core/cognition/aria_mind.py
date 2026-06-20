@@ -114,7 +114,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
 - income_loop_status → muestra el estado del loop de ingresos 24/7: ciclos completados, tasa de éxito, última estrategia ejecutada, URLs creadas. Args: {{}}
 - start_income_loop → inicia el loop autónomo de ingresos 24/7 si no está corriendo. Corre cada 30 min indefinidamente. Args: {{}}
-- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|opportunity_scan|github_publish|affiliate_content|shopify_listing|email_campaign|ebook_factory|social_blitz|premium_offer (opcional)"}}
+- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|opportunity_scan|github_publish|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|social_blitz|premium_offer|viral_thread (opcional)"}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
 - deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
@@ -204,6 +204,8 @@ REGLAS DE RAZONAMIENTO:
 36. PROHIBIDO usar reply para declinar herramientas. Si el usuario pide algo que corresponde a una herramienta de la lista, siempre pon tool="herramienta" y tool_args con los parámetros, y deja reply vacío.
 37. Si el usuario pregunta qué canales de ingresos están activos, qué le falta para ganar dinero, qué credenciales configurar, o por qué ARIA no está generando ingresos → usa diagnose_income.
 38. Si el usuario pide crear un portfolio, página web, landing page, presencia en línea, o "poner ARIA en el mapa" → usa setup_portfolio para crear el sitio en GitHub Pages.
+39. Si el usuario pide crear un lead magnet, recurso gratis, checklist, template, o funnel de captación de emails → usa run_income_cycle con strategy="lead_magnet".
+40. Si el usuario pide crear un hilo de Twitter, X thread, hilo viral, o contenido para redes sociales → usa run_income_cycle con strategy="viral_thread".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1519,16 +1521,23 @@ class AriaMind:
 - **Market Intelligence** — Scans for profitable niches every 6 hours
 - **Morning Briefing** — Daily Telegram summary of overnight results
 
-## 📊 Active Income Strategies
+## 📊 Active Income Strategies (13 total)
 
-| Strategy | Frequency | Description |
-|----------|-----------|-------------|
-| Content Pipeline | Every 8h | SEO articles on trending topics |
-| Niche Rotator | Every 30min | Launches new revenue niches |
-| Product Factory | Every 30min | Creates digital products |
-| Affiliate Content | Every 30min | Review articles with affiliate links |
-| Ebook Factory | Every 30min | AI-generated ebooks |
-| GitHub Publish | Every 30min | Open source resources |
+| Strategy | Weight | Description |
+|----------|--------|-------------|
+| Content Pipeline | 18% | SEO articles on trending topics → Dev.to/Medium/GitHub |
+| Niche Rotator | 15% | Launches new revenue niches in catalog |
+| Product Factory | 13% | Creates & lists digital products on Gumroad |
+| Opportunity Scan | 9% | Web research for profitable niches → fills queue |
+| GitHub Publish | 8% | Open-source resources → SEO + authority building |
+| Shopify Listing | 7% | Digital products on Shopify storefront |
+| Email Campaign | 7% | Mailchimp campaigns to email list |
+| Affiliate Content | 6% | Review articles with Amazon affiliate links |
+| Ebook Factory | 6% | AI-generated ebooks at $7-$27 on Gumroad |
+| Lead Magnet | 5% | Free resources → email capture → upsell funnel |
+| Social Blitz | 4% | Multi-platform distribution via Zapier |
+| Premium Offer | 1% | High-ticket B2B consulting ($500-$5,000) |
+| Viral Thread | 1% | Twitter/X threads → virality → traffic |
 
 ## 📚 Published Content
 

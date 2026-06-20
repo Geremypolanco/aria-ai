@@ -1,23 +1,32 @@
 """
-IncomeLoop v1.0 — ARIA's 24/7 Autonomous Income Machine.
+IncomeLoop v2.0 — ARIA's 24/7 Autonomous Income Machine.
 
 Runs every 30 minutes alongside the orchestrator (60 min).
 Focuses on PURE EXECUTION — no planning overhead.
 
-Every cycle picks a strategy based on weighted probability:
-  28% — Content Pipeline   (SEO articles + affiliate → Medium/dev.to/Hashnode)
-  20% — Niche Rotator      (launches next niche in catalog → Gumroad + Zapier)
-  17% — Product Factory    (creates new digital products for trending topics)
+Every cycle picks a strategy based on weighted probability (13 strategies):
+  18% — Content Pipeline   (SEO articles + affiliate → Medium/dev.to/Hashnode)
+  15% — Niche Rotator      (launches next niche in catalog → Gumroad + Zapier)
+  13% — Product Factory    (creates new digital products for trending topics)
    9% — Opportunity Scan   (web research for new income streams)
-   8% — Shopify Listing    (creates Shopify digital product from trending topic)
+   8% — GitHub Publish     (open-source resources → SEO + authority, always active)
+   7% — Shopify Listing    (creates Shopify digital product from trending topic)
    7% — Email Campaign     (Mailchimp campaign to owned audience)
+   6% — Affiliate Content  (review/comparison articles with Amazon links)
    6% — Ebook Factory      (AI-generated ebook sold on Gumroad at $7-$27)
-   3% — Social Blitz       (Zapier distribution for all existing products)
-   2% — Premium Offer      (high-ticket B2B consulting offers)
+   5% — Lead Magnet        (free resource funnel → email capture → upsell)
+   4% — Social Blitz       (Zapier distribution for all existing products)
+   1% — Premium Offer      (high-ticket B2B consulting offers $500-$5,000)
+   1% — Viral Thread       (Twitter/X thread → virality → traffic)
+
+Additional automation:
+  - Product Launch Sequence: every created product gets a blog announcement
+  - Portfolio Bootstrap: aria-portfolio updated on each startup
+  - Morning Briefing: daily Telegram summary of stats and published URLs
+  - Topic Deduplication: Redis cache prevents repeated blog content
 
 Scale at 30-min intervals:
-  48 cycles/day × 3 articles = 144 articles/day
-  48 cycles/day → full niche catalog covered every ~1 day
+  48 cycles/day → up to 144 articles + 14 products + 7 ebooks
   Revenue compounds: more products + more content = more discovery
 
 The loop NEVER stops. Every exception is caught, logged, and the
@@ -45,17 +54,19 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",  20),
-    ("niche_rotator",     17),
-    ("product_factory",   14),
+    ("content_pipeline",  18),
+    ("niche_rotator",     15),
+    ("product_factory",   13),
     ("opportunity_scan",   9),
     ("github_publish",     8),   # works with only GITHUB_TOKEN — always active
-    ("shopify_listing",    8),
+    ("shopify_listing",    7),
     ("email_campaign",     7),
     ("affiliate_content",  6),   # review/comparison articles with affiliate links
     ("ebook_factory",      6),
+    ("lead_magnet",        5),   # free resource funnel → email capture → upsell
     ("social_blitz",       4),
     ("premium_offer",      1),
+    ("viral_thread",       1),   # Twitter/X thread optimized for virality
 ]
 
 
@@ -164,6 +175,10 @@ class IncomeLoop:
         if result.success and result.urls_created:
             await self._notify_win(result)
 
+        # Product launch sequence: announce newly created products on the blog
+        if result.success and result.urls_created and result.strategy in ("product_factory", "ebook_factory", "premium_offer"):
+            asyncio.create_task(self._announce_product_on_blog(result))
+
         logger.info(
             "[IncomeLoop] Cycle #%d done in %ds | success=%s | %s",
             self._cycle, result.elapsed_seconds, result.success, result.summary[:80]
@@ -175,6 +190,45 @@ class IncomeLoop:
         names   = [s[0] for s in STRATEGIES]
         weights = [s[1] for s in STRATEGIES]
         return random.choices(names, weights=weights, k=1)[0]
+
+    async def _announce_product_on_blog(self, result: CycleResult) -> None:
+        """Write a blog post announcing a newly created product — drives organic traffic to it."""
+        if not settings.GITHUB_TOKEN:
+            return
+        try:
+            await asyncio.sleep(10)  # let the main cycle finish logging first
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            ai = get_ai_client()
+            if not ai:
+                return
+
+            product_url = result.urls_created[0] if result.urls_created else ""
+            announcement = await ai.complete_json(
+                system="You write compelling product launch posts. Be enthusiastic but specific. Output JSON only.",
+                user=f"""Write a product launch announcement blog post.
+
+Product: {result.summary[:200]}
+URL: {product_url}
+Strategy: {result.strategy}
+
+JSON:
+{{
+  "title": "Exciting launch post title (60 chars max)",
+  "slug": "url-slug-for-post",
+  "description": "Meta description (155 chars)",
+  "tags": ["launch", "product", "ai"],
+  "content": "Product launch blog post (400+ words). Cover: what the product solves, who it's for, key benefits, CTA with link. Use markdown."
+}}""",
+                model=AIModel.FAST,
+                max_tokens=2000,
+            )
+            if announcement and product_url:
+                if "content" in announcement:
+                    announcement["content"] += f"\n\n**[Get it here →]({product_url})**\n"
+                await self._exec_github_blog([announcement], cp=None)
+                logger.info("[IncomeLoop] Product announcement published for: %s", result.summary[:60])
+        except Exception as exc:
+            logger.debug("[IncomeLoop] product announcement: %s", exc)
 
     # ── Strategy Executors ───────────────────────────────────────────────────
 
@@ -201,6 +255,10 @@ class IncomeLoop:
             return await self._exec_premium_offer()
         elif strategy == "affiliate_content":
             return await self._exec_affiliate_content()
+        elif strategy == "lead_magnet":
+            return await self._exec_lead_magnet()
+        elif strategy == "viral_thread":
+            return await self._exec_viral_thread()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -1240,7 +1298,7 @@ JSON:
             if r.get("success") and r.get("results"):
                 topic = r["results"][0].get("title", topic)[:80]
 
-            # Generate a complete, valuable resource
+            # Generate a complete, valuable resource (README + examples + contributing)
             content_data = await ai.complete_json(
                 system=(
                     "You create high-value open-source resources that developers star and share. "
@@ -1252,11 +1310,12 @@ JSON:
 {{
   "repo_name": "snake_case_repo_name_60_chars_max",
   "description": "One-line description under 100 chars",
-  "readme": "Complete README.md (500+ words). Include: badges, overview, features, installation, usage with code examples, contributing, license. Use proper markdown.",
+  "readme": "Complete README.md (600+ words). Include: badges, overview, features, installation, usage with realistic code examples, contributing, license. Use proper markdown.",
+  "example_code": "A realistic, working Python/JS/bash script (50+ lines) that demonstrates the core concept. Include comments.",
   "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
 }}""",
                 model=AIModel.STRATEGY,
-                max_tokens=3000,
+                max_tokens=4000,
             )
 
             if not content_data:
@@ -1265,6 +1324,7 @@ JSON:
             repo_name   = content_data.get("repo_name", "ai-productivity-guide").replace(" ", "-").lower()[:60]
             description = content_data.get("description", f"A complete guide to {topic}")[:100]
             readme      = content_data.get("readme", f"# {topic}\n\nA comprehensive guide.\n")
+            example     = content_data.get("example_code", "")
             topics      = content_data.get("tags", ["ai", "productivity", "guide"])[:5]
 
             gh     = AriaGitHubClient()
@@ -1284,8 +1344,9 @@ JSON:
                 if "error" in create_r:
                     return {"success": False, "summary": f"GitHub repo creation: {create_r.get('error','failed')[:80]}"}
 
-            # Push README.md
             import base64 as _b64
+
+            # Push README.md
             encoded = _b64.b64encode(readme.encode()).decode()
             file_r  = await gh._put(f"/repos/{owner}/{repo_name}/contents/README.md", {
                 "message": f"feat: add comprehensive guide — {description[:60]}",
@@ -1302,6 +1363,42 @@ JSON:
                         "content": encoded,
                         "sha": sha,
                     })
+
+            # Push examples/quickstart — makes repo more valuable and searchable
+            if example:
+                try:
+                    ext = "py" if ("def " in example or "import " in example) else ("js" if "function " in example or "const " in example else "sh")
+                    example_encoded = _b64.b64encode(example.encode()).decode()
+                    await gh._put(f"/repos/{owner}/{repo_name}/contents/examples/quickstart.{ext}", {
+                        "message": "feat: add quickstart example",
+                        "content": example_encoded,
+                    })
+                except Exception:
+                    pass
+
+            # Push CONTRIBUTING.md — signals active community, improves discoverability
+            try:
+                contributing = (
+                    f"# Contributing to {repo_name}\n\n"
+                    f"Thank you for your interest in contributing! This project is maintained by ARIA AI.\n\n"
+                    f"## How to Contribute\n\n"
+                    f"1. Fork the repository\n"
+                    f"2. Create a feature branch: `git checkout -b feature/your-feature`\n"
+                    f"3. Make your changes and commit: `git commit -m 'feat: your feature'`\n"
+                    f"4. Push to your fork: `git push origin feature/your-feature`\n"
+                    f"5. Open a Pull Request\n\n"
+                    f"## Code Style\n\n"
+                    f"- Keep code simple and well-commented\n"
+                    f"- Add tests for new features\n"
+                    f"- Update README.md when adding features\n\n"
+                    f"## Questions?\n\nOpen an issue — we respond within 24 hours.\n"
+                )
+                await gh._put(f"/repos/{owner}/{repo_name}/contents/CONTRIBUTING.md", {
+                    "message": "docs: add contributing guide",
+                    "content": _b64.b64encode(contributing.encode()).decode(),
+                })
+            except Exception:
+                pass
 
             # Set topics and homepage (GitHub Pages URL for better SEO)
             try:
@@ -1479,6 +1576,252 @@ JSON:
             logger.error("[IncomeLoop] affiliate_content: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
+    async def _exec_lead_magnet(self) -> dict:
+        """
+        Create a high-value free resource (checklist, template, toolkit) published to GitHub.
+        Goal: email capture funnel → free value → upsell to paid products.
+        Works with GITHUB_TOKEN only. Drives organic traffic via SEO.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+
+            if not settings.GITHUB_TOKEN:
+                return {"success": False, "summary": "GITHUB_TOKEN required"}
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "AI unavailable"}
+
+            wt = WebTools()
+            r  = await wt.search_web("high demand free resources templates checklists entrepreneurs 2025", num_results=5)
+            topic = "AI Business Automation Toolkit"
+            if r.get("success") and r.get("results"):
+                topic = r["results"][0].get("title", topic)[:80]
+
+            magnet = await ai.complete_json(
+                system="You create irresistible free lead magnets that build email lists. Output JSON only.",
+                user=f"""Create a complete free lead magnet resource on: "{topic}"
+
+This should be something people would happily give their email to receive.
+
+JSON:
+{{
+  "title": "Resource title (60 chars, power words)",
+  "slug": "url-slug",
+  "tagline": "What they get in one sentence",
+  "resource_type": "checklist|template|toolkit|swipe-file|cheat-sheet",
+  "content": "Complete resource content (600+ words). If checklist: 20+ actionable items. If template: full working template. Make it genuinely valuable.",
+  "cta": "Email capture CTA text",
+  "upsell_hint": "Brief mention of a paid upgrade they can get"
+}}""",
+                model=AIModel.STRATEGY,
+                max_tokens=3000,
+            )
+
+            if not magnet:
+                return {"success": False, "summary": "AI failed to generate lead magnet"}
+
+            owner     = settings.GITHUB_USERNAME or "Geremypolanco"
+            repo_name = "aria-free-resources"
+            slug      = magnet.get("slug", "free-toolkit").replace(" ", "-").lower()[:50]
+            title     = magnet.get("title", topic)[:60]
+            content   = magnet.get("content", "")
+            rtype     = magnet.get("resource_type", "toolkit")
+
+            # Build the resource file
+            resource_md = (
+                f"# {title}\n\n"
+                f"> {magnet.get('tagline', 'A free resource from ARIA AI')}\n\n"
+                f"**Type:** {rtype.replace('-', ' ').title()}\n\n"
+                f"---\n\n"
+                f"{content}\n\n"
+                f"---\n\n"
+                f"## Want More?\n\n"
+                f"{magnet.get('upsell_hint', 'Check out our premium resources.')}\n\n"
+                f"⭐ Star this repo to get notified of new free resources!\n\n"
+                f"*Free resource by [ARIA AI](https://github.com/{owner}/aria-portfolio)*"
+            )
+
+            gh = AriaGitHubClient()
+            existing = await gh._get(f"/repos/{owner}/{repo_name}")
+            if "error" in existing:
+                create_r = await gh._post("/user/repos", {
+                    "name": repo_name,
+                    "description": "Free AI-powered resources, templates, and toolkits for entrepreneurs",
+                    "private": False, "auto_init": True, "has_issues": False,
+                })
+                if "error" in create_r:
+                    return {"success": False, "summary": f"Could not create {repo_name}"}
+                await asyncio.sleep(2)
+                # Set topics
+                try:
+                    await gh._put(f"/repos/{owner}/{repo_name}/topics", {
+                        "names": ["free-resources", "templates", "productivity", "ai", "entrepreneur"]
+                    })
+                except Exception:
+                    pass
+
+            # Push the resource
+            filename = f"resources/{slug}.md"
+            encoded  = _b64.b64encode(resource_md.encode()).decode()
+            file_r   = await gh._put(f"/repos/{owner}/{repo_name}/contents/{filename}", {
+                "message": f"feat: add {rtype} — {title[:50]}",
+                "content": encoded,
+            })
+
+            repo_url = f"https://github.com/{owner}/{repo_name}"
+            if "error" not in file_r:
+                # Also publish announcement on blog
+                asyncio.create_task(self._exec_github_blog([{
+                    "title": f"Free {rtype.title()}: {title}",
+                    "slug": f"free-{slug}",
+                    "description": magnet.get("tagline", "")[:155],
+                    "tags": ["free", "resource", rtype, "ai", "productivity"],
+                    "content": (
+                        f"We just published a completely free {rtype} that you can download right now.\n\n"
+                        f"**{title}**\n\n{magnet.get('tagline', '')}\n\n"
+                        f"[Download free →]({repo_url}/blob/main/{filename})\n\n"
+                        f"{content[:400]}...\n\n"
+                        f"[Get the full {rtype} here →]({repo_url})"
+                    ),
+                }], cp=None))
+                return {
+                    "success": True,
+                    "summary": f"Lead magnet '{title[:40]}' published as free {rtype}",
+                    "revenue_potential": 3.0,  # indirect: list building + upsell
+                    "urls": [f"{repo_url}/blob/main/{filename}"],
+                }
+            return {"success": False, "summary": f"Lead magnet: could not push to {repo_name}"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] lead_magnet: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_viral_thread(self) -> dict:
+        """
+        Generate a viral Twitter/X thread on a trending topic + post via Zapier.
+        Falls back to GitHub Gist for public visibility when Zapier isn't configured.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.zapier_connector import ZapierConnector
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "AI unavailable"}
+
+            wt = WebTools()
+            r  = await wt.search_web("viral twitter thread topics trending AI business 2025", num_results=5)
+            topic = "AI is changing everything — here's what nobody tells you"
+            if r.get("success") and r.get("results"):
+                topic = r["results"][0].get("title", topic)[:100]
+
+            thread = await ai.complete_json(
+                system=(
+                    "You write viral Twitter/X threads that get thousands of retweets. "
+                    "Hook → story → insight → CTA. Output JSON only."
+                ),
+                user=f"""Write a viral Twitter/X thread about: "{topic}"
+
+Rules:
+- First tweet: POWERFUL hook (max 270 chars)
+- Tweets 2-9: one insight per tweet, numbered (2/10, 3/10 etc.)
+- Last tweet: strong CTA + link to ARIA portfolio
+
+JSON:
+{{
+  "topic": "thread topic",
+  "tweets": [
+    "Hook tweet text (max 270 chars)",
+    "2/10 insight...",
+    "3/10 insight...",
+    "4/10 insight...",
+    "5/10 insight...",
+    "6/10 insight...",
+    "7/10 insight...",
+    "8/10 insight...",
+    "9/10 insight...",
+    "10/10 CTA + https://github.com/Geremypolanco/aria-portfolio"
+  ]
+}}""",
+                model=AIModel.CREATIVE,
+                max_tokens=2000,
+            )
+
+            if not thread:
+                return {"success": False, "summary": "AI failed to generate thread"}
+
+            tweets   = thread.get("tweets", [])
+            hook     = tweets[0][:280] if tweets else ""
+            full_txt = "\n\n".join(f"[{i+1}] {t}" for i, t in enumerate(tweets))
+
+            # Try Zapier first
+            zc       = ZapierConnector()
+            zapier_ok = False
+            try:
+                zr = await zc.dispatch_event("VIRAL_THREAD", {
+                    "topic":       thread.get("topic", topic),
+                    "hook":        hook,
+                    "full_thread": full_txt,
+                    "tweet_count": len(tweets),
+                })
+                zapier_ok = bool(zr and zr.get("success"))
+            except Exception:
+                pass
+
+            # Fallback: publish as GitHub Gist (public, indexed by Google)
+            if not zapier_ok and settings.GITHUB_TOKEN:
+                try:
+                    from apps.core.tools.github_client import AriaGitHubClient
+                    import base64 as _b64
+                    gh = AriaGitHubClient()
+                    owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                    repo  = "aria-insights"
+                    from datetime import datetime, timezone
+                    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    slug  = thread.get("topic", "viral-thread")[:40].lower().replace(" ", "-")
+                    filename = f"threads/{today}-{slug}.md"
+                    content  = (
+                        f"# Thread: {thread.get('topic', topic)}\n\n"
+                        f"*Optimized for Twitter/X — {len(tweets)} tweets*\n\n"
+                        + "\n\n---\n\n".join(
+                            f"**Tweet {i+1}:**\n\n{t}" for i, t in enumerate(tweets)
+                        )
+                        + f"\n\n---\n\n*Thread by [ARIA AI](https://github.com/{owner}/aria-portfolio)*"
+                    )
+                    encoded = _b64.b64encode(content.encode()).decode()
+                    file_r  = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
+                        "message": f"thread: {thread.get('topic', topic)[:60]}",
+                        "content": encoded,
+                    })
+                    if "error" not in file_r:
+                        url = f"https://github.com/{owner}/{repo}/blob/main/{filename}"
+                        return {
+                            "success": True,
+                            "summary": f"Viral thread published to GitHub (add ZAPIER_WEBHOOK_URL to auto-post to Twitter)",
+                            "revenue_potential": 1.5,
+                            "urls": [url],
+                        }
+                except Exception:
+                    pass
+
+            if zapier_ok:
+                return {
+                    "success": True,
+                    "summary": f"Viral thread posted: '{topic[:50]}' ({len(tweets)} tweets via Zapier)",
+                    "revenue_potential": 5.0,
+                    "urls": [],
+                }
+            return {"success": False, "summary": "Viral thread: add ZAPIER_WEBHOOK_URL or GITHUB_TOKEN"}
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] viral_thread: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
     def check_credentials(self) -> dict:
         """Returns which income channels are configured vs. missing."""
         channels = {
@@ -1543,6 +1886,11 @@ JSON:
                 "keys_needed": ["DISCORD_WEBHOOK_URL"],
                 "revenue_channels": ["community building", "product announcements"],
             },
+            "zapier": {
+                "active": bool(getattr(settings, "ZAPIER_WEBHOOK_URL", None)),
+                "keys_needed": ["ZAPIER_WEBHOOK_URL"],
+                "revenue_channels": ["social automation", "multi-platform distribution", "viral threads"],
+            },
         }
         active   = {k: v for k, v in channels.items() if v["active"]}
         inactive = {k: v for k, v in channels.items() if not v["active"]}
@@ -1600,13 +1948,14 @@ JSON:
     # ── Notifications ───────────────────────────────────────────────────
 
     async def _notify_startup(self) -> None:
-        """Send a Telegram message when the income loop starts. Lists active channels."""
+        """Send startup Telegram message and bootstrap portfolio + blog on first run."""
         try:
             await asyncio.sleep(5)  # wait for bot to be ready
-            creds  = self.check_credentials()
-            active = list(creds.get("active", {}).keys())
+            creds    = self.check_credentials()
+            active   = list(creds.get("active", {}).keys())
             inactive = list(creds.get("inactive", {}).keys())
             from apps.core.tools.telegram_bot import get_bot
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
             msg = (
                 f"🤖 <b>ARIA Income Loop iniciado</b>\n"
                 f"Canales activos: {', '.join(active) or 'ninguno configurado'}\n"
@@ -1625,17 +1974,64 @@ JSON:
         except Exception as exc:
             logger.debug("[IncomeLoop] startup notify: %s", exc)
 
-    async def _notify_win(self, result: CycleResult) -> None:
-        """Notify via Telegram only when something valuable was created."""
-        if result.revenue_potential < 10:
+        # Bootstrap portfolio on first startup (runs in background, won't block loop)
+        asyncio.create_task(self._bootstrap_github_presence())
+
+    async def _bootstrap_github_presence(self) -> None:
+        """One-time: create/update aria-portfolio landing page on startup."""
+        if not settings.GITHUB_TOKEN:
             return
+        try:
+            await asyncio.sleep(30)  # let the app fully start first
+            # Only run if we haven't bootstrapped in the last 24 hours
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if cache:
+                last_bootstrap = await cache.get("aria:income:last_portfolio_bootstrap")
+                if last_bootstrap and (time.time() - float(last_bootstrap)) < 86400:
+                    return
+            from apps.core.cognition.aria_mind import AriaMind
+            mind = AriaMind()
+            result = await mind._handle_tool_call("setup_portfolio", {})
+            url = (result or {}).get("url", "")
+            logger.info("[IncomeLoop] Portfolio bootstrapped: %s", url)
+            if cache:
+                await cache.set("aria:income:last_portfolio_bootstrap", str(time.time()), ttl_seconds=86400 * 90)
+        except Exception as exc:
+            logger.debug("[IncomeLoop] bootstrap portfolio: %s", exc)
+
+    async def _notify_win(self, result: CycleResult) -> None:
+        """Notify via Telegram when something was published or is high-value."""
+        # Always notify for high-value wins ($10+)
+        # For lower-value wins with URLs, throttle to once per 60 min to avoid spam
+        high_value = result.revenue_potential >= 10
+        has_urls   = bool(result.urls_created)
+
+        if not high_value and not has_urls:
+            return
+
+        if not high_value and has_urls:
+            # Rate-limit low-value URL notifications to once per hour
+            try:
+                from apps.core.memory.redis_client import get_cache
+                cache = get_cache()
+                if cache:
+                    lock_key = "aria:income:last_url_notify"
+                    last_ts  = await cache.get(lock_key)
+                    if last_ts and (time.time() - float(last_ts)) < 3600:
+                        return
+                    await cache.set(lock_key, str(time.time()), ttl_seconds=3600)
+            except Exception:
+                pass
+
         try:
             from apps.core.tools.telegram_bot import get_bot
             urls_text = "\n".join(result.urls_created[:3])
+            emoji = "💰" if high_value else ("📝" if result.strategy in ("github_publish", "content_pipeline", "affiliate_content") else "✅")
             msg = (
-                f"💰 <b>Nuevo ingreso creado</b>\n"
+                f"{emoji} <b>ARIA publicó contenido nuevo</b>\n"
                 f"Estrategia: {result.strategy}\n"
-                f"Potencial: ${result.revenue_potential:.0f}\n"
+                f"Potencial: ${result.revenue_potential:.1f}\n"
                 f"{result.summary[:200]}"
                 + (f"\n\n{urls_text}" if urls_text else "")
             )
