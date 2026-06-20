@@ -663,14 +663,37 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             ]
 
         strategy_count = len(STRATEGIES)
+        # Competitor intel from last scan
+        competitor_insight = ""
+        content_theme = ""
+        try:
+            from apps.core.memory.redis_client import get_cache as _gc2
+            _cache2 = _gc2()
+            if _cache2:
+                raw_intel = await _cache2.get("aria:intel:competitor_latest")
+                if raw_intel:
+                    intel_obj = _json.loads(raw_intel)
+                    competitor_insight = intel_obj.get("key_insight", "")[:120]
+                raw_cal = await _cache2.get("aria:schedule:content_calendar")
+                if raw_cal:
+                    cal_obj = _json.loads(raw_cal)
+                    content_theme = cal_obj.get("theme", "")[:80]
+        except Exception:
+            pass
+
+        if competitor_insight:
+            lines += ["", f"<b>🔍 Inteligencia de mercado:</b>", f"  💡 {competitor_insight}"]
+        if content_theme:
+            lines += [f"  📅 Tema del mes: <i>{content_theme}</i>"]
+
         lines += [
             "",
             "<b>🤖 Agenda autónoma de hoy:</b>",
-            f"• 🔥 Trend scan cada 4h | Social organic cada 8h",
-            f"• 📹 YouTube content cada 12h | Pinterest + Landing pages automático",
-            f"• 🚀 {strategy_count} estrategias de ingresos rotando cada 30min",
-            f"• 🧠 Self-improvement cada 48h | Strategy optimizer cada 24h",
-            f"• 📊 Weekly review cada 7 días | Daily digest cada 24h",
+            f"• 🔥 Trend scan c/4h | Competitor intel c/12h | Social organic c/8h",
+            f"• 📹 YouTube c/12h | Pinterest + Landing pages automático",
+            f"• 🚀 {strategy_count} estrategias rotando c/30min (smart_pricing + voice_of_aria incluidos)",
+            f"• 🧠 Self-improvement c/48h | Strategy optimizer c/24h",
+            f"• 📊 Weekly review c/7d | Content calendar c/7d | Daily digest c/24h",
         ]
 
         message = "\n".join(lines)
@@ -678,7 +701,7 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             from apps.core.tools.telegram_bot import get_bot
             bot = get_bot()
             await bot.notify_owner(message)
-            return {"success": True, "summary": "Morning briefing v2 sent via Telegram", "value_usd": 0.0}
+            return {"success": True, "summary": "Morning briefing v3 sent via Telegram", "value_usd": 0.0}
         except Exception as e:
             return {"success": False, "summary": f"Failed to send briefing: {e}", "value_usd": 0.0}
 
