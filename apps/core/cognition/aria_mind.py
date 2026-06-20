@@ -158,8 +158,8 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - run_retention    → ejecuta campañas de retención: win-back a clientes inactivos 60+ días + loyalty rewards a VIPs. Args: {{}}
 - shopify_optimize → ejecuta optimizaciones de Shopify: SEO de productos, generación de bundles o flash sale. Args: {{"operation": "seo|bundles|flash_sale"}}
 - run_funnel       → analiza y devuelve estado de funnels de conversión, abandono de carrito y secuencias de email. Args: {{}}
-- check_objectives → muestra el estado de los 20 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis, social_organic, strategy_optimizer, self_improve, youtube_cycle, product_hunt_cycle, trend_detector, weekly_review). Args: {{}}
-- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis|social_organic|strategy_optimizer|self_improve|youtube_cycle|product_hunt_cycle|trend_detector|weekly_review"}}
+- check_objectives → muestra el estado de los 22 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis, social_organic, strategy_optimizer, self_improve, youtube_cycle, product_hunt_cycle, trend_detector, weekly_review, content_calendar_builder, competitor_intel). Args: {{}}
+- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis|social_organic|strategy_optimizer|self_improve|youtube_cycle|product_hunt_cycle|trend_detector|weekly_review|content_calendar_builder|competitor_intel"}}
 - daily_report     → muestra el reporte de ejecución del día: operaciones completadas, score de ejecución, insight y prioridad de mañana. Args: {{}}
 - human_login      → inicia sesión en una plataforma como un humano real (stealth, sin ser detectada). Args: {{"platform": "gumroad|devto|linkedin|twitter|hashnode", "email": "...", "password": "...", "username": "..."}}
 - human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
@@ -260,6 +260,8 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 71. Si el usuario pide crear un gig en Fiverr, publicar un servicio en Upwork, listar servicios freelance, o conseguir contratos B2B como servicio → usa run_income_cycle con strategy="freelance_gig".
 72. Si el usuario pide hacer PR, conseguir cobertura de prensa, enviar pitch a periodistas tech, aparecer en TechCrunch o Indie Hackers, o crear un press release → usa run_income_cycle con strategy="media_pitch".
 73. Si el usuario pide hacer A/B testing, optimizar conversión de productos, probar diferentes precios o títulos, mejorar el CTR de listings existentes → usa run_income_cycle con strategy="ab_content_test".
+74. Si el usuario pide un calendario de contenido, plan editorial, qué publicar en los próximos 30 días, o agenda de redes sociales → usa run_objective con objective="content_calendar_builder".
+75. Si el usuario pide analizar la competencia, qué están haciendo los competidores, gaps del mercado, herramientas rivales, o dónde ARIA puede diferenciarse → usa run_objective con objective="competitor_intel".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1750,6 +1752,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     "strategy_optimizer", "self_improve",
                     "youtube_cycle", "product_hunt_cycle",
                     "trend_detector", "weekly_review",
+                    "content_calendar_builder", "competitor_intel",
                 ]
                 if obj_key not in valid_keys:
                     return (f"Objetivo inválido: '{obj_key}'. "

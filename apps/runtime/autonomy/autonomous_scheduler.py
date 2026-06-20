@@ -472,6 +472,24 @@ class AutonomousScheduler:
                 handler_key="weekly_review",
                 next_run_ts=now + 3600 * 120,  # first review after 5 days (allows data to accumulate)
             ),
+            StrategicObjective(
+                obj_id="content_calendar_builder",
+                name="30-Day Content Calendar Builder",
+                description="Every 7 days: builds a full 30-day content calendar across all platforms (Twitter, LinkedIn, Reddit, YouTube, Substack, TikTok) with topic clusters, posting times, and format variations — archived to GitHub",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=168.0,  # 7 days
+                handler_key="content_calendar_builder",
+                next_run_ts=now + 3600 * 72,  # first calendar after 3 days
+            ),
+            StrategicObjective(
+                obj_id="competitor_intel",
+                name="Competitor Intelligence Monitor",
+                description="Every 12h: monitors top AI/SaaS competitors and trending tools, extracts positioning gaps ARIA can exploit, and queues the best opportunity for the income loop — stored in Redis for morning briefing",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=12.0,
+                handler_key="competitor_intel",
+                next_run_ts=now + 3600 * 5,  # first scan 5h after startup
+            ),
         ]
 
 
@@ -1553,10 +1571,334 @@ Return JSON: {{"plan": ["Action 1", "Action 2", "Action 3"], "key_insight": "one
         except Exception as e:
             return {"success": False, "summary": f"Weekly review: {e}", "value_usd": 0.0}
 
+    async def _content_calendar_builder(obj: StrategicObjective) -> dict:
+        """
+        Build a 30-day content calendar covering all active platforms.
+        Each day has a topic, format, platform, and hook. Aligned with
+        trending topics and existing product catalog for maximum relevance.
+        Archives to aria-insights/calendars/ and stores in Redis.
+        """
+        try:
+            import _json_module as _json  # local alias to avoid shadowing
+        except ImportError:
+            import json as _json
+        import base64 as _b64
+        import datetime as _dt
+        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.web_tools import WebTools
+        from apps.core.memory.redis_client import get_cache
+        from apps.core.config import settings
+
+        ai = get_ai_client()
+        if not ai:
+            return {"success": False, "summary": "content_calendar_builder: AI unavailable"}
+
+        wt = WebTools()
+        trends_r = await wt.get_hacker_news_trending(limit=5)
+        trending = [s.get("title", "")[:80] for s in (trends_r.get("stories") or [])[:5]]
+        trending_str = " | ".join(trending) or "AI productivity, autonomous AI, passive income, SaaS tools"
+
+        # Get catalog for product cross-promotion
+        catalog_preview = ""
+        try:
+            from apps.core.tools.income_loop import get_income_loop
+            catalog_preview = await get_income_loop().get_product_catalog(limit=5)
+            catalog_preview = catalog_preview[:400]
+        except Exception:
+            pass
+
+        calendar_data = await ai.complete_json(
+            system=(
+                "You are a content strategist who builds editorial calendars that grow audiences "
+                "and generate revenue. Every post has a purpose: brand awareness, lead gen, or "
+                "direct sales. You know the best days/times for each platform. Output JSON only."
+            ),
+            user=f"""Build a 30-day content calendar for an autonomous AI business platform.
+
+Trending topics this week: {trending_str}
+Products to promote: {catalog_preview}
+
+Platforms to cover: Twitter/X, LinkedIn, Reddit, YouTube, Substack, TikTok, Instagram, Dev.to
+
+Generate 30 days of content. Each day covers the highest-priority platform that day.
+Include variety: educational, entertaining, product-focused, community, controversy, data.
+
+JSON:
+{{
+  "month_theme": "overarching content theme for the month",
+  "content_pillars": ["pillar1", "pillar2", "pillar3"],
+  "calendar": [
+    {{
+      "day": 1,
+      "date_offset": "Day 1",
+      "platform": "Twitter",
+      "format": "thread | single post | article | video | newsletter | pin | reel",
+      "topic": "specific topic for this post",
+      "hook": "opening line or title",
+      "goal": "awareness | leads | sales | community",
+      "product_cta": "which product to mention or null",
+      "estimated_reach": 500
+    }}
+  ]
+}}""",
+            model=AIModel.STRATEGY,
+            max_tokens=4000,
+        )
+
+        if not calendar_data or not calendar_data.get("calendar"):
+            return {"success": False, "summary": "content_calendar_builder: AI failed"}
+
+        entries = calendar_data["calendar"]
+        theme = calendar_data.get("month_theme", "AI Business Automation")
+        pillars = calendar_data.get("content_pillars", [])
+
+        # Archive to GitHub
+        urls_created = []
+        if settings.GITHUB_TOKEN:
+            from apps.core.tools.github_client import AriaGitHubClient
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            week_str = _dt.datetime.now().strftime("%Y-W%U")
+
+            md_lines = [
+                f"# 30-Day Content Calendar — {week_str}",
+                f"**Theme:** {theme}",
+                f"**Content Pillars:** {' | '.join(pillars)}",
+                "",
+                "| Day | Platform | Format | Topic | Goal |",
+                "|-----|----------|--------|-------|------|",
+            ]
+            for e in entries[:30]:
+                hook = e.get("hook", "")[:50].replace("|", "/")
+                md_lines.append(
+                    f"| Day {e.get('day', '?')} | {e.get('platform', '')} "
+                    f"| {e.get('format', '')} | {hook} | {e.get('goal', '')} |"
+                )
+            md_lines += [
+                "",
+                "## Full Detail",
+                "",
+            ]
+            for e in entries[:30]:
+                md_lines += [
+                    f"### Day {e.get('day', '?')} — {e.get('platform', '')} ({e.get('format', '')})",
+                    f"**Topic:** {e.get('topic', '')}",
+                    f"**Hook:** {e.get('hook', '')}",
+                    f"**Goal:** {e.get('goal', '')} | **Est. reach:** {e.get('estimated_reach', 0):,}",
+                ]
+                if e.get("product_cta"):
+                    md_lines.append(f"**CTA:** {e['product_cta']}")
+                md_lines.append("")
+
+            md_lines.append("*Generated by ARIA AI — Autonomous Content Calendar Engine*")
+            encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/calendars/{week_str}-30day.md",
+                {"message": f"calendar: 30-day content plan {week_str}", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/calendars/{week_str}-30day.md"
+                )
+
+        # Store in Redis for morning briefing to reference
+        cache = get_cache()
+        if cache:
+            import json as _json2
+            await cache.set(
+                "aria:schedule:content_calendar",
+                _json2.dumps({
+                    "theme": theme,
+                    "pillars": pillars,
+                    "days": len(entries),
+                    "url": urls_created[0] if urls_created else "",
+                    "generated_at": _dt.datetime.now().isoformat(),
+                }),
+                ttl_seconds=86400 * 8,  # 8 days
+            )
+
+        total_reach = sum(e.get("estimated_reach", 0) for e in entries)
+        return {
+            "success": True,
+            "summary": f"30-day calendar: {len(entries)} posts | theme: {theme[:50]} | est. reach: {total_reach:,}",
+            "value_usd": 5.0,
+            "urls": urls_created[:2],
+        }
+
+    async def _competitor_intel(obj: StrategicObjective) -> dict:
+        """
+        Monitor top AI/SaaS competitors and trending tools.
+        Extracts positioning gaps, pricing weaknesses, and angles ARIA
+        can exploit. Queues the best opportunity to aria:income:opportunity_queue.
+        Stores intel in Redis for morning briefing and strategy_optimizer.
+        """
+        import json as _json
+        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.web_tools import WebTools
+        from apps.core.memory.redis_client import get_cache
+        from apps.core.config import settings
+        import datetime as _dt
+
+        ai = get_ai_client()
+        if not ai:
+            return {"success": False, "summary": "competitor_intel: AI unavailable"}
+
+        wt = WebTools()
+        cache = get_cache()
+
+        # Research: scan multiple competitive signals simultaneously
+        searches = [
+            "AI automation tools product launches 2025",
+            "top Gumroad digital products selling this week",
+            "trending SaaS tools ProductHunt this week",
+            "AI productivity software new launch 2025",
+        ]
+
+        search_results = []
+        for q in searches[:3]:
+            r = await wt.search_web(q, num_results=5)
+            if r.get("success") and r.get("results"):
+                for item in r["results"][:3]:
+                    search_results.append({
+                        "title": item.get("title", "")[:100],
+                        "snippet": item.get("snippet", "")[:200],
+                        "url": item.get("url", ""),
+                    })
+
+        if not search_results:
+            return {"success": False, "summary": "competitor_intel: no search results"}
+
+        intel = await ai.complete_json(
+            system=(
+                "You are a competitive intelligence analyst for a solo AI business. "
+                "You identify gaps in the market that can be monetized immediately. "
+                "You think like a product person: what's not being done well? "
+                "What problem has no good solution? What audience is underserved? "
+                "Output JSON only."
+            ),
+            user=f"""Analyze these competitor signals and identify monetizable gaps:
+
+{_json.dumps(search_results[:15], indent=2)[:2500]}
+
+ARIA's strengths: autonomous content creation, AI-generated digital products (ebooks, templates,
+courses, tools), social media automation, SEO content at scale, B2B outreach, landing pages.
+
+Identify the 3 best opportunities ARIA can exploit RIGHT NOW:
+JSON:
+{{
+  "market_gaps": [
+    {{
+      "opportunity": "specific gap in the market",
+      "why_now": "why this is the right timing",
+      "aria_angle": "how ARIA specifically exploits this",
+      "recommended_strategy": "income loop strategy key (e.g. substack_publish, media_pitch, product_factory)",
+      "expected_revenue_potential": 50,
+      "time_to_first_dollar_days": 7
+    }}
+  ],
+  "key_insight": "the single biggest takeaway from this competitive scan",
+  "competitors_to_watch": ["tool1", "tool2", "tool3"]
+}}""",
+            model=AIModel.STRATEGY,
+            max_tokens=1500,
+        )
+
+        if not intel or not intel.get("market_gaps"):
+            return {"success": False, "summary": "competitor_intel: AI failed to generate insights"}
+
+        gaps = intel["market_gaps"]
+        key_insight = intel.get("key_insight", "")
+        competitors = intel.get("competitors_to_watch", [])
+
+        # Queue the best opportunity for the income loop
+        if cache and gaps:
+            best = gaps[0]
+            strategy = best.get("recommended_strategy", "content_pipeline")
+            # Validate strategy
+            try:
+                from apps.core.tools.income_loop import STRATEGIES
+                valid = {s[0] for s in STRATEGIES}
+                if strategy not in valid:
+                    strategy = "content_pipeline"
+            except Exception:
+                pass
+
+            opp = {
+                "strategy": strategy,
+                "context": best.get("opportunity", ""),
+                "why_now": best.get("why_now", ""),
+                "revenue_potential": best.get("expected_revenue_potential", 50),
+                "source": "competitor_intel",
+                "ts": _dt.datetime.now().isoformat(),
+            }
+            await cache.rpush("aria:income:opportunity_queue", _json.dumps(opp))
+            await cache.ltrim("aria:income:opportunity_queue", 0, 49)
+
+        # Store full intel for morning briefing + strategy optimizer
+        if cache:
+            intel_record = {
+                "ts": _dt.datetime.now().isoformat(),
+                "gaps": gaps,
+                "key_insight": key_insight,
+                "competitors": competitors,
+            }
+            await cache.set(
+                "aria:intel:competitor_latest",
+                _json.dumps(intel_record),
+                ttl_seconds=86400 * 2,  # keep 2 days
+            )
+
+        # Archive to GitHub if configured
+        urls_created = []
+        if settings.GITHUB_TOKEN:
+            import base64 as _b64
+            from apps.core.tools.github_client import AriaGitHubClient
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+
+            md_lines = [
+                f"# Competitor Intel — {today}",
+                f"**Key Insight:** {key_insight}",
+                f"**Competitors to watch:** {', '.join(competitors[:5])}",
+                "",
+                "## Market Gaps",
+                "",
+            ]
+            for i, gap in enumerate(gaps[:3], 1):
+                md_lines += [
+                    f"### Opportunity {i}: {gap.get('opportunity', '')[:80]}",
+                    f"**Why now:** {gap.get('why_now', '')}",
+                    f"**ARIA angle:** {gap.get('aria_angle', '')}",
+                    f"**Strategy:** `{gap.get('recommended_strategy', '')}`",
+                    f"**Revenue potential:** ${gap.get('expected_revenue_potential', 0)} | "
+                    f"**Days to $:** {gap.get('time_to_first_dollar_days', 7)}",
+                    "",
+                ]
+            md_lines.append("*Generated by ARIA AI — Competitor Intelligence Engine*")
+            encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/intel/{today}-competitor-scan.md",
+                {"message": f"intel: competitor scan {today}", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/intel/{today}-competitor-scan.md"
+                )
+
+        return {
+            "success": True,
+            "summary": f"Competitor intel: {len(gaps)} opportunities found — '{key_insight[:80]}'",
+            "value_usd": gaps[0].get("expected_revenue_potential", 50) if gaps else 0.0,
+            "urls": urls_created[:2],
+        }
+
     scheduler.register_handler("youtube_cycle", _youtube_cycle)
     scheduler.register_handler("product_hunt_cycle", _product_hunt_cycle)
     scheduler.register_handler("trend_detector", _trend_detector)
     scheduler.register_handler("weekly_review", _weekly_review)
+    scheduler.register_handler("content_calendar_builder", _content_calendar_builder)
+    scheduler.register_handler("competitor_intel", _competitor_intel)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
