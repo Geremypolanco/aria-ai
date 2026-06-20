@@ -103,6 +103,7 @@ BOT_COMMANDS = [
     {"command": "reporte",     "description": "Reporte de analíticas por estrategia de ingresos"},
     {"command": "demo",        "description": "Publicar demo de IA en HuggingFace Spaces (gratis)"},
     {"command": "catalogo",    "description": "Ver todos los productos y publicaciones de ARIA"},
+    {"command": "traccion",    "description": "Ver stars/forks en GitHub — presencia en el mercado"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -291,6 +292,7 @@ class AriaTelegramBot:
             "/reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
             "/demo":         "publica un demo de IA en HuggingFace Spaces usando run_income_cycle con strategy hf_spaces_demo",
             "/catalogo":     "muéstrame el catálogo completo de productos y publicaciones de ARIA usando get_product_catalog",
+            "/traccion":     "muéstrame la tracción en GitHub: stars, forks y presencia en el mercado usando get_github_traction",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):

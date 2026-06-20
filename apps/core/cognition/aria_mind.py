@@ -156,6 +156,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - setup_portfolio  → crea o actualiza el portfolio profesional de ARIA en GitHub Pages (aria-portfolio). Incluye capacidades, productos publicados, artículos del blog, y links de afiliado. Args: {{}}
 - get_income_analytics → reporte de analíticas por estrategia: cuántas veces corrió cada estrategia, tasa de éxito, revenue acumulado, mejores estrategias. Úsalo cuando el usuario pida el reporte, estadísticas de ingresos, qué estrategia funciona mejor o analíticas. Args: {{}}
 - get_product_catalog → catálogo completo de todos los productos, artículos, demos y recursos publicados por ARIA con sus URLs y revenue potencial. Úsalo cuando el usuario pida ver los productos, el catálogo, qué ha publicado ARIA o cuánto ha generado. Args: {{"limit": 20}}
+- get_github_traction → muestra stars, forks y watchers de todos los repos públicos de ARIA para medir la presencia en el mercado y crecimiento de comunidad. Args: {{}}
 
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
 Tienes acceso a tus propias credenciales de plataformas vía variables de entorno ARIA_EMAIL y ARIA_PASSWORD.
@@ -212,6 +213,7 @@ REGLAS DE RAZONAMIENTO:
 42. Si el usuario pide publicar un demo de IA, crear una Space en HuggingFace, o quiere mostrar el trabajo de ARIA con herramientas interactivas gratuitas → usa run_income_cycle con strategy="hf_spaces_demo".
 43. Si el usuario pide ver qué productos ha publicado ARIA, el catálogo, qué ha generado hasta ahora, o cuánto lleva acumulado → usa get_product_catalog.
 44. Si el usuario pide mejorar el SEO del contenido existente, optimizar artículos del blog, actualizar posts, o mejorar el posicionamiento orgánico → usa run_income_cycle con strategy="seo_optimizer".
+45. Si el usuario pide ver las estrellas, forks, tracción en GitHub, crecimiento de la comunidad, o presencia en el mercado → usa get_github_traction.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1503,6 +1505,43 @@ class AriaMind:
                 limit   = int(args.get("limit", 20))
                 catalog = await loop.get_product_catalog(limit=limit)
                 return catalog, {}
+
+            elif tool == "get_github_traction":
+                from apps.core.tools.github_client import AriaGitHubClient
+                from apps.core.config import settings as _s
+                gh    = AriaGitHubClient()
+                owner = _s.GITHUB_USERNAME or "Geremypolanco"
+                aria_repos = [
+                    "aria-insights", "aria-portfolio", "aria-free-resources",
+                    "aria-newsletter", "aria-ai",
+                ]
+                traction_lines = [
+                    "⭐ <b>GitHub Traction — ARIA Market Presence</b>",
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                ]
+                total_stars = 0
+                total_forks = 0
+                for repo in aria_repos:
+                    info = await gh.get_repo(owner, repo)
+                    if "error" not in info:
+                        s = info.get("stargazers_count", 0)
+                        f = info.get("forks_count", 0)
+                        w = info.get("watchers_count", 0)
+                        total_stars += s
+                        total_forks += f
+                        url = info.get("html_url", "")
+                        traction_lines.append(
+                            f"<code>{repo:<28}</code>  ⭐{s}  🍴{f}  👁{w}"
+                        )
+                        traction_lines.append(f"  <a href='{url}'>{url}</a>")
+                    else:
+                        traction_lines.append(f"  {repo}: not found yet")
+                traction_lines += [
+                    "",
+                    f"<b>Total stars: {total_stars}  |  Total forks: {total_forks}</b>",
+                    f"<i>Tip: share the repos in communities to grow stars → brand authority → sales</i>",
+                ]
+                return "\n".join(traction_lines), {}
 
             elif tool == "setup_portfolio":
                 from apps.core.config import settings as _s
