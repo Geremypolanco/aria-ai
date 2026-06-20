@@ -3150,8 +3150,77 @@ JSON:
             }
             await cache.rpush("aria:products:catalog", json.dumps(entry))
             await cache.ltrim("aria:products:catalog", -500, -1)
+
+            # Throttled portfolio update: at most once every 4 hours
+            last_update_key = "aria:income:last_portfolio_product_update"
+            last_update = await cache.get(last_update_key)
+            if not last_update:
+                asyncio.create_task(self._update_portfolio_products(cache, entry))
+                await cache.set(last_update_key, "1", ttl_seconds=3600 * 4)
         except Exception as exc:
             logger.debug("[IncomeLoop] register_product: %s", exc)
+
+    async def _update_portfolio_products(self, cache, new_entry: dict) -> None:
+        """Append the latest products section to aria-portfolio README."""
+        if not settings.GITHUB_TOKEN:
+            return
+        try:
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            repo  = "aria-portfolio"
+
+            # Load catalog (last 10 items)
+            raw_items = await cache.lrange("aria:products:catalog", -10, -1)
+            catalog   = []
+            for raw in (raw_items or []):
+                try:
+                    catalog.append(json.loads(raw) if isinstance(raw, str) else raw)
+                except Exception:
+                    pass
+
+            # Build products section
+            products_section = "## 📦 Latest Products & Publications\n\n"
+            for item in reversed(catalog[-8:]):
+                title   = item.get("title", "")[:80]
+                urls    = item.get("urls", [])
+                revenue = item.get("revenue", 0)
+                date    = item.get("created_at", "")[:10]
+                if urls:
+                    link = urls[0]
+                    products_section += f"- **[{title}]({link})** — ${revenue:.0f} potential ({date})\n"
+                else:
+                    products_section += f"- **{title}** — ${revenue:.0f} potential ({date})\n"
+
+            # Read current README
+            readme_data = await gh._get(f"/repos/{owner}/{repo}/contents/README.md")
+            if "error" in readme_data or "content" not in readme_data:
+                return
+            current_readme = _b64.b64decode(readme_data["content"].replace("\n", "")).decode("utf-8", errors="replace")
+            sha = readme_data.get("sha", "")
+
+            # Replace or append products section
+            marker_start = "## 📦 Latest Products"
+            if marker_start in current_readme:
+                # Find next H2 after the products section
+                idx_start = current_readme.index(marker_start)
+                idx_end   = current_readme.find("\n## ", idx_start + 1)
+                if idx_end == -1:
+                    new_readme = current_readme[:idx_start] + products_section
+                else:
+                    new_readme = current_readme[:idx_start] + products_section + "\n" + current_readme[idx_end:]
+            else:
+                new_readme = current_readme.rstrip() + "\n\n" + products_section
+
+            await gh._put(f"/repos/{owner}/{repo}/contents/README.md", {
+                "message": "auto: update portfolio with latest products",
+                "content": _b64.b64encode(new_readme.encode()).decode(),
+                "sha": sha,
+            })
+            logger.info("[IncomeLoop] Portfolio updated with %d products", len(catalog))
+        except Exception as exc:
+            logger.debug("[IncomeLoop] update_portfolio_products: %s", exc)
 
     async def get_product_catalog(self, limit: int = 20) -> str:
         """Return a formatted catalog of all products/URLs published by ARIA."""
