@@ -56,7 +56,7 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 STRATEGIES = [
     ("content_pipeline",         2),
     ("niche_rotator",            2),
-    ("product_factory",          3),
+    ("product_factory",          2),
     ("course_builder",           2),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        2),   # build own affiliate program, recruit promoters
     ("opportunity_scan",         2),
@@ -65,7 +65,7 @@ STRATEGIES = [
     ("micro_saas",               3),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          1),
     ("email_campaign",           1),
-    ("affiliate_content",        3),   # review/comparison articles with affiliate links
+    ("affiliate_content",        2),   # review/comparison articles with affiliate links
     ("ebook_factory",            3),
     ("lead_magnet",              1),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
@@ -120,6 +120,8 @@ STRATEGIES = [
     ("knowledge_synthesizer",    1),   # Read latest AI/business content + ingest into knowledge base
     ("conversion_optimizer",     1),   # Analyze full funnel + apply conversion rate improvements
     ("brand_storyteller",        1),   # Create brand narrative + origin story + value proposition content
+    ("competitor_copy",          1),   # Analyze top competitors and create superior alternatives
+    ("price_ladder",             1),   # Design optimal pricing ladder from free to enterprise
 ]
 
 
@@ -473,6 +475,10 @@ JSON:
             return await self._exec_conversion_optimizer()
         elif strategy == "brand_storyteller":
             return await self._exec_brand_storyteller()
+        elif strategy == "competitor_copy":
+            return await self._exec_competitor_copy()
+        elif strategy == "price_ladder":
+            return await self._exec_price_ladder()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -9831,6 +9837,224 @@ JSON:
             logger.error("[IncomeLoop] voice_of_aria: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
+
+    async def _exec_competitor_copy(self) -> dict:
+        """Analyze top competitor products and create superior alternatives."""
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+            import base64 as _b64
+            import datetime as _dt
+            from apps.core.memory.redis_client import get_cache
+            gh = AriaGitHubClient()
+            wt = WebTools()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # ── Get competitor intel from Redis ───────────────────────────────
+            competitors: list[str] = []
+            gaps: list[dict] = []
+            if cache:
+                intel_raw = await cache.get("aria:intel:competitor_latest")
+                if intel_raw:
+                    import json as _json
+                    intel = _json.loads(intel_raw)
+                    competitors = intel.get("competitors", [])[:5]
+                    gaps = intel.get("gaps", [])[:3]
+
+            # ── Research top competitor products ──────────────────────────────
+            search_query = "best AI automation tools digital products 2024 site:gumroad.com OR site:producthunt.com"
+            search_r = await wt.search_web(search_query, num_results=6)
+            competitor_context = ""
+            if search_r.get("success"):
+                competitor_context = "\n".join(
+                    f"- {r.get('title','')} — {r.get('snippet','')[:100]}"
+                    for r in search_r.get("results", [])[:5]
+                )
+
+            # ── Generate superior product alternative ──────────────────────────
+            analysis = await complete_json(
+                system="You are a competitive product strategist. Return JSON: {competitor_product: str, their_weakness: str, our_product: {name, tagline, description (200 words), price_usd, key_differentiators: [str, str, str], readme_content: str (500 words)}}",
+                user=f"""Known competitors: {', '.join(competitors[:5]) or 'AI automation tools'}
+
+Search results showing competitor products:
+{competitor_context}
+
+Known market gaps:
+{gaps[:2]}
+
+Create a superior alternative product that:
+1. Addresses the competitor's main weakness
+2. Fills the market gap
+3. Is something ARIA can publish immediately on GitHub + Gumroad
+4. Has a clear, specific value proposition""",
+                max_tokens=1200,
+            )
+
+            if not analysis or not analysis.get("our_product"):
+                return {"success": False, "summary": "competitor_copy: AI failed", "revenue_potential": 0.0}
+
+            competitor = analysis.get("competitor_product", "")
+            weakness = analysis.get("their_weakness", "")
+            product = analysis.get("our_product", {})
+            product_name = product.get("name", "")
+            product_price = float(product.get("price_usd", 29))
+            readme = product.get("readme_content", "")
+
+            # ── Publish to GitHub ─────────────────────────────────────────────
+            if readme and product_name:
+                safe_name = product_name.lower().replace(" ", "-").replace("/", "-")[:30]
+                today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+                encoded = _b64.b64encode(readme.encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/products/{today}-{safe_name}.md",
+                    {"message": f"product: {product_name} (superior to {competitor[:30]})", "content": encoded}
+                )
+                if "error" not in file_r:
+                    urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/products/{today}-{safe_name}.md")
+
+            # ── Also publish to Gumroad ───────────────────────────────────────
+            if settings.GUMROAD_TOKEN and product_name:
+                try:
+                    from apps.core.tools.gumroad_tools import GumroadTools
+                    gt = GumroadTools()
+                    gr_res = await gt.create_product(
+                        name=product_name,
+                        description=product.get("description", ""),
+                        price=int(product_price * 100),
+                    )
+                    if gr_res.get("product", {}).get("short_url"):
+                        urls_created.insert(0, gr_res["product"]["short_url"])
+                except Exception:
+                    pass
+
+            differentiators = product.get("key_differentiators", [])
+            return {
+                "success": bool(urls_created),
+                "summary": f"competitor_copy: '{product_name}' built to beat '{competitor[:30]}' — weakness: {weakness[:50]}",
+                "revenue_potential": product_price,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] competitor_copy: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_price_ladder(self) -> dict:
+        """Design the optimal pricing ladder from free to enterprise for ARIA's products."""
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            import base64 as _b64
+            import datetime as _dt
+            import json as _json
+            from apps.core.memory.redis_client import get_cache
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            urls_created: list[str] = []
+
+            # ── Get product catalog and current prices ─────────────────────────
+            catalog_r = await gh._get(f"/repos/{owner}/aria-insights/contents/products")
+            products = []
+            if isinstance(catalog_r, list):
+                for f in catalog_r[:8]:
+                    if isinstance(f, dict) and f.get("type") == "file":
+                        products.append(f.get("name", "").replace(".md", ""))
+
+            smart_prices_raw = await cache.get("aria:income:smart_prices") if cache else None
+            current_prices = _json.loads(smart_prices_raw) if smart_prices_raw else {}
+
+            # ── Design the pricing ladder ──────────────────────────────────────
+            products_str = "\n".join(f"- {p}" for p in products[:8]) or "AI automation tools"
+            ladder = await complete_json(
+                system="You are a SaaS pricing strategist. Return JSON: {pricing_ladder: [{tier_name, price_usd, billing: monthly|one-time, what_included: [str, str, str], target_buyer, upsell_to}], free_tier: {name, included: [str], upgrade_trigger}, revenue_projection: {monthly_usd, assumptions: str}}",
+                user=f"""ARIA's products:
+{products_str}
+
+Current prices (if any): {_json.dumps(current_prices)[:200] if current_prices else 'None set'}
+
+Design a complete value ladder with:
+1. Free tier (lead magnet / free tool)
+2. Starter tier ($7-$27 one-time)
+3. Core tier ($47-$97 one-time or $29-$79/month)
+4. Pro tier ($147-$297 one-time or $97-$199/month)
+5. Agency/Enterprise tier ($497-$997/month)
+
+Each tier should have clear differentiation and a natural upgrade path.""",
+                max_tokens=900,
+            )
+
+            if not ladder:
+                return {"success": False, "summary": "price_ladder: AI failed", "revenue_potential": 0.0}
+
+            pricing = ladder.get("pricing_ladder", [])
+            free_tier = ladder.get("free_tier", {})
+            projection = ladder.get("revenue_projection", {})
+
+            # ── Store pricing strategy in Redis ────────────────────────────────
+            if cache:
+                await cache.set("aria:income:pricing_ladder", _json.dumps({
+                    "tiers": pricing,
+                    "free": free_tier,
+                    "projection": projection,
+                    "generated_at": _dt.datetime.utcnow().isoformat(),
+                }), ex=86400 * 30)
+
+            # ── Update smart_prices based on ladder ───────────────────────────
+            if pricing and cache:
+                new_prices = {}
+                for tier in pricing:
+                    tier_name = tier.get("tier_name", "")
+                    price = tier.get("price_usd", 0)
+                    if tier_name and price:
+                        new_prices[tier_name.lower().replace(" ", "_")] = price
+                merged = {**current_prices, **new_prices}
+                await cache.set("aria:income:smart_prices", _json.dumps(merged), ex=86400 * 30)
+
+            # ── Archive pricing strategy ───────────────────────────────────────
+            today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+            tiers_md = "\n\n".join(
+                f"### {t.get('tier_name','')}\n"
+                f"**Price:** ${t.get('price_usd','')} {t.get('billing','')}\n"
+                f"**Target:** {t.get('target_buyer','')}\n"
+                f"**Includes:**\n" + "\n".join(f"- {item}" for item in t.get("what_included", [])[:4])
+                for t in pricing[:5]
+            )
+            monthly_proj = projection.get("monthly_usd", 0)
+            md = f"""# ARIA Pricing Ladder — {today}
+
+## Revenue Projection
+**Monthly target:** ${monthly_proj:,.0f}
+*Assumptions: {projection.get('assumptions', '')}*
+
+## Free Tier: {free_tier.get('name', 'Free Plan')}
+**Includes:** {', '.join(free_tier.get('included', [])[:3])}
+**Upgrade trigger:** {free_tier.get('upgrade_trigger', '')}
+
+## Paid Tiers
+{tiers_md}
+
+*Generated by ARIA AI — Price Ladder Optimizer*
+"""
+            encoded = _b64.b64encode(md.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/aria-insights/contents/pricing/{today}-value-ladder.md",
+                {"message": f"pricing: value ladder — ${monthly_proj:.0f}/mo projection", "content": encoded}
+            )
+            if "error" not in file_r:
+                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/pricing/{today}-value-ladder.md")
+
+            return {
+                "success": True,
+                "summary": f"price_ladder: {len(pricing)} tiers designed | ${monthly_proj:.0f}/mo projection | stored in Redis",
+                "revenue_potential": float(monthly_proj) * 0.1,  # 10% of projection as potential
+                "urls": urls_created[:2],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] price_ladder: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_conversion_optimizer(self) -> dict:
         """Analyze ARIA's full funnel and apply conversion rate improvements."""
