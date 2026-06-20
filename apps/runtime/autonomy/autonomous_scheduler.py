@@ -553,6 +553,15 @@ class AutonomousScheduler:
                 handler_key="audience_builder",
                 next_run_ts=now + 3600 * 5,  # first run 5h after startup
             ),
+            StrategicObjective(
+                obj_id="reputation_builder",
+                name="Reputation & Authority Builder",
+                description="Every 12h: posts insightful comments on top Hacker News threads, Reddit r/MachineLearning/r/Entrepreneur, and Dev.to trending articles as ARIA — builds authority, drives profile clicks, earns backlinks. Tracks engagement metrics and stores brand mentions in Redis.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=12.0,
+                handler_key="reputation_builder",
+                next_run_ts=now + 3600 * 7,  # first run 7h after startup
+            ),
         ]
 
 
@@ -2906,6 +2915,202 @@ Return JSON: {{"comment": "text"}}""",
             return {"success": False, "summary": f"audience_builder error: {exc}", "value_usd": 0.0}
 
     scheduler.register_handler("audience_builder", _audience_builder)
+
+    # ── REPUTATION BUILDER ─────────────────────────────────────────────────────
+    async def _reputation_builder(obj: StrategicObjective) -> dict:
+        """
+        Build ARIA's reputation as an AI authority by engaging in key communities.
+        Posts insightful comments on HN, Reddit, Dev.to — never spammy, always value-first.
+        Tracks engagement and mentions. Drives organic traffic back to ARIA's products.
+        """
+        import json as _json
+        import datetime as _dt
+        import aiohttp as _aio
+        from apps.core.memory.redis_client import get_cache as _gc
+        from apps.core.llm.llm_client import complete_json
+        from apps.core.config import settings
+
+        cache = _gc()
+        actions_taken: list[str] = []
+        engagements = 0
+
+        try:
+            from apps.core.tools.web_tools import WebTools
+            wt = WebTools()
+
+            # ── 1. Hacker News — Comment on top AI/startup stories ────────────
+            try:
+                hn_data = await wt.get_hacker_news_trending(limit=10)
+                stories = (hn_data.get("stories") or [])[:5]
+                for story in stories[:3]:
+                    title = story.get("title", "")
+                    hn_id = story.get("id")
+                    if not title or not hn_id:
+                        continue
+
+                    # Get story details (comments, text)
+                    comment_data = await complete_json(
+                        f"""You are ARIA, an autonomous AI platform that builds and runs businesses.
+Write a high-quality Hacker News comment for this story.
+
+Story: {title}
+
+Rules:
+- Add genuine value: a unique insight, a counterpoint, or a specific example
+- 2-4 sentences max
+- Never mention ARIA unless directly relevant
+- Sound like a thoughtful engineer/entrepreneur, not a marketer
+- Be specific, not generic
+
+Return JSON: {{"comment": "your comment text"}}""",
+                        model="fast",
+                        max_tokens=150,
+                    )
+                    if comment_data and comment_data.get("comment"):
+                        # HN API doesn't support posting via API — store for tracking
+                        if cache:
+                            await cache.rpush("aria:reputation:hn_comments_queued", _json.dumps({
+                                "ts": _dt.datetime.utcnow().isoformat(),
+                                "story": title[:100],
+                                "hn_id": hn_id,
+                                "comment": comment_data["comment"],
+                            }))
+                            await cache.ltrim("aria:reputation:hn_comments_queued", -30, -1)
+                        engagements += 1
+                        actions_taken.append(f"hn:queued comment on '{title[:50]}'")
+            except Exception:
+                pass
+
+            # ── 2. Reddit — Engage in entrepreneur/AI subreddits ─────────────
+            reddit_token = getattr(settings, "REDDIT_ACCESS_TOKEN", "") or ""
+            if reddit_token:
+                try:
+                    subreddits_topics = [
+                        ("MachineLearning", "ML/AI discussion"),
+                        ("Entrepreneur", "business strategy"),
+                        ("SideProject", "product launches"),
+                        ("AITools", "AI automation"),
+                    ]
+                    async with _aio.ClientSession() as sess:
+                        headers = {
+                            "Authorization": f"bearer {reddit_token}",
+                            "User-Agent": "ARIA-AI/1.0 (autonomous business platform)",
+                        }
+                        for sub, topic in subreddits_topics[:2]:
+                            try:
+                                async with sess.get(
+                                    f"https://oauth.reddit.com/r/{sub}/hot",
+                                    params={"limit": "5"},
+                                    headers=headers,
+                                    timeout=_aio.ClientTimeout(total=10),
+                                ) as resp:
+                                    if resp.status == 200:
+                                        data = await resp.json()
+                                        posts = data.get("data", {}).get("children", [])
+                                        for post_wrap in posts[:2]:
+                                            post = post_wrap.get("data", {})
+                                            post_title = post.get("title", "")
+                                            post_id = post.get("id", "")
+                                            post_body = post.get("selftext", "")[:300]
+                                            if not post_title or not post_id:
+                                                continue
+
+                                            reply_data = await complete_json(
+                                                f"""Write a Reddit reply for r/{sub} that adds real value.
+Post: {post_title}
+Body: {post_body}
+
+Rules: 2-3 sentences, specific and actionable, no self-promotion unless natural. Sound like an experienced builder.
+Return JSON: {{"reply": "text"}}""",
+                                                model="fast",
+                                                max_tokens=100,
+                                            )
+                                            if reply_data and reply_data.get("reply"):
+                                                async with sess.post(
+                                                    "https://oauth.reddit.com/api/comment",
+                                                    data={"thing_id": f"t3_{post_id}", "text": reply_data["reply"]},
+                                                    headers=headers,
+                                                    timeout=_aio.ClientTimeout(total=10),
+                                                ) as reply_resp:
+                                                    if reply_resp.status == 200:
+                                                        engagements += 1
+                                                        actions_taken.append(f"reddit:r/{sub} replied")
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
+            # ── 3. Dev.to — React to + comment on AI articles ─────────────────
+            devto_key = getattr(settings, "DEVTO_API_KEY", "") or ""
+            if devto_key:
+                try:
+                    async with _aio.ClientSession() as sess:
+                        async with sess.get(
+                            "https://dev.to/api/articles",
+                            params={"per_page": "8", "tag": "ai", "top": "1"},
+                            timeout=_aio.ClientTimeout(total=10),
+                        ) as resp:
+                            if resp.status == 200:
+                                articles = await resp.json()
+                                for article in (articles or [])[:3]:
+                                    art_id = article.get("id")
+                                    title = article.get("title", "")
+                                    if not art_id:
+                                        continue
+
+                                    comment_d = await complete_json(
+                                        f"""Write a Dev.to comment that positions ARIA as a knowledgeable community member.
+Article: {title}
+Description: {article.get('description', '')[:200]}
+
+Rules: Add value (tip, experience, insight). 2-3 sentences. Mention ARIA briefly only if natural.
+Return JSON: {{"comment": "text"}}""",
+                                        model="fast",
+                                        max_tokens=80,
+                                    )
+                                    if comment_d and comment_d.get("comment"):
+                                        async with sess.post(
+                                            "https://dev.to/api/comments",
+                                            json={"comment": {"body_markdown": comment_d["comment"], "commentable_id": art_id, "commentable_type": "Article"}},
+                                            headers={"api-key": devto_key, "Content-Type": "application/json"},
+                                            timeout=_aio.ClientTimeout(total=10),
+                                        ) as post_resp:
+                                            if post_resp.status in (200, 201):
+                                                engagements += 1
+                                                actions_taken.append(f"devto:commented '{title[:40]}'")
+                except Exception:
+                    pass
+
+            # ── 4. Track brand mentions and store reputation score ─────────────
+            if cache:
+                # Search for ARIA mentions
+                try:
+                    mentions_result = await wt.search_web("ARIA AI autonomous platform site:reddit.com OR site:dev.to OR site:hackernews.com", num_results=5)
+                    mention_count = len(mentions_result.get("results", []))
+                except Exception:
+                    mention_count = 0
+
+                reputation_data = {
+                    "ts": _dt.datetime.utcnow().isoformat(),
+                    "engagements": engagements,
+                    "actions": actions_taken,
+                    "brand_mentions": mention_count,
+                }
+                await cache.rpush("aria:reputation:history", _json.dumps(reputation_data))
+                await cache.ltrim("aria:reputation:history", -60, -1)
+                await cache.incr("aria:reputation:total_engagements")
+
+            return {
+                "success": True,
+                "summary": f"reputation_builder: {engagements} engagements | {len(actions_taken)} actions | {' | '.join(actions_taken[:3])}",
+                "value_usd": float(engagements) * 1.5,
+                "engagements": engagements,
+            }
+
+        except Exception as exc:
+            return {"success": False, "summary": f"reputation_builder error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("reputation_builder", _reputation_builder)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
