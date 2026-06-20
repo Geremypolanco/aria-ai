@@ -126,7 +126,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
 - income_loop_status → muestra el estado del loop de ingresos 24/7: ciclos completados, tasa de éxito, última estrategia ejecutada, URLs creadas. Args: {{}}
 - start_income_loop → inicia el loop autónomo de ingresos 24/7 si no está corriendo. Corre cada 30 min indefinidamente. Args: {{}}
-- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder|twitter_thread|linkedin_post|reddit_organic|stripe_checkout|tiktok_script|linkedin_outreach|youtube_strategy|product_hunt_launch|content_amplifier|cold_email_outreach|pinterest_pins|landing_page_deploy (opcional)"}}
+- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder|twitter_thread|linkedin_post|reddit_organic|stripe_checkout|tiktok_script|linkedin_outreach|youtube_strategy|product_hunt_launch|content_amplifier|cold_email_outreach|pinterest_pins|landing_page_deploy|substack_publish|freelance_gig|media_pitch|ab_content_test (opcional)"}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
 - deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
@@ -256,6 +256,10 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 67. Si el usuario pide publicar en Pinterest, crear pins, generar tráfico visual, o aprovechar Pinterest para sus productos → usa run_income_cycle con strategy="pinterest_pins".
 68. Si el usuario pide crear una landing page, página de ventas, página de producto, o desplegar una página HTML con CTA de compra → usa run_income_cycle con strategy="landing_page_deploy".
 69. Si el usuario pide el reporte semanal, revisión de la semana, qué funcionó mejor esta semana, o proyecciones para la próxima semana → usa run_objective con objective="weekly_review".
+70. Si el usuario pide publicar en Substack, crear un newsletter de pago, capturar suscriptores de pago, o lanzar un boletín premium → usa run_income_cycle con strategy="substack_publish".
+71. Si el usuario pide crear un gig en Fiverr, publicar un servicio en Upwork, listar servicios freelance, o conseguir contratos B2B como servicio → usa run_income_cycle con strategy="freelance_gig".
+72. Si el usuario pide hacer PR, conseguir cobertura de prensa, enviar pitch a periodistas tech, aparecer en TechCrunch o Indie Hackers, o crear un press release → usa run_income_cycle con strategy="media_pitch".
+73. Si el usuario pide hacer A/B testing, optimizar conversión de productos, probar diferentes precios o títulos, mejorar el CTR de listings existentes → usa run_income_cycle con strategy="ab_content_test".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
