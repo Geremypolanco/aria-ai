@@ -571,6 +571,52 @@ async def api_income_stop() -> dict:
         return {"error": str(exc)}
 
 
+@router.get("/income/strategies", dependencies=[Depends(verify_api_key)])
+async def api_income_strategies() -> dict:
+    """Return all income strategies with weights and channel requirements."""
+    try:
+        from apps.core.tools.income_loop import STRATEGIES, get_income_loop
+        loop = get_income_loop()
+        creds = loop.check_credentials()
+        total_weight = sum(w for _, w in STRATEGIES)
+        return {
+            "strategies": [
+                {
+                    "name": name,
+                    "weight": weight,
+                    "probability_pct": round(weight / total_weight * 100, 1),
+                }
+                for name, weight in STRATEGIES
+            ],
+            "total_weight": total_weight,
+            "channels": creds,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@router.get("/income/credentials", dependencies=[Depends(verify_api_key)])
+async def api_income_credentials() -> dict:
+    """Show which income channels are configured vs. missing."""
+    try:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        creds = loop.check_credentials()
+        active_count   = len(creds.get("active", {}))
+        inactive_count = len(creds.get("inactive", {}))
+        return {
+            "active_count": active_count,
+            "inactive_count": inactive_count,
+            "active": list(creds.get("active", {}).keys()),
+            "inactive": {
+                k: v.get("keys_needed", [])
+                for k, v in creds.get("inactive", {}).items()
+            },
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 
 

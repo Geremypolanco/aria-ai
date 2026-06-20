@@ -465,6 +465,7 @@ JSON:
                     published_titles = [art.get("title", "Article") for art in existing_articles[:len(published_urls)]]
                     await self._update_blog_index(gh, owner, repo, published_titles, published_urls)
                     await self._update_sitemap(gh, owner, repo)
+                    await self._update_rss_feed(gh, owner, repo)
                     # Track published topics to avoid duplication
                     try:
                         from apps.core.memory.redis_client import get_cache as _gc2
@@ -591,6 +592,58 @@ JSON:
         except Exception as exc:
             logger.debug("[IncomeLoop] blog_index_update: %s", exc)
 
+    async def _update_rss_feed(self, gh, owner: str, repo: str) -> None:
+        """Generate RSS feed for the blog — discoverable by RSS readers and news aggregators."""
+        try:
+            import base64 as _b64
+            from datetime import datetime, timezone
+            base_url    = f"https://{owner.lower()}.github.io/{repo}"
+            repo_url    = f"https://github.com/{owner}/{repo}"
+            today       = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
+            # Load recent articles from Redis
+            try:
+                from apps.core.memory.redis_client import get_cache
+                cache = get_cache()
+                raw   = await cache.get("aria:blog:links") if cache else None
+                links = json.loads(raw) if raw else []
+            except Exception:
+                links = []
+            items = []
+            for link in links[:20]:
+                title = link.get("title", "Article")
+                url   = link.get("url", "").replace("github.com", f"{owner.lower()}.github.io").replace(f"/{owner}/{repo}/blob/main/", f"/{repo}/")
+                items.append(
+                    f"  <item>\n"
+                    f"    <title>{title}</title>\n"
+                    f"    <link>{url}</link>\n"
+                    f"    <guid>{url}</guid>\n"
+                    f"    <pubDate>{today}</pubDate>\n"
+                    f"    <description>AI-generated article: {title}</description>\n"
+                    f"  </item>"
+                )
+            rss = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n'
+                "  <channel>\n"
+                f"    <title>ARIA Insights</title>\n"
+                f"    <link>{base_url}</link>\n"
+                f"    <description>AI-generated insights on technology, business and productivity</description>\n"
+                f"    <atom:link href=\"{base_url}/feed.xml\" rel=\"self\" type=\"application/rss+xml\"/>\n"
+                f"    <lastBuildDate>{today}</lastBuildDate>\n"
+                + "\n".join(items) + "\n"
+                "  </channel>\n"
+                "</rss>\n"
+            )
+            encoded = _b64.b64encode(rss.encode()).decode()
+            existing = await gh._get(f"/repos/{owner}/{repo}/contents/feed.xml")
+            sha      = existing.get("sha", "") if "error" not in existing else ""
+            put_args: dict = {"message": "chore: update RSS feed", "content": encoded}
+            if sha:
+                put_args["sha"] = sha
+            await gh._put(f"/repos/{owner}/{repo}/contents/feed.xml", put_args)
+        except Exception as exc:
+            logger.debug("[IncomeLoop] rss_feed_update: %s", exc)
+
     async def _update_sitemap(self, gh, owner: str, repo: str) -> None:
         """Generate sitemap.xml for the blog — helps search engines discover content."""
         try:
@@ -647,11 +700,78 @@ JSON:
 
             result = await engine.launch_niche(target)
             urls   = [u["url"] for u in result.published_urls + result.seo_article_urls if u.get("url")]
+
+            if result.success and urls:
+                return {
+                    "success":          True,
+                    "summary":          f"Niche '{target}': checklist={result.checklist.score if result.checklist else 0}/100 | {len(result.published_urls)} listings | {len(result.seo_article_urls)} articles",
+                    "revenue_potential": result.revenue_potential_usd,
+                    "urls":             urls,
+                }
+
+            # Fallback: publish the niche as a GitHub landing page (free SEO)
+            if settings.GITHUB_TOKEN:
+                try:
+                    from apps.core.tools.ai_client import get_ai_client, AIModel
+                    from apps.core.tools.github_client import AriaGitHubClient
+                    import base64 as _b64
+                    niche_info = NICHE_CATALOG.get(target, {})
+                    ai = get_ai_client()
+                    if ai:
+                        niche_page = await ai.complete_json(
+                            system="You create SEO-optimized landing pages for service businesses. Output JSON only.",
+                            user=f"""Create a landing page for a niche service business: "{target}"
+Niche info: {str(niche_info)[:400]}
+
+JSON:
+{{
+  "headline": "Service headline (10 words max)",
+  "description": "Service description (200+ words). Highlight benefits, ROI, outcomes.",
+  "services": ["Service 1", "Service 2", "Service 3"],
+  "price_range": "$X - $Y per project"
+}}""",
+                            model=AIModel.FAST,
+                            max_tokens=1000,
+                        )
+                        if niche_page:
+                            gh    = AriaGitHubClient()
+                            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                            repo  = f"aria-niche-{target.replace('_', '-')[:30]}"
+                            readme = (
+                                f"# {niche_page.get('headline', target.replace('_', ' ').title())}\n\n"
+                                f"> {niche_page.get('description', '')}\n\n"
+                                f"## Services Offered\n\n"
+                                + "\n".join(f"- {s}" for s in niche_page.get("services", []))
+                                + f"\n\n## Pricing\n\n{niche_page.get('price_range', '')}\n\n"
+                                f"## Get Started\n\nOpen an issue or visit our [portfolio](https://github.com/{owner}/aria-portfolio).\n\n"
+                                f"---\n*Service by ARIA AI — Autonomous Business Platform*"
+                            )
+                            existing = await gh._get(f"/repos/{owner}/{repo}")
+                            if "error" in existing:
+                                await gh._post("/user/repos", {
+                                    "name": repo, "description": niche_page.get("headline", "")[:100],
+                                    "private": False, "auto_init": False,
+                                })
+                            file_r = await gh._put(f"/repos/{owner}/{repo}/contents/README.md", {
+                                "message": f"feat: {target} service landing page",
+                                "content": _b64.b64encode(readme.encode()).decode(),
+                            })
+                            if "error" not in file_r:
+                                repo_url = f"https://github.com/{owner}/{repo}"
+                                return {
+                                    "success": True,
+                                    "summary": f"Niche '{target}' landing page published to GitHub (add Gumroad/Dev.to for full monetization)",
+                                    "revenue_potential": 2.0,
+                                    "urls": [repo_url],
+                                }
+                except Exception:
+                    pass
+
             return {
-                "success":          result.success,
-                "summary":          f"Niche '{target}': checklist={result.checklist.score if result.checklist else 0}/100 | {len(result.published_urls)} listings | {len(result.seo_article_urls)} articles",
-                "revenue_potential": result.revenue_potential_usd,
-                "urls":             urls,
+                "success": result.success,
+                "summary": f"Niche '{target}': {result.summary if hasattr(result, 'summary') else 'no publishing credentials'} — add GUMROAD_TOKEN or DEVTO_API_KEY",
+                "revenue_potential": result.revenue_potential_usd if result.success else 0,
+                "urls": urls,
             }
         except Exception as exc:
             logger.error("[IncomeLoop] niche_rotator: %s", exc)
