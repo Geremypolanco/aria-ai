@@ -1270,51 +1270,64 @@ JSON:
     async def _exec_affiliate_content(self) -> dict:
         """
         Generate affiliate-optimized review/comparison articles published to GitHub blog.
-        Creates 'Top N [tools] for [use case]' articles with Amazon affiliate links.
+        Uses real Amazon ASINs from the catalog for higher conversion.
         Works with only GITHUB_TOKEN — earns passive income via affiliate clicks.
         """
         try:
             import re as _re
             from apps.core.tools.ai_client import get_ai_client, AIModel
             from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.content_pipeline import AFFILIATE_CATALOG
 
             ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "AI unavailable for affiliate content"}
 
             assoc = getattr(settings, "AMAZON_ASSOCIATE_TAG", None) or ""
-            wt    = WebTools()
 
-            affiliate_topics = [
-                "best AI writing tools 2025",
-                "top productivity apps for entrepreneurs",
-                "best online learning platforms comparison",
-                "AI tools for small business owners 2025",
-                "best project management software 2025",
-                "top email marketing tools for beginners",
-                "best website builders for entrepreneurs",
-                "AI image generators comparison 2025",
-                "best automation tools for solopreneurs",
-                "top passive income tools and platforms",
-            ]
-            topic = random.choice(affiliate_topics)
+            # Pick a category with known products from catalog
+            categories = list(AFFILIATE_CATALOG.keys())
+            category   = random.choice(categories)
+            products   = AFFILIATE_CATALOG[category][:5]
 
-            r = await wt.search_web(f"{topic} review comparison best", num_results=5)
+            # Build topic from category
+            category_topics = {
+                "tech":     "best tech accessories for developers and entrepreneurs 2025",
+                "ai":       "best AI tools and hardware for machine learning 2025",
+                "business": "best business tools for entrepreneurs and solopreneurs 2025",
+                "finance":  "best finance tools and resources for investors 2025",
+                "fitness":  "best fitness trackers and health gadgets 2025",
+                "marketing": "best marketing tools and resources for digital marketers 2025",
+                "crypto":   "best crypto tools and resources for investors 2025",
+            }
+            topic = category_topics.get(category, f"best {category} products and tools 2025")
+
+            wt = WebTools()
+            r  = await wt.search_web(f"{topic} review", num_results=5)
             search_context = ""
             if r.get("success") and r.get("results"):
                 search_context = "\n".join(
-                    f"- {res.get('title','')}: {res.get('snippet','')[:120]}"
-                    for res in r["results"][:5]
+                    f"- {res.get('title','')}: {res.get('snippet','')[:100]}"
+                    for res in r["results"][:4]
                 )
+
+            # Build product hints for AI
+            product_hints = "\n".join(
+                f"- {p['title']} (keyword: {p['keyword']})"
+                for p in products
+            )
 
             article_data = await ai.complete_json(
                 system=(
                     "You write high-converting affiliate review articles. "
-                    "Be specific, practical, and include real use cases. Output JSON only."
+                    "Be specific, practical, name real products. Output JSON only."
                 ),
-                user=f"""Write a review/comparison article about: "{topic}"
+                user=f"""Write a detailed review article about: "{topic}"
 
-Context:
+Known products to cover (include these naturally in the article):
+{product_hints}
+
+Web context:
 {search_context}
 
 JSON:
@@ -1322,8 +1335,8 @@ JSON:
   "title": "SEO title with year (60 chars max)",
   "slug": "url-friendly-slug-max-50-chars",
   "description": "Meta description (155 chars)",
-  "tags": ["tag1", "tag2", "tag3"],
-  "content": "Complete markdown article (700+ words). Structure: compelling intro with the problem, individual tool reviews (H2 for each, 3-5 tools), pros/cons for each, pricing overview, final recommendation. End with a comparison table. Use AMAZON_LINK as placeholder for any Amazon product links."
+  "tags": ["{category}", "review", "tools", "2025"],
+  "content": "Complete markdown article (700+ words). Include: compelling intro, H2 section for each product from the list, pros/cons, who it's for, pricing. End with a comparison table and final recommendation."
 }}""",
                 model=AIModel.STRATEGY,
                 max_tokens=3000,
@@ -1334,15 +1347,29 @@ JSON:
 
             content = article_data.get("content", "")
 
+            # Inject real ASIN-based affiliate links
+            for product in products:
+                kw  = product["keyword"].lower()
+                if kw in content.lower():
+                    aff_url = (
+                        f"https://amazon.com/dp/{product['asin']}?tag={assoc}"
+                        if assoc else
+                        f"https://amazon.com/dp/{product['asin']}"
+                    )
+                    import re as _re2
+                    pattern = _re2.compile(re.escape(product["title"]), _re2.IGNORECASE)
+                    content, n = pattern.subn(f"[{product['title']}]({aff_url})", content, count=1)
+                    if n == 0:
+                        pattern2 = _re2.compile(re.escape(kw), _re2.IGNORECASE)
+                        content, _ = pattern2.subn(f"[{kw}]({aff_url})", content, count=1)
+
             if assoc:
                 search_kw = topic.replace(" ", "+")
-                aff_url   = f"https://amazon.com/s?k={search_kw}&tag={assoc}"
-                content   = _re.sub(r'AMAZON_LINK', aff_url, content)
-                content  += (
+                content += (
                     f"\n\n---\n"
-                    f"*Disclosure: This article contains affiliate links. "
+                    f"*Disclosure: This article contains Amazon affiliate links. "
                     f"We earn a small commission at no extra cost to you.*\n"
-                    f"[Browse all recommended tools on Amazon]({aff_url})\n"
+                    f"[Browse all {category} products on Amazon](https://amazon.com/s?k={search_kw}&tag={assoc})\n"
                 )
 
             result = await self._exec_github_blog(
@@ -1350,12 +1377,12 @@ JSON:
                     "title":       article_data.get("title", topic),
                     "slug":        article_data.get("slug", topic.replace(" ", "-").lower()[:50]),
                     "description": article_data.get("description", f"Best {topic} reviewed"),
-                    "tags":        article_data.get("tags", ["ai", "tools", "review"]),
+                    "tags":        article_data.get("tags", [category, "tools", "review"]),
                     "content":     content,
                 }],
             )
-            suffix = f" (Amazon {assoc})" if assoc else " (add AMAZON_ASSOCIATE_TAG for affiliate income)"
-            result["summary"] = f"Affiliate article: '{article_data.get('title', topic)[:50]}'{suffix}"
+            suffix = f" ({len(products)} Amazon links, tag={assoc})" if assoc else " (add AMAZON_ASSOCIATE_TAG for commissions)"
+            result["summary"] = f"Affiliate review: '{article_data.get('title', topic)[:45]}'{suffix}"
             return result
 
         except Exception as exc:
