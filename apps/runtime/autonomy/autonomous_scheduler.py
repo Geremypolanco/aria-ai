@@ -454,6 +454,15 @@ class AutonomousScheduler:
                 handler_key="product_hunt_cycle",
                 next_run_ts=now + 3600 * 48,  # first launch kit after 48h
             ),
+            StrategicObjective(
+                obj_id="trend_detector",
+                name="Trend Intelligence Detector",
+                description="Every 4h scans trending topics across multiple signals (web search, Reddit hot, Product Hunt today) and queues them as high-priority income opportunities for the next income loop cycle",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=4.0,
+                handler_key="trend_detector",
+                next_run_ts=now + 3600 * 1,  # first trend scan 1h after startup
+            ),
         ]
 
 
@@ -1224,8 +1233,98 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
     scheduler.register_handler("social_organic", _social_organic)
     scheduler.register_handler("strategy_optimizer", _strategy_optimizer)
     scheduler.register_handler("self_improve", _self_improve)
+    async def _trend_detector(obj: StrategicObjective) -> dict:
+        """
+        Scan trending topics every 4h and queue them for income loop strategies.
+        Sources: web search trends + Reddit hot + product hunt today.
+        Queued topics go into aria:income:opportunity_queue for content_pipeline / product_factory.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.memory.redis_client import get_cache
+            import json as _json
+
+            wt    = WebTools()
+            cache = get_cache()
+            trends_found: list[str] = []
+
+            # 1. Search for trending AI/tech/business topics
+            search_queries = [
+                "trending ai tools 2025 this week",
+                "viral side hustle trends reddit 2025",
+                "product hunt top products this week",
+            ]
+            for q in search_queries:
+                try:
+                    r = await wt.search_web(q, num_results=5)
+                    if r.get("success") and r.get("results"):
+                        for res in r["results"][:3]:
+                            title = res.get("title", "")
+                            snippet = res.get("snippet", "")
+                            if title and len(title) > 10:
+                                trends_found.append(f"{title}: {snippet[:120]}")
+                except Exception:
+                    pass
+
+            if not trends_found:
+                return {"success": False, "summary": "trend_detector: no trends found", "value_usd": 0.0}
+
+            # 2. Ask AI to extract top 5 monetizable opportunities from trends
+            opportunities = await complete_json(
+                f"""Analyze these trending topics and extract the TOP 5 most monetizable opportunities:
+
+{chr(10).join(f'- {t}' for t in trends_found[:15])}
+
+For each opportunity, determine the best income strategy from this list:
+content_pipeline, product_factory, ebook_factory, course_builder, shopify_listing, affiliate_content, twitter_thread, linkedin_post, reddit_organic, stripe_checkout
+
+Return JSON array:
+[
+  {{
+    "name": "specific opportunity name (under 60 chars)",
+    "strategy": "best_strategy_name",
+    "why": "1 sentence reason this is monetizable now",
+    "urgency": "high|medium|low"
+  }}
+]""",
+                model="fast",
+            )
+
+            if not isinstance(opportunities, list):
+                opportunities = []
+
+            # 3. Queue high-urgency opportunities into Redis
+            queued = 0
+            if cache and opportunities:
+                for opp in opportunities[:5]:
+                    if isinstance(opp, dict) and opp.get("name"):
+                        try:
+                            await cache.rpush(
+                                "aria:income:opportunity_queue",
+                                _json.dumps({
+                                    "name": opp["name"],
+                                    "strategy": opp.get("strategy", "content_pipeline"),
+                                    "why": opp.get("why", ""),
+                                    "urgency": opp.get("urgency", "medium"),
+                                    "source": "trend_detector",
+                                    "ts": time.time(),
+                                }),
+                            )
+                            await cache.ltrim("aria:income:opportunity_queue", -50, -1)
+                            queued += 1
+                        except Exception:
+                            pass
+
+            summary = f"Trend detector: {queued} opportunities queued — {', '.join(o.get('name','')[:30] for o in opportunities[:3])}"
+            return {"success": True, "summary": summary, "value_usd": float(queued * 5)}
+
+        except Exception as exc:
+            return {"success": False, "summary": f"trend_detector error: {exc}", "value_usd": 0.0}
+
     scheduler.register_handler("youtube_cycle", _youtube_cycle)
     scheduler.register_handler("product_hunt_cycle", _product_hunt_cycle)
+    scheduler.register_handler("trend_detector", _trend_detector)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:

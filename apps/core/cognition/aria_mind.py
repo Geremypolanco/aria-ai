@@ -158,8 +158,8 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - run_retention    → ejecuta campañas de retención: win-back a clientes inactivos 60+ días + loyalty rewards a VIPs. Args: {{}}
 - shopify_optimize → ejecuta optimizaciones de Shopify: SEO de productos, generación de bundles o flash sale. Args: {{"operation": "seo|bundles|flash_sale"}}
 - run_funnel       → analiza y devuelve estado de funnels de conversión, abandono de carrito y secuencias de email. Args: {{}}
-- check_objectives → muestra el estado de los 19 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis, social_organic, strategy_optimizer, self_improve, youtube_cycle, product_hunt_cycle). Args: {{}}
-- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis|social_organic|strategy_optimizer|self_improve|youtube_cycle|product_hunt_cycle"}}
+- check_objectives → muestra el estado de los 19 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis, social_organic, strategy_optimizer, self_improve, youtube_cycle, product_hunt_cycle, trend_detector). Args: {{}}
+- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis|social_organic|strategy_optimizer|self_improve|youtube_cycle|product_hunt_cycle|trend_detector"}}
 - daily_report     → muestra el reporte de ejecución del día: operaciones completadas, score de ejecución, insight y prioridad de mañana. Args: {{}}
 - human_login      → inicia sesión en una plataforma como un humano real (stealth, sin ser detectada). Args: {{"platform": "gumroad|devto|linkedin|twitter|hashnode", "email": "...", "password": "...", "username": "..."}}
 - human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
@@ -250,6 +250,7 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 61. Si el usuario pide generar tráfico orgánico de Reddit, publicar en subreddits, o crear posts para r/Entrepreneur o r/SideProject → usa run_income_cycle con strategy="reddit_organic".
 62. Si el usuario pide crear una estrategia de YouTube, generar scripts de video, plan de canal, calendario de contenido para YouTube, o metadata SEO optimizada → usa run_income_cycle con strategy="youtube_strategy".
 63. Si el usuario pide lanzar en Product Hunt, crear un lanzamiento PH, preparar el kit de lanzamiento, o generar tráfico masivo de un día con Product Hunt → usa run_income_cycle con strategy="product_hunt_launch".
+64. Si el usuario pide ver tendencias, qué está viral ahora, qué temas están siendo tendencia, o quiere que ARIA busque oportunidades de mercado en tiempo real → usa run_objective con objective="trend_detector".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1721,6 +1722,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     "proactive_analysis", "social_organic",
                     "strategy_optimizer", "self_improve",
                     "youtube_cycle", "product_hunt_cycle",
+                    "trend_detector",
                 ]
                 if obj_key not in valid_keys:
                     return (f"Objetivo inválido: '{obj_key}'. "
