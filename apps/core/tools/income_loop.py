@@ -67,8 +67,8 @@ STRATEGIES = [
     ("email_campaign",           1),
     ("affiliate_content",        3),   # review/comparison articles with affiliate links
     ("ebook_factory",            4),
-    ("lead_magnet",              2),   # free resource funnel → email capture → upsell
-    ("hf_spaces_demo",           2),   # live AI demo on HuggingFace Spaces (free, massive community)
+    ("lead_magnet",              1),   # free resource funnel → email capture → upsell
+    ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            3),   # improve existing posts for compounding organic traffic
     ("gist_blitz",               2),   # code snippet Gists with product CTAs (dev discovery)
     ("product_bundle",           4),   # bundle 2-3 existing products at a discount → higher AOV
@@ -99,8 +99,10 @@ STRATEGIES = [
     ("ab_content_test",          1),   # A/B test pricing & titles on existing products → higher conversion
     ("smart_pricing",            2),   # AI-driven price optimization for existing products → higher AOV
     ("voice_of_aria",            1),   # Proactive Telegram messages: daily tip + product spotlight + insight
-    ("self_monetize",            2),   # ARIA lists herself as a product: API docs + pricing page + RapidAPI
+    ("self_monetize",            1),   # ARIA lists herself as a product: API docs + pricing page + RapidAPI
     ("referral_engine",          1),   # Build referral/affiliate program for existing products → viral growth
+    ("digital_agency",           2),   # Done-for-you AI services pitch deck + client onboarding → $500-$5k
+    ("crowdfunding_kit",         1),   # Kickstarter/IndieGoGo campaign kit for ARIA's products
 ]
 
 
@@ -416,6 +418,10 @@ JSON:
             return await self._exec_self_monetize()
         elif strategy == "referral_engine":
             return await self._exec_referral_engine()
+        elif strategy == "digital_agency":
+            return await self._exec_digital_agency()
+        elif strategy == "crowdfunding_kit":
+            return await self._exec_crowdfunding_kit()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -8012,6 +8018,392 @@ JSON:
 
         except Exception as exc:
             logger.error("[IncomeLoop] smart_pricing: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_digital_agency(self) -> dict:
+        """
+        Creates a complete done-for-you AI agency pitch.
+        Generates: service menu with pricing ($500-$5k), client proposal template,
+        case study (before/after), SOW template, and onboarding checklist.
+        Positions ARIA as a full-service AI automation agency.
+        Archives to aria-insights/agency/.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "digital_agency: AI unavailable"}
+
+            wt = WebTools()
+            r = await wt.search_web("AI automation agency pricing services 2025", num_results=4)
+            market_context = "AI automation agencies charge $500-$5k for implementation projects"
+            if r.get("success") and r.get("results"):
+                market_context = r["results"][0].get("snippet", market_context)[:200]
+
+            agency_data = await ai.complete_json(
+                system=(
+                    "You are an AI agency owner who closes $10k+ monthly in contracts. "
+                    "You write proposals that make prospects say yes on the first call. "
+                    "Concrete deliverables, specific timelines, measurable outcomes. "
+                    "Output JSON only."
+                ),
+                user=f"""Create a complete AI agency service kit for an autonomous AI platform.
+
+Services ARIA can deliver: content automation, chatbots, lead generation systems,
+SEO automation, social media scheduling, email sequences, analytics dashboards,
+product launch automation, CRM setup, affiliate programs.
+
+Market context: {market_context}
+
+JSON:
+{{
+  "agency_name": "ARIA AI Agency",
+  "services": [
+    {{
+      "name": "AI Content Engine Setup",
+      "price": 997,
+      "timeline_weeks": 2,
+      "deliverables": ["...", "...", "..."],
+      "roi_promise": "specific measurable outcome"
+    }},
+    {{
+      "name": "AI Lead Generation System",
+      "price": 2497,
+      "timeline_weeks": 3,
+      "deliverables": ["...", "...", "..."],
+      "roi_promise": "..."
+    }},
+    {{
+      "name": "Full AI Business Automation",
+      "price": 4997,
+      "timeline_weeks": 6,
+      "deliverables": ["...", "...", "..."],
+      "roi_promise": "..."
+    }}
+  ],
+  "proposal_template": {{
+    "executive_summary": "2-paragraph proposal opener (problem → solution → ARIA → outcome)",
+    "why_us": "3 specific differentiators vs hiring in-house or other agencies",
+    "next_steps": "clear 3-step CTA to start project"
+  }},
+  "case_study": {{
+    "client_type": "type of client (fictional but realistic)",
+    "before": "specific pain points and metrics before ARIA",
+    "after": "specific measurable improvements after ARIA",
+    "quote": "client testimonial style quote"
+  }},
+  "sow_template": "Statement of Work template (3 sections: scope, timeline, payment terms)",
+  "onboarding_checklist": ["step1", "step2", "step3", "step4", "step5"]
+}}""",
+                model=AIModel.STRATEGY,
+                max_tokens=3000,
+            )
+
+            if not agency_data or not agency_data.get("services"):
+                return {"success": False, "summary": "digital_agency: AI failed"}
+
+            services = agency_data["services"]
+            proposal = agency_data.get("proposal_template", {})
+            case_study = agency_data.get("case_study", {})
+            sow = agency_data.get("sow_template", "")
+            onboarding = agency_data.get("onboarding_checklist", [])
+
+            urls_created = []
+
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                md_lines = [
+                    f"# {agency_data.get('agency_name', 'ARIA AI Agency')} — Service Kit",
+                    f"*Generated {today}*",
+                    "",
+                    "## Services & Pricing",
+                    "",
+                    "| Service | Price | Timeline | ROI Promise |",
+                    "|---------|-------|----------|-------------|",
+                ]
+                for s in services:
+                    md_lines.append(
+                        f"| {s.get('name','')} | ${s.get('price',0):,} | {s.get('timeline_weeks',2)}w | {s.get('roi_promise','')[:60]} |"
+                    )
+                md_lines += [
+                    "",
+                    "## Service Details",
+                    "",
+                ]
+                for s in services:
+                    md_lines += [
+                        f"### {s.get('name', '')} — ${s.get('price', 0):,}",
+                        f"**Timeline:** {s.get('timeline_weeks', 2)} weeks",
+                        "**Deliverables:**",
+                    ]
+                    for d in s.get("deliverables", []):
+                        md_lines.append(f"- {d}")
+                    md_lines += [
+                        f"**ROI Promise:** {s.get('roi_promise', '')}",
+                        "",
+                    ]
+                md_lines += [
+                    "## Proposal Template",
+                    "",
+                    "### Executive Summary",
+                    proposal.get("executive_summary", ""),
+                    "",
+                    "### Why ARIA AI Agency",
+                    proposal.get("why_us", ""),
+                    "",
+                    "### Next Steps",
+                    proposal.get("next_steps", ""),
+                    "",
+                    "## Case Study",
+                    f"**Client type:** {case_study.get('client_type', '')}",
+                    "",
+                    "**Before:**",
+                    case_study.get("before", ""),
+                    "",
+                    "**After:**",
+                    case_study.get("after", ""),
+                    "",
+                    f"**Client quote:** > \"{case_study.get('quote', '')}\"",
+                    "",
+                    "## Statement of Work Template",
+                    sow,
+                    "",
+                    "## Client Onboarding Checklist",
+                ]
+                for i, step in enumerate(onboarding[:7], 1):
+                    md_lines.append(f"- [ ] {i}. {step}")
+                md_lines += [
+                    "",
+                    "---",
+                    "*Generated by ARIA AI — Digital Agency Engine*",
+                ]
+
+                encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/agency/{today}-service-kit.md",
+                    {"message": f"agency: AI service kit {today}", "content": encoded}
+                )
+                if "error" not in file_r:
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/agency/{today}-service-kit.md"
+                    )
+
+            top_price = max((s.get("price", 0) for s in services), default=997)
+            logger.info("[IncomeLoop] digital_agency: %d services, top price $%d", len(services), top_price)
+            return {
+                "success": bool(urls_created),
+                "summary": f"Digital agency: {len(services)} services from $997 to ${top_price:,} + proposal + case study + SOW",
+                "revenue_potential": float(min(s.get("price", 997) for s in services)),
+                "urls": urls_created[:2],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] digital_agency: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_crowdfunding_kit(self) -> dict:
+        """
+        Generate a complete Kickstarter/IndieGoGo campaign kit.
+        Creates: campaign title, story, reward tiers, stretch goals,
+        FAQs, backer update template, and social media launch strategy.
+        ARIA's AI product line can be crowdfunded to validate demand
+        and collect upfront revenue before building.
+        Archives to aria-insights/crowdfunding/.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "crowdfunding_kit: AI unavailable"}
+
+            # Pick a product from catalog to crowdfund
+            catalog_item = {"title": "ARIA AI — Autonomous Business Platform", "price": 97}
+            try:
+                from apps.core.memory.redis_client import get_cache
+                import json as _json
+                cache = get_cache()
+                if cache:
+                    raw = await cache.lindex("aria:income:catalog", 0)
+                    if raw:
+                        catalog_item = _json.loads(raw) if isinstance(raw, str) else raw
+            except Exception:
+                pass
+
+            product_title = catalog_item.get("title", "ARIA AI Platform")
+            base_price = catalog_item.get("price", 97)
+
+            kit_data = await ai.complete_json(
+                system=(
+                    "You are a crowdfunding expert with 50+ successful Kickstarter campaigns. "
+                    "You write campaign copy that creates urgency, community, and FOMO. "
+                    "You know that storytelling > features, and that early backer exclusivity "
+                    "drives the first 48h spike that gets you on the featured page. "
+                    "Output JSON only."
+                ),
+                user=f"""Create a Kickstarter campaign kit for: {product_title}
+
+Product base price: ${base_price}
+Type: AI business automation tool/platform
+
+JSON:
+{{
+  "campaign_title": "...",
+  "tagline": "One sentence that explains what it is and why it matters",
+  "funding_goal_usd": 10000,
+  "campaign_duration_days": 30,
+  "story": {{
+    "problem": "2-paragraph story of the problem (emotional, specific)",
+    "solution": "2-paragraph story of the solution (ARIA as hero)",
+    "why_now": "1-paragraph urgency — why this moment is the right time",
+    "about_creator": "1-paragraph humanizing the creator"
+  }},
+  "reward_tiers": [
+    {{"amount": 15, "name": "Early Bird", "description": "...", "limit": 200, "estimated_delivery": "2 months"}},
+    {{"amount": 49, "name": "Backer", "description": "...", "limit": 500, "estimated_delivery": "2 months"}},
+    {{"amount": 149, "name": "Power User", "description": "...", "limit": 100, "estimated_delivery": "3 months"}},
+    {{"amount": 497, "name": "Founder", "description": "...", "limit": 25, "estimated_delivery": "3 months"}}
+  ],
+  "stretch_goals": [
+    {{"amount": 25000, "unlock": "what gets unlocked at this amount"}},
+    {{"amount": 50000, "unlock": "..."}},
+    {{"amount": 100000, "unlock": "..."}}
+  ],
+  "launch_day_strategy": {{
+    "hour_1": "what to do in the first hour",
+    "communities_to_notify": ["Hacker News", "Reddit r/Entrepreneur", "Product Hunt", "Indie Hackers"],
+    "personal_outreach_message": "DM to send to friends/followers"
+  }},
+  "faq": [
+    {{"q": "...", "a": "..."}},
+    {{"q": "...", "a": "..."}}
+  ],
+  "backer_update_template": "Template for the first update to backers"
+}}""",
+                model=AIModel.CREATIVE,
+                max_tokens=3000,
+            )
+
+            if not kit_data or not kit_data.get("campaign_title"):
+                return {"success": False, "summary": "crowdfunding_kit: AI failed"}
+
+            urls_created = []
+
+            if settings.GITHUB_TOKEN:
+                from apps.core.tools.github_client import AriaGitHubClient
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+                story = kit_data.get("story", {})
+                tiers = kit_data.get("reward_tiers", [])
+                stretch = kit_data.get("stretch_goals", [])
+                launch = kit_data.get("launch_day_strategy", {})
+                faqs = kit_data.get("faq", [])
+
+                tier_table = "| Amount | Tier | Description | Limit |\n|--------|------|-------------|-------|\n"
+                for t in tiers:
+                    tier_table += (
+                        f"| ${t.get('amount',0)} | {t.get('name','')} | "
+                        f"{t.get('description','')[:60]} | {t.get('limit',0)} backers |\n"
+                    )
+
+                stretch_section = "\n".join(
+                    f"- **${g.get('amount',0):,}:** {g.get('unlock','')}"
+                    for g in stretch[:3]
+                )
+
+                faq_section = "\n\n".join(
+                    f"**Q: {f.get('q','')}**\nA: {f.get('a','')}"
+                    for f in faqs[:4]
+                )
+
+                md_lines = [
+                    f"# Crowdfunding Kit: {kit_data.get('campaign_title', '')}",
+                    f"> {kit_data.get('tagline', '')}",
+                    "",
+                    f"**Funding Goal:** ${kit_data.get('funding_goal_usd', 10000):,}",
+                    f"**Duration:** {kit_data.get('campaign_duration_days', 30)} days",
+                    "",
+                    "## The Story",
+                    "",
+                    "### The Problem",
+                    story.get("problem", ""),
+                    "",
+                    "### The Solution",
+                    story.get("solution", ""),
+                    "",
+                    "### Why Now",
+                    story.get("why_now", ""),
+                    "",
+                    "### About the Creator",
+                    story.get("about_creator", ""),
+                    "",
+                    "## Reward Tiers",
+                    "",
+                    tier_table,
+                    "",
+                    "## Stretch Goals",
+                    "",
+                    stretch_section,
+                    "",
+                    "## Launch Day Strategy",
+                    "",
+                    f"**Hour 1:** {launch.get('hour_1', '')}",
+                    "",
+                    "**Communities to notify:**",
+                ]
+                for c in launch.get("communities_to_notify", []):
+                    md_lines.append(f"- {c}")
+                md_lines += [
+                    "",
+                    "**Personal outreach message:**",
+                    f"> {launch.get('personal_outreach_message', '')}",
+                    "",
+                    "## FAQ",
+                    "",
+                    faq_section,
+                    "",
+                    "## First Backer Update Template",
+                    "",
+                    kit_data.get("backer_update_template", ""),
+                    "",
+                    "---",
+                    "*Generated by ARIA AI — Crowdfunding Engine*",
+                ]
+
+                encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/crowdfunding/{today}-campaign-kit.md",
+                    {"message": f"crowdfunding: {kit_data.get('campaign_title','')[:50]} {today}", "content": encoded}
+                )
+                if "error" not in file_r:
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/crowdfunding/{today}-campaign-kit.md"
+                    )
+
+            title = kit_data.get("campaign_title", "")
+            goal = kit_data.get("funding_goal_usd", 10000)
+            logger.info("[IncomeLoop] crowdfunding_kit: '%s' — goal $%d", title[:60], goal)
+            return {
+                "success": bool(urls_created),
+                "summary": f"Crowdfunding kit: '{title[:70]}' — ${goal:,} goal, {len(tiers)} reward tiers",
+                "revenue_potential": float(goal) * 0.1,  # 10% of funding goal as conservative estimate
+                "urls": urls_created[:2],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] crowdfunding_kit: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_self_monetize(self) -> dict:
