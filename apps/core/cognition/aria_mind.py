@@ -154,6 +154,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - human_action     → ejecuta acciones humanas en el browser stealth: click, type, scroll. Args: {{"session": "nombre", "steps": [{{"action": "click|type|scroll|wait|get_text|screenshot", "selector": "...", "value": "...", "pixels": 300}}]}}
 - diagnose_income  → muestra qué canales de ingresos están activos y cuáles necesitan credenciales. Muestra exactamente qué secrets añadir en Fly.io para activar cada canal. Args: {{}}
 - setup_portfolio  → crea o actualiza el portfolio profesional de ARIA en GitHub Pages (aria-portfolio). Incluye capacidades, productos publicados, artículos del blog, y links de afiliado. Args: {{}}
+- get_income_analytics → reporte de analíticas por estrategia: cuántas veces corrió cada estrategia, tasa de éxito, revenue acumulado, mejores estrategias. Úsalo cuando el usuario pida el reporte, estadísticas de ingresos, qué estrategia funciona mejor o analíticas. Args: {{}}
 
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
 Tienes acceso a tus propias credenciales de plataformas vía variables de entorno ARIA_EMAIL y ARIA_PASSWORD.
@@ -206,6 +207,7 @@ REGLAS DE RAZONAMIENTO:
 38. Si el usuario pide crear un portfolio, página web, landing page, presencia en línea, o "poner ARIA en el mapa" → usa setup_portfolio para crear el sitio en GitHub Pages.
 39. Si el usuario pide crear un lead magnet, recurso gratis, checklist, template, o funnel de captación de emails → usa run_income_cycle con strategy="lead_magnet".
 40. Si el usuario pide crear un hilo de Twitter, X thread, hilo viral, o contenido para redes sociales → usa run_income_cycle con strategy="viral_thread".
+41. Si el usuario pide el reporte de analíticas, estadísticas de ingresos, qué estrategia funciona mejor, qué porcentaje de éxito tiene cada estrategia, o quiere ver el performance del income loop → usa get_income_analytics.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1474,6 +1476,12 @@ class AriaMind:
                     "`fly secrets set ZAPIER_WEBHOOK_URL=https://hooks.zapier.com/hooks/catch/... -a aria-ai`",
                 ]
                 return "\n".join(lines), {}
+
+            elif tool == "get_income_analytics":
+                from apps.core.tools.income_loop import get_income_loop
+                loop   = get_income_loop()
+                report = await loop.get_analytics_report()
+                return report, {}
 
             elif tool == "setup_portfolio":
                 from apps.core.config import settings as _s

@@ -2266,6 +2266,24 @@ JSON:
                 await cache.increment("aria:income:total_cycles")
                 if result.success:
                     await cache.increment("aria:income:successful_cycles")
+                # Per-strategy stats
+                strat = result.strategy
+                await cache.increment(f"aria:income:strategy:{strat}:runs")
+                if result.success:
+                    await cache.increment(f"aria:income:strategy:{strat}:successes")
+                if result.revenue_potential > 0:
+                    # Accumulate revenue — store as string, parse on read
+                    raw_rev = await cache.get(f"aria:income:strategy:{strat}:revenue")
+                    current_rev = float(raw_rev) if raw_rev else 0.0
+                    await cache.set(
+                        f"aria:income:strategy:{strat}:revenue",
+                        str(current_rev + result.revenue_potential),
+                        ttl_seconds=86400 * 90,
+                    )
+                # Track URLs count
+                if result.urls_created:
+                    for _ in result.urls_created:
+                        await cache.increment("aria:income:total_urls_published")
         except Exception as exc:
             logger.warning("[IncomeLoop] Redis save: %s", exc)
 
@@ -2502,6 +2520,64 @@ JSON:
             lines.append(f"  {weight}% — {name}")
 
         return "\n".join(lines)
+
+    async def get_analytics_report(self) -> str:
+        """Return a per-strategy performance breakdown from Redis analytics."""
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return "⚠️ Redis no disponible — sin datos de analíticas."
+
+            total_cycles   = int(await cache.get("aria:income:total_cycles") or 0)
+            success_cycles = int(await cache.get("aria:income:successful_cycles") or 0)
+            total_urls     = int(await cache.get("aria:income:total_urls_published") or 0)
+            success_rate   = (success_cycles / total_cycles * 100) if total_cycles else 0
+
+            rows: list[tuple[str, int, int, float, float]] = []
+            total_tracked_rev = 0.0
+            for name, weight in STRATEGIES:
+                runs  = int(await cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                wins  = int(await cache.get(f"aria:income:strategy:{name}:successes") or 0)
+                raw_r = await cache.get(f"aria:income:strategy:{name}:revenue")
+                rev   = float(raw_r) if raw_r else 0.0
+                total_tracked_rev += rev
+                rows.append((name, runs, wins, rev, weight))
+
+            # Sort by revenue desc, then runs desc
+            rows.sort(key=lambda r: (-r[3], -r[1]))
+
+            lines = [
+                "📊 <b>ARIA — Reporte de Analíticas por Estrategia</b>",
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                f"Ciclos totales: <b>{total_cycles}</b>  |  Éxitos: <b>{success_cycles}</b>  ({success_rate:.1f}%)",
+                f"URLs publicadas: <b>{total_urls}</b>  |  Revenue acumulado: <b>${total_tracked_rev:.2f}</b>",
+                "",
+                "<b>Estrategia              Runs  Win%  Revenue  Peso</b>",
+            ]
+            for (name, runs, wins, rev, weight) in rows:
+                win_pct = (wins / runs * 100) if runs else 0
+                bar     = "█" * min(int(win_pct / 10), 10)
+                lines.append(
+                    f"<code>{name:<22}</code>  {runs:>3}  {win_pct:>4.0f}%  ${rev:>7.2f}  {weight}%"
+                )
+
+            if total_cycles == 0:
+                lines += ["", "⏳ Sin datos aún — el loop inicia en unos minutos."]
+            else:
+                best = rows[0] if rows else None
+                if best and best[1] > 0:
+                    lines += ["", f"🏆 Mejor estrategia: <b>{best[0]}</b> (${best[3]:.2f} revenue)"]
+
+            lines += [
+                "",
+                f"<i>Datos en tiempo real desde Redis. Ciclo cada {INTERVAL_SECONDS//60} min.</i>",
+            ]
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] analytics_report: %s", exc)
+            return f"⚠️ Error al generar reporte: {exc}"
 
 
 # ── Singleton ──────────────────────────────────────────────────────

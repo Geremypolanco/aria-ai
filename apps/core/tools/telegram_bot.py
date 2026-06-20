@@ -55,7 +55,10 @@ QUICK_ACTIONS_KB = {
             {"text": "🧵 Hilo Viral",            "callback_data": "quick_thread"},
         ],
         [
+            {"text": "📈 Analíticas",            "callback_data": "quick_reporte"},
             {"text": "📚 Base de conocimiento", "callback_data": "quick_kb"},
+        ],
+        [
             {"text": "⚙️ Ver capacidades",      "callback_data": "quick_help"},
         ],
     ]
@@ -96,6 +99,7 @@ BOT_COMMANDS = [
     {"command": "afiliado",    "description": "Publicar artículo de afiliado ahora"},
     {"command": "magnet",      "description": "Crear lead magnet gratuito → funnel de captura"},
     {"command": "thread",      "description": "Crear hilo viral de Twitter/X"},
+    {"command": "reporte",     "description": "Reporte de analíticas por estrategia de ingresos"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -281,6 +285,7 @@ class AriaTelegramBot:
             "/afiliado":     "ejecuta una estrategia de contenido de afiliado ahora mismo usando run_income_cycle con strategy affiliate_content",
             "/magnet":       "crea un lead magnet gratuito ahora mismo usando run_income_cycle con strategy lead_magnet",
             "/thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
+            "/reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):
@@ -385,6 +390,7 @@ class AriaTelegramBot:
             "quick_diagnostico":  "muéstrame el diagnóstico completo de canales de ingresos usando diagnose_income",
             "quick_magnet":       "crea un lead magnet gratuito ahora mismo usando run_income_cycle con strategy lead_magnet",
             "quick_thread":       "crea y publica un hilo viral de Twitter/X usando run_income_cycle con strategy viral_thread",
+            "quick_reporte":      "muéstrame el reporte de analíticas por estrategia de ingresos usando get_income_analytics",
             "example_trends":     "busca las últimas noticias sobre modelos de lenguaje grandes",
         }
 
