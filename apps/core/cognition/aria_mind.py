@@ -153,6 +153,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
 - human_action     → ejecuta acciones humanas en el browser stealth: click, type, scroll. Args: {{"session": "nombre", "steps": [{{"action": "click|type|scroll|wait|get_text|screenshot", "selector": "...", "value": "...", "pixels": 300}}]}}
 - diagnose_income  → muestra qué canales de ingresos están activos y cuáles necesitan credenciales. Muestra exactamente qué secrets añadir en Fly.io para activar cada canal. Args: {{}}
+- setup_portfolio  → crea o actualiza el portfolio profesional de ARIA en GitHub Pages (aria-portfolio). Incluye capacidades, productos publicados, artículos del blog, y links de afiliado. Args: {{}}
 
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
 Tienes acceso a tus propias credenciales de plataformas vía variables de entorno ARIA_EMAIL y ARIA_PASSWORD.
@@ -202,6 +203,7 @@ REGLAS DE RAZONAMIENTO:
 35. Para ejecutar una secuencia de acciones humanas (hacer clic, escribir, scrollear) en una sesión stealth activa → usa human_action con la lista de pasos.
 36. PROHIBIDO usar reply para declinar herramientas. Si el usuario pide algo que corresponde a una herramienta de la lista, siempre pon tool="herramienta" y tool_args con los parámetros, y deja reply vacío.
 37. Si el usuario pregunta qué canales de ingresos están activos, qué le falta para ganar dinero, qué credenciales configurar, o por qué ARIA no está generando ingresos → usa diagnose_income.
+38. Si el usuario pide crear un portfolio, página web, landing page, presencia en línea, o "poner ARIA en el mapa" → usa setup_portfolio para crear el sitio en GitHub Pages.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1461,6 +1463,106 @@ class AriaMind:
                     "`fly secrets set DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/... -a aria-ai`",
                 ]
                 return "\n".join(lines), {}
+
+            elif tool == "setup_portfolio":
+                from apps.core.config import settings as _s
+                from apps.core.tools.github_client import AriaGitHubClient
+                import base64 as _b64
+                gh    = AriaGitHubClient()
+                owner = _s.GITHUB_USERNAME or "Geremypolanco"
+                repo  = "aria-portfolio"
+                assoc = getattr(_s, "AMAZON_ASSOCIATE_TAG", None) or ""
+                if not _s.GITHUB_TOKEN:
+                    return "GITHUB_TOKEN no configurado. Añádelo en Fly.io secrets para crear el portfolio.", {}
+                # Ensure repo exists
+                existing = await gh._get(f"/repos/{owner}/{repo}")
+                if "error" in existing:
+                    await gh._post("/user/repos", {
+                        "name": repo,
+                        "description": "ARIA AI — Autonomous AI Business Platform",
+                        "private": False,
+                        "auto_init": True,
+                        "has_issues": False,
+                        "has_wiki": False,
+                    })
+                    import asyncio as _asyncio
+                    await _asyncio.sleep(2)
+                    try:
+                        await gh._post(f"/repos/{owner}/{repo}/pages", {
+                            "source": {"branch": "main", "path": "/"},
+                        })
+                    except Exception:
+                        pass
+                aff_section = ""
+                if assoc:
+                    aff_section = f"""
+## 🛒 Recommended Tools (Affiliate)
+- [Best AI Productivity Tools](https://amazon.com/s?k=ai+productivity+tools&tag={assoc})
+- [Top Developer Equipment](https://amazon.com/s?k=developer+setup+desk&tag={assoc})
+- [Business Books](https://amazon.com/s?k=business+entrepreneurship+books&tag={assoc})
+
+*Affiliate disclosure: We earn a commission on purchases at no extra cost to you.*
+"""
+                readme = f"""# ARIA AI — Autonomous Income Platform
+
+> An AI system that generates income, creates products, publishes content, and grows your business — 24/7, without human intervention.
+
+[![Deployed on Fly.io](https://img.shields.io/badge/deployed-fly.io-purple)](https://aria-ai.fly.dev)
+[![Content Blog](https://img.shields.io/badge/blog-aria--insights-blue)](https://github.com/{owner}/aria-insights)
+
+## 🤖 What ARIA Does
+
+- **Content Engine** — Publishes 3+ SEO articles/day to GitHub, Dev.to, Medium
+- **Product Factory** — Creates and lists digital products on Gumroad
+- **Ebook Factory** — Generates and sells ebooks on trending topics
+- **Affiliate Content** — Review articles with Amazon affiliate links
+- **Market Intelligence** — Scans for profitable niches every 6 hours
+- **Morning Briefing** — Daily Telegram summary of overnight results
+
+## 📊 Active Income Strategies
+
+| Strategy | Frequency | Description |
+|----------|-----------|-------------|
+| Content Pipeline | Every 8h | SEO articles on trending topics |
+| Niche Rotator | Every 30min | Launches new revenue niches |
+| Product Factory | Every 30min | Creates digital products |
+| Affiliate Content | Every 30min | Review articles with affiliate links |
+| Ebook Factory | Every 30min | AI-generated ebooks |
+| GitHub Publish | Every 30min | Open source resources |
+
+## 📚 Published Content
+
+See all articles: [aria-insights](https://github.com/{owner}/aria-insights)
+
+## 🚀 Technology Stack
+
+- **AI Engine**: Qwen 2.5 72B → Groq LLaMA 3.3 70B → OpenAI GPT-4o
+- **Platform**: FastAPI on Fly.io
+- **Automation**: Redis task queue, 24/7 background workers
+- **Publishing**: GitHub, Dev.to, Medium, Hashnode
+- **Commerce**: Gumroad, Shopify
+{aff_section}
+## 📬 Contact
+
+Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
+
+---
+*This portfolio is automatically updated by ARIA AI*
+"""
+                encoded = _b64.b64encode(readme.encode()).decode()
+                existing_file = await gh._get(f"/repos/{owner}/{repo}/contents/README.md")
+                sha = existing_file.get("sha", "") if "error" not in existing_file else ""
+                put_args: dict = {"message": "docs: update portfolio", "content": encoded}
+                if sha:
+                    put_args["sha"] = sha
+                file_r = await gh._put(f"/repos/{owner}/{repo}/contents/README.md", put_args)
+                if "error" not in file_r:
+                    url = f"https://github.com/{owner}/{repo}"
+                    pages_url = f"https://{owner.lower()}.github.io/{repo}/"
+                    return (f"✅ Portfolio creado/actualizado: {url}\n"
+                            f"🌐 GitHub Pages (activo en ~2 min): {pages_url}\n"
+                            f"📚 Blog de contenido: https://github.com/{owner}/aria-insights"), {}
+                return "Error al actualizar el portfolio. Verifica GITHUB_TOKEN en secrets.", {}
 
             elif tool == "run_objective":
                 obj_key = args.get("objective", "content_generation")
