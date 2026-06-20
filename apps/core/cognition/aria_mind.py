@@ -158,8 +158,8 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - run_retention    → ejecuta campañas de retención: win-back a clientes inactivos 60+ días + loyalty rewards a VIPs. Args: {{}}
 - shopify_optimize → ejecuta optimizaciones de Shopify: SEO de productos, generación de bundles o flash sale. Args: {{"operation": "seo|bundles|flash_sale"}}
 - run_funnel       → analiza y devuelve estado de funnels de conversión, abandono de carrito y secuencias de email. Args: {{}}
-- check_objectives → muestra el estado de los 19 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis, social_organic, strategy_optimizer, self_improve, youtube_cycle, product_hunt_cycle, trend_detector). Args: {{}}
-- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis|social_organic|strategy_optimizer|self_improve|youtube_cycle|product_hunt_cycle|trend_detector"}}
+- check_objectives → muestra el estado de los 20 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz, daily_revenue_digest, bundle_and_waitlist, challenge_day_sequencer, partner_outreach_cycle, proactive_analysis, social_organic, strategy_optimizer, self_improve, youtube_cycle, product_hunt_cycle, trend_detector, weekly_review). Args: {{}}
+- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz|daily_revenue_digest|bundle_and_waitlist|challenge_day_sequencer|partner_outreach_cycle|proactive_analysis|social_organic|strategy_optimizer|self_improve|youtube_cycle|product_hunt_cycle|trend_detector|weekly_review"}}
 - daily_report     → muestra el reporte de ejecución del día: operaciones completadas, score de ejecución, insight y prioridad de mañana. Args: {{}}
 - human_login      → inicia sesión en una plataforma como un humano real (stealth, sin ser detectada). Args: {{"platform": "gumroad|devto|linkedin|twitter|hashnode", "email": "...", "password": "...", "username": "..."}}
 - human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
@@ -255,6 +255,7 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 66. Si el usuario pide enviar cold emails, hacer outreach B2B por email, contactar prospectos, conseguir clientes vía email, o activar ventas directas por correo → usa run_income_cycle con strategy="cold_email_outreach".
 67. Si el usuario pide publicar en Pinterest, crear pins, generar tráfico visual, o aprovechar Pinterest para sus productos → usa run_income_cycle con strategy="pinterest_pins".
 68. Si el usuario pide crear una landing page, página de ventas, página de producto, o desplegar una página HTML con CTA de compra → usa run_income_cycle con strategy="landing_page_deploy".
+69. Si el usuario pide el reporte semanal, revisión de la semana, qué funcionó mejor esta semana, o proyecciones para la próxima semana → usa run_objective con objective="weekly_review".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1744,7 +1745,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     "proactive_analysis", "social_organic",
                     "strategy_optimizer", "self_improve",
                     "youtube_cycle", "product_hunt_cycle",
-                    "trend_detector",
+                    "trend_detector", "weekly_review",
                 ]
                 if obj_key not in valid_keys:
                     return (f"Objetivo inválido: '{obj_key}'. "
