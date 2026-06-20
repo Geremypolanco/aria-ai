@@ -1452,6 +1452,9 @@ class AriaMind:
                     "1. Ve a dev.to/settings/extensions",
                     "2. Genera un API key",
                     "3. Ejecuta: fly secrets set DEVTO_API_KEY=tu_key -a aria-ai",
+                    "",
+                    "**Para ingresos de afiliado SIN API (solo un tag de texto):**",
+                    "   fly secrets set AMAZON_ASSOCIATE_TAG=tu-tag-20 -a aria-ai",
                 ]
                 return "\n".join(lines), {}
 

@@ -93,6 +93,8 @@ class IncomeLoop:
         self._running = True
         self._task    = asyncio.create_task(self._run_forever())
         logger.info("[IncomeLoop] 24/7 income loop started (interval=%ds)", INTERVAL_SECONDS)
+        # Proactive Telegram notification on startup
+        asyncio.create_task(self._notify_startup())
 
     def stop(self) -> None:
         self._running = False
@@ -199,21 +201,159 @@ class IncomeLoop:
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
-        """Run the full content pipeline: trending → articles → publish → affiliate."""
+        """Run the full content pipeline: trending → articles → publish → affiliate.
+        Falls back to GitHub blog when publishing credentials are missing."""
         try:
             from apps.core.tools.content_pipeline import ContentPipeline
-            cp    = ContentPipeline()
+            cp     = ContentPipeline()
             result = await cp.run_pipeline(num_articles=3, language="es")
             arts   = result.get("articles", [])
             urls   = [u["url"] for a in arts for u in a.get("urls", []) if u.get("url")]
+
+            if result.get("success", False) and urls:
+                return {
+                    "success": True,
+                    "summary": f"Published {len(arts)} articles to {result.get('articles_published',0)} platforms",
+                    "revenue_potential": len(arts) * 2.5,
+                    "urls": urls[:6],
+                }
+
+            # Fallback: push generated content to GitHub blog
+            if settings.GITHUB_TOKEN:
+                blog_result = await self._exec_github_blog(arts, cp)
+                if blog_result.get("success"):
+                    return blog_result
+
             return {
-                "success": result.get("success", False),
-                "summary": f"Published {len(arts)} articles to {result.get('articles_published',0)} platforms",
-                "revenue_potential": len(arts) * 2.5,  # ~$2.5 per article in affiliate
-                "urls": urls[:6],
+                "success": False,
+                "summary": f"Content pipeline: no publishing credentials (add DEVTO_API_KEY or MEDIUM_TOKEN)",
+                "revenue_potential": 0,
+                "urls": [],
             }
         except Exception as exc:
             logger.error("[IncomeLoop] content_pipeline: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_github_blog(self, existing_articles: list, cp=None) -> dict:
+        """
+        Maintain aria-insights GitHub repo as a public blog.
+        Generates SEO-optimized articles and pushes them as markdown files.
+        Includes Amazon affiliate links when AMAZON_ASSOCIATE_TAG is configured.
+        GitHub indexes public repos — free organic traffic.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            ai    = get_ai_client()
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            repo  = "aria-insights"
+            assoc = getattr(settings, "AMAZON_ASSOCIATE_TAG", None) or ""
+
+            # Ensure the blog repo exists
+            existing = await gh._get(f"/repos/{owner}/{repo}")
+            if "error" in existing:
+                create_r = await gh._post("/user/repos", {
+                    "name": repo,
+                    "description": "AI-generated insights on technology, business & productivity",
+                    "private": False,
+                    "auto_init": True,
+                    "has_issues": False,
+                    "has_wiki": False,
+                })
+                if "error" in create_r:
+                    return {"success": False, "summary": f"Could not create {repo}: {create_r.get('error','')[:60]}"}
+                await asyncio.sleep(2)  # wait for GitHub to init
+
+            # Get a trending topic if no articles provided
+            if not existing_articles:
+                if not ai:
+                    return {"success": False, "summary": "AI unavailable"}
+                wt = WebTools()
+                r  = await wt.search_web("trending tech AI productivity 2025 tutorial", num_results=5)
+                topic = "AI Productivity Guide 2025"
+                if r.get("success") and r.get("results"):
+                    topic = r["results"][0].get("title", topic)[:80]
+
+                article_json = await ai.complete_json(
+                    system=(
+                        "You write viral, SEO-optimized technical articles. "
+                        "Use markdown. Be specific and actionable. Output JSON only."
+                    ),
+                    user=f"""Write a complete blog post about: "{topic}"
+
+JSON:
+{{
+  "title": "SEO title (60 chars max)",
+  "slug": "url-friendly-slug-max-50-chars",
+  "description": "Meta description (155 chars)",
+  "tags": ["tag1", "tag2", "tag3"],
+  "content": "Full markdown article (800+ words). Use H2/H3 headers, bullet points, code blocks if relevant, practical tips."
+}}""",
+                    model=AIModel.STRATEGY,
+                    max_tokens=3000,
+                )
+                if not article_json:
+                    return {"success": False, "summary": "AI failed to generate article"}
+                existing_articles = [article_json]
+
+            published_urls = []
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            for art in existing_articles[:2]:
+                title   = art.get("title", art.get("product_name", "ARIA Insights"))[:60]
+                slug    = (art.get("slug", title.lower().replace(" ", "-").replace("'", ""))
+                           .replace(" ", "-")[:50])
+                content = art.get("content", art.get("description", ""))
+                tags    = art.get("tags", ["ai", "productivity"])
+
+                # Inject Amazon affiliate links if configured
+                if assoc and content:
+                    aff_note = (
+                        f"\n\n---\n*Some links in this article may be affiliate links. "
+                        f"If you purchase through them, we earn a small commission at no extra cost to you.*\n"
+                        f"[Browse recommended tools on Amazon](https://amazon.com?tag={assoc})\n"
+                    )
+                    content += aff_note
+
+                # Build markdown file
+                frontmatter = (
+                    f"---\n"
+                    f"title: \"{title}\"\n"
+                    f"date: {today}\n"
+                    f"description: \"{art.get('description', '')[:155]}\"\n"
+                    f"tags: {tags}\n"
+                    f"author: ARIA AI\n"
+                    f"---\n\n"
+                )
+                full_content = frontmatter + f"# {title}\n\n" + content
+
+                filename = f"posts/{today}-{slug}.md"
+                encoded  = _b64.b64encode(full_content.encode()).decode()
+
+                file_r = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
+                    "message": f"post: {title[:60]}",
+                    "content": encoded,
+                })
+
+                if "error" not in file_r:
+                    published_urls.append(f"https://github.com/{owner}/{repo}/blob/main/{filename}")
+
+            if published_urls:
+                return {
+                    "success": True,
+                    "summary": f"Published {len(published_urls)} article(s) to GitHub blog ({repo})" +
+                               (f" with Amazon affiliate links" if assoc else " (add AMAZON_ASSOCIATE_TAG for affiliate income)"),
+                    "revenue_potential": len(published_urls) * 1.5,
+                    "urls": published_urls,
+                }
+            return {"success": False, "summary": "GitHub blog: no articles pushed"}
+        except Exception as exc:
+            logger.error("[IncomeLoop] github_blog: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_niche_rotator(self) -> dict:
@@ -993,6 +1133,32 @@ JSON:
             pass
 
     # ── Notifications ───────────────────────────────────────────────────
+
+    async def _notify_startup(self) -> None:
+        """Send a Telegram message when the income loop starts. Lists active channels."""
+        try:
+            await asyncio.sleep(5)  # wait for bot to be ready
+            creds  = self.check_credentials()
+            active = list(creds.get("active", {}).keys())
+            inactive = list(creds.get("inactive", {}).keys())
+            from apps.core.tools.telegram_bot import get_bot
+            msg = (
+                f"🤖 <b>ARIA Income Loop iniciado</b>\n"
+                f"Canales activos: {', '.join(active) or 'ninguno configurado'}\n"
+                f"Estrategias: {len(STRATEGIES)} rotando cada {INTERVAL_SECONDS//60} min\n"
+            )
+            if inactive:
+                top = inactive[:3]
+                msg += f"\n💡 Para activar más canales de ingresos:\n"
+                if "gumroad" in top:
+                    msg += "  • <code>fly secrets set GUMROAD_TOKEN=...</code> → venta de productos\n"
+                if "devto" in top:
+                    msg += "  • <code>fly secrets set DEVTO_API_KEY=...</code> → artículos técnicos\n"
+                if "twitter" in top:
+                    msg += "  • Twitter API keys → distribución social\n"
+            await get_bot().notify_owner(msg)
+        except Exception as exc:
+            logger.debug("[IncomeLoop] startup notify: %s", exc)
 
     async def _notify_win(self, result: CycleResult) -> None:
         """Notify via Telegram only when something valuable was created."""
