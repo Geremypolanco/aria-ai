@@ -45,16 +45,17 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",  23),
+    ("content_pipeline",  20),
     ("niche_rotator",     17),
     ("product_factory",   14),
     ("opportunity_scan",   9),
-    ("github_publish",     9),   # works with only GITHUB_TOKEN — always active
+    ("github_publish",     8),   # works with only GITHUB_TOKEN — always active
     ("shopify_listing",    8),
     ("email_campaign",     7),
+    ("affiliate_content",  6),   # review/comparison articles with affiliate links
     ("ebook_factory",      6),
-    ("social_blitz",       5),
-    ("premium_offer",      2),
+    ("social_blitz",       4),
+    ("premium_offer",      1),
 ]
 
 
@@ -198,6 +199,8 @@ class IncomeLoop:
             return await self._exec_social_blitz()
         elif strategy == "premium_offer":
             return await self._exec_premium_offer()
+        elif strategy == "affiliate_content":
+            return await self._exec_affiliate_content()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -571,9 +574,9 @@ Output JSON:
 
             wt  = WebTools()
             queries = [
-                "best ways to make money online with AI 2025",
-                "passive income ideas digital products trending",
-                "freelance niches high demand low competition 2025",
+                "high converting digital product niches 2025 trending",
+                "best affiliate marketing niches low competition 2025",
+                "profitable online business ideas AI tools 2025",
             ]
             all_results = []
             for q in queries:
@@ -1077,6 +1080,101 @@ JSON:
 
         except Exception as exc:
             logger.error("[IncomeLoop] github_publish: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_affiliate_content(self) -> dict:
+        """
+        Generate affiliate-optimized review/comparison articles published to GitHub blog.
+        Creates 'Top N [tools] for [use case]' articles with Amazon affiliate links.
+        Works with only GITHUB_TOKEN — earns passive income via affiliate clicks.
+        """
+        try:
+            import re as _re
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "AI unavailable for affiliate content"}
+
+            assoc = getattr(settings, "AMAZON_ASSOCIATE_TAG", None) or ""
+            wt    = WebTools()
+
+            affiliate_topics = [
+                "best AI writing tools 2025",
+                "top productivity apps for entrepreneurs",
+                "best online learning platforms comparison",
+                "AI tools for small business owners 2025",
+                "best project management software 2025",
+                "top email marketing tools for beginners",
+                "best website builders for entrepreneurs",
+                "AI image generators comparison 2025",
+                "best automation tools for solopreneurs",
+                "top passive income tools and platforms",
+            ]
+            topic = random.choice(affiliate_topics)
+
+            r = await wt.search_web(f"{topic} review comparison best", num_results=5)
+            search_context = ""
+            if r.get("success") and r.get("results"):
+                search_context = "\n".join(
+                    f"- {res.get('title','')}: {res.get('snippet','')[:120]}"
+                    for res in r["results"][:5]
+                )
+
+            article_data = await ai.complete_json(
+                system=(
+                    "You write high-converting affiliate review articles. "
+                    "Be specific, practical, and include real use cases. Output JSON only."
+                ),
+                user=f"""Write a review/comparison article about: "{topic}"
+
+Context:
+{search_context}
+
+JSON:
+{{
+  "title": "SEO title with year (60 chars max)",
+  "slug": "url-friendly-slug-max-50-chars",
+  "description": "Meta description (155 chars)",
+  "tags": ["tag1", "tag2", "tag3"],
+  "content": "Complete markdown article (700+ words). Structure: compelling intro with the problem, individual tool reviews (H2 for each, 3-5 tools), pros/cons for each, pricing overview, final recommendation. End with a comparison table. Use AMAZON_LINK as placeholder for any Amazon product links."
+}}""",
+                model=AIModel.STRATEGY,
+                max_tokens=3000,
+            )
+
+            if not article_data:
+                return {"success": False, "summary": "AI failed to generate affiliate article"}
+
+            content = article_data.get("content", "")
+
+            if assoc:
+                search_kw = topic.replace(" ", "+")
+                aff_url   = f"https://amazon.com/s?k={search_kw}&tag={assoc}"
+                content   = _re.sub(r'AMAZON_LINK', aff_url, content)
+                content  += (
+                    f"\n\n---\n"
+                    f"*Disclosure: This article contains affiliate links. "
+                    f"We earn a small commission at no extra cost to you.*\n"
+                    f"[Browse all recommended tools on Amazon]({aff_url})\n"
+                )
+
+            result = await self._exec_github_blog(
+                existing_articles=[{
+                    "title":       article_data.get("title", topic),
+                    "slug":        article_data.get("slug", topic.replace(" ", "-").lower()[:50]),
+                    "description": article_data.get("description", f"Best {topic} reviewed"),
+                    "tags":        article_data.get("tags", ["ai", "tools", "review"]),
+                    "content":     content,
+                }],
+            )
+            suffix = f" (Amazon {assoc})" if assoc else " (add AMAZON_ASSOCIATE_TAG for affiliate income)"
+            result["summary"] = f"Affiliate article: '{article_data.get('title', topic)[:50]}'{suffix}"
+            return result
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] affiliate_content: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
     def check_credentials(self) -> dict:
