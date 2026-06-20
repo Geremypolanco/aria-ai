@@ -268,6 +268,26 @@ class IncomeLoop:
                 if "error" in create_r:
                     return {"success": False, "summary": f"Could not create {repo}: {create_r.get('error','')[:60]}"}
                 await asyncio.sleep(2)  # wait for GitHub to init
+                # Enable GitHub Pages (one-time setup — makes the blog a real website)
+                try:
+                    await gh._post(f"/repos/{owner}/{repo}/pages", {
+                        "source": {"branch": "main", "path": "/"},
+                    })
+                    # Add minimal Jekyll config
+                    jekyll_config = (
+                        "title: ARIA Insights\n"
+                        "description: AI-generated insights on technology, business & productivity\n"
+                        "theme: minima\n"
+                        "plugins:\n"
+                        "  - jekyll-feed\n"
+                        "  - jekyll-seo-tag\n"
+                    )
+                    await gh._put(f"/repos/{owner}/{repo}/contents/_config.yml", {
+                        "message": "chore: enable Jekyll for GitHub Pages",
+                        "content": _b64.b64encode(jekyll_config.encode()).decode(),
+                    })
+                except Exception:
+                    pass  # Pages may already be enabled or not available on free plan
 
             # Get a trending topic if no articles provided
             if not existing_articles:
@@ -344,6 +364,21 @@ JSON:
                     published_urls.append(f"https://github.com/{owner}/{repo}/blob/main/{filename}")
 
             if published_urls:
+                # Discord notification for new content
+                discord_url = getattr(settings, "DISCORD_WEBHOOK_URL", None)
+                if discord_url:
+                    try:
+                        import httpx as _httpx
+                        async with _httpx.AsyncClient(timeout=10) as _client:
+                            await _client.post(discord_url, json={
+                                "content": (
+                                    f"📝 **New article published!**\n"
+                                    f"{published_urls[0]}\n"
+                                    f"*ARIA Insights — AI-generated content*"
+                                )
+                            })
+                    except Exception:
+                        pass
                 return {
                     "success": True,
                     "summary": f"Published {len(published_urls)} article(s) to GitHub blog ({repo})" +
@@ -391,18 +426,38 @@ JSON:
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_product_factory(self) -> dict:
-        """Create a new digital product for the most trending topic."""
+        """Create a new digital product — uses opportunity queue first, then trending topics."""
         try:
             from apps.core.tools.content_pipeline import ContentPipeline
             from apps.core.tools.gumroad_tools import GumroadTools
             from apps.core.tools.ai_client import get_ai_client, AIModel
 
-            cp     = ContentPipeline()
-            topics = await cp.get_trending_topics(limit=5)
-            if not topics:
-                return {"success": False, "summary": "No trending topics found"}
+            # Try the opportunity queue first (populated by opportunity_scan)
+            topic = None
+            try:
+                from apps.core.memory.redis_client import get_cache
+                cache = get_cache()
+                if cache:
+                    raw = await cache.lpop("aria:income:opportunity_queue")
+                    if raw:
+                        opp = json.loads(raw) if isinstance(raw, str) else raw
+                        topic = {
+                            "title": opp.get("name", ""),
+                            "category": opp.get("niche_key", "tech"),
+                            "_from_queue": True,
+                            "_platform": opp.get("platform", ""),
+                            "_tagline": opp.get("description", ""),
+                        }
+            except Exception:
+                pass
 
-            topic = topics[0]
+            if not topic:
+                cp     = ContentPipeline()
+                topics = await cp.get_trending_topics(limit=5)
+                if not topics:
+                    return {"success": False, "summary": "No trending topics found"}
+                topic = topics[0]
+
             title = topic.get("title", "Digital Guide")[:60]
             cat   = topic.get("category", "tech")
 
@@ -1077,6 +1132,16 @@ JSON:
                 "keys_needed": ["TWITTER_API_KEY", "TWITTER_API_SECRET",
                                 "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_TOKEN_SECRET"],
                 "revenue_channels": ["product promotion", "audience building"],
+            },
+            "amazon_affiliate": {
+                "active": bool(getattr(settings, "AMAZON_ASSOCIATE_TAG", None)),
+                "keys_needed": ["AMAZON_ASSOCIATE_TAG"],
+                "revenue_channels": ["product recommendations", "review articles", "tool lists"],
+            },
+            "discord": {
+                "active": bool(getattr(settings, "DISCORD_WEBHOOK_URL", None)),
+                "keys_needed": ["DISCORD_WEBHOOK_URL"],
+                "revenue_channels": ["community building", "product announcements"],
             },
         }
         active   = {k: v for k, v in channels.items() if v["active"]}
