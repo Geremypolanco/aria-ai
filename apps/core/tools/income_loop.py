@@ -367,10 +367,11 @@ JSON:
                     published_urls.append(f"https://github.com/{owner}/{repo}/blob/main/{filename}")
 
             if published_urls:
-                # Update the blog index in the background (don't let failure block success)
+                # Update the blog index and sitemap in the background
                 try:
                     published_titles = [art.get("title", "Article") for art in existing_articles[:len(published_urls)]]
                     await self._update_blog_index(gh, owner, repo, published_titles, published_urls)
+                    await self._update_sitemap(gh, owner, repo)
                 except Exception:
                     pass
 
@@ -450,6 +451,38 @@ JSON:
             await gh._put(f"/repos/{owner}/{repo}/contents/LINKS.md", put_args)
         except Exception as exc:
             logger.debug("[IncomeLoop] blog_index_update: %s", exc)
+
+    async def _update_sitemap(self, gh, owner: str, repo: str) -> None:
+        """Generate sitemap.xml for the blog — helps search engines discover content."""
+        try:
+            import base64 as _b64
+            from datetime import datetime, timezone
+            # List all posts in the posts/ directory
+            files_r = await gh._get(f"/repos/{owner}/{repo}/contents/posts")
+            if "error" in files_r or not isinstance(files_r, list):
+                return
+            base_url = f"https://{owner.lower()}.github.io/{repo}"
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            urls = [f"  <url><loc>{base_url}/</loc><lastmod>{today}</lastmod><priority>1.0</priority></url>"]
+            for f in files_r:
+                if f.get("name", "").endswith(".md"):
+                    slug = f["name"].replace(".md", "")
+                    urls.append(f"  <url><loc>{base_url}/posts/{slug}/</loc><lastmod>{today}</lastmod><priority>0.8</priority></url>")
+            sitemap = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+                + "\n".join(urls) +
+                "\n</urlset>\n"
+            )
+            encoded = _b64.b64encode(sitemap.encode()).decode()
+            existing_file = await gh._get(f"/repos/{owner}/{repo}/contents/sitemap.xml")
+            sha = existing_file.get("sha", "") if "error" not in existing_file else ""
+            put_args: dict = {"message": "chore: update sitemap", "content": encoded}
+            if sha:
+                put_args["sha"] = sha
+            await gh._put(f"/repos/{owner}/{repo}/contents/sitemap.xml", put_args)
+        except Exception as exc:
+            logger.debug("[IncomeLoop] sitemap_update: %s", exc)
 
     async def _exec_niche_rotator(self) -> dict:
         """Rotate through niche catalog — launch next unstarted niche."""
