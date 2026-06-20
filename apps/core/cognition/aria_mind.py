@@ -1443,18 +1443,22 @@ class AriaMind:
                     lines.append(f"    → Añade en Fly.io: fly secrets set {keys.replace(', ', '=... ')}=...")
                 lines += [
                     "",
-                    "**Para activar el canal más rentable (Gumroad):**",
+                    "**Para activar el canal más rentable (Gumroad — venta digital):**",
                     "1. Ve a gumroad.com → Settings → Advanced → API",
                     "2. Copia tu Access Token",
-                    "3. Ejecuta: fly secrets set GUMROAD_TOKEN=tu_token -a aria-ai",
+                    "3. `fly secrets set GUMROAD_TOKEN=tu_token -a aria-ai`",
                     "",
-                    "**Para publicar artículos (Dev.to — gratis y rápido):**",
+                    "**Para publicar artículos (Dev.to — gratis, rápido, tráfico real):**",
                     "1. Ve a dev.to/settings/extensions",
                     "2. Genera un API key",
-                    "3. Ejecuta: fly secrets set DEVTO_API_KEY=tu_key -a aria-ai",
+                    "3. `fly secrets set DEVTO_API_KEY=tu_key -a aria-ai`",
                     "",
                     "**Para ingresos de afiliado SIN API (solo un tag de texto):**",
-                    "   fly secrets set AMAZON_ASSOCIATE_TAG=tu-tag-20 -a aria-ai",
+                    "`fly secrets set AMAZON_ASSOCIATE_TAG=tu-tag-20 -a aria-ai`",
+                    "→ ARIA publica artículos de review con tus links de afiliado en GitHub (ya activo si GITHUB_TOKEN está configurado)",
+                    "",
+                    "**Para notificaciones en Discord cuando se publique contenido:**",
+                    "`fly secrets set DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/... -a aria-ai`",
                 ]
                 return "\n".join(lines), {}
 

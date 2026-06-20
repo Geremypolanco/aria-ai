@@ -367,6 +367,13 @@ JSON:
                     published_urls.append(f"https://github.com/{owner}/{repo}/blob/main/{filename}")
 
             if published_urls:
+                # Update the blog index in the background (don't let failure block success)
+                try:
+                    published_titles = [art.get("title", "Article") for art in existing_articles[:len(published_urls)]]
+                    await self._update_blog_index(gh, owner, repo, published_titles, published_urls)
+                except Exception:
+                    pass
+
                 # Discord notification for new content
                 discord_url = getattr(settings, "DISCORD_WEBHOOK_URL", None)
                 if discord_url:
@@ -393,6 +400,56 @@ JSON:
         except Exception as exc:
             logger.error("[IncomeLoop] github_blog: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
+
+    async def _update_blog_index(self, gh, owner: str, repo: str, new_titles: list[str], new_urls: list[str]) -> None:
+        """Update LINKS.md in aria-insights with recent article links."""
+        try:
+            import base64 as _b64
+            # Load existing links from Redis
+            try:
+                from apps.core.memory.redis_client import get_cache
+                cache = get_cache()
+                raw = await cache.get("aria:blog:links") if cache else None
+                existing_links: list = json.loads(raw) if raw else []
+            except Exception:
+                existing_links = []
+
+            # Prepend new links
+            for title, url in zip(new_titles, new_urls):
+                existing_links.insert(0, {"title": title, "url": url})
+            existing_links = existing_links[:50]  # keep latest 50
+
+            # Save back to Redis
+            try:
+                if cache:
+                    await cache.set("aria:blog:links", json.dumps(existing_links), ttl_seconds=86400 * 90)
+            except Exception:
+                pass
+
+            # Build LINKS.md content
+            lines = [
+                "# ARIA Insights — Article Index",
+                "",
+                "AI-generated insights on technology, business & productivity.",
+                "",
+                "## Latest Articles",
+                "",
+            ]
+            for item in existing_links[:30]:
+                lines.append(f"- [{item['title']}]({item['url']})")
+            lines += ["", "---", "*Updated by ARIA AI — autonomously generated content*"]
+            md_content = "\n".join(lines)
+            encoded = _b64.b64encode(md_content.encode()).decode()
+
+            # Push LINKS.md
+            existing_file = await gh._get(f"/repos/{owner}/{repo}/contents/LINKS.md")
+            sha = existing_file.get("sha", "") if "error" not in existing_file else ""
+            put_args: dict = {"message": "docs: update article index", "content": encoded}
+            if sha:
+                put_args["sha"] = sha
+            await gh._put(f"/repos/{owner}/{repo}/contents/LINKS.md", put_args)
+        except Exception as exc:
+            logger.debug("[IncomeLoop] blog_index_update: %s", exc)
 
     async def _exec_niche_rotator(self) -> dict:
         """Rotate through niche catalog — launch next unstarted niche."""
