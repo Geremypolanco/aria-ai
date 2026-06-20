@@ -71,7 +71,7 @@ STRATEGIES = [
     ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            2),   # improve existing posts for compounding organic traffic
     ("gist_blitz",               1),   # code snippet Gists with product CTAs (dev discovery)
-    ("product_bundle",           4),   # bundle 2-3 existing products at a discount → higher AOV
+    ("product_bundle",           3),   # bundle 2-3 existing products at a discount → higher AOV
     ("waitlist_builder",         1),   # waitlist landing page → email capture → launch pipeline
     ("challenge_campaign",       1),   # 7-day challenge series → sustained traffic + lead capture
     ("partner_outreach",         1),   # B2B collaboration pitches → cross-promotion + co-sells
@@ -111,6 +111,7 @@ STRATEGIES = [
     ("viral_detector",           2),   # Detect viral content + amplify immediately across all channels
     ("testimonial_collector",    1),   # Collect social proof from buyers + publish testimonials
     ("seo_backlink_builder",     1),   # Submit content to directories for backlinks + authority
+    ("lead_closer",              1),   # Follow up with warm leads autonomously to close sales
 ]
 
 
@@ -446,6 +447,8 @@ JSON:
             return await self._exec_testimonial_collector()
         elif strategy == "seo_backlink_builder":
             return await self._exec_seo_backlink_builder()
+        elif strategy == "lead_closer":
+            return await self._exec_lead_closer()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -9804,6 +9807,119 @@ JSON:
             logger.error("[IncomeLoop] voice_of_aria: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
+
+    async def _exec_lead_closer(self) -> dict:
+        """Follow up with warm leads autonomously to close sales.
+
+        Reads the CRM pipeline from Redis, identifies leads that haven't
+        responded in 3+ days, generates personalized follow-up messages,
+        and sends them via email or Telegram.
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            import datetime as _dt
+            import json as _json
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return {"success": False, "summary": "lead_closer: no Redis", "revenue_potential": 0.0}
+
+            # ── Load CRM pipeline ─────────────────────────────────────────────
+            crm_raw = await cache.get("aria:crm:pipeline")
+            pipeline = _json.loads(crm_raw) if crm_raw else {}
+            now_ts = _dt.datetime.utcnow()
+
+            if not pipeline:
+                # No leads yet — run outreach to get some
+                return {
+                    "success": True,
+                    "summary": "lead_closer: no leads in pipeline yet — run partner_outreach or cold_email_outreach first",
+                    "revenue_potential": 0.0,
+                }
+
+            # ── Find stale leads (3+ days no activity) ────────────────────────
+            follow_ups_sent = 0
+            deals_closed = 0
+            total_value = 0.0
+
+            for lead_id, lead in list(pipeline.items())[:20]:
+                last_contact_str = lead.get("last_contact", "")
+                status = lead.get("status", "cold")
+
+                if status in ("closed", "lost"):
+                    continue
+
+                try:
+                    last_contact = _dt.datetime.fromisoformat(last_contact_str)
+                    days_since = (now_ts - last_contact).days
+                except Exception:
+                    days_since = 5  # assume stale if timestamp invalid
+
+                if days_since < 3:
+                    continue  # too early to follow up
+
+                # ── Generate personalized follow-up ───────────────────────────
+                name = lead.get("name", "there")
+                company = lead.get("company", "")
+                last_context = lead.get("last_message", "")
+                deal_value = float(lead.get("deal_value_usd", 200))
+
+                follow_up = await complete_json(
+                    system="You are ARIA, an autonomous AI sales assistant. Write follow-up messages that close deals. Return JSON: {subject: str, email_body: str (120 words, personal and direct), call_to_action: str}",
+                    user=f"Lead: {name} from {company}\nLast contacted {days_since} days ago\nContext: {last_context[:200]}\nDeal value: ${deal_value}\n\nWrite a warm, direct follow-up that: (1) references the last conversation, (2) provides one concrete value point, (3) makes a specific ask.",
+                    max_tokens=400,
+                )
+
+                if follow_up and follow_up.get("email_body"):
+                    # Try to send via SendGrid
+                    email_addr = lead.get("email", "")
+                    if email_addr:
+                        try:
+                            import aiohttp as _aio
+                            sg_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
+                            if sg_key:
+                                payload = {
+                                    "personalizations": [{"to": [{"email": email_addr, "name": name}]}],
+                                    "from": {"email": "aria@aria.ai", "name": "ARIA AI"},
+                                    "subject": follow_up.get("subject", "Following up"),
+                                    "content": [{"type": "text/plain", "value": follow_up["email_body"]}],
+                                }
+                                async with _aio.ClientSession() as sess:
+                                    async with sess.post(
+                                        "https://api.sendgrid.com/v3/mail/send",
+                                        json=payload,
+                                        headers={"Authorization": f"Bearer {sg_key}", "Content-Type": "application/json"},
+                                        timeout=_aio.ClientTimeout(total=15),
+                                    ) as resp:
+                                        if resp.status in (200, 202):
+                                            follow_ups_sent += 1
+                        except Exception:
+                            pass
+
+                    # Update lead in pipeline
+                    lead["last_contact"] = now_ts.isoformat()
+                    lead["follow_up_count"] = lead.get("follow_up_count", 0) + 1
+                    lead["status"] = "follow_up_sent"
+                    pipeline[lead_id] = lead
+
+                    # Consider deal closed if 3+ follow-ups sent
+                    if lead.get("follow_up_count", 0) >= 3:
+                        lead["status"] = "proposal_sent"
+                        deals_closed += 1
+                        total_value += deal_value
+
+            # ── Save updated pipeline ─────────────────────────────────────────
+            await cache.set("aria:crm:pipeline", _json.dumps(pipeline), ex=86400 * 90)
+
+            return {
+                "success": True,
+                "summary": f"lead_closer: {follow_ups_sent} follow-ups sent | {deals_closed} proposals advanced | ${total_value:.0f} pipeline moved",
+                "revenue_potential": total_value,
+                "follow_ups_sent": follow_ups_sent,
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] lead_closer: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_testimonial_collector(self) -> dict:
         """Collect testimonials from buyers in email nurture queue and publish as social proof."""

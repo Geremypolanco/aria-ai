@@ -1310,6 +1310,23 @@ async def api_intelligence_dashboard() -> dict:
         nurture = _json.loads(nurture_raw) if nurture_raw else {}
         result["email_nurture_contacts"] = len(nurture)
 
+        # Account health
+        acct_raw = await cache.get("aria:accounts:health_report")
+        result["account_health"] = _json.loads(acct_raw) if acct_raw else None
+
+        # Latest social proof
+        sp_raw = await cache.get("aria:social_proof:latest")
+        result["social_proof_count"] = len(_json.loads(sp_raw)) if sp_raw else 0
+
+        # Cross-sell campaign
+        cs_raw = await cache.get("aria:campaigns:latest_cross_sell")
+        result["latest_cross_sell"] = _json.loads(cs_raw) if cs_raw else None
+
+        # Product update log count
+        upd_raw = await cache.get("aria:products:update_log")
+        upd_log = _json.loads(upd_raw) if upd_raw else []
+        result["product_updates_count"] = len(upd_log)
+
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
