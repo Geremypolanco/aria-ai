@@ -47,6 +47,10 @@ QUICK_ACTIONS_KB = {
             {"text": "🎯 Objetivos autónomos",  "callback_data": "quick_objectives"},
         ],
         [
+            {"text": "🌐 Portfolio GitHub",     "callback_data": "quick_portfolio"},
+            {"text": "🩺 Diagnóstico ingresos", "callback_data": "quick_diagnostico"},
+        ],
+        [
             {"text": "📚 Base de conocimiento", "callback_data": "quick_kb"},
             {"text": "⚙️ Ver capacidades",      "callback_data": "quick_help"},
         ],
@@ -82,6 +86,10 @@ BOT_COMMANDS = [
     {"command": "imagen",      "description": "Generar una imagen con IA"},
     {"command": "piensa",      "description": "Razonamiento profundo sobre un tema"},
     {"command": "metas",       "description": "Ver metas activas de ARIA"},
+    {"command": "portfolio",   "description": "Crear/actualizar portfolio en GitHub Pages"},
+    {"command": "diagnostico", "description": "Diagnóstico de canales de ingresos activos"},
+    {"command": "briefing",    "description": "Resumen de negocio ahora mismo"},
+    {"command": "afiliado",    "description": "Publicar artículo de afiliado ahora"},
 ]
 
 # ── Welcome message ────────────────────────────────────────────────────────
@@ -261,6 +269,10 @@ class AriaTelegramBot:
             "/imagen":       "genera una imagen de: ",
             "/piensa":       "usa razonamiento profundo para analizar: ",
             "/metas":        "muéstrame mis metas activas usando get_status",
+            "/portfolio":    "crea o actualiza el portfolio profesional de ARIA en GitHub Pages usando setup_portfolio",
+            "/diagnostico":  "muéstrame el diagnóstico completo de todos los canales de ingresos usando diagnose_income",
+            "/briefing":     "ejecuta el morning briefing ahora mismo y envíame el resumen usando run_objective con objective morning_briefing",
+            "/afiliado":     "ejecuta una estrategia de contenido de afiliado ahora mismo usando run_income_cycle con strategy affiliate_content",
         }
         for cmd, translated in _SLASH_TRANSLATIONS.items():
             if text == cmd or text.startswith(cmd + " "):
@@ -352,16 +364,18 @@ class AriaTelegramBot:
         await self._answer_callback(cb_id)
 
         mapping = {
-            "quick_income":     "ejecuta un ciclo de ingresos ahora mismo",
-            "quick_daily":      "ejecuta el ciclo completo de negocio del día",
-            "quick_search":     "busca las últimas tendencias en inteligencia artificial",
-            "quick_image":      "genera una imagen de un paisaje futurista con IA",
-            "quick_status":     "/estado",
-            "quick_objectives": "muéstrame el estado de los objetivos estratégicos autónomos",
-            "quick_think":      "usa razonamiento profundo para explicar qué es la computación cuántica",
-            "quick_kb":         "¿qué hay en mi base de conocimiento?",
-            "quick_help":       "/ayuda",
-            "example_trends":   "busca las últimas noticias sobre modelos de lenguaje grandes",
+            "quick_income":       "ejecuta un ciclo de ingresos ahora mismo",
+            "quick_daily":        "ejecuta el ciclo completo de negocio del día",
+            "quick_search":       "busca las últimas tendencias en inteligencia artificial",
+            "quick_image":        "genera una imagen de un paisaje futurista con IA",
+            "quick_status":       "/estado",
+            "quick_objectives":   "muéstrame el estado de los objetivos estratégicos autónomos",
+            "quick_think":        "usa razonamiento profundo para explicar qué es la computación cuántica",
+            "quick_kb":           "¿qué hay en mi base de conocimiento?",
+            "quick_help":         "/ayuda",
+            "quick_portfolio":    "crea o actualiza el portfolio profesional de ARIA en GitHub Pages",
+            "quick_diagnostico":  "muéstrame el diagnóstico completo de canales de ingresos usando diagnose_income",
+            "example_trends":     "busca las últimas noticias sobre modelos de lenguaje grandes",
         }
 
         user_text = mapping.get(data)
