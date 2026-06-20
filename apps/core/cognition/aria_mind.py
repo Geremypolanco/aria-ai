@@ -146,8 +146,8 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - run_retention    → ejecuta campañas de retención: win-back a clientes inactivos 60+ días + loyalty rewards a VIPs. Args: {{}}
 - shopify_optimize → ejecuta optimizaciones de Shopify: SEO de productos, generación de bundles o flash sale. Args: {{"operation": "seo|bundles|flash_sale"}}
 - run_funnel       → analiza y devuelve estado de funnels de conversión, abandono de carrito y secuencias de email. Args: {{}}
-- check_objectives → muestra el estado de los 7 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing). Args: {{}}
-- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing"}}
+- check_objectives → muestra el estado de los 8 objetivos estratégicos autónomos de ARIA (growth loops, shopify, content, market intelligence, CRM, rebalanceo, morning briefing, product_launch_blitz). Args: {{}}
+- run_objective    → ejecuta un objetivo estratégico específico ahora mismo. Args: {{"objective": "growth_loops_cycle|shopify_optimization|content_generation|market_intelligence|crm_nurture|economic_rebalancing|morning_briefing|product_launch_blitz"}}
 - daily_report     → muestra el reporte de ejecución del día: operaciones completadas, score de ejecución, insight y prioridad de mañana. Args: {{}}
 - human_login      → inicia sesión en una plataforma como un humano real (stealth, sin ser detectada). Args: {{"platform": "gumroad|devto|linkedin|twitter|hashnode", "email": "...", "password": "...", "username": "..."}}
 - human_browse     → abre una URL con el browser stealth (anti-detección). Args: {{"url": "https://...", "session": "nombre_sesion"}}
@@ -1587,7 +1587,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 valid_keys = [
                     "growth_loops_cycle", "shopify_optimization", "content_generation",
                     "market_intelligence", "crm_nurture", "economic_rebalancing",
-                    "morning_briefing",
+                    "morning_briefing", "product_launch_blitz",
                 ]
                 if obj_key not in valid_keys:
                     return (f"Objetivo inválido: '{obj_key}'. "

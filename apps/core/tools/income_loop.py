@@ -477,6 +477,39 @@ JSON:
                 except Exception:
                     pass
 
+                # Also cross-post to Dev.to if API key is configured (bonus distribution)
+                devto_key = getattr(settings, "DEVTO_API_KEY", None)
+                devto_urls = []
+                if devto_key:
+                    try:
+                        import httpx as _httpx_dt
+                        async with _httpx_dt.AsyncClient(timeout=20) as _dt:
+                            for art in existing_articles[:2]:
+                                art_title   = art.get("title", "")[:60]
+                                art_content = art.get("content", art.get("description", ""))
+                                art_tags    = [t.replace(" ", "").lower() for t in art.get("tags", ["ai", "productivity"])[:4]]
+                                dt_body = {
+                                    "article": {
+                                        "title": art_title,
+                                        "body_markdown": f"# {art_title}\n\n{art_content}",
+                                        "published": True,
+                                        "tags": art_tags[:4],
+                                        "canonical_url": published_urls[0] if published_urls else None,
+                                    }
+                                }
+                                dt_r = await _dt.post(
+                                    "https://dev.to/api/articles",
+                                    json=dt_body,
+                                    headers={"api-key": devto_key, "Content-Type": "application/json"},
+                                    timeout=15,
+                                )
+                                if dt_r.status_code in (200, 201):
+                                    dt_url = dt_r.json().get("url", "")
+                                    if dt_url:
+                                        devto_urls.append(dt_url)
+                    except Exception:
+                        pass
+
                 # Discord notification for new content
                 discord_url = getattr(settings, "DISCORD_WEBHOOK_URL", None)
                 if discord_url:
@@ -487,17 +520,21 @@ JSON:
                                 "content": (
                                     f"📝 **New article published!**\n"
                                     f"{published_urls[0]}\n"
-                                    f"*ARIA Insights — AI-generated content*"
+                                    + (f"Dev.to: {devto_urls[0]}\n" if devto_urls else "")
+                                    + f"*ARIA Insights — AI-generated content*"
                                 )
                             })
                     except Exception:
                         pass
+
+                all_urls = published_urls + devto_urls
+                platforms = "GitHub" + (" + Dev.to" if devto_urls else "")
                 return {
                     "success": True,
-                    "summary": f"Published {len(published_urls)} article(s) to GitHub blog ({repo})" +
+                    "summary": f"Published {len(published_urls)} article(s) to {platforms}" +
                                (f" with Amazon affiliate links" if assoc else " (add AMAZON_ASSOCIATE_TAG for affiliate income)"),
-                    "revenue_potential": len(published_urls) * 1.5,
-                    "urls": published_urls,
+                    "revenue_potential": len(all_urls) * 1.5,
+                    "urls": all_urls,
                 }
             return {"success": False, "summary": "GitHub blog: no articles pushed"}
         except Exception as exc:
