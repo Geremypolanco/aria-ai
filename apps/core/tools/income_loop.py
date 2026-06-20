@@ -55,11 +55,11 @@ MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
     ("content_pipeline",         3),
-    ("niche_rotator",            3),
+    ("niche_rotator",            2),
     ("product_factory",          3),
     ("course_builder",           3),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        3),   # build own affiliate program, recruit promoters
-    ("opportunity_scan",         4),
+    ("opportunity_scan",         3),
     ("github_publish",           4),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       4),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               4),   # full micro-SaaS product launch: README + API docs + pricing
@@ -90,6 +90,7 @@ STRATEGIES = [
     ("youtube_strategy",         2),   # YouTube content plan + optimized metadata + script → channel growth
     ("product_hunt_launch",      2),   # Product Hunt launch post → massive traffic spike + backlinks
     ("content_amplifier",        3),   # blast latest content to ALL platforms simultaneously — 5x reach
+    ("cold_email_outreach",      2),   # SMTP cold emails to B2B prospects → consulting/product sales
 ]
 
 
@@ -356,6 +357,8 @@ JSON:
             return await self._exec_product_hunt_launch()
         elif strategy == "content_amplifier":
             return await self._exec_content_amplifier()
+        elif strategy == "cold_email_outreach":
+            return await self._exec_cold_email_outreach()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -5513,6 +5516,15 @@ JSON:
                 "keys_needed": ["YOUTUBE_API_KEY"],
                 "revenue_channels": ["AdSense revenue", "sponsored videos", "product CTAs", "channel membership"],
             },
+            "smtp_email": {
+                "active": bool(
+                    getattr(settings, "SMTP_HOST", None) and
+                    getattr(settings, "SMTP_USER", None) and
+                    getattr(settings, "SMTP_PASSWORD", None)
+                ),
+                "keys_needed": ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"],
+                "revenue_channels": ["cold email outreach", "newsletter sending", "B2B sales", "consulting leads"],
+            },
         }
         active   = {k: v for k, v in channels.items() if v["active"]}
         inactive = {k: v for k, v in channels.items() if not v["active"]}
@@ -6022,6 +6034,165 @@ JSON:
             logger.error("[IncomeLoop] analytics_report: %s", exc)
             return f"⚠️ Error al generar reporte: {exc}"
 
+
+    async def _exec_cold_email_outreach(self) -> dict:
+        """
+        AI-powered cold email outreach to B2B prospects via SMTP.
+        Generates 5 personalized emails for fictional-but-realistic prospects in the current niche.
+        Sends them via SMTP if configured (SMTP_HOST + SMTP_USER + SMTP_PASSWORD + SMTP_FROM).
+        Always archives sent emails to aria-insights/outreach/emails/ on GitHub.
+        Requires: SMTP_HOST, SMTP_USER, SMTP_PASSWORD (for actual sending);
+                  GITHUB_TOKEN (for archiving — always runs).
+        """
+        try:
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.memory.redis_client import get_cache
+            import base64 as _b64, smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            cache = get_cache()
+
+            niches = [
+                ("SaaS founders", "AI automation tools for their product"),
+                ("Agency owners", "AI content production for their clients"),
+                ("E-commerce brands", "AI-powered product description and SEO"),
+                ("Coaches and consultants", "AI tools to scale their programs"),
+                ("Marketing teams", "AI-driven campaign automation"),
+            ]
+            niche_name, pain_point = niches[self._cycle % len(niches)]
+
+            # Generate prospects + personalized emails
+            outreach_data = await complete_json(
+                f"""Generate a cold email outreach campaign for this niche: {niche_name}
+Pain point we solve: {pain_point}
+
+Create 5 realistic B2B prospects and highly personalized cold emails for each.
+
+Return JSON:
+{{
+  "campaign_name": "campaign name",
+  "offer": "our specific offer (be concrete, include a price or range)",
+  "prospects": [
+    {{
+      "name": "First Last",
+      "company": "Company Name",
+      "role": "CEO/Founder/Head of Marketing",
+      "email": "firstname@companydomain.com",
+      "pain_signal": "specific signal they would have shown (tweet, blog post, LinkedIn update)",
+      "subject_line": "personalized subject (under 50 chars, no spam words)",
+      "email_body": "personalized email (150 words max). Reference their specific pain. Offer a concrete outcome. Single clear CTA. DO NOT use spam phrases like 'quick question' or 'circle back'."
+    }}
+  ]
+}}""",
+                model="strategy",
+            )
+
+            if not outreach_data or not outreach_data.get("prospects"):
+                return {"success": False, "summary": "cold_email: AI failed to generate prospects"}
+
+            campaign_name = outreach_data.get("campaign_name", f"Outreach: {niche_name}")
+            offer         = outreach_data.get("offer", "")
+            prospects     = outreach_data.get("prospects", [])
+
+            # SMTP config
+            smtp_host  = getattr(settings, "SMTP_HOST", None)
+            smtp_port  = int(getattr(settings, "SMTP_PORT", 587))
+            smtp_user  = getattr(settings, "SMTP_USER", None)
+            smtp_pass  = getattr(settings, "SMTP_PASSWORD", None)
+            smtp_from  = getattr(settings, "SMTP_FROM", smtp_user)
+            can_send   = all([smtp_host, smtp_user, smtp_pass, smtp_from])
+
+            emails_sent     = 0
+            emails_archived = 0
+
+            # Archive all prospects + emails to GitHub
+            sent_log = f"# Cold Email Campaign: {campaign_name}\n"
+            sent_log += f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d')}\n"
+            sent_log += f"**Niche:** {niche_name}\n"
+            sent_log += f"**Offer:** {offer}\n"
+            sent_log += f"**Sent via SMTP:** {'Yes' if can_send else 'No (SMTP not configured)'}\n\n---\n\n"
+
+            for p in prospects[:5]:
+                name    = p.get("name", "")
+                company = p.get("company", "")
+                role    = p.get("role", "")
+                email   = p.get("email", "")
+                subject = p.get("subject_line", f"AI automation for {company}")
+                body    = p.get("email_body", "")
+                pain    = p.get("pain_signal", "")
+
+                if can_send and email and "@" in email:
+                    try:
+                        msg = MIMEMultipart("alternative")
+                        msg["Subject"] = subject
+                        msg["From"]    = smtp_from
+                        msg["To"]      = email
+                        msg.attach(MIMEText(body, "plain"))
+                        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                            server.ehlo()
+                            server.starttls()
+                            server.login(smtp_user, smtp_pass)
+                            server.sendmail(smtp_from, [email], msg.as_string())
+                        emails_sent += 1
+                    except Exception as send_exc:
+                        logger.warning("[IncomeLoop] cold_email send failed: %s", send_exc)
+
+                sent_log += f"## {name} — {role} @ {company}\n"
+                sent_log += f"**Email:** {email}\n"
+                sent_log += f"**Pain signal:** {pain}\n"
+                sent_log += f"**Subject:** {subject}\n"
+                sent_log += f"**Body:**\n{body}\n"
+                sent_log += f"**Status:** {'Sent' if emails_sent > 0 else 'Archived (SMTP not configured)'}\n\n---\n\n"
+                emails_archived += 1
+
+                # Cache for CRM tracking
+                if cache:
+                    try:
+                        import json as _json
+                        await cache.rpush("aria:crm:outreach_queue", _json.dumps({
+                            "name": name, "company": company, "role": role,
+                            "email": email, "subject": subject,
+                            "sent": can_send, "ts": time.time(),
+                        }))
+                        await cache.ltrim("aria:crm:outreach_queue", -200, -1)
+                    except Exception:
+                        pass
+
+            # Archive to aria-insights
+            slug = f"emails-{niche_name.lower().replace(' ', '-')[:20]}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
+            path = f"outreach/emails/{slug}.md"
+            await gh._post("/user/repos", {"name": "aria-insights", "private": False, "auto_init": False})
+            existing = await gh._get(f"/repos/{owner}/aria-insights/contents/{path}")
+            sha = existing.get("sha") if "error" not in existing else None
+            body_put: dict = {
+                "message": f"feat: cold email campaign for {niche_name[:40]}",
+                "content": _b64.b64encode(sent_log.encode()).decode(),
+            }
+            if sha:
+                body_put["sha"] = sha
+            await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+
+            archive_url = f"https://github.com/{owner}/aria-insights/blob/main/{path}"
+
+            if can_send:
+                summary = f"Cold email: {emails_sent}/{emails_archived} sent to {niche_name} prospects — {campaign_name}"
+            else:
+                summary = f"Cold email: {emails_archived} prospects + emails ready — add SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM to send"
+
+            return {
+                "success": True,
+                "summary": summary,
+                "revenue_potential": float(emails_sent * 50 + emails_archived * 5),
+                "urls": [archive_url],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] cold_email_outreach: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_content_amplifier(self) -> dict:
         """

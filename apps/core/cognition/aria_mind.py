@@ -126,7 +126,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
 - income_loop_status → muestra el estado del loop de ingresos 24/7: ciclos completados, tasa de éxito, última estrategia ejecutada, URLs creadas. Args: {{}}
 - start_income_loop → inicia el loop autónomo de ingresos 24/7 si no está corriendo. Corre cada 30 min indefinidamente. Args: {{}}
-- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder|twitter_thread|linkedin_post|reddit_organic|stripe_checkout|tiktok_script|linkedin_outreach|youtube_strategy|product_hunt_launch|content_amplifier (opcional)"}}
+- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|opportunity_scan|github_publish|content_repurposer|micro_saas|affiliate_content|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder|twitter_thread|linkedin_post|reddit_organic|stripe_checkout|tiktok_script|linkedin_outreach|youtube_strategy|product_hunt_launch|content_amplifier|cold_email_outreach (opcional)"}}
 - add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
 - update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
 - deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
@@ -252,6 +252,7 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 63. Si el usuario pide lanzar en Product Hunt, crear un lanzamiento PH, preparar el kit de lanzamiento, o generar tráfico masivo de un día con Product Hunt → usa run_income_cycle con strategy="product_hunt_launch".
 64. Si el usuario pide ver tendencias, qué está viral ahora, qué temas están siendo tendencia, o quiere que ARIA busque oportunidades de mercado en tiempo real → usa run_objective con objective="trend_detector".
 65. Si el usuario pide distribuir contenido en todos los canales, amplificar alcance, hacer blitz de distribución, publicar en todas partes, o maximizar el impacto de una publicación → usa run_income_cycle con strategy="content_amplifier".
+66. Si el usuario pide enviar cold emails, hacer outreach B2B por email, contactar prospectos, conseguir clientes vía email, o activar ventas directas por correo → usa run_income_cycle con strategy="cold_email_outreach".
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -1552,6 +1553,16 @@ class AriaMind:
                     "→ No requiere API key — ARIA genera el kit completo de lanzamiento:",
                     "  Tagline, descripción, primer comentario del maker, DM para hunters, checklist de lanzamiento",
                     "→ Ejecuta: /income_cycle strategy=product_hunt_launch",
+                    "",
+                    "**📧 Para cold email outreach B2B real (vía SMTP — sin OAuth):**",
+                    "1. Consigue un servidor SMTP (Gmail, SendGrid, Mailgun, etc.)",
+                    "2. Para Gmail: habilita 'App Passwords' en tu cuenta Google → genera una password de app",
+                    "   - SMTP_HOST=smtp.gmail.com, SMTP_PORT=587",
+                    "3. Para SendGrid: sendgrid.com → API Keys → Create Key → usa smtp como username",
+                    "   - SMTP_HOST=smtp.sendgrid.net, SMTP_PORT=587, SMTP_USER=apikey",
+                    "4. `fly secrets set SMTP_HOST=smtp.gmail.com SMTP_PORT=587 SMTP_USER=tu@gmail.com SMTP_PASSWORD=tu_app_password SMTP_FROM=tu@gmail.com -a aria-ai`",
+                    "→ ARIA genera 5 prospectos B2B realistas con emails completamente personalizados y los envía automáticamente",
+                    "→ Sin SMTP, ARIA igual genera las campañas y las archiva en GitHub para que tú las envíes",
                 ]
                 return "\n".join(lines), {}
 
