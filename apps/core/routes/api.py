@@ -851,9 +851,9 @@ async def api_income_run_objective(req: RunObjectiveRequest) -> dict:
         return {
             "objective": req.objective,
             "success": record.success,
-            "summary": record.summary,
+            "summary": record.output.get("summary", record.error or "completed"),
             "value_generated_usd": record.value_generated_usd,
-            "duration_seconds": record.duration_seconds,
+            "duration_seconds": round(record.completed_at - record.started_at, 2),
         }
     except HTTPException:
         raise
