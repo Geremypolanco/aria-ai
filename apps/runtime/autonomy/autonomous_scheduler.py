@@ -382,6 +382,24 @@ class AutonomousScheduler:
                 handler_key="bundle_and_waitlist",
                 next_run_ts=now + 3600 * 6,
             ),
+            StrategicObjective(
+                obj_id="challenge_day_sequencer",
+                name="Challenge Day Sequencer",
+                description="Publishes the next day of active 7-day challenges every 24h to keep series running",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=24.0,
+                handler_key="challenge_day_sequencer",
+                next_run_ts=now + 3600 * 26,  # next day after challenges launch
+            ),
+            StrategicObjective(
+                obj_id="partner_outreach_cycle",
+                name="Partner Outreach Cycle",
+                description="Generates new B2B partnership kits every 72h across different niches",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=72.0,
+                handler_key="partner_outreach_cycle",
+                next_run_ts=now + 3600 * 4,
+            ),
         ]
 
 
@@ -732,6 +750,112 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
     scheduler.register_handler("product_launch_blitz", _product_launch_blitz)
     scheduler.register_handler("daily_revenue_digest", _daily_revenue_digest)
     scheduler.register_handler("bundle_and_waitlist", _bundle_and_waitlist)
+
+    async def _challenge_day_sequencer(obj: StrategicObjective) -> dict:
+        """
+        Publish the next day of each active 7-day challenge.
+        Reads from Redis 'aria:income:challenges_active', publishes Day 2-7
+        content to GitHub, removes completed challenges.
+        """
+        import json as _json
+        from apps.core.config import settings
+        total_published = 0
+        completed_challenges = 0
+
+        try:
+            from apps.core.memory.redis_client import get_cache
+            _cache = get_cache()
+            if not _cache or not settings.GITHUB_TOKEN:
+                return {"success": False, "summary": "challenge_sequencer: need Redis + GITHUB_TOKEN", "value_usd": 0.0}
+
+            from apps.core.tools.github_client import AriaGitHubClient
+            import base64 as _b64
+            from datetime import datetime, timezone
+
+            gh    = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            repo  = "aria-insights"
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            # Load active challenges
+            raw_challenges = await _cache.lrange("aria:income:challenges_active", 0, -1)
+            updated_list   = []
+
+            for raw in (raw_challenges or []):
+                try:
+                    ch = _json.loads(raw) if isinstance(raw, str) else raw
+                    remaining_raw   = ch.get("remaining_days", "[]")
+                    remaining_days  = _json.loads(remaining_raw) if isinstance(remaining_raw, str) else remaining_raw
+
+                    if not remaining_days:
+                        completed_challenges += 1
+                        continue  # challenge complete — don't keep
+
+                    day_data    = remaining_days[0]
+                    still_left  = remaining_days[1:]
+                    day_num     = ch.get("days_published", 1) + 1
+                    ch_name     = ch.get("name", "7-Day Challenge")
+                    ch_slug     = ch.get("slug", "challenge")
+                    ch_url      = ch.get("url", "")
+                    upsell_prod = ch.get("upsell_product", "Full Course")
+                    upsell_price = ch.get("upsell_price", 47)
+
+                    day_content = f"""# {ch_name}: {day_data.get('title', f'Day {day_num}')}
+
+> Day {day_num} of 7 | [{ch_name}]({ch_url})
+
+{day_data.get('content_md', '')}
+
+---
+
+{"**Tomorrow:** Day " + str(day_num + 1) + " drops tomorrow — stay on track!" if still_left else "**🎉 You completed the challenge!** Claim your reward below."}
+
+{"**Challenge complete!** Get 50% off [" + upsell_prod + "](https://github.com/" + owner + "/aria-portfolio) — normally $" + str(upsell_price) + ", your price: **$" + str(int(upsell_price * 0.5)) + "**." if not still_left else f"[Subscribe for Day {day_num + 1} →]({ch_url})"}
+
+*[ARIA AI](https://github.com/{owner}/aria-portfolio)*
+"""
+                    filename = f"challenges/{today}-{ch_slug}-day{day_num}.md"
+                    encoded  = _b64.b64encode(day_content.encode()).decode()
+                    file_r   = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
+                        "message": f"challenge day {day_num}: {ch_name[:50]}",
+                        "content": encoded,
+                    })
+
+                    if "error" not in file_r:
+                        total_published += 1
+                        ch["days_published"] = day_num
+                        ch["remaining_days"] = _json.dumps(still_left)
+                        if still_left:
+                            updated_list.append(_json.dumps(ch))
+                        else:
+                            completed_challenges += 1
+
+                except Exception:
+                    pass
+
+            # Rewrite active challenges list
+            if raw_challenges is not None:
+                await _cache.delete("aria:income:challenges_active")
+                for ch_raw in updated_list:
+                    await _cache.rpush("aria:income:challenges_active", ch_raw)
+
+        except Exception as exc:
+            return {"success": False, "summary": f"challenge_sequencer error: {exc}", "value_usd": 0.0}
+
+        summary = f"Challenge sequencer: {total_published} days published, {completed_challenges} challenges completed"
+        return {"success": total_published > 0 or completed_challenges > 0, "summary": summary, "value_usd": float(total_published) * 2}
+
+    async def _partner_outreach_cycle(obj: StrategicObjective) -> dict:
+        """Run partner_outreach strategy to cover a new B2B niche."""
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        r = await loop._run_one_cycle(force_strategy="partner_outreach")
+        return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
+
+    scheduler.register_handler("daily_revenue_digest", _daily_revenue_digest)
+    scheduler.register_handler("bundle_and_waitlist", _bundle_and_waitlist)
+    scheduler.register_handler("challenge_day_sequencer", _challenge_day_sequencer)
+    scheduler.register_handler("partner_outreach_cycle", _partner_outreach_cycle)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
