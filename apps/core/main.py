@@ -77,6 +77,121 @@ async def send_telegram(message: str) -> bool:
         return False
 
 
+# ── REVENUE CHANNEL VALIDATOR ─────────────────────────────────────────────
+
+async def _validate_revenue_channels() -> None:
+    """Check all money-generating API credentials at startup, send Telegram summary."""
+    await asyncio.sleep(10)  # let app finish booting
+    import httpx as _hx
+    lines: list[str] = ["<b>💰 ARIA Revenue Channel Status</b>"]
+
+    # Gumroad
+    try:
+        if settings.GUMROAD_TOKEN:
+            r = await _hx.AsyncClient(timeout=10.0).get(
+                "https://api.gumroad.com/v2/products",
+                params={"access_token": settings.GUMROAD_TOKEN}
+            )
+            data = r.json()
+            if data.get("success"):
+                n = len(data.get("products", []))
+                lines.append(f"✅ Gumroad: OK ({n} products)")
+            else:
+                lines.append(f"❌ Gumroad: invalid token — {str(data)[:60]}")
+        else:
+            lines.append("⚠️ Gumroad: GUMROAD_TOKEN not set")
+    except Exception as exc:
+        lines.append(f"❌ Gumroad: {str(exc)[:60]}")
+
+    # Dev.to
+    try:
+        if settings.DEVTO_API_KEY:
+            r = await _hx.AsyncClient(timeout=10.0).get(
+                "https://dev.to/api/users/me",
+                headers={"api-key": settings.DEVTO_API_KEY}
+            )
+            if r.status_code == 200:
+                username = r.json().get("username", "?")
+                lines.append(f"✅ Dev.to: OK (@{username})")
+            else:
+                lines.append(f"❌ Dev.to: status {r.status_code}")
+        else:
+            lines.append("⚠️ Dev.to: DEVTO_API_KEY not set (using browser fallback)")
+    except Exception as exc:
+        lines.append(f"❌ Dev.to: {str(exc)[:60]}")
+
+    # Stripe
+    try:
+        sk = getattr(settings, "STRIPE_SECRET_KEY", None)
+        if sk:
+            r = await _hx.AsyncClient(timeout=10.0).get(
+                "https://api.stripe.com/v1/products?limit=3",
+                auth=(sk, "")
+            )
+            if r.status_code == 200:
+                n = len(r.json().get("data", []))
+                lines.append(f"✅ Stripe: OK ({n} products found)")
+            else:
+                lines.append(f"❌ Stripe: status {r.status_code} — check STRIPE_SECRET_KEY")
+        else:
+            lines.append("⚠️ Stripe: STRIPE_SECRET_KEY not set")
+    except Exception as exc:
+        lines.append(f"❌ Stripe: {str(exc)[:60]}")
+
+    # Twitter
+    try:
+        tw_key = getattr(settings, "TWITTER_API_KEY", None)
+        tw_sec = getattr(settings, "TWITTER_API_SECRET", None)
+        tw_tok = getattr(settings, "TWITTER_ACCESS_TOKEN", None)
+        tw_tsec = getattr(settings, "TWITTER_ACCESS_SECRET", None)
+        if all([tw_key, tw_sec, tw_tok, tw_tsec]):
+            lines.append("✅ Twitter: credentials configured (OAuth1)")
+        else:
+            missing = [k for k, v in {
+                "API_KEY": tw_key, "API_SECRET": tw_sec,
+                "ACCESS_TOKEN": tw_tok, "ACCESS_SECRET": tw_tsec
+            }.items() if not v]
+            lines.append(f"⚠️ Twitter: missing {', '.join(missing)}")
+    except Exception as exc:
+        lines.append(f"❌ Twitter: {str(exc)[:60]}")
+
+    # LinkedIn
+    try:
+        lk_tok = getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
+        lk_urn = getattr(settings, "LINKEDIN_PERSON_URN", None)
+        if lk_tok and lk_urn:
+            lines.append("✅ LinkedIn: credentials configured")
+        elif lk_tok:
+            lines.append("⚠️ LinkedIn: token OK but LINKEDIN_PERSON_URN missing")
+        else:
+            lines.append("⚠️ LinkedIn: LINKEDIN_ACCESS_TOKEN not set")
+    except Exception as exc:
+        lines.append(f"❌ LinkedIn: {str(exc)[:60]}")
+
+    # SendGrid (email campaigns)
+    try:
+        sg_key = getattr(settings, "SENDGRID_API_KEY", None)
+        if sg_key:
+            lines.append("✅ SendGrid: API key configured")
+        else:
+            lines.append("⚠️ SendGrid: SENDGRID_API_KEY not set (email campaigns disabled)")
+    except Exception:
+        pass
+
+    # ARIA browser credentials
+    try:
+        if settings.ARIA_EMAIL and settings.ARIA_PASSWORD:
+            lines.append(f"✅ Browser: ARIA_EMAIL set ({settings.ARIA_EMAIL[:20]}...)")
+        else:
+            lines.append("⚠️ Browser: ARIA_EMAIL/ARIA_PASSWORD not set (stealth browser disabled)")
+    except Exception:
+        pass
+
+    msg = "\n".join(lines)
+    logger.info("[RevenueCheck] %s", msg.replace("<b>", "").replace("</b>", ""))
+    await send_telegram(msg)
+
+
 # ── LIFESPAN ──────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -113,6 +228,9 @@ async def lifespan(app: FastAPI):
         logger.info("IncomeLoop 24/7 activo (cada 30 min)")
     except Exception as exc:
         logger.error("Error iniciando IncomeLoop: %s", exc)
+
+    # 2c. Revenue channel health check — validates all money APIs on startup
+    asyncio.create_task(_validate_revenue_channels())
 
     # 3. AriaMind precarga (para que el primer mensaje no tenga cold start)
     try:

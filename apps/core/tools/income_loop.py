@@ -1770,7 +1770,34 @@ JSON:
             full_description = ebook.get("description", "")
             if toc:
                 full_description += "\n\n**What You'll Learn:**\n" + "\n".join(f"✓ {ch}" for ch in toc)
-            full_description += f"\n\n**Format:** PDF Ebook | Instant Download | {len(toc)} Chapters"
+            full_description += f"\n\n**Format:** Digital Guide | Instant Access | {len(toc)} Chapters"
+
+            # Generate actual chapter content so the product has real value
+            ebook_content_md = f"# {ebook.get('title', topic_str)}\n\n"
+            ebook_content_md += f"## {ebook.get('subtitle', '')}\n\n"
+            ebook_content_md += ebook.get("description", "") + "\n\n---\n\n"
+            try:
+                chapters_data = await ai.complete_json(
+                    system="You are a bestselling author writing chapter content. Be thorough, practical, and valuable. Output JSON only.",
+                    user=f"""Write 3 chapters for the ebook: "{ebook.get('title', topic_str)}"
+Table of contents: {json.dumps(toc[:3])}
+
+JSON:
+{{
+  "chapters": [
+    {{"title": "Chapter 1 title", "content": "Full chapter content (400+ words). Use headers, bullet points, real examples."}},
+    {{"title": "Chapter 2 title", "content": "Full chapter content (400+ words)."}},
+    {{"title": "Chapter 3 title", "content": "Full chapter content (400+ words)."}}
+  ]
+}}""",
+                    model=AIModel.FAST,
+                    max_tokens=3000,
+                )
+                if chapters_data and chapters_data.get("chapters"):
+                    for ch in chapters_data["chapters"]:
+                        ebook_content_md += f"## {ch.get('title', '')}\n\n{ch.get('content', '')}\n\n---\n\n"
+            except Exception:
+                ebook_content_md += "\n".join(f"## {ch}\n\nContent for this chapter.\n\n" for ch in toc)
 
             gt  = GumroadTools()
             gr  = await gt.create_product(
@@ -1778,6 +1805,7 @@ JSON:
                 description=full_description,
                 price_cents=ebook.get("price_cents", 1700),
                 tags=ebook.get("tags", ["ebook", "guide"]),
+                file_content=ebook_content_md,
             )
 
             if gr.get("success"):
@@ -7537,11 +7565,12 @@ JSON:
                     try:
                         from apps.core.tools.publishing_tools import PublishingTools
                         devto_content = content[:1200] + f"\n\n*Read the full article + exclusive resources on [our Substack](https://substack.com)*"
-                        r = await PublishingTools().publish_to_devto(
-                            title=title,
-                            content=devto_content,
-                            tags=tags[:4],
-                        )
+                        r = await PublishingTools().publish_devto({
+                            "title": title,
+                            "body": devto_content,
+                            "tags": tags[:4],
+                            "meta_description": subtitle[:155] if subtitle else "",
+                        })
                         if r.get("success") and r.get("url"):
                             urls_created.append(r["url"])
                     except Exception:
@@ -8403,11 +8432,12 @@ JSON:
                 # Also publish the free-tier portion to Dev.to for reach
                 try:
                     from apps.core.tools.publishing_tools import PublishingTools
-                    r = await PublishingTools().publish_to_devto(
-                        title=issue.get("subject_line", data.get("newsletter_name", "")),
-                        content=issue.get("intro", "") + "\n\n" + issue.get("main_content", "")[:800],
-                        tags=["newsletter", "ai", "productivity", "business"],
-                    )
+                    r = await PublishingTools().publish_devto({
+                        "title": issue.get("subject_line", data.get("newsletter_name", "")),
+                        "body": issue.get("intro", "") + "\n\n" + issue.get("main_content", "")[:800],
+                        "tags": ["newsletter", "ai", "productivity", "business"],
+                        "meta_description": issue.get("preview_text", "")[:155],
+                    })
                     if r.get("success") and r.get("url"):
                         urls_created.append(r["url"])
                 except Exception:
@@ -8892,11 +8922,12 @@ JSON:
 
                     # Publish to Dev.to with locale tag
                     try:
-                        r = await pt.publish_to_devto(
-                            title=title,
-                            content=article_md,
-                            tags=[locale, "ia", "automatizacion", "negocios"][:4],
-                        )
+                        r = await pt.publish_devto({
+                            "title": title,
+                            "body": article_md,
+                            "tags": [locale, "ia", "automatizacion", "negocios"][:4],
+                            "meta_description": "",
+                        })
                         if r.get("success") and r.get("url"):
                             urls_created.append(r["url"])
                     except Exception:
