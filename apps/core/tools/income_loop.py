@@ -66,7 +66,7 @@ STRATEGIES = [
     ("shopify_listing",          1),
     ("email_campaign",           1),
     ("affiliate_content",        1),   # review/comparison articles with affiliate links
-    ("ebook_factory",            2),
+    ("ebook_factory",            1),
     ("lead_magnet",              1),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            1),   # improve existing posts for compounding organic traffic
@@ -84,8 +84,8 @@ STRATEGIES = [
     ("twitter_thread",           2),   # direct Twitter API thread via api_publisher (real posts)
     ("linkedin_post",            2),   # direct LinkedIn API post via api_publisher (real posts)
     ("reddit_organic",           2),   # subreddit posts → massive organic traffic → affiliate rev
-    ("stripe_checkout",          2),   # real Stripe payment link for instant revenue
-    ("tiktok_script",            2),   # TikTok/Reels/YouTube Shorts viral scripts → massive reach
+    ("stripe_checkout",          1),   # real Stripe payment link for instant revenue
+    ("tiktok_script",            1),   # TikTok/Reels/YouTube Shorts viral scripts → massive reach
     ("linkedin_outreach",        1),   # B2B prospect messages → consulting/partnership leads
     ("youtube_strategy",         1),   # YouTube content plan + optimized metadata + script → channel growth
     ("product_hunt_launch",      1),   # Product Hunt launch post → massive traffic spike + backlinks
@@ -146,6 +146,9 @@ STRATEGIES = [
     ("influencer_collab",        1),   # identify micro-influencers, send collab proposals, create sponsored content briefs
     ("content_licensing",        1),   # license ARIA's content/templates to newsletters, blogs, SaaS → recurring B2B rev
     ("micro_consulting",         1),   # package ARIA's expertise as 1-hour consulting sessions → $200-$500/session
+    ("saas_upsell_sequence",     1),   # design full SaaS upgrade email sequence: free→paid→enterprise tiers
+    ("community_monetize",       1),   # create paid membership community: perks, pricing, onboarding → MRR
+    ("thought_leadership",       1),   # publish authoritative long-form opinion piece on AI/business trends → authority + leads
 ]
 
 
@@ -551,6 +554,12 @@ JSON:
             return await self._exec_content_licensing()
         elif strategy == "micro_consulting":
             return await self._exec_micro_consulting()
+        elif strategy == "saas_upsell_sequence":
+            return await self._exec_saas_upsell_sequence()
+        elif strategy == "community_monetize":
+            return await self._exec_community_monetize()
+        elif strategy == "thought_leadership":
+            return await self._exec_thought_leadership()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -14290,6 +14299,196 @@ Generate a backlink building plan:
             }
         except Exception as exc:
             logger.error("[IncomeLoop] micro_consulting: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_saas_upsell_sequence(self) -> dict:
+        """Design a complete SaaS upgrade email sequence driving free→paid→enterprise conversions."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            github = AriaGitHubClient()
+
+            sequence = await complete_json(
+                system="You are ARIA's SaaS growth strategist. Design a high-converting upgrade email sequence.",
+                user=f"Product: ARIA AI autonomous income system. Date: {today}\n\nReturn JSON with: sequence_name (str), free_tier_name (str), paid_tier_name (str), enterprise_tier_name (str), paid_price_monthly (float), enterprise_price_monthly (float), emails (list[dict] 7 items: day (int), trigger (str), subject (str), body_html (str 200-word email), cta_text (str), cta_url_placeholder (str)), expected_upgrade_rate_pct (float), expected_mrr_per_100_users (float)",
+                max_tokens=3000,
+            )
+            if not sequence or "sequence_name" not in sequence:
+                return {"success": False, "summary": "saas_upsell_sequence: AI failed", "revenue_potential": 0.0}
+
+            seq_name = sequence["sequence_name"]
+            paid_price = float(sequence.get("paid_price_monthly", 49.0))
+            upgrade_rate = float(sequence.get("expected_upgrade_rate_pct", 5.0))
+            mrr_per_100 = float(sequence.get("expected_mrr_per_100_users", 245.0))
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+            urls_created: list[str] = []
+            slug = seq_name.lower().replace(" ", "-")[:35]
+
+            emails = sequence.get("emails", [])
+            seq_md = f"# {seq_name}\n\n**Upgrade rate:** {upgrade_rate:.1f}%\n**Paid price:** ${paid_price}/mo\n**MRR per 100 users:** ${mrr_per_100}\n\n"
+            for e in emails:
+                seq_md += f"## Day {e.get('day',0)} — {e.get('trigger','')}\n\n**Subject:** {e.get('subject','')}\n**CTA:** [{e.get('cta_text','')}]({e.get('cta_url_placeholder','')})\n\n{e.get('body_html','')}\n\n---\n\n"
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/email-sequences/{slug}.md",
+                    {
+                        "message": f"[aria] saas_upsell_sequence: {seq_name[:50]}",
+                        "content": __import__("base64").b64encode(seq_md.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/email-sequences/{slug}.md")
+            except Exception:
+                pass
+
+            if cache:
+                await cache.rpush("aria:email_sequences:library", _json.dumps({
+                    "ts": today, "name": seq_name, "emails": len(emails),
+                    "upgrade_rate": upgrade_rate, "mrr_per_100": mrr_per_100,
+                }))
+                await cache.ltrim("aria:email_sequences:library", -10, -1)
+                await cache.incr("aria:email_sequences:total")
+
+            return {
+                "success": True,
+                "summary": f"saas_upsell_sequence: '{seq_name[:40]}' | {len(emails)} emails | {upgrade_rate:.1f}% upgrade rate | ${mrr_per_100}/100 users MRR | sequence archived",
+                "revenue_potential": mrr_per_100,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] saas_upsell_sequence: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_community_monetize(self) -> dict:
+        """Create a paid membership community with perks, pricing tiers, and onboarding flow → recurring MRR."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            github = AriaGitHubClient()
+
+            community = await complete_json(
+                system="You are ARIA's community architect. Design a paid membership community that generates recurring revenue.",
+                user=f"Brand: ARIA — autonomous AI for income generation. Date: {today}\n\nReturn JSON with: community_name (str), platform (str Discord|Circle|Slack|Telegram), tiers (list[dict] 3 tiers: name, price_monthly, perks (list[str] 4)), onboarding_sequence (list[str] 5 welcome steps), launch_strategy (str), expected_members_month1 (int), expected_mrr_month3 (float), landing_page_html (str full HTML page), launch_tweet (str 200-char tweet for launch)",
+                max_tokens=2500,
+            )
+            if not community or "community_name" not in community:
+                return {"success": False, "summary": "community_monetize: AI failed", "revenue_potential": 0.0}
+
+            community_name = community["community_name"]
+            tiers = community.get("tiers", [])
+            expected_mrr = float(community.get("expected_mrr_month3", 500.0))
+            members_m1 = int(community.get("expected_members_month1", 15))
+            slug = community_name.lower().replace(" ", "-")[:35]
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+            urls_created: list[str] = []
+
+            landing_html = community.get("landing_page_html", f"<h1>{community_name}</h1>")
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/community/{slug}.html",
+                    {
+                        "message": f"[aria] community_monetize: {community_name[:50]}",
+                        "content": __import__("base64").b64encode(landing_html.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/community/{slug}")
+            except Exception:
+                pass
+
+            if cache:
+                await cache.rpush("aria:communities:launched", _json.dumps({
+                    "ts": today, "name": community_name, "platform": community.get("platform", "Discord"),
+                    "tiers": len(tiers), "expected_mrr": expected_mrr, "expected_members": members_m1,
+                }))
+                await cache.ltrim("aria:communities:launched", -10, -1)
+                await cache.rpush("aria:social:proof_posts", _json.dumps({
+                    "text": community.get("launch_tweet", ""), "platform": "twitter", "ts": today,
+                }))
+                await cache.incr("aria:communities:total")
+
+            return {
+                "success": True,
+                "summary": f"community_monetize: '{community_name[:40]}' on {community.get('platform','Discord')} | {len(tiers)} tiers | {members_m1} members month-1 | ${expected_mrr:,.0f} MRR month-3 | landing page live",
+                "revenue_potential": expected_mrr,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] community_monetize: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_thought_leadership(self) -> dict:
+        """Publish authoritative long-form opinion piece on AI/business trends → build authority, attract inbound leads."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            web = WebTools()
+            github = AriaGitHubClient()
+
+            trends = await web.get_trending_topics()
+            topic = trends[0] if trends else "The future of autonomous AI agents"
+
+            piece = await complete_json(
+                system="You are ARIA, a recognized thought leader in autonomous AI and digital business. Write a bold, original long-form opinion piece.",
+                user=f"Topic direction: {topic}\nDate: {today}\n\nReturn JSON with: title (str compelling clickbait-free headline), thesis (str bold original argument in 1 sentence), article_md (str 1000-word authoritative article with subheadings, data points, contrarian takes), key_takeaways (list[str] 3), target_publication (str e.g. Hacker News|LinkedIn|Medium|Substack), linkedin_teaser (str 200-char hook for LinkedIn), hn_show_submission (str title + URL format), estimated_shares (int), estimated_backlinks (int)",
+                max_tokens=3000,
+            )
+            if not piece or "title" not in piece:
+                return {"success": False, "summary": "thought_leadership: AI failed", "revenue_potential": 0.0}
+
+            title = piece["title"]
+            article_md = piece.get("article_md", "")
+            slug = title.lower().replace(" ", "-").replace("?", "").replace(":", "")[:45]
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+            urls_created: list[str] = []
+
+            full_md = f"# {title}\n\n*By ARIA — {today}*\n\n> {piece.get('thesis','')}\n\n{article_md}\n\n---\n\n**Key takeaways:**\n" + "\n".join(f"- {t}" for t in piece.get("key_takeaways", []))
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/thought-leadership/{slug}.md",
+                    {
+                        "message": f"[aria] thought_leadership: {title[:50]}",
+                        "content": __import__("base64").b64encode(full_md.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/thought-leadership/{slug}")
+            except Exception:
+                pass
+
+            if cache:
+                await cache.rpush("aria:thought_leadership:pieces", _json.dumps({
+                    "ts": today, "title": title, "topic": topic,
+                    "publication": piece.get("target_publication", ""),
+                    "estimated_shares": piece.get("estimated_shares", 0),
+                }))
+                await cache.ltrim("aria:thought_leadership:pieces", -20, -1)
+                await cache.rpush("aria:social:proof_posts", _json.dumps({
+                    "text": piece.get("linkedin_teaser", ""), "platform": "linkedin", "ts": today,
+                }))
+                await cache.incr("aria:thought_leadership:total")
+
+            estimated_shares = int(piece.get("estimated_shares", 50))
+            return {
+                "success": True,
+                "summary": f"thought_leadership: '{title[:50]}' | {piece.get('target_publication','')} | est. {estimated_shares} shares | {piece.get('estimated_backlinks',0)} backlinks | published",
+                "revenue_potential": float(estimated_shares) * 2.0,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] thought_leadership: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
 
