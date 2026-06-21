@@ -4212,12 +4212,10 @@ JSON:
                         name=bundle_name,
                         description=bundle_data.get("tagline", "") + f"\n\nIncludes: {', '.join(i.get('title','') for i in items[:3])}",
                         price_cents=int(price * 100),
-                        product_type="bundle",
                     )
-                    if gr_result and gr_result.get("id"):
-                        gumroad_url = gr_result.get("short_url") or gr_result.get("url") or ""
-                        if gumroad_url:
-                            urls_created.insert(0, gumroad_url)
+                    if gr_result and gr_result.get("success") and gr_result.get("url"):
+                        gumroad_url = gr_result["url"]
+                        urls_created.insert(0, gumroad_url)
                 except Exception:
                     pass
 
