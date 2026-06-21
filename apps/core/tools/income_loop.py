@@ -156,6 +156,21 @@ STRATEGIES = [
     ("case_study_publisher",     1),   # write detailed case study from buyer result → social proof + SEO + lead gen
 ]
 
+# Strategies that already call publish_to_twitter/linkedin internally.
+# The global distributor in _run_one_cycle skips these to avoid double-posting.
+_SELF_DISTRIBUTING_STRATEGIES: frozenset[str] = frozenset({
+    "social_blitz", "twitter_thread", "linkedin_post", "viral_thread",
+    "voice_of_aria", "challenge_campaign", "newsletter_issue",
+    "community_launch", "viral_detector", "saas_waitlist_blitz",
+    "email_list_builder", "thought_leadership", "growth_hacker",
+    "brand_storyteller", "notion_template_seller", "chrome_extension_builder",
+    "api_marketplace_lister", "case_study_publisher", "podcast_producer",
+    "waitlist_builder", "gist_blitz", "product_hunt_launch",
+    "content_amplifier", "stripe_checkout", "seo_content_cluster",
+    "testimonial_collector", "crowdfunding_kit", "premium_offer",
+    "product_factory", "github_blog", "content_pipeline",
+})
+
 
 @dataclass
 class CycleResult:
@@ -277,6 +292,13 @@ class IncomeLoop:
         if result.success and result.urls_created and result.revenue_potential > 0:
             asyncio.create_task(self._register_product(result))
 
+        # Global social distribution fallback — catches all strategies that don't
+        # self-distribute. Fires asynchronously so it never blocks the cycle.
+        if (result.success
+                and result.revenue_potential >= 1.0
+                and result.strategy not in _SELF_DISTRIBUTING_STRATEGIES):
+            asyncio.create_task(self._distribute_result_on_social(result))
+
         logger.info(
             "[IncomeLoop] Cycle #%d done in %ds | success=%s | %s",
             self._cycle, result.elapsed_seconds, result.success, result.summary[:80]
@@ -330,6 +352,21 @@ class IncomeLoop:
                 if raw and isinstance(raw, dict):
                     self._adaptive_weights = {k: float(v) for k, v in raw.items()}
                     logger.info("[IncomeLoop] Adaptive weights loaded (%d strategies)", len(self._adaptive_weights))
+        except Exception:
+            pass
+
+    async def _distribute_result_on_social(self, result: CycleResult) -> None:
+        """Global social distributor — posts a tweet for any successful strategy
+        that doesn't already call publish_to_twitter internally."""
+        try:
+            from apps.distribution.publishers.api_publisher import get_api_publisher
+            pub = get_api_publisher()
+            url = result.urls_created[0] if result.urls_created else ""
+            summary = (result.summary or "")[:200]
+            tweet = f"🤖 ARIA: {summary}"
+            if url:
+                tweet = tweet[:230] + f"\n\n{url}"
+            await pub.publish_to_twitter(tweet[:280])
         except Exception:
             pass
 
@@ -10071,6 +10108,23 @@ JSON:
                     urls_created.append(
                         f"https://github.com/{owner}/aria-insights/blob/main/product/aria-listings-{today}.md"
                     )
+
+            # Create actual Gumroad product for "Hire ARIA" offer
+            gumroad_offer = listing_data.get("gumroad_offer", {})
+            gumroad_token = getattr(settings, "GUMROAD_ACCESS_TOKEN", "") or ""
+            if gumroad_token and gumroad_offer:
+                try:
+                    from apps.core.tools.gumroad_tools import GumroadTools
+                    gt = GumroadTools()
+                    gr_res = await gt.create_product(
+                        name=gumroad_offer.get("title", "Hire ARIA AI for 30 Days")[:100],
+                        description=gumroad_offer.get("description", ""),
+                        price_cents=int(gumroad_offer.get("price", 297) * 100),
+                    )
+                    if gr_res and gr_res.get("success") and gr_res.get("url"):
+                        urls_created.append(gr_res["url"])
+                except Exception:
+                    pass
 
             tagline = listing_data.get("tagline", "")
             prices = [t.get("price_monthly", 0) for t in listing_data.get("pricing_tiers", [])]
