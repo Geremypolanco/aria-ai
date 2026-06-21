@@ -4293,11 +4293,52 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
                 await cache.rpush("aria:income:waitlist_pipeline", json.dumps(waitlist_entry))
                 await cache.ltrim("aria:income:waitlist_pipeline", -50, -1)
 
+            # Promote waitlist on social media
+            distributed_to: list[str] = []
+            wl_url = urls_created[0] if urls_created else ""
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tw_text = (
+                    f"🚀 COMING SOON: {product_name}\n\n"
+                    f"{tagline}\n\n"
+                    f"⚡ Early bird: {early_bird}\n\n"
+                    f"Join the waitlist 👇"
+                )
+                if wl_url:
+                    tw_text += f"\n{wl_url}"
+                tw_result = await pub.publish_to_twitter(tw_text[:280])
+                if tw_result and tw_result.success:
+                    distributed_to.append("Twitter")
+            except Exception:
+                pass
+
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                li_text = (
+                    f"🚀 Building something new — {product_name}\n\n"
+                    f"{waitlist_data.get('problem', '')}\n\n"
+                    f"We're solving this. Launching {waitlist_data.get('launch_eta', 'soon')}.\n\n"
+                    f"Early bird waitlist members get: {early_bird}\n\n"
+                    f"Who's this for: {waitlist_data.get('target_audience', 'entrepreneurs and creators')}"
+                )
+                if wl_url:
+                    li_text += f"\n\nJoin the waitlist: {wl_url}"
+                li_result = await pub.publish_to_linkedin(li_text[:1300])
+                if li_result and li_result.success:
+                    distributed_to.append("LinkedIn")
+            except Exception:
+                pass
+
             logger.info("[IncomeLoop] Waitlist created: %s", product_name)
             return {
                 "success": True,
-                "summary": f"Waitlist for '{product_name}' — early bird: {early_bird}",
-                "revenue_potential": 8.0,  # modest (lead capture, not direct sale)
+                "summary": (
+                    f"Waitlist for '{product_name}' — early bird: {early_bird} | "
+                    f"promoted on: {', '.join(distributed_to) or 'GitHub'}"
+                ),
+                "revenue_potential": 8.0,
                 "urls": urls_created,
             }
 
@@ -5559,11 +5600,52 @@ JSON:
 
             price_display = f"${price_cents/100:.0f}"
             platform_note = f" via {platform_used}" if platform_used else " (GitHub only — add STRIPE_SECRET_KEY for live checkout)"
+            buy_url = urls_created[0] if urls_created else ""
+            distributed_to: list[str] = []
+
+            # Promote the product on Twitter
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                features_str = " | ".join(features[:3]) if features else ""
+                tw_text = (
+                    f"🛒 NEW: {product_name} — {price_display}\n\n"
+                    f"{tagline}\n\n"
+                    + (f"✅ {features_str}\n\n" if features_str else "")
+                    + ("👉 Get it now: " + buy_url if buy_url else "")
+                )
+                tw_result = await pub.publish_to_twitter(tw_text[:280])
+                if tw_result and tw_result.success:
+                    distributed_to.append("Twitter")
+            except Exception:
+                pass
+
+            # Promote on LinkedIn
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                li_text = (
+                    f"🚀 Just launched: {product_name} at {price_display}\n\n"
+                    f"{tagline}\n\n"
+                    f"{product_desc[:400]}\n\n"
+                    + "\n".join(f"✅ {f}" for f in features[:4])
+                )
+                if buy_url:
+                    li_text += f"\n\n👉 {buy_url}"
+                li_result = await pub.publish_to_linkedin(li_text[:1300])
+                if li_result and li_result.success:
+                    distributed_to.append("LinkedIn")
+            except Exception:
+                pass
+
             logger.info("[IncomeLoop] stripe_checkout: '%s' %s %s", product_name, price_display, platform_used)
             return {
                 "success": True,
-                "summary": f"Product created: '{product_name}' at {price_display}{platform_note}",
-                "revenue_potential": float(price_cents / 100) * 5,  # estimated 5 sales
+                "summary": (
+                    f"Product created: '{product_name}' at {price_display}{platform_note} | "
+                    f"promoted on: {', '.join(distributed_to) or 'none'}"
+                ),
+                "revenue_potential": float(price_cents / 100) * 5,
                 "urls": urls_created[:4],
             }
 
@@ -8725,11 +8807,53 @@ JSON:
                         f"https://github.com/{owner}/aria-insights/blob/main/community/launch-kit-{today}.md"
                     )
 
+            tiers = data.get("membership_tiers", [])
+            launch = data.get("launch_announcement", {})
+            community_name = data.get("community_name", "ARIA Community")
             mrr = data.get("revenue_at_100_members", 1900)
-            logger.info("[IncomeLoop] community_launch: '%s' — $%d MRR at 100 members", data.get("community_name", "")[:40], mrr)
+            distributed_to: list[str] = []
+
+            # Post launch Twitter thread
+            try:
+                twitter_thread_text = launch.get("twitter_thread", "")
+                if twitter_thread_text:
+                    tweets = [t.strip() for t in twitter_thread_text.split("\n") if t.strip()][:10]
+                    if len(tweets) == 1:
+                        tweets = [t.strip() for t in twitter_thread_text.split("\n\n") if t.strip()][:10]
+                    if tweets:
+                        from apps.distribution.publishers.api_publisher import get_api_publisher
+                        pub = get_api_publisher()
+                        results = await pub.publish_thread_to_twitter([t[:280] for t in tweets])
+                        if any(r.success for r in results):
+                            distributed_to.append("Twitter")
+            except Exception:
+                pass
+
+            # Post LinkedIn announcement
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                li_text = (
+                    f"🚀 Launching: {community_name}\n\n"
+                    f"{data.get('tagline', '')}\n\n"
+                    f"{data.get('transformation_promise', '')}\n\n"
+                    f"Founding member spots available now."
+                )
+                if urls_created:
+                    li_text += f"\n\n{urls_created[0]}"
+                li_result = await pub.publish_to_linkedin(li_text[:1300])
+                if li_result and li_result.success:
+                    distributed_to.append("LinkedIn")
+            except Exception:
+                pass
+
+            logger.info("[IncomeLoop] community_launch: '%s' — $%d MRR at 100 members", community_name[:40], mrr)
             return {
-                "success": bool(urls_created),
-                "summary": f"Community: '{data.get('community_name','')}' — ${mrr:,}/mo MRR at 100 members + launch kit",
+                "success": True,
+                "summary": (
+                    f"Community: '{community_name}' — ${mrr:,}/mo MRR at 100 members | "
+                    f"announced on: {', '.join(distributed_to) or 'GitHub'}"
+                ),
                 "revenue_potential": float(tiers[0].get("price_monthly", 19) * 50) if tiers else 950.0,
                 "urls": urls_created[:2],
             }
@@ -13941,9 +14065,49 @@ Generate a backlink building plan:
                 await cache.ltrim("aria:email:magnets", -20, -1)
                 await cache.incr("aria:email:total_magnets")
 
+            distributed_to: list[str] = []
+            lp_url = urls_created[0] if urls_created else ""
+
+            # Promote lead magnet on Twitter
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                hook_headline = plan.get("hook_headline", magnet_title)
+                opt_in_cta = plan.get("opt_in_cta", "Get it free →")
+                tw_text = f"🎁 FREE: {magnet_title[:100]}\n\n{hook_headline[:120]}\n\n{opt_in_cta}"
+                if lp_url:
+                    tw_text += f"\n\n{lp_url}"
+                tw_result = await pub.publish_to_twitter(tw_text[:280])
+                if tw_result and tw_result.success:
+                    distributed_to.append("Twitter")
+            except Exception:
+                pass
+
+            # Promote on LinkedIn
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                li_text = (
+                    f"🎁 I just published a FREE {plan.get('magnet_type','resource')}: "
+                    f"{magnet_title}\n\n"
+                    f"{plan.get('hook_headline', '')}\n\n"
+                    f"No email required — just grab it and use it immediately."
+                )
+                if lp_url:
+                    li_text += f"\n\n👉 {lp_url}"
+                li_result = await pub.publish_to_linkedin(li_text[:1300])
+                if li_result and li_result.success:
+                    distributed_to.append("LinkedIn")
+            except Exception:
+                pass
+
             return {
                 "success": True,
-                "summary": f"email_list_builder: '{magnet_title[:50]}' ({plan.get('magnet_type','checklist')}) | +{plan.get('estimated_list_growth_per_week',0)}/wk | landing deployed",
+                "summary": (
+                    f"email_list_builder: '{magnet_title[:50]}' ({plan.get('magnet_type','checklist')}) | "
+                    f"+{plan.get('estimated_list_growth_per_week',0)}/wk | "
+                    f"promoted on: {', '.join(distributed_to) or 'GitHub'}"
+                ),
                 "revenue_potential": float(plan.get("estimated_list_growth_per_week", 0)) * 2.0,
                 "urls": urls_created[:3],
             }
@@ -15104,15 +15268,61 @@ Generate a backlink building plan:
                     "seo_keywords": case_study.get("seo_keywords", []),
                 }))
                 await cache.ltrim("aria:case_studies:published", -20, -1)
-                await cache.rpush("aria:social:proof_posts", _json.dumps({
-                    "text": case_study.get("linkedin_teaser", ""), "platform": "linkedin", "ts": today,
-                }))
                 await cache.incr("aria:case_studies:total")
+
+            distributed_to: list[str] = []
+
+            # Publish to Dev.to for SEO
+            try:
+                from apps.core.tools.publishing_tools import PublishingTools
+                pt = PublishingTools()
+                dt_result = await pt.publish_devto({
+                    "title": title,
+                    "body": full_md,
+                    "tags": (case_study.get("seo_keywords", []) + ["casestudy", "ai"])[:4],
+                    "meta_description": case_study.get("subtitle", "")[:150],
+                })
+                if dt_result.get("success"):
+                    distributed_to.append("Dev.to")
+                    if dt_result.get("url"):
+                        urls_created.append(dt_result["url"])
+            except Exception:
+                pass
+
+            # Post LinkedIn teaser
+            li_teaser = case_study.get("linkedin_teaser", "")
+            if li_teaser:
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    cs_url = urls_created[0] if urls_created else ""
+                    li_text = f"{li_teaser}\n\n{cs_url}"[:1300] if cs_url else li_teaser[:1300]
+                    li_result = await pub.publish_to_linkedin(li_text)
+                    if li_result and li_result.success:
+                        distributed_to.append("LinkedIn")
+                except Exception:
+                    pass
+
+            # Post Twitter hook
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tw_text = f"📊 {hero_stat}\n\n{title[:160]}"
+                if urls_created:
+                    tw_text += f"\n\n{urls_created[0]}"
+                tw_result = await pub.publish_to_twitter(tw_text[:280])
+                if tw_result and tw_result.success:
+                    distributed_to.append("Twitter")
+            except Exception:
+                pass
 
             distribution = case_study.get("distribution_plan", [])
             return {
                 "success": True,
-                "summary": f"case_study_publisher: '{title[:45]}' | hero: {hero_stat} | publish to: {', '.join(distribution[:2])} | {len(urls_created)} URLs",
+                "summary": (
+                    f"case_study_publisher: '{title[:45]}' | hero: {hero_stat} | "
+                    f"published to: {', '.join(distributed_to) or 'GitHub'}"
+                ),
                 "revenue_potential": 150.0,
                 "urls": urls_created[:3],
             }
