@@ -2896,6 +2896,27 @@ Generate output using AI.
                 repo_url = f"https://github.com/{owner}/{repo_name}"
                 logger.info("[IncomeLoop] Micro-SaaS published: %s", repo_url)
 
+                sale_url = repo_url
+                # Create a Gumroad product for the starter kit / docs bundle
+                try:
+                    if settings.GUMROAD_TOKEN:
+                        from apps.core.tools.gumroad_tools import GumroadTools
+                        gt = GumroadTools()
+                        starter_price = next(
+                            (t.get("price_monthly", 29) for t in pricing if t.get("name") == "Starter"), 29
+                        )
+                        gr = await gt.create_product(
+                            name=f"{name} — Starter Kit & API Docs",
+                            description=f"{tagline}\n\n{desc}\n\nIncludes: Complete API documentation, quick-start guide, and code examples.",
+                            price_cents=int(starter_price * 100),
+                            tags=["saas", "api", "ai", "automation", "starter-kit"],
+                            file_content=readme + "\n\n---\n\n" + api_md,
+                        )
+                        if gr.get("success") and gr.get("url"):
+                            sale_url = gr["url"]
+                except Exception:
+                    pass
+
                 # Announce on blog
                 asyncio.create_task(self._exec_github_blog([{
                     "title": f"Introducing {name}: {tagline}",
@@ -2908,9 +2929,9 @@ Generate output using AI.
                 min_price = min(t.get("price_monthly", 0) for t in pricing) if pricing else 0
                 return {
                     "success": True,
-                    "summary": f"Micro-SaaS '{name}' launched at ${min_price}/mo starting — {repo_url}",
+                    "summary": f"Micro-SaaS '{name}' launched at ${min_price}/mo starting — {sale_url}",
                     "revenue_potential": float(min_price),
-                    "urls": [repo_url],
+                    "urls": [sale_url, repo_url],
                 }
 
             return {"success": False, "summary": "micro_saas: could not create repo"}
@@ -3206,13 +3227,16 @@ Return JSON:
 
                 # Try to sell on Gumroad/LemonSqueezy
                 sale_url = repo_url
+                full_description = f"{subtitle}\n\n{promise}\n\nTarget audience: {audience}\n\n{modules_md}"
                 try:
                     if settings.GUMROAD_TOKEN:
                         from apps.core.tools.gumroad_tools import GumroadTools
                         gt = GumroadTools()
                         gr = await gt.create_product(
-                            name=title, description=f"{promise}\n\n{subtitle}",
+                            name=title,
+                            description=full_description[:3000],
                             price_cents=price * 100,
+                            file_content=readme,  # full curriculum as downloadable content
                         )
                         if gr.get("success") and gr.get("url"):
                             sale_url = gr["url"]
