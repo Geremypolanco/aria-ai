@@ -954,18 +954,54 @@ JSON:
                     except Exception:
                         pass
 
+                # Post to Twitter and LinkedIn for traffic
+                social_posted: list[str] = []
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    first_art = existing_articles[0] if existing_articles else {}
+                    art_title = first_art.get("title", "New article")[:100]
+                    art_desc = first_art.get("description", "")[:160]
+                    art_url = (devto_urls + hashnode_urls + published_urls)[0] if (devto_urls + hashnode_urls + published_urls) else ""
+                    tw_text = f"📝 {art_title}\n\n{art_desc}"
+                    if art_url:
+                        tw_text += f"\n\n{art_url}"
+                    tw_r = await pub.publish_to_twitter(tw_text[:280])
+                    if tw_r and tw_r.success:
+                        social_posted.append("Twitter")
+                except Exception:
+                    pass
+
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    first_art = existing_articles[0] if existing_articles else {}
+                    art_title = first_art.get("title", "New article")[:100]
+                    art_content_preview = first_art.get("content", "")[:300]
+                    art_url = (devto_urls + hashnode_urls + published_urls)[0] if (devto_urls + hashnode_urls + published_urls) else ""
+                    li_text = f"📝 New article: {art_title}\n\n{art_content_preview}"
+                    if art_url:
+                        li_text += f"\n\n{art_url}"
+                    li_r = await pub.publish_to_linkedin(li_text[:1300])
+                    if li_r and li_r.success:
+                        social_posted.append("LinkedIn")
+                except Exception:
+                    pass
+
                 all_urls = published_urls + devto_urls + hashnode_urls
                 platform_parts = ["GitHub"]
                 if devto_urls:
                     platform_parts.append("Dev.to")
                 if hashnode_urls:
                     platform_parts.append("Hashnode")
+                if social_posted:
+                    platform_parts.extend(social_posted)
                 platforms = " + ".join(platform_parts)
                 return {
                     "success": True,
                     "summary": f"Published {len(published_urls)} article(s) to {platforms}" +
                                (f" with Amazon affiliate links" if assoc else " (add AMAZON_ASSOCIATE_TAG for affiliate income)"),
-                    "revenue_potential": len(all_urls) * 1.5,
+                    "revenue_potential": len(all_urls) * 2.0,
                     "urls": all_urls,
                 }
             return {"success": False, "summary": "GitHub blog: no articles pushed"}
