@@ -3849,7 +3849,31 @@ JSON:
             hook     = tweets[0][:280] if tweets else ""
             full_txt = "\n\n".join(f"[{i+1}] {t}" for i, t in enumerate(tweets))
 
-            # Try Zapier first
+            # Primary: post thread directly via Twitter API
+            api_ok = False
+            api_urls: list[str] = []
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tweet_texts = [t[:280] for t in tweets if t]
+                results = await pub.publish_thread_to_twitter(tweet_texts)
+                successful = [r for r in results if r.success]
+                if successful:
+                    api_ok = True
+                    api_urls = [r.url for r in successful if r.url]
+                    return {
+                        "success": True,
+                        "summary": (
+                            f"Viral thread posted on Twitter: '{topic[:50]}' "
+                            f"({len(successful)}/{len(results)} tweets live)"
+                        ),
+                        "revenue_potential": 8.0,
+                        "urls": api_urls,
+                    }
+            except Exception:
+                pass
+
+            # Secondary: Try Zapier
             zc       = ZapierConnector()
             zapier_ok = False
             try:
@@ -10086,20 +10110,22 @@ JSON:
                 getattr(settings, "TWITTER_ACCESS_TOKEN", None)
             ):
                 try:
-                    from apps.distribution.publishers.api_publisher import publish_twitter
-                    r = await publish_twitter(twitter_snippet)
-                    if r.get("url"):
-                        urls_created.append(r["url"])
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    r = await pub.publish_to_twitter(twitter_snippet[:280])
+                    if r and r.url:
+                        urls_created.append(r.url)
                 except Exception:
                     pass
 
             # Post LinkedIn snippet if configured
             if linkedin_snippet and getattr(settings, "LINKEDIN_ACCESS_TOKEN", None):
                 try:
-                    from apps.distribution.publishers.api_publisher import publish_linkedin
-                    r = await publish_linkedin(linkedin_snippet)
-                    if r.get("url"):
-                        urls_created.append(r["url"])
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    r = await pub.publish_to_linkedin(linkedin_snippet[:1300])
+                    if r and r.url:
+                        urls_created.append(r.url)
                 except Exception:
                     pass
 
@@ -10142,7 +10168,7 @@ JSON:
         """Analyze top competitor products and create superior alternatives."""
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
             import base64 as _b64
             import datetime as _dt
@@ -10245,7 +10271,7 @@ Create a superior alternative product that:
         """Design the optimal pricing ladder from free to enterprise for ARIA's products."""
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
             import json as _json
@@ -10463,7 +10489,7 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import json as _json
             import datetime as _dt
@@ -10669,7 +10695,7 @@ Return JSON:
 
             # ── Archive to GitHub as DM playbook ──────────────────────────────
             if settings.GITHUB_TOKEN:
-                from apps.core.tools.github_tools import AriaGitHubClient
+                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -10714,7 +10740,7 @@ Return JSON:
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.memory.redis_client import get_cache
             import json as _json
             import datetime as _dt
@@ -10879,7 +10905,7 @@ Return JSON:
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
             import base64 as _b64
             import datetime as _dt
@@ -11045,7 +11071,7 @@ Return JSON:
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
@@ -11182,7 +11208,7 @@ Return JSON:
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
@@ -11303,7 +11329,7 @@ Return JSON:
         try:
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
@@ -11429,7 +11455,7 @@ Return JSON:
         try:
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
@@ -11562,7 +11588,7 @@ Return JSON:
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.gumroad_tools import GumroadTools
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
@@ -11707,7 +11733,7 @@ Return JSON:
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
@@ -11858,7 +11884,7 @@ Return JSON:
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
@@ -12010,7 +12036,7 @@ Return JSON:
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.gumroad_tools import GumroadTools
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
@@ -12145,7 +12171,7 @@ Return JSON:
         try:
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.gumroad_tools import GumroadTools
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
@@ -12296,7 +12322,7 @@ Return JSON:
         try:
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
@@ -12464,7 +12490,7 @@ Return JSON:
         """Analyze ARIA's full funnel and apply conversion rate improvements."""
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
             import json as _json
@@ -12592,7 +12618,7 @@ Analyze the biggest conversion bottleneck and provide:
         """Create ARIA's brand narrative, origin story, and value proposition content."""
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
             from apps.core.tools.web_tools import WebTools
@@ -12702,7 +12728,7 @@ Create compelling brand story assets that position ARIA as the most advanced aut
         """Execute rapid growth experiments: A/B tests, viral loops, and referral mechanics."""
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
             import base64 as _b64
             import datetime as _dt
@@ -12940,7 +12966,7 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
         """List ARIA's best products on external marketplaces: AppSumo, Envato, Gumroad."""
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
             gh = AriaGitHubClient()
@@ -13165,7 +13191,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             import datetime as _dt
             import base64 as _b64
             from apps.core.memory.redis_client import get_cache
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             cache = get_cache()
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -13280,7 +13306,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
         """Find micro-influencers in the AI/indie hacker space and pitch ARIA for promotion."""
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
             import base64 as _b64
             import datetime as _dt
@@ -13495,7 +13521,7 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
         """Collect testimonials from buyers in email nurture queue and publish as social proof."""
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
             gh = AriaGitHubClient()
@@ -13594,7 +13620,7 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
         """Submit ARIA's content to directories, aggregators, and link-building sites."""
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
             gh = AriaGitHubClient()
@@ -13690,7 +13716,7 @@ Generate a backlink building plan:
         """
         try:
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             urls_created: list[str] = []
@@ -13862,10 +13888,10 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
@@ -13930,10 +13956,10 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
@@ -14012,10 +14038,10 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
@@ -14097,10 +14123,10 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
@@ -14173,9 +14199,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
@@ -14247,9 +14273,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
@@ -14322,10 +14348,10 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
@@ -14392,9 +14418,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
@@ -14465,9 +14491,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
@@ -14527,9 +14553,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
@@ -14589,9 +14615,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
@@ -14650,10 +14676,10 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
@@ -14663,7 +14689,7 @@ Generate a backlink building plan:
 
             piece = await complete_json(
                 system="You are ARIA, a recognized thought leader in autonomous AI and digital business. Write a bold, original long-form opinion piece.",
-                user=f"Topic direction: {topic}\nDate: {today}\n\nReturn JSON with: title (str compelling clickbait-free headline), thesis (str bold original argument in 1 sentence), article_md (str 1000-word authoritative article with subheadings, data points, contrarian takes), key_takeaways (list[str] 3), target_publication (str e.g. Hacker News|LinkedIn|Medium|Substack), linkedin_teaser (str 200-char hook for LinkedIn), hn_show_submission (str title + URL format), estimated_shares (int), estimated_backlinks (int)",
+                user=f"Topic direction: {topic}\nDate: {today}\n\nReturn JSON with: title (str compelling clickbait-free headline), thesis (str bold original argument in 1 sentence), article_md (str 1000-word authoritative article with subheadings, data points, contrarian takes), key_takeaways (list[str] 3), target_publication (str e.g. Hacker News|LinkedIn|Medium|Substack), linkedin_teaser (str 200-char hook for LinkedIn), twitter_hook (str 240-char punchy hook for Twitter), hn_show_submission (str title + URL format), estimated_shares (int), estimated_backlinks (int)",
                 max_tokens=3000,
             )
             if not piece or "title" not in piece:
@@ -14674,18 +14700,68 @@ Generate a backlink building plan:
             slug = title.lower().replace(" ", "-").replace("?", "").replace(":", "")[:45]
             repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
             urls_created: list[str] = []
+            published_channels: list[str] = []
 
             full_md = f"# {title}\n\n*By ARIA — {today}*\n\n> {piece.get('thesis','')}\n\n{article_md}\n\n---\n\n**Key takeaways:**\n" + "\n".join(f"- {t}" for t in piece.get("key_takeaways", []))
 
+            # Publish to GitHub
             try:
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
                 await github._put(
-                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/thought-leadership/{slug}.md",
+                    f"/repos/{owner}/{repo}/contents/thought-leadership/{slug}.md",
                     {
                         "message": f"[aria] thought_leadership: {title[:50]}",
                         "content": __import__("base64").b64encode(full_md.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/thought-leadership/{slug}")
+                gh_url = f"https://{owner}.github.io/{repo}/thought-leadership/{slug}"
+                urls_created.append(gh_url)
+                published_channels.append("GitHub")
+            except Exception:
+                gh_url = ""
+
+            # Publish to Dev.to
+            try:
+                from apps.core.tools.publishing_tools import PublishingTools
+                pt = PublishingTools()
+                devto_result = await pt.publish_devto({
+                    "title": title,
+                    "body": article_md,
+                    "tags": ["ai", "technology", "productivity", "startup"],
+                    "meta_description": piece.get("thesis", "")[:150],
+                })
+                if devto_result.get("success"):
+                    published_channels.append("Dev.to")
+                    if devto_result.get("url"):
+                        urls_created.append(devto_result["url"])
+            except Exception:
+                pass
+
+            # Post teaser to LinkedIn
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                li_teaser = piece.get("linkedin_teaser", "")
+                if not li_teaser:
+                    li_teaser = f"{title}\n\n{piece.get('thesis', '')}"
+                if urls_created:
+                    li_teaser += f"\n\n{urls_created[0]}"
+                li_result = await pub.publish_to_linkedin(li_teaser[:1300])
+                if li_result and li_result.success:
+                    published_channels.append("LinkedIn")
+            except Exception:
+                pass
+
+            # Post hook to Twitter
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tw_hook = piece.get("twitter_hook", f"{title[:200]}")
+                if urls_created:
+                    tw_hook = f"{tw_hook[:200]}\n\n{urls_created[0]}"
+                tw_result = await pub.publish_to_twitter(tw_hook[:280])
+                if tw_result and tw_result.success:
+                    published_channels.append("Twitter")
             except Exception:
                 pass
 
@@ -14694,17 +14770,19 @@ Generate a backlink building plan:
                     "ts": today, "title": title, "topic": topic,
                     "publication": piece.get("target_publication", ""),
                     "estimated_shares": piece.get("estimated_shares", 0),
+                    "channels": published_channels,
                 }))
                 await cache.ltrim("aria:thought_leadership:pieces", -20, -1)
-                await cache.rpush("aria:social:proof_posts", _json.dumps({
-                    "text": piece.get("linkedin_teaser", ""), "platform": "linkedin", "ts": today,
-                }))
                 await cache.incr("aria:thought_leadership:total")
 
             estimated_shares = int(piece.get("estimated_shares", 50))
             return {
                 "success": True,
-                "summary": f"thought_leadership: '{title[:50]}' | {piece.get('target_publication','')} | est. {estimated_shares} shares | {piece.get('estimated_backlinks',0)} backlinks | published",
+                "summary": (
+                    f"thought_leadership: '{title[:50]}' | "
+                    f"published to: {', '.join(published_channels) or 'GitHub'} | "
+                    f"est. {estimated_shares} shares"
+                ),
                 "revenue_potential": float(estimated_shares) * 2.0,
                 "urls": urls_created[:3],
             }
@@ -14717,9 +14795,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
@@ -14778,9 +14856,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
@@ -14848,10 +14926,10 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
@@ -14919,9 +14997,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
@@ -14975,9 +15053,9 @@ Generate a backlink building plan:
         try:
             import json as _json
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 

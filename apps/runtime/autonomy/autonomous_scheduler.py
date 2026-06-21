@@ -2445,7 +2445,7 @@ JSON:
         cache = _gc()
         try:
             from apps.core.config import settings
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             gh = AriaGitHubClient()
             owner = getattr(settings, "GITHUB_USERNAME", "") or "Geremypolanco"
 
@@ -2708,7 +2708,7 @@ Keep the same general topic but make it significantly more valuable.""",
         cache = _gc()
         try:
             from apps.core.config import settings
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.income_loop import get_income_loop
             gh = AriaGitHubClient()
             loop = get_income_loop()
@@ -3558,7 +3558,7 @@ Return JSON:
             from apps.core.llm.llm_client import complete_json
             import httpx
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
             if not cache:
@@ -3672,7 +3672,7 @@ Return JSON:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
             if not cache:
@@ -3742,10 +3742,10 @@ Return JSON:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
 
-            cache = await get_cache()
+            cache = get_cache()
             web = WebTools()
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -3822,11 +3822,11 @@ Return JSON:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
             import httpx
 
-            cache = await get_cache()
+            cache = get_cache()
             web = WebTools()
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -3907,10 +3907,10 @@ Return JSON:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
 
-            cache = await get_cache()
+            cache = get_cache()
             web = WebTools()
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -3982,11 +3982,11 @@ Return JSON:
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
             import httpx
 
-            cache = await get_cache()
+            cache = get_cache()
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -4144,7 +4144,7 @@ Return JSON:
             from apps.core.config import settings as _s
             import httpx
 
-            cache = await get_cache()
+            cache = get_cache()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             now_ts = datetime.now(timezone.utc).timestamp()
 
@@ -4230,10 +4230,10 @@ Return JSON:
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
 
-            cache = await get_cache()
+            cache = get_cache()
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -4299,10 +4299,10 @@ Return JSON:
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
 
-            cache = await get_cache()
+            cache = get_cache()
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -4380,10 +4380,10 @@ Return JSON:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
 
-            cache = await get_cache()
+            cache = get_cache()
             web = WebTools()
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -4449,10 +4449,10 @@ Return JSON:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
 
-            cache = await get_cache()
+            cache = get_cache()
             web = WebTools()
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -4519,10 +4519,10 @@ Return JSON:
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
 
-            cache = await get_cache()
+            cache = get_cache()
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
