@@ -9875,11 +9875,29 @@ JSON:
 
             title = kit_data.get("campaign_title", "")
             goal = kit_data.get("funding_goal_usd", 10000)
+            tiers = kit_data.get("reward_tiers", [])
+
+            # Announce crowdfunding on Twitter
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tagline = kit_data.get("tagline", "")
+                cf_url = urls_created[0] if urls_created else ""
+                tw_text = (
+                    f"🚀 Launching: {title[:80]}\n\n"
+                    f"{tagline[:140]}\n\n"
+                    f"Goal: ${goal:,}"
+                    + (f"\n\n{cf_url}" if cf_url else "")
+                )
+                await pub.publish_to_twitter(tw_text[:280])
+            except Exception:
+                pass
+
             logger.info("[IncomeLoop] crowdfunding_kit: '%s' — goal $%d", title[:60], goal)
             return {
                 "success": bool(urls_created),
                 "summary": f"Crowdfunding kit: '{title[:70]}' — ${goal:,} goal, {len(tiers)} reward tiers",
-                "revenue_potential": float(goal) * 0.1,  # 10% of funding goal as conservative estimate
+                "revenue_potential": float(goal) * 0.1,
                 "urls": urls_created[:2],
             }
 
