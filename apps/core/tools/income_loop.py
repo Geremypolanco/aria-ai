@@ -10508,10 +10508,10 @@ Create a superior alternative product that:
                     gr_res = await gt.create_product(
                         name=product_name,
                         description=product.get("description", ""),
-                        price=int(product_price * 100),
+                        price_cents=int(product_price * 100),
                     )
-                    if gr_res.get("product", {}).get("short_url"):
-                        urls_created.insert(0, gr_res["product"]["short_url"])
+                    if gr_res.get("success") and gr_res.get("url"):
+                        urls_created.insert(0, gr_res["url"])
                 except Exception:
                     pass
 
@@ -11953,10 +11953,9 @@ Return JSON:
                         name=name[:100],
                         description=f"{description}\n\nPreview: {urls_created[0] if urls_created else ''}",
                         price_cents=int(price * 100),
-                        published=True,
                     )
-                    if gumroad_result and gumroad_result.get("product", {}).get("short_url"):
-                        gumroad_url = gumroad_result["product"]["short_url"]
+                    if gumroad_result and gumroad_result.get("success") and gumroad_result.get("url"):
+                        gumroad_url = gumroad_result["url"]
                         urls_created.append(gumroad_url)
                 except Exception:
                     pass
@@ -12424,10 +12423,9 @@ Return JSON:
                         name=kit_name[:100],
                         description=f"{gumroad_desc}\n\nPreview: {urls_created[0] if urls_created else ''}",
                         price_cents=int(price * 100),
-                        published=True,
                     )
-                    if result and result.get("product", {}).get("short_url"):
-                        urls_created.append(result["product"]["short_url"])
+                    if result and result.get("success") and result.get("url"):
+                        urls_created.append(result["url"])
                 except Exception:
                     pass
 
@@ -12575,10 +12573,9 @@ Return JSON:
                         name=prod_name[:100],
                         description=f"{description}\n\nPreview: {urls_created[0] if urls_created else ''}",
                         price_cents=int(price * 100),
-                        published=True,
                     )
-                    if result and result.get("product", {}).get("short_url"):
-                        urls_created.append(result["product"]["short_url"])
+                    if result and result.get("success") and result.get("url"):
+                        urls_created.append(result["url"])
                 except Exception:
                     pass
 
@@ -13310,10 +13307,10 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                     gr_res = await gt.create_product(
                         name=gumroad.get("name", product_name),
                         description=gumroad.get("description", ""),
-                        price=gumroad_price,
+                        price_cents=gumroad_price,
                     )
-                    if gr_res.get("product", {}).get("short_url"):
-                        urls_created.append(gr_res["product"]["short_url"])
+                    if gr_res.get("success") and gr_res.get("url"):
+                        urls_created.append(gr_res["url"])
                 except Exception:
                     pass
 
