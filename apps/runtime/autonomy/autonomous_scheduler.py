@@ -670,6 +670,24 @@ class AutonomousScheduler:
                 handler_key="skill_upgrader",
                 next_run_ts=now + 3600 * 100,  # first run 100h after startup
             ),
+            StrategicObjective(
+                obj_id="viral_growth_agent",
+                name="Viral Growth Agent",
+                description="Every 16h: analyzes what content/products are gaining traction in ARIA's network, doubles down on what's working by creating variants, amplifies with Twitter threads + Reddit posts + HN comments, and queues paid amplification for highest-signal pieces. Pure growth mode.",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=16.0,
+                handler_key="viral_growth_agent",
+                next_run_ts=now + 3600 * 10,  # first run 10h after startup
+            ),
+            StrategicObjective(
+                obj_id="market_expansion",
+                name="Market Expansion Engine",
+                description="Every 96h: identifies new geographic markets, language segments, or industry verticals ARIA hasn't penetrated, creates localized content and product listings, establishes beachhead presence in 1 new market. Systematic international and vertical expansion.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=96.0,
+                handler_key="market_expansion",
+                next_run_ts=now + 3600 * 65,  # first run 65h after startup
+            ),
         ]
 
 
@@ -4423,6 +4441,144 @@ Return JSON:
             return {"success": False, "summary": f"skill_upgrader error: {exc}", "value_usd": 0.0}
 
     scheduler.register_handler("skill_upgrader", _skill_upgrader)
+
+    async def _viral_growth_agent(obj: StrategicObjective) -> dict:
+        """Find what's gaining traction, create variants, amplify top performers across all channels."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.config import settings as _s
+
+            cache = await get_cache()
+            web = WebTools()
+            github = AriaGitHubClient()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            if not cache:
+                return {"success": False, "summary": "viral_growth_agent: no Redis", "value_usd": 0.0}
+
+            content_raw = await cache.lrange("aria:content:published", -20, -1)
+            content_items: list[dict] = []
+            for c in content_raw:
+                try:
+                    content_items.append(_json.loads(c))
+                except Exception:
+                    pass
+
+            trends = await web.get_trending_topics()
+
+            viral_plan = await complete_json(
+                system="You are ARIA's viral growth strategist. Identify what to amplify and how to go viral.",
+                user=f"Recent content: {_json.dumps([{'title': c.get('title',''), 'type': c.get('type','')} for c in content_items[-5:]], ensure_ascii=False)}\nTrending: {trends[:3]}\n\nReturn JSON with: top_piece_to_amplify (dict: title, why_viral), amplification_tactics (list[dict] 5: platform, action, content (str), expected_reach (int)), viral_variant (str new variant of top piece), twitter_blast (str 200-char tweet), reddit_blast (str 300-char post), total_expected_reach (int)",
+                max_tokens=1500,
+            )
+            if not viral_plan or "amplification_tactics" not in viral_plan:
+                return {"success": False, "summary": "viral_growth_agent: AI failed", "value_usd": 0.0}
+
+            tactics = viral_plan.get("amplification_tactics", [])
+            total_reach = int(viral_plan.get("total_expected_reach", 1000))
+            actions_taken = 0
+
+            for tactic in tactics[:5]:
+                try:
+                    if cache and tactic.get("content"):
+                        await cache.rpush("aria:viral:amplification_queue", _json.dumps({
+                            "platform": tactic.get("platform", ""), "action": tactic.get("action", ""),
+                            "content": tactic.get("content", ""), "ts": today,
+                        }))
+                        actions_taken += 1
+                except Exception:
+                    pass
+
+            for post_key, text in [("twitter", viral_plan.get("twitter_blast", "")), ("reddit", viral_plan.get("reddit_blast", ""))]:
+                if text and cache:
+                    await cache.rpush("aria:social:proof_posts", _json.dumps({"text": text, "platform": post_key, "ts": today}))
+
+            await cache.rpush("aria:viral:sessions", _json.dumps({
+                "ts": today, "tactics": len(tactics), "reach": total_reach, "actions": actions_taken,
+            }))
+            await cache.ltrim("aria:viral:sessions", -20, -1)
+
+            top_piece = viral_plan.get("top_piece_to_amplify", {})
+            return {
+                "success": True,
+                "summary": f"viral_growth_agent: amplifying '{str(top_piece.get('title',''))[:35]}' | {actions_taken} actions queued | {total_reach:,} total expected reach | {len(tactics)} platforms targeted",
+                "value_usd": float(total_reach) * 0.005,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"viral_growth_agent error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("viral_growth_agent", _viral_growth_agent)
+
+    async def _market_expansion(obj: StrategicObjective) -> dict:
+        """Identify new markets (geo/language/vertical), create localized content and listings, establish beachhead."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.config import settings as _s
+
+            cache = await get_cache()
+            github = AriaGitHubClient()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            if not cache:
+                return {"success": False, "summary": "market_expansion: no Redis", "value_usd": 0.0}
+
+            existing_markets_raw = await cache.lrange("aria:markets:expanded", -10, -1)
+            existing_markets: list[str] = []
+            for m in existing_markets_raw:
+                try:
+                    existing_markets.append(_json.loads(m).get("market", ""))
+                except Exception:
+                    pass
+
+            expansion = await complete_json(
+                system="You are ARIA's market expansion strategist. Identify the highest-opportunity new market to enter.",
+                user=f"Already in: {existing_markets or ['English-speaking founders']}\nDate: {today}\n\nReturn JSON with: new_market (str specific market e.g. 'Spanish-speaking LATAM entrepreneurs'), market_size_usd (float), entry_strategy (str), localized_headline (str in local language), localized_product_description (str 100 words in local language or for local context), platform_to_use (str where this market hangs out), first_content_piece_md (str 300-word intro post in local language), success_metrics (list[str] 3), monthly_potential_usd (float)",
+                max_tokens=1500,
+            )
+            if not expansion or "new_market" not in expansion:
+                return {"success": False, "summary": "market_expansion: AI failed", "value_usd": 0.0}
+
+            new_market = expansion["new_market"]
+            monthly_potential = float(expansion.get("monthly_potential_usd", 300.0))
+            repo = getattr(_s, "GITHUB_REPO", "aria-portfolio")
+            urls_created: list[str] = []
+            slug = new_market.lower().replace(" ", "-")[:35]
+
+            try:
+                content_md = expansion.get("first_content_piece_md", "")
+                await github._put(
+                    f"/repos/{_s.GITHUB_USERNAME}/{repo}/contents/markets/{slug}/{today}.md",
+                    {
+                        "message": f"[aria] market_expansion: {new_market[:50]}",
+                        "content": __import__("base64").b64encode(content_md.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{_s.GITHUB_USERNAME}/{repo}/blob/main/markets/{slug}/{today}.md")
+            except Exception:
+                pass
+
+            await cache.rpush("aria:markets:expanded", _json.dumps({
+                "ts": today, "market": new_market, "platform": expansion.get("platform_to_use", ""),
+                "monthly_potential": monthly_potential,
+            }))
+            await cache.ltrim("aria:markets:expanded", -20, -1)
+
+            return {
+                "success": True,
+                "summary": f"market_expansion: entering '{new_market[:40]}' | platform: {expansion.get('platform_to_use','')} | ${monthly_potential:,.0f}/mo potential | content published",
+                "value_usd": monthly_potential,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"market_expansion error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("market_expansion", _market_expansion)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
