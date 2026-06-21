@@ -1333,9 +1333,35 @@ Output JSON:
                 except Exception:
                     pass
 
+                # Promote on Twitter + LinkedIn directly
+                product_name = product_data.get("product_name", title)
+                tagline = product_data.get("tagline", "")
+                price_str = f"${product_data.get('price_cents', 997)/100:.0f}"
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    tw_text = f"🚀 NEW: {product_name[:80]}\n\n{tagline[:140]}\n\nOnly {price_str}"
+                    if url:
+                        tw_text += f"\n\n👉 {url}"
+                    await pub.publish_to_twitter(tw_text[:280])
+                except Exception:
+                    pass
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    li_text = (
+                        f"🚀 Just launched: {product_name}\n\n"
+                        f"{tagline}\n\n"
+                        f"Price: {price_str}"
+                        + (f"\n\n👉 {url}" if url else "")
+                    )
+                    await pub.publish_to_linkedin(li_text[:1300])
+                except Exception:
+                    pass
+
                 return {
                     "success": True,
-                    "summary": f"New product '{product_data.get('product_name',title)[:50]}' at ${product_data.get('price_cents',997)/100:.0f}",
+                    "summary": f"New product '{product_name[:50]}' at {price_str} — announced on Twitter+LinkedIn",
                     "revenue_potential": product_data.get("price_cents", 997) / 100,
                     "urls": [url] if url else [],
                 }
