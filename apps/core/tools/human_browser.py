@@ -762,6 +762,78 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] Twitter: may require 2FA or CAPTCHA at %s", page.url)
         return page
 
+    async def reddit(self, email: str, password: str) -> HumanPage:
+        """Login to Reddit using email/password."""
+        page = await self._browser.new_page("reddit")
+        await page.goto("https://www.reddit.com")
+        if await page.load_session():
+            await page.goto("https://www.reddit.com/")
+            await asyncio.sleep(2)
+            if "reddit.com" in page.url and "login" not in page.url:
+                logger.info("[HumanBrowser] Reddit: session restored")
+                return page
+
+        await page.goto("https://www.reddit.com/login")
+        await page._random_pause("read")
+        try:
+            await page.type_human("input[name='username']", email)
+            await page.type_human("input[name='password']", password)
+            await page._random_pause("think")
+            await page.click("button[type='submit']")
+            await page._random_pause("navigate")
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Reddit login step: %s", exc)
+
+        if await page.wait_for_url("reddit.com", timeout=20.0):
+            logger.info("[HumanBrowser] Reddit: login successful")
+            await page.save_session()
+        else:
+            logger.warning("[HumanBrowser] Reddit: login may have failed at %s", page.url)
+        return page
+
+    async def reddit_post(self, page: HumanPage, subreddit: str, title: str, body: str) -> str:
+        """
+        Submit a text post to a subreddit. Returns the post URL or empty string on failure.
+        Must call reddit() first to get an authenticated page.
+        """
+        try:
+            await page.goto(f"https://www.reddit.com/r/{subreddit}/submit?type=self")
+            await page._random_pause("read")
+
+            # Fill title
+            title_selector = "textarea[name='title'], input[name='title'], #title-textarea"
+            await page.type_human(title_selector, title[:300])
+            await page._random_pause("action")
+
+            # Fill body — Reddit uses a draft.js / prosemirror editor
+            try:
+                body_selector = "div[contenteditable='true'], .public-DraftEditor-content, div[role='textbox']"
+                await page.click(body_selector)
+                await page._random_pause("action")
+                await page.type_human(body_selector, body[:5000])
+            except Exception:
+                # Fallback: try textarea for legacy editor
+                try:
+                    await page.type_human("textarea[name='text']", body[:5000])
+                except Exception:
+                    pass
+
+            await page._random_pause("think")
+
+            # Click submit
+            await page.click("button[type='submit']:has-text('Post'), button:has-text('Submit')")
+            await page._random_pause("navigate")
+
+            await asyncio.sleep(3)
+            url = page.url
+            if f"r/{subreddit}/comments" in url:
+                logger.info("[HumanBrowser] Reddit: posted to r/%s → %s", subreddit, url)
+                return url
+            return ""
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Reddit post to r/%s failed: %s", subreddit, exc)
+            return ""
+
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 

@@ -583,7 +583,7 @@ JSON:
         try:
             from apps.core.tools.content_pipeline import ContentPipeline
             cp     = ContentPipeline()
-            result = await cp.run_pipeline(num_articles=3, language="es")
+            result = await cp.run_pipeline(num_articles=3, language="en")
             arts   = result.get("articles", [])
             urls   = [u["url"] for a in arts for u in a.get("urls", []) if u.get("url")]
 
@@ -601,9 +601,67 @@ JSON:
                 if blog_result.get("success"):
                     return blog_result
 
+            # Last-resort fallback: publish to Dev.to via human browser using ARIA credentials
+            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_password = getattr(settings, "ARIA_PASSWORD", None)
+            if aria_email and aria_password and arts:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    plat = await get_platform_login()
+                    devto_page = await plat.devto(aria_email, aria_password)
+                    devto_urls: list[str] = []
+                    for art in arts[:2]:  # max 2 per cycle
+                        try:
+                            title   = art.get("title", "")
+                            body_md = art.get("body", art.get("body_markdown", ""))
+                            tags    = art.get("tags", [])
+                            if not title or not body_md:
+                                continue
+                            await devto_page.goto("https://dev.to/new")
+                            await asyncio.sleep(2)
+                            await devto_page.type_human("#article-form-title", title)
+                            await asyncio.sleep(1)
+                            # Dev.to body editor is a CodeMirror — click then type
+                            try:
+                                await devto_page.click(".CodeMirror-code, .cm-content, [aria-label='Post Content']")
+                            except Exception:
+                                pass
+                            await asyncio.sleep(0.5)
+                            # Inject markdown via evaluate for reliability
+                            await devto_page.evaluate(
+                                f"document.querySelector('.CodeMirror-code, .cm-content')?.focus()"
+                            )
+                            full_md = (
+                                f"---\ntitle: {title}\npublished: true\ntags: {', '.join(tags[:4])}\n---\n\n"
+                                + body_md
+                            )
+                            import pyperclip as _clip  # noqa
+                            await devto_page.evaluate(
+                                f"navigator.clipboard.writeText({repr(full_md)})"
+                            )
+                            await devto_page.evaluate("document.execCommand('selectAll'); document.execCommand('paste')")
+                            await asyncio.sleep(1)
+                            # Click publish
+                            await devto_page.click("button:has-text('Publish'), button#article-form-submit")
+                            await asyncio.sleep(3)
+                            current = devto_page.url
+                            if "dev.to" in current and "new" not in current:
+                                devto_urls.append(current)
+                        except Exception as _art_exc:
+                            logger.debug("[IncomeLoop] devto browser article: %s", _art_exc)
+                    if devto_urls:
+                        return {
+                            "success": True,
+                            "summary": f"Content pipeline: {len(devto_urls)} articles published to Dev.to via browser",
+                            "revenue_potential": len(devto_urls) * 3.0,
+                            "urls": devto_urls,
+                        }
+                except Exception as _hb_exc:
+                    logger.debug("[IncomeLoop] content_pipeline devto browser: %s", _hb_exc)
+
             return {
                 "success": False,
-                "summary": f"Content pipeline: no publishing credentials (add DEVTO_API_KEY or MEDIUM_TOKEN)",
+                "summary": "Content pipeline: no publishing credentials (add DEVTO_API_KEY or MEDIUM_TOKEN)",
                 "revenue_potential": 0,
                 "urls": [],
             }
@@ -4893,7 +4951,7 @@ Or contact via [portfolio]({portfolio_url}).
         try:
             from apps.core.tools.web_tools import WebTools
             from apps.distribution.twitter.twitter_engine import TwitterEngine
-            from apps.distribution.publishers.api_publisher import APIPublisher
+            from apps.distribution.publishers.api_publisher import get_api_publisher
 
             wt = WebTools()
             r = await wt.search_web("trending AI business automation productivity 2025", num_results=5)
@@ -4908,7 +4966,7 @@ Or contact via [portfolio]({portfolio_url}).
             if not tweet_texts:
                 return {"success": False, "summary": "twitter_thread: no tweets generated"}
 
-            pub = APIPublisher()
+            pub = get_api_publisher()
             results = await pub.publish_thread_to_twitter(tweet_texts)
             successful = [r for r in results if r.success]
             urls_created = [r.url for r in successful if r.url]
@@ -4967,7 +5025,7 @@ Or contact via [portfolio]({portfolio_url}).
         try:
             from apps.core.tools.web_tools import WebTools
             from apps.distribution.linkedin.linkedin_publisher import LinkedInPublisher
-            from apps.distribution.publishers.api_publisher import APIPublisher
+            from apps.distribution.publishers.api_publisher import get_api_publisher
 
             wt = WebTools()
             r = await wt.search_web("B2B AI automation business strategy 2025 trending", num_results=5)
@@ -4981,7 +5039,7 @@ Or contact via [portfolio]({portfolio_url}).
             if not post.content:
                 return {"success": False, "summary": "linkedin_post: no content generated"}
 
-            pub = APIPublisher()
+            pub = get_api_publisher()
             result = await pub.publish_to_linkedin(post.content, visibility="PUBLIC")
 
             if result.success:
@@ -5140,6 +5198,31 @@ JSON:
                     logger.debug("[IncomeLoop] reddit PRAW: %s", _re)
                     praw_available = False
 
+            # Human-browser fallback: post to Reddit using ARIA's stealth browser
+            if not posted_count and not praw_available:
+                aria_email    = getattr(settings, "ARIA_EMAIL", None)
+                aria_password = getattr(settings, "ARIA_PASSWORD", None)
+                if aria_email and aria_password:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        plat = await get_platform_login()
+                        reddit_page = await plat.reddit(aria_email, aria_password)
+                        # Post to first 2 subreddits with human delays
+                        for post in posts[:2]:
+                            sub = post.get("subreddit", "Entrepreneur")
+                            post_url = await plat.reddit_post(
+                                reddit_page,
+                                sub,
+                                post["title"][:300],
+                                post["body"][:5000],
+                            )
+                            if post_url:
+                                urls_created.append(post_url)
+                                posted_count += 1
+                            await asyncio.sleep(30)  # avoid spam detection between posts
+                    except Exception as _hb_exc:
+                        logger.debug("[IncomeLoop] reddit human_browser fallback: %s", _hb_exc)
+
             # Always archive to GitHub (even if PRAW posted, for SEO + record)
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
@@ -5169,7 +5252,10 @@ JSON:
             if not urls_created and not posted_count:
                 return {"success": False, "summary": "reddit_organic: no output generated"}
 
-            praw_note = f" ({posted_count} posted to Reddit)" if posted_count else " (archived; add REDDIT_CLIENT_ID to auto-post)"
+            if posted_count:
+                praw_note = f" ({posted_count} live Reddit posts)"
+            else:
+                praw_note = " (archived to GitHub; set REDDIT_CLIENT_ID for direct posting)"
             logger.info("[IncomeLoop] reddit_organic: %d posts created%s", len(posts), praw_note)
             return {
                 "success": True,
@@ -6815,8 +6901,8 @@ Return JSON:
             try:
                 tweets = adaptations.get("twitter_thread", [])
                 if tweets:
-                    from apps.distribution.publishers.api_publisher import AriaAPIPublisher
-                    pub = AriaAPIPublisher()
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
                     tw_key    = getattr(settings, "TWITTER_API_KEY", None)
                     tw_secret = getattr(settings, "TWITTER_API_SECRET", None)
                     tw_tok    = getattr(settings, "TWITTER_ACCESS_TOKEN", None)
@@ -6842,8 +6928,8 @@ Return JSON:
                 lk_token = getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
                 lk_urn   = getattr(settings, "LINKEDIN_PERSON_URN", None)
                 if lk_token and lk_urn:
-                    from apps.distribution.publishers.api_publisher import AriaAPIPublisher
-                    pub = AriaAPIPublisher()
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
                     li_text = adaptations.get("linkedin_post", f"{title}\n\n{summary}\n\n{url}")
                     ok = await pub.publish_to_linkedin(li_text)
                     if ok:
@@ -10805,9 +10891,9 @@ Return JSON:
             if twitter_teaser and urls_created:
                 tweet_text = f"{twitter_teaser}\n\n🎙️ Episode notes: {urls_created[0]}"
                 try:
-                    from apps.distribution.publishers.api_publisher import APIPublisher
-                    pub = APIPublisher()
-                    tw_result = await pub.publish_twitter(tweet_text[:280])
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    tw_result = await pub.publish_to_twitter(tweet_text[:280])
                     if isinstance(tw_result, dict) and tw_result.get("url"):
                         urls_created.append(tw_result["url"])
                 except Exception:
@@ -10920,9 +11006,9 @@ Return JSON:
                 if urls_created:
                     tweet_with_link = f"{twitter_tweet[:240]}\n\n🔗 {urls_created[0]}"
                 try:
-                    from apps.distribution.publishers.api_publisher import APIPublisher
-                    pub = APIPublisher()
-                    tw_result = await pub.publish_twitter(tweet_with_link[:280])
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    tw_result = await pub.publish_to_twitter(tweet_with_link[:280])
                     if isinstance(tw_result, dict) and tw_result.get("url"):
                         urls_created.append(tw_result["url"])
                 except Exception:
@@ -10933,8 +11019,8 @@ Return JSON:
             reddit_body = saas_data.get("reddit_post_body", "")
             if reddit_title and reddit_body:
                 try:
-                    from apps.distribution.publishers.api_publisher import APIPublisher
-                    pub = APIPublisher()
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
                     reddit_result = await pub.publish_reddit(
                         subreddit="SideProject",
                         title=reddit_title[:300],
@@ -11616,9 +11702,9 @@ Return JSON:
             if len(tweet) > 280:
                 tweet = f"🔧 {name} — {tagline}\n\n{ext_data.get('problem', '')[:100]}\n\n{urls_created[0] if urls_created else ''}"
             try:
-                from apps.distribution.publishers.api_publisher import APIPublisher
-                pub = APIPublisher()
-                tw_result = await pub.publish_twitter(tweet[:280])
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tw_result = await pub.publish_to_twitter(tweet[:280])
                 if isinstance(tw_result, dict) and tw_result.get("url"):
                     urls_created.append(tw_result["url"])
             except Exception:
@@ -11766,9 +11852,9 @@ Return JSON:
             monthly_revenue = sum(t.get("price_usd_per_month", 0) for t in pricing[1:])  # non-free tiers
             tweet = f"🚀 Launching {api_name} on RapidAPI!\n\n{tagline}\n\n✅ {endpoints[0].get('path', '') if endpoints else ''}\n✅ {endpoints[1].get('path', '') if len(endpoints) > 1 else ''}\n\nPlans from ${pricing[1].get('price_usd_per_month', 9) if len(pricing) > 1 else 9}/mo\n\n{urls_created[0] if urls_created else ''}"
             try:
-                from apps.distribution.publishers.api_publisher import APIPublisher
-                pub = APIPublisher()
-                tw_result = await pub.publish_twitter(tweet[:280])
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tw_result = await pub.publish_to_twitter(tweet[:280])
                 if isinstance(tw_result, dict) and tw_result.get("url"):
                     urls_created.append(tw_result["url"])
             except Exception:
@@ -12423,9 +12509,9 @@ Create compelling brand story assets that position ARIA as the most advanced aut
             thread_content = f"{hero}\n\n{elevator}"
             if len(thread_content) <= 280:
                 try:
-                    from apps.distribution.publishers.api_publisher import APIPublisher
-                    pub = APIPublisher()
-                    result = await pub.publish_twitter(thread_content)
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    result = await pub.publish_to_twitter(thread_content)
                     if isinstance(result, dict) and result.get("url"):
                         urls_created.append(result["url"])
                 except Exception:
@@ -12574,9 +12660,9 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
             # ── Execute quick win immediately ──────────────────────────────────
             if quick_win:
                 try:
-                    from apps.distribution.publishers.api_publisher import APIPublisher
-                    pub = APIPublisher()
-                    result = await pub.publish_twitter(quick_win[:280])
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    result = await pub.publish_to_twitter(quick_win[:280])
                     if isinstance(result, dict) and result.get("url"):
                         urls_created.append(result["url"])
                 except Exception:
@@ -13337,9 +13423,9 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
             # ── Publish social post ───────────────────────────────────────────
             if social_post:
                 try:
-                    from apps.distribution.publishers.api_publisher import APIPublisher
-                    pub = APIPublisher()
-                    pub_result = await pub.publish_twitter(social_post[:280])
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    pub_result = await pub.publish_to_twitter(social_post[:280])
                     if isinstance(pub_result, dict) and pub_result.get("url"):
                         urls_created.append(pub_result["url"])
                 except Exception:
@@ -13611,14 +13697,14 @@ Generate a backlink building plan:
                 # Publish amplification posts via API publisher
                 posts = amp_plan.get("action_posts", [])
                 try:
-                    from apps.distribution.publishers.api_publisher import APIPublisher
-                    pub = APIPublisher()
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
                     for post in posts[:3]:
                         platform = post.get("platform", "")
                         content = post.get("content", "")
                         if platform and content:
                             if "twitter" in platform:
-                                result = await pub.publish_twitter(content)
+                                result = await pub.publish_to_twitter(content)
                             elif "linkedin" in platform:
                                 result = await pub.publish_linkedin(content)
                             if isinstance(result, dict) and result.get("url"):
