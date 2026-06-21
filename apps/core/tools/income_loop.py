@@ -1595,11 +1595,30 @@ JSON:
             )
 
             if gr.get("success"):
+                offer_url = gr.get("url", "")
+                # Promote premium offer on LinkedIn (best channel for B2B)
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    price_str = f"${offer.get('price_cents', 149700)/100:.0f}"
+                    included_short = " | ".join(offer.get("what_included", [])[:3])
+                    li_text = (
+                        f"💼 Now offering: {offer.get('offer_name', '')}\n\n"
+                        f"{offer.get('tagline', '')}\n\n"
+                        f"Ideal for: {offer.get('target_client', '')[:200]}\n\n"
+                        f"Includes: {included_short}\n\n"
+                        f"Investment: {price_str}"
+                    )
+                    if offer_url:
+                        li_text += f"\n\n👉 {offer_url}"
+                    await pub.publish_to_linkedin(li_text[:1300])
+                except Exception:
+                    pass
                 return {
                     "success": True,
-                    "summary": f"Premium offer '{offer.get('offer_name','')[:50]}' at ${offer.get('price_cents',149700)/100:.0f}",
+                    "summary": f"Premium offer '{offer.get('offer_name','')[:50]}' at ${offer.get('price_cents',149700)/100:.0f} — promoted on LinkedIn",
                     "revenue_potential": offer.get("price_cents", 149700) / 100,
-                    "urls": [gr.get("url", "")] if gr.get("url") else [],
+                    "urls": [offer_url] if offer_url else [],
                 }
 
             # GitHub fallback: create a consulting landing page repo
@@ -4534,11 +4553,26 @@ Challenge completers get **50% off** [{upsell_product}](https://github.com/{owne
                 await cache.rpush("aria:income:challenges_active", json.dumps(challenge_meta))
                 await cache.ltrim("aria:income:challenges_active", -20, -1)
 
+            # Promote challenge launch on Twitter
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                ch_url = urls_created[0] if urls_created else ""
+                tw_text = (
+                    f"🚀 Starting today: {challenge_name}\n\n"
+                    f"7-day challenge. Free to join. Daily actions.\n\n"
+                    f"At the end: unlock {upsell_product} at 50% off\n\n"
+                    + (f"Day 1 → {ch_url}" if ch_url else "")
+                )
+                await pub.publish_to_twitter(tw_text[:280])
+            except Exception:
+                pass
+
             logger.info("[IncomeLoop] Challenge launched: %s (%d days)", challenge_name, len(days))
             return {
                 "success": True,
                 "summary": f"'{challenge_name}' launched — Day 1 published, {len(days)} days planned → upsell: {upsell_product} at ${upsell_price}",
-                "revenue_potential": float(upsell_price) * 3,  # 3 expected conversions
+                "revenue_potential": float(upsell_price) * 3,
                 "urls": urls_created,
             }
 
@@ -14347,6 +14381,33 @@ Generate a backlink building plan:
                 }))
                 await cache.ltrim("aria:seo:clusters", -20, -1)
                 await cache.incr("aria:seo:total_clusters")
+
+            # Promote pillar on Dev.to for SEO backlink
+            try:
+                from apps.core.tools.publishing_tools import PublishingTools
+                pt = PublishingTools()
+                await pt.publish_devto({
+                    "title": pillar_title,
+                    "body": cluster.get("pillar_article", ""),
+                    "tags": [cluster.get("pillar_keyword", "ai")[:20], "seo", "productivity", "ai"],
+                    "meta_description": f"Complete guide to {pillar_title[:100]}",
+                })
+            except Exception:
+                pass
+
+            # Promote on Twitter
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                pillar_url = urls_created[0] if urls_created else ""
+                tw_text = (
+                    f"📚 New content cluster: {pillar_title[:100]}\n\n"
+                    f"1 pillar + {posts_published} supporting articles published\n\n"
+                    + (f"Read: {pillar_url}" if pillar_url else "")
+                )
+                await pub.publish_to_twitter(tw_text[:280])
+            except Exception:
+                pass
 
             return {
                 "success": True,
