@@ -1446,48 +1446,87 @@ Output JSON:
             return {"success": False, "summary": str(exc)[:100]}
 
     async def _exec_social_blitz(self) -> dict:
-        """Promote all live products via Zapier; falls back to Discord + GitHub cross-linking."""
+        """Promote live products on Twitter + LinkedIn + Zapier + Discord."""
         try:
             from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
-            from apps.core.tools.zapier_connector import ZapierConnector
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.distribution.publishers.api_publisher import get_api_publisher
 
             engine   = get_niche_revenue_engine()
             listings = await engine._load_listings()
             live     = [ls for ls in listings if ls.listing_urls]
             sent = 0
+            urls_created: list[str] = []
 
-            if live:
-                zc = ZapierConnector()
-                for ls in live[:5]:
-                    try:
-                        await zc.dispatch_event(
-                            "CONTENT_READY",
-                            {
-                                "product_name": ls.title,
-                                "tagline": ls.tagline,
-                                "price": ls.pricing_tiers.get("basic", {}).get("price", 0),
-                                "urls": ls.listing_urls,
-                                "keywords": ", ".join(ls.keywords[:3]),
-                                "category": ls.category,
-                            },
+            # Direct Twitter + LinkedIn blast for each live product
+            pub = get_api_publisher()
+            ai  = get_ai_client()
+            for ls in live[:3]:
+                product_url = ls.listing_urls[0] if ls.listing_urls else ""
+                try:
+                    if ai:
+                        tweet_text = await ai.complete(
+                            system="Write a short punchy tweet (max 240 chars) promoting this product. No hashtag spam. Output only the tweet text.",
+                            user=f"Product: {ls.title}\nTagline: {ls.tagline}\nURL: {product_url}\nPrice: ${ls.pricing_tiers.get('basic', {}).get('price', 0)}",
+                            model=AIModel.FAST,
+                            max_tokens=100,
                         )
+                        tweet = (tweet_text.content if hasattr(tweet_text, 'content') else str(tweet_text))[:240]
+                        if product_url:
+                            tweet = tweet.rstrip() + f"\n\n{product_url}"
+                    else:
+                        tweet = f"🚀 {ls.title}: {ls.tagline}\n\n{product_url}"
+                    tw_result = await pub.publish_to_twitter(tweet[:280])
+                    if tw_result.success:
+                        sent += 1
+                        if tw_result.url:
+                            urls_created.append(tw_result.url)
+                except Exception:
+                    pass
+
+                # LinkedIn post for products
+                try:
+                    lk_content = (
+                        f"🚀 New product launch: {ls.title}\n\n"
+                        f"{ls.tagline}\n\n"
+                        f"Designed for: entrepreneurs and business owners who want to automate and earn more.\n\n"
+                        f"Check it out → {product_url}"
+                    )
+                    lk_result = await pub.publish_to_linkedin(lk_content)
+                    if lk_result.success:
+                        sent += 1
+                except Exception:
+                    pass
+
+            # Zapier fallback
+            if live:
+                try:
+                    from apps.core.tools.zapier_connector import ZapierConnector
+                    zc = ZapierConnector()
+                    for ls in live[:5]:
+                        await zc.dispatch_event("CONTENT_READY", {
+                            "product_name": ls.title,
+                            "tagline": ls.tagline,
+                            "price": ls.pricing_tiers.get("basic", {}).get("price", 0),
+                            "urls": ls.listing_urls,
+                        })
                         sent += 1
                         await asyncio.sleep(2)
-                    except Exception:
-                        pass
+                except Exception:
+                    pass
 
-            # Discord fallback: announce all recent GitHub content
+            # Discord webhook
             discord_url = getattr(settings, "DISCORD_WEBHOOK_URL", None)
-            if discord_url and settings.GITHUB_TOKEN:
+            if discord_url:
                 try:
                     owner = settings.GITHUB_USERNAME or "Geremypolanco"
                     import httpx as _httpx
                     async with _httpx.AsyncClient(timeout=10) as _client:
                         msg = (
-                            f"🚀 **ARIA Content Update**\n"
+                            f"🚀 **ARIA Social Blitz**\n"
+                            f"📦 {len(live)} live products | {sent} channels hit\n"
                             f"📚 Blog: https://github.com/{owner}/aria-insights\n"
-                            f"🌐 Portfolio: https://github.com/{owner}/aria-portfolio\n"
-                            f"*New AI-generated content published — check it out!*"
+                            f"🌐 Portfolio: https://github.com/{owner}/aria-portfolio"
                         )
                         await _client.post(discord_url, json={"content": msg})
                         sent += 1
@@ -1497,11 +1536,11 @@ Output JSON:
             if sent > 0:
                 return {
                     "success": True,
-                    "summary": f"Social blitz: {sent} channels promoted",
-                    "revenue_potential": 0,
-                    "urls": [],
+                    "summary": f"Social blitz: {sent} channels promoted across Twitter/LinkedIn/Zapier/Discord",
+                    "revenue_potential": len(live) * 5.0,
+                    "urls": urls_created[:5],
                 }
-            return {"success": False, "summary": "Social blitz: no channels available (add ZAPIER_WEBHOOK_URL or DISCORD_WEBHOOK_URL)"}
+            return {"success": False, "summary": "Social blitz: no channels available (add Twitter/LinkedIn credentials)"}
         except Exception as exc:
             logger.error("[IncomeLoop] social_blitz: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
