@@ -11973,9 +11973,41 @@ Return JSON:
                 await cache.ltrim("aria:products:catalog", -200, -1)
                 await cache.incr("aria:income:total_urls_published")
 
+            # Promote Notion template on Twitter + LinkedIn
+            sale_url = gumroad_url or (urls_created[0] if urls_created else "")
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                use_cases_short = " | ".join(template_data.get("use_cases", [])[:2])
+                tw_text = (
+                    f"🗂️ New Notion Template: {name[:80]}\n\n"
+                    f"{tagline}\n\n"
+                    f"Use cases: {use_cases_short}\n\n"
+                    f"Only ${price:.0f}"
+                    + (f" → {sale_url}" if sale_url else "")
+                )
+                await pub.publish_to_twitter(tw_text[:280])
+            except Exception:
+                pass
+
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                audience = template_data.get("target_audience", "")
+                li_text = (
+                    f"🗂️ New Notion template: {name}\n\n"
+                    f"{description[:300]}\n\n"
+                    f"Perfect for: {audience}\n\n"
+                    f"${price:.0f}"
+                    + (f" → {sale_url}" if sale_url else "")
+                )
+                await pub.publish_to_linkedin(li_text[:1300])
+            except Exception:
+                pass
+
             return {
                 "success": True,
-                "summary": f"notion_template_seller: '{name[:50]}' at ${price} | {len(urls_created)} URLs",
+                "summary": f"notion_template_seller: '{name[:50]}' at ${price} | promoted on social | {len(urls_created)} URLs",
                 "revenue_potential": price,
                 "urls": urls_created[:3],
             }
