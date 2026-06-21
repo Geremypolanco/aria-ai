@@ -154,6 +154,7 @@ STRATEGIES = [
     ("growth_experiment",        1),   # run one targeted growth experiment: landing page tweak, hook test, channel test
     ("app_store_listing",        1),   # create listing copy for Chrome Web Store / App Store / VS Code marketplace
     ("case_study_publisher",     1),   # write detailed case study from buyer result → social proof + SEO + lead gen
+    ("catalog_repromoter",       1),   # re-promote existing Gumroad products with fresh angles → more sales, zero creation cost
 ]
 
 # Strategies that already call publish_to_twitter/linkedin internally.
@@ -169,6 +170,7 @@ _SELF_DISTRIBUTING_STRATEGIES: frozenset[str] = frozenset({
     "content_amplifier", "stripe_checkout", "seo_content_cluster",
     "testimonial_collector", "crowdfunding_kit", "premium_offer",
     "product_factory", "github_blog", "content_pipeline",
+    "catalog_repromoter",
 })
 
 
@@ -612,6 +614,8 @@ JSON:
             return await self._exec_app_store_listing()
         elif strategy == "case_study_publisher":
             return await self._exec_case_study_publisher()
+        elif strategy == "catalog_repromoter":
+            return await self._exec_catalog_repromoter()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -15594,6 +15598,144 @@ Generate a backlink building plan:
             }
         except Exception as exc:
             logger.error("[IncomeLoop] case_study_publisher: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_catalog_repromoter(self) -> dict:
+        """
+        Re-promote existing products from the Gumroad catalog with fresh angles.
+        Picks a product not promoted in the last 48h, generates a new promotional angle
+        (weekend sale, spotlight, testimonial hook, etc.), and posts to Twitter + LinkedIn.
+        Zero creation cost — just amplifies what already exists for more sales.
+        """
+        try:
+            import json as _json
+            import datetime as _dt
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return {"success": False, "summary": "catalog_repromoter: no Redis", "revenue_potential": 0.0}
+
+            # ── Load product catalog from Redis ────────────────────────────────
+            raw_items = await cache.lrange("aria:products:catalog", 0, -1)
+            products: list[dict] = []
+            for raw in (raw_items or []):
+                try:
+                    item = _json.loads(raw) if isinstance(raw, str) else raw
+                    name = item.get("name") or item.get("title", "")
+                    urls = item.get("urls", [])
+                    if name and urls:
+                        item["name"] = name
+                        products.append(item)
+                except Exception:
+                    pass
+
+            if not products:
+                return {"success": False, "summary": "catalog_repromoter: no products in catalog yet", "revenue_potential": 0.0}
+
+            # ── Pick a product not recently re-promoted ────────────────────────
+            now = _dt.datetime.utcnow()
+            chosen = None
+            for product in reversed(products):  # newest first
+                prod_key = product.get("name", "")[:40].lower().replace(" ", "_")
+                last_promo_raw = await cache.get(f"aria:repromo:last:{prod_key}")
+                if last_promo_raw:
+                    last_promo = _dt.datetime.fromisoformat(last_promo_raw)
+                    if (now - last_promo).total_seconds() < 172800:  # 48h cooldown
+                        continue
+                chosen = product
+                break
+
+            if not chosen:
+                # All products promoted recently — pick the oldest-promoted one
+                chosen = products[0]
+
+            prod_name = chosen.get("name", "")
+            prod_price = float(chosen.get("price", 29))
+            prod_urls = chosen.get("urls", [])
+            prod_url = prod_urls[0] if prod_urls else ""
+            prod_type = chosen.get("type", "digital product")
+
+            # ── Generate fresh promotional angle via AI ────────────────────────
+            angles = [
+                "spotlight the transformation this product enables",
+                "share a specific use case or problem it solves",
+                "remind followers about the value with a different hook",
+                "use social proof angle: 'if you're still doing X manually...'",
+                "scarcity/time angle: limited slots or weekend promotion",
+            ]
+            import random as _random
+            angle = _random.choice(angles)
+
+            promo_data = await complete_json(
+                f"""You are ARIA's marketing engine. Re-promote an existing product with a fresh angle.
+
+Product: {prod_name}
+Type: {prod_type}
+Price: ${prod_price:.0f}
+URL: {prod_url}
+Angle to use: {angle}
+
+Create platform-specific promotional posts.
+Return JSON:
+{{
+  "tweet": "compelling tweet under 260 chars, includes price and angle, ends with URL placeholder",
+  "linkedin_post": "LinkedIn post 150-200 chars, professional tone, includes CTA",
+  "hook": "the core emotional hook used",
+  "angle_used": "{angle}"
+}}""",
+                model="fast",
+                max_tokens=400,
+            )
+
+            if not promo_data:
+                return {"success": False, "summary": "catalog_repromoter: AI failed", "revenue_potential": 0.0}
+
+            tweet_text = promo_data.get("tweet", f"🔁 {prod_name} — ${prod_price:.0f}")
+            if prod_url and prod_url not in tweet_text:
+                tweet_text = f"{tweet_text[:240]}\n\n{prod_url}"
+            li_text = promo_data.get("linkedin_post", f"Re-sharing: {prod_name} — ${prod_price:.0f}\n\n{prod_url}")
+
+            urls_created: list[str] = []
+
+            # ── Publish to Twitter ─────────────────────────────────────────────
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tw_result = await pub.publish_to_twitter(tweet_text[:280])
+                if tw_result and tw_result.success and tw_result.url:
+                    urls_created.append(tw_result.url)
+            except Exception:
+                pass
+
+            # ── Publish to LinkedIn ────────────────────────────────────────────
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                li_result = await pub.publish_to_linkedin(li_text[:1300])
+                if li_result and li_result.success and li_result.url:
+                    urls_created.append(li_result.url)
+            except Exception:
+                pass
+
+            # ── Track last promotion ────────────────────────────────────────────
+            prod_key = prod_name[:40].lower().replace(" ", "_")
+            await cache.set(
+                f"aria:repromo:last:{prod_key}",
+                now.isoformat(),
+                ex=86400 * 7,
+            )
+            await cache.incr("aria:repromo:total_repromoted")
+
+            hook = promo_data.get("hook", angle[:50])
+            return {
+                "success": len(urls_created) > 0,
+                "summary": f"catalog_repromoter: '{prod_name[:50]}' re-promoted | angle: {hook[:60]} | {len(urls_created)} posts published",
+                "revenue_potential": prod_price * 0.5,  # conservative: 0.5 additional sale
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] catalog_repromoter: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
 
