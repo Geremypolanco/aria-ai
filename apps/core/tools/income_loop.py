@@ -7210,7 +7210,10 @@ Return JSON:
                 for raw in reversed(raw_items or []):
                     try:
                         item = json.loads(raw) if isinstance(raw, str) else raw
-                        if item.get("title") and item.get("summary"):
+                        item_title = item.get("title") or item.get("name", "")
+                        if item_title and item.get("urls"):
+                            if not item.get("title"):
+                                item["title"] = item_title
                             source_item = item
                             break
                     except Exception:
@@ -7225,7 +7228,7 @@ Return JSON:
                     "strategy": "content_pipeline",
                 }
 
-            title   = source_item.get("title", "")[:80]
+            title   = (source_item.get("title") or source_item.get("name", ""))[:80]
             summary = source_item.get("summary", "")[:300]
             urls    = source_item.get("urls", [])
             url     = urls[0] if urls else f"https://github.com/{owner}/aria-portfolio"
@@ -7635,8 +7638,9 @@ Return JSON:
                 for raw in reversed(raw_items or []):
                     try:
                         item = json.loads(raw) if isinstance(raw, str) else raw
-                        if item.get("title") and item.get("urls"):
-                            product_title = item["title"][:80]
+                        item_title = item.get("title") or item.get("name", "")
+                        if item_title and item.get("urls"):
+                            product_title = item_title[:80]
                             product_url   = item["urls"][0]
                             product_desc  = item.get("summary", "")[:200]
                             break
@@ -14207,6 +14211,7 @@ Generate a backlink building plan:
                         platform = post.get("platform", "")
                         content = post.get("content", "")
                         if platform and content:
+                            result = None
                             if "twitter" in platform:
                                 result = await pub.publish_to_twitter(content)
                             elif "linkedin" in platform:
