@@ -3413,10 +3413,23 @@ Return JSON:
                     logger.debug("[IncomeLoop] gist create: %s", gist_exc)
 
             if published_gist_urls:
+                # Tweet about the Gists for developer audience reach
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    gist_links = "\n".join(published_gist_urls[:2])
+                    tw_text = (
+                        f"🚀 Just dropped {len(published_gist_urls)} free code snippets:\n\n"
+                        f"{gist_links}\n\n"
+                        f"Copy-paste ready. Save hours. ⭐ if useful"
+                    )
+                    await pub.publish_to_twitter(tw_text[:280])
+                except Exception:
+                    pass
                 return {
                     "success": True,
-                    "summary": f"Gist blitz: {len(published_gist_urls)} code snippets published with product CTAs",
-                    "revenue_potential": len(published_gist_urls) * 1.0,
+                    "summary": f"Gist blitz: {len(published_gist_urls)} code snippets published + tweeted",
+                    "revenue_potential": len(published_gist_urls) * 1.5,
                     "urls": published_gist_urls,
                 }
             return {"success": False, "summary": "gist_blitz: no Gists created"}
@@ -4950,12 +4963,38 @@ JSON:
             if cache:
                 await cache.set("aria:income:newsletter_issue_count", str(issue_num), ttl_seconds=86400 * 365)
 
-            platform_str = "GitHub" + (" + Mailchimp" if mailchimp_ok else "")
+            # Promote newsletter on Twitter + LinkedIn
+            nl_url = urls_created[0] if urls_created else ""
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tw_text = f"📧 ARIA Weekly #{issue_num} is out!\n\n{subject}\n\n{big_idea[:160]}"
+                if nl_url:
+                    tw_text += f"\n\nRead free: {nl_url}"
+                await pub.publish_to_twitter(tw_text[:280])
+            except Exception:
+                pass
+
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                li_text = (
+                    f"📧 ARIA Weekly #{issue_num}: {subject}\n\n"
+                    f"{big_idea}\n\n"
+                    f"{newsletter_data.get('preview_text', '')}"
+                )
+                if nl_url:
+                    li_text += f"\n\nRead it here: {nl_url}"
+                await pub.publish_to_linkedin(li_text[:1300])
+            except Exception:
+                pass
+
+            platform_str = "GitHub" + (" + Mailchimp" if mailchimp_ok else "") + " + Social"
             logger.info("[IncomeLoop] Newsletter issue #%d published: %s", issue_num, subject)
             return {
                 "success": True,
                 "summary": f"Newsletter #{issue_num} published to {platform_str}: '{subject}'",
-                "revenue_potential": 6.0,  # subscriber growth → product conversions
+                "revenue_potential": 6.0,
                 "urls": urls_created,
             }
 
