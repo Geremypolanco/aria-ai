@@ -2747,11 +2747,11 @@ Keep the same general topic but make it significantly more valuable.""",
             linkedin_post = campaign.get("linkedin_post", "")
             if linkedin_post:
                 try:
-                    from apps.distribution.publishers.api_publisher import APIPublisher
-                    pub = APIPublisher()
-                    result = await pub.publish_linkedin(linkedin_post)
-                    if isinstance(result, dict) and result.get("url"):
-                        urls_created.append(result["url"])
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    result = await pub.publish_to_linkedin(linkedin_post)
+                    if result.success and result.url:
+                        urls_created.append(result.url)
                 except Exception:
                     pass
 
@@ -2759,12 +2759,12 @@ Keep the same general topic but make it significantly more valuable.""",
             tweets = campaign.get("twitter_thread", [])
             if tweets:
                 try:
-                    from apps.distribution.publishers.api_publisher import APIPublisher
-                    pub = APIPublisher()
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
                     thread_text = "\n\n".join(tweets[:3]) if isinstance(tweets, list) else str(tweets)
-                    result = await pub.publish_twitter(thread_text[:280])
-                    if isinstance(result, dict) and result.get("url"):
-                        urls_created.append(result["url"])
+                    result = await pub.publish_to_twitter(thread_text[:280])
+                    if result.success and result.url:
+                        urls_created.append(result.url)
                 except Exception:
                     pass
 

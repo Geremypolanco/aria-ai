@@ -11108,20 +11108,22 @@ Return JSON:
                 except Exception:
                     pass
 
-            # ── Reddit launch post ─────────────────────────────────────────────
+            # ── Reddit launch post via human browser (no API needed) ──────────
             reddit_title = saas_data.get("reddit_post_title", "")
             reddit_body = saas_data.get("reddit_post_body", "")
             if reddit_title and reddit_body:
                 try:
-                    from apps.distribution.publishers.api_publisher import get_api_publisher
-                    pub = get_api_publisher()
-                    reddit_result = await pub.publish_reddit(
-                        subreddit="SideProject",
-                        title=reddit_title[:300],
-                        body=reddit_body[:5000],
-                    )
-                    if isinstance(reddit_result, dict) and reddit_result.get("url"):
-                        urls_created.append(reddit_result["url"])
+                    aria_email    = getattr(settings, "ARIA_EMAIL", None)
+                    aria_password = getattr(settings, "ARIA_PASSWORD", None)
+                    if aria_email and aria_password:
+                        from apps.core.tools.human_browser import get_platform_login
+                        plat = await get_platform_login()
+                        reddit_page = await plat.reddit(aria_email, aria_password)
+                        post_url = await plat.reddit_post(
+                            reddit_page, "SideProject", reddit_title[:300], reddit_body[:5000]
+                        )
+                        if post_url:
+                            urls_created.append(post_url)
                 except Exception:
                     pass
 
@@ -13800,7 +13802,7 @@ Generate a backlink building plan:
                             if "twitter" in platform:
                                 result = await pub.publish_to_twitter(content)
                             elif "linkedin" in platform:
-                                result = await pub.publish_linkedin(content)
+                                result = await pub.publish_to_linkedin(content)
                             if isinstance(result, dict) and result.get("url"):
                                 urls_created.append(result["url"])
                 except Exception:

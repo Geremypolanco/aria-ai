@@ -133,15 +133,16 @@ class ContentAgent(BaseAgent):
     ) -> dict:
         from apps.core.tools.publishing_tools import PublishingTools
         pt = PublishingTools()
+        article = {"title": title, "body": content, "body_html": content, "tags": tags, "meta_description": ""}
         results = {}
         for platform in platforms:
             try:
                 if platform == "devto":
-                    results[platform] = await pt.publish_to_devto(title, content, tags)
+                    results[platform] = await pt.publish_devto(article)
                 elif platform == "medium":
-                    results[platform] = await pt.publish_to_medium(title, content, tags)
+                    results[platform] = await pt.publish_medium(article)
                 elif platform == "hashnode":
-                    results[platform] = await pt.publish_to_hashnode(title, content, tags)
+                    results[platform] = await pt.publish_hashnode(article)
             except Exception as exc:
                 results[platform] = {"success": False, "error": str(exc)}
         return results

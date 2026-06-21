@@ -869,14 +869,15 @@ class AriaMind:
                 platforms = args.get("platforms", ["devto"])
                 from apps.core.tools.publishing_tools import PublishingTools
                 pt = PublishingTools()
+                article = {"title": title, "body": content, "body_html": content, "tags": tags, "meta_description": ""}
                 results = {}
                 for plat in platforms:
                     if plat == "devto":
-                        results["devto"] = await pt.publish_to_devto(title, content, tags)
+                        results["devto"] = await pt.publish_devto(article)
                     elif plat == "medium":
-                        results["medium"] = await pt.publish_to_medium(title, content, tags)
+                        results["medium"] = await pt.publish_medium(article)
                     elif plat == "hashnode":
-                        results["hashnode"] = await pt.publish_to_hashnode(title, content, tags)
+                        results["hashnode"] = await pt.publish_hashnode(article)
                 published = [p for p, r in results.items() if r.get("success")]
                 if published:
                     return f"Artículo publicado en: {', '.join(published)}", {}
