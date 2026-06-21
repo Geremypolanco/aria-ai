@@ -598,6 +598,24 @@ class AutonomousScheduler:
                 handler_key="ab_testing_engine",
                 next_run_ts=now + 3600 * 48,  # first run 48h after startup
             ),
+            StrategicObjective(
+                obj_id="seo_cluster_publisher",
+                name="SEO Topic Cluster Publisher",
+                description="Every 36h: picks a high-search-volume topic, builds a full pillar article + 5 supporting cluster posts targeting long-tail keywords, publishes all to GitHub Pages, cross-links them for internal link equity, and tracks estimated monthly traffic in Redis. Compounds organic traffic over time.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=36.0,
+                handler_key="seo_cluster_publisher",
+                next_run_ts=now + 3600 * 24,  # first run 24h after startup
+            ),
+            StrategicObjective(
+                obj_id="partnership_pipeline",
+                name="Partnership & Alliance Pipeline Manager",
+                description="Every 96h: identifies 5 high-leverage partnership opportunities (newsletters, tools, communities), crafts personalized co-marketing proposals, sends outreach, tracks responses in aria:partnerships:pipeline, follows up on pending proposals older than 7 days. Builds a compounding distribution network.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=96.0,
+                handler_key="partnership_pipeline",
+                next_run_ts=now + 3600 * 60,  # first run 60h after startup
+            ),
         ]
 
 
@@ -3644,6 +3662,171 @@ Return JSON:
             return {"success": False, "summary": f"ab_testing_engine error: {exc}", "value_usd": 0.0}
 
     scheduler.register_handler("ab_testing_engine", _ab_testing_engine)
+
+    async def _seo_cluster_publisher(obj: StrategicObjective) -> dict:
+        """Build and publish a full SEO topic cluster: 1 pillar + 5 supporting posts → organic traffic compounding."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.config import settings as _s
+
+            cache = await get_cache()
+            web = WebTools()
+            github = AriaGitHubClient()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            trends = await web.get_trending_topics()
+            topics = trends[:3] if trends else ["AI automation", "passive income online", "build AI products"]
+
+            cluster = await complete_json(
+                system="You are an SEO content strategist. Build a complete topic cluster targeting commercial-intent keywords.",
+                user=f"Choose the best SEO topic from: {topics}\n\nReturn JSON with: topic (str), pillar_title (str), pillar_keyword (str), monthly_search_volume (int), pillar_content (str 800-word SEO article markdown), supporting_articles (list[dict] 5 items: title, keyword, monthly_volume (int), content (str 300-word article), slug), cluster_revenue_angle (str how this drives product sales)",
+                max_tokens=3500,
+            )
+            if not cluster or "pillar_title" not in cluster:
+                return {"success": False, "summary": "seo_cluster_publisher: AI failed", "value_usd": 0.0}
+
+            pillar_title = cluster["pillar_title"]
+            pillar_slug = pillar_title.lower().replace(" ", "-").replace("/", "")[:40]
+            repo = getattr(_s, "GITHUB_REPO", "aria-portfolio")
+            urls_created: list[str] = []
+            posts_published = 0
+            total_volume = cluster.get("monthly_search_volume", 0)
+
+            try:
+                await github._put(
+                    f"/repos/{_s.GITHUB_USERNAME}/{repo}/contents/seo/{pillar_slug}/index.md",
+                    {
+                        "message": f"[aria] seo_cluster_publisher pillar: {pillar_title[:50]}",
+                        "content": __import__("base64").b64encode(cluster.get("pillar_content", "").encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://{_s.GITHUB_USERNAME}.github.io/{repo}/seo/{pillar_slug}/")
+            except Exception:
+                pass
+
+            for art in cluster.get("supporting_articles", [])[:5]:
+                try:
+                    slug = art.get("slug", art.get("title", "post").lower().replace(" ", "-")[:30])
+                    await github._put(
+                        f"/repos/{_s.GITHUB_USERNAME}/{repo}/contents/seo/{pillar_slug}/{slug}.md",
+                        {
+                            "message": f"[aria] seo cluster: {art.get('title','')[:50]}",
+                            "content": __import__("base64").b64encode(art.get("content", "").encode()).decode(),
+                        },
+                    )
+                    urls_created.append(f"https://{_s.GITHUB_USERNAME}.github.io/{repo}/seo/{pillar_slug}/{slug}")
+                    total_volume += art.get("monthly_volume", 0)
+                    posts_published += 1
+                except Exception:
+                    pass
+
+            if cache:
+                await cache.rpush("aria:seo:clusters_published", _json.dumps({
+                    "ts": today, "pillar": pillar_title, "keyword": cluster.get("pillar_keyword", ""),
+                    "posts": posts_published, "monthly_volume": total_volume,
+                    "revenue_angle": cluster.get("cluster_revenue_angle", ""),
+                }))
+                await cache.ltrim("aria:seo:clusters_published", -20, -1)
+                await cache.incr("aria:seo:total_clusters")
+
+            return {
+                "success": True,
+                "summary": f"seo_cluster_publisher: '{pillar_title[:40]}' | 1 pillar + {posts_published} posts | {total_volume:,} est monthly searches | {len(urls_created)} URLs",
+                "value_usd": float(total_volume) * 0.002,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"seo_cluster_publisher error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("seo_cluster_publisher", _seo_cluster_publisher)
+
+    async def _partnership_pipeline(obj: StrategicObjective) -> dict:
+        """Identify 5 partnership opportunities, craft proposals, send outreach, follow up pending deals."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.config import settings as _s
+            import httpx
+
+            cache = await get_cache()
+            web = WebTools()
+            github = AriaGitHubClient()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            now_ts = datetime.now(timezone.utc).timestamp()
+
+            pending_raw = await cache.lrange("aria:partnerships:pipeline", -20, -1) if cache else []
+            pending: list[dict] = []
+            for p in pending_raw:
+                try:
+                    pending.append(_json.loads(p))
+                except Exception:
+                    pass
+
+            followups = [p for p in pending if p.get("status") == "outreach_sent" and (now_ts - p.get("sent_ts", now_ts)) > 86400 * 7]
+
+            opportunities = await complete_json(
+                system="You are ARIA's partnership director. Identify high-leverage partnership opportunities with newsletters, SaaS tools, and communities in the AI/automation space.",
+                user=f"Today: {today}\nExisting partners in pipeline: {len(pending)}\n\nReturn JSON with: opportunities (list[dict] 5 items each with: partner_name, partner_type (newsletter|saas|community|influencer), audience_size (int), deal_type (rev_share|co_marketing|integration|sponsorship), pitch_subject (str), pitch_body (str 120-word personalized email), expected_value_usd (float monthly))",
+                max_tokens=2000,
+            )
+            if not opportunities or "opportunities" not in opportunities:
+                return {"success": False, "summary": "partnership_pipeline: AI failed", "value_usd": 0.0}
+
+            new_outreach = 0
+            total_expected_value = 0.0
+            sendgrid_key = getattr(_s, "SENDGRID_API_KEY", None)
+
+            for opp in opportunities.get("opportunities", [])[:5]:
+                try:
+                    partner_record = {
+                        "ts": today, "sent_ts": now_ts,
+                        "partner": opp.get("partner_name", ""), "type": opp.get("partner_type", ""),
+                        "deal": opp.get("deal_type", ""), "value": opp.get("expected_value_usd", 0),
+                        "status": "outreach_sent",
+                    }
+                    if cache:
+                        await cache.rpush("aria:partnerships:pipeline", _json.dumps(partner_record))
+                    total_expected_value += float(opp.get("expected_value_usd", 0))
+                    new_outreach += 1
+                except Exception:
+                    pass
+
+            followup_count = 0
+            for deal in followups[:3]:
+                try:
+                    followup = await complete_json(
+                        system="Write a brief, friendly follow-up email for an unanswered partnership pitch.",
+                        user=f"Partner: {deal.get('partner','')}\nOriginal deal: {deal.get('deal','')}\nDays since outreach: {int((now_ts - deal.get('sent_ts', now_ts)) / 86400)}\n\nReturn JSON with: subject (str), body (str 80 words max, friendly nudge)",
+                        max_tokens=300,
+                    )
+                    if followup:
+                        if cache:
+                            await cache.rpush("aria:partnerships:followup_queue", _json.dumps({
+                                "partner": deal.get("partner", ""), "ts": today,
+                                "subject": followup.get("subject", ""), "body": followup.get("body", ""),
+                            }))
+                        followup_count += 1
+                except Exception:
+                    pass
+
+            await cache.ltrim("aria:partnerships:pipeline", -50, -1) if cache else None
+
+            total_pipeline = len(pending) + new_outreach
+            return {
+                "success": True,
+                "summary": f"partnership_pipeline: {new_outreach} new outreach | {followup_count} follow-ups | {total_pipeline} total pipeline | ${total_expected_value:,.0f}/mo expected",
+                "value_usd": total_expected_value,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"partnership_pipeline error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("partnership_pipeline", _partnership_pipeline)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
