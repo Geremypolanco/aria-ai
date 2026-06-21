@@ -2243,7 +2243,7 @@ JSON:
                             total_usd += stripe_total
 
             # ── Gumroad ───────────────────────────────────────────────────────
-            gumroad_token = getattr(settings, "GUMROAD_ACCESS_TOKEN", "") or ""
+            gumroad_token = settings.GUMROAD_TOKEN or ""
             if gumroad_token:
                 import aiohttp as _aio
                 async with _aio.ClientSession() as sess:

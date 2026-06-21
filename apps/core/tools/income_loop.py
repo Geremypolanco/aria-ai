@@ -10111,7 +10111,7 @@ JSON:
 
             # Create actual Gumroad product for "Hire ARIA" offer
             gumroad_offer = listing_data.get("gumroad_offer", {})
-            gumroad_token = getattr(settings, "GUMROAD_ACCESS_TOKEN", "") or ""
+            gumroad_token = settings.GUMROAD_TOKEN or ""
             if gumroad_token and gumroad_offer:
                 try:
                     from apps.core.tools.gumroad_tools import GumroadTools
@@ -12017,7 +12017,7 @@ Return JSON:
 
             # Publish to Gumroad
             gumroad_url = ""
-            gumroad_token = getattr(settings, "GUMROAD_ACCESS_TOKEN", "") or ""
+            gumroad_token = settings.GUMROAD_TOKEN or ""
             if gumroad_token and description:
                 try:
                     gt = GumroadTools()
@@ -12487,7 +12487,7 @@ Return JSON:
 
             # Publish to Gumroad
             gumroad_desc = kit_data.get("gumroad_description", "")
-            gumroad_token = getattr(settings, "GUMROAD_ACCESS_TOKEN", "") or ""
+            gumroad_token = settings.GUMROAD_TOKEN or ""
             if gumroad_token and gumroad_desc:
                 try:
                     gt = GumroadTools()
@@ -12637,7 +12637,7 @@ Return JSON:
                 urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/data-products/{today}-{slug}.md")
 
             # Publish to Gumroad
-            gumroad_token = getattr(settings, "GUMROAD_ACCESS_TOKEN", "") or ""
+            gumroad_token = settings.GUMROAD_TOKEN or ""
             if gumroad_token and description:
                 try:
                     gt = GumroadTools()
