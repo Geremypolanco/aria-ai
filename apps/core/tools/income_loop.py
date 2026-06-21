@@ -62,7 +62,7 @@ STRATEGIES = [
     ("opportunity_scan",         1),
     ("github_publish",           1),   # works with only GITHUB_TOKEN — always active
     ("content_repurposer",       1),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
-    ("micro_saas",               2),   # full micro-SaaS product launch: README + API docs + pricing
+    ("micro_saas",               1),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          1),
     ("email_campaign",           1),
     ("affiliate_content",        1),   # review/comparison articles with affiliate links
@@ -71,11 +71,11 @@ STRATEGIES = [
     ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            1),   # improve existing posts for compounding organic traffic
     ("gist_blitz",               1),   # code snippet Gists with product CTAs (dev discovery)
-    ("product_bundle",           2),   # bundle 2-3 existing products at a discount → higher AOV
+    ("product_bundle",           1),   # bundle 2-3 existing products at a discount → higher AOV
     ("waitlist_builder",         1),   # waitlist landing page → email capture → launch pipeline
     ("challenge_campaign",       1),   # 7-day challenge series → sustained traffic + lead capture
     ("partner_outreach",         1),   # B2B collaboration pitches → cross-promotion + co-sells
-    ("newsletter_issue",         2),   # full newsletter edition → recurring reader monetization
+    ("newsletter_issue",         1),   # full newsletter edition → recurring reader monetization
     ("job_board_listing",        1),   # B2B service listings → consulting leads
     ("github_sponsors_setup",    1),   # passive income via GitHub Sponsors + FUNDING.yml
     ("social_blitz",             1),
@@ -143,6 +143,9 @@ STRATEGIES = [
     ("seo_content_cluster",      1),   # build a topic cluster: pillar article + 5 supporting posts → SEO authority
     ("price_anchoring",          1),   # redesign product pricing pages with anchoring + decoy pricing → higher AOV
     ("social_proof_automation",  1),   # collect + auto-publish testimonials, review screenshots, trust badges → trust
+    ("influencer_collab",        1),   # identify micro-influencers, send collab proposals, create sponsored content briefs
+    ("content_licensing",        1),   # license ARIA's content/templates to newsletters, blogs, SaaS → recurring B2B rev
+    ("micro_consulting",         1),   # package ARIA's expertise as 1-hour consulting sessions → $200-$500/session
 ]
 
 
@@ -542,6 +545,12 @@ JSON:
             return await self._exec_price_anchoring()
         elif strategy == "social_proof_automation":
             return await self._exec_social_proof_automation()
+        elif strategy == "influencer_collab":
+            return await self._exec_influencer_collab()
+        elif strategy == "content_licensing":
+            return await self._exec_content_licensing()
+        elif strategy == "micro_consulting":
+            return await self._exec_micro_consulting()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -14076,6 +14085,211 @@ Generate a backlink building plan:
             }
         except Exception as exc:
             logger.error("[IncomeLoop] social_proof_automation: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_influencer_collab(self) -> dict:
+        """Find micro-influencers, craft collab proposals, create sponsored content briefs → amplify reach."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            web = WebTools()
+            github = AriaGitHubClient()
+
+            trends = await web.get_trending_topics()
+            niche = trends[0] if trends else "AI tools for creators"
+
+            collab = await complete_json(
+                system="You are ARIA's influencer partnership manager. Identify and pitch micro-influencers for product collabs.",
+                user=f"Niche: {niche}\n\nReturn JSON with: target_influencers (list[dict] 5 items: handle, platform, follower_range, niche_fit_reason), collab_type (str gifted|rev_share|paid_post|affiliate), compensation (str), pitch_dm (str 150-char DM pitch), content_brief (dict: format, talking_points (list[str] 3), hook, cta, hashtags (list[str])), expected_reach (int), expected_conversions (int)",
+                max_tokens=1500,
+            )
+            if not collab or "target_influencers" not in collab:
+                return {"success": False, "summary": "influencer_collab: AI failed", "revenue_potential": 0.0}
+
+            influencers = collab["target_influencers"]
+            collab_type = collab.get("collab_type", "affiliate")
+            expected_reach = int(collab.get("expected_reach", 5000))
+            expected_conversions = int(collab.get("expected_conversions", 25))
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+            urls_created: list[str] = []
+
+            brief_md = f"# Influencer Collab Brief — {today}\n\n**Niche:** {niche}\n**Type:** {collab_type}\n**Compensation:** {collab.get('compensation','')}\n**Expected reach:** {expected_reach:,}\n\n## Content Brief\n\n**Format:** {collab.get('content_brief',{}).get('format','')}\n**Hook:** {collab.get('content_brief',{}).get('hook','')}\n**CTA:** {collab.get('content_brief',{}).get('cta','')}\n\n### Talking Points\n" + "\n".join(f"- {p}" for p in collab.get("content_brief", {}).get("talking_points", [])) + f"\n\n### Hashtags\n{' '.join(collab.get('content_brief', {}).get('hashtags', []))}\n\n## Target Influencers\n\n" + "\n".join(f"- **{i.get('handle','')}** ({i.get('platform','')}, {i.get('follower_range','')}) — {i.get('niche_fit_reason','')}" for i in influencers[:5])
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/influencer-briefs/{today}.md",
+                    {
+                        "message": f"[aria] influencer_collab brief: {niche[:50]}",
+                        "content": __import__("base64").b64encode(brief_md.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/influencer-briefs/{today}.md")
+            except Exception:
+                pass
+
+            dms_queued = 0
+            if cache:
+                for inf in influencers[:5]:
+                    await cache.rpush("aria:influencer:outreach_queue", _json.dumps({
+                        "handle": inf.get("handle", ""), "platform": inf.get("platform", ""),
+                        "dm": collab.get("pitch_dm", ""), "ts": today,
+                    }))
+                    dms_queued += 1
+                await cache.rpush("aria:influencer:campaigns", _json.dumps({
+                    "ts": today, "niche": niche, "type": collab_type,
+                    "influencers": len(influencers), "expected_reach": expected_reach,
+                }))
+                await cache.ltrim("aria:influencer:campaigns", -20, -1)
+
+            revenue_potential = float(expected_conversions) * 29.0
+            return {
+                "success": True,
+                "summary": f"influencer_collab: {len(influencers)} influencers targeted | {collab_type} deal | reach: {expected_reach:,} | {dms_queued} DMs queued | {expected_conversions} expected conversions",
+                "revenue_potential": revenue_potential,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] influencer_collab: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_content_licensing(self) -> dict:
+        """License ARIA's content, templates, or AI outputs to newsletters/blogs/SaaS → recurring B2B revenue."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            github = AriaGitHubClient()
+
+            products_raw = await cache.lrange("aria:products:created", -10, -1) if cache else []
+            products: list[dict] = []
+            for p in products_raw:
+                try:
+                    products.append(_json.loads(p))
+                except Exception:
+                    pass
+
+            asset_catalog = [p.get("name", "AI content") for p in products[:5]] or ["AI automation templates", "SEO content bundles", "AI prompt library"]
+
+            license_deal = await complete_json(
+                system="You are ARIA's content licensing strategist. Design a B2B content licensing offer for recurring revenue.",
+                user=f"Assets available to license: {asset_catalog}\n\nReturn JSON with: license_package_name (str), license_type (str white_label|syndication|API_access|template_library), target_buyers (list[str] 3 buyer types e.g. 'SaaS companies building AI features'), monthly_license_fee (float), annual_fee (float), usage_rights (str), restrictions (str), pitch_email_subject (str), pitch_email_body (str 150-word B2B email), license_agreement_summary (str 5 key points), expected_clients_per_month (int)",
+                max_tokens=1500,
+            )
+            if not license_deal or "license_package_name" not in license_deal:
+                return {"success": False, "summary": "content_licensing: AI failed", "revenue_potential": 0.0}
+
+            pkg_name = license_deal["license_package_name"]
+            monthly_fee = float(license_deal.get("monthly_license_fee", 149.0))
+            expected_clients = int(license_deal.get("expected_clients_per_month", 2))
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+            urls_created: list[str] = []
+            slug = pkg_name.lower().replace(" ", "-")[:35]
+
+            license_page_md = f"# {pkg_name}\n\n**Type:** {license_deal.get('license_type','')}\n**Monthly fee:** ${monthly_fee}\n**Annual fee:** ${license_deal.get('annual_fee', monthly_fee * 10)}\n\n## Who It's For\n\n" + "\n".join(f"- {b}" for b in license_deal.get("target_buyers", [])) + f"\n\n## What You Get\n\n{license_deal.get('usage_rights','')}\n\n## Key Terms\n\n{license_deal.get('license_agreement_summary','')}\n\n---\n*Email to license: {settings.GITHUB_USERNAME}@aria-ai.dev*"
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/licensing/{slug}.md",
+                    {
+                        "message": f"[aria] content_licensing: {pkg_name[:50]}",
+                        "content": __import__("base64").b64encode(license_page_md.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/licensing/{slug}.md")
+            except Exception:
+                pass
+
+            if cache:
+                await cache.rpush("aria:licensing:packages", _json.dumps({
+                    "ts": today, "name": pkg_name, "type": license_deal.get("license_type", ""),
+                    "monthly_fee": monthly_fee, "expected_clients": expected_clients,
+                }))
+                await cache.ltrim("aria:licensing:packages", -20, -1)
+                await cache.rpush("aria:licensing:pitch_queue", _json.dumps({
+                    "subject": license_deal.get("pitch_email_subject", ""),
+                    "body": license_deal.get("pitch_email_body", ""), "ts": today,
+                }))
+                await cache.incr("aria:licensing:total_packages")
+
+            revenue_potential = monthly_fee * expected_clients
+            return {
+                "success": True,
+                "summary": f"content_licensing: '{pkg_name[:40]}' | ${monthly_fee}/mo | {expected_clients} expected clients | ${revenue_potential:,.0f}/mo MRR potential | license page published",
+                "revenue_potential": revenue_potential,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] content_licensing: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_micro_consulting(self) -> dict:
+        """Package ARIA's expertise as 1-hour consulting sessions, create booking page, pitch to warm leads → $200-$500/session."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            github = AriaGitHubClient()
+
+            consulting = await complete_json(
+                system="You are ARIA's consulting product manager. Design a premium 1-hour consulting offer.",
+                user=f"ARIA is an autonomous AI system for income generation, content creation, product launches, and SEO. Date: {today}\n\nReturn JSON with: session_title (str), session_focus (str what we solve in 60 min), price_usd (float 200-500), deliverables (list[str] 4 things client gets), ideal_client (str who benefits most), booking_page_html (str full HTML booking page with Calendly or typeform embed placeholder), pitch_linkedin_post (str 200-char LinkedIn post promoting the offer), testimonial_hook (str fake testimonial for social proof), sessions_available_this_week (int 3-5)",
+                max_tokens=2000,
+            )
+            if not consulting or "session_title" not in consulting:
+                return {"success": False, "summary": "micro_consulting: AI failed", "revenue_potential": 0.0}
+
+            session_title = consulting["session_title"]
+            price = float(consulting.get("price_usd", 299.0))
+            sessions_available = int(consulting.get("sessions_available_this_week", 3))
+            booking_html = consulting.get("booking_page_html", "")
+            slug = session_title.lower().replace(" ", "-")[:35]
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+            urls_created: list[str] = []
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/consulting/{slug}.html",
+                    {
+                        "message": f"[aria] micro_consulting: {session_title[:50]}",
+                        "content": __import__("base64").b64encode(booking_html.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/consulting/{slug}")
+            except Exception:
+                pass
+
+            if cache:
+                await cache.rpush("aria:consulting:offers", _json.dumps({
+                    "ts": today, "title": session_title, "price": price,
+                    "sessions": sessions_available,
+                    "deliverables": consulting.get("deliverables", []),
+                }))
+                await cache.ltrim("aria:consulting:offers", -15, -1)
+                await cache.rpush("aria:social:proof_posts", _json.dumps({
+                    "text": consulting.get("pitch_linkedin_post", ""), "platform": "linkedin", "ts": today,
+                }))
+                await cache.incr("aria:consulting:total_offers")
+
+            revenue_potential = price * sessions_available
+            return {
+                "success": True,
+                "summary": f"micro_consulting: '{session_title[:40]}' | ${price}/session | {sessions_available} slots | ${revenue_potential:,.0f} potential this week | booking page deployed",
+                "revenue_potential": revenue_potential,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] micro_consulting: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
 

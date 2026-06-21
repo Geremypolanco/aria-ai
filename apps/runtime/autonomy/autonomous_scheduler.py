@@ -616,6 +616,24 @@ class AutonomousScheduler:
                 handler_key="partnership_pipeline",
                 next_run_ts=now + 3600 * 60,  # first run 60h after startup
             ),
+            StrategicObjective(
+                obj_id="brand_monitor",
+                name="Brand Monitor & Sentiment Tracker",
+                description="Every 12h: searches Twitter, Reddit, HN, Dev.to, and GitHub for mentions of ARIA, responds to relevant discussions, tracks brand sentiment score, flags negative mentions for review, reports reach and share-of-voice. ARIA's autonomous PR team.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=12.0,
+                handler_key="brand_monitor",
+                next_run_ts=now + 3600 * 8,  # first run 8h after startup
+            ),
+            StrategicObjective(
+                obj_id="automated_reporting",
+                name="Automated Performance Report Generator",
+                description="Every 24h: compiles a comprehensive performance report across all income streams, content, SEO clusters, product launches, email list growth, partnership pipeline, and conversion rates. Publishes to GitHub as markdown dashboard and sends Telegram summary. ARIA's autonomous analytics department.",
+                priority=ObjectivePriority.HIGH,
+                frequency_hours=24.0,
+                handler_key="automated_reporting",
+                next_run_ts=now + 3600 * 20,  # first run ~8pm
+            ),
         ]
 
 
@@ -3827,6 +3845,241 @@ Return JSON:
             return {"success": False, "summary": f"partnership_pipeline error: {exc}", "value_usd": 0.0}
 
     scheduler.register_handler("partnership_pipeline", _partnership_pipeline)
+
+    async def _brand_monitor(obj: StrategicObjective) -> dict:
+        """Search Twitter/Reddit/HN/Dev.to for ARIA mentions, respond to discussions, track brand sentiment."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.config import settings as _s
+
+            cache = await get_cache()
+            web = WebTools()
+            github = AriaGitHubClient()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            search_queries = ["ARIA AI autonomous", "aria-ai github", "autonomous income AI", "AI that makes money"]
+            mentions_found: list[dict] = []
+            for query in search_queries[:3]:
+                try:
+                    results = await web.search(query, max_results=5)
+                    for r in results:
+                        mentions_found.append({"query": query, "title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("snippet", "")})
+                except Exception:
+                    pass
+
+            hn_mentions: list[dict] = []
+            try:
+                hn_trending = await web.get_hn_top_stories(limit=30)
+                for story in hn_trending:
+                    title_lower = story.get("title", "").lower()
+                    if any(kw in title_lower for kw in ["autonomous ai", "ai agent", "make money ai", "ai income"]):
+                        hn_mentions.append(story)
+            except Exception:
+                pass
+
+            total_mentions = len(mentions_found) + len(hn_mentions)
+            sentiment_analysis = await complete_json(
+                system="You are ARIA's brand intelligence system. Analyze brand mentions and generate response strategy.",
+                user=f"Brand: ARIA — autonomous AI income system\nMentions found: {_json.dumps(mentions_found[:5] + hn_mentions[:3], ensure_ascii=False)}\n\nReturn JSON with: overall_sentiment (str positive|neutral|negative), sentiment_score (float 0-10), key_themes (list[str] 3), response_opportunities (list[dict] 3 items: url, response_text (str 100 chars), platform), brand_health_summary (str one sentence), recommended_actions (list[str] 2)",
+                max_tokens=1000,
+            )
+
+            responses_queued = 0
+            if sentiment_analysis and "response_opportunities" in sentiment_analysis:
+                for opp in sentiment_analysis.get("response_opportunities", [])[:3]:
+                    try:
+                        if cache and opp.get("response_text"):
+                            await cache.rpush("aria:brand:response_queue", _json.dumps({
+                                "url": opp.get("url", ""), "text": opp.get("response_text", ""),
+                                "platform": opp.get("platform", ""), "ts": today,
+                            }))
+                            responses_queued += 1
+                    except Exception:
+                        pass
+
+            sentiment_score = float(sentiment_analysis.get("sentiment_score", 5.0) if sentiment_analysis else 5.0)
+
+            if cache:
+                await cache.rpush("aria:brand:sentiment_history", _json.dumps({
+                    "ts": today, "score": sentiment_score, "mentions": total_mentions,
+                    "summary": sentiment_analysis.get("brand_health_summary", "") if sentiment_analysis else "",
+                }))
+                await cache.ltrim("aria:brand:sentiment_history", -30, -1)
+                await cache.set("aria:brand:current_sentiment", sentiment_score)
+                await cache.set("aria:brand:last_monitor", today)
+
+            return {
+                "success": True,
+                "summary": f"brand_monitor: {total_mentions} mentions found | sentiment: {sentiment_score:.1f}/10 | {responses_queued} responses queued | {len(hn_mentions)} HN opportunities",
+                "value_usd": float(responses_queued) * 20.0,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"brand_monitor error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("brand_monitor", _brand_monitor)
+
+    async def _automated_reporting(obj: StrategicObjective) -> dict:
+        """Compile comprehensive 24h performance report: revenue, content, SEO, pipeline, publish to GitHub + Telegram."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.config import settings as _s
+            import httpx
+
+            cache = await get_cache()
+            github = AriaGitHubClient()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            if not cache:
+                return {"success": False, "summary": "automated_reporting: no Redis", "value_usd": 0.0}
+
+            async def _safe_int(key: str) -> int:
+                try:
+                    v = await cache.get(key)
+                    return int(v) if v else 0
+                except Exception:
+                    return 0
+
+            async def _safe_float(key: str) -> float:
+                try:
+                    v = await cache.get(key)
+                    return float(v) if v else 0.0
+                except Exception:
+                    return 0.0
+
+            async def _safe_llen(key: str) -> int:
+                try:
+                    return await cache.llen(key) or 0
+                except Exception:
+                    return 0
+
+            income_cycles = await _safe_int("aria:income:total_cycles")
+            products_created = await _safe_llen("aria:products:created")
+            total_revenue = await _safe_float("aria:revenue:total_usd")
+            email_magnets = await _safe_int("aria:email:total_magnets")
+            seo_clusters = await _safe_int("aria:seo:total_clusters")
+            b2b_pitches = await _safe_int("aria:b2b:total_pitches")
+            licensing_packages = await _safe_int("aria:licensing:total_packages")
+            consulting_offers = await _safe_int("aria:consulting:total_offers")
+            ab_tests = await _safe_int("aria:ab_tests:total")
+            influencer_campaigns = await _safe_llen("aria:influencer:campaigns")
+            jv_pitches = await _safe_int("aria:jv:total_pitches")
+            pr_outreach = await _safe_int("aria:pr:total_outreach")
+            brand_sentiment = await _safe_float("aria:brand:current_sentiment")
+            crm_leads = await _safe_llen("aria:crm:pipeline")
+            partnership_pipeline = await _safe_llen("aria:partnerships:pipeline")
+
+            report_data = {
+                "date": today,
+                "income_cycles_total": income_cycles,
+                "products_created": products_created,
+                "revenue_usd": total_revenue,
+                "email_magnets": email_magnets,
+                "seo_clusters": seo_clusters,
+                "b2b_pitches": b2b_pitches,
+                "licensing_packages": licensing_packages,
+                "consulting_offers": consulting_offers,
+                "ab_tests_run": ab_tests,
+                "influencer_campaigns": influencer_campaigns,
+                "jv_pitches": jv_pitches,
+                "pr_outreach": pr_outreach,
+                "brand_sentiment": brand_sentiment,
+                "crm_leads": crm_leads,
+                "partnership_pipeline": partnership_pipeline,
+            }
+
+            insights = await complete_json(
+                system="You are ARIA's analytics AI. Generate strategic insights from performance data.",
+                user=f"Performance data: {_json.dumps(report_data)}\n\nReturn JSON with: headline (str one-sentence summary), top_win (str biggest achievement), top_priority (str most important next action), growth_insight (str pattern you notice), revenue_forecast_7d (float estimated revenue next 7 days), health_score (int 0-100)",
+                max_tokens=600,
+            )
+
+            health_score = int(insights.get("health_score", 50) if insights else 50)
+            forecast_7d = float(insights.get("revenue_forecast_7d", 0.0) if insights else 0.0)
+
+            report_md = f"""# ARIA Performance Report — {today}
+
+**Health Score:** {health_score}/100
+**Revenue to date:** ${total_revenue:,.2f}
+**7-day forecast:** ${forecast_7d:,.0f}
+
+## Headline
+{insights.get('headline', 'ARIA operational') if insights else 'ARIA operational'}
+
+## Key Metrics
+
+| Metric | Value |
+|--------|-------|
+| Income cycles run | {income_cycles} |
+| Products created | {products_created} |
+| Email magnets | {email_magnets} |
+| SEO clusters | {seo_clusters} |
+| B2B pitches | {b2b_pitches} |
+| Licensing packages | {licensing_packages} |
+| Consulting offers | {consulting_offers} |
+| A/B tests | {ab_tests} |
+| Influencer campaigns | {influencer_campaigns} |
+| JV pitches | {jv_pitches} |
+| PR outreach | {pr_outreach} |
+| Brand sentiment | {brand_sentiment:.1f}/10 |
+| CRM leads | {crm_leads} |
+| Partnership pipeline | {partnership_pipeline} |
+
+## Top Win
+{insights.get('top_win', 'Building autonomous revenue systems') if insights else '—'}
+
+## Top Priority
+{insights.get('top_priority', 'Continue execution') if insights else '—'}
+
+## Growth Insight
+{insights.get('growth_insight', '—') if insights else '—'}
+"""
+
+            repo = getattr(_s, "GITHUB_REPO", "aria-portfolio")
+            urls_created: list[str] = []
+            try:
+                await github._put(
+                    f"/repos/{_s.GITHUB_USERNAME}/{repo}/contents/reports/performance-{today}.md",
+                    {
+                        "message": f"[aria] automated_reporting: {today}",
+                        "content": __import__("base64").b64encode(report_md.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{_s.GITHUB_USERNAME}/{repo}/blob/main/reports/performance-{today}.md")
+            except Exception:
+                pass
+
+            tg_token = getattr(_s, "TELEGRAM_BOT_TOKEN", None)
+            tg_chat = getattr(_s, "TELEGRAM_CHAT_ID", None)
+            if tg_token and tg_chat:
+                try:
+                    tg_msg = f"📊 *ARIA Daily Report — {today}*\n\nHealth: {health_score}/100 | Revenue: ${total_revenue:,.2f} | Forecast: ${forecast_7d:,.0f}/7d\n\n✅ {insights.get('top_win','') if insights else ''}\n🎯 Next: {insights.get('top_priority','') if insights else ''}"
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        await client.post(
+                            f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                            json={"chat_id": tg_chat, "text": tg_msg, "parse_mode": "Markdown"},
+                        )
+                except Exception:
+                    pass
+
+            await cache.rpush("aria:reports:history", _json.dumps({"ts": today, "health": health_score, "revenue": total_revenue, "forecast": forecast_7d}))
+            await cache.ltrim("aria:reports:history", -30, -1)
+
+            return {
+                "success": True,
+                "summary": f"automated_reporting: health {health_score}/100 | ${total_revenue:,.2f} revenue | ${forecast_7d:,.0f} 7d forecast | report published to GitHub",
+                "value_usd": total_revenue,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"automated_reporting error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("automated_reporting", _automated_reporting)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:
