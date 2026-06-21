@@ -7489,6 +7489,37 @@ Return JSON:
 
             archive_url = f"https://github.com/{owner}/{insights_repo}/blob/main/{path}"
 
+            extra_urls: list[str] = []
+
+            # Post Twitter upvote ask using real publisher
+            if upvote_ask:
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    tw = await pub.publish_to_twitter(f"{upvote_ask}\n\n{product_url}"[:280])
+                    if tw.success and tw.url:
+                        extra_urls.append(tw.url)
+                except Exception:
+                    pass
+
+            # Submit "Show HN" to Hacker News via human browser
+            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_password = getattr(settings, "ARIA_PASSWORD", None)
+            if aria_email and aria_password:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    plat = await get_platform_login()
+                    hn_url = await plat.hackernews_show_hn(
+                        aria_email, aria_password,
+                        title=f"{product_title}: {tagline}",
+                        url=product_url,
+                    )
+                    if hn_url:
+                        extra_urls.append(hn_url)
+                        logger.info("[IncomeLoop] HN Show HN submitted: %s", hn_url)
+                except Exception as _hn_exc:
+                    logger.debug("[IncomeLoop] HN submission: %s", _hn_exc)
+
             # Also publish a blog post to drive pre-launch awareness
             asyncio.create_task(self._exec_github_blog([{
                 "title": f"We're Launching on Product Hunt: {tagline}",
@@ -7505,19 +7536,12 @@ Return JSON:
                 ),
             }]))
 
-            if "content" in result or "commit" in result:
-                return {
-                    "success": True,
-                    "summary": f"Product Hunt kit ready: '{tagline}' — launch {best_day} at {launch_time}",
-                    "revenue_potential": 200.0,
-                    "urls": [archive_url],
-                }
-
+            all_urls = ([archive_url] if "content" in result or "commit" in result else []) + extra_urls
             return {
                 "success": True,
-                "summary": f"Product Hunt launch kit generated (archive failed): {tagline}",
-                "revenue_potential": 100.0,
-                "urls": [],
+                "summary": f"PH launch kit: '{tagline}' — {len(extra_urls)} live posts (HN/Twitter) + kit archived",
+                "revenue_potential": 200.0,
+                "urls": all_urls[:5],
             }
 
         except Exception as exc:

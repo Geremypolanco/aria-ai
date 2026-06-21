@@ -791,6 +791,56 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] Reddit: login may have failed at %s", page.url)
         return page
 
+    async def hackernews_show_hn(self, email: str, password: str, title: str, url: str, text: str = "") -> str:
+        """
+        Submit a 'Show HN:' post to Hacker News. Returns the post URL or empty string.
+        HN is the best single source of tech early-adopter traffic.
+        """
+        page = await self._browser.new_page("hackernews")
+        try:
+            await page.goto("https://news.ycombinator.com")
+            if await page.load_session():
+                await page.goto("https://news.ycombinator.com")
+                await asyncio.sleep(2)
+                if "news.ycombinator.com" in page.url:
+                    logger.info("[HumanBrowser] HN: session restored")
+                    # Skip re-login
+                else:
+                    raise Exception("session expired")
+            else:
+                await page.goto("https://news.ycombinator.com/login")
+                await page._random_pause("read")
+                await page.type_human("input[name='acct']", email)
+                await page.type_human("input[name='pw']", password)
+                await page._random_pause("think")
+                await page.click("input[type='submit'][value='login']")
+                await page._random_pause("navigate")
+                await page.save_session()
+
+            # Navigate to submit page
+            await page.goto("https://news.ycombinator.com/submit")
+            await page._random_pause("read")
+
+            hn_title = f"Show HN: {title}"[:80]
+            await page.type_human("input[name='title']", hn_title)
+            await asyncio.sleep(0.5)
+            if url:
+                await page.type_human("input[name='url']", url)
+            elif text:
+                await page.type_human("textarea[name='text']", text[:2000])
+            await page._random_pause("think")
+            await page.click("input[type='submit'][value='submit']")
+            await page._random_pause("navigate")
+            await asyncio.sleep(3)
+            current = page.url
+            if "item?id=" in current:
+                logger.info("[HumanBrowser] HN submitted: %s", current)
+                return current
+            return ""
+        except Exception as exc:
+            logger.warning("[HumanBrowser] HN submission failed: %s", exc)
+            return ""
+
     async def reddit_post(self, page: HumanPage, subreddit: str, title: str, body: str) -> str:
         """
         Submit a text post to a subreddit. Returns the post URL or empty string on failure.
