@@ -11369,8 +11369,8 @@ Return JSON:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     tw_result = await pub.publish_to_twitter(tweet_text[:280])
-                    if isinstance(tw_result, dict) and tw_result.get("url"):
-                        urls_created.append(tw_result["url"])
+                    if tw_result and tw_result.success and tw_result.url:
+                        urls_created.append(tw_result.url)
                 except Exception:
                     pass
 
@@ -11484,8 +11484,8 @@ Return JSON:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     tw_result = await pub.publish_to_twitter(tweet_with_link[:280])
-                    if isinstance(tw_result, dict) and tw_result.get("url"):
-                        urls_created.append(tw_result["url"])
+                    if tw_result and tw_result.success and tw_result.url:
+                        urls_created.append(tw_result.url)
                 except Exception:
                     pass
 
@@ -12213,8 +12213,8 @@ Return JSON:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tweet[:280])
-                if isinstance(tw_result, dict) and tw_result.get("url"):
-                    urls_created.append(tw_result["url"])
+                if tw_result and tw_result.success and tw_result.url:
+                    urls_created.append(tw_result.url)
             except Exception:
                 pass
 
@@ -12363,8 +12363,8 @@ Return JSON:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tweet[:280])
-                if isinstance(tw_result, dict) and tw_result.get("url"):
-                    urls_created.append(tw_result["url"])
+                if tw_result and tw_result.success and tw_result.url:
+                    urls_created.append(tw_result.url)
             except Exception:
                 pass
 
@@ -13018,8 +13018,8 @@ Create compelling brand story assets that position ARIA as the most advanced aut
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     result = await pub.publish_to_twitter(thread_content)
-                    if isinstance(result, dict) and result.get("url"):
-                        urls_created.append(result["url"])
+                    if result and result.success and result.url:
+                        urls_created.append(result.url)
                 except Exception:
                     pass
 
@@ -13169,8 +13169,8 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     result = await pub.publish_to_twitter(quick_win[:280])
-                    if isinstance(result, dict) and result.get("url"):
-                        urls_created.append(result["url"])
+                    if result and result.success and result.url:
+                        urls_created.append(result.url)
                 except Exception:
                     pass
 
@@ -13932,8 +13932,8 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     pub_result = await pub.publish_to_twitter(social_post[:280])
-                    if isinstance(pub_result, dict) and pub_result.get("url"):
-                        urls_created.append(pub_result["url"])
+                    if pub_result and pub_result.success and pub_result.url:
+                        urls_created.append(pub_result.url)
                 except Exception:
                     pass
 
@@ -14213,8 +14213,8 @@ Generate a backlink building plan:
                                 result = await pub.publish_to_twitter(content)
                             elif "linkedin" in platform:
                                 result = await pub.publish_to_linkedin(content)
-                            if isinstance(result, dict) and result.get("url"):
-                                urls_created.append(result["url"])
+                            if result and result.success and result.url:
+                                urls_created.append(result.url)
                 except Exception:
                     pass
 
