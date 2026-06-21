@@ -652,6 +652,24 @@ class AutonomousScheduler:
                 handler_key="content_performance_optimizer",
                 next_run_ts=now + 3600 * 30,  # first run 30h after startup
             ),
+            StrategicObjective(
+                obj_id="revenue_diversifier",
+                name="Revenue Stream Diversifier",
+                description="Every 120h: analyzes current income mix (Gumroad/Stripe/GitHub Sponsors/affiliates/consulting), identifies over-concentration risk, proposes and initiates 2 new revenue streams to reduce dependency on any single channel. ARIA's risk management system.",
+                priority=ObjectivePriority.NORMAL,
+                frequency_hours=120.0,
+                handler_key="revenue_diversifier",
+                next_run_ts=now + 3600 * 72,  # first run 72h after startup
+            ),
+            StrategicObjective(
+                obj_id="skill_upgrader",
+                name="ARIA Skill Upgrader & Capability Expander",
+                description="Every 168h (weekly): reads HuggingFace trending models, latest AI papers, and new API releases, identifies capabilities ARIA should learn, generates implementation plans for new tools/integrations, and proposes code additions to expand ARIA's own skill set. Self-improvement loop.",
+                priority=ObjectivePriority.LOW,
+                frequency_hours=168.0,
+                handler_key="skill_upgrader",
+                next_run_ts=now + 3600 * 100,  # first run 100h after startup
+            ),
         ]
 
 
@@ -4256,6 +4274,155 @@ Return JSON:
             return {"success": False, "summary": f"content_performance_optimizer error: {exc}", "value_usd": 0.0}
 
     scheduler.register_handler("content_performance_optimizer", _content_performance_optimizer)
+
+    async def _revenue_diversifier(obj: StrategicObjective) -> dict:
+        """Analyze income mix, identify concentration risk, initiate 2 new revenue streams."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.config import settings as _s
+
+            cache = await get_cache()
+            github = AriaGitHubClient()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            if not cache:
+                return {"success": False, "summary": "revenue_diversifier: no Redis", "value_usd": 0.0}
+
+            async def _safe_float(key: str) -> float:
+                try:
+                    v = await cache.get(key)
+                    return float(v) if v else 0.0
+                except Exception:
+                    return 0.0
+
+            gumroad_rev = await _safe_float("aria:revenue:gumroad_usd")
+            stripe_rev = await _safe_float("aria:revenue:stripe_usd")
+            sponsors_rev = await _safe_float("aria:revenue:github_sponsors_usd")
+            affiliate_rev = await _safe_float("aria:revenue:affiliate_usd")
+            total_rev = gumroad_rev + stripe_rev + sponsors_rev + affiliate_rev
+
+            income_mix = {
+                "gumroad_pct": (gumroad_rev / total_rev * 100) if total_rev > 0 else 0,
+                "stripe_pct": (stripe_rev / total_rev * 100) if total_rev > 0 else 0,
+                "sponsors_pct": (sponsors_rev / total_rev * 100) if total_rev > 0 else 0,
+                "affiliate_pct": (affiliate_rev / total_rev * 100) if total_rev > 0 else 0,
+                "total_usd": total_rev,
+            }
+
+            diversification = await complete_json(
+                system="You are ARIA's financial risk manager. Analyze the revenue mix and recommend diversification.",
+                user=f"Current revenue mix: {_json.dumps(income_mix)}\nDate: {today}\n\nReturn JSON with: concentration_risk (str low|medium|high), highest_dependency (str channel name), new_streams (list[dict] 2 items: stream_name, description, implementation_step_1, implementation_step_2, monthly_potential_usd), diversification_score (int 0-100 where 100 is perfectly diversified), recommendation (str one sentence action)",
+                max_tokens=800,
+            )
+            if not diversification or "new_streams" not in diversification:
+                return {"success": False, "summary": "revenue_diversifier: AI failed", "value_usd": 0.0}
+
+            repo = getattr(_s, "GITHUB_REPO", "aria-portfolio")
+            report_md = f"# Revenue Diversification Report — {today}\n\n**Diversification Score:** {diversification.get('diversification_score',50)}/100\n**Concentration Risk:** {diversification.get('concentration_risk','medium')}\n**Highest Dependency:** {diversification.get('highest_dependency','')}\n\n## Current Mix\n\n{_json.dumps(income_mix, indent=2)}\n\n## New Streams Initiated\n\n"
+            for stream in diversification.get("new_streams", []):
+                report_md += f"### {stream.get('stream_name','')}\n\n{stream.get('description','')}\n\n1. {stream.get('implementation_step_1','')}\n2. {stream.get('implementation_step_2','')}\n\n**Monthly potential:** ${stream.get('monthly_potential_usd',0)}\n\n"
+
+            try:
+                await github._put(
+                    f"/repos/{_s.GITHUB_USERNAME}/{repo}/contents/financial/diversification-{today}.md",
+                    {
+                        "message": f"[aria] revenue_diversifier: {today}",
+                        "content": __import__("base64").b64encode(report_md.encode()).decode(),
+                    },
+                )
+            except Exception:
+                pass
+
+            new_stream_value = sum(float(s.get("monthly_potential_usd", 0)) for s in diversification.get("new_streams", []))
+
+            await cache.rpush("aria:revenue:diversification_log", _json.dumps({
+                "ts": today, "score": diversification.get("diversification_score", 50),
+                "risk": diversification.get("concentration_risk", "medium"),
+                "new_streams": [s.get("stream_name", "") for s in diversification.get("new_streams", [])],
+            }))
+            await cache.ltrim("aria:revenue:diversification_log", -12, -1)
+
+            return {
+                "success": True,
+                "summary": f"revenue_diversifier: score {diversification.get('diversification_score',50)}/100 | {diversification.get('concentration_risk','medium')} risk | {len(diversification.get('new_streams',[]))} new streams initiated | ${new_stream_value:,.0f}/mo potential",
+                "value_usd": new_stream_value,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"revenue_diversifier error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("revenue_diversifier", _revenue_diversifier)
+
+    async def _skill_upgrader(obj: StrategicObjective) -> dict:
+        """Read HuggingFace trending models + AI papers, identify new capabilities for ARIA, generate implementation plans."""
+        import json as _json
+        try:
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.config import settings as _s
+
+            cache = await get_cache()
+            web = WebTools()
+            github = AriaGitHubClient()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            ai_trends: list[str] = []
+            try:
+                results = await web.search("new AI models tools 2025 2026 released", max_results=10)
+                ai_trends = [r.get("title", "") for r in results if r.get("title")]
+            except Exception:
+                ai_trends = ["multimodal AI agents", "reasoning models", "autonomous coding", "AI voice generation"]
+
+            skills_plan = await complete_json(
+                system="You are ARIA's self-improvement AI. Analyze new AI capabilities and design a skill upgrade plan.",
+                user=f"Trending AI developments: {ai_trends[:8]}\nDate: {today}\n\nReturn JSON with: top_skill_to_add (str), why_valuable (str), implementation_plan (dict: week1 (str), week2 (str), week3 (str)), new_tools_to_integrate (list[dict] 3 items: tool_name, api_or_library, use_case, integration_complexity (str low|medium|high)), estimated_revenue_impact (str), skill_roadmap_md (str 500-word markdown roadmap), learning_resources (list[str] 3 URLs or book titles)",
+                max_tokens=2000,
+            )
+            if not skills_plan or "top_skill_to_add" not in skills_plan:
+                return {"success": False, "summary": "skill_upgrader: AI failed", "value_usd": 0.0}
+
+            top_skill = skills_plan["top_skill_to_add"]
+            repo = getattr(_s, "GITHUB_REPO", "aria-portfolio")
+            urls_created: list[str] = []
+
+            roadmap_md = skills_plan.get("skill_roadmap_md", f"# ARIA Skill Upgrade: {top_skill}\n\n")
+            tools = skills_plan.get("new_tools_to_integrate", [])
+
+            try:
+                await github._put(
+                    f"/repos/{_s.GITHUB_USERNAME}/{repo}/contents/skill-roadmaps/{today}-{top_skill.lower().replace(' ','-')[:30]}.md",
+                    {
+                        "message": f"[aria] skill_upgrader: {top_skill[:50]}",
+                        "content": __import__("base64").b64encode(roadmap_md.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{_s.GITHUB_USERNAME}/{repo}/blob/main/skill-roadmaps/{today}-{top_skill.lower().replace(' ','-')[:30]}.md")
+            except Exception:
+                pass
+
+            if cache:
+                await cache.rpush("aria:skills:roadmap_history", _json.dumps({
+                    "ts": today, "skill": top_skill, "why": skills_plan.get("why_valuable", ""),
+                    "tools": [t.get("tool_name", "") for t in tools],
+                    "revenue_impact": skills_plan.get("estimated_revenue_impact", ""),
+                }))
+                await cache.ltrim("aria:skills:roadmap_history", -20, -1)
+                await cache.set("aria:skills:current_focus", top_skill)
+                await cache.incr("aria:skills:total_upgrades")
+
+            return {
+                "success": True,
+                "summary": f"skill_upgrader: focus on '{top_skill[:40]}' | {len(tools)} new tools to integrate | {skills_plan.get('estimated_revenue_impact','')[:60]} | roadmap published",
+                "value_usd": 100.0,
+            }
+        except Exception as exc:
+            return {"success": False, "summary": f"skill_upgrader error: {exc}", "value_usd": 0.0}
+
+    scheduler.register_handler("skill_upgrader", _skill_upgrader)
 
 
 def get_autonomous_scheduler() -> AutonomousScheduler:

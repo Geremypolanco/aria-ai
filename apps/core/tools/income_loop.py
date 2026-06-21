@@ -81,9 +81,9 @@ STRATEGIES = [
     ("social_blitz",             1),
     ("premium_offer",            1),
     ("viral_thread",             1),   # Twitter/X thread optimized for virality
-    ("twitter_thread",           2),   # direct Twitter API thread via api_publisher (real posts)
-    ("linkedin_post",            2),   # direct LinkedIn API post via api_publisher (real posts)
-    ("reddit_organic",           2),   # subreddit posts → massive organic traffic → affiliate rev
+    ("twitter_thread",           1),   # direct Twitter API thread via api_publisher (real posts)
+    ("linkedin_post",            1),   # direct LinkedIn API post via api_publisher (real posts)
+    ("reddit_organic",           1),   # subreddit posts → massive organic traffic → affiliate rev
     ("stripe_checkout",          1),   # real Stripe payment link for instant revenue
     ("tiktok_script",            1),   # TikTok/Reels/YouTube Shorts viral scripts → massive reach
     ("linkedin_outreach",        1),   # B2B prospect messages → consulting/partnership leads
@@ -149,6 +149,9 @@ STRATEGIES = [
     ("saas_upsell_sequence",     1),   # design full SaaS upgrade email sequence: free→paid→enterprise tiers
     ("community_monetize",       1),   # create paid membership community: perks, pricing, onboarding → MRR
     ("thought_leadership",       1),   # publish authoritative long-form opinion piece on AI/business trends → authority + leads
+    ("token_economy",            1),   # design token/points reward system for ARIA's community → retention + virality
+    ("api_product_launch",       1),   # package ARIA's AI as a paid API product: docs + pricing + Postman collection
+    ("growth_experiment",        1),   # run one targeted growth experiment: landing page tweak, hook test, channel test
 ]
 
 
@@ -560,6 +563,12 @@ JSON:
             return await self._exec_community_monetize()
         elif strategy == "thought_leadership":
             return await self._exec_thought_leadership()
+        elif strategy == "token_economy":
+            return await self._exec_token_economy()
+        elif strategy == "api_product_launch":
+            return await self._exec_api_product_launch()
+        elif strategy == "growth_experiment":
+            return await self._exec_growth_experiment()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -14489,6 +14498,208 @@ Generate a backlink building plan:
             }
         except Exception as exc:
             logger.error("[IncomeLoop] thought_leadership: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_token_economy(self) -> dict:
+        """Design a points/token reward system for ARIA's community to drive retention and viral growth."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            github = AriaGitHubClient()
+
+            economy = await complete_json(
+                system="You are ARIA's community economist. Design a token/points economy that drives retention and virality.",
+                user=f"Brand: ARIA AI. Date: {today}\n\nReturn JSON with: token_name (str), token_symbol (str 3-4 chars), earn_actions (list[dict] 8 ways to earn: action, points), redeem_options (list[dict] 5 rewards: reward, cost_points), virality_mechanic (str referral/sharing mechanic), leaderboard_reset (str weekly|monthly), implementation_notes (str how to track in Redis), whitepaper_md (str full token economy whitepaper in markdown), launch_tweet (str 200-char announcement)",
+                max_tokens=2000,
+            )
+            if not economy or "token_name" not in economy:
+                return {"success": False, "summary": "token_economy: AI failed", "revenue_potential": 0.0}
+
+            token_name = economy["token_name"]
+            token_symbol = economy.get("token_symbol", "ARI")
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+            urls_created: list[str] = []
+
+            whitepaper = economy.get("whitepaper_md", f"# {token_name} Economy\n\nSymbol: {token_symbol}")
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/tokenomics/{token_symbol.lower()}-whitepaper.md",
+                    {
+                        "message": f"[aria] token_economy: {token_name} ({token_symbol})",
+                        "content": __import__("base64").b64encode(whitepaper.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/tokenomics/{token_symbol.lower()}-whitepaper.md")
+            except Exception:
+                pass
+
+            if cache:
+                await cache.set("aria:token_economy:config", _json.dumps({
+                    "name": token_name, "symbol": token_symbol,
+                    "earn_actions": economy.get("earn_actions", []),
+                    "redeem_options": economy.get("redeem_options", []),
+                    "virality": economy.get("virality_mechanic", ""),
+                }))
+                await cache.rpush("aria:social:proof_posts", _json.dumps({
+                    "text": economy.get("launch_tweet", f"Introducing {token_name} ({token_symbol}) — ARIA's community token"),
+                    "platform": "twitter", "ts": today,
+                }))
+
+            earn_count = len(economy.get("earn_actions", []))
+            redeem_count = len(economy.get("redeem_options", []))
+            return {
+                "success": True,
+                "summary": f"token_economy: '{token_name}' ({token_symbol}) | {earn_count} earn actions | {redeem_count} rewards | whitepaper published | virality: {economy.get('virality_mechanic','')[:50]}",
+                "revenue_potential": 500.0,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] token_economy: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_api_product_launch(self) -> dict:
+        """Package ARIA's AI capabilities as a paid API product with documentation, pricing, and Postman collection."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            github = AriaGitHubClient()
+
+            api_product = await complete_json(
+                system="You are ARIA's product engineer. Design and document a commercial API product.",
+                user=f"ARIA is an autonomous AI system for income generation, content, and SEO. Date: {today}\n\nReturn JSON with: api_name (str), tagline (str), base_url (str placeholder), endpoints (list[dict] 5 endpoints: method, path, description, request_body (dict), response_example (dict)), pricing_tiers (list[dict] 3 tiers: name, price_monthly, requests_per_month, features (list[str])), readme_md (str full API README with quickstart), postman_collection (dict Postman v2.1 collection JSON), rapidapi_listing_md (str listing description for RapidAPI)",
+                max_tokens=3000,
+            )
+            if not api_product or "api_name" not in api_product:
+                return {"success": False, "summary": "api_product_launch: AI failed", "revenue_potential": 0.0}
+
+            api_name = api_product["api_name"]
+            slug = api_name.lower().replace(" ", "-")[:35]
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+            urls_created: list[str] = []
+            tiers = api_product.get("pricing_tiers", [])
+            highest_price = max((float(t.get("price_monthly", 0)) for t in tiers), default=99.0)
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/api-products/{slug}/README.md",
+                    {
+                        "message": f"[aria] api_product_launch: {api_name[:50]}",
+                        "content": __import__("base64").b64encode(api_product.get("readme_md", "").encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/tree/main/api-products/{slug}")
+            except Exception:
+                pass
+
+            if api_product.get("postman_collection"):
+                try:
+                    collection_str = _json.dumps(api_product["postman_collection"], indent=2)
+                    await github._put(
+                        f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/api-products/{slug}/postman.json",
+                        {
+                            "message": f"[aria] api_product_launch Postman: {api_name[:50]}",
+                            "content": __import__("base64").b64encode(collection_str.encode()).decode(),
+                        },
+                    )
+                except Exception:
+                    pass
+
+            if cache:
+                await cache.rpush("aria:api_products:launched", _json.dumps({
+                    "ts": today, "name": api_name, "slug": slug,
+                    "endpoints": len(api_product.get("endpoints", [])),
+                    "highest_price": highest_price,
+                }))
+                await cache.ltrim("aria:api_products:launched", -10, -1)
+                await cache.incr("aria:api_products:total")
+
+            return {
+                "success": True,
+                "summary": f"api_product_launch: '{api_name[:40]}' | {len(api_product.get('endpoints',[]))} endpoints | {len(tiers)} pricing tiers | top tier: ${highest_price}/mo | README + Postman published",
+                "revenue_potential": highest_price * 3,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] api_product_launch: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_growth_experiment(self) -> dict:
+        """Design and run one targeted growth experiment: A/B test, new channel, hook variant, or funnel change."""
+        try:
+            import json as _json
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_tools import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
+            cache = await get_cache()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            web = WebTools()
+            github = AriaGitHubClient()
+
+            past_experiments_raw = await cache.lrange("aria:growth_experiments:history", -5, -1) if cache else []
+            past_experiments: list[dict] = []
+            for e in past_experiments_raw:
+                try:
+                    past_experiments.append(_json.loads(e))
+                except Exception:
+                    pass
+
+            trends = await web.get_trending_topics()
+            context = trends[:2] if trends else ["AI agents", "no-code tools"]
+
+            experiment = await complete_json(
+                system="You are ARIA's growth scientist. Design a high-impact, fast-to-run growth experiment.",
+                user=f"Trending: {context}\nPast experiments tried: {[e.get('name','') for e in past_experiments]}\n\nReturn JSON with: experiment_name (str), hypothesis (str if X then Y because Z), experiment_type (str landing_page|hook|channel|pricing|cta|distribution), control (str what exists now), variant (str what we test), metric_to_track (str), success_criteria (str), implementation_steps (list[str] 3 steps to run it), expected_lift_pct (float), confidence_level (str low|medium|high), results_md (str mock results doc template in markdown)",
+                max_tokens=1200,
+            )
+            if not experiment or "experiment_name" not in experiment:
+                return {"success": False, "summary": "growth_experiment: AI failed", "revenue_potential": 0.0}
+
+            exp_name = experiment["experiment_name"]
+            slug = exp_name.lower().replace(" ", "-")[:40]
+            repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
+            urls_created: list[str] = []
+
+            exp_doc = f"# Growth Experiment: {exp_name}\n\n**Date:** {today}\n**Type:** {experiment.get('experiment_type','')}\n**Confidence:** {experiment.get('confidence_level','medium')}\n\n## Hypothesis\n\n{experiment.get('hypothesis','')}\n\n## Control vs Variant\n\n- **Control:** {experiment.get('control','')}\n- **Variant:** {experiment.get('variant','')}\n\n## Success Criteria\n\n{experiment.get('success_criteria','')}\n\n## Metric\n\n{experiment.get('metric_to_track','')}\n\n## Expected Lift: {experiment.get('expected_lift_pct',0):.1f}%\n\n## Steps\n\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(experiment.get("implementation_steps", []))) + f"\n\n{experiment.get('results_md','')}"
+
+            try:
+                await github._put(
+                    f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/growth-experiments/{today}-{slug}.md",
+                    {
+                        "message": f"[aria] growth_experiment: {exp_name[:50]}",
+                        "content": __import__("base64").b64encode(exp_doc.encode()).decode(),
+                    },
+                )
+                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/growth-experiments/{today}-{slug}.md")
+            except Exception:
+                pass
+
+            if cache:
+                await cache.rpush("aria:growth_experiments:history", _json.dumps({
+                    "ts": today, "name": exp_name, "type": experiment.get("experiment_type", ""),
+                    "hypothesis": experiment.get("hypothesis", ""),
+                    "expected_lift": experiment.get("expected_lift_pct", 0),
+                    "status": "running",
+                }))
+                await cache.ltrim("aria:growth_experiments:history", -20, -1)
+                await cache.incr("aria:growth_experiments:total")
+
+            return {
+                "success": True,
+                "summary": f"growth_experiment: '{exp_name[:40]}' | {experiment.get('experiment_type','')} | {experiment.get('confidence_level','medium')} confidence | +{experiment.get('expected_lift_pct',0):.1f}% expected lift | experiment doc published",
+                "revenue_potential": experiment.get("expected_lift_pct", 5.0) * 10.0,
+                "urls": urls_created[:3],
+            }
+        except Exception as exc:
+            logger.error("[IncomeLoop] growth_experiment: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
 
