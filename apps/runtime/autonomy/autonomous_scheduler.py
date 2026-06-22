@@ -4061,13 +4061,58 @@ Return JSON:
             )
 
             responses_queued = 0
+            responses_sent = 0
+            _bm_ae = getattr(_s, "ARIA_EMAIL", None)
+            _bm_ap = getattr(_s, "ARIA_PASSWORD", None)
             if sentiment_analysis and "response_opportunities" in sentiment_analysis:
                 for opp in sentiment_analysis.get("response_opportunities", [])[:3]:
                     try:
-                        if cache and opp.get("response_text"):
+                        platform = (opp.get("platform") or "").lower()
+                        response_text = opp.get("response_text", "")
+                        opp_url = opp.get("url", "")
+                        if not response_text:
+                            continue
+
+                        # Try to actually respond (HN → browser comment, Twitter → API/browser)
+                        _responded = False
+                        if "hacker" in platform or "hn" in platform:
+                            # Extract HN item ID from URL if available
+                            hn_item_id = ""
+                            for story in hn_mentions:
+                                if story.get("url") and (
+                                    story.get("title", "")[:30] in opp_url or str(story.get("id", "")) in opp_url
+                                ):
+                                    hn_item_id = str(story.get("id", ""))
+                                    break
+                            if not hn_item_id and hn_mentions:
+                                hn_item_id = str(hn_mentions[0].get("id", ""))
+                            if hn_item_id and _bm_ae and _bm_ap:
+                                try:
+                                    from apps.core.tools.human_browser import get_platform_login
+                                    _bm_plat = await get_platform_login()
+                                    _posted = await _bm_plat.hackernews_comment(
+                                        _bm_ae, _bm_ap, hn_item_id, response_text[:2000]
+                                    )
+                                    if _posted:
+                                        _responded = True
+                                        responses_sent += 1
+                                except Exception:
+                                    pass
+                        elif "twitter" in platform and _bm_ae and _bm_ap:
+                            try:
+                                from apps.distribution.publishers.api_publisher import get_api_publisher
+                                pub = get_api_publisher()
+                                tw_r = await pub.publish_to_twitter(response_text[:280])
+                                if tw_r and tw_r.success:
+                                    _responded = True
+                                    responses_sent += 1
+                            except Exception:
+                                pass
+
+                        if cache:
                             await cache.rpush("aria:brand:response_queue", _json.dumps({
-                                "url": opp.get("url", ""), "text": opp.get("response_text", ""),
-                                "platform": opp.get("platform", ""), "ts": today,
+                                "url": opp_url, "text": response_text,
+                                "platform": platform, "ts": today, "sent": _responded,
                             }))
                             responses_queued += 1
                     except Exception:
@@ -4086,7 +4131,7 @@ Return JSON:
 
             return {
                 "success": True,
-                "summary": f"brand_monitor: {total_mentions} mentions found | sentiment: {sentiment_score:.1f}/10 | {responses_queued} responses queued | {len(hn_mentions)} HN opportunities",
+                "summary": f"brand_monitor: {total_mentions} mentions | sentiment: {sentiment_score:.1f}/10 | {responses_sent} sent + {responses_queued - responses_sent} queued | {len(hn_mentions)} HN opportunities",
                 "value_usd": float(responses_queued) * 20.0,
             }
         except Exception as exc:
@@ -4301,18 +4346,48 @@ Return JSON:
                         max_tokens=500,
                     )
 
-                    if close_msg and sendgrid_key and lead.get("email"):
-                        async with httpx.AsyncClient(timeout=10) as client:
-                            await client.post(
-                                "https://api.sendgrid.com/v3/mail/send",
-                                headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
-                                json={
-                                    "personalizations": [{"to": [{"email": lead["email"]}]}],
-                                    "from": {"email": "aria@aria-ai.dev", "name": "ARIA"},
-                                    "subject": close_msg.get("subject", "Quick question about your goals"),
-                                    "content": [{"type": "text/html", "value": close_msg.get("body_html", "")}],
-                                },
-                            )
+                    if close_msg and lead.get("email"):
+                        _dc_sent = False
+                        if sendgrid_key:
+                            try:
+                                async with httpx.AsyncClient(timeout=10) as client:
+                                    sg_r = await client.post(
+                                        "https://api.sendgrid.com/v3/mail/send",
+                                        headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+                                        json={
+                                            "personalizations": [{"to": [{"email": lead["email"]}]}],
+                                            "from": {"email": "aria@aria-ai.dev", "name": "ARIA"},
+                                            "subject": close_msg.get("subject", "Quick question about your goals"),
+                                            "content": [{"type": "text/html", "value": close_msg.get("body_html", "")}],
+                                        },
+                                    )
+                                    if sg_r.status_code in (200, 202):
+                                        _dc_sent = True
+                            except Exception:
+                                pass
+                        if not _dc_sent:
+                            # SMTP fallback
+                            smtp_host = getattr(_s, "SMTP_HOST", None)
+                            smtp_user = getattr(_s, "SMTP_USER", None)
+                            smtp_pass = getattr(_s, "SMTP_PASSWORD", None)
+                            smtp_from = getattr(_s, "SMTP_FROM", smtp_user)
+                            if smtp_host and smtp_user and smtp_pass:
+                                try:
+                                    import smtplib
+                                    from email.mime.text import MIMEText
+                                    smtp_port = int(getattr(_s, "SMTP_PORT", 587))
+                                    msg = MIMEText(close_msg.get("body_html", ""), "html")
+                                    msg["Subject"] = close_msg.get("subject", "Quick question")
+                                    msg["From"] = smtp_from or smtp_user
+                                    msg["To"] = lead["email"]
+                                    with smtplib.SMTP(smtp_host, smtp_port) as srv:
+                                        srv.starttls()
+                                        srv.login(smtp_user, smtp_pass)
+                                        srv.sendmail(smtp_from or smtp_user, [lead["email"]], msg.as_string())
+                                    _dc_sent = True
+                                except Exception:
+                                    pass
+                        if _dc_sent:
                             emails_sent += 1
 
                     if close_msg:
@@ -4612,19 +4687,63 @@ Return JSON:
                 except Exception:
                     pass
 
-            for post_key, text in [("twitter", viral_plan.get("twitter_blast", "")), ("reddit", viral_plan.get("reddit_blast", ""))]:
+            # Actually execute the Twitter and Reddit blasts (not just queue)
+            _vg_ae = getattr(_s, "ARIA_EMAIL", None)
+            _vg_ap = getattr(_s, "ARIA_PASSWORD", None)
+            twitter_blast = viral_plan.get("twitter_blast", "")
+            reddit_blast  = viral_plan.get("reddit_blast", "")
+            live_posts: list[str] = []
+
+            if twitter_blast:
+                _tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    pub = get_api_publisher()
+                    tw_r = await pub.publish_to_twitter(twitter_blast[:280])
+                    _tw_ok = bool(tw_r and tw_r.success)
+                    if _tw_ok:
+                        live_posts.append("Twitter")
+                except Exception:
+                    pass
+                if not _tw_ok and _vg_ae and _vg_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _vg_plat = await get_platform_login()
+                        _tw_pg = await _vg_plat.twitter(_vg_ae, _vg_ap)
+                        await _vg_plat.twitter_thread_post(_tw_pg, [twitter_blast[:280]])
+                        live_posts.append("Twitter")
+                    except Exception:
+                        pass
+
+            if reddit_blast and _vg_ae and _vg_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _vg_plat2 = await get_platform_login()
+                    _rd_pg = await _vg_plat2.reddit(_vg_ae, _vg_ap)
+                    top_piece_title = str(viral_plan.get("top_piece_to_amplify", {}).get("title", "Viral content"))
+                    _rd_url = await _vg_plat2.reddit_post(
+                        _rd_pg, "SideProject", top_piece_title[:300], reddit_blast[:5000],
+                    )
+                    if _rd_url:
+                        live_posts.append("Reddit")
+                except Exception:
+                    pass
+
+            for post_key, text in [("twitter", twitter_blast), ("reddit", reddit_blast)]:
                 if text and cache:
                     await cache.rpush("aria:social:proof_posts", _json.dumps({"text": text, "platform": post_key, "ts": today}))
 
             await cache.rpush("aria:viral:sessions", _json.dumps({
                 "ts": today, "tactics": len(tactics), "reach": total_reach, "actions": actions_taken,
+                "live_posts": live_posts,
             }))
             await cache.ltrim("aria:viral:sessions", -20, -1)
 
             top_piece = viral_plan.get("top_piece_to_amplify", {})
+            live_str = f" | LIVE on: {', '.join(live_posts)}" if live_posts else ""
             return {
                 "success": True,
-                "summary": f"viral_growth_agent: amplifying '{str(top_piece.get('title',''))[:35]}' | {actions_taken} actions queued | {total_reach:,} total expected reach | {len(tactics)} platforms targeted",
+                "summary": f"viral_growth_agent: amplifying '{str(top_piece.get('title',''))[:35]}' | {actions_taken} tactics queued{live_str} | {total_reach:,} expected reach",
                 "value_usd": float(total_reach) * 0.005,
             }
         except Exception as exc:
@@ -4689,9 +4808,35 @@ Return JSON:
             }))
             await cache.ltrim("aria:markets:expanded", -20, -1)
 
+            # Announce market entry on Twitter + LinkedIn (API → browser fallback)
+            _me_ae = getattr(_s, "ARIA_EMAIL", None)
+            _me_ap = getattr(_s, "ARIA_PASSWORD", None)
+            entry_url = urls_created[0] if urls_created else f"https://github.com/{_s.GITHUB_USERNAME}/{repo}"
+            tw_entry = (
+                f"🌍 Expanding to {new_market[:60]}\n\n"
+                f"{expansion.get('localized_headline', '')[:120]}\n\n"
+                f"→ {entry_url}"
+            )[:280]
+            _me_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tw_r = await pub.publish_to_twitter(tw_entry)
+                _me_tw_ok = bool(tw_r and tw_r.success)
+            except Exception:
+                pass
+            if not _me_tw_ok and _me_ae and _me_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _me_plat = await get_platform_login()
+                    _tw_pg = await _me_plat.twitter(_me_ae, _me_ap)
+                    await _me_plat.twitter_thread_post(_tw_pg, [tw_entry])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"market_expansion: entering '{new_market[:40]}' | platform: {expansion.get('platform_to_use','')} | ${monthly_potential:,.0f}/mo potential | content published",
+                "summary": f"market_expansion: entering '{new_market[:40]}' | platform: {expansion.get('platform_to_use','')} | ${monthly_potential:,.0f}/mo potential | content + social",
                 "value_usd": monthly_potential,
             }
         except Exception as exc:

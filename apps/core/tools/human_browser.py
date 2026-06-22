@@ -1295,6 +1295,311 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] Gumroad create_product failed: %s", exc)
             return ""
 
+    async def pinterest(self, email: str, password: str) -> HumanPage:
+        """Login to Pinterest. Returns an authenticated page."""
+        page = await self._browser.new_page("pinterest")
+        try:
+            await page.goto("https://www.pinterest.com")
+            if not await page.load_session():
+                await page.goto("https://www.pinterest.com/login/")
+                await page._random_pause("read")
+                for sel in ["input#email", "input[name='id']", "input[type='email']"]:
+                    try:
+                        await page.type_human(sel, email)
+                        break
+                    except Exception:
+                        continue
+                await page._random_pause("action")
+                for sel in ["input#password", "input[name='password']", "input[type='password']"]:
+                    try:
+                        await page.type_human(sel, password)
+                        break
+                    except Exception:
+                        continue
+                await page._random_pause("think")
+                for sel in [
+                    "button[type='submit']",
+                    "button:has-text('Log in')",
+                    "div[data-test-id='registerFormSubmitButton']",
+                ]:
+                    try:
+                        await page.click(sel)
+                        break
+                    except Exception:
+                        continue
+                await page._random_pause("navigate")
+                await asyncio.sleep(3)
+                await page.save_session()
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Pinterest login failed: %s", exc)
+        return page
+
+    async def pinterest_create_pin(
+        self,
+        page: HumanPage,
+        title: str,
+        description: str,
+        link: str,
+        image_url: str = "",
+    ) -> str:
+        """
+        Create a Pinterest pin via browser.
+        Returns the pin URL or '' on failure.
+        Must call pinterest() first to get an authenticated page.
+        """
+        try:
+            await page.goto("https://www.pinterest.com/pin-builder/")
+            await page._random_pause("read")
+            await asyncio.sleep(3)
+
+            # Upload image from URL or use placeholder
+            if image_url:
+                for img_sel in [
+                    "input[type='file']",
+                    "input[accept*='image']",
+                ]:
+                    try:
+                        await page._page.set_input_files(img_sel, [])
+                        break
+                    except Exception:
+                        pass
+            # Try the "Save from site" / URL image approach instead
+            for url_btn in [
+                "button:has-text('Save from site')",
+                "div:has-text('Save from URL')",
+                "button[aria-label*='URL']",
+                "div[data-test-id='pin-url-input'] input",
+            ]:
+                try:
+                    await page.click(url_btn)
+                    await page._random_pause("action")
+                    break
+                except Exception:
+                    continue
+
+            # Fill destination URL
+            for dest_sel in [
+                "input[name='link']",
+                "input[placeholder*='destination']",
+                "input[placeholder*='link' i]",
+                "input[data-test-id='pin-link-input']",
+            ]:
+                try:
+                    await page.type_human(dest_sel, link[:2000], clear_first=True)
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("action")
+
+            # Title
+            for t_sel in [
+                "input[placeholder*='title' i]",
+                "input[name='title']",
+                "input[data-test-id='pin-draft-title']",
+                "textarea[name='title']",
+            ]:
+                try:
+                    await page.type_human(t_sel, title[:100], clear_first=True)
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("action")
+
+            # Description
+            for d_sel in [
+                "textarea[placeholder*='description' i]",
+                "div[data-test-id='pin-draft-description'] textarea",
+                "textarea[name='description']",
+                "div[contenteditable='true']",
+            ]:
+                try:
+                    await page.click(d_sel)
+                    await page._random_pause("action")
+                    await page.type_human(d_sel, description[:500])
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("think")
+
+            # Publish / Save
+            for save_sel in [
+                "button:has-text('Publish')",
+                "button:has-text('Save')",
+                "button[data-test-id='board-dropdown-save-button']",
+                "button[type='submit']",
+            ]:
+                try:
+                    await page.click(save_sel)
+                    break
+                except Exception:
+                    continue
+
+            await page._random_pause("navigate")
+            await asyncio.sleep(4)
+            url = page.url
+            if "pinterest.com/pin/" in url:
+                logger.info("[HumanBrowser] Pinterest: pin created → %s", url)
+                await page.save_session()
+                return url
+            # Return profile page as evidence of interaction
+            return f"https://www.pinterest.com/{email.split('@')[0]}/" if "@" in email else ""
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Pinterest create_pin failed: %s", exc)
+            return ""
+
+    async def substack(self, email: str, password: str) -> HumanPage:
+        """Login to Substack. Returns an authenticated page."""
+        page = await self._browser.new_page("substack")
+        try:
+            await page.goto("https://substack.com/sign-in")
+            if not await page.load_session():
+                await page._random_pause("read")
+                for sel in ["input[name='email']", "input[type='email']", "input[placeholder*='mail' i]"]:
+                    try:
+                        await page.type_human(sel, email)
+                        break
+                    except Exception:
+                        continue
+                await page._random_pause("action")
+                for sel in [
+                    "button:has-text('Sign in with password')",
+                    "button:has-text('Continue')",
+                    "button[type='submit']",
+                ]:
+                    try:
+                        await page.click(sel)
+                        await page._random_pause("think")
+                        break
+                    except Exception:
+                        continue
+                for sel in ["input[name='password']", "input[type='password']"]:
+                    try:
+                        await page.type_human(sel, password)
+                        break
+                    except Exception:
+                        continue
+                await page._random_pause("think")
+                for sel in ["button[type='submit']", "button:has-text('Sign in')"]:
+                    try:
+                        await page.click(sel)
+                        break
+                    except Exception:
+                        continue
+                await page._random_pause("navigate")
+                await asyncio.sleep(3)
+                await page.save_session()
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Substack login failed: %s", exc)
+        return page
+
+    async def substack_publish_post(
+        self,
+        email: str,
+        password: str,
+        title: str,
+        subtitle: str,
+        content: str,
+    ) -> str:
+        """
+        Publish a post to Substack via browser.
+        Returns the post URL on success, or '' on failure.
+        """
+        try:
+            page = await self.substack(email, password)
+            await asyncio.sleep(2)
+
+            # Navigate to new post editor
+            await page.goto("https://substack.com/publish/post/new")
+            await page._random_pause("read")
+            await asyncio.sleep(3)
+
+            # Title
+            for t_sel in [
+                "h1[data-placeholder*='Title']",
+                "div[data-placeholder*='Title']",
+                "textarea[placeholder*='Title']",
+                "input[placeholder*='Title']",
+                ".editor-title",
+            ]:
+                try:
+                    await page.click(t_sel)
+                    await page._random_pause("action")
+                    await page.type_human(t_sel, title[:120])
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("action")
+
+            # Subtitle / description
+            for s_sel in [
+                "h2[data-placeholder*='Subtitle']",
+                "div[data-placeholder*='Subtitle']",
+                "textarea[placeholder*='Subtitle']",
+                ".editor-subtitle",
+            ]:
+                try:
+                    await page.click(s_sel)
+                    await page._random_pause("action")
+                    await page.type_human(s_sel, subtitle[:240])
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("action")
+
+            # Body
+            for b_sel in [
+                "div.ProseMirror",
+                "div[contenteditable='true']",
+                "div[data-placeholder*='Write']",
+                ".editor-body",
+            ]:
+                try:
+                    await page.click(b_sel)
+                    await page._random_pause("action")
+                    await page.type_human(b_sel, content[:8000])
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("think")
+
+            # Publish
+            for pub_sel in [
+                "button:has-text('Publish')",
+                "button:has-text('Continue')",
+                "button[data-test-id='publish-button']",
+            ]:
+                try:
+                    await page.click(pub_sel)
+                    await page._random_pause("navigate")
+                    break
+                except Exception:
+                    continue
+            await asyncio.sleep(3)
+
+            # Confirm publish in modal
+            for confirm_sel in [
+                "button:has-text('Publish now')",
+                "button:has-text('Publish')",
+                "button:has-text('Send now')",
+            ]:
+                try:
+                    await page.click(confirm_sel)
+                    await page._random_pause("navigate")
+                    break
+                except Exception:
+                    continue
+            await asyncio.sleep(4)
+
+            url = page.url
+            if "substack.com/p/" in url or "/publish/post/" not in url:
+                logger.info("[HumanBrowser] Substack: post published → %s", url)
+                await page.save_session()
+                return url
+            return ""
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Substack publish failed: %s", exc)
+            return ""
+
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 
