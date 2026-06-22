@@ -5941,7 +5941,7 @@ JSON:
                     except Exception as _le:
                         logger.debug("[IncomeLoop] LemonSqueezy: %s", _le)
 
-            # Try Gumroad as last resort
+            # Try Gumroad API as last resort
             if not urls_created:
                 if settings.GUMROAD_TOKEN:
                     try:
@@ -5958,6 +5958,23 @@ JSON:
                             platform_used = "Gumroad"
                     except Exception as _ge:
                         logger.debug("[IncomeLoop] Gumroad: %s", _ge)
+
+            # Gumroad browser fallback when no API key
+            if not urls_created:
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _gum_page = await _plat.gumroad(_ae, _ap)
+                        _full_desc = product_desc + "\n\n" + "\n".join(f"✅ {f}" for f in features[:5])
+                        _gum_url = await _plat.gumroad_create_product(_gum_page, product_name, price_cents, _full_desc)
+                        if _gum_url:
+                            urls_created.append(_gum_url)
+                            platform_used = "Gumroad (browser)"
+                    except Exception as _gbe:
+                        logger.debug("[IncomeLoop] Gumroad browser: %s", _gbe)
 
             # Always publish product to GitHub with payment link
             if settings.GITHUB_TOKEN:
@@ -6003,40 +6020,64 @@ JSON:
             buy_url = urls_created[0] if urls_created else ""
             distributed_to: list[str] = []
 
-            # Promote the product on Twitter
+            # Promote the product on Twitter (API → browser fallback)
+            _sc_ae = getattr(settings, "ARIA_EMAIL", None)
+            _sc_ap = getattr(settings, "ARIA_PASSWORD", None)
+            features_str = " | ".join(features[:3]) if features else ""
+            tw_text = (
+                f"🛒 NEW: {product_name} — {price_display}\n\n"
+                f"{tagline}\n\n"
+                + (f"✅ {features_str}\n\n" if features_str else "")
+                + ("👉 Get it now: " + buy_url if buy_url else "")
+            )[:280]
+            _sc_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
-                features_str = " | ".join(features[:3]) if features else ""
-                tw_text = (
-                    f"🛒 NEW: {product_name} — {price_display}\n\n"
-                    f"{tagline}\n\n"
-                    + (f"✅ {features_str}\n\n" if features_str else "")
-                    + ("👉 Get it now: " + buy_url if buy_url else "")
-                )
-                tw_result = await pub.publish_to_twitter(tw_text[:280])
+                tw_result = await pub.publish_to_twitter(tw_text)
                 if tw_result and tw_result.success:
                     distributed_to.append("Twitter")
+                    _sc_tw_ok = True
             except Exception:
                 pass
+            if not _sc_tw_ok and _sc_ae and _sc_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_sc_ae, _sc_ap)
+                    if await _plat.twitter_thread_post(_tw_page, [tw_text]):
+                        distributed_to.append("Twitter")
+                except Exception:
+                    pass
 
-            # Promote on LinkedIn
+            # Promote on LinkedIn (API → browser fallback)
+            li_text = (
+                f"🚀 Just launched: {product_name} at {price_display}\n\n"
+                f"{tagline}\n\n"
+                f"{product_desc[:400]}\n\n"
+                + "\n".join(f"✅ {f}" for f in features[:4])
+            )
+            if buy_url:
+                li_text += f"\n\n👉 {buy_url}"
+            _sc_li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
-                li_text = (
-                    f"🚀 Just launched: {product_name} at {price_display}\n\n"
-                    f"{tagline}\n\n"
-                    f"{product_desc[:400]}\n\n"
-                    + "\n".join(f"✅ {f}" for f in features[:4])
-                )
-                if buy_url:
-                    li_text += f"\n\n👉 {buy_url}"
                 li_result = await pub.publish_to_linkedin(li_text[:1300])
                 if li_result and li_result.success:
                     distributed_to.append("LinkedIn")
+                    _sc_li_ok = True
             except Exception:
                 pass
+            if not _sc_li_ok and _sc_ae and _sc_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _li_page = await _plat.linkedin(_sc_ae, _sc_ap)
+                    if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
+                        distributed_to.append("LinkedIn")
+                except Exception:
+                    pass
 
             logger.info("[IncomeLoop] stripe_checkout: '%s' %s %s", product_name, price_display, platform_used)
             return {
