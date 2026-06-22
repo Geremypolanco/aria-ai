@@ -3747,7 +3747,8 @@ Return JSON:
             github = AriaGitHubClient()
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-            trends = await web.get_trending_topics()
+            _hn = await web.get_hacker_news_trending(limit=5)
+            trends = [s.get("title", "") for s in (_hn.get("stories") or [])[:5] if s.get("title")]
             topics = trends[:3] if trends else ["AI automation", "passive income online", "build AI products"]
 
             cluster = await complete_json(
@@ -4465,7 +4466,8 @@ Return JSON:
                 except Exception:
                     pass
 
-            trends = await web.get_trending_topics()
+            _hn2 = await web.get_hacker_news_trending(limit=5)
+            trends = [s.get("title", "") for s in (_hn2.get("stories") or [])[:5] if s.get("title")]
 
             viral_plan = await complete_json(
                 system="You are ARIA's viral growth strategist. Identify what to amplify and how to go viral.",
