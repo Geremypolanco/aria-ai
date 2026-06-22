@@ -13015,9 +13015,37 @@ Return JSON:
                     "ts": today, "url": urls_created[0] if urls_created else "", "ask": funding_ask
                 }), ttl_seconds=86400 * 30)
 
+            # ── LinkedIn "building in public" post about the pitch deck ─────────
+            _vc_ae = getattr(settings, "ARIA_EMAIL", None)
+            _vc_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _vc_url = urls_created[0] if urls_created else ""
+            li_vc = (
+                f"Building an autonomous AI business — here's our investor pitch:\n\n"
+                f"{one_liner}\n\n"
+                f"Seeking ${funding_ask:,.0f} at ${valuation:,.0f} valuation\n\n"
+                f"Deck: {_vc_url}"
+            )[:1300]
+            _vc_li_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _vc_pub = get_api_publisher()
+                _vc_li_r = await _vc_pub.publish_to_linkedin(li_vc)
+                if _vc_li_r and _vc_li_r.success:
+                    _vc_li_ok = True
+            except Exception:
+                pass
+            if not _vc_li_ok and _vc_ae and _vc_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _vc_plat = await get_platform_login()
+                    _vc_li_pg = await _vc_plat.linkedin(_vc_ae, _vc_ap)
+                    await _vc_plat.linkedin_post(_vc_li_pg, li_vc)
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"vc_pitch_deck: 10 slides | ${funding_ask:,.0f} ask | '{one_liner[:60]}'",
+                "summary": f"vc_pitch_deck: 10 slides | ${funding_ask:,.0f} ask | '{one_liner[:60]}' | LinkedIn post published",
                 "revenue_potential": float(funding_ask) * 0.001,  # 0.1% chance of funding
                 "urls": urls_created[:2],
             }
