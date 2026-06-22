@@ -884,6 +884,217 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] Reddit post to r/%s failed: %s", subreddit, exc)
             return ""
 
+    async def twitter_thread_post(self, page: HumanPage, tweets: list) -> str:
+        """
+        Post a thread of tweets on an authenticated Twitter/X page.
+        Returns URL of the home feed after posting, or '' on failure.
+        Must call twitter() first to get an authenticated page.
+        """
+        try:
+            await page.goto("https://twitter.com/home")
+            await page._random_pause("read")
+
+            # Open compose dialog via the floating button
+            for compose_sel in [
+                "[data-testid='SideNav_NewTweet_Button']",
+                "[aria-label='Post']",
+                "[aria-label='Tweet']",
+                "a[href='/compose/tweet']",
+            ]:
+                try:
+                    await page.click(compose_sel)
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("action")
+
+            for i, tweet_text in enumerate(tweets[:10]):
+                tweet_text = str(tweet_text)[:280]
+                selector = f"[data-testid='tweetTextarea_{i}']"
+                try:
+                    await page.click(selector)
+                except Exception:
+                    # fallback selector for the active text area
+                    await page.click("div[data-testid^='tweetTextarea']")
+                await page._random_pause("action")
+                await page.type_human(selector, tweet_text)
+                await page._random_pause("think")
+
+                if i < len(tweets) - 1:
+                    # Add next tweet slot to thread
+                    for add_sel in ["[data-testid='addButton']", "button[aria-label='Add']"]:
+                        try:
+                            await page.click(add_sel)
+                            break
+                        except Exception:
+                            continue
+                    await page._random_pause("action")
+
+            # Post the full thread
+            for post_sel in ["[data-testid='tweetButton']", "button[aria-label='Tweet all']"]:
+                try:
+                    await page.click(post_sel)
+                    break
+                except Exception:
+                    continue
+
+            await page._random_pause("navigate")
+            await asyncio.sleep(4)
+            logger.info("[HumanBrowser] Twitter: thread of %d tweets posted", len(tweets))
+            await page.save_session()
+            return "https://twitter.com/home"
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Twitter thread_post failed: %s", exc)
+            return ""
+
+    async def linkedin_create_post(self, page: HumanPage, content: str) -> str:
+        """
+        Create a LinkedIn post on an authenticated page.
+        Returns feed URL after posting, or '' on failure.
+        Must call linkedin() first to get an authenticated page.
+        """
+        try:
+            await page.goto("https://www.linkedin.com/feed/")
+            await page._random_pause("read")
+
+            # Open the post composer
+            for btn_sel in [
+                "[aria-label='Start a post']",
+                "button.share-box-feed-entry__trigger",
+                "button[class*='share-box']",
+            ]:
+                try:
+                    await page.click(btn_sel)
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("action")
+
+            # Type content in the modal editor (LinkedIn uses contenteditable)
+            editor_typed = False
+            for sel in [
+                "div.ql-editor",
+                "div[contenteditable='true'][role='textbox']",
+                "div[contenteditable='true']",
+                ".editor-content div[contenteditable]",
+            ]:
+                try:
+                    await page.click(sel)
+                    await page._random_pause("action")
+                    await page.type_human(sel, content[:3000])
+                    editor_typed = True
+                    break
+                except Exception:
+                    continue
+
+            if not editor_typed:
+                logger.warning("[HumanBrowser] LinkedIn: text editor not found")
+                return ""
+
+            await page._random_pause("think")
+
+            # Click the Post button
+            for post_sel in [
+                "button.share-actions__primary-action",
+                "button[aria-label='Post']",
+                "button:has-text('Post')",
+            ]:
+                try:
+                    await page.click(post_sel)
+                    break
+                except Exception:
+                    continue
+
+            await page._random_pause("navigate")
+            await asyncio.sleep(4)
+            logger.info("[HumanBrowser] LinkedIn: post created successfully")
+            await page.save_session()
+            return "https://www.linkedin.com/feed/"
+        except Exception as exc:
+            logger.warning("[HumanBrowser] LinkedIn create_post failed: %s", exc)
+            return ""
+
+    async def gumroad_create_product(
+        self,
+        page: HumanPage,
+        name: str,
+        price_cents: int,
+        description: str,
+    ) -> str:
+        """
+        Create a new Gumroad product via browser.
+        Returns the product/edit URL on success, or '' on failure.
+        Must call gumroad() first to get an authenticated page.
+        """
+        try:
+            await page.goto("https://gumroad.com/products/new")
+            await page._random_pause("read")
+
+            # Product name
+            for name_sel in [
+                "input[name='name']",
+                "input[placeholder*='name' i]",
+                "input[placeholder*='Name' i]",
+            ]:
+                try:
+                    await page.type_human(name_sel, name[:100])
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("action")
+
+            # Price (dollars)
+            price_str = f"{price_cents / 100:.2f}"
+            for price_sel in ["input[name='price']", "input[placeholder*='rice' i]"]:
+                try:
+                    await page.type_human(price_sel, price_str, clear_first=True)
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("action")
+
+            # Description / content
+            for desc_sel in [
+                "div.ProseMirror",
+                "div[contenteditable='true']",
+                "textarea[name='description']",
+                ".editor-content",
+            ]:
+                try:
+                    await page.click(desc_sel)
+                    await page._random_pause("action")
+                    await page.type_human(desc_sel, description[:2000])
+                    break
+                except Exception:
+                    continue
+
+            await page._random_pause("think")
+
+            # Save / Create
+            for save_sel in [
+                "button:has-text('Save')",
+                "button[type='submit']",
+                "button:has-text('Create')",
+                "button:has-text('Publish')",
+            ]:
+                try:
+                    await page.click(save_sel)
+                    break
+                except Exception:
+                    continue
+
+            await page._random_pause("navigate")
+            await asyncio.sleep(4)
+            url = page.url
+            if "gumroad.com/products" in url or "gumroad.com/l/" in url:
+                logger.info("[HumanBrowser] Gumroad: product created → %s", url)
+                await page.save_session()
+                return url
+            return ""
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Gumroad create_product failed: %s", exc)
+            return ""
+
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 

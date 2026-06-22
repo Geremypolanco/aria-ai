@@ -2742,19 +2742,34 @@ Keep the same general topic but make it significantly more valuable.""",
 
             # ── Publish LinkedIn post ─────────────────────────────────────────
             linkedin_post = campaign.get("linkedin_post", "")
+            _aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            _aria_password = getattr(settings, "ARIA_PASSWORD", None)
             if linkedin_post:
+                _li_posted = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     result = await pub.publish_to_linkedin(linkedin_post)
                     if result.success and result.url:
                         urls_created.append(result.url)
+                        _li_posted = True
                 except Exception:
                     pass
+                if not _li_posted and _aria_email and _aria_password:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _li_page = await _plat.linkedin(_aria_email, _aria_password)
+                        _li_url = await _plat.linkedin_create_post(_li_page, linkedin_post[:3000])
+                        if _li_url:
+                            urls_created.append(_li_url)
+                    except Exception:
+                        pass
 
             # ── Publish Twitter thread ────────────────────────────────────────
             tweets = campaign.get("twitter_thread", [])
             if tweets:
+                _tw_posted = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
@@ -2762,8 +2777,20 @@ Keep the same general topic but make it significantly more valuable.""",
                     result = await pub.publish_to_twitter(thread_text[:280])
                     if result.success and result.url:
                         urls_created.append(result.url)
+                        _tw_posted = True
                 except Exception:
                     pass
+                if not _tw_posted and _aria_email and _aria_password:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_aria_email, _aria_password)
+                        tweet_list = tweets if isinstance(tweets, list) else [str(tweets)]
+                        _tw_url = await _plat.twitter_thread_post(_tw_page, tweet_list[:10])
+                        if _tw_url:
+                            urls_created.append(_tw_url)
+                    except Exception:
+                        pass
 
             # ── Archive campaign to GitHub ────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")

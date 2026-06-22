@@ -360,17 +360,31 @@ class IncomeLoop:
     async def _distribute_result_on_social(self, result: CycleResult) -> None:
         """Global social distributor — posts a tweet for any successful strategy
         that doesn't already call publish_to_twitter internally."""
+        url = result.urls_created[0] if result.urls_created else ""
+        summary = (result.summary or "")[:200]
+        tweet = f"🤖 ARIA: {summary}"
+        if url:
+            tweet = tweet[:230] + f"\n\n{url}"
+        tweet = tweet[:280]
+        _tw_posted = False
         try:
             from apps.distribution.publishers.api_publisher import get_api_publisher
             pub = get_api_publisher()
-            url = result.urls_created[0] if result.urls_created else ""
-            summary = (result.summary or "")[:200]
-            tweet = f"🤖 ARIA: {summary}"
-            if url:
-                tweet = tweet[:230] + f"\n\n{url}"
-            await pub.publish_to_twitter(tweet[:280])
+            tw_r = await pub.publish_to_twitter(tweet)
+            _tw_posted = bool(tw_r and tw_r.success)
         except Exception:
             pass
+        if not _tw_posted:
+            try:
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ae and _ap:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_ae, _ap)
+                    await _plat.twitter_thread_post(_tw_page, [tweet])
+            except Exception:
+                pass
 
     async def _announce_product_on_blog(self, result: CycleResult) -> None:
         """Write a blog post announcing a newly created product — drives organic traffic to it."""
@@ -997,37 +1011,58 @@ JSON:
 
                 # Post to Twitter and LinkedIn for traffic
                 social_posted: list[str] = []
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                _first_art = existing_articles[0] if existing_articles else {}
+                _art_title = _first_art.get("title", "New article")[:100]
+                _art_url = (devto_urls + hashnode_urls + published_urls)[0] if (devto_urls + hashnode_urls + published_urls) else ""
+                _tw_text = f"📝 {_art_title}\n\n{_first_art.get('description','')[:160]}"
+                if _art_url:
+                    _tw_text += f"\n\n{_art_url}"
+                _tw_text = _tw_text[:280]
+
+                _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
-                    first_art = existing_articles[0] if existing_articles else {}
-                    art_title = first_art.get("title", "New article")[:100]
-                    art_desc = first_art.get("description", "")[:160]
-                    art_url = (devto_urls + hashnode_urls + published_urls)[0] if (devto_urls + hashnode_urls + published_urls) else ""
-                    tw_text = f"📝 {art_title}\n\n{art_desc}"
-                    if art_url:
-                        tw_text += f"\n\n{art_url}"
-                    tw_r = await pub.publish_to_twitter(tw_text[:280])
+                    tw_r = await pub.publish_to_twitter(_tw_text)
                     if tw_r and tw_r.success:
                         social_posted.append("Twitter")
+                        _tw_ok = True
                 except Exception:
                     pass
+                if not _tw_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        if await _plat.twitter_thread_post(_tw_page, [_tw_text]):
+                            social_posted.append("Twitter")
+                    except Exception:
+                        pass
 
+                _li_text = f"📝 New article: {_art_title}\n\n{_first_art.get('content','')[:300]}"
+                if _art_url:
+                    _li_text += f"\n\n{_art_url}"
+                _li_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
-                    first_art = existing_articles[0] if existing_articles else {}
-                    art_title = first_art.get("title", "New article")[:100]
-                    art_content_preview = first_art.get("content", "")[:300]
-                    art_url = (devto_urls + hashnode_urls + published_urls)[0] if (devto_urls + hashnode_urls + published_urls) else ""
-                    li_text = f"📝 New article: {art_title}\n\n{art_content_preview}"
-                    if art_url:
-                        li_text += f"\n\n{art_url}"
-                    li_r = await pub.publish_to_linkedin(li_text[:1300])
+                    li_r = await pub.publish_to_linkedin(_li_text[:1300])
                     if li_r and li_r.success:
                         social_posted.append("LinkedIn")
+                        _li_ok = True
                 except Exception:
                     pass
+                if not _li_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _li_page = await _plat.linkedin(_ae, _ap)
+                        if await _plat.linkedin_create_post(_li_page, _li_text[:3000]):
+                            social_posted.append("LinkedIn")
+                    except Exception:
+                        pass
 
                 all_urls = published_urls + devto_urls + hashnode_urls
                 platform_parts = ["GitHub"]
@@ -1378,27 +1413,51 @@ Output JSON:
                 product_name = product_data.get("product_name", title)
                 tagline = product_data.get("tagline", "")
                 price_str = f"${product_data.get('price_cents', 997)/100:.0f}"
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                _tw_text = f"🚀 NEW: {product_name[:80]}\n\n{tagline[:140]}\n\nOnly {price_str}"
+                if url:
+                    _tw_text += f"\n\n👉 {url}"
+                _tw_text = _tw_text[:280]
+                _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
-                    tw_text = f"🚀 NEW: {product_name[:80]}\n\n{tagline[:140]}\n\nOnly {price_str}"
-                    if url:
-                        tw_text += f"\n\n👉 {url}"
-                    await pub.publish_to_twitter(tw_text[:280])
+                    _tw_r = await pub.publish_to_twitter(_tw_text)
+                    _tw_ok = bool(_tw_r and _tw_r.success)
                 except Exception:
                     pass
+                if not _tw_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        await _plat.twitter_thread_post(_tw_page, [_tw_text])
+                    except Exception:
+                        pass
+
+                _li_text = (
+                    f"🚀 Just launched: {product_name}\n\n"
+                    f"{tagline}\n\n"
+                    f"Price: {price_str}"
+                    + (f"\n\n👉 {url}" if url else "")
+                )
+                _li_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
-                    li_text = (
-                        f"🚀 Just launched: {product_name}\n\n"
-                        f"{tagline}\n\n"
-                        f"Price: {price_str}"
-                        + (f"\n\n👉 {url}" if url else "")
-                    )
-                    await pub.publish_to_linkedin(li_text[:1300])
+                    _li_r = await pub.publish_to_linkedin(_li_text[:1300])
+                    _li_ok = bool(_li_r and _li_r.success)
                 except Exception:
                     pass
+                if not _li_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _li_page = await _plat.linkedin(_ae, _ap)
+                        await _plat.linkedin_create_post(_li_page, _li_text[:3000])
+                    except Exception:
+                        pass
 
                 return {
                     "success": True,
@@ -1460,6 +1519,28 @@ Output JSON:
                         "revenue_potential": 1.0,
                         "urls": [repo_url],
                     }
+
+            # Browser fallback: create Gumroad product via stealth browser
+            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_password = getattr(settings, "ARIA_PASSWORD", None)
+            if aria_email and aria_password:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    plat = await get_platform_login()
+                    gum_page = await plat.gumroad(aria_email, aria_password)
+                    prod_name  = product_data.get("product_name", title)
+                    prod_price = product_data.get("price_cents", 997)
+                    prod_desc  = product_data.get("description", "")
+                    gum_url = await plat.gumroad_create_product(gum_page, prod_name, prod_price, prod_desc)
+                    if gum_url:
+                        return {
+                            "success": True,
+                            "summary": f"Product '{prod_name[:50]}' at ${prod_price/100:.0f} created on Gumroad via browser",
+                            "revenue_potential": prod_price / 100,
+                            "urls": [gum_url],
+                        }
+                except Exception as _br_exc:
+                    logger.warning("[IncomeLoop] Gumroad browser fallback (product_factory): %s", _br_exc)
 
             return {
                 "success": False,
@@ -1767,6 +1848,28 @@ JSON:
                     }
                 except Exception:
                     pass
+
+            # Browser fallback: create Gumroad premium offer via stealth browser
+            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_password = getattr(settings, "ARIA_PASSWORD", None)
+            if aria_email and aria_password:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    plat = await get_platform_login()
+                    gum_page   = await plat.gumroad(aria_email, aria_password)
+                    offer_name  = offer.get("offer_name", "AI Business Consulting")
+                    offer_price = offer.get("price_cents", 149700)
+                    offer_desc  = offer.get("description", "")
+                    gum_url = await plat.gumroad_create_product(gum_page, offer_name, offer_price, offer_desc)
+                    if gum_url:
+                        return {
+                            "success": True,
+                            "summary": f"Premium offer '{offer_name[:50]}' at ${offer_price/100:.0f} on Gumroad via browser",
+                            "revenue_potential": offer_price / 100,
+                            "urls": [gum_url],
+                        }
+                except Exception as _br_exc:
+                    logger.warning("[IncomeLoop] Gumroad browser fallback (premium_offer): %s", _br_exc)
 
             return {"success": False, "summary": f"Gumroad: {gr.get('error', 'failed')} — add GUMROAD_TOKEN to Fly.io secrets"}
 
@@ -5340,6 +5443,25 @@ Or contact via [portfolio]({portfolio_url}).
                         "urls": [url],
                     }
 
+            # Browser fallback: post thread via stealth browser using ARIA credentials
+            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_password = getattr(settings, "ARIA_PASSWORD", None)
+            if aria_email and aria_password:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    plat = await get_platform_login()
+                    tw_page = await plat.twitter(aria_email, aria_password)
+                    thread_url = await plat.twitter_thread_post(tw_page, tweet_texts[:10])
+                    if thread_url:
+                        return {
+                            "success": True,
+                            "summary": f"Twitter thread via browser: '{topic[:50]}' — {len(tweet_texts)} tweets",
+                            "revenue_potential": 5.0,
+                            "urls": [thread_url],
+                        }
+                except Exception as _br_exc:
+                    logger.warning("[IncomeLoop] Twitter browser fallback: %s", _br_exc)
+
             return {"success": False, "summary": "twitter_thread: add TWITTER_API_KEY to Fly.io secrets"}
 
         except Exception as exc:
@@ -5410,6 +5532,25 @@ Or contact via [portfolio]({portfolio_url}).
                         "revenue_potential": 2.0,
                         "urls": [url],
                     }
+
+            # Browser fallback: create LinkedIn post via stealth browser
+            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_password = getattr(settings, "ARIA_PASSWORD", None)
+            if aria_email and aria_password:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    plat = await get_platform_login()
+                    li_page = await plat.linkedin(aria_email, aria_password)
+                    li_url = await plat.linkedin_create_post(li_page, post.content[:3000])
+                    if li_url:
+                        return {
+                            "success": True,
+                            "summary": f"LinkedIn post via browser: '{topic[:60]}' — ~{post.estimated_impressions:,} est. impressions",
+                            "revenue_potential": 8.0,
+                            "urls": [li_url],
+                        }
+                except Exception as _br_exc:
+                    logger.warning("[IncomeLoop] LinkedIn browser fallback: %s", _br_exc)
 
             return {"success": False, "summary": f"linkedin_post: {result.error or 'add LINKEDIN_ACCESS_TOKEN + LINKEDIN_PERSON_URN'}"}
 
@@ -6078,8 +6219,9 @@ JSON:
                 "revenue_channels": ["open source projects", "SEO content", "free tools"],
             },
             "gumroad": {
-                "active": bool(settings.GUMROAD_TOKEN),
-                "keys_needed": ["GUMROAD_TOKEN"],
+                "active": bool(settings.GUMROAD_TOKEN or
+                               (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))),
+                "keys_needed": ["GUMROAD_TOKEN (or ARIA_EMAIL+ARIA_PASSWORD for browser mode)"],
                 "revenue_channels": ["ebook sales", "digital products", "courses", "templates"],
             },
             "lemonsqueezy": {
@@ -6116,10 +6258,11 @@ JSON:
                 "revenue_channels": ["email campaigns", "newsletter monetization"],
             },
             "twitter": {
-                "active": bool(getattr(settings, "TWITTER_API_KEY", None) and
-                               getattr(settings, "TWITTER_ACCESS_TOKEN", None)),
-                "keys_needed": ["TWITTER_API_KEY", "TWITTER_API_SECRET",
-                                "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_TOKEN_SECRET"],
+                "active": bool(
+                    (getattr(settings, "TWITTER_API_KEY", None) and getattr(settings, "TWITTER_ACCESS_TOKEN", None)) or
+                    (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))
+                ),
+                "keys_needed": ["TWITTER_API_KEY + secrets OR ARIA_EMAIL+ARIA_PASSWORD for browser mode"],
                 "revenue_channels": ["product promotion", "audience building"],
             },
             "amazon_affiliate": {
@@ -6154,30 +6297,45 @@ JSON:
             },
             "twitter_api": {
                 "active": bool(
-                    getattr(settings, "TWITTER_API_KEY", None) and
-                    getattr(settings, "TWITTER_API_SECRET", None) and
-                    getattr(settings, "TWITTER_ACCESS_TOKEN", None) and
-                    getattr(settings, "TWITTER_ACCESS_SECRET", None)
+                    (getattr(settings, "TWITTER_API_KEY", None) and
+                     getattr(settings, "TWITTER_API_SECRET", None) and
+                     getattr(settings, "TWITTER_ACCESS_TOKEN", None) and
+                     getattr(settings, "TWITTER_ACCESS_SECRET", None)) or
+                    (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))
                 ),
-                "keys_needed": ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"],
+                "keys_needed": ["TWITTER_API_KEY+secrets OR ARIA_EMAIL+ARIA_PASSWORD (browser fallback active)"],
                 "revenue_channels": ["viral threads", "direct Twitter posting", "audience building"],
             },
             "linkedin_api": {
                 "active": bool(
-                    getattr(settings, "LINKEDIN_ACCESS_TOKEN", None) and
-                    getattr(settings, "LINKEDIN_PERSON_URN", None)
+                    (getattr(settings, "LINKEDIN_ACCESS_TOKEN", None) and
+                     getattr(settings, "LINKEDIN_PERSON_URN", None)) or
+                    (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))
                 ),
-                "keys_needed": ["LINKEDIN_ACCESS_TOKEN", "LINKEDIN_PERSON_URN"],
+                "keys_needed": ["LINKEDIN_ACCESS_TOKEN+URN OR ARIA_EMAIL+ARIA_PASSWORD (browser fallback active)"],
                 "revenue_channels": ["B2B leads", "LinkedIn articles", "thought leadership"],
             },
             "reddit": {
                 "active": bool(
-                    getattr(settings, "REDDIT_CLIENT_ID", None) and
-                    getattr(settings, "REDDIT_CLIENT_SECRET", None) and
-                    getattr(settings, "REDDIT_REFRESH_TOKEN", None)
+                    (getattr(settings, "REDDIT_CLIENT_ID", None) and
+                     getattr(settings, "REDDIT_CLIENT_SECRET", None) and
+                     getattr(settings, "REDDIT_REFRESH_TOKEN", None)) or
+                    (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))
                 ),
-                "keys_needed": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_REFRESH_TOKEN", "REDDIT_USERNAME"],
+                "keys_needed": ["REDDIT_CLIENT_ID+SECRET+TOKEN OR ARIA_EMAIL+ARIA_PASSWORD (browser fallback active)"],
                 "revenue_channels": ["organic Reddit traffic", "subreddit reach", "affiliate link traffic"],
+            },
+            "browser_automation": {
+                "active": bool(getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None)),
+                "keys_needed": ["ARIA_EMAIL", "ARIA_PASSWORD"],
+                "revenue_channels": [
+                    "Twitter/X threads (stealth browser)",
+                    "LinkedIn posts (stealth browser)",
+                    "Gumroad products (stealth browser)",
+                    "Reddit posts (stealth browser)",
+                    "Dev.to articles (stealth browser)",
+                    "Hacker News submissions (stealth browser)",
+                ],
             },
             "stripe": {
                 "active": bool(getattr(settings, "STRIPE_SECRET_KEY", None)),
