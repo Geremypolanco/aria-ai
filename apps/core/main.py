@@ -2830,6 +2830,95 @@ async def scheduler_executions():
         return {"error": str(exc)}
 
 
+@app.get("/api/v1/income/status")
+async def income_status():
+    """Real-time income loop status: cycles, strategies, revenue, recent URLs."""
+    import json as _json
+    try:
+        from apps.core.memory.redis_client import get_cache
+        from apps.core.tools.income_loop import get_income_loop, STRATEGIES, INTERVAL_SECONDS
+        cache = get_cache()
+        loop = get_income_loop()
+
+        total_cycles = 0
+        success_cycles = 0
+        total_urls = 0
+        strategy_stats: list[dict] = []
+        recent_urls: list[str] = []
+        total_revenue = 0.0
+        last_run_ts = None
+
+        if cache:
+            total_cycles  = int(await cache.get("aria:income:total_cycles") or 0)
+            success_cycles = int(await cache.get("aria:income:successful_cycles") or 0)
+            total_urls    = int(await cache.get("aria:income:total_urls_published") or 0)
+            last_run_raw  = await cache.get("aria:income:last_run_ts")
+            if last_run_raw:
+                last_run_ts = last_run_raw
+
+            for name, weight in STRATEGIES:
+                runs = int(await cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                wins = int(await cache.get(f"aria:income:strategy:{name}:successes") or 0)
+                rev_raw = await cache.get(f"aria:income:strategy:{name}:revenue")
+                rev = float(rev_raw) if rev_raw else 0.0
+                total_revenue += rev
+                if runs > 0:
+                    strategy_stats.append({
+                        "name": name,
+                        "runs": runs,
+                        "wins": wins,
+                        "success_rate": round(wins / runs, 2),
+                        "revenue_usd": round(rev, 2),
+                    })
+
+            history_raw = await cache.lrange("aria:income:loop_history", -20, -1)
+            for raw in (history_raw or []):
+                try:
+                    c = _json.loads(raw) if isinstance(raw, str) else raw
+                    recent_urls.extend(c.get("urls_created", []))
+                except Exception:
+                    pass
+            recent_urls = [u for u in dict.fromkeys(recent_urls) if u][:10]
+
+        strategy_stats.sort(key=lambda s: -s["revenue_usd"])
+        creds = loop.check_credentials()
+
+        return {
+            "status": "running",
+            "cycle_interval_seconds": INTERVAL_SECONDS,
+            "total_cycles": total_cycles,
+            "successful_cycles": success_cycles,
+            "success_rate": round(success_cycles / max(total_cycles, 1), 2),
+            "total_urls_published": total_urls,
+            "total_revenue_potential_usd": round(total_revenue, 2),
+            "last_run_ts": last_run_ts,
+            "top_strategies": strategy_stats[:10],
+            "recent_urls": recent_urls,
+            "active_channels": list(creds.get("active", {}).keys()),
+            "inactive_channels": list(creds.get("inactive", {}).keys()),
+        }
+    except Exception as exc:
+        return {"error": str(exc), "status": "error"}
+
+
+@app.post("/api/v1/income/run-now")
+async def income_run_now(strategy: str | None = None):
+    """Trigger one income cycle immediately. Pass ?strategy=name to force a specific strategy."""
+    try:
+        from apps.core.tools.income_loop import get_income_loop
+        loop = get_income_loop()
+        result = await loop._run_one_cycle(force_strategy=strategy)
+        return {
+            "success": result.success,
+            "strategy": result.strategy,
+            "summary": result.summary,
+            "revenue_potential": result.revenue_potential,
+            "urls": getattr(result, "urls_created", []),
+        }
+    except Exception as exc:
+        return {"error": str(exc), "success": False}
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
     """ARIA AI Control Center — Professional web interface."""
