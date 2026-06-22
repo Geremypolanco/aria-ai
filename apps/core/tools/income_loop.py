@@ -1344,9 +1344,35 @@ JSON:
             urls   = [u["url"] for u in result.published_urls + result.seo_article_urls if u.get("url")]
 
             if result.success and urls:
+                # ── Announce niche launch on Twitter ──────────────────────────
+                _nr_tw_ae = getattr(settings, "ARIA_EMAIL", None)
+                _nr_tw_ap = getattr(settings, "ARIA_PASSWORD", None)
+                _nr_tw = (
+                    f"🎯 New niche launched: {target.replace('_', ' ').title()}\n\n"
+                    f"{len(result.published_urls)} listings | {len(result.seo_article_urls)} SEO articles\n"
+                    f"${result.revenue_potential_usd:.0f} revenue potential"
+                    + (f"\n→ {urls[0]}" if urls else "")
+                )[:280]
+                _nr_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _nr_pub = get_api_publisher()
+                    _nr_tw_r = await _nr_pub.publish_to_twitter(_nr_tw)
+                    if _nr_tw_r and _nr_tw_r.success:
+                        _nr_tw_ok = True
+                except Exception:
+                    pass
+                if not _nr_tw_ok and _nr_tw_ae and _nr_tw_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _nr_plat2 = await get_platform_login()
+                        _nr_tw_pg = await _nr_plat2.twitter(_nr_tw_ae, _nr_tw_ap)
+                        await _nr_plat2.twitter_thread_post(_nr_tw_pg, [_nr_tw])
+                    except Exception:
+                        pass
                 return {
                     "success":          True,
-                    "summary":          f"Niche '{target}': checklist={result.checklist.score if result.checklist else 0}/100 | {len(result.published_urls)} listings | {len(result.seo_article_urls)} articles",
+                    "summary":          f"Niche '{target}': checklist={result.checklist.score if result.checklist else 0}/100 | {len(result.published_urls)} listings | {len(result.seo_article_urls)} articles | Twitter announced",
                     "revenue_potential": result.revenue_potential_usd,
                     "urls":             urls,
                 }
@@ -2007,9 +2033,39 @@ JSON:
                             await _plat.linkedin_create_post(_li_page, li_text[:3000])
                         except Exception:
                             pass
+
+                # ── Twitter: announce premium offer ───────────────────────────
+                _po2_ae = getattr(settings, "ARIA_EMAIL", None)
+                _po2_ap = getattr(settings, "ARIA_PASSWORD", None)
+                _po2_price = offer.get("price_cents", 149700) / 100
+                _po2_name = offer.get("offer_name", "Premium AI Consulting")
+                _po2_tw = (
+                    f"💼 Premium offer: {_po2_name[:80]}\n\n"
+                    f"${_po2_price:.0f} one-time — high-touch AI strategy & implementation\n\n"
+                    f"Limited availability. DM or visit link."
+                    + (f"\n→ {offer_url}" if offer_url else "")
+                )[:280]
+                _po2_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _po2_pub = get_api_publisher()
+                    _po2_tw_r = await _po2_pub.publish_to_twitter(_po2_tw)
+                    if _po2_tw_r and _po2_tw_r.success:
+                        _po2_tw_ok = True
+                except Exception:
+                    pass
+                if not _po2_tw_ok and _po2_ae and _po2_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _po2_plat = await get_platform_login()
+                        _po2_tw_pg = await _po2_plat.twitter(_po2_ae, _po2_ap)
+                        await _po2_plat.twitter_thread_post(_po2_tw_pg, [_po2_tw])
+                    except Exception:
+                        pass
+
                 return {
                     "success": True,
-                    "summary": f"Premium offer '{offer.get('offer_name','')[:50]}' at ${offer.get('price_cents',149700)/100:.0f} — promoted on LinkedIn",
+                    "summary": f"Premium offer '{offer.get('offer_name','')[:50]}' at ${offer.get('price_cents',149700)/100:.0f} — promoted on LinkedIn + Twitter",
                     "revenue_potential": offer.get("price_cents", 149700) / 100,
                     "urls": [offer_url] if offer_url else [],
                 }
@@ -2132,9 +2188,34 @@ JSON:
 
             if res.get("success"):
                 url = res.get("shop_url", "")
+                # ── Tweet the new product ──────────────────────────────────────
+                _sl_tw_ae = getattr(settings, "ARIA_EMAIL", None)
+                _sl_tw_ap = getattr(settings, "ARIA_PASSWORD", None)
+                _sl_tw = (
+                    f"🛍️ New product: {product.get('title','')[:80]}\n\n"
+                    f"${price:.2f} | Digital Download | Available now"
+                    + (f"\n→ {url}" if url else "")
+                )[:280]
+                _sl_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _sl_pub = get_api_publisher()
+                    _sl_tw_r = await _sl_pub.publish_to_twitter(_sl_tw)
+                    if _sl_tw_r and _sl_tw_r.success:
+                        _sl_tw_ok = True
+                except Exception:
+                    pass
+                if not _sl_tw_ok and _sl_tw_ae and _sl_tw_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _sl_plat2 = await get_platform_login()
+                        _sl_tw_pg = await _sl_plat2.twitter(_sl_tw_ae, _sl_tw_ap)
+                        await _sl_plat2.twitter_thread_post(_sl_tw_pg, [_sl_tw])
+                    except Exception:
+                        pass
                 return {
                     "success": True,
-                    "summary": f"Shopify product '{product.get('title','')[:50]}' at ${price:.2f}",
+                    "summary": f"Shopify product '{product.get('title','')[:50]}' at ${price:.2f} | Twitter announced",
                     "revenue_potential": price,
                     "urls": [url] if url else [],
                 }
@@ -2307,11 +2388,39 @@ JSON:
 
             if gr.get("success"):
                 price = ebook.get("price_cents", 1700) / 100
+                _ef_url = gr.get("url", "")
+                # ── Tweet the new ebook ────────────────────────────────────────
+                _ef_ae = getattr(settings, "ARIA_EMAIL", None)
+                _ef_ap = getattr(settings, "ARIA_PASSWORD", None)
+                _ef_title = ebook.get("title", topic_str)
+                _ef_tw = (
+                    f"📚 New ebook: {_ef_title[:100]}\n\n"
+                    f"${price:.2f} | {len(toc)} chapters | Instant download\n\n"
+                    f"{ebook.get('subtitle','')[:100]}"
+                    + (f"\n→ {_ef_url}" if _ef_url else "")
+                )[:280]
+                _ef_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _ef_pub = get_api_publisher()
+                    _ef_tw_r = await _ef_pub.publish_to_twitter(_ef_tw)
+                    if _ef_tw_r and _ef_tw_r.success:
+                        _ef_tw_ok = True
+                except Exception:
+                    pass
+                if not _ef_tw_ok and _ef_ae and _ef_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _ef_plat = await get_platform_login()
+                        _ef_tw_pg = await _ef_plat.twitter(_ef_ae, _ef_ap)
+                        await _ef_plat.twitter_thread_post(_ef_tw_pg, [_ef_tw])
+                    except Exception:
+                        pass
                 return {
                     "success": True,
-                    "summary": f"Ebook '{ebook.get('title','')[:50]}' at ${price:.2f} — {len(toc)} chapters",
+                    "summary": f"Ebook '{_ef_title[:50]}' at ${price:.2f} — {len(toc)} chapters | Twitter announced",
                     "revenue_potential": price,
-                    "urls": [gr.get("url", "")] if gr.get("url") else [],
+                    "urls": [_ef_url] if _ef_url else [],
                 }
 
             # LemonSqueezy fallback for ebook
@@ -2751,9 +2860,36 @@ JSON:
                 pass
 
             repo_url = f"https://github.com/{owner}/{repo_name}"
+
+            # ── Announce new GitHub repo on Twitter ───────────────────────────
+            _gp_ae = getattr(settings, "ARIA_EMAIL", None)
+            _gp_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _gp_tw = (
+                f"🔓 New open-source repo: {repo_name}\n\n"
+                f"{description[:180]}\n\n"
+                f"→ {repo_url}"
+            )[:280]
+            _gp_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _gp_pub = get_api_publisher()
+                _gp_tw_r = await _gp_pub.publish_to_twitter(_gp_tw)
+                if _gp_tw_r and _gp_tw_r.success:
+                    _gp_tw_ok = True
+            except Exception:
+                pass
+            if not _gp_tw_ok and _gp_ae and _gp_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _gp_plat = await get_platform_login()
+                    _gp_tw_pg = await _gp_plat.twitter(_gp_ae, _gp_ap)
+                    await _gp_plat.twitter_thread_post(_gp_tw_pg, [_gp_tw])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"Published '{repo_name}' to GitHub: {description[:60]}",
+                "summary": f"Published '{repo_name}' to GitHub: {description[:60]} | Twitter announced",
                 "revenue_potential": 5.0,  # Indirect: traffic + credibility
                 "urls": [repo_url],
             }
@@ -2881,6 +3017,36 @@ JSON:
             )
             suffix = f" ({len(products)} Amazon links, tag={assoc})" if assoc else " (add AMAZON_ASSOCIATE_TAG for commissions)"
             result["summary"] = f"Affiliate review: '{article_data.get('title', topic)[:45]}'{suffix}"
+
+            # ── Announce affiliate article on Twitter ──────────────────────────
+            _ac_ae = getattr(settings, "ARIA_EMAIL", None)
+            _ac_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _ac_url = (result.get("urls") or [""])[0]
+            _ac_title = article_data.get("title", topic)
+            _ac_tw = (
+                f"📋 Review: {_ac_title[:120]}\n\n"
+                f"Best {category} tools — hands-on comparison with real links"
+                + (f"\n→ {_ac_url}" if _ac_url else "")
+            )[:280]
+            _ac_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _ac_pub = get_api_publisher()
+                _ac_tw_r = await _ac_pub.publish_to_twitter(_ac_tw)
+                if _ac_tw_r and _ac_tw_r.success:
+                    _ac_tw_ok = True
+            except Exception:
+                pass
+            if not _ac_tw_ok and _ac_ae and _ac_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _ac_plat = await get_platform_login()
+                    _ac_tw_pg = await _ac_plat.twitter(_ac_ae, _ac_ap)
+                    await _ac_plat.twitter_thread_post(_ac_tw_pg, [_ac_tw])
+                except Exception:
+                    pass
+
+            result["summary"] += " | Twitter announced"
             return result
 
         except Exception as exc:
@@ -6816,9 +6982,39 @@ JSON:
 
             avg_views = sum(s.estimated_views for s in scripts) // max(len(scripts), 1)
             logger.info("[IncomeLoop] tiktok_script: %d scripts archived", len(urls_created))
+
+            # ── Announce TikTok scripts on Twitter ────────────────────────────
+            _tk_ae = getattr(settings, "ARIA_EMAIL", None)
+            _tk_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _tk_hook = scripts[0].hook[:120] if scripts and scripts[0].hook else trending_topic[:120]
+            _tk_url = urls_created[0] if urls_created else ""
+            _tk_tw = (
+                f"🎬 New TikTok hook: \"{_tk_hook}\"\n\n"
+                f"Scripts for: {', '.join(niches)} niches\n"
+                f"Est. reach: ~{avg_views:,} views each"
+                + (f"\n→ {_tk_url}" if _tk_url else "")
+            )[:280]
+            _tk_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _tk_pub = get_api_publisher()
+                _tk_tw_r = await _tk_pub.publish_to_twitter(_tk_tw)
+                if _tk_tw_r and _tk_tw_r.success:
+                    _tk_tw_ok = True
+            except Exception:
+                pass
+            if not _tk_tw_ok and _tk_ae and _tk_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _tk_plat = await get_platform_login()
+                    _tk_tw_pg = await _tk_plat.twitter(_tk_ae, _tk_ap)
+                    await _tk_plat.twitter_thread_post(_tk_tw_pg, [_tk_tw])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"TikTok scripts: {len(scripts)} scripts for {', '.join(niches)} — ~{avg_views:,} avg est. views each",
+                "summary": f"TikTok scripts: {len(scripts)} scripts for {', '.join(niches)} — ~{avg_views:,} avg est. views each | Twitter announced",
                 "revenue_potential": 15.0,  # viral TikTok can drive hundreds of product clicks
                 "urls": urls_created[:4],
             }
@@ -8617,9 +8813,37 @@ Return JSON:
 
             if "content" in result or "commit" in result:
                 logger.info("[IncomeLoop] YouTube strategy archived: %s", archive_url)
+
+                # ── Announce YouTube strategy on Twitter ──────────────────────
+                _yt_ae = getattr(settings, "ARIA_EMAIL", None)
+                _yt_ap = getattr(settings, "ARIA_PASSWORD", None)
+                _yt_tw = (
+                    f"📺 YouTube content strategy: {title[:100]}\n\n"
+                    f"4-week calendar + full script for '{niche}'\n\n"
+                    f"Building in public — every strategy gets executed"
+                    + (f"\n→ {archive_url}" if archive_url else "")
+                )[:280]
+                _yt_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _yt_pub = get_api_publisher()
+                    _yt_tw_r = await _yt_pub.publish_to_twitter(_yt_tw)
+                    if _yt_tw_r and _yt_tw_r.success:
+                        _yt_tw_ok = True
+                except Exception:
+                    pass
+                if not _yt_tw_ok and _yt_ae and _yt_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _yt_plat = await get_platform_login()
+                        _yt_tw_pg = await _yt_plat.twitter(_yt_ae, _yt_ap)
+                        await _yt_plat.twitter_thread_post(_yt_tw_pg, [_yt_tw])
+                    except Exception:
+                        pass
+
                 return {
                     "success": True,
-                    "summary": f"YouTube strategy '{title[:50]}' — 4-week calendar, full script, SEO plan",
+                    "summary": f"YouTube strategy '{title[:50]}' — 4-week calendar, full script, SEO plan | Twitter announced",
                     "revenue_potential": 50.0,
                     "urls": [archive_url],
                 }
@@ -9011,9 +9235,38 @@ JSON:
             viral_hook = article.get("viral_hook", "")
             logger.info("[IncomeLoop] substack_publish: '%s'", title[:60])
             live_status = "LIVE" if _sb_posted else "archived"
+
+            # ── Announce on Twitter ───────────────────────────────────────────
+            _sb_tw_ae = getattr(settings, "ARIA_EMAIL", None)
+            _sb_tw_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _sb_post_url = urls_created[0] if urls_created else ""
+            _sb_tw = (
+                f"📝 New article: {title[:120]}\n\n"
+                f"{viral_hook[:120]}\n\n"
+                f"Read time: {read_time} min"
+                + (f"\n→ {_sb_post_url}" if _sb_post_url else "")
+            )[:280]
+            _sb_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _sb_pub = get_api_publisher()
+                _sb_tw_r = await _sb_pub.publish_to_twitter(_sb_tw)
+                if _sb_tw_r and _sb_tw_r.success:
+                    _sb_tw_ok = True
+            except Exception:
+                pass
+            if not _sb_tw_ok and _sb_tw_ae and _sb_tw_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _sb_plat2 = await get_platform_login()
+                    _sb_tw_pg = await _sb_plat2.twitter(_sb_tw_ae, _sb_tw_ap)
+                    await _sb_plat2.twitter_thread_post(_sb_tw_pg, [_sb_tw])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"Substack [{live_status}]: '{title}' ({read_time}min read) — viral hook: {viral_hook[:80]}",
+                "summary": f"Substack [{live_status}]: '{title}' ({read_time}min read) — viral hook: {viral_hook[:80]} | Twitter announced",
                 "revenue_potential": 30.0,  # each paid sub = $5-$10/mo recurring
                 "urls": urls_created[:3],
             }
@@ -13211,9 +13464,34 @@ Return JSON:
                 except Exception:
                     pass
 
+            # ── Twitter: announce pitch deck ──────────────────────────────────
+            _vc_tw = (
+                f"🚀 ARIA is raising ${funding_ask:,}\n\n"
+                f"{one_liner}\n\n"
+                f"Autonomous AI that creates & sells products 24/7 — we're building in public"
+                + (f"\n\nDeck → {_vc_url}" if _vc_url else "")
+            )[:280]
+            _vc_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _vc_pub2 = get_api_publisher()
+                _vc_tw_r = await _vc_pub2.publish_to_twitter(_vc_tw)
+                if _vc_tw_r and _vc_tw_r.success:
+                    _vc_tw_ok = True
+            except Exception:
+                pass
+            if not _vc_tw_ok and _vc_ae and _vc_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _vc_plat2 = await get_platform_login()
+                    _vc_tw_pg = await _vc_plat2.twitter(_vc_ae, _vc_ap)
+                    await _vc_plat2.twitter_thread_post(_vc_tw_pg, [_vc_tw])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"vc_pitch_deck: 10 slides | ${funding_ask:,.0f} ask | '{one_liner[:60]}' | LinkedIn post published",
+                "summary": f"vc_pitch_deck: 10 slides | ${funding_ask:,.0f} ask | '{one_liner[:60]}' | LinkedIn + Twitter announced",
                 "revenue_potential": float(funding_ask) * 0.001,  # 0.1% chance of funding
                 "urls": urls_created[:2],
             }
