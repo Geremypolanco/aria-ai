@@ -8330,7 +8330,7 @@ JSON:
             # Load existing product catalog for real products to test
             catalog_items = []
             if cache:
-                raw = await cache.lrange("aria:income:catalog", 0, 10)
+                raw = await cache.lrange("aria:products:catalog", 0, 10)
                 for item in (raw or []):
                     try:
                         catalog_items.append(_json.loads(item) if isinstance(item, str) else item)
@@ -8513,7 +8513,7 @@ JSON:
             # Load catalog and existing price data
             catalog_items = []
             if cache:
-                raw = await cache.lrange("aria:income:catalog", 0, 20)
+                raw = await cache.lrange("aria:products:catalog", 0, 20)
                 for item in (raw or []):
                     try:
                         catalog_items.append(_json.loads(item) if isinstance(item, str) else item)
@@ -9211,10 +9211,10 @@ JSON:
             source_title = ""
             source_content = ""
             if cache:
-                raw = await cache.lindex("aria:income:catalog", 0)
+                raw = await cache.lindex("aria:products:catalog", 0)
                 if raw:
                     item = _json.loads(raw) if isinstance(raw, str) else raw
-                    source_title = item.get("title", "")
+                    source_title = item.get("name") or item.get("title", "")
                     source_content = item.get("summary", item.get("description", ""))[:1000]
 
             if not source_title:
@@ -9396,12 +9396,14 @@ JSON:
 
             if not tracked_urls:
                 # Use catalog items
-                raw_cat = await cache.lrange("aria:income:catalog", 0, 5) if cache else []
+                raw_cat = await cache.lrange("aria:products:catalog", 0, 5) if cache else []
                 for raw in (raw_cat or []):
                     try:
                         item = _json.loads(raw) if isinstance(raw, str) else raw
-                        if item.get("url"):
-                            tracked_urls.append({"url": item["url"], "title": item.get("title", "")})
+                        item_urls = item.get("urls") or ([item["url"]] if item.get("url") else [])
+                        item_name = item.get("name") or item.get("title", "")
+                        if item_urls:
+                            tracked_urls.append({"url": item_urls[0], "title": item_name})
                     except Exception:
                         pass
 
@@ -9758,14 +9760,14 @@ JSON:
                 import json as _json
                 cache = get_cache()
                 if cache:
-                    raw = await cache.lindex("aria:income:catalog", 0)
+                    raw = await cache.lindex("aria:products:catalog", 0)
                     if raw:
                         catalog_item = _json.loads(raw) if isinstance(raw, str) else raw
             except Exception:
                 pass
 
-            product_title = catalog_item.get("title", "ARIA AI Platform")
-            base_price = catalog_item.get("price", 97)
+            product_title = catalog_item.get("name") or catalog_item.get("title", "ARIA AI Platform")
+            base_price = catalog_item.get("price_usd") or catalog_item.get("price", 97)
 
             kit_data = await ai.complete_json(
                 system=(
@@ -10170,7 +10172,7 @@ JSON:
                 import json as _json
                 cache = get_cache()
                 if cache:
-                    raw = await cache.lrange("aria:income:catalog", 0, 5)
+                    raw = await cache.lrange("aria:products:catalog", 0, 5)
                     for item in (raw or []):
                         try:
                             catalog_items.append(_json.loads(item) if isinstance(item, str) else item)
@@ -10194,7 +10196,7 @@ JSON:
                 ),
                 user=f"""Create a complete affiliate/referral program for these products:
 
-{[{'title': p.get('title'), 'price': p.get('price')} for p in catalog_items[:4]]}
+{[{'title': p.get('name') or p.get('title', ''), 'price': p.get('price_usd') or p.get('price', 0)} for p in catalog_items[:4]]}
 
 JSON:
 {{
@@ -10380,13 +10382,16 @@ JSON:
             # Get one product from catalog for spotlight
             catalog_spotlight = ""
             if cache:
-                raw_cat = await cache.lindex("aria:income:catalog", 0)
+                raw_cat = await cache.lindex("aria:products:catalog", -1)
                 if raw_cat:
                     try:
                         item = _json.loads(raw_cat) if isinstance(raw_cat, str) else raw_cat
-                        catalog_spotlight = f"{item.get('title', '')} — ${item.get('price', 0)}"
-                        if item.get("url"):
-                            catalog_spotlight += f" ({item['url']})"
+                        prod_name = item.get("name") or item.get("title", "")
+                        prod_price = item.get("price_usd") or item.get("price", 0)
+                        catalog_spotlight = f"{prod_name} — ${prod_price}"
+                        prod_urls = item.get("urls", [])
+                        if prod_urls:
+                            catalog_spotlight += f" ({prod_urls[0]})"
                     except Exception:
                         pass
 
@@ -10663,7 +10668,7 @@ Each tier should have clear differentiation and a natural upgrade path.""",
                     "free": free_tier,
                     "projection": projection,
                     "generated_at": _dt.datetime.utcnow().isoformat(),
-                }), ex=86400 * 30)
+                }), ttl_seconds=86400 * 30)
 
             # ── Update smart_prices based on ladder ───────────────────────────
             if pricing and cache:
@@ -10674,7 +10679,7 @@ Each tier should have clear differentiation and a natural upgrade path.""",
                     if tier_name and price:
                         new_prices[tier_name.lower().replace(" ", "_")] = price
                 merged = {**current_prices, **new_prices}
-                await cache.set("aria:income:smart_prices", _json.dumps(merged), ex=86400 * 30)
+                await cache.set("aria:income:smart_prices", _json.dumps(merged), ttl_seconds=86400 * 30)
 
             # ── Archive pricing strategy ───────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -10805,8 +10810,8 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
                 ts = _dt.datetime.utcnow().isoformat()
                 await cache.set("aria:engagement:last_auto_response", _json.dumps({
                     "ts": ts, "replies": replies_sent, "platforms": list(set(a.split(":")[0] for a in actions))
-                }), ex=86400 * 7)
-                await cache.incr("aria:engagement:total_replies")
+                }), ttl_seconds=86400 * 7)
+                await cache.increment("aria:engagement:total_replies")
 
             return {
                 "success": True,
@@ -10924,8 +10929,8 @@ Return JSON: {{"updated_content": "full updated markdown", "links_added": ["anch
 
             # ── Track in Redis ─────────────────────────────────────────────────
             if cache:
-                await cache.incr("aria:affiliate:total_injections")
-                await cache.set("aria:affiliate:last_injection", _dt.datetime.utcnow().isoformat(), ex=86400 * 7)
+                await cache.increment("aria:affiliate:total_injections")
+                await cache.set("aria:affiliate:last_injection", _dt.datetime.utcnow().isoformat(), ttl_seconds=86400 * 7)
 
             return {
                 "success": injected > 0,
@@ -11027,8 +11032,8 @@ Return JSON:
                 existing_raw = await cache.get("aria:outreach:dm_templates")
                 existing: list = (_json.loads(existing_raw) if isinstance(existing_raw, str) else existing_raw) if existing_raw else []
                 updated = (existing + dms)[-50:]  # keep last 50
-                await cache.set("aria:outreach:dm_templates", _json.dumps(updated), ex=86400 * 14)
-                await cache.incr("aria:outreach:total_templates_generated")
+                await cache.set("aria:outreach:dm_templates", _json.dumps(updated), ttl_seconds=86400 * 14)
+                await cache.increment("aria:outreach:total_templates_generated")
 
             # ── Archive to GitHub as DM playbook ──────────────────────────────
             if settings.GITHUB_TOKEN:
@@ -11218,8 +11223,8 @@ Return JSON:
                     "bundle_name": bundle_name,
                     "bundle_price": bundle_price,
                     "emails_sent": emails_queued,
-                }), ex=86400 * 7)
-                await cache.incr("aria:upsell:total_campaigns")
+                }), ttl_seconds=86400 * 7)
+                await cache.increment("aria:upsell:total_campaigns")
 
             return {
                 "success": True,
@@ -11382,13 +11387,13 @@ Return JSON:
 
             # ── Track in Redis ─────────────────────────────────────────────────
             if cache:
-                await cache.incr("aria:podcast:episodes_produced")
+                await cache.increment("aria:podcast:episodes_produced")
                 await cache.set("aria:podcast:latest_episode", _json.dumps({
                     "title": title,
                     "ep_num": ep_num,
                     "url": urls_created[0] if urls_created else "",
                     "ts": today,
-                }), ex=86400 * 30)
+                }), ttl_seconds=86400 * 30)
 
             return {
                 "success": True,
@@ -11522,8 +11527,8 @@ Return JSON:
                     "url": urls_created[0] if urls_created else "",
                     "ts": _dt.datetime.utcnow().isoformat(),
                     "pricing": saas_data.get("pricing", {}),
-                }), ex=86400 * 30)
-                await cache.incr("aria:waitlist:total_launches")
+                }), ttl_seconds=86400 * 30)
+                await cache.increment("aria:waitlist:total_launches")
 
             early_price = saas_data.get("pricing", {}).get("early_bird", 19)
 
@@ -11644,7 +11649,7 @@ Return JSON:
             if cache:
                 await cache.set("aria:investor:latest_deck", _json.dumps({
                     "ts": today, "url": urls_created[0] if urls_created else "", "ask": funding_ask
-                }), ex=86400 * 30)
+                }), ttl_seconds=86400 * 30)
 
             return {
                 "success": True,
@@ -11770,7 +11775,7 @@ Return JSON:
                     "proposal": best.get("proposal_text", "")[:200],
                 }))
                 await cache.ltrim("aria:freelance:proposals", -20, -1)
-                await cache.incr("aria:freelance:total_proposals")
+                await cache.increment("aria:freelance:total_proposals")
 
             return {
                 "success": True,
@@ -11904,7 +11909,7 @@ Return JSON:
                     "best": applications[0].get("grant_name", "") if applications else "",
                 }))
                 await cache.ltrim("aria:grants:applications", -20, -1)
-                await cache.set("aria:grants:total_potential", str(total_potential), ex=86400 * 30)
+                await cache.set("aria:grants:total_potential", str(total_potential), ttl_seconds=86400 * 30)
 
             return {
                 "success": True,
@@ -12048,7 +12053,7 @@ Return JSON:
                     "ts": today,
                 }))
                 await cache.ltrim("aria:products:catalog", -200, -1)
-                await cache.incr("aria:income:total_urls_published")
+                await cache.increment("aria:income:total_urls_published")
 
             # Promote Notion template on Twitter + LinkedIn
             sale_url = gumroad_url or (urls_created[0] if urls_created else "")
@@ -12381,7 +12386,7 @@ Return JSON:
                     "url": urls_created[0] if urls_created else "",
                     "tiers": len(pricing),
                     "ts": today,
-                }), ex=86400 * 30)
+                }), ttl_seconds=86400 * 30)
 
             pro_price = next((t.get("price_usd_per_month", 29) for t in pricing if "Pro" in t.get("name", "")), 29)
 
@@ -12516,7 +12521,7 @@ Return JSON:
                     "ts": today,
                 }))
                 await cache.ltrim("aria:products:catalog", -200, -1)
-                await cache.incr("aria:income:total_urls_published")
+                await cache.increment("aria:income:total_urls_published")
 
             return {
                 "success": True,
@@ -12666,7 +12671,7 @@ Return JSON:
                     "ts": today,
                 }))
                 await cache.ltrim("aria:products:catalog", -200, -1)
-                await cache.incr("aria:income:total_urls_published")
+                await cache.increment("aria:income:total_urls_published")
 
             return {
                 "success": True,
@@ -12840,7 +12845,7 @@ Return JSON:
                     "ts": today, "sector": target_sector, "offer": offer, "retainer": monthly_retainer
                 }))
                 await cache.ltrim("aria:b2b:pitches", -30, -1)
-                await cache.incr("aria:b2b:total_pitches")
+                await cache.increment("aria:b2b:total_pitches")
 
             return {
                 "success": True,
@@ -12924,7 +12929,7 @@ Analyze the biggest conversion bottleneck and provide:
                 existing_sp = _json.loads(await cache.get("aria:social_proof:latest") or "[]")
                 for signal in trust_signals[:2]:
                     existing_sp.append({"type": "trust_signal", "content": signal, "source": "conversion_optimizer"})
-                await cache.set("aria:social_proof:latest", _json.dumps(existing_sp[:20]), ex=86400 * 30)
+                await cache.set("aria:social_proof:latest", _json.dumps(existing_sp[:20]), ttl_seconds=86400 * 30)
 
             # ── Archive optimization report ────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -13078,7 +13083,7 @@ Create compelling brand story assets that position ARIA as the most advanced aut
                     "value_prop": value_prop,
                     "bio": bio,
                     "twitter_bio": twitter_bio,
-                }), ex=86400 * 90)
+                }), ttl_seconds=86400 * 90)
 
             return {
                 "success": True,
@@ -13315,7 +13320,7 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
                     await cache.set(
                         "aria:knowledge:latest_insights",
                         _json.dumps(knowledge_entries[:10]),
-                        ex=86400 * 7,
+                        ttl_seconds=86400 * 7,
                     )
 
             return {
@@ -13494,7 +13499,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                 "on_track": on_track,
                 "hour": now.hour,
             }
-            await cache.set(f"aria:goals:daily:{today_str}", _json.dumps(snapshot), ex=86400 * 30)
+            await cache.set(f"aria:goals:daily:{today_str}", _json.dumps(snapshot), ttl_seconds=86400 * 30)
 
             # ── Build rolling weekly performance ──────────────────────────────
             weekly_snaps_raw = await cache.get("aria:goals:weekly_snaps")
@@ -13503,7 +13508,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             # Keep last 14 days
             recent_keys = sorted(weekly_snaps.keys())[-14:]
             weekly_snaps = {k: weekly_snaps[k] for k in recent_keys}
-            await cache.set("aria:goals:weekly_snaps", _json.dumps(weekly_snaps), ex=86400 * 20)
+            await cache.set("aria:goals:weekly_snaps", _json.dumps(weekly_snaps), ttl_seconds=86400 * 20)
 
             # ── Take action if behind ──────────────────────────────────────────
             action_taken = ""
@@ -13758,7 +13763,7 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                     "influencers": influencers[:5],
                     "commission": commission,
                     "collab_offer": collab_offer,
-                }), ex=86400 * 14)
+                }), ttl_seconds=86400 * 14)
 
             return {
                 "success": True,
@@ -13871,7 +13876,7 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                         total_value += deal_value
 
             # ── Save updated pipeline ─────────────────────────────────────────
-            await cache.set("aria:crm:pipeline", _json.dumps(pipeline), ex=86400 * 90)
+            await cache.set("aria:crm:pipeline", _json.dumps(pipeline), ttl_seconds=86400 * 90)
 
             return {
                 "success": True,
@@ -13970,7 +13975,7 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
             # Cache latest testimonials for use in product pages
             if cache:
                 import json as _json
-                await cache.set("aria:social_proof:latest", _json.dumps(testimonials[:5]), ex=86400 * 30)
+                await cache.set("aria:social_proof:latest", _json.dumps(testimonials[:5]), ttl_seconds=86400 * 30)
 
             return {
                 "success": True,
@@ -14101,7 +14106,7 @@ Generate a backlink building plan:
                             key = f"aria:viral:stars:{repo['name']}"
                             prev_raw = await cache.get(key)
                             prev_stars = int(prev_raw) if prev_raw else 0
-                            await cache.set(key, str(stars), ex=86400 * 30)
+                            await cache.set(key, str(stars), ttl_seconds=86400 * 30)
                             delta = stars - prev_stars
                             if delta >= 3 or (prev_stars > 0 and delta / max(prev_stars, 1) > 0.2):
                                 viral_hits.append({
@@ -14136,7 +14141,7 @@ Generate a backlink building plan:
                                         key = f"aria:viral:devto:{art.get('id', '')}"
                                         prev_raw = await cache.get(key)
                                         prev_views = int(prev_raw) if prev_raw else 0
-                                        await cache.set(key, str(views), ex=86400 * 30)
+                                        await cache.set(key, str(views), ttl_seconds=86400 * 30)
                                         delta = views - prev_views
                                         if delta >= 100 or reactions >= 10:
                                             viral_hits.append({
@@ -14306,7 +14311,7 @@ Generate a backlink building plan:
                     "estimated_growth": plan.get("estimated_list_growth_per_week", 0),
                 }))
                 await cache.ltrim("aria:email:magnets", -20, -1)
-                await cache.incr("aria:email:total_magnets")
+                await cache.increment("aria:email:total_magnets")
 
             distributed_to: list[str] = []
             lp_url = urls_created[0] if urls_created else ""
@@ -14428,7 +14433,7 @@ Generate a backlink building plan:
                     "revenue": revenue_per_deal, "outreach_count": outreach_count,
                 }))
                 await cache.ltrim("aria:jv:pitches", -20, -1)
-                await cache.incr("aria:jv:total_pitches")
+                await cache.increment("aria:jv:total_pitches")
 
             return {
                 "success": True,
@@ -14513,7 +14518,7 @@ Generate a backlink building plan:
                     "reviewers": len(reviewers), "expected_backlinks": expected_backlinks,
                 }))
                 await cache.ltrim("aria:pr:campaigns", -20, -1)
-                await cache.incr("aria:pr:total_outreach")
+                await cache.increment("aria:pr:total_outreach")
 
             return {
                 "success": True,
@@ -14589,7 +14594,7 @@ Generate a backlink building plan:
                     "posts": posts_published, "est_traffic": monthly_traffic,
                 }))
                 await cache.ltrim("aria:seo:clusters", -20, -1)
-                await cache.incr("aria:seo:total_clusters")
+                await cache.increment("aria:seo:total_clusters")
 
             # Promote pillar on Dev.to for SEO backlink
             try:
@@ -14689,7 +14694,7 @@ Generate a backlink building plan:
                     "expected_lift": aov_increase,
                 }))
                 await cache.ltrim("aria:pricing:anchored", -20, -1)
-                await cache.incr("aria:pricing:total_redesigns")
+                await cache.increment("aria:pricing:total_redesigns")
 
             revenue_delta = (main_price - current_price) * 10
             return {
@@ -14907,7 +14912,7 @@ Generate a backlink building plan:
                     "subject": license_deal.get("pitch_email_subject", ""),
                     "body": license_deal.get("pitch_email_body", ""), "ts": today,
                 }))
-                await cache.incr("aria:licensing:total_packages")
+                await cache.increment("aria:licensing:total_packages")
 
             revenue_potential = monthly_fee * expected_clients
             return {
@@ -14969,7 +14974,7 @@ Generate a backlink building plan:
                 await cache.rpush("aria:social:proof_posts", _json.dumps({
                     "text": consulting.get("pitch_linkedin_post", ""), "platform": "linkedin", "ts": today,
                 }))
-                await cache.incr("aria:consulting:total_offers")
+                await cache.increment("aria:consulting:total_offers")
 
             revenue_potential = price * sessions_available
             return {
@@ -15032,7 +15037,7 @@ Generate a backlink building plan:
                     "upgrade_rate": upgrade_rate, "mrr_per_100": mrr_per_100,
                 }))
                 await cache.ltrim("aria:email_sequences:library", -10, -1)
-                await cache.incr("aria:email_sequences:total")
+                await cache.increment("aria:email_sequences:total")
 
             return {
                 "success": True,
@@ -15093,7 +15098,7 @@ Generate a backlink building plan:
                 await cache.rpush("aria:social:proof_posts", _json.dumps({
                     "text": community.get("launch_tweet", ""), "platform": "twitter", "ts": today,
                 }))
-                await cache.incr("aria:communities:total")
+                await cache.increment("aria:communities:total")
 
             return {
                 "success": True,
@@ -15207,7 +15212,7 @@ Generate a backlink building plan:
                     "channels": published_channels,
                 }))
                 await cache.ltrim("aria:thought_leadership:pieces", -20, -1)
-                await cache.incr("aria:thought_leadership:total")
+                await cache.increment("aria:thought_leadership:total")
 
             estimated_shares = int(piece.get("estimated_shares", 50))
             return {
@@ -15343,7 +15348,7 @@ Generate a backlink building plan:
                     "highest_price": highest_price,
                 }))
                 await cache.ltrim("aria:api_products:launched", -10, -1)
-                await cache.incr("aria:api_products:total")
+                await cache.increment("aria:api_products:total")
 
             return {
                 "success": True,
@@ -15414,7 +15419,7 @@ Generate a backlink building plan:
                     "status": "running",
                 }))
                 await cache.ltrim("aria:growth_experiments:history", -20, -1)
-                await cache.incr("aria:growth_experiments:total")
+                await cache.increment("aria:growth_experiments:total")
 
             return {
                 "success": True,
@@ -15470,7 +15475,7 @@ Generate a backlink building plan:
                     "aso_score": aso_score, "pricing": listing.get("pricing", ""),
                 }))
                 await cache.ltrim("aria:marketplace:listings", -20, -1)
-                await cache.incr("aria:marketplace:total_listings")
+                await cache.increment("aria:marketplace:total_listings")
 
             return {
                 "success": True,
@@ -15538,7 +15543,7 @@ Generate a backlink building plan:
                     "seo_keywords": case_study.get("seo_keywords", []),
                 }))
                 await cache.ltrim("aria:case_studies:published", -20, -1)
-                await cache.incr("aria:case_studies:total")
+                await cache.increment("aria:case_studies:total")
 
             distributed_to: list[str] = []
 
@@ -15723,9 +15728,9 @@ Return JSON:
             await cache.set(
                 f"aria:repromo:last:{prod_key}",
                 now.isoformat(),
-                ex=86400 * 7,
+                ttl_seconds=86400 * 7,
             )
-            await cache.incr("aria:repromo:total_repromoted")
+            await cache.increment("aria:repromo:total_repromoted")
 
             hook = promo_data.get("hook", angle[:50])
             return {
