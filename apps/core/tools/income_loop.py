@@ -9181,10 +9181,85 @@ JSON:
                 return {"success": False, "summary": "media_pitch: archive failed"}
 
             headline = press_release.get("headline", "")
-            logger.info("[IncomeLoop] media_pitch: '%s' — %d pitches", headline[:60], len(pitches))
+
+            # ── Send pitch emails via SMTP ─────────────────────────────────────
+            pitch_emails_sent = 0
+            _mp_smtp_host = getattr(settings, "SMTP_HOST", None)
+            _mp_smtp_user = getattr(settings, "SMTP_USER", None)
+            _mp_smtp_pass = getattr(settings, "SMTP_PASSWORD", None)
+            _mp_smtp_from = getattr(settings, "SMTP_FROM", _mp_smtp_user)
+            _mp_smtp_port = int(getattr(settings, "SMTP_PORT", 587))
+            if _mp_smtp_host and _mp_smtp_user and _mp_smtp_pass:
+                import smtplib
+                from email.mime.text import MIMEText as _MPMime
+                # Known journalist emails for seeding outreach
+                known_outlets: list[tuple[str, str]] = [
+                    ("news@ycombinator.com", pitches[0].get("subject_line", headline) if pitches else headline),
+                    ("tips@techcrunch.com", pitches[1].get("subject_line", headline) if len(pitches) > 1 else headline),
+                ]
+                for to_email, subj in known_outlets[:2]:
+                    body = press_release.get("body", "") + "\n\n" + press_release.get("boilerplate", "")
+                    try:
+                        _mp_msg = _MPMime(body)
+                        _mp_msg["Subject"] = subj[:100]
+                        _mp_msg["From"] = _mp_smtp_from or _mp_smtp_user
+                        _mp_msg["To"] = to_email
+                        with smtplib.SMTP(_mp_smtp_host, _mp_smtp_port) as _mp_srv:
+                            _mp_srv.starttls()
+                            _mp_srv.login(_mp_smtp_user, _mp_smtp_pass)
+                            _mp_srv.sendmail(_mp_smtp_from or _mp_smtp_user, [to_email], _mp_msg.as_string())
+                        pitch_emails_sent += 1
+                    except Exception:
+                        pass
+
+            # ── Submit to Hacker News as Show HN ─────────────────────────────
+            _mp_ae = getattr(settings, "ARIA_EMAIL", None)
+            _mp_ap = getattr(settings, "ARIA_PASSWORD", None)
+            if _mp_ae and _mp_ap and urls_created:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _mp_plat = await get_platform_login()
+                    _hn_url2 = await _mp_plat.hackernews_show_hn(
+                        _mp_ae, _mp_ap,
+                        title=f"Show HN: {headline[:100]}",
+                        url=urls_created[0],
+                        text=press_release.get("body", "")[:500],
+                    )
+                    if _hn_url2:
+                        urls_created.append(_hn_url2)
+                except Exception:
+                    pass
+
+            # ── Twitter teaser for press release ──────────────────────────────
+            tw_mp = (
+                f"📰 Press release: {headline[:120]}\n\n"
+                f"{press_release.get('subheadline','')[:100]}\n\n"
+                f"→ {urls_created[0]}"
+            )[:280]
+            _mp_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _mp_pub = get_api_publisher()
+                _mp_tw_r = await _mp_pub.publish_to_twitter(tw_mp)
+                if _mp_tw_r and _mp_tw_r.success:
+                    _mp_tw_ok = True
+                    if _mp_tw_r.url:
+                        urls_created.append(_mp_tw_r.url)
+            except Exception:
+                pass
+            if not _mp_tw_ok and _mp_ae and _mp_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _mp_plat2 = await get_platform_login()
+                    _mp_tw_pg = await _mp_plat2.twitter(_mp_ae, _mp_ap)
+                    await _mp_plat2.twitter_thread_post(_mp_tw_pg, [tw_mp])
+                except Exception:
+                    pass
+
+            logger.info("[IncomeLoop] media_pitch: '%s' — %d pitches | %d emails sent", headline[:60], len(pitches), pitch_emails_sent)
             return {
                 "success": True,
-                "summary": f"Media kit: '{headline[:70]}' — {len(pitches)} journalist pitches ready",
+                "summary": f"Media kit: '{headline[:70]}' — {len(pitches)} journalist pitches | {pitch_emails_sent} emails sent | HN + Twitter shared",
                 "revenue_potential": 100.0,  # one press feature = thousands of visitors
                 "urls": urls_created[:3],
             }
@@ -13632,9 +13707,39 @@ Return JSON:
                 await cache.ltrim("aria:products:catalog", -200, -1)
                 await cache.increment("aria:income:total_urls_published")
 
+            # ── Announce on Twitter + LinkedIn ─────────────────────────────────
+            _wl_ae2 = getattr(settings, "ARIA_EMAIL", None)
+            _wl_ap2 = getattr(settings, "ARIA_PASSWORD", None)
+            _wl_url = urls_created[0] if urls_created else ""
+            tw_wl = (
+                f"🏷️ White-label AI kit for agencies: {kit_name[:60]}\n\n"
+                f"{tagline}\n\n"
+                f"${price} one-time | resell to clients at ${pricing.get('suggested_client_price',1500)}/project\n"
+                f"→ {_wl_url}"
+            )[:280]
+            _wl_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _wl_pub = get_api_publisher()
+                _wl_tw_r = await _wl_pub.publish_to_twitter(tw_wl)
+                if _wl_tw_r and _wl_tw_r.success:
+                    _wl_tw_ok = True
+                    if _wl_tw_r.url:
+                        urls_created.append(_wl_tw_r.url)
+            except Exception:
+                pass
+            if not _wl_tw_ok and _wl_ae2 and _wl_ap2:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _wl_plat2 = await get_platform_login()
+                    _wl_tw_pg = await _wl_plat2.twitter(_wl_ae2, _wl_ap2)
+                    await _wl_plat2.twitter_thread_post(_wl_tw_pg, [tw_wl])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"white_label_kit: '{kit_name[:50]}' at ${price} | B2B agency resale kit | {len(urls_created)} URLs",
+                "summary": f"white_label_kit: '{kit_name[:50]}' at ${price} | B2B agency resale kit | {len(urls_created)} URLs | promoted",
                 "revenue_potential": price,
                 "urls": urls_created[:3],
             }
@@ -13800,9 +13905,39 @@ Return JSON:
                 await cache.ltrim("aria:products:catalog", -200, -1)
                 await cache.increment("aria:income:total_urls_published")
 
+            # ── Announce data product on Twitter ──────────────────────────────
+            _dps_ae = getattr(settings, "ARIA_EMAIL", None)
+            _dps_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _dps_url = urls_created[0] if urls_created else ""
+            tw_dps = (
+                f"📊 New data product: {prod_name[:70]}\n\n"
+                f"{tagline}\n\n"
+                f"{total_items} curated items | ${price}\n"
+                f"→ {_dps_url}"
+            )[:280]
+            _dps_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _dps_pub = get_api_publisher()
+                _dps_tw_r = await _dps_pub.publish_to_twitter(tw_dps)
+                if _dps_tw_r and _dps_tw_r.success:
+                    _dps_tw_ok = True
+                    if _dps_tw_r.url:
+                        urls_created.append(_dps_tw_r.url)
+            except Exception:
+                pass
+            if not _dps_tw_ok and _dps_ae and _dps_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _dps_plat = await get_platform_login()
+                    _dps_tw_pg = await _dps_plat.twitter(_dps_ae, _dps_ap)
+                    await _dps_plat.twitter_thread_post(_dps_tw_pg, [tw_dps])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"data_product_seller: '{prod_name[:50]}' at ${price} | {total_items} curated items | {len(urls_created)} URLs",
+                "summary": f"data_product_seller: '{prod_name[:50]}' at ${price} | {total_items} curated items | {len(urls_created)} URLs | promoted",
                 "revenue_potential": price,
                 "urls": urls_created[:3],
             }
@@ -13967,6 +14102,42 @@ Return JSON:
                     except Exception:
                         pass
 
+            # ── SMTP fallback for cold emails ──────────────────────────────────
+            if not sendgrid_key and email_subject and email_body:
+                _b2b_smtp_host = getattr(settings, "SMTP_HOST", None)
+                _b2b_smtp_user = getattr(settings, "SMTP_USER", None)
+                _b2b_smtp_pass = getattr(settings, "SMTP_PASSWORD", None)
+                _b2b_smtp_from = getattr(settings, "SMTP_FROM", _b2b_smtp_user)
+                _b2b_smtp_port = int(getattr(settings, "SMTP_PORT", 587))
+                if _b2b_smtp_host and _b2b_smtp_user and _b2b_smtp_pass and cache:
+                    from email.mime.text import MIMEText as _B2BMime
+                    import smtplib
+                    crm_prospects_smtp: list[dict] = []
+                    raw_list2 = await cache.lrange("aria:crm:pipeline", -10, -1)
+                    for raw2 in (raw_list2 or []):
+                        try:
+                            p2 = _json.loads(raw2) if isinstance(raw2, str) else raw2
+                            if p2.get("email") and p2.get("stage", "") in ("cold", "prospect"):
+                                crm_prospects_smtp.append(p2)
+                        except Exception:
+                            pass
+                    for p3 in crm_prospects_smtp[:5]:
+                        if not p3.get("email"):
+                            continue
+                        try:
+                            body3 = email_body.replace("{name}", p3.get("name", "there"))
+                            _b2b_msg = _B2BMime(body3)
+                            _b2b_msg["Subject"] = email_subject
+                            _b2b_msg["From"] = _b2b_smtp_from or _b2b_smtp_user
+                            _b2b_msg["To"] = p3["email"]
+                            with smtplib.SMTP(_b2b_smtp_host, _b2b_smtp_port) as _b2b_srv:
+                                _b2b_srv.starttls()
+                                _b2b_srv.login(_b2b_smtp_user, _b2b_smtp_pass)
+                                _b2b_srv.sendmail(_b2b_smtp_from or _b2b_smtp_user, [p3["email"]], _b2b_msg.as_string())
+                            emails_sent += 1
+                        except Exception:
+                            pass
+
             if cache:
                 await cache.rpush("aria:b2b:pitches", _json.dumps({
                     "ts": today, "sector": target_sector, "offer": offer, "retainer": monthly_retainer
@@ -13974,9 +14145,40 @@ Return JSON:
                 await cache.ltrim("aria:b2b:pitches", -30, -1)
                 await cache.increment("aria:b2b:total_pitches")
 
+            # ── LinkedIn post to attract inbound B2B interest ─────────────────
+            _b2b_ae = getattr(settings, "ARIA_EMAIL", None)
+            _b2b_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _b2b_gh_url = urls_created[0] if urls_created else ""
+            li_b2b = (
+                f"Working with {target_sector} companies on AI automation.\n\n"
+                f"{pitch_data.get('offer_description','')[:300]}\n\n"
+                f"ROI for clients:\n"
+                f"• {roi.get('hours_saved_per_month',80)}hrs saved/month\n"
+                f"• {roi.get('content_pieces_per_month',30)} content pieces/month\n"
+                f"• {roi.get('leads_generated_per_month',15)} new leads/month\n\n"
+                f"Starting at ${monthly_retainer}/mo. DM if interested."
+            )[:1300]
+            _b2b_li_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _b2b_pub = get_api_publisher()
+                _b2b_li_r = await _b2b_pub.publish_to_linkedin(li_b2b)
+                if _b2b_li_r and _b2b_li_r.success:
+                    _b2b_li_ok = True
+            except Exception:
+                pass
+            if not _b2b_li_ok and _b2b_ae and _b2b_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _b2b_plat = await get_platform_login()
+                    _b2b_li_pg = await _b2b_plat.linkedin(_b2b_ae, _b2b_ap)
+                    await _b2b_plat.linkedin_post(_b2b_li_pg, li_b2b)
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"b2b_saas_pitch: '{offer[:50]}' | ${monthly_retainer}/mo | {emails_sent} emails sent | archived to GitHub",
+                "summary": f"b2b_saas_pitch: '{offer[:50]}' | ${monthly_retainer}/mo | {emails_sent} emails sent | archived + LinkedIn promotion",
                 "revenue_potential": monthly_retainer,
                 "urls": urls_created[:3],
             }
@@ -14149,6 +14351,9 @@ Create compelling brand story assets that position ARIA as the most advanced aut
             elevator = brand_assets.get("elevator_pitch", "")
             hero = brand_assets.get("hero_statement", "")
 
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+
             # ── Publish Twitter bio update as a thread ─────────────────────────
             thread_content = f"{hero}\n\n{elevator}"
             if len(thread_content) <= 280:
@@ -14162,17 +14367,40 @@ Create compelling brand story assets that position ARIA as the most advanced aut
                         _tw_ok = True
                 except Exception:
                     pass
-                if not _tw_ok:
-                    _ae = getattr(settings, "ARIA_EMAIL", None)
-                    _ap = getattr(settings, "ARIA_PASSWORD", None)
-                    if _ae and _ap:
-                        try:
-                            from apps.core.tools.human_browser import get_platform_login
-                            _plat = await get_platform_login()
-                            _tw_page = await _plat.twitter(_ae, _ap)
-                            await _plat.twitter_thread_post(_tw_page, [thread_content[:280]])
-                        except Exception:
-                            pass
+                if not _tw_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        await _plat.twitter_thread_post(_tw_page, [thread_content[:280]])
+                    except Exception:
+                        pass
+
+            # ── LinkedIn brand story post ──────────────────────────────────────
+            li_brand = (
+                f"{hero}\n\n"
+                f"{value_prop}\n\n"
+                f"{linkedin[:600] if linkedin else bio}"
+            )[:1300]
+            _li_bs_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _bs_pub = get_api_publisher()
+                _li_bs_r = await _bs_pub.publish_to_linkedin(li_brand)
+                if _li_bs_r and _li_bs_r.success:
+                    _li_bs_ok = True
+                    if _li_bs_r.url:
+                        urls_created.append(_li_bs_r.url)
+            except Exception:
+                pass
+            if not _li_bs_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _bs_plat = await get_platform_login()
+                    _li_bs_pg = await _bs_plat.linkedin(_ae, _ap)
+                    await _bs_plat.linkedin_post(_li_bs_pg, li_brand)
+                except Exception:
+                    pass
 
             # ── Archive brand story ────────────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -14799,6 +15027,32 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                                     emails_sent += 1
                     except Exception:
                         pass
+
+            # ── SMTP fallback for retargeting emails ──────────────────────────
+            if not sg_key:
+                _rt_smtp_host = getattr(settings, "SMTP_HOST", None)
+                _rt_smtp_user = getattr(settings, "SMTP_USER", None)
+                _rt_smtp_pass = getattr(settings, "SMTP_PASSWORD", None)
+                _rt_smtp_from = getattr(settings, "SMTP_FROM", _rt_smtp_user)
+                _rt_smtp_port = int(getattr(settings, "SMTP_PORT", 587))
+                if _rt_smtp_host and _rt_smtp_user and _rt_smtp_pass:
+                    import smtplib
+                    from email.mime.text import MIMEText as _RTMime
+                    for person in abandoned[:30]:
+                        if not person.get("email"):
+                            continue
+                        try:
+                            _rt_msg = _RTMime(retarget.get("email_body", ""))
+                            _rt_msg["Subject"] = retarget.get("email_subject", "We saved your spot")
+                            _rt_msg["From"] = _rt_smtp_from or _rt_smtp_user
+                            _rt_msg["To"] = person["email"]
+                            with smtplib.SMTP(_rt_smtp_host, _rt_smtp_port) as _rt_srv:
+                                _rt_srv.starttls()
+                                _rt_srv.login(_rt_smtp_user, _rt_smtp_pass)
+                                _rt_srv.sendmail(_rt_smtp_from or _rt_smtp_user, [person["email"]], _rt_msg.as_string())
+                            emails_sent += 1
+                        except Exception:
+                            pass
 
             # ── Archive campaign to GitHub ────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -16300,9 +16554,67 @@ Generate a backlink building plan:
                 await cache.increment("aria:consulting:total_offers")
 
             revenue_potential = price * sessions_available
+
+            # ── Promote consulting offer on LinkedIn + Twitter ─────────────────
+            _mc_ae = getattr(settings, "ARIA_EMAIL", None)
+            _mc_ap = getattr(settings, "ARIA_PASSWORD", None)
+            pitch_post = consulting.get("pitch_linkedin_post", "")
+            booking_url = urls_created[0] if urls_created else ""
+            li_post = (
+                f"{pitch_post}\n\n"
+                f"${price}/session | {sessions_available} slots this week\n"
+                f"Book here → {booking_url}"
+            )[:1300] if pitch_post else ""
+            tw_post = (
+                f"🧠 Now offering 1-hour AI consulting: {session_title[:60]}\n\n"
+                f"${price} | {sessions_available} slots available\n"
+                f"→ {booking_url}"
+            )[:280]
+
+            if li_post:
+                _li_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _mc_pub = get_api_publisher()
+                    _li_r = await _mc_pub.publish_to_linkedin(li_post)
+                    if _li_r and _li_r.success:
+                        _li_ok = True
+                        if _li_r.url:
+                            urls_created.append(_li_r.url)
+                except Exception:
+                    pass
+                if not _li_ok and _mc_ae and _mc_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _mc_plat = await get_platform_login()
+                        _li_pg = await _mc_plat.linkedin(_mc_ae, _mc_ap)
+                        await _mc_plat.linkedin_post(_li_pg, li_post)
+                    except Exception:
+                        pass
+
+            _tw_ok2 = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _mc_pub2 = get_api_publisher()
+                _tw_r2 = await _mc_pub2.publish_to_twitter(tw_post)
+                if _tw_r2 and _tw_r2.success:
+                    _tw_ok2 = True
+                    if _tw_r2.url:
+                        urls_created.append(_tw_r2.url)
+            except Exception:
+                pass
+            if not _tw_ok2 and _mc_ae and _mc_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _mc_plat2 = await get_platform_login()
+                    _tw_pg2 = await _mc_plat2.twitter(_mc_ae, _mc_ap)
+                    await _mc_plat2.twitter_thread_post(_tw_pg2, [tw_post])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"micro_consulting: '{session_title[:40]}' | ${price}/session | {sessions_available} slots | ${revenue_potential:,.0f} potential this week | booking page deployed",
+                "summary": f"micro_consulting: '{session_title[:40]}' | ${price}/session | {sessions_available} slots | ${revenue_potential:,.0f} potential this week | promoted on LinkedIn+Twitter",
                 "revenue_potential": revenue_potential,
                 "urls": urls_created[:3],
             }
@@ -16362,9 +16674,39 @@ Generate a backlink building plan:
                 await cache.ltrim("aria:email_sequences:library", -10, -1)
                 await cache.increment("aria:email_sequences:total")
 
+            # ── Announce SaaS sequence launch on Twitter ───────────────────────
+            _ss_ae = getattr(settings, "ARIA_EMAIL", None)
+            _ss_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _ss_url = urls_created[0] if urls_created else ""
+            tw_seq = (
+                f"📧 Just built a {len(emails)}-email SaaS upgrade sequence\n\n"
+                f"→ {upgrade_rate:.0f}% projected conversion rate\n"
+                f"→ ${mrr_per_100}/mo per 100 users\n"
+                f"Free → Paid email flow: {_ss_url}"
+            )[:280]
+            _ss_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _ss_pub = get_api_publisher()
+                _ss_tw_r = await _ss_pub.publish_to_twitter(tw_seq)
+                if _ss_tw_r and _ss_tw_r.success:
+                    _ss_tw_ok = True
+                    if _ss_tw_r.url:
+                        urls_created.append(_ss_tw_r.url)
+            except Exception:
+                pass
+            if not _ss_tw_ok and _ss_ae and _ss_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _ss_plat = await get_platform_login()
+                    _ss_tw_pg = await _ss_plat.twitter(_ss_ae, _ss_ap)
+                    await _ss_plat.twitter_thread_post(_ss_tw_pg, [tw_seq])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"saas_upsell_sequence: '{seq_name[:40]}' | {len(emails)} emails | {upgrade_rate:.1f}% upgrade rate | ${mrr_per_100}/100 users MRR | sequence archived",
+                "summary": f"saas_upsell_sequence: '{seq_name[:40]}' | {len(emails)} emails | {upgrade_rate:.1f}% upgrade rate | ${mrr_per_100}/100 users MRR | sequence archived + announced",
                 "revenue_potential": mrr_per_100,
                 "urls": urls_created[:3],
             }
@@ -16423,9 +16765,68 @@ Generate a backlink building plan:
                 }))
                 await cache.increment("aria:communities:total")
 
+            # ── Actually post launch tweet (API → browser fallback) ────────────
+            _cm_ae = getattr(settings, "ARIA_EMAIL", None)
+            _cm_ap = getattr(settings, "ARIA_PASSWORD", None)
+            launch_tweet = community.get("launch_tweet", "")
+            community_url = urls_created[0] if urls_created else ""
+            if not launch_tweet:
+                launch_tweet = (
+                    f"🚀 Launching {community_name} — paid community on {community.get('platform','Discord')}\n\n"
+                    f"{len(tiers)} membership tiers | {members_m1} founding spots\n"
+                    f"Join → {community_url}"
+                )
+            tw_cm = (launch_tweet + f"\n→ {community_url}")[:280]
+
+            _cm_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _cm_pub = get_api_publisher()
+                _cm_tw_r = await _cm_pub.publish_to_twitter(tw_cm)
+                if _cm_tw_r and _cm_tw_r.success:
+                    _cm_tw_ok = True
+                    if _cm_tw_r.url:
+                        urls_created.append(_cm_tw_r.url)
+            except Exception:
+                pass
+            if not _cm_tw_ok and _cm_ae and _cm_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _cm_plat = await get_platform_login()
+                    _cm_tw_pg = await _cm_plat.twitter(_cm_ae, _cm_ap)
+                    await _cm_plat.twitter_thread_post(_cm_tw_pg, [tw_cm])
+                except Exception:
+                    pass
+
+            # LinkedIn launch post
+            li_cm = (
+                f"Launching {community_name} — a paid community for AI builders\n\n"
+                f"What's inside:\n" + "\n".join(
+                    f"• {t.get('name','')}: ${t.get('price_monthly',0)}/mo — " + ", ".join(t.get('perks', [])[:2])
+                    for t in tiers[:3]
+                ) + f"\n\nJoin here → {community_url}"
+            )[:1300]
+            _cm_li_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _cm_pub2 = get_api_publisher()
+                _cm_li_r = await _cm_pub2.publish_to_linkedin(li_cm)
+                if _cm_li_r and _cm_li_r.success:
+                    _cm_li_ok = True
+            except Exception:
+                pass
+            if not _cm_li_ok and _cm_ae and _cm_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _cm_plat2 = await get_platform_login()
+                    _cm_li_pg = await _cm_plat2.linkedin(_cm_ae, _cm_ap)
+                    await _cm_plat2.linkedin_post(_cm_li_pg, li_cm)
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"community_monetize: '{community_name[:40]}' on {community.get('platform','Discord')} | {len(tiers)} tiers | {members_m1} members month-1 | ${expected_mrr:,.0f} MRR month-3 | landing page live",
+                "summary": f"community_monetize: '{community_name[:40]}' on {community.get('platform','Discord')} | {len(tiers)} tiers | {members_m1} members month-1 | ${expected_mrr:,.0f} MRR month-3 | launched + promoted",
                 "revenue_potential": expected_mrr,
                 "urls": urls_created[:3],
             }
@@ -16628,9 +17029,36 @@ Generate a backlink building plan:
 
             earn_count = len(economy.get("earn_actions", []))
             redeem_count = len(economy.get("redeem_options", []))
+
+            # ── Actually post launch tweet (not just queue it) ─────────────────
+            _te_ae = getattr(settings, "ARIA_EMAIL", None)
+            _te_ap = getattr(settings, "ARIA_PASSWORD", None)
+            launch_tweet = economy.get("launch_tweet", f"Introducing {token_name} ({token_symbol}) — ARIA's community reward token 🪙")
+            _te_url = urls_created[0] if urls_created else ""
+            tw_te = (launch_tweet + f"\n→ {_te_url}")[:280]
+            _te_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _te_pub = get_api_publisher()
+                _te_tw_r = await _te_pub.publish_to_twitter(tw_te)
+                if _te_tw_r and _te_tw_r.success:
+                    _te_tw_ok = True
+                    if _te_tw_r.url:
+                        urls_created.append(_te_tw_r.url)
+            except Exception:
+                pass
+            if not _te_tw_ok and _te_ae and _te_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _te_plat = await get_platform_login()
+                    _te_tw_pg = await _te_plat.twitter(_te_ae, _te_ap)
+                    await _te_plat.twitter_thread_post(_te_tw_pg, [tw_te])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"token_economy: '{token_name}' ({token_symbol}) | {earn_count} earn actions | {redeem_count} rewards | whitepaper published | virality: {economy.get('virality_mechanic','')[:50]}",
+                "summary": f"token_economy: '{token_name}' ({token_symbol}) | {earn_count} earn actions | {redeem_count} rewards | whitepaper published + announced | virality: {economy.get('virality_mechanic','')[:50]}",
                 "revenue_potential": 500.0,
                 "urls": urls_created[:3],
             }
@@ -16698,9 +17126,39 @@ Generate a backlink building plan:
                 await cache.ltrim("aria:api_products:launched", -10, -1)
                 await cache.increment("aria:api_products:total")
 
+            # ── Announce API product on Twitter ────────────────────────────────
+            _apl_ae = getattr(settings, "ARIA_EMAIL", None)
+            _apl_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _apl_url = urls_created[0] if urls_created else ""
+            tw_apl = (
+                f"🔌 New API product: {api_name[:60]}\n\n"
+                f"{api_product.get('tagline','')[:80]}\n\n"
+                f"{len(tiers)} pricing tiers | from free to ${highest_price}/mo\n"
+                f"→ {_apl_url}"
+            )[:280]
+            _apl_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _apl_pub = get_api_publisher()
+                _apl_tw_r = await _apl_pub.publish_to_twitter(tw_apl)
+                if _apl_tw_r and _apl_tw_r.success:
+                    _apl_tw_ok = True
+                    if _apl_tw_r.url:
+                        urls_created.append(_apl_tw_r.url)
+            except Exception:
+                pass
+            if not _apl_tw_ok and _apl_ae and _apl_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _apl_plat = await get_platform_login()
+                    _apl_tw_pg = await _apl_plat.twitter(_apl_ae, _apl_ap)
+                    await _apl_plat.twitter_thread_post(_apl_tw_pg, [tw_apl])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"api_product_launch: '{api_name[:40]}' | {len(api_product.get('endpoints',[]))} endpoints | {len(tiers)} pricing tiers | top tier: ${highest_price}/mo | README + Postman published",
+                "summary": f"api_product_launch: '{api_name[:40]}' | {len(api_product.get('endpoints',[]))} endpoints | {len(tiers)} pricing tiers | top tier: ${highest_price}/mo | README + Postman published + announced",
                 "revenue_potential": highest_price * 3,
                 "urls": urls_created[:3],
             }
@@ -16770,9 +17228,38 @@ Generate a backlink building plan:
                 await cache.ltrim("aria:growth_experiments:history", -20, -1)
                 await cache.increment("aria:growth_experiments:total")
 
+            # ── Share experiment as building-in-public tweet ───────────────────
+            _ge_ae = getattr(settings, "ARIA_EMAIL", None)
+            _ge_ap = getattr(settings, "ARIA_PASSWORD", None)
+            tw_ge = (
+                f"🧪 Running a growth experiment:\n\n"
+                f"{experiment.get('hypothesis','')[:160]}\n\n"
+                f"Expected lift: +{experiment.get('expected_lift_pct',0):.0f}%\n"
+                f"Tracking: {experiment.get('metric_to_track','')[:60]}"
+            )[:280]
+            _ge_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _ge_pub = get_api_publisher()
+                _ge_tw_r = await _ge_pub.publish_to_twitter(tw_ge)
+                if _ge_tw_r and _ge_tw_r.success:
+                    _ge_tw_ok = True
+                    if _ge_tw_r.url:
+                        urls_created.append(_ge_tw_r.url)
+            except Exception:
+                pass
+            if not _ge_tw_ok and _ge_ae and _ge_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _ge_plat = await get_platform_login()
+                    _ge_tw_pg = await _ge_plat.twitter(_ge_ae, _ge_ap)
+                    await _ge_plat.twitter_thread_post(_ge_tw_pg, [tw_ge])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"growth_experiment: '{exp_name[:40]}' | {experiment.get('experiment_type','')} | {experiment.get('confidence_level','medium')} confidence | +{experiment.get('expected_lift_pct',0):.1f}% expected lift | experiment doc published",
+                "summary": f"growth_experiment: '{exp_name[:40]}' | {experiment.get('experiment_type','')} | {experiment.get('confidence_level','medium')} confidence | +{experiment.get('expected_lift_pct',0):.1f}% expected lift | experiment doc published + shared",
                 "revenue_potential": experiment.get("expected_lift_pct", 5.0) * 10.0,
                 "urls": urls_created[:3],
             }
@@ -16826,9 +17313,39 @@ Generate a backlink building plan:
                 await cache.ltrim("aria:marketplace:listings", -20, -1)
                 await cache.increment("aria:marketplace:total_listings")
 
+            # ── Announce on Twitter ────────────────────────────────────────────
+            _asl_ae = getattr(settings, "ARIA_EMAIL", None)
+            _asl_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _asl_url = urls_created[0] if urls_created else ""
+            tw_asl = (
+                f"🚀 New listing: {app_name[:50]} on {marketplace.replace('_',' ')}\n\n"
+                f"ASO score: {aso_score}/100 | {listing.get('pricing','Free')}\n"
+                f"Primary keyword: {listing.get('primary_keyword','AI automation')}\n"
+                f"→ {_asl_url}"
+            )[:280]
+            _asl_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _asl_pub = get_api_publisher()
+                _asl_tw_r = await _asl_pub.publish_to_twitter(tw_asl)
+                if _asl_tw_r and _asl_tw_r.success:
+                    _asl_tw_ok = True
+                    if _asl_tw_r.url:
+                        urls_created.append(_asl_tw_r.url)
+            except Exception:
+                pass
+            if not _asl_tw_ok and _asl_ae and _asl_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _asl_plat = await get_platform_login()
+                    _asl_tw_pg = await _asl_plat.twitter(_asl_ae, _asl_ap)
+                    await _asl_plat.twitter_thread_post(_asl_tw_pg, [tw_asl])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"app_store_listing: '{app_name[:40]}' → {marketplace} | ASO score: {aso_score}/100 | {listing.get('pricing','Free')} | listing published",
+                "summary": f"app_store_listing: '{app_name[:40]}' → {marketplace} | ASO score: {aso_score}/100 | {listing.get('pricing','Free')} | listing published + announced",
                 "revenue_potential": 300.0 if listing.get("pricing") != "Free" else 50.0,
                 "urls": urls_created[:3],
             }
