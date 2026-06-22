@@ -3667,9 +3667,10 @@ Return JSON:
                 repo_url = f"https://github.com/{owner}/{repo_name}"
                 logger.info("[IncomeLoop] Course published: %s", repo_url)
 
-                # Try to sell on Gumroad/LemonSqueezy
+                # Try to sell on Gumroad/LemonSqueezy (API → browser fallback)
                 sale_url = repo_url
                 full_description = f"{subtitle}\n\n{promise}\n\nTarget audience: {audience}\n\n{modules_md}"
+                _cb_sold = False
                 try:
                     if settings.GUMROAD_TOKEN:
                         from apps.core.tools.gumroad_tools import GumroadTools
@@ -3678,10 +3679,11 @@ Return JSON:
                             name=title,
                             description=full_description[:3000],
                             price_cents=price * 100,
-                            file_content=readme,  # full curriculum as downloadable content
+                            file_content=readme,
                         )
                         if gr.get("success") and gr.get("url"):
                             sale_url = gr["url"]
+                            _cb_sold = True
                     elif getattr(settings, "LEMONSQUEEZY_API_KEY", None):
                         from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
                         ls = LemonSqueezyTools()
@@ -3691,8 +3693,24 @@ Return JSON:
                         )
                         if lr.get("success") and lr.get("url"):
                             sale_url = lr["url"]
+                            _cb_sold = True
                 except Exception:
                     pass
+                if not _cb_sold:
+                    _cb_ae = getattr(settings, "ARIA_EMAIL", None)
+                    _cb_ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _cb_ae and _cb_ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _gm_page = await _plat.gumroad(_cb_ae, _cb_ap)
+                            _gm_url = await _plat.gumroad_create_product(
+                                _gm_page, title[:100], price * 100, full_description[:2000]
+                            )
+                            if _gm_url:
+                                sale_url = _gm_url
+                        except Exception:
+                            pass
 
                 return {
                     "success": True,
