@@ -3139,8 +3139,8 @@ Generate output using AI.
             if catalog_items:
                 product_list_md = "## 🛒 Products Available for Promotion\n\n"
                 for item in catalog_items[-8:]:
-                    title   = item.get("title", "")[:70]
-                    rev     = item.get("revenue", 0)
+                    title   = (item.get("name") or item.get("title", ""))[:70]
+                    rev     = float(item.get("price_usd") or item.get("revenue") or item.get("price", 0))
                     urls    = item.get("urls", [])
                     link    = urls[0] if urls else ""
                     commission = round(rev * 0.30, 2)
@@ -6511,9 +6511,12 @@ JSON:
             if not cache:
                 return
             entry = {
+                "name":      result.summary[:120],
                 "title":     result.summary[:120],
                 "strategy":  result.strategy,
                 "urls":      result.urls_created,
+                "price":     result.revenue_potential,
+                "price_usd": result.revenue_potential,
                 "revenue":   result.revenue_potential,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -6750,12 +6753,14 @@ JSON:
                 for raw in reversed(raw_items or []):
                     try:
                         item = _json.loads(raw) if isinstance(raw, str) else raw
-                        if item.get("title") and item.get("summary"):
-                            product_name  = item["title"][:80]
-                            product_desc  = item.get("summary", "")[:300]
+                        item_name = item.get("name") or item.get("title", "")
+                        if item_name:
+                            product_name  = item_name[:80]
+                            product_desc  = item.get("summary", item.get("description", ""))[:300]
                             if item.get("urls"):
                                 checkout_url = item["urls"][0]
-                            product_price = str(int(item.get("revenue", 29)))
+                            raw_price = item.get("price_usd") or item.get("revenue") or item.get("price", 29)
+                            product_price = str(int(float(raw_price)))
                             break
                     except Exception:
                         pass
