@@ -3339,7 +3339,10 @@ Generate output using AI.
                 logger.info("[IncomeLoop] Micro-SaaS published: %s", repo_url)
 
                 sale_url = repo_url
-                # Create a Gumroad product for the starter kit / docs bundle
+                # Create a Gumroad product for the starter kit / docs bundle (API → browser fallback)
+                _ms_ae = getattr(settings, "ARIA_EMAIL", None)
+                _ms_ap = getattr(settings, "ARIA_PASSWORD", None)
+                _ms_sold = False
                 try:
                     if settings.GUMROAD_TOKEN:
                         from apps.core.tools.gumroad_tools import GumroadTools
@@ -3356,8 +3359,25 @@ Generate output using AI.
                         )
                         if gr.get("success") and gr.get("url"):
                             sale_url = gr["url"]
+                            _ms_sold = True
                 except Exception:
                     pass
+                if not _ms_sold and _ms_ae and _ms_ap:
+                    try:
+                        starter_price = next(
+                            (t.get("price_monthly", 29) for t in pricing if t.get("name") == "Starter"), 29
+                        )
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _gm_page = await _plat.gumroad(_ms_ae, _ms_ap)
+                        _gm_url = await _plat.gumroad_create_product(
+                            _gm_page, f"{name} — Starter Kit"[:100],
+                            int(starter_price * 100), f"{tagline}\n\n{desc}"[:2000]
+                        )
+                        if _gm_url:
+                            sale_url = _gm_url
+                    except Exception:
+                        pass
 
                 # Announce on blog
                 asyncio.create_task(self._exec_github_blog([{
