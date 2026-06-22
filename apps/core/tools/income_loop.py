@@ -1645,10 +1645,12 @@ Output JSON:
             # Direct Twitter + LinkedIn blast for each live product
             pub = get_api_publisher()
             ai  = get_ai_client()
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
             for ls in live[:3]:
                 product_url = ls.listing_urls[0] if ls.listing_urls else ""
-                try:
-                    if ai:
+                if ai:
+                    try:
                         tweet_text = await ai.complete(
                             system="Write a short punchy tweet (max 240 chars) promoting this product. No hashtag spam. Output only the tweet text.",
                             user=f"Product: {ls.title}\nTagline: {ls.tagline}\nURL: {product_url}\nPrice: ${ls.pricing_tiers.get('basic', {}).get('price', 0)}",
@@ -1656,31 +1658,61 @@ Output JSON:
                             max_tokens=100,
                         )
                         tweet = (tweet_text.content if hasattr(tweet_text, 'content') else str(tweet_text))[:240]
-                        if product_url:
-                            tweet = tweet.rstrip() + f"\n\n{product_url}"
-                    else:
-                        tweet = f"🚀 {ls.title}: {ls.tagline}\n\n{product_url}"
-                    tw_result = await pub.publish_to_twitter(tweet[:280])
+                    except Exception:
+                        tweet = f"🚀 {ls.title}: {ls.tagline}"
+                else:
+                    tweet = f"🚀 {ls.title}: {ls.tagline}"
+                if product_url:
+                    tweet = tweet.rstrip() + f"\n\n{product_url}"
+                tweet = tweet[:280]
+
+                _tw_ok = False
+                try:
+                    tw_result = await pub.publish_to_twitter(tweet)
                     if tw_result.success:
                         sent += 1
+                        _tw_ok = True
                         if tw_result.url:
                             urls_created.append(tw_result.url)
                 except Exception:
                     pass
+                if not _tw_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        _tw_url = await _plat.twitter_thread_post(_tw_page, [tweet])
+                        if _tw_url:
+                            sent += 1
+                            urls_created.append(_tw_url)
+                    except Exception:
+                        pass
 
                 # LinkedIn post for products
+                lk_content = (
+                    f"🚀 New product launch: {ls.title}\n\n"
+                    f"{ls.tagline}\n\n"
+                    f"Designed for: entrepreneurs and business owners who want to automate and earn more.\n\n"
+                    f"Check it out → {product_url}"
+                )
+                _li_ok = False
                 try:
-                    lk_content = (
-                        f"🚀 New product launch: {ls.title}\n\n"
-                        f"{ls.tagline}\n\n"
-                        f"Designed for: entrepreneurs and business owners who want to automate and earn more.\n\n"
-                        f"Check it out → {product_url}"
-                    )
                     lk_result = await pub.publish_to_linkedin(lk_content)
                     if lk_result.success:
                         sent += 1
+                        _li_ok = True
                 except Exception:
                     pass
+                if not _li_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _li_page = await _plat.linkedin(_ae, _ap)
+                        _li_url = await _plat.linkedin_create_post(_li_page, lk_content[:3000])
+                        if _li_url:
+                            sent += 1
+                    except Exception:
+                        pass
 
             # Zapier fallback
             if live:
@@ -4124,6 +4156,27 @@ JSON:
                 zapier_ok = bool(zr and zr.get("success"))
             except Exception:
                 pass
+
+            # Browser fallback: post thread via stealth browser using ARIA credentials
+            if not zapier_ok:
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        tweet_list = [t[:280] for t in tweets if t]
+                        _tw_url = await _plat.twitter_thread_post(_tw_page, tweet_list[:10])
+                        if _tw_url:
+                            return {
+                                "success": True,
+                                "summary": f"Viral thread posted via browser: '{topic[:50]}' — {len(tweet_list)} tweets",
+                                "revenue_potential": 8.0,
+                                "urls": [_tw_url],
+                            }
+                    except Exception as _br_exc:
+                        logger.warning("[IncomeLoop] viral_thread browser fallback: %s", _br_exc)
 
             # Fallback: publish as GitHub Gist (public, indexed by Google)
             if not zapier_ok and settings.GITHUB_TOKEN:
@@ -15745,17 +15798,31 @@ Generate a backlink building plan:
                     pass
 
             # Post Twitter hook
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            _cs_tw_text = f"📊 {hero_stat}\n\n{title[:160]}"
+            if urls_created:
+                _cs_tw_text += f"\n\n{urls_created[0]}"
+            _cs_tw_text = _cs_tw_text[:280]
+            _cs_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
-                tw_text = f"📊 {hero_stat}\n\n{title[:160]}"
-                if urls_created:
-                    tw_text += f"\n\n{urls_created[0]}"
-                tw_result = await pub.publish_to_twitter(tw_text[:280])
+                tw_result = await pub.publish_to_twitter(_cs_tw_text)
                 if tw_result and tw_result.success:
                     distributed_to.append("Twitter")
+                    _cs_tw_ok = True
             except Exception:
                 pass
+            if not _cs_tw_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_ae, _ap)
+                    if await _plat.twitter_thread_post(_tw_page, [_cs_tw_text]):
+                        distributed_to.append("Twitter")
+                except Exception:
+                    pass
 
             distribution = case_study.get("distribution_plan", [])
             return {
@@ -15870,24 +15937,52 @@ Return JSON:
             urls_created: list[str] = []
 
             # ── Publish to Twitter ─────────────────────────────────────────────
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tweet_text[:280])
-                if tw_result and tw_result.success and tw_result.url:
-                    urls_created.append(tw_result.url)
+                if tw_result and tw_result.success:
+                    _tw_ok = True
+                    if tw_result.url:
+                        urls_created.append(tw_result.url)
             except Exception:
                 pass
+            if not _tw_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_ae, _ap)
+                    _tw_url = await _plat.twitter_thread_post(_tw_page, [tweet_text[:280]])
+                    if _tw_url:
+                        urls_created.append(_tw_url)
+                except Exception:
+                    pass
 
             # ── Publish to LinkedIn ────────────────────────────────────────────
+            _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
                 li_result = await pub.publish_to_linkedin(li_text[:1300])
-                if li_result and li_result.success and li_result.url:
-                    urls_created.append(li_result.url)
+                if li_result and li_result.success:
+                    _li_ok = True
+                    if li_result.url:
+                        urls_created.append(li_result.url)
             except Exception:
                 pass
+            if not _li_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _li_page = await _plat.linkedin(_ae, _ap)
+                    _li_url = await _plat.linkedin_create_post(_li_page, li_text[:3000])
+                    if _li_url:
+                        urls_created.append(_li_url)
+                except Exception:
+                    pass
 
             # ── Track last promotion ────────────────────────────────────────────
             prod_key = prod_name[:40].lower().replace(" ", "_")
