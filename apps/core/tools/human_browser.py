@@ -1095,6 +1095,88 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] Hashnode publish failed: %s", exc)
             return ""
 
+    async def devto_publish_article(
+        self,
+        page: HumanPage,
+        title: str,
+        body_markdown: str,
+        tags: list | None = None,
+    ) -> str:
+        """
+        Publish an article to Dev.to on an already-authenticated page.
+        Returns the published article URL or '' on failure.
+        Call devto() first to get an authenticated page.
+        """
+        try:
+            await page.goto("https://dev.to/new")
+            await page._random_pause("read")
+
+            # Fill title
+            await page.type_human("#article-form-title", title[:150])
+            await page._random_pause("action")
+
+            # Inject markdown into the editor via DOM (more reliable than clipboard)
+            front_matter = f"---\ntitle: {title}\npublished: true\ntags: {', '.join((tags or [])[:4])}\n---\n\n"
+            full_md = front_matter + body_markdown
+            injected = False
+            for sel in [".CodeMirror-code", ".cm-content", "[aria-label='Post Content']"]:
+                try:
+                    await page.click(sel)
+                    await page._random_pause("action")
+                    # Select all existing content and replace
+                    await page.evaluate(
+                        """(sel, text) => {
+                            const el = document.querySelector(sel);
+                            if (el) {
+                                el.innerText = text;
+                                el.dispatchEvent(new Event('input', {bubbles: true}));
+                                el.dispatchEvent(new Event('change', {bubbles: true}));
+                            }
+                        }""",
+                        sel, full_md[:8000],
+                    )
+                    injected = True
+                    break
+                except Exception:
+                    continue
+
+            if not injected:
+                # Fallback: click editor area and use keyboard to type
+                for sel in [".CodeMirror-code", ".cm-content"]:
+                    try:
+                        await page.click(sel)
+                        await page._random_pause("action")
+                        await page.evaluate("document.execCommand('selectAll')")
+                        await page.type_human(sel, body_markdown[:4000])
+                        break
+                    except Exception:
+                        continue
+
+            await page._random_pause("think")
+
+            # Click Publish
+            for pub_sel in [
+                "button:has-text('Publish')",
+                "button#article-form-submit",
+                "button[type='submit']:has-text('Publish')",
+            ]:
+                try:
+                    await page.click(pub_sel)
+                    break
+                except Exception:
+                    continue
+
+            await asyncio.sleep(4)
+            url = page.url
+            if "dev.to" in url and "new" not in url and "/" in url.replace("https://dev.to/", ""):
+                logger.info("[HumanBrowser] Dev.to: article published → %s", url)
+                await page.save_session()
+                return url
+            return ""
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Dev.to publish_article failed: %s", exc)
+            return ""
+
     async def gumroad_create_product(
         self,
         page: HumanPage,

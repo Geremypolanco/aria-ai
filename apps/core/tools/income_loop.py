@@ -1329,6 +1329,72 @@ JSON:
                 except Exception:
                     pass
 
+            # Browser fallback: create Gumroad product + Dev.to article via stealth browser
+            _nr_ae = getattr(settings, "ARIA_EMAIL", None)
+            _nr_ap = getattr(settings, "ARIA_PASSWORD", None)
+            if _nr_ae and _nr_ap:
+                _nr_urls: list[str] = []
+                niche_info = NICHE_CATALOG.get(target, {})
+                niche_name = niche_info.get("name", target.replace("_", " ").title())
+                price_usd = niche_info.get("pricing_basic", 29)
+                deliverables = niche_info.get("deliverables", [])
+                try:
+                    from apps.core.tools.ai_client import get_ai_client, AIModel
+                    _nr_ai = get_ai_client()
+                    if _nr_ai:
+                        _nr_prod = await _nr_ai.complete_json(
+                            system="You create digital products for Gumroad. Output JSON only.",
+                            user=f"""Niche: {niche_name}
+Deliverables: {deliverables}
+Create a Gumroad product.
+JSON: {{"name": "...", "description": "... (200+ words with clear value prop)", "price_usd": {price_usd}}}""",
+                            model=AIModel.FAST, max_tokens=600,
+                        )
+                        if _nr_prod:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            try:
+                                _gm_page = await _plat.gumroad(_nr_ae, _nr_ap)
+                                _gm_url = await _plat.gumroad_create_product(
+                                    _gm_page,
+                                    _nr_prod.get("name", niche_name)[:100],
+                                    int(_nr_prod.get("price_usd", price_usd) * 100),
+                                    _nr_prod.get("description", "")[:2000],
+                                )
+                                if _gm_url:
+                                    _nr_urls.append(_gm_url)
+                            except Exception:
+                                pass
+                            # Also publish a Dev.to article
+                            try:
+                                _nr_art = await _nr_ai.complete_json(
+                                    system="You write viral Dev.to articles. Output JSON only.",
+                                    user=f"""Write a Dev.to article about {niche_name}.
+JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["ai", "business"]}}""",
+                                    model=AIModel.STANDARD, max_tokens=1500,
+                                )
+                                if _nr_art:
+                                    _dt_page = await _plat.devto(_nr_ae, _nr_ap)
+                                    _dt_url = await _plat.devto_publish_article(
+                                        _dt_page,
+                                        _nr_art.get("title", niche_name)[:150],
+                                        _nr_art.get("body", "")[:8000],
+                                        _nr_art.get("tags", ["ai", "automation"]),
+                                    )
+                                    if _dt_url:
+                                        _nr_urls.append(_dt_url)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                if _nr_urls:
+                    return {
+                        "success": True,
+                        "summary": f"Niche '{target}': {len(_nr_urls)} assets via browser (Gumroad/Dev.to)",
+                        "revenue_potential": float(price_usd),
+                        "urls": _nr_urls,
+                    }
+
             return {
                 "success": result.success,
                 "summary": f"Niche '{target}': {result.summary if hasattr(result, 'summary') else 'no publishing credentials'} — add GUMROAD_TOKEN or DEVTO_API_KEY",
