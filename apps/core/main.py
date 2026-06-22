@@ -221,11 +221,11 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("Error iniciando ContinuousTrainer: %s", exc)
 
-    # 2b. IncomeLoop 24/7 — autonomous income generation every 30 min
+    # 2b. IncomeLoop 24/7 — autonomous income generation every 20 min
     try:
-        from apps.core.tools.income_loop import get_income_loop
+        from apps.core.tools.income_loop import get_income_loop, INTERVAL_SECONDS as _IL_INTERVAL
         await get_income_loop().start()
-        logger.info("IncomeLoop 24/7 activo (cada 30 min)")
+        logger.info("IncomeLoop 24/7 activo (cada %ds = %.0fmin)", _IL_INTERVAL, _IL_INTERVAL / 60)
     except Exception as exc:
         logger.error("Error iniciando IncomeLoop: %s", exc)
 
@@ -363,8 +363,9 @@ async def lifespan(app: FastAPI):
 
     try:
         from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
-        get_autonomous_scheduler()
-        logger.info("Autonomous Scheduler initialized (6 strategic objectives, 24/7 execution)")
+        _auto_sched = get_autonomous_scheduler()
+        asyncio.create_task(_auto_sched.continuous_loop(interval_seconds=300))
+        logger.info("Autonomous Scheduler RUNNING (36 strategic objectives, 24/7 execution — check every 5min)")
     except Exception as exc:
         logger.error("Error iniciando AutonomousScheduler: %s", exc)
 

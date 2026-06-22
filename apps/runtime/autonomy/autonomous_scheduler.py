@@ -1505,11 +1505,11 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
             # Telegram ping on success (major event)
             if result.get("success"):
                 try:
-                    from apps.core.tools.telegram_bot import get_telegram_bot
-                    bot = get_telegram_bot()
+                    from apps.core.tools.telegram_bot import get_bot
+                    bot = get_bot()
                     urls = result.get("urls", [])
                     url_line = f"\n🔗 {urls[0]}" if urls else ""
-                    await bot.send_message(
+                    await bot.notify_owner(
                         f"🚀 <b>Product Hunt Launch Kit Ready!</b>\n"
                         f"{result.get('summary', '')}{url_line}\n"
                         f"<i>Kit archivado — revisa y lanza cuando estés listo.</i>"
@@ -1799,10 +1799,7 @@ Return JSON: {{"plan": ["Action 1", "Action 2", "Action 3"], "key_insight": "one
         trending topics and existing product catalog for maximum relevance.
         Archives to aria-insights/calendars/ and stores in Redis.
         """
-        try:
-            import _json_module as _json  # local alias to avoid shadowing
-        except ImportError:
-            import json as _json
+        import json as _json
         import base64 as _b64
         import datetime as _dt
         from apps.core.tools.ai_client import get_ai_client, AIModel
@@ -2198,7 +2195,7 @@ JSON:
 
             # Mark as published
             published_ids.add(str(entry.get("id", topic[:20])))
-            await cache.set(published_key, _json.dumps(list(published_ids)), ex=86400 * 30)
+            await cache.set(published_key, _json.dumps(list(published_ids)), ttl_seconds=86400 * 30)
 
             return {
                 "success": result.success,
@@ -2291,7 +2288,7 @@ JSON:
                 "total_usd": round(total_usd, 2),
                 "channels": channels,
             }
-            await cache.set("aria:revenue:latest", _json.dumps(report), ex=86400 * 7)
+            await cache.set("aria:revenue:latest", _json.dumps(report), ttl_seconds=86400 * 7)
 
             # Keep rolling 30-day history
             history_key = "aria:revenue:history"
@@ -2299,7 +2296,7 @@ JSON:
             history = _json.loads(raw_hist) if raw_hist else []
             history.append({"ts": now_str, "total_usd": round(total_usd, 2)})
             history = history[-120:]  # keep last 120 snapshots (~30 days at 6h intervals)
-            await cache.set(history_key, _json.dumps(history), ex=86400 * 35)
+            await cache.set(history_key, _json.dumps(history), ttl_seconds=86400 * 35)
 
             return {
                 "success": True,
@@ -2415,7 +2412,7 @@ JSON:
                     nurture_queue[email] = contact
 
             # ── Persist updated nurture queue ─────────────────────────────────
-            await cache.set("aria:email:nurture_queue", _json.dumps(nurture_queue), ex=86400 * 60)
+            await cache.set("aria:email:nurture_queue", _json.dumps(nurture_queue), ttl_seconds=86400 * 60)
             # Clear processed new subs
             if new_subs:
                 await cache.delete("aria:waitlist:new")
@@ -2543,7 +2540,7 @@ Keep the same general topic but make it significantly more valuable.""",
                 update_log = _json.loads(update_log_raw) if update_log_raw else []
                 update_log.append(log_entry)
                 update_log = update_log[-50:]
-                await cache.set("aria:products:update_log", _json.dumps(update_log), ex=86400 * 90)
+                await cache.set("aria:products:update_log", _json.dumps(update_log), ttl_seconds=86400 * 90)
 
             improvements_str = " | ".join(improvements[:3])
             return {
@@ -2595,7 +2592,7 @@ Keep the same general topic but make it significantly more valuable.""",
                                 "status": "active",
                             })
                             if cache:
-                                await cache.set("aria:accounts:github_followers", str(followers), ex=86400)
+                                await cache.set("aria:accounts:github_followers", str(followers), ttl_seconds=86400)
 
             # ── Dev.to account audit ──────────────────────────────────────────
             devto_key = getattr(settings, "DEVTO_API_KEY", "") or ""
@@ -2618,7 +2615,7 @@ Keep the same general topic but make it significantly more valuable.""",
                                 "status": "active",
                             })
                             if cache:
-                                await cache.set("aria:accounts:devto_followers", str(followers), ex=86400)
+                                await cache.set("aria:accounts:devto_followers", str(followers), ttl_seconds=86400)
 
             # ── HuggingFace account audit ─────────────────────────────────────
             hf_token = getattr(settings, "HF_TOKEN", "") or ""
@@ -2661,7 +2658,7 @@ Keep the same general topic but make it significantly more valuable.""",
                             "accounts": account_health,
                             "tips": tips,
                         }
-                        await cache.set("aria:accounts:health_report", _json.dumps(report_data), ex=86400 * 7)
+                        await cache.set("aria:accounts:health_report", _json.dumps(report_data), ttl_seconds=86400 * 7)
 
                     # Telegram alert
                     if telegram_summary:
@@ -2811,7 +2808,7 @@ Keep the same general topic but make it significantly more valuable.""",
                     "email_subject": campaign.get("email_subject", ""),
                     "email_body": campaign.get("email_body", ""),
                 }
-                await cache.set("aria:campaigns:latest_cross_sell", _json.dumps(campaign_data), ex=86400 * 7)
+                await cache.set("aria:campaigns:latest_cross_sell", _json.dumps(campaign_data), ttl_seconds=86400 * 7)
 
             return {
                 "success": True,
@@ -2917,7 +2914,7 @@ Keep the same general topic but make it significantly more valuable.""",
                                 prev = int(prev_raw) if prev_raw else current_followers
                                 delta = current_followers - prev
                                 total_new_followers += max(delta, 0)
-                                await cache.set("aria:growth:github_followers_prev", str(current_followers), ex=86400 * 90)
+                                await cache.set("aria:growth:github_followers_prev", str(current_followers), ttl_seconds=86400 * 90)
                                 if delta > 0:
                                     actions_taken.append(f"github:+{delta} followers ({current_followers} total)")
 
@@ -2977,7 +2974,7 @@ Return JSON: {{"comment": "text"}}""",
                                 prev = int(prev_raw) if prev_raw else devto_followers
                                 delta = devto_followers - prev
                                 total_new_followers += max(delta, 0)
-                                await cache.set("aria:growth:devto_followers_prev", str(devto_followers), ex=86400 * 90)
+                                await cache.set("aria:growth:devto_followers_prev", str(devto_followers), ttl_seconds=86400 * 90)
                                 if delta > 0:
                                     actions_taken.append(f"devto:+{delta} followers ({devto_followers} total)")
 
@@ -3028,7 +3025,7 @@ Return JSON: {{"comment": "text"}}""",
                 }
                 await cache.rpush("aria:growth:history", _json.dumps(snapshot))
                 await cache.ltrim("aria:growth:history", -90, -1)  # keep last 90 snapshots
-                await cache.set("aria:growth:last_run", _dt.datetime.utcnow().isoformat(), ex=86400 * 7)
+                await cache.set("aria:growth:last_run", _dt.datetime.utcnow().isoformat(), ttl_seconds=86400 * 7)
 
             return {
                 "success": True,
@@ -3224,7 +3221,7 @@ Return JSON: {{"comment": "text"}}""",
                 }
                 await cache.rpush("aria:reputation:history", _json.dumps(reputation_data))
                 await cache.ltrim("aria:reputation:history", -60, -1)
-                await cache.incr("aria:reputation:total_engagements")
+                await cache.increment("aria:reputation:total_engagements")
 
             return {
                 "success": True,
@@ -3329,7 +3326,7 @@ Return JSON: {{"comment": "text"}}""",
                 total_adj = sum(adjusted.values())
                 if total_adj > 0:
                     normalized = {k: round(v / total_adj * 100, 2) for k, v in adjusted.items()}
-                    await cache.set("aria:income:adaptive_weights", _json.dumps(normalized), ex=86400 * 7)
+                    await cache.set("aria:income:adaptive_weights", _json.dumps(normalized), ttl_seconds=86400 * 7)
 
             # ── 5. Build P&L snapshot ─────────────────────────────────────────
             now_str = _dt.datetime.utcnow().isoformat()
@@ -3349,14 +3346,14 @@ Return JSON: {{"comment": "text"}}""",
                     "total_urls": total_urls,
                 },
             }
-            await cache.set("aria:finance:pnl_latest", _json.dumps(pnl), ex=86400 * 30)
+            await cache.set("aria:finance:pnl_latest", _json.dumps(pnl), ttl_seconds=86400 * 30)
 
             # Rolling P&L history
             pnl_hist_raw = await cache.get("aria:finance:pnl_history")
             pnl_hist: list = _json.loads(pnl_hist_raw) if pnl_hist_raw else []
             pnl_hist.append({"ts": now_str, "total_usd": round(total_revenue_usd, 2), "daily_avg": round(daily_avg, 2)})
             pnl_hist = pnl_hist[-90:]  # keep 90 days
-            await cache.set("aria:finance:pnl_history", _json.dumps(pnl_hist), ex=86400 * 95)
+            await cache.set("aria:finance:pnl_history", _json.dumps(pnl_hist), ttl_seconds=86400 * 95)
 
             # ── 6. Generate AI financial insight ──────────────────────────────
             top_text = ", ".join(f"{n}(${r:.1f})" for n, r in top_5[:3])
@@ -3527,8 +3524,8 @@ Return JSON:
             await cache.ltrim("aria:crm:pipeline", -100, -1)
 
             # ── 4. Track stats ─────────────────────────────────────────────────
-            await cache.incr("aria:leads:total_generated")
-            await cache.set("aria:leads:last_run", now_ts, ex=86400 * 7)
+            await cache.increment("aria:leads:total_generated")
+            await cache.set("aria:leads:last_run", now_ts, ttl_seconds=86400 * 7)
 
             total_pipeline_raw = await cache.llen("aria:crm:pipeline")
             total_pipeline = int(total_pipeline_raw or 0)
@@ -3718,9 +3715,9 @@ Return JSON:
             }
             await cache.rpush("aria:ab_tests:history", _json.dumps(test_record))
             await cache.ltrim("aria:ab_tests:history", -30, -1)
-            await cache.incr("aria:ab_tests:total")
+            await cache.increment("aria:ab_tests:total")
 
-            await cache.set(f"aria:ab_tests:active:{product_name}", _json.dumps(test_record), ex=86400 * 7)
+            await cache.set(f"aria:ab_tests:active:{product_name}", _json.dumps(test_record), ttl_seconds=86400 * 7)
 
             total_tests = int(await cache.get("aria:ab_tests:total") or 0)
             incremental_revenue = expected_lift / 100.0 * float(current_price) * 10
@@ -3803,7 +3800,7 @@ Return JSON:
                     "revenue_angle": cluster.get("cluster_revenue_angle", ""),
                 }))
                 await cache.ltrim("aria:seo:clusters_published", -20, -1)
-                await cache.incr("aria:seo:total_clusters")
+                await cache.increment("aria:seo:total_clusters")
 
             return {
                 "success": True,
@@ -4281,7 +4278,7 @@ Return JSON:
                     pass
 
             await cache.ltrim("aria:content:optimizations", -30, -1) if cache else None
-            await cache.incr("aria:content:total_optimizations") if cache else None
+            await cache.increment("aria:content:total_optimizations") if cache else None
 
             return {
                 "success": True,
@@ -4430,7 +4427,7 @@ Return JSON:
                 }))
                 await cache.ltrim("aria:skills:roadmap_history", -20, -1)
                 await cache.set("aria:skills:current_focus", top_skill)
-                await cache.incr("aria:skills:total_upgrades")
+                await cache.increment("aria:skills:total_upgrades")
 
             return {
                 "success": True,
