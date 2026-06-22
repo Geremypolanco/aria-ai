@@ -2099,6 +2099,30 @@ JSON:
             except Exception:
                 pass
 
+            # Gumroad browser fallback
+            _sl_ae = getattr(settings, "ARIA_EMAIL", None)
+            _sl_ap = getattr(settings, "ARIA_PASSWORD", None)
+            if _sl_ae and _sl_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _gm_page = await _plat.gumroad(_sl_ae, _sl_ap)
+                    _gm_url = await _plat.gumroad_create_product(
+                        _gm_page,
+                        product.get("title", f"Digital: {str(topic)[:40]}")[:100],
+                        int(price * 100),
+                        product.get("description", "")[:2000],
+                    )
+                    if _gm_url:
+                        return {
+                            "success": True,
+                            "summary": f"Gumroad product '{product.get('title','')[:50]}' at ${price:.2f} via browser",
+                            "revenue_potential": price,
+                            "urls": [_gm_url],
+                        }
+                except Exception:
+                    pass
+
             return {"success": False, "summary": f"Shopify: {res.get('error', 'failed')} — add SHOPIFY_ADMIN_TOKEN or GUMROAD_TOKEN"}
 
         except Exception as exc:
@@ -2230,6 +2254,31 @@ JSON:
                         }
             except Exception:
                 pass
+
+            # Gumroad browser fallback: create product via stealth browser
+            _eb_ae = getattr(settings, "ARIA_EMAIL", None)
+            _eb_ap = getattr(settings, "ARIA_PASSWORD", None)
+            if _eb_ae and _eb_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _gm_page = await _plat.gumroad(_eb_ae, _eb_ap)
+                    _gm_url = await _plat.gumroad_create_product(
+                        _gm_page,
+                        ebook.get("title", f"The Complete Guide to {topic_str[:30]}")[:100],
+                        ebook.get("price_cents", 1700),
+                        full_description[:2000],
+                    )
+                    if _gm_url:
+                        price = ebook.get("price_cents", 1700) / 100
+                        return {
+                            "success": True,
+                            "summary": f"Ebook '{ebook.get('title','')[:50]}' at ${price:.2f} via browser — Gumroad",
+                            "revenue_potential": price,
+                            "urls": [_gm_url],
+                        }
+                except Exception as _eb_exc:
+                    logger.debug("[IncomeLoop] ebook Gumroad browser fallback: %s", _eb_exc)
 
             # Fallback: generate real PDF with actual chapter content
             logger.info("[IncomeLoop] Gumroad unavailable — generating real PDF ebook")
