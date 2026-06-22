@@ -7520,22 +7520,34 @@ JSON:
             active   = list(creds.get("active", {}).keys())
             inactive = list(creds.get("inactive", {}).keys())
             from apps.core.tools.telegram_bot import get_bot
-            owner = settings.GITHUB_USERNAME or "Geremypolanco"
-            msg = (
-                f"🤖 <b>ARIA Income Loop iniciado</b>\n"
-                f"Canales activos: {', '.join(active) or 'ninguno configurado'}\n"
-                f"Estrategias: {len(STRATEGIES)} rotando cada {INTERVAL_SECONDS//60} min\n"
-            )
+
+            active_str = "  ·  ".join(active) if active else "ninguno configurado"
+            sep = "━━━━━━━━━━━━━━━━━━━━━━"
+
+            lines = [
+                f"🤖 <b>ARIA · ONLINE</b>",
+                sep,
+                f"<b>Módulo</b>      Income Loop",
+                f"<b>Estrategias</b> {len(STRATEGIES)} · rotando c/{INTERVAL_SECONDS//60} min",
+                f"<b>Canales</b>     {active_str}",
+            ]
+
             if inactive:
-                top = inactive[:3]
-                msg += f"\n💡 Para activar más canales de ingresos:\n"
+                top = inactive[:4]
+                lines += ["", "💡 <i>Canales pendientes de activar:</i>"]
                 if "gumroad" in top:
-                    msg += "  • <code>fly secrets set GUMROAD_TOKEN=...</code> → venta de productos\n"
+                    lines.append("  · <code>GUMROAD_TOKEN</code>  →  ventas digitales")
                 if "devto" in top:
-                    msg += "  • <code>fly secrets set DEVTO_API_KEY=...</code> → artículos técnicos\n"
+                    lines.append("  · <code>DEVTO_API_KEY</code>  →  artículos técnicos")
                 if "twitter" in top:
-                    msg += "  • Twitter API keys → distribución social\n"
-            await get_bot().notify_owner(msg)
+                    lines.append("  · <code>TWITTER_*</code>  →  distribución social")
+                if "shopify" in top:
+                    lines.append("  · <code>SHOPIFY_TOKEN</code>  →  e-commerce")
+
+            lines += ["", "<i>Sistema autónomo activo. Aria trabaja en segundo plano.</i>"]
+
+            msg = "\n".join(lines)
+            await get_bot().notify_owner(msg, already_html=True)
         except Exception as exc:
             logger.debug("[IncomeLoop] startup notify: %s", exc)
 
@@ -7567,8 +7579,7 @@ JSON:
 
     async def _notify_win(self, result: CycleResult) -> None:
         """Notify via Telegram when something was published or is high-value."""
-        # Always notify for high-value wins ($10+)
-        # For lower-value wins with URLs, throttle to once per 60 min to avoid spam
+        import html as _html
         high_value = result.revenue_potential >= 10
         has_urls   = bool(result.urls_created)
 
@@ -7576,7 +7587,6 @@ JSON:
             return
 
         if not high_value and has_urls:
-            # Rate-limit low-value URL notifications to once per hour
             try:
                 from apps.core.memory.redis_client import get_cache
                 cache = get_cache()
@@ -7591,25 +7601,62 @@ JSON:
 
         try:
             from apps.core.tools.telegram_bot import get_bot
-            urls_text = "\n".join(result.urls_created[:3])
-            emoji = "💰" if high_value else ("📝" if result.strategy in ("github_publish", "content_pipeline", "affiliate_content", "content_repurposer") else "✅")
+
             is_product = result.strategy in (
                 "product_factory", "ebook_factory", "premium_offer", "shopify_listing",
                 "niche_rotator", "hf_spaces_demo", "lead_magnet", "stripe_checkout",
                 "stripe_subscription", "notion_template_seller", "data_product_seller",
                 "white_label_kit", "api_product_launch", "saas_waitlist_blitz",
             )
-            msg = (
-                f"{emoji} <b>ARIA publicó contenido nuevo</b>\n"
-                f"Estrategia: {result.strategy}\n"
-                f"Potencial: ${result.revenue_potential:.1f}\n"
-                f"{result.summary[:200]}"
-                + (f"\n\n{urls_text}" if urls_text else "")
-                + (f"\n\n📦 <i>Ver catálogo: /catalogo</i>" if is_product else "")
-                + (f"\n📊 <i>Analíticas: /reporte</i>" if high_value else "")
+            is_content = result.strategy in (
+                "github_publish", "content_pipeline", "affiliate_content", "content_repurposer",
+                "devto_article", "newsletter_blast", "seo_article",
             )
-            bot = get_bot()
-            await bot.notify_owner(msg)
+
+            if high_value:
+                header = "💰 <b>INGRESO DETECTADO</b>"
+            elif is_product:
+                header = "📦 <b>PRODUCTO PUBLICADO</b>"
+            elif is_content:
+                header = "📝 <b>CONTENIDO PUBLICADO</b>"
+            else:
+                header = "✅ <b>ACCIÓN COMPLETADA</b>"
+
+            sep = "━━━━━━━━━━━━━━━━━━━━━━"
+            # Escape user/AI-generated content before embedding in HTML
+            safe_summary = _html.escape(result.summary[:220]).strip()
+            safe_strategy = _html.escape(result.strategy)
+
+            lines = [
+                header,
+                sep,
+                f"Estrategia  <code>{safe_strategy}</code>",
+                f"Potencial   <b>${result.revenue_potential:.2f}</b>",
+                f"Ciclo       <code>#{result.cycle_id}</code>",
+            ]
+
+            if safe_summary:
+                lines += ["", f"<i>{safe_summary}</i>"]
+
+            if result.urls_created:
+                lines.append("")
+                for url in result.urls_created[:3]:
+                    safe_url = _html.escape(url)
+                    # Use domain as link label for cleanliness
+                    try:
+                        from urllib.parse import urlparse
+                        domain = urlparse(url).netloc or url[:40]
+                    except Exception:
+                        domain = url[:40]
+                    lines.append(f"🔗 <a href=\"{safe_url}\">{_html.escape(domain)} →</a>")
+
+            if is_product or is_content:
+                lines += ["", "📦 /catalogo  ·  📊 /reporte"]
+            elif high_value:
+                lines += ["", "📊 /reporte"]
+
+            msg = "\n".join(lines)
+            await get_bot().notify_owner(msg, already_html=True)
         except Exception:
             pass
 

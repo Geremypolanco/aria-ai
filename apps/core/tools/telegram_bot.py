@@ -623,12 +623,12 @@ class AriaTelegramBot:
 
     # ── Proactive notifications ────────────────────────────────────────────
 
-    async def notify_owner(self, message: str) -> bool:
+    async def notify_owner(self, message: str, already_html: bool = False) -> bool:
         """ARIA decides proactively to notify the owner. Use sparingly."""
         chat_id = str(getattr(settings, "TELEGRAM_CHAT_ID", "") or "")
         if not chat_id:
             return False
-        return await self._send(chat_id, message)
+        return await self._send(chat_id, message, already_html=already_html)
 
     async def close(self) -> None:
         self._running = False

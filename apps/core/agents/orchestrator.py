@@ -464,51 +464,54 @@ Genera el plan de monetizacion detallado. JSON esperado:
 
     async def _send_cycle_report(self, results: list, intelligence: dict, revenue: dict, duration: float) -> None:
         """Envia reporte del ciclo a Telegram con screenshots si existen."""
-        from apps.core.main import send_telegram
+        import html as _html
         from apps.core.tools.telegram_bot import get_bot
-        
+
         bot = get_bot()
         chat_id = str(settings.TELEGRAM_CHAT_ID) if settings.TELEGRAM_CHAT_ID else None
-        
-        status_emoji = "✅" if revenue["missions_failed"] == 0 else "⚠️"
-        
-        # Verificación real de Shopify para el reporte
-        shop_url = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
-        shop_status = f"🛒 Shopify: {shop_url}" if shop_url else "🛒 Shopify: No conectado"
+
+        ok        = revenue["missions_failed"] == 0
+        header    = f"{'✅' if ok else '⚠️'} <b>CICLO #{self._cycle_count}</b>"
+        sep       = "━━━━━━━━━━━━━━━━━━━━━━"
+        total_rev = revenue["total_revenue_usd"]
+        foco      = _html.escape(intelligence.get("top_opportunity", "Monetización"))
+        misiones  = f"{revenue['missions_successful']}/{len(results)}"
 
         lines = [
-            f"{status_emoji} <b>Ciclo #{self._cycle_count} Completado</b>",
-            f"⏱ Duracion: {duration:.1f}s",
-            f"💰 Ingresos est.: ${revenue['total_revenue_usd']:.2f}",
-            f"{shop_status}",
-            "",
-            f"🎯 <b>Foco:</b> {intelligence.get('top_opportunity', 'Monetizacion')}",
-            f"📊 <b>Exito:</b> {revenue['missions_successful']}/{len(results)} misiones",
+            header,
+            sep,
+            f"⏱  Duración    <code>{duration:.1f}s</code>",
+            f"💰 Est. rev.   <b>${total_rev:.2f}</b>",
+            f"🎯 Foco        <code>{foco}</code>",
+            f"📊 Misiones    <code>{misiones}</code>",
         ]
-        
-        if revenue["products_listed"] > 0:
-            lines.append(f"📦 Productos creados: {revenue['products_listed']}")
-            
-        await send_telegram("\n".join(lines))
-        
+
+        if revenue.get("products_listed", 0) > 0:
+            lines.append(f"📦 Productos   <code>{revenue['products_listed']}</code>")
+
+        shop_url = getattr(settings, "SHOPIFY_URL", None) or getattr(settings, "SHOPIFY_SHOP_NAME", None)
+        if shop_url:
+            safe_url = _html.escape(str(shop_url))
+            lines.append(f"\n🛒 <a href=\"https://{safe_url}\">Shopify →</a>")
+
+        await bot.notify_owner("\n".join(lines), already_html=True)
+
         # Enviar screenshots si hay alguno en los resultados
         if chat_id:
             for r in results:
-                # Screenshot de producto
                 if r.get("product_screenshot"):
                     await bot._send_photo(
-                        chat_id, 
-                        r["product_screenshot"], 
-                        caption=f"📸 Screenshot del producto creado: {r.get('agent', 'ecommerce')}"
+                        chat_id,
+                        r["product_screenshot"],
+                        caption=f"📸 Producto · {r.get('agent', 'ecommerce')}",
                     )
-                # Screenshots de investigacion
                 market_research = r.get("market_research", {})
                 if isinstance(market_research, dict) and market_research.get("screenshots"):
                     for ss_path in market_research["screenshots"]:
                         await bot._send_photo(
-                            chat_id, 
-                            ss_path, 
-                            caption=f"🔍 Análisis de competencia: {r.get('agent', 'ecommerce')}"
+                            chat_id,
+                            ss_path,
+                            caption=f"🔍 Análisis · {r.get('agent', 'ecommerce')}",
                         )
 
     async def start(self) -> None:
