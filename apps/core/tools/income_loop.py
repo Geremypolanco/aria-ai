@@ -171,7 +171,8 @@ _SELF_DISTRIBUTING_STRATEGIES: frozenset[str] = frozenset({
     "content_amplifier", "stripe_checkout", "seo_content_cluster",
     "testimonial_collector", "crowdfunding_kit", "premium_offer",
     "product_factory", "github_blog", "content_pipeline",
-    "catalog_repromoter",
+    "catalog_repromoter", "stripe_subscription", "content_repurposer",
+    "ebook_factory", "product_bundle",
 })
 
 
@@ -4690,21 +4691,40 @@ JSON:
                     url = f"https://github.com/{owner}/{repo}/blob/main/{filename}"
                     urls_created.append(url)
 
-            # Try Gumroad
-            if settings.GUMROAD_TOKEN and urls_created:
+            # Try Gumroad API
+            bundle_desc = (bundle_data.get("tagline", "") + f"\n\nIncludes: {', '.join(i.get('title','') for i in items[:3])}\n\n" + desc_md[:1500])
+            _pb_gm_url = ""
+            if settings.GUMROAD_TOKEN:
                 try:
                     from apps.core.tools.gumroad_tools import GumroadTools
                     gr = GumroadTools()
                     gr_result = await gr.create_product(
                         name=bundle_name,
-                        description=bundle_data.get("tagline", "") + f"\n\nIncludes: {', '.join(i.get('title','') for i in items[:3])}",
+                        description=bundle_desc,
                         price_cents=int(price * 100),
                     )
                     if gr_result and gr_result.get("success") and gr_result.get("url"):
-                        gumroad_url = gr_result["url"]
-                        urls_created.insert(0, gumroad_url)
+                        _pb_gm_url = gr_result["url"]
+                        urls_created.insert(0, _pb_gm_url)
                 except Exception:
                     pass
+
+            # Gumroad browser fallback
+            if not _pb_gm_url:
+                _pb_ae = getattr(settings, "ARIA_EMAIL", None)
+                _pb_ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _pb_ae and _pb_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _gm_pg = await _plat.gumroad(_pb_ae, _pb_ap)
+                        _gm_url = await _plat.gumroad_create_product(
+                            _gm_pg, bundle_name[:100], int(price * 100), bundle_desc[:2000]
+                        )
+                        if _gm_url:
+                            urls_created.insert(0, _gm_url)
+                    except Exception:
+                        pass
 
             if not urls_created:
                 return {"success": False, "summary": "product_bundle: no GitHub token to publish"}
@@ -4718,6 +4738,27 @@ JSON:
                     return {"success": False, "summary": f"product_bundle: bundle '{slug}' already published"}
                 existing_slugs.append(slug)
                 await cache.set(bundle_key, json.dumps(existing_slugs[-100:]), ttl_seconds=86400 * 90)
+
+            # Announce on Twitter + LinkedIn
+            buy_url = urls_created[0]
+            _pb_ae2 = getattr(settings, "ARIA_EMAIL", None)
+            _pb_ap2 = getattr(settings, "ARIA_PASSWORD", None)
+            tw_text = (
+                f"🎁 BUNDLE DEAL: {bundle_name}\n\n"
+                f"${price} (save {discount}%!) — {bundle_data.get('tagline', '')}\n\n"
+                f"👉 {buy_url}"
+            )[:280]
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _pub = get_api_publisher()
+                _tw_r = await _pub.publish_to_twitter(tw_text)
+                if not (_tw_r and _tw_r.success) and _pb_ae2 and _pb_ap2:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat2 = await get_platform_login()
+                    _tw_pg = await _plat2.twitter(_pb_ae2, _pb_ap2)
+                    await _plat2.twitter_thread_post(_tw_pg, [tw_text])
+            except Exception:
+                pass
 
             logger.info("[IncomeLoop] Bundle published: %s ($%s, %s%% off)", bundle_name, price, discount)
             return {
@@ -7000,7 +7041,12 @@ JSON:
             from apps.core.tools.telegram_bot import get_bot
             urls_text = "\n".join(result.urls_created[:3])
             emoji = "💰" if high_value else ("📝" if result.strategy in ("github_publish", "content_pipeline", "affiliate_content", "content_repurposer") else "✅")
-            is_product = result.strategy in ("product_factory", "ebook_factory", "premium_offer", "shopify_listing", "niche_rotator", "hf_spaces_demo", "lead_magnet")
+            is_product = result.strategy in (
+                "product_factory", "ebook_factory", "premium_offer", "shopify_listing",
+                "niche_rotator", "hf_spaces_demo", "lead_magnet", "stripe_checkout",
+                "stripe_subscription", "notion_template_seller", "data_product_seller",
+                "white_label_kit", "api_product_launch", "saas_waitlist_blitz",
+            )
             msg = (
                 f"{emoji} <b>ARIA publicó contenido nuevo</b>\n"
                 f"Estrategia: {result.strategy}\n"
@@ -8001,6 +8047,21 @@ Return JSON:
                         published_to.append(f"Reddit r/{sub}")
                     except Exception as exc:
                         errors.append(f"Reddit: {str(exc)[:50]}")
+                # Browser fallback for Reddit posting
+                if "Reddit" not in " ".join(published_to) and _ca_ae and _ca_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _rd_plat = await get_platform_login()
+                        _rd_page = await _rd_plat.reddit(_ca_ae, _ca_ap)
+                        _rd_url = await _rd_plat.reddit_post(
+                            _rd_page, sub, rtitle[:300],
+                            f"{rbody}\n\n{url}"[:5000],
+                        )
+                        if _rd_url:
+                            published_to.append(f"Reddit r/{sub}")
+                    except Exception:
+                        pass
+
                 # Always archive Reddit post to GitHub
                 reddit_slug = f"reddit-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
                 reddit_md = f"# r/{sub} — {rtitle}\n\n{rbody}\n\n**Link:** {url}\n"
