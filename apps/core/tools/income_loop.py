@@ -2999,11 +2999,32 @@ JSON:
                         f"[Get the full {rtype} here →]({repo_url})"
                     ),
                 }], cp=None))
+                _lm_ae = getattr(settings, "ARIA_EMAIL", None)
+                _lm_ap = getattr(settings, "ARIA_PASSWORD", None)
+                _lm_url = f"{repo_url}/blob/main/{filename}"
+                tw_lm = f"🎁 FREE {rtype}: {title[:80]}\n\n{magnet.get('tagline','')[:120]}\n\n→ {_lm_url}"[:280]
+                _lm_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _lm_pub = get_api_publisher()
+                    _lm_tw_r = await _lm_pub.publish_to_twitter(tw_lm)
+                    if _lm_tw_r and _lm_tw_r.success:
+                        _lm_tw_ok = True
+                except Exception:
+                    pass
+                if not _lm_tw_ok and _lm_ae and _lm_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _lm_plat = await get_platform_login()
+                        _lm_tw_pg = await _lm_plat.twitter(_lm_ae, _lm_ap)
+                        await _lm_plat.twitter_thread_post(_lm_tw_pg, [tw_lm])
+                    except Exception:
+                        pass
                 return {
                     "success": True,
-                    "summary": f"Lead magnet '{title[:40]}' published as free {rtype}",
+                    "summary": f"Lead magnet '{title[:40]}' published as free {rtype} | announced on Twitter",
                     "revenue_potential": 3.0,  # indirect: list building + upsell
-                    "urls": [f"{repo_url}/blob/main/{filename}"],
+                    "urls": [_lm_url],
                 }
             return {"success": False, "summary": f"Lead magnet: could not push to {repo_name}"}
 
@@ -3208,9 +3229,31 @@ Enter your text and see the magic happen.
                     "tags":        ["ai", "demo", "free-tool", "productivity"],
                 }]))
 
+                # ── Twitter announcement ───────────────────────────────────────
+                _hf_ae = getattr(settings, "ARIA_EMAIL", None)
+                _hf_ap = getattr(settings, "ARIA_PASSWORD", None)
+                tw_hf = f"🤖 Just deployed a live AI demo: {demo_name}\n\n{tagline}\n\nTry it free → {space_url}"[:280]
+                _hf_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _hf_pub = get_api_publisher()
+                    _hf_tw_r = await _hf_pub.publish_to_twitter(tw_hf)
+                    if _hf_tw_r and _hf_tw_r.success:
+                        _hf_tw_ok = True
+                except Exception:
+                    pass
+                if not _hf_tw_ok and _hf_ae and _hf_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _hf_plat = await get_platform_login()
+                        _hf_tw_pg = await _hf_plat.twitter(_hf_ae, _hf_ap)
+                        await _hf_plat.twitter_thread_post(_hf_tw_pg, [tw_hf])
+                    except Exception:
+                        pass
+
                 return {
                     "success": True,
-                    "summary": f"HF Space deployed: {demo_name} — {space_url}",
+                    "summary": f"HF Space deployed: {demo_name} — {space_url} | announced on Twitter",
                     "revenue_potential": 8.0,
                     "urls": [space_url],
                 }
@@ -3469,9 +3512,35 @@ Generate output using AI.
                 }]))
 
                 min_price = min(t.get("price_monthly", 0) for t in pricing) if pricing else 0
+
+                # ── Twitter announcement ───────────────────────────────────────
+                _ms_ae = getattr(settings, "ARIA_EMAIL", None)
+                _ms_ap = getattr(settings, "ARIA_PASSWORD", None)
+                tw_ms = (
+                    f"🚀 Launching {name}\n\n{tagline[:100]}\n\n"
+                    f"${min_price}/mo → {sale_url or repo_url}"
+                )[:280]
+                _ms_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _ms_pub = get_api_publisher()
+                    _ms_tw_r = await _ms_pub.publish_to_twitter(tw_ms)
+                    if _ms_tw_r and _ms_tw_r.success:
+                        _ms_tw_ok = True
+                except Exception:
+                    pass
+                if not _ms_tw_ok and _ms_ae and _ms_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _ms_plat = await get_platform_login()
+                        _ms_tw_pg = await _ms_plat.twitter(_ms_ae, _ms_ap)
+                        await _ms_plat.twitter_thread_post(_ms_tw_pg, [tw_ms])
+                    except Exception:
+                        pass
+
                 return {
                     "success": True,
-                    "summary": f"Micro-SaaS '{name}' launched at ${min_price}/mo starting — {sale_url}",
+                    "summary": f"Micro-SaaS '{name}' launched at ${min_price}/mo starting — announced on Twitter | {sale_url}",
                     "revenue_potential": float(min_price),
                     "urls": [sale_url, repo_url],
                 }
@@ -7645,9 +7714,32 @@ Return JSON:
 
             if "content" in result or "commit" in result:
                 logger.info("[IncomeLoop] Landing page deployed: %s", page_url)
+
+                # ── Twitter announcement ───────────────────────────────────────
+                _lp_ae = getattr(settings, "ARIA_EMAIL", None)
+                _lp_ap = getattr(settings, "ARIA_PASSWORD", None)
+                tw_lp = f"🚀 New landing page live: {product_name[:60]}\n\n${product_price} → {page_url}"[:280]
+                _lp_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _lp_pub = get_api_publisher()
+                    _lp_tw_r = await _lp_pub.publish_to_twitter(tw_lp)
+                    if _lp_tw_r and _lp_tw_r.success:
+                        _lp_tw_ok = True
+                except Exception:
+                    pass
+                if not _lp_tw_ok and _lp_ae and _lp_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _lp_plat = await get_platform_login()
+                        _lp_tw_pg = await _lp_plat.twitter(_lp_ae, _lp_ap)
+                        await _lp_plat.twitter_thread_post(_lp_tw_pg, [tw_lp])
+                    except Exception:
+                        pass
+
                 return {
                     "success": True,
-                    "summary": f"Landing page live: '{product_name[:40]}' at {page_url}",
+                    "summary": f"Landing page live: '{product_name[:40]}' at {page_url} | announced on Twitter",
                     "revenue_potential": float(product_price),
                     "urls": [page_url, raw_url],
                 }
@@ -10367,10 +10459,37 @@ JSON:
                         pass
 
             langs = [t.get("language", "") for t in translations]
+
+            # ── Announce multilingual content on Twitter ──────────────────────
+            _ml_ae = getattr(settings, "ARIA_EMAIL", None)
+            _ml_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _ml_url = urls_created[0] if urls_created else ""
+            tw_ml = (
+                f"🌍 '{source_title[:70]}' now in {len(langs)} languages: {', '.join(langs[:3])}\n\n"
+                f"Reaching Spanish, Portuguese & French markets\n→ {_ml_url}"
+            )[:280]
+            _ml_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _ml_pub = get_api_publisher()
+                _ml_tw_r = await _ml_pub.publish_to_twitter(tw_ml)
+                if _ml_tw_r and _ml_tw_r.success:
+                    _ml_tw_ok = True
+            except Exception:
+                pass
+            if not _ml_tw_ok and _ml_ae and _ml_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _ml_plat = await get_platform_login()
+                    _ml_tw_pg = await _ml_plat.twitter(_ml_ae, _ml_ap)
+                    await _ml_plat.twitter_thread_post(_ml_tw_pg, [tw_ml])
+                except Exception:
+                    pass
+
             logger.info("[IncomeLoop] multilingual_content: '%s' → %d languages", source_title[:40], len(translations))
             return {
                 "success": bool(urls_created),
-                "summary": f"Multilingual: '{source_title[:50]}' → {', '.join(langs)} ({len(urls_created)} URLs)",
+                "summary": f"Multilingual: '{source_title[:50]}' → {', '.join(langs)} ({len(urls_created)} URLs) | announced",
                 "revenue_potential": 15.0 * len(translations),  # each language = new revenue market
                 "urls": urls_created[:6],
             }
@@ -14974,9 +15093,37 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                 urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/listings/{today}-marketplace.md")
 
             total_rev_potential = float(appsumo_price) + float(gumroad_price)
+
+            # ── Announce marketplace listing on Twitter ────────────────────────
+            _mpl_ae = getattr(settings, "ARIA_EMAIL", None)
+            _mpl_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _mpl_url = next((u for u in urls_created if "gumroad" in u.lower()), urls_created[0] if urls_created else "")
+            tw_mpl = (
+                f"🛒 {product_name[:60]} now on 3 marketplaces\n\n"
+                f"AppSumo: ${appsumo_price} lifetime | Gumroad: ${gumroad_price}\n\n"
+                f"→ {_mpl_url}"
+            )[:280]
+            _mpl_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _mpl_pub = get_api_publisher()
+                _mpl_tw_r = await _mpl_pub.publish_to_twitter(tw_mpl)
+                if _mpl_tw_r and _mpl_tw_r.success:
+                    _mpl_tw_ok = True
+            except Exception:
+                pass
+            if not _mpl_tw_ok and _mpl_ae and _mpl_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _mpl_plat = await get_platform_login()
+                    _mpl_tw_pg = await _mpl_plat.twitter(_mpl_ae, _mpl_ap)
+                    await _mpl_plat.twitter_thread_post(_mpl_tw_pg, [tw_mpl])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"marketplace_lister: {product_name} listed on 3 marketplaces | AppSumo ${appsumo_price} + Gumroad ${gumroad_price}",
+                "summary": f"marketplace_lister: {product_name} listed on 3 marketplaces | AppSumo ${appsumo_price} + Gumroad ${gumroad_price} | announced",
                 "revenue_potential": total_rev_potential,
                 "urls": urls_created[:3],
             }
