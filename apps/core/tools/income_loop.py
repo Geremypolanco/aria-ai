@@ -690,7 +690,6 @@ JSON:
                                 f"---\ntitle: {title}\npublished: true\ntags: {', '.join(tags[:4])}\n---\n\n"
                                 + body_md
                             )
-                            import pyperclip as _clip  # noqa
                             await devto_page.evaluate(
                                 f"navigator.clipboard.writeText({repr(full_md)})"
                             )
@@ -4843,20 +4842,33 @@ Challenge completers get **50% off** [{upsell_product}](https://github.com/{owne
                 await cache.rpush("aria:income:challenges_active", json.dumps(challenge_meta))
                 await cache.ltrim("aria:income:challenges_active", -20, -1)
 
-            # Promote challenge launch on Twitter
+            # Promote challenge launch on Twitter (API → browser fallback)
+            ch_url = urls_created[0] if urls_created else ""
+            _ch_tw_text = (
+                f"🚀 Starting today: {challenge_name}\n\n"
+                f"7-day challenge. Free to join. Daily actions.\n\n"
+                f"At the end: unlock {upsell_product} at 50% off\n\n"
+                + (f"Day 1 → {ch_url}" if ch_url else "")
+            )[:280]
+            _ch_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
-                ch_url = urls_created[0] if urls_created else ""
-                tw_text = (
-                    f"🚀 Starting today: {challenge_name}\n\n"
-                    f"7-day challenge. Free to join. Daily actions.\n\n"
-                    f"At the end: unlock {upsell_product} at 50% off\n\n"
-                    + (f"Day 1 → {ch_url}" if ch_url else "")
-                )
-                await pub.publish_to_twitter(tw_text[:280])
+                _ch_r = await pub.publish_to_twitter(_ch_tw_text)
+                _ch_tw_ok = bool(_ch_r and _ch_r.success)
             except Exception:
                 pass
+            if not _ch_tw_ok:
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        await _plat.twitter_thread_post(_tw_page, [_ch_tw_text])
+                    except Exception:
+                        pass
 
             logger.info("[IncomeLoop] Challenge launched: %s (%d days)", challenge_name, len(days))
             return {
