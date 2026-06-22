@@ -202,6 +202,17 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - rank_texts       → ordena documentos por relevancia a un query (cross-encoder reranking). Args: {{"query": "...", "passages": ["doc1", "doc2", "doc3"]}}
 - table_qa         → responde preguntas sobre tablas de datos (TAPAS). Args: {{"table": {{"Name":["Alice","Bob"],"Score":["90","85"]}}, "question": "¿quién tiene mejor score?"}}
 - run_smolagent    → agente autónomo de investigación: planifica → busca → razona → sintetiza (patrón smolagents). Args: {{"task": "investiga el estado del mercado de IA en 2025"}}
+- remove_background → elimina el fondo de una imagen (BiRefNet, SOTA). PNG con fondo transparente. Args: {{"image_bytes_b64": "..."}}
+- kokoro_tts       → genera voz en alta calidad con voces preset, rápido (Kokoro 82M). Args: {{"text": "...", "voice": "af_heart", "speed": 1.0}}
+- clone_voice      → clona una voz con zero-shot desde audio de referencia (F5-TTS). Args: {{"ref_audio_b64": "...", "ref_text": "...", "gen_text": "..."}}
+- upscale_image    → mejora resolución y calidad de una imagen (Clarity AI diffusion upscaler). Args: {{"image_bytes_b64": "...", "scale": 2}}
+- ocr_space        → extrae texto, fórmulas o tablas de imágenes/documentos con OCR (GLM-OCR). Args: {{"image_bytes_b64": "...", "task": "Text"}}
+- estimate_pose    → detecta el esqueleto humano y keypoints del cuerpo (ViTPose COCO-17). Args: {{"image_bytes_b64": "..."}}
+- generate_3d      → genera modelo 3D desde imagen o texto, formato GLB (Hunyuan3D-2). Args: {{"image_bytes_b64": "...", "prompt": "a 3D car"}}
+- edit_image_flux  → edita/transforma una imagen con instrucciones de texto (FLUX.1-Kontext). Args: {{"image_bytes_b64": "...", "prompt": "add snow to the background"}}
+- outpaint_image   → expande los bordes de una imagen más allá de su encuadre original (outpainting). Args: {{"image_bytes_b64": "...", "width": 1920, "height": 1080, "prompt": ""}}
+- colorize_image   → coloriza imágenes en blanco y negro con guía de texto. Args: {{"image_bytes_b64": "...", "description": "make the sky blue"}}
+- generate_video_space → genera video desde texto+imagen (Wan2.2 14B, gratis via ZeroGPU). Args: {{"prompt": "...", "image_bytes_b64": "..."}}
 
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
 Tienes acceso a tus propias credenciales de plataformas vía variables de entorno ARIA_EMAIL y ARIA_PASSWORD.
@@ -391,6 +402,17 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 170. Si el usuario pide ordenar documentos por relevancia, hacer reranking de resultados de búsqueda, o encontrar el texto más relevante de una lista → usa rank_texts.
 171. Si el usuario proporciona una tabla de datos (CSV, dict, lista) y hace preguntas sobre sus datos → usa table_qa con la tabla y la pregunta.
 172. Si el usuario pide analizar una imagen con el modelo más avanzado disponible, pide descripción profunda con razonamiento, o quiere que ARIA entienda el contexto completo de una imagen → siempre usa vision_llm (no visual_qa ni describe_image).
+173. Si el usuario pide eliminar el fondo de una imagen, recortar el sujeto, hacer transparente el fondo, o separar el objeto del fondo → usa remove_background con image_bytes_b64.
+174. Si el usuario pide TTS de alta calidad, voz natural preset, generación de voz rápida sin clonación, o quiere escuchar texto con una voz específica de una lista → usa kokoro_tts con text y voice.
+175. Si el usuario quiere clonar una voz, generar audio con la voz exacta de alguien, o reproducir texto en una voz personalizada usando audio de referencia → usa clone_voice con ref_audio_b64, ref_text y gen_text.
+176. Si el usuario pide mejorar la resolución de una imagen, hacer upscaling, aumentar la calidad de una foto, o agrandar una imagen sin perder nitidez → usa upscale_image con image_bytes_b64.
+177. Si el usuario sube una imagen con texto impreso y pide OCR, extracción de texto, leer fórmulas matemáticas, o extraer datos de tabla visual → usa ocr_space con image_bytes_b64 y task.
+178. Si el usuario pide detectar la postura corporal, el esqueleto, los keypoints del cuerpo humano, analizar movimiento deportivo, o ver las articulaciones en una imagen → usa estimate_pose.
+179. Si el usuario pide crear un modelo 3D, generar un objeto en 3D desde una foto, visualizar en 3D, o convertir imagen a 3D → usa generate_3d con image_bytes_b64 o prompt.
+180. Si el usuario pide editar, modificar, transformar o cambiar el contenido de una imagen con instrucciones de texto (agregar/quitar elementos, cambiar estilo, reemplazar objetos, cambiar fondo con texto) → usa edit_image_flux.
+181. Si el usuario pide ampliar una imagen, extender los bordes, ver más contexto de una foto, expandir el encuadre, o "hacer la imagen más grande manteniendo el contexto" → usa outpaint_image.
+182. Si el usuario sube una imagen en blanco y negro y pide agregar color, colorizar, o describe cómo debe verse a color → usa colorize_image con image_bytes_b64 y description.
+183. Si el usuario pide generar un video corto, animar una imagen, crear un video desde una foto y un texto, o generar video de forma gratuita (aunque sea con cola) → usa generate_video_space con prompt e image_bytes_b64.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -2270,6 +2292,161 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     answer = r.get("answer", "")
                     return f"[AGENT — {steps} pasos]\nTarea: {task}\n\n{answer}", {}
                 return r.get("error", "Agente de búsqueda no disponible"), {}
+
+            # ── HF SPACES — Free GPU capabilities ────────────────────────
+
+            elif tool == "remove_background":
+                import base64 as _b64
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                if not image_b64:
+                    return "Envíame primero una imagen para eliminar el fondo.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().remove_background(_b64.b64decode(image_b64))
+                if r.get("success"):
+                    return "[Fondo eliminado con BiRefNet]", {"image_bytes": r["image_bytes"]}
+                return r.get("error", "Error eliminando fondo"), {}
+
+            elif tool == "kokoro_tts":
+                text = args.get("text", "")
+                if not text:
+                    return "Necesito texto para generar voz.", {}
+                voice = args.get("voice", "af_heart")
+                speed = float(args.get("speed", 1.0))
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().kokoro_tts(text[:500], voice, speed)
+                if r.get("success"):
+                    ab = r["audio_bytes"]
+                    return f"Voz generada ({len(ab)//1024}KB, voice={voice})", {"audio_bytes": ab}
+                return r.get("error", "Kokoro TTS no disponible"), {}
+
+            elif tool == "clone_voice":
+                import base64 as _b64
+                ref_b64 = args.get("ref_audio_b64", "")
+                gen_text = args.get("gen_text", "")
+                ref_text = args.get("ref_text", "")
+                if not ref_b64 or not gen_text:
+                    return "Necesito el audio de referencia (ref_audio_b64) y el texto a generar (gen_text).", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().clone_voice(_b64.b64decode(ref_b64), ref_text, gen_text)
+                if r.get("success"):
+                    ab = r["audio_bytes"]
+                    return f"Voz clonada ({len(ab)//1024}KB)", {"audio_bytes": ab}
+                return r.get("error", "F5-TTS no disponible"), {}
+
+            elif tool == "upscale_image":
+                import base64 as _b64
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                if not image_b64:
+                    return "Envíame primero una imagen para mejorar.", {}
+                scale = int(args.get("scale", 2))
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().upscale_image(_b64.b64decode(image_b64), scale)
+                if r.get("success"):
+                    return f"[Imagen mejorada {scale}x con IA]", {"image_bytes": r["image_bytes"]}
+                return r.get("error", "Upscaling no disponible"), {}
+
+            elif tool == "ocr_space":
+                import base64 as _b64
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                if not image_b64:
+                    return "Envíame la imagen con el texto a extraer.", {}
+                task = args.get("task", "Text")
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().ocr_document_space(_b64.b64decode(image_b64), task)
+                if r.get("success"):
+                    return r["text"], {}
+                return r.get("error", "OCR no disponible"), {}
+
+            elif tool == "estimate_pose":
+                import base64 as _b64
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                if not image_b64:
+                    return "Envíame una imagen con personas para detectar la pose.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().estimate_pose(_b64.b64decode(image_b64))
+                if r.get("success"):
+                    kp = r.get("keypoints", {})
+                    n = len(kp) if isinstance(kp, list) else len(kp.get("people", []))
+                    obs = f"[Pose detectada — {n} persona(s) con 17 keypoints COCO]"
+                    media: dict = {}
+                    if r.get("image_bytes"):
+                        media["image_bytes"] = r["image_bytes"]
+                    return obs, media
+                return r.get("error", "ViTPose no disponible"), {}
+
+            elif tool == "generate_3d":
+                import base64 as _b64
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                prompt = args.get("prompt", "")
+                img_bytes = _b64.b64decode(image_b64) if image_b64 else None
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().generate_3d_model(img_bytes, prompt)
+                if r.get("success"):
+                    if r.get("model_bytes"):
+                        return "[Modelo 3D generado — GLB]", {
+                            "document_bytes": r["model_bytes"],
+                            "document_filename": "model.glb",
+                        }
+                    return f"[Modelo 3D generado — URL: {r.get('model_url', '')}]", {}
+                return r.get("error", "Hunyuan3D no disponible"), {}
+
+            elif tool == "edit_image_flux":
+                import base64 as _b64
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                prompt = args.get("prompt", "")
+                if not image_b64:
+                    return "Envíame primero la imagen a editar.", {}
+                if not prompt:
+                    return "Necesito las instrucciones de edición (prompt).", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().edit_image_kontext(_b64.b64decode(image_b64), prompt)
+                if r.get("success"):
+                    return f"[Imagen editada con FLUX Kontext: '{prompt[:80]}']", {
+                        "image_bytes": r["image_bytes"]
+                    }
+                return r.get("error", "FLUX Kontext no disponible"), {}
+
+            elif tool == "outpaint_image":
+                import base64 as _b64
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                if not image_b64:
+                    return "Envíame la imagen a ampliar.", {}
+                w = int(args.get("width", 1920))
+                h = int(args.get("height", 1080))
+                prompt = args.get("prompt", "")
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().outpaint_image(_b64.b64decode(image_b64), w, h, prompt)
+                if r.get("success"):
+                    return f"[Imagen expandida a {w}x{h}]", {"image_bytes": r["image_bytes"]}
+                return r.get("error", "Outpainting no disponible"), {}
+
+            elif tool == "colorize_image":
+                import base64 as _b64
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                if not image_b64:
+                    return "Envíame la imagen en blanco y negro a colorizar.", {}
+                description = args.get("description", "")
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().colorize_image(_b64.b64decode(image_b64), description)
+                if r.get("success"):
+                    return "[Imagen coloreada con IA]", {"image_bytes": r["image_bytes"]}
+                return r.get("error", "Colorización no disponible"), {}
+
+            elif tool == "generate_video_space":
+                import base64 as _b64
+                prompt = args.get("prompt", "")
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                img_bytes = _b64.b64decode(image_b64) if image_b64 else None
+                if not prompt and not img_bytes:
+                    return "Necesito un prompt o imagen para generar el video.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().generate_video_space(prompt or "", img_bytes)
+                if r.get("success"):
+                    if r.get("video_bytes"):
+                        vb = r["video_bytes"]
+                        return f"[Video generado ({len(vb)//1024}KB)]", {"video_bytes": vb}
+                    return f"[Video generado — URL: {r.get('video_url', '')}]", {}
+                return r.get("error", "Wan2.2 no disponible (puede haber cola)"), {}
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)

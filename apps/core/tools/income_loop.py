@@ -177,6 +177,90 @@ _SELF_DISTRIBUTING_STRATEGIES: frozenset[str] = frozenset({
 })
 
 
+class ThompsonBandit:
+    """
+    Thompson Sampling Multi-Armed Bandit for income strategy selection.
+
+    Each strategy arm is modeled with a Beta(α, β) distribution where:
+      α = successes + base_weight (Bayesian prior from domain knowledge)
+      β = failures  + 1
+
+    On each cycle, we draw θ ~ Beta(α, β) for every arm and pick argmax(θ).
+    This naturally balances exploitation (proven strategies) with exploration
+    (uncertain strategies whose Beta spread is wide).
+
+    Counts persist in Redis so the bandit improves across restarts.
+    """
+
+    def __init__(self, strategy_names: list[str], base_weights: dict[str, float]) -> None:
+        self._names  = strategy_names
+        # Initialize α from base weights (domain-knowledge prior)
+        self._alpha  = {n: float(base_weights.get(n, 1.0)) for n in strategy_names}
+        self._beta   = {n: 1.0 for n in strategy_names}
+
+    async def load(self) -> None:
+        """Load persisted α/β counts from Redis."""
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return
+            raw = await cache.get("aria:income:bandit_state")
+            if raw and isinstance(raw, dict):
+                for n in self._names:
+                    if f"{n}.a" in raw:
+                        self._alpha[n] = float(raw[f"{n}.a"])
+                    if f"{n}.b" in raw:
+                        self._beta[n]  = float(raw[f"{n}.b"])
+                logger.info("[Bandit] Loaded counts for %d strategies", len(self._names))
+        except Exception as exc:
+            logger.debug("[Bandit] load error: %s", exc)
+
+    async def save(self) -> None:
+        """Persist α/β counts to Redis."""
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return
+            state = {}
+            for n in self._names:
+                state[f"{n}.a"] = self._alpha[n]
+                state[f"{n}.b"] = self._beta[n]
+            await cache.set("aria:income:bandit_state", state)
+        except Exception as exc:
+            logger.debug("[Bandit] save error: %s", exc)
+
+    def sample(self) -> str:
+        """
+        Thompson sampling: draw θ_i ~ Beta(α_i, β_i) for each arm, return argmax.
+        Uses numpy if available; falls back to UCB-style selection otherwise.
+        """
+        try:
+            import numpy as np
+            samples = {n: np.random.beta(self._alpha[n], self._beta[n]) for n in self._names}
+            return max(samples, key=samples.__getitem__)
+        except ImportError:
+            # Fallback: select by expected success rate (no exploration)
+            rates = {n: self._alpha[n] / (self._alpha[n] + self._beta[n]) for n in self._names}
+            return max(rates, key=rates.__getitem__)
+
+    def update(self, strategy: str, success: bool) -> None:
+        """Update Beta distribution parameters based on observed outcome."""
+        if strategy not in self._alpha:
+            return
+        if success:
+            self._alpha[strategy] += 1.0
+        else:
+            self._beta[strategy]  += 1.0
+
+    @property
+    def top_strategies(self) -> list[tuple[str, float]]:
+        """Top 10 strategies by estimated success rate α/(α+β)."""
+        rates = {n: self._alpha[n] / (self._alpha[n] + self._beta[n]) for n in self._names}
+        return sorted(rates.items(), key=lambda x: -x[1])[:10]
+
+
 @dataclass
 class CycleResult:
     cycle_id: int
@@ -203,6 +287,12 @@ class IncomeLoop:
         self._niche_idx       = 0    # Round-robin through niche catalog (loaded from Redis in first cycle)
         self._adaptive_weights: dict[str, float] = {}   # updated from Redis every 10 cycles
         self._weights_refresh_cycle = 0
+        # Thompson Sampling Bandit — learns which strategies perform best over time.
+        # Base weights from STRATEGIES serve as Bayesian prior (domain knowledge).
+        self._bandit = ThompsonBandit(
+            [s[0] for s in STRATEGIES],
+            {s[0]: float(s[1]) for s in STRATEGIES},
+        )
 
     # ── Control ─────────────────────────────────────────────────────
 
@@ -211,6 +301,8 @@ class IncomeLoop:
         if self._running:
             logger.info("[IncomeLoop] Already running")
             return
+        # Load bandit state from Redis before first cycle
+        await self._bandit.load()
         self._running = True
         self._task    = asyncio.create_task(self._run_forever())
         logger.info("[IncomeLoop] 24/7 income loop started (interval=%ds)", INTERVAL_SECONDS)
@@ -280,6 +372,10 @@ class IncomeLoop:
 
         await self._save_result(result)
 
+        # Update Thompson Bandit with observed outcome and persist async
+        self._bandit.update(strategy, result.success)
+        asyncio.create_task(self._bandit.save())
+
         # Refresh adaptive weights every 10 cycles
         if self._cycle - self._weights_refresh_cycle >= 10:
             self._weights_refresh_cycle = self._cycle
@@ -344,14 +440,27 @@ class IncomeLoop:
         return self._pick_strategy()
 
     def _pick_strategy(self) -> str:
-        """Weighted random strategy selection — uses adaptive weights when available."""
-        names   = [s[0] for s in STRATEGIES]
+        """
+        Thompson Sampling strategy selection.
+
+        The bandit draws θ_i ~ Beta(α_i, β_i) for each strategy and picks argmax(θ).
+        α_i starts at the base weight (domain prior) and grows with observed successes.
+        β_i grows with failures. Over time the bandit learns which strategies actually
+        generate revenue and shifts probability mass toward proven performers.
+
+        Adaptive weights from Redis (written by strategy_optimizer) are folded in as
+        an additional factor by temporarily boosting α for high-weight strategies.
+        """
         if self._adaptive_weights:
-            # Merge: adaptive weights override defaults where available
-            weights = [self._adaptive_weights.get(n, w) for n, w in STRATEGIES]
-        else:
-            weights = [s[1] for s in STRATEGIES]
-        return random.choices(names, weights=weights, k=1)[0]
+            # Temporarily boost α by adaptive weight ratio
+            saved_alpha = dict(self._bandit._alpha)
+            for name, w in self._adaptive_weights.items():
+                if name in self._bandit._alpha:
+                    self._bandit._alpha[name] = max(self._bandit._alpha[name], w)
+            choice = self._bandit.sample()
+            self._bandit._alpha = saved_alpha
+            return choice
+        return self._bandit.sample()
 
     async def _refresh_adaptive_weights(self) -> None:
         """Load optimizer weights from Redis (written by strategy_optimizer objective)."""

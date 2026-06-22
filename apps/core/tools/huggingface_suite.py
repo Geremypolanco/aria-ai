@@ -1510,3 +1510,438 @@ class HuggingFaceSuite:
             "dominant_content_type": content_types[0].get("best_label","") if content_types and isinstance(content_types[0],dict) else "",
             "key_insights": summary.get("summary",""),
         }
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # HF SPACES — Free capabilities via Gradio API (no paid GPU required)
+    # ═══════════════════════════════════════════════════════════════════════════
+    #
+    # Each Space is accessed via its Gradio HTTP API (4.x SSE or 3.x /api/predict).
+    # HF_TOKEN is passed as Bearer to access ZeroGPU queues.
+    # All methods are async and return {"success": bool, ...result_fields}.
+
+    # ── Private Gradio helpers ─────────────────────────────────────────────
+
+    def _space_url(self, space_id: str) -> str:
+        """Convert 'owner/space-name' to HF Space base URL."""
+        parts = space_id.lower().replace(".", "-").split("/", 1)
+        return f"https://{parts[0]}-{parts[1]}.hf.space"
+
+    def _gradio_image_data(self, image_bytes: bytes) -> dict:
+        """Wrap bytes as Gradio 4.x FileData dict for image inputs."""
+        b64 = base64.b64encode(image_bytes).decode()
+        mime = "image/png" if image_bytes[:4] == b"\x89PNG" else "image/jpeg"
+        return {
+            "url": f"data:{mime};base64,{b64}",
+            "orig_name": "image.jpg",
+            "size": len(image_bytes),
+            "mime_type": mime,
+            "is_stream": False,
+            "meta": {"_type": "gradio.FileData"},
+        }
+
+    def _gradio_audio_data(self, audio_bytes: bytes) -> dict:
+        """Wrap bytes as Gradio 4.x FileData dict for audio inputs."""
+        b64 = base64.b64encode(audio_bytes).decode()
+        return {
+            "url": f"data:audio/wav;base64,{b64}",
+            "orig_name": "audio.wav",
+            "size": len(audio_bytes),
+            "mime_type": "audio/wav",
+            "is_stream": False,
+            "meta": {"_type": "gradio.FileData"},
+        }
+
+    async def _gradio_call(
+        self,
+        space_id: str,
+        fn_name: str,
+        data: list,
+        timeout: float = 120.0,
+    ) -> list | None:
+        """
+        Call a HuggingFace Space via Gradio 4.x API (SSE) with fallback to v3 /api/predict.
+        Returns the output data list or None on failure.
+        """
+        base_url = self._space_url(space_id)
+        headers = self._headers({"Content-Type": "application/json"})
+        # Try Gradio 4.x: POST /call/{fn} → SSE stream
+        try:
+            r = await self._http.post(
+                f"{base_url}/call/{fn_name}",
+                json={"data": data},
+                headers=headers,
+                timeout=30.0,
+            )
+            if r.status_code == 200:
+                event_id = r.json().get("event_id")
+                if event_id:
+                    return await self._poll_gradio_sse(
+                        f"{base_url}/call/{fn_name}/{event_id}", timeout=timeout
+                    )
+        except Exception:
+            pass
+        # Fallback: Gradio 3.x /api/predict
+        try:
+            r2 = await self._http.post(
+                f"{base_url}/api/predict",
+                json={"data": data, "fn_index": 0},
+                headers=headers,
+                timeout=timeout,
+            )
+            if r2.status_code == 200:
+                return r2.json().get("data")
+        except Exception:
+            pass
+        return None
+
+    async def _poll_gradio_sse(self, url: str, timeout: float = 120.0) -> list | None:
+        """Read a Gradio SSE stream and return the 'complete' event's data list."""
+        result = None
+        current_event: Optional[str] = None
+        try:
+            async with self._http.stream(
+                "GET", url, headers=self._headers(), timeout=timeout
+            ) as r:
+                async for line in r.aiter_lines():
+                    line = line.strip()
+                    if line.startswith("event:"):
+                        current_event = line[6:].strip()
+                    elif line.startswith("data:"):
+                        payload_str = line[5:].strip()
+                        if not payload_str:
+                            continue
+                        if current_event == "error":
+                            logger.warning("[HF Space] SSE error: %s", payload_str[:200])
+                            break
+                        if current_event in ("complete", "generating", None):
+                            try:
+                                parsed = json.loads(payload_str)
+                                if isinstance(parsed, list):
+                                    result = parsed
+                                    if current_event == "complete":
+                                        break
+                            except Exception:
+                                pass
+        except Exception as exc:
+            logger.debug("[HF Space] SSE stream: %s", exc)
+        return result
+
+    async def _resolve_gradio_item(self, item: Any) -> bytes | str | None:
+        """Resolve a Gradio output item to bytes (media) or str (text)."""
+        if isinstance(item, dict):
+            url = item.get("url", "")
+            if url.startswith("data:"):
+                try:
+                    _, b64_part = url.split(",", 1)
+                    return base64.b64decode(b64_part)
+                except Exception:
+                    pass
+            if url.startswith("http"):
+                try:
+                    r = await self._http.get(url, headers=self._headers(), timeout=60.0)
+                    if r.status_code == 200:
+                        return r.content
+                except Exception:
+                    pass
+        if isinstance(item, str) and len(item) > 2:
+            return item
+        return None
+
+    # ── Public Space methods ───────────────────────────────────────────────
+
+    async def remove_background(self, image_bytes: bytes) -> dict[str, Any]:
+        """
+        Remove image background with BiRefNet (best-in-class matting model).
+        Space: not-lain/background-removal — 2.8k likes, always running.
+        Returns PNG with transparent background.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            data = [self._gradio_image_data(image_bytes)]
+            result = await self._gradio_call(
+                "not-lain/background-removal", "predict", data, timeout=90.0
+            )
+            if result:
+                for item in result:
+                    resolved = await self._resolve_gradio_item(item)
+                    if resolved and isinstance(resolved, bytes):
+                        return {"success": True, "image_bytes": resolved, "format": "png"}
+            return {"success": False, "error": "Sin resultado del Space"}
+        except Exception as exc:
+            logger.error("[HF Space] remove_background: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def kokoro_tts(
+        self, text: str, voice: str = "af_heart", speed: float = 1.0
+    ) -> dict[str, Any]:
+        """
+        Fast high-quality TTS with preset voices (Kokoro 82M model).
+        Space: hexgrad/Kokoro-TTS — 3.3k likes, low-latency.
+        Voices: af_heart, af_bella, bf_emma, am_adam, bm_lewis, etc.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            data = [text[:500], voice, speed]
+            result = await self._gradio_call(
+                "hexgrad/Kokoro-TTS", "generate_first", data, timeout=60.0
+            )
+            if result:
+                for item in result:
+                    resolved = await self._resolve_gradio_item(item)
+                    if resolved and isinstance(resolved, bytes):
+                        return {"success": True, "audio_bytes": resolved}
+            return {"success": False, "error": "Sin audio generado"}
+        except Exception as exc:
+            logger.error("[HF Space] kokoro_tts: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def clone_voice(
+        self, ref_audio_bytes: bytes, ref_text: str, gen_text: str
+    ) -> dict[str, Any]:
+        """
+        Zero-shot voice cloning via F5-TTS / E2-TTS.
+        Space: mrfakename/E2-F5-TTS — 2.8k likes.
+        Upload 3-10s of any speaker → generate that voice saying gen_text.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            audio_data = self._gradio_audio_data(ref_audio_bytes)
+            data = [audio_data, ref_text, gen_text, True]  # True = remove silence
+            result = await self._gradio_call(
+                "mrfakename/E2-F5-TTS", "infer", data, timeout=120.0
+            )
+            if result:
+                for item in result:
+                    resolved = await self._resolve_gradio_item(item)
+                    if resolved and isinstance(resolved, bytes):
+                        return {"success": True, "audio_bytes": resolved}
+            return {"success": False, "error": "Sin audio generado"}
+        except Exception as exc:
+            logger.error("[HF Space] clone_voice: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def upscale_image(self, image_bytes: bytes, scale: int = 2) -> dict[str, Any]:
+        """
+        AI image upscaling / quality enhancement (Clarity AI diffusion upscaler).
+        Space: finegrain/finegrain-image-enhancer — 2.1k likes.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            data = [self._gradio_image_data(image_bytes), scale]
+            result = await self._gradio_call(
+                "finegrain/finegrain-image-enhancer", "enhance", data, timeout=120.0
+            )
+            if result:
+                for item in result:
+                    resolved = await self._resolve_gradio_item(item)
+                    if resolved and isinstance(resolved, bytes):
+                        return {"success": True, "image_bytes": resolved, "scale": scale}
+            return {"success": False, "error": "Sin imagen mejorada"}
+        except Exception as exc:
+            logger.error("[HF Space] upscale_image: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def ocr_document_space(
+        self, image_bytes: bytes, task: str = "Text"
+    ) -> dict[str, Any]:
+        """
+        OCR: extract text, formulas, or table data from images (GLM-OCR).
+        Space: prithivMLmods/GLM-OCR-Demo — handles plain text, math, tables.
+        task: 'Text' | 'Formula' | 'Table'
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            data = [self._gradio_image_data(image_bytes), task, 512]
+            result = await self._gradio_call(
+                "prithivMLmods/GLM-OCR-Demo", "generate", data, timeout=90.0
+            )
+            if result:
+                for item in result:
+                    resolved = await self._resolve_gradio_item(item)
+                    if isinstance(resolved, str) and resolved.strip():
+                        return {"success": True, "text": resolved, "task": task}
+            return {"success": False, "error": "Sin texto extraído"}
+        except Exception as exc:
+            logger.error("[HF Space] ocr_document_space: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def estimate_pose(self, image_bytes: bytes) -> dict[str, Any]:
+        """
+        Detect human pose / body keypoints (RTDetr + ViTPose, COCO 17-keypoint format).
+        Space: hysts/ViTPose-transformers — returns annotated image + JSON with keypoints.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            data = [self._gradio_image_data(image_bytes), 0.3, True, True]
+            result = await self._gradio_call(
+                "hysts/ViTPose-transformers", "detect_pose_image", data, timeout=90.0
+            )
+            if result and len(result) >= 1:
+                annotated = await self._resolve_gradio_item(result[0])
+                keypoints = (
+                    result[1]
+                    if len(result) > 1 and isinstance(result[1], (dict, list))
+                    else {}
+                )
+                return {
+                    "success": True,
+                    "image_bytes": annotated if isinstance(annotated, bytes) else None,
+                    "keypoints": keypoints,
+                }
+            return {"success": False, "error": "Sin pose detectada"}
+        except Exception as exc:
+            logger.error("[HF Space] estimate_pose: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def generate_3d_model(
+        self, image_bytes: Optional[bytes] = None, prompt: str = ""
+    ) -> dict[str, Any]:
+        """
+        Generate 3D mesh from image or text prompt (Hunyuan3D-2).
+        Space: tencent/Hunyuan3D-2 — 3.3k likes, outputs GLB format.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            img_data = self._gradio_image_data(image_bytes) if image_bytes else None
+            data = [img_data, prompt, 50, 7.5, 1234, True, True]
+            result = await self._gradio_call(
+                "tencent/Hunyuan3D-2", "shape_generation", data, timeout=180.0
+            )
+            if result:
+                for item in result:
+                    if isinstance(item, dict) and item.get("url", "").startswith("http"):
+                        model_bytes = await self._resolve_gradio_item(item)
+                        if model_bytes and isinstance(model_bytes, bytes):
+                            return {"success": True, "model_bytes": model_bytes, "format": "glb"}
+                        return {"success": True, "model_url": item["url"], "format": "glb"}
+                    resolved = await self._resolve_gradio_item(item)
+                    if resolved and isinstance(resolved, bytes):
+                        return {"success": True, "model_bytes": resolved, "format": "glb"}
+            return {"success": False, "error": "Sin modelo generado"}
+        except Exception as exc:
+            logger.error("[HF Space] generate_3d_model: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def edit_image_kontext(
+        self, image_bytes: bytes, prompt: str, seed: int = 42
+    ) -> dict[str, Any]:
+        """
+        Edit / transform an image with text instructions (FLUX.1-Kontext-Dev).
+        Space: black-forest-labs/FLUX.1-Kontext-Dev — 1.6k likes.
+        Examples: 'change to night', 'add snow', 'make painted', 'remove person'.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            data = [self._gradio_image_data(image_bytes), prompt, seed, 3.5]
+            result = await self._gradio_call(
+                "black-forest-labs/FLUX.1-Kontext-Dev", "infer", data, timeout=120.0
+            )
+            if result:
+                for item in result:
+                    resolved = await self._resolve_gradio_item(item)
+                    if resolved and isinstance(resolved, bytes):
+                        return {"success": True, "image_bytes": resolved, "prompt": prompt}
+            return {"success": False, "error": "Sin imagen editada"}
+        except Exception as exc:
+            logger.error("[HF Space] edit_image_kontext: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def outpaint_image(
+        self,
+        image_bytes: bytes,
+        target_width: int = 1920,
+        target_height: int = 1080,
+        prompt: str = "",
+    ) -> dict[str, Any]:
+        """
+        Expand image boundaries beyond its original frame (outpainting).
+        Space: fffiloni/diffusers-image-outpaint — 2.5k likes, SDXL + ControlNet.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            data = [
+                self._gradio_image_data(image_bytes),
+                target_width, target_height,
+                "Middle", 60, 8, prompt,
+            ]
+            result = await self._gradio_call(
+                "fffiloni/diffusers-image-outpaint", "infer", data, timeout=120.0
+            )
+            if result:
+                for item in result:
+                    resolved = await self._resolve_gradio_item(item)
+                    if resolved and isinstance(resolved, bytes):
+                        return {"success": True, "image_bytes": resolved}
+            return {"success": False, "error": "Sin imagen generada"}
+        except Exception as exc:
+            logger.error("[HF Space] outpaint_image: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def colorize_image(
+        self, image_bytes: bytes, description: str = ""
+    ) -> dict[str, Any]:
+        """
+        Colorize a grayscale image with text-guided color choices.
+        Space: fffiloni/text-guided-image-colorization — only running colorization Space.
+        description: e.g. 'make the sky blue and the car red'
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            data = [self._gradio_image_data(image_bytes), description]
+            result = await self._gradio_call(
+                "fffiloni/text-guided-image-colorization", "predict", data, timeout=90.0
+            )
+            if result:
+                for item in result:
+                    resolved = await self._resolve_gradio_item(item)
+                    if resolved and isinstance(resolved, bytes):
+                        return {"success": True, "image_bytes": resolved}
+            return {"success": False, "error": "Sin imagen coloreada"}
+        except Exception as exc:
+            logger.error("[HF Space] colorize_image: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    async def generate_video_space(
+        self,
+        prompt: str,
+        image_bytes: Optional[bytes] = None,
+        width: int = 832,
+        height: int = 480,
+    ) -> dict[str, Any]:
+        """
+        Generate video from text+image (Wan2.2 14B FP8, free via ZeroGPU).
+        Space: r3gm/wan2-2-fp8da-aoti-preview-2 — 1.8k likes.
+        Note: queue times vary; use for async jobs, not real-time.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            img_data = self._gradio_image_data(image_bytes) if image_bytes else None
+            data = [img_data, prompt, 83, 25, 5.0, height, width]
+            result = await self._gradio_call(
+                "r3gm/wan2-2-fp8da-aoti-preview-2", "generate", data, timeout=300.0
+            )
+            if result:
+                for item in result:
+                    if isinstance(item, dict) and item.get("url"):
+                        vid_bytes = await self._resolve_gradio_item(item)
+                        if vid_bytes and isinstance(vid_bytes, bytes):
+                            return {"success": True, "video_bytes": vid_bytes}
+                        return {"success": True, "video_url": item["url"]}
+                    resolved = await self._resolve_gradio_item(item)
+                    if resolved and isinstance(resolved, bytes):
+                        return {"success": True, "video_bytes": resolved}
+            return {"success": False, "error": "Sin video (ZeroGPU puede tener cola)"}
+        except Exception as exc:
+            logger.error("[HF Space] generate_video_space: %s", exc)
+            return {"success": False, "error": str(exc)}
