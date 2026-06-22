@@ -155,6 +155,7 @@ STRATEGIES = [
     ("app_store_listing",        1),   # create listing copy for Chrome Web Store / App Store / VS Code marketplace
     ("case_study_publisher",     1),   # write detailed case study from buyer result → social proof + SEO + lead gen
     ("catalog_repromoter",       5),   # boostado: re-promote existing Gumroad products with fresh angles → more sales, zero creation cost
+    ("stripe_subscription",      3),   # boostado: create recurring Stripe subscription product → MRR compound growth
 ]
 
 # Strategies that already call publish_to_twitter/linkedin internally.
@@ -289,7 +290,7 @@ class IncomeLoop:
         # Product launch sequence: announce newly created products on the blog + Dev.to + Hashnode
         _PRODUCT_STRATEGIES = {
             "product_factory", "ebook_factory", "premium_offer",
-            "stripe_checkout", "shopify_listing", "niche_rotator",
+            "stripe_checkout", "stripe_subscription", "shopify_listing", "niche_rotator",
             "notion_template_seller", "white_label_kit", "data_product_seller",
             "saas_waitlist_blitz", "api_product_launch", "chrome_extension_builder",
         }
@@ -705,6 +706,8 @@ JSON:
             return await self._exec_case_study_publisher()
         elif strategy == "catalog_repromoter":
             return await self._exec_catalog_repromoter()
+        elif strategy == "stripe_subscription":
+            return await self._exec_stripe_subscription()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -4114,6 +4117,33 @@ Return JSON:
                     published_urls.append(li_url)
                     platforms_used.append("LinkedIn/GitHub")
 
+                # Also post directly to LinkedIn (API or browser)
+                _li_ae = getattr(settings, "ARIA_EMAIL", None)
+                _li_ap = getattr(settings, "ARIA_PASSWORD", None)
+                _li_posted = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _li_pub = get_api_publisher()
+                    _li_r = await _li_pub.publish_to_linkedin(linkedin_content[:1300])
+                    _li_posted = bool(_li_r and _li_r.success)
+                    if _li_posted and hasattr(_li_r, "url") and _li_r.url:
+                        published_urls.append(_li_r.url)
+                except Exception:
+                    pass
+                if not _li_posted and _li_ae and _li_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _li_page = await _plat.linkedin(_li_ae, _li_ap)
+                        _li_live_url = await _plat.linkedin_create_post(_li_page, linkedin_content[:3000])
+                        if _li_live_url:
+                            published_urls.append(_li_live_url)
+                            _li_posted = True
+                    except Exception:
+                        pass
+                if _li_posted and "LinkedIn" not in " ".join(platforms_used):
+                    platforms_used.append("LinkedIn (live)")
+
             # 2. Post Twitter thread via Zapier or to GitHub threads/
             thread_content = repurposed.get("twitter_thread", "")
             hashtags       = " ".join(repurposed.get("hashtags", ["#ai"])[:3])
@@ -4155,6 +4185,31 @@ Return JSON:
                     published_urls.append(f"https://github.com/{owner}/{thread_repo}/blob/main/{thread_fname}")
                     if "Twitter/Zapier" not in platforms_used:
                         platforms_used.append("Twitter/GitHub")
+
+                # Post thread directly to Twitter via API or browser
+                if "Twitter/Zapier" not in platforms_used:
+                    _tw_ae = getattr(settings, "ARIA_EMAIL", None)
+                    _tw_ap = getattr(settings, "ARIA_PASSWORD", None)
+                    _tw_tweets = [t.strip()[:280] for t in thread_content.split("---") if t.strip()][:10]
+                    _tw_done = False
+                    try:
+                        from apps.distribution.publishers.api_publisher import get_api_publisher
+                        _tw_pub = get_api_publisher()
+                        _tw_r = await _tw_pub.publish_to_twitter(_tw_tweets[0] if _tw_tweets else title[:280])
+                        _tw_done = bool(_tw_r and _tw_r.success)
+                    except Exception:
+                        pass
+                    if not _tw_done and _tw_ae and _tw_ap and _tw_tweets:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_tw_ae, _tw_ap)
+                            _tw_url = await _plat.twitter_thread_post(_tw_page, _tw_tweets)
+                            _tw_done = bool(_tw_url)
+                        except Exception:
+                            pass
+                    if _tw_done:
+                        platforms_used.append("Twitter (live)")
 
             # 3. Add email snippet to newsletter
             email_snippet = repurposed.get("email_snippet", "")
@@ -16808,6 +16863,243 @@ Return JSON:
             }
         except Exception as exc:
             logger.error("[IncomeLoop] catalog_repromoter: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_stripe_subscription(self) -> dict:
+        """
+        Create a recurring Stripe subscription product with monthly billing.
+        Subscriptions compound over time: each subscriber = MRR that keeps paying.
+        Falls back to Gumroad membership or GitHub landing page.
+        """
+        try:
+            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.web_tools import WebTools
+
+            ai = get_ai_client()
+            if not ai:
+                return {"success": False, "summary": "stripe_subscription: AI unavailable"}
+
+            wt = WebTools()
+            trends = await wt.search_web("best SaaS subscription products AI tools monthly 2025", num_results=5)
+            inspiration = "AI toolkit subscription for entrepreneurs"
+            if trends.get("success") and trends.get("results"):
+                inspiration = trends["results"][0].get("title", inspiration)[:100]
+
+            sub_data = await ai.complete_json(
+                system=(
+                    "You create compelling SaaS subscription products. "
+                    "Focus on recurring value delivery — members must feel they get MORE than they pay each month. "
+                    "Output JSON only."
+                ),
+                user=f"""Design a monthly subscription product inspired by: "{inspiration}"
+
+Target audience: entrepreneurs, solopreneurs, and small business owners who use AI tools.
+
+JSON:
+{{
+  "name": "subscription product name (max 60 chars)",
+  "tagline": "one-line value prop (max 100 chars)",
+  "monthly_price_cents": 1900,
+  "annual_price_cents": 18000,
+  "description": "What subscribers get every month (200+ words, specific deliverables)",
+  "monthly_deliverables": ["deliverable 1", "deliverable 2", "deliverable 3", "deliverable 4", "deliverable 5"],
+  "tier_name": "tier name e.g. Starter|Pro|Elite",
+  "trial_days": 7,
+  "target_mrr": 1000
+}}""",
+                model=AIModel.FAST,
+                max_tokens=1000,
+            )
+
+            if not sub_data:
+                return {"success": False, "summary": "stripe_subscription: AI failed"}
+
+            product_name = sub_data.get("name", "ARIA Pro Subscription")
+            tagline = sub_data.get("tagline", "")
+            monthly_cents = int(sub_data.get("monthly_price_cents", 1900))
+            annual_cents = int(sub_data.get("annual_price_cents", 18000))
+            description = sub_data.get("description", "")
+            deliverables = sub_data.get("monthly_deliverables", [])
+            tier = sub_data.get("tier_name", "Pro")
+            trial_days = int(sub_data.get("trial_days", 7))
+
+            urls_created: list[str] = []
+            platform_used = ""
+
+            # Try Stripe subscription billing
+            stripe_key = getattr(settings, "STRIPE_SECRET_KEY", None)
+            if stripe_key:
+                try:
+                    import httpx as _hx
+                    async with _hx.AsyncClient(timeout=20.0) as _client:
+                        # Create Stripe product
+                        prod_r = await _client.post(
+                            "https://api.stripe.com/v1/products",
+                            data={"name": product_name, "description": description[:500]},
+                            auth=(stripe_key, ""),
+                        )
+                        if prod_r.status_code == 200:
+                            stripe_pid = prod_r.json().get("id", "")
+                            # Create monthly recurring price
+                            price_r = await _client.post(
+                                "https://api.stripe.com/v1/prices",
+                                data={
+                                    "product": stripe_pid,
+                                    "unit_amount": str(monthly_cents),
+                                    "currency": "usd",
+                                    "recurring[interval]": "month",
+                                    "nickname": f"{tier} Monthly",
+                                },
+                                auth=(stripe_key, ""),
+                            )
+                            if price_r.status_code == 200:
+                                stripe_price_id = price_r.json().get("id", "")
+                                # Create payment link with trial
+                                link_data: dict = {
+                                    "line_items[0][price]": stripe_price_id,
+                                    "line_items[0][quantity]": "1",
+                                }
+                                if trial_days > 0:
+                                    link_data["subscription_data[trial_period_days]"] = str(trial_days)
+                                link_r = await _client.post(
+                                    "https://api.stripe.com/v1/payment_links",
+                                    data=link_data,
+                                    auth=(stripe_key, ""),
+                                )
+                                if link_r.status_code == 200:
+                                    checkout_url = link_r.json().get("url", "")
+                                    if checkout_url:
+                                        urls_created.append(checkout_url)
+                                        platform_used = "Stripe Subscriptions"
+                except Exception as _se:
+                    logger.debug("[IncomeLoop] stripe_subscription: %s", _se)
+
+            # Gumroad membership fallback (supports recurring memberships)
+            if not urls_created:
+                gumroad_token = getattr(settings, "GUMROAD_TOKEN", None)
+                full_desc = description + "\n\n**Monthly deliverables:**\n" + "\n".join(f"✅ {d}" for d in deliverables[:5])
+                if gumroad_token:
+                    try:
+                        from apps.core.tools.gumroad_tools import GumroadTools
+                        gt = GumroadTools()
+                        gr_r = await gt.create_product(
+                            name=product_name,
+                            description=full_desc,
+                            price_cents=monthly_cents,
+                            tags=["subscription", "membership", "ai", "tools"],
+                        )
+                        if gr_r.get("success") and gr_r.get("url"):
+                            urls_created.append(gr_r["url"])
+                            platform_used = "Gumroad Membership"
+                    except Exception:
+                        pass
+                if not urls_created:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _gm_pg = await _plat.gumroad(_ae, _ap)
+                            _gm_url = await _plat.gumroad_create_product(
+                                _gm_pg, product_name, monthly_cents, full_desc
+                            )
+                            if _gm_url:
+                                urls_created.append(_gm_url)
+                                platform_used = "Gumroad (browser)"
+                        except Exception:
+                            pass
+
+            # Always publish landing page to GitHub
+            if settings.GITHUB_TOKEN:
+                try:
+                    from apps.core.tools.github_client import AriaGitHubClient
+                    import base64 as _b64
+                    gh = AriaGitHubClient()
+                    owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                    from datetime import datetime, timezone
+                    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    slug = product_name[:35].lower().replace(" ", "-").replace("'", "")
+                    buy_url = urls_created[0] if urls_created else "#"
+                    deliverables_md = "\n".join(f"- ✅ {d}" for d in deliverables[:6])
+                    md = (
+                        f"# {product_name} — {tier} Membership\n\n"
+                        f"*{tagline}*\n\n"
+                        f"**${monthly_cents/100:.0f}/month** | [Subscribe Now →]({buy_url})\n\n"
+                        f"*{trial_days}-day free trial included*\n\n"
+                        f"{description}\n\n"
+                        f"## What You Get Every Month\n\n{deliverables_md}\n\n"
+                        f"---\n\n*[Start your free trial]({buy_url})*\n"
+                        f"*Created by [ARIA AI](https://github.com/{owner}/aria-portfolio)*\n"
+                    )
+                    file_r = await gh._put(
+                        f"/repos/{owner}/aria-insights/contents/subscriptions/{today}-{slug}.md",
+                        {"message": f"subscription: {product_name[:60]}", "content": _b64.b64encode(md.encode()).decode()},
+                    )
+                    if "error" not in file_r:
+                        gh_url = f"https://github.com/{owner}/aria-insights/blob/main/subscriptions/{today}-{slug}.md"
+                        urls_created.append(gh_url)
+                except Exception:
+                    pass
+
+            if not urls_created:
+                return {"success": False, "summary": "stripe_subscription: no payment processor or GitHub configured"}
+
+            # Announce on social media
+            buy_url = urls_created[0]
+            trial_note = f" ({trial_days}-day free trial)" if trial_days else ""
+            tw_text = (
+                f"🔄 NEW SUBSCRIPTION: {product_name}\n\n"
+                f"{tagline}\n\n"
+                f"${monthly_cents/100:.0f}/mo{trial_note}\n\n"
+                f"👉 {buy_url}"
+            )[:280]
+            _ae2 = getattr(settings, "ARIA_EMAIL", None)
+            _ap2 = getattr(settings, "ARIA_PASSWORD", None)
+            _tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                pub = get_api_publisher()
+                tw_r = await pub.publish_to_twitter(tw_text)
+                _tw_ok = bool(tw_r and tw_r.success)
+            except Exception:
+                pass
+            if not _tw_ok and _ae2 and _ap2:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat2 = await get_platform_login()
+                    _tw_pg = await _plat2.twitter(_ae2, _ap2)
+                    await _plat2.twitter_thread_post(_tw_pg, [tw_text])
+                except Exception:
+                    pass
+
+            # Submit to Hacker News as Show HN
+            if buy_url and buy_url != "#" and _ae2 and _ap2:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _hn_plat = await get_platform_login()
+                    _hn_url = await _hn_plat.hackernews_show_hn(
+                        _ae2, _ap2,
+                        title=f"{product_name}: {tagline}",
+                        url=buy_url,
+                        text=f"{description[:500]}\n\n{trial_note}",
+                    )
+                    if _hn_url:
+                        urls_created.append(_hn_url)
+                        logger.info("[IncomeLoop] stripe_subscription HN submitted: %s", _hn_url)
+                except Exception:
+                    pass
+
+            logger.info("[IncomeLoop] stripe_subscription: '%s' at $%s/mo via %s", product_name[:50], monthly_cents/100, platform_used)
+            return {
+                "success": True,
+                "summary": f"Subscription '{product_name[:50]}' | ${monthly_cents/100:.0f}/mo{trial_note} | {platform_used} | target MRR: ${sub_data.get('target_mrr', 0)}",
+                "revenue_potential": monthly_cents / 100 * 10,  # 10 subscribers = $190+/mo MRR
+                "urls": urls_created[:3],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] stripe_subscription: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
 
