@@ -3117,17 +3117,33 @@ Return JSON: {{"comment": "your comment text"}}""",
                         max_tokens=150,
                     )
                     if comment_data and comment_data.get("comment"):
-                        # HN API doesn't support posting via API — store for tracking
+                        _hn_comment_text = comment_data["comment"]
+                        _hn_posted = False
+                        # Post via browser using ARIA credentials
+                        _hn_ae = getattr(settings, "ARIA_EMAIL", None)
+                        _hn_ap = getattr(settings, "ARIA_PASSWORD", None)
+                        if _hn_ae and _hn_ap:
+                            try:
+                                from apps.core.tools.human_browser import get_platform_login
+                                _hn_plat = await get_platform_login()
+                                _hn_posted = await _hn_plat.hackernews_comment(
+                                    _hn_ae, _hn_ap, str(hn_id), _hn_comment_text
+                                )
+                            except Exception:
+                                pass
+                        # Always queue for record regardless
                         if cache:
                             await cache.rpush("aria:reputation:hn_comments_queued", _json.dumps({
                                 "ts": _dt.datetime.utcnow().isoformat(),
                                 "story": title[:100],
                                 "hn_id": hn_id,
-                                "comment": comment_data["comment"],
+                                "comment": _hn_comment_text,
+                                "posted": _hn_posted,
                             }))
                             await cache.ltrim("aria:reputation:hn_comments_queued", -30, -1)
                         engagements += 1
-                        actions_taken.append(f"hn:queued comment on '{title[:50]}'")
+                        _status = "posted" if _hn_posted else "queued"
+                        actions_taken.append(f"hn:{_status} comment on '{title[:50]}'")
             except Exception:
                 pass
 
@@ -3189,6 +3205,35 @@ Return JSON: {{"reply": "text"}}""",
                                 pass
                 except Exception:
                     pass
+
+            # ── 2b. Reddit browser fallback — post to r/SideProject if no token ──
+            if not reddit_token:
+                _rd_ae = getattr(settings, "ARIA_EMAIL", None)
+                _rd_ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _rd_ae and _rd_ap:
+                    try:
+                        _rd_post_data = await complete_json(
+                            """You are ARIA, an AI business platform. Write a Reddit post for r/SideProject.
+Share something genuinely useful about AI automation or building products.
+Return JSON: {"title": "post title (under 300 chars)", "body": "post body (200-400 chars, value-first, conversational)"}""",
+                            model="fast",
+                            max_tokens=200,
+                        )
+                        if _rd_post_data and _rd_post_data.get("title"):
+                            from apps.core.tools.human_browser import get_platform_login
+                            _rd_plat = await get_platform_login()
+                            _rd_page = await _rd_plat.reddit(_rd_ae, _rd_ap)
+                            _rd_url = await _rd_plat.reddit_post(
+                                _rd_page,
+                                "SideProject",
+                                _rd_post_data["title"][:300],
+                                _rd_post_data.get("body", "")[:5000],
+                            )
+                            if _rd_url:
+                                engagements += 1
+                                actions_taken.append(f"reddit:r/SideProject posted (browser)")
+                    except Exception:
+                        pass
 
             # ── 3. Dev.to — React to + comment on AI articles ─────────────────
             devto_key = getattr(settings, "DEVTO_API_KEY", "") or ""
@@ -3820,6 +3865,54 @@ Return JSON:
                     posts_published += 1
                 except Exception:
                     pass
+
+            # Cross-post pillar article to Dev.to (API or browser) for maximum reach
+            _devto_key = getattr(_s, "DEVTO_API_KEY", None)
+            _seo_ae = getattr(_s, "ARIA_EMAIL", None)
+            _seo_ap = getattr(_s, "ARIA_PASSWORD", None)
+            _pillar_body = cluster.get("pillar_content", "")
+            if _pillar_body:
+                _dt_posted = False
+                if _devto_key:
+                    try:
+                        import aiohttp as _aio
+                        _dt_payload = {
+                            "article": {
+                                "title": pillar_title,
+                                "body_markdown": _pillar_body,
+                                "published": True,
+                                "tags": [cluster.get("pillar_keyword", "ai").split()[0].lower(), "seo", "guide"],
+                                "canonical_url": urls_created[0] if urls_created else None,
+                            }
+                        }
+                        async with _aio.ClientSession() as _ses:
+                            async with _ses.post(
+                                "https://dev.to/api/articles",
+                                json=_dt_payload,
+                                headers={"api-key": _devto_key},
+                                timeout=_aio.ClientTimeout(total=30),
+                            ) as _rr:
+                                if _rr.status in (200, 201):
+                                    _dt_d = await _rr.json()
+                                    if _dt_d.get("url"):
+                                        urls_created.append(_dt_d["url"])
+                                        _dt_posted = True
+                    except Exception:
+                        pass
+                if not _dt_posted and _seo_ae and _seo_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _dt_pg = await _plat.devto(_seo_ae, _seo_ap)
+                        _kw = cluster.get("pillar_keyword", "ai")
+                        _dt_url = await _plat.devto_publish_article(
+                            _dt_pg, pillar_title, _pillar_body,
+                            [_kw.split()[0].lower()[:20], "seo", "guide"],
+                        )
+                        if _dt_url:
+                            urls_created.append(_dt_url)
+                    except Exception:
+                        pass
 
             if cache:
                 await cache.rpush("aria:seo:clusters_published", _json.dumps({

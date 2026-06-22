@@ -286,8 +286,14 @@ class IncomeLoop:
         if result.success and result.urls_created:
             await self._notify_win(result)
 
-        # Product launch sequence: announce newly created products on the blog
-        if result.success and result.urls_created and result.strategy in ("product_factory", "ebook_factory", "premium_offer"):
+        # Product launch sequence: announce newly created products on the blog + Dev.to + Hashnode
+        _PRODUCT_STRATEGIES = {
+            "product_factory", "ebook_factory", "premium_offer",
+            "stripe_checkout", "shopify_listing", "niche_rotator",
+            "notion_template_seller", "white_label_kit", "data_product_seller",
+            "saas_waitlist_blitz", "api_product_launch", "chrome_extension_builder",
+        }
+        if result.success and result.urls_created and result.strategy in _PRODUCT_STRATEGIES:
             asyncio.create_task(self._announce_product_on_blog(result))
 
         # Persist to product catalog for all income-generating strategies
@@ -387,9 +393,8 @@ class IncomeLoop:
                 pass
 
     async def _announce_product_on_blog(self, result: CycleResult) -> None:
-        """Write a blog post announcing a newly created product — drives organic traffic to it."""
-        if not settings.GITHUB_TOKEN:
-            return
+        """Write a blog post announcing a newly created product — drives organic traffic to it.
+        Cross-posts to GitHub (always), Dev.to, and Hashnode via browser fallback."""
         try:
             await asyncio.sleep(10)  # let the main cycle finish logging first
             from apps.core.tools.ai_client import get_ai_client, AIModel
@@ -417,11 +422,81 @@ JSON:
                 model=AIModel.FAST,
                 max_tokens=2000,
             )
-            if announcement and product_url:
-                if "content" in announcement:
-                    announcement["content"] += f"\n\n**[Get it here →]({product_url})**\n"
+            if not announcement:
+                return
+
+            if product_url and "content" in announcement:
+                announcement["content"] += f"\n\n**[Get it here →]({product_url})**\n"
+
+            title = announcement.get("title", result.summary[:60])
+            tags  = announcement.get("tags", ["launch", "product", "ai"])
+            body  = announcement.get("content", "")
+
+            # 1) GitHub (authoritative record — always attempt)
+            if settings.GITHUB_TOKEN:
                 await self._exec_github_blog([announcement], cp=None)
-                logger.info("[IncomeLoop] Product announcement published for: %s", result.summary[:60])
+                logger.info("[IncomeLoop] Product announcement on GitHub for: %s", title[:60])
+
+            # 2) Dev.to via API key or browser fallback
+            _dt_ae = getattr(settings, "ARIA_EMAIL", None)
+            _dt_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _devto_key = getattr(settings, "DEVTO_API_KEY", None)
+            _dt_published = False
+            if _devto_key and body:
+                try:
+                    import aiohttp as _aiohttp
+                    payload = {
+                        "article": {
+                            "title": title,
+                            "body_markdown": body,
+                            "published": True,
+                            "tags": [t.lower().replace(" ", "") for t in tags[:4]],
+                            "canonical_url": product_url or None,
+                        }
+                    }
+                    async with _aiohttp.ClientSession() as _ses:
+                        async with _ses.post(
+                            "https://dev.to/api/articles",
+                            json=payload,
+                            headers={"api-key": _devto_key},
+                            timeout=_aiohttp.ClientTimeout(total=30),
+                        ) as _rr:
+                            if _rr.status in (200, 201):
+                                _dt_data = await _rr.json()
+                                _dt_url = _dt_data.get("url", "")
+                                if _dt_url:
+                                    logger.info("[IncomeLoop] Product announcement on Dev.to: %s", _dt_url)
+                                    _dt_published = True
+                except Exception as _de:
+                    logger.debug("[IncomeLoop] dev.to API announcement: %s", _de)
+
+            if not _dt_published and _dt_ae and _dt_ap and body:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _dt_pg = await _plat.devto(_dt_ae, _dt_ap)
+                    _dt_url = await _plat.devto_publish_article(
+                        _dt_pg, title, body, tags[:4]
+                    )
+                    if _dt_url:
+                        logger.info("[IncomeLoop] Product announcement on Dev.to (browser): %s", _dt_url)
+                except Exception as _de2:
+                    logger.debug("[IncomeLoop] dev.to browser announcement: %s", _de2)
+
+            # 3) Hashnode via browser fallback
+            if _dt_ae and _dt_ap and body:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat2 = await get_platform_login()
+                    _hn_pg = await _plat2.hashnode(_dt_ae, _dt_ap)
+                    _hn_url = await _plat2.hashnode_publish_article(
+                        _dt_ae, _dt_ap, title=title, content=body, tags=tags[:5]
+                    )
+                    if _hn_url:
+                        logger.info("[IncomeLoop] Product announcement on Hashnode: %s", _hn_url)
+                except Exception as _hn_exc:
+                    logger.debug("[IncomeLoop] hashnode announcement: %s", _hn_exc)
+
         except Exception as exc:
             logger.debug("[IncomeLoop] product announcement: %s", exc)
 
@@ -16627,11 +16702,13 @@ Return JSON:
 {{
   "tweet": "compelling tweet under 260 chars, includes price and angle, ends with URL placeholder",
   "linkedin_post": "LinkedIn post 150-200 chars, professional tone, includes CTA",
+  "reddit_title": "Reddit post title (under 300 chars, no self-promotion language, value-first)",
+  "reddit_post": "Reddit selftext (200-500 chars, conversational, share value first then mention product naturally, no spam)",
   "hook": "the core emotional hook used",
   "angle_used": "{angle}"
 }}""",
                 model="fast",
-                max_tokens=400,
+                max_tokens=600,
             )
 
             if not promo_data:
@@ -16689,6 +16766,27 @@ Return JSON:
                     _li_url = await _plat.linkedin_create_post(_li_page, li_text[:3000])
                     if _li_url:
                         urls_created.append(_li_url)
+                except Exception:
+                    pass
+
+            # ── Publish to Reddit via browser ──────────────────────────────────
+            reddit_post = promo_data.get("reddit_post", "")
+            reddit_title = promo_data.get("reddit_title", f"{prod_name} — now available (${prod_price:.0f})")
+            if not reddit_post:
+                reddit_post = f"{prod_name}\n\nPrice: ${prod_price:.0f}\n\n{promo_data.get('hook', angle)}\n\n{prod_url}"
+            if _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat_r = await get_platform_login()
+                    _reddit_pg = await _plat_r.reddit(_ae, _ap)
+                    _reddit_url = await _plat_r.reddit_post(
+                        _reddit_pg,
+                        "SideProject",
+                        reddit_title[:300],
+                        reddit_post[:5000],
+                    )
+                    if _reddit_url:
+                        urls_created.append(_reddit_url)
                 except Exception:
                     pass
 

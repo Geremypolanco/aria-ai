@@ -841,6 +841,43 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] HN submission failed: %s", exc)
             return ""
 
+    async def hackernews_comment(self, email: str, password: str, item_id: str, comment_text: str) -> bool:
+        """
+        Post a comment on a Hacker News item. Returns True on success.
+        Reuses session from hackernews_show_hn if available.
+        """
+        page = await self._browser.new_page("hackernews")
+        try:
+            await page.goto("https://news.ycombinator.com")
+            if not await page.load_session():
+                await page.goto("https://news.ycombinator.com/login")
+                await page._random_pause("read")
+                await page.type_human("input[name='acct']", email)
+                await page.type_human("input[name='pw']", password)
+                await page._random_pause("think")
+                await page.click("input[type='submit'][value='login']")
+                await page._random_pause("navigate")
+                await page.save_session()
+
+            await page.goto(f"https://news.ycombinator.com/item?id={item_id}")
+            await page._random_pause("read")
+
+            # Find the reply textarea on the top-level comment form
+            try:
+                await page.type_human("form[action='comment'] textarea[name='text']", comment_text[:2000])
+                await page._random_pause("think")
+                await page.click("form[action='comment'] input[type='submit'][value='add comment']")
+                await page._random_pause("navigate")
+                await asyncio.sleep(2)
+                logger.info("[HumanBrowser] HN: commented on item %s", item_id)
+                return True
+            except Exception as _fe:
+                logger.debug("[HumanBrowser] HN comment form not found for item %s: %s", item_id, _fe)
+                return False
+        except Exception as exc:
+            logger.warning("[HumanBrowser] HN comment failed for item %s: %s", item_id, exc)
+            return False
+
     async def reddit_post(self, page: HumanPage, subreddit: str, title: str, body: str) -> str:
         """
         Submit a text post to a subreddit. Returns the post URL or empty string on failure.
