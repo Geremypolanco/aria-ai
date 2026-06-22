@@ -21,6 +21,21 @@ from typing import Any, Optional
 
 logger = logging.getLogger("aria.mind")
 
+# ── Image context cache — populated by telegram_bot when user sends a photo ──
+# chat_id → base64-encoded image bytes (last image per chat session)
+_IMAGE_CONTEXT: dict[str, str] = {}
+
+
+def set_image_context(chat_id: str, image_b64: str) -> None:
+    """Called by telegram_bot when user sends a photo. Enables VQA & img2img."""
+    _IMAGE_CONTEXT[chat_id] = image_b64
+
+
+def get_image_context(chat_id: str) -> str:
+    """Returns the last image b64 for a chat, or empty string."""
+    return _IMAGE_CONTEXT.get(chat_id, "")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # TIPOS
 # ═══════════════════════════════════════════════════════════════════════════
@@ -170,6 +185,16 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - get_product_catalog → catálogo completo de todos los productos, artículos, demos y recursos publicados por ARIA con sus URLs y revenue potencial. Úsalo cuando el usuario pida ver los productos, el catálogo, qué ha publicado ARIA o cuánto ha generado. Args: {{"limit": 20}}
 - get_github_traction → muestra stars, forks y watchers de todos los repos públicos de ARIA para medir la presencia en el mercado y crecimiento de comunidad. Args: {{}}
 - run_proactive_analysis → análisis autónomo completo: ARIA escanea Shopify, income loop, objetivos estratégicos y GitHub, identifica qué está faltando o rinde menos, y ejecuta la acción más valiosa inmediatamente sin necesidad de instrucción. Args: {{"focus": "shopify|income|github|all (default: all)"}}
+- visual_qa        → responde preguntas sobre el contenido de una imagen (Visual Question Answering). El usuario envía una foto y hace cualquier pregunta. Args: {{"image_bytes_b64": "...", "question": "¿qué hay en la imagen?"}}
+- image_to_image   → transforma una imagen existente con instrucciones en lenguaje natural (img2img Diffusion). Args: {{"image_bytes_b64": "...", "prompt": "convierte a estilo anime"}}
+- classify_image_zero_shot → clasifica una imagen en categorías arbitrarias sin entrenamiento (CLIP). Args: {{"image_bytes_b64": "...", "labels": ["cat","dog","car"]}}
+- document_qa      → extrae información de documentos escaneados, facturas, formularios (LayoutLM). Args: {{"image_bytes_b64": "...", "question": "¿cuál es el total?"}}
+- generate_music_hf → genera música con MusicGen por descripción en texto. Args: {{"prompt": "relaxing jazz piano", "duration": 20}}
+- detect_language  → detecta el idioma de cualquier texto (176 idiomas). Args: {{"text": "..."}}
+- analyze_sentiment → analiza el sentimiento de un texto (positivo/negativo/neutro). Args: {{"text": "..."}}
+- extract_entities → extrae entidades nombradas: personas, lugares, organizaciones (NER). Args: {{"text": "..."}}
+- compute_similarity → calcula la similitud semántica entre dos textos (0.0–1.0). Args: {{"text1": "...", "text2": "..."}}
+- run_smolagent    → agente autónomo de investigación: planifica → busca → razona → sintetiza (patrón smolagents). Args: {{"task": "investiga el estado del mercado de IA en 2025"}}
 
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
 Tienes acceso a tus propias credenciales de plataformas vía variables de entorno ARIA_EMAIL y ARIA_PASSWORD.
@@ -341,6 +366,16 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 152. Si el usuario pide publicar un caso de éxito, escribir un case study de un cliente, crear prueba social con resultados reales, mostrar ROI con historia de cliente, o generar contenido SEO con resultados verificables → usa run_income_cycle con strategy="case_study_publisher".
 153. Si el usuario pide amplificar lo que ya está funcionando, doblar la apuesta en contenido viral, activar el agente de crecimiento viral, ver qué está ganando tracción, o ejecutar el ciclo de amplificación de contenido → usa run_objective con objective="viral_growth_agent".
 154. Si el usuario pide expandir a nuevos mercados, llegar a usuarios en LATAM o Europa, crear contenido localizado, entrar en nuevos verticales de industria, o ejecutar el motor de expansión de mercado → usa run_objective con objective="market_expansion".
+155. Si el usuario envía una imagen y hace una pregunta específica sobre su contenido (¿qué hay aquí?, ¿cuántos objetos?, ¿de qué color es?) → usa visual_qa con image_bytes_b64 y question.
+156. Si el usuario pide transformar, modificar o editar una imagen existente con instrucciones de texto (convertir a anime, añadir nieve, cambiar el día a noche) → usa image_to_image con image_bytes_b64 y prompt.
+157. Si el usuario pide clasificar qué hay en una imagen usando categorías que él elige → usa classify_image_zero_shot con image_bytes_b64 y labels.
+158. Si el usuario sube un documento, factura, contrato o formulario escaneado y hace preguntas sobre su contenido → usa document_qa con image_bytes_b64 y question.
+159. Si el usuario pide generar música, una melodía, un beat, música de fondo, o audio musical → usa generate_music_hf con prompt y duration.
+160. Si el usuario pide detectar o identificar el idioma de un texto → usa detect_language con text.
+161. Si el usuario pide analizar el sentimiento, el tono, o las emociones de un texto → usa analyze_sentiment con text.
+162. Si el usuario pide extraer entidades, personas, lugares u organizaciones de un texto → usa extract_entities con text.
+163. Si el usuario pide comparar dos textos semánticamente, ver qué tan similares son, o calcular la distancia entre ideas → usa compute_similarity con text1 y text2.
+164. Si el usuario pide que ARIA investigue un tema a fondo de forma autónoma, sintetice información de múltiples fuentes, o actúe como un agente de investigación → usa run_smolagent con task.
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -469,7 +504,7 @@ class AriaMind:
 
             # Ejecutar herramienta si hay una
             if tool and tool not in ("null", "none", None):
-                obs, media = await self._execute_with_retry(tool, tool_args)
+                obs, media = await self._execute_with_retry(tool, tool_args, chat_id=chat_id)
                 final_text = await self._synthesize(text, tool, obs)
                 await self._record_exec(tool, tool_args, obs, bool(media or obs))
                 await self._store_interaction(chat_id, text, final_text, tool)
@@ -583,7 +618,7 @@ class AriaMind:
     # ── EJECUCIÓN CON RETRY + FALLBACK ────────────────────────────────────
 
     async def _execute_with_retry(self, tool: str, args: dict,
-                                   max_retries: int = 3) -> tuple[str, dict]:
+                                   max_retries: int = 3, chat_id: str = "") -> tuple[str, dict]:
         """
         Ejecuta la herramienta con hasta max_retries intentos.
         Cada intento puede usar parámetros adaptados.
@@ -594,7 +629,7 @@ class AriaMind:
             if attempt > 0:
                 await asyncio.sleep(2 ** attempt)  # backoff: 2s, 4s
 
-            obs, media = await self._execute_tool(tool, args, attempt)
+            obs, media = await self._execute_tool(tool, args, attempt, chat_id=chat_id)
 
             # Si hay media o la obs no indica error → éxito
             if media or (obs and not obs.lower().startswith(("error", "no se pudo", "falló", "fail"))):
@@ -622,7 +657,7 @@ class AriaMind:
             args = {"query": " ".join(words[:4])}  # query más corta
         return args
 
-    async def _execute_tool(self, tool: str, args: dict, attempt: int = 0) -> tuple[str, dict]:
+    async def _execute_tool(self, tool: str, args: dict, attempt: int = 0, chat_id: str = "") -> tuple[str, dict]:
         """
         Ejecuta la herramienta. Devuelve (obs_text, media_dict).
         media_dict: {image_bytes, video_bytes, audio_bytes} — solo el que aplica.
@@ -1975,6 +2010,150 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 findings.append("")
                 findings.append(f"**Revenue generado esta ronda: ${action_value:.2f}**")
                 return "\n".join(findings), {}
+
+            # ── VISUAL QUESTION ANSWERING ─────────────────────────────
+            elif tool == "visual_qa":
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                question  = args.get("question", "¿Qué hay en esta imagen?")
+                if not image_b64:
+                    return "Envíame primero una imagen para que pueda responder preguntas sobre ella.", {}
+                import base64 as _b64
+                image_bytes = _b64.b64decode(image_b64)
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().visual_question_answering(image_bytes, question)
+                if r.get("success"):
+                    conf = r.get("confidence", 0)
+                    ans = r.get("answer", "")
+                    return f"[VQA] Pregunta: {question}\nRespuesta: {ans} (confianza: {conf:.0%})", {}
+                return r.get("error", "VQA no disponible"), {}
+
+            # ── IMAGE-TO-IMAGE (Diffusion) ────────────────────────────
+            elif tool == "image_to_image":
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                prompt    = args.get("prompt", "")
+                if not image_b64:
+                    return "Envíame primero una imagen para poder transformarla.", {}
+                if not prompt:
+                    return "Necesito una instrucción de transformación (prompt).", {}
+                import base64 as _b64
+                image_bytes = _b64.b64decode(image_b64)
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().image_to_image(image_bytes, prompt)
+                if r.get("success") and r.get("image_bytes"):
+                    return f"Imagen transformada: '{prompt}'", {"image_bytes": r["image_bytes"]}
+                return r.get("error", "img2img no disponible"), {}
+
+            # ── ZERO-SHOT IMAGE CLASSIFICATION (CLIP) ────────────────
+            elif tool == "classify_image_zero_shot":
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                labels    = args.get("labels", ["cat", "dog", "person", "car", "nature"])
+                if not image_b64:
+                    return "Envíame primero una imagen para clasificarla.", {}
+                import base64 as _b64
+                image_bytes = _b64.b64decode(image_b64)
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().zero_shot_classify_image(image_bytes, labels)
+                if r.get("success"):
+                    top = r.get("top_label", "")
+                    score = r.get("top_score", 0)
+                    all_scores = ", ".join(f"{x['label']}: {x['score']:.0%}" for x in r.get("all", [])[:5])
+                    return f"[CLIP] Categoría más probable: {top} ({score:.0%})\nTodas: {all_scores}", {}
+                return r.get("error", "Clasificación CLIP no disponible"), {}
+
+            # ── DOCUMENT QA (LayoutLM) ────────────────────────────────
+            elif tool == "document_qa":
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                question  = args.get("question", "")
+                if not image_b64:
+                    return "Envíame primero el documento o factura como imagen.", {}
+                if not question:
+                    return "¿Qué quieres saber sobre el documento?", {}
+                import base64 as _b64
+                image_bytes = _b64.b64decode(image_b64)
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().document_qa(image_bytes, question)
+                if r.get("success"):
+                    return f"[Document QA] {question}\nRespuesta: {r.get('answer','')} ({r.get('confidence',0):.0%})", {}
+                return r.get("error", "Document QA no disponible"), {}
+
+            # ── GENERATE MUSIC (MusicGen) ─────────────────────────────
+            elif tool == "generate_music_hf":
+                prompt   = args.get("prompt", "relaxing ambient music")
+                duration = int(args.get("duration", 15))
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().generate_music(prompt, duration=duration)
+                if r.get("success") and r.get("audio_bytes"):
+                    ab = r["audio_bytes"]
+                    return f"Música generada ({duration}s): '{prompt}'", {"audio_bytes": ab}
+                return r.get("error", "MusicGen no disponible"), {}
+
+            # ── DETECT LANGUAGE ───────────────────────────────────────
+            elif tool == "detect_language":
+                text = args.get("text", "")
+                if not text:
+                    return "Necesito texto para detectar el idioma.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().detect_language(text)
+                if r.get("success"):
+                    lang = r.get("language", "?")
+                    conf = r.get("confidence", 0)
+                    return f"Idioma detectado: {lang} ({conf:.0%} confianza)", {}
+                return r.get("error", "Detección de idioma no disponible"), {}
+
+            # ── ANALYZE SENTIMENT ─────────────────────────────────────
+            elif tool == "analyze_sentiment":
+                text = args.get("text", "")
+                if not text:
+                    return "Necesito texto para analizar el sentimiento.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().analyze_sentiment(text)
+                if r.get("success"):
+                    sent = r.get("sentiment", "?")
+                    conf = r.get("confidence", 0)
+                    all_scores = r.get("all_scores", {})
+                    scores_str = " | ".join(f"{k}: {v:.0%}" for k, v in all_scores.items())
+                    return f"Sentimiento: **{sent}** ({conf:.0%})\n{scores_str}", {}
+                return r.get("error", "Análisis de sentimiento no disponible"), {}
+
+            # ── EXTRACT ENTITIES (NER) ────────────────────────────────
+            elif tool == "extract_entities":
+                text = args.get("text", "")
+                if not text:
+                    return "Necesito texto para extraer entidades.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().extract_entities(text)
+                if r.get("success") and r.get("entities"):
+                    ents = r["entities"]
+                    lines = [f"**{k}**: {', '.join(v)}" for k, v in ents.items() if v]
+                    return "[NER] Entidades detectadas:\n" + "\n".join(lines), {}
+                return r.get("error", "NER no disponible"), {}
+
+            # ── COMPUTE SIMILARITY ────────────────────────────────────
+            elif tool == "compute_similarity":
+                text1 = args.get("text1", "")
+                text2 = args.get("text2", "")
+                if not text1 or not text2:
+                    return "Necesito text1 y text2 para calcular similaridad.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().compute_similarity(text1, text2)
+                if r.get("success"):
+                    sim = r.get("similarity", 0)
+                    level = "muy similares" if sim > 0.8 else "similares" if sim > 0.6 else "poco similares" if sim > 0.4 else "muy diferentes"
+                    return f"Similaridad semántica: {sim:.2%} ({level})", {}
+                return r.get("error", "Cálculo de similaridad no disponible"), {}
+
+            # ── SMOLAGENTS SEARCH AGENT ───────────────────────────────
+            elif tool == "run_smolagent":
+                task = args.get("task", "")
+                if not task:
+                    return "Necesito una tarea para el agente de investigación.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().run_search_agent(task)
+                if r.get("success"):
+                    steps = r.get("steps_count", 0)
+                    answer = r.get("answer", "")
+                    return f"[AGENT — {steps} pasos]\nTarea: {task}\n\n{answer}", {}
+                return r.get("error", "Agente de búsqueda no disponible"), {}
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)

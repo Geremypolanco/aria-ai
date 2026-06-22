@@ -831,6 +831,326 @@ class HuggingFaceSuite:
     # 19. ANÁLISIS COMPLETO DE COMPETENCIA con HF
     # ══════════════════════════════════════════════════════════════
 
+    # ══════════════════════════════════════════════════════════════
+    # 20. VISUAL QUESTION ANSWERING (VQA) — Computer Vision Course
+    # ══════════════════════════════════════════════════════════════
+
+    async def visual_question_answering(
+        self,
+        image_bytes: bytes,
+        question: str,
+        model: str = "dandelin/vilt-b32-finetuned-vqa",
+    ) -> dict[str, Any]:
+        """
+        Responde preguntas sobre el contenido de una imagen.
+        El usuario envía una foto y hace cualquier pregunta sobre ella.
+        Modelos: dandelin/vilt-b32-finetuned-vqa, Salesforce/blip-vqa-base
+        Ejemplos: "¿Cuántas personas hay?", "¿Qué color es el auto?", "¿Es de noche o de día?"
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            img_b64 = base64.b64encode(image_bytes).decode()
+            payload = {"inputs": {"image": img_b64, "question": question}}
+            result = await self._call(model, payload, timeout=60.0)
+            if result and isinstance(result, list) and result:
+                best = max(result, key=lambda x: x.get("score", 0))
+                return {
+                    "success": True,
+                    "answer": best.get("answer", ""),
+                    "confidence": round(best.get("score", 0), 3),
+                    "all_answers": [{"answer": r.get("answer", ""), "score": round(r.get("score", 0), 3)} for r in result[:5]],
+                    "question": question,
+                }
+            return {"success": False, "error": "Sin respuesta del modelo VQA"}
+        except Exception as exc:
+            logger.error("[HF] visual_question_answering error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 21. GENERACIÓN DE MÚSICA — MusicGen (Audio Course)
+    # ══════════════════════════════════════════════════════════════
+
+    async def generate_music(
+        self,
+        prompt: str,
+        duration: int = 15,
+        model: str = "facebook/musicgen-small",
+    ) -> dict[str, Any]:
+        """
+        Genera música de alta calidad con MusicGen.
+        Modelos: facebook/musicgen-small (rápido), facebook/musicgen-medium (mejor calidad)
+        Duración recomendada: 10-30 segundos (limitación de la API gratuita).
+        Ejemplos: "relaxing jazz piano", "energetic electronic beat", "cinematic orchestral"
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            result = await self._call(
+                model,
+                {
+                    "inputs": prompt,
+                    "parameters": {"max_new_tokens": min(duration * 50, 1500)},
+                },
+                binary=True,
+                timeout=120.0,
+            )
+            if result and isinstance(result, bytes) and len(result) > 100:
+                return {
+                    "success": True,
+                    "audio_bytes": result,
+                    "audio_b64": base64.b64encode(result).decode(),
+                    "prompt": prompt,
+                    "model": model,
+                    "duration_requested": duration,
+                }
+            return {"success": False, "error": "MusicGen no generó audio válido"}
+        except Exception as exc:
+            logger.error("[HF] generate_music error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 22. IMAGE-TO-IMAGE — instruct-pix2pix (Diffusion Course)
+    # ══════════════════════════════════════════════════════════════
+
+    async def image_to_image(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        model: str = "timbrooks/instruct-pix2pix",
+    ) -> dict[str, Any]:
+        """
+        Transforma una imagen con instrucciones en lenguaje natural (img2img).
+        Modelo: timbrooks/instruct-pix2pix
+        Ejemplos de prompt: "convierte a estilo anime", "añade nieve al fondo",
+                            "cambia el día a noche", "haz que sea un dibujo a lápiz"
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            img_b64 = base64.b64encode(image_bytes).decode()
+            payload = {
+                "inputs": {"prompt": prompt, "image": img_b64},
+                "parameters": {
+                    "image_guidance_scale": 1.5,
+                    "guidance_scale": 7.0,
+                    "num_inference_steps": 20,
+                },
+            }
+            result_bytes = await self._call(model, payload, binary=True, timeout=120.0)
+            if result_bytes:
+                return {
+                    "success": True,
+                    "image_bytes": result_bytes,
+                    "image_b64": base64.b64encode(result_bytes).decode(),
+                    "prompt": prompt,
+                    "model": model,
+                }
+            return {"success": False, "error": "No se pudo transformar la imagen"}
+        except Exception as exc:
+            logger.error("[HF] image_to_image error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 23. ZERO-SHOT IMAGE CLASSIFICATION — CLIP (Computer Vision)
+    # ══════════════════════════════════════════════════════════════
+
+    async def zero_shot_classify_image(
+        self,
+        image_bytes: bytes,
+        candidate_labels: list[str],
+        model: str = "openai/clip-vit-base-patch32",
+    ) -> dict[str, Any]:
+        """
+        Clasifica una imagen en CUALQUIER categoría sin entrenamiento previo usando CLIP.
+        Modelos: openai/clip-vit-base-patch32, openai/clip-vit-large-patch14
+        Ejemplos: ["cat","dog"], ["indoors","outdoors"], ["happy","sad","neutral"]
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            img_b64 = base64.b64encode(image_bytes).decode()
+            payload = {"inputs": {"image": img_b64, "text": candidate_labels}}
+            result = await self._call(model, payload, timeout=60.0)
+            if result and isinstance(result, list) and result:
+                return {
+                    "success": True,
+                    "top_label": result[0].get("label", ""),
+                    "top_score": round(result[0].get("score", 0), 3),
+                    "all": [{"label": r.get("label", ""), "score": round(r.get("score", 0), 3)} for r in result[:5]],
+                }
+            return {"success": False, "error": "Sin resultado de clasificación CLIP"}
+        except Exception as exc:
+            logger.error("[HF] zero_shot_classify_image error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 24. DOCUMENT QA — LayoutLM (LLM Course — Document Understanding)
+    # ══════════════════════════════════════════════════════════════
+
+    async def document_qa(
+        self,
+        image_bytes: bytes,
+        question: str,
+        model: str = "impira/layoutlm-document-qa",
+    ) -> dict[str, Any]:
+        """
+        Extrae información de documentos escaneados, facturas y formularios.
+        Modelo: impira/layoutlm-document-qa
+        Útil para: extraer datos de facturas, preguntas sobre contratos, formularios.
+        Ejemplo: "¿Cuál es el total?", "¿A nombre de quién está la factura?"
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            img_b64 = base64.b64encode(image_bytes).decode()
+            result = await self._call(
+                model,
+                {"inputs": {"image": img_b64, "question": question}},
+                timeout=60.0,
+            )
+            if result and isinstance(result, list) and result:
+                best = max(result, key=lambda x: x.get("score", 0))
+                return {
+                    "success": True,
+                    "answer": best.get("answer", ""),
+                    "confidence": round(best.get("score", 0), 3),
+                    "question": question,
+                }
+            if isinstance(result, dict) and result.get("answer"):
+                return {
+                    "success": True,
+                    "answer": result.get("answer", ""),
+                    "confidence": round(result.get("score", 0), 3),
+                    "question": question,
+                }
+            return {"success": False, "error": "Sin respuesta del modelo de documento"}
+        except Exception as exc:
+            logger.error("[HF] document_qa error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 25. STRUCTURED OUTPUT — AsyncInferenceClient (LLM Course)
+    # ══════════════════════════════════════════════════════════════
+
+    async def generate_structured(
+        self,
+        prompt: str,
+        schema: dict,
+        model: str = "Qwen/Qwen2.5-72B-Instruct",
+        system: str = "",
+    ) -> dict[str, Any]:
+        """
+        Genera JSON estructurado garantizado usando response_format de AsyncInferenceClient.
+        Schema debe ser JSON Schema: {"type":"object","properties":{...},"required":[...]}
+        Ideal para: extraer datos estructurados, generar fichas de producto, crear templates.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            from huggingface_hub import AsyncInferenceClient
+            client = AsyncInferenceClient(provider="hf-inference", api_key=self._token)
+            sys_msg = system or "You are a structured data extraction assistant. Always respond with valid JSON following the provided schema exactly."
+            messages = [
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": prompt},
+            ]
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=1024,
+                    temperature=0.1,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {"name": "structured_output", "schema": schema},
+                    },
+                ),
+                timeout=60.0,
+            )
+            content = (response.choices[0].message.content or "").strip()
+            try:
+                parsed = json.loads(content)
+                return {"success": True, "data": parsed, "raw": content, "model": model}
+            except json.JSONDecodeError:
+                return {"success": False, "error": f"JSON inválido: {content[:200]}"}
+        except Exception as exc:
+            logger.error("[HF] generate_structured error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 26. SEARCH AGENT — smolagents-style (Agents Course)
+    # ══════════════════════════════════════════════════════════════
+
+    async def run_search_agent(self, task: str, max_steps: int = 5) -> dict[str, Any]:
+        """
+        Agente autónomo de investigación estilo smolagents: plan → search → reason → synthesize.
+        Útil para: investigación profunda, síntesis de información, respuestas compuestas.
+        Implementa el patrón ReAct (Reason + Act) del Agents Course de HuggingFace.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+
+            ai = get_ai_client()
+            wt = WebTools()
+            steps_log: list[dict] = []
+            context = f"Task: {task}\n"
+
+            # Step 1: Plan — generate search queries
+            plan_resp = await ai.complete(
+                system='You are a research agent. Given a task, generate exactly 2 specific search queries. Return JSON array only: ["query1", "query2"]',
+                user=f"Task: {task}",
+                model=AIModel.FAST,
+                max_tokens=150,
+                temperature=0.2,
+            )
+            queries = [task]
+            if plan_resp and plan_resp.success:
+                raw = plan_resp.content.strip()
+                if "[" in raw:
+                    try:
+                        raw = raw[raw.index("["):raw.rindex("]") + 1]
+                        queries = json.loads(raw)[:2]
+                    except Exception:
+                        pass
+            steps_log.append({"step": "plan", "queries": queries})
+
+            # Step 2: Act — execute searches
+            for query in queries:
+                r = await wt.search_web(query, num_results=5)
+                if r.get("success") and r.get("results"):
+                    snippets = "\n".join(
+                        f"- {res.get('title', '')}: {res.get('snippet', '')[:200]}"
+                        for res in r["results"][:4]
+                    )
+                    context += f"\nSearch: '{query}':\n{snippets}\n"
+                    steps_log.append({"step": "search", "query": query, "results": len(r["results"])})
+
+            # Step 3: Reason + Synthesize
+            synth_resp = await ai.complete(
+                system="You are a research synthesizer. Given a task and search results, produce a comprehensive answer in bullet points with key findings and actionable conclusions.",
+                user=context[:3000],
+                model=AIModel.STRATEGY,
+                max_tokens=800,
+                temperature=0.3,
+            )
+            answer = synth_resp.content if (synth_resp and synth_resp.success) else "No se pudo sintetizar la respuesta."
+            steps_log.append({"step": "synthesize", "answer_length": len(answer)})
+
+            return {
+                "success": True,
+                "task": task,
+                "answer": answer,
+                "steps": steps_log,
+                "steps_count": len(steps_log),
+            }
+        except Exception as exc:
+            logger.error("[HF] run_search_agent error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
     async def analyze_competitor_content(self, content_list: list[str], niche: str) -> dict[str, Any]:
         """Analiza contenido de competidores para extraer insights."""
         if not content_list:

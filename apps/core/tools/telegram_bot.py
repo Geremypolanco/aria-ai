@@ -156,11 +156,12 @@ class AriaTelegramBot:
 
         text = msg.get("text", "").strip()
 
-        # Photo → describe with BLIP-2
-        if not text and msg.get("photo"):
-            text = await self._describe_user_photo(msg, chat_id)
-            if not text:
+        # Photo → describe/VQA (handles both standalone photos and photos with captions)
+        if msg.get("photo"):
+            photo_text = await self._describe_user_photo(msg, chat_id)
+            if not photo_text:
                 return
+            text = photo_text  # always process photo through AriaMind with context
 
         # Voice/audio → transcribe with Whisper
         if not text and (msg.get("voice") or msg.get("audio")):
@@ -266,12 +267,40 @@ class AriaTelegramBot:
                 await self._send(chat_id, "⚠️ No pude descargar la imagen.")
                 return ""
 
+            # Store image in AriaMind context — enables VQA, img2img, document_qa
+            import base64 as _b64
+            from apps.core.cognition.aria_mind import set_image_context
+            set_image_context(chat_id, _b64.b64encode(img_bytes).decode())
+
+            # If caption looks like a question → route directly to VQA
+            _is_question = caption and (
+                caption.endswith("?") or
+                any(caption.lower().startswith(w) for w in (
+                    "qué", "que", "cuántos", "cuantos", "cómo", "como",
+                    "dónde", "donde", "quién", "quien", "cuál", "cual",
+                    "what", "how", "who", "where", "when", "why", "which",
+                    "is ", "are ", "do ", "does ", "can ", "¿",
+                ))
+            )
+            if _is_question:
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                vqa_r = await HuggingFaceSuite().visual_question_answering(img_bytes, caption)
+                if vqa_r.get("success"):
+                    vqa_ans = vqa_r.get("answer", "")
+                    conf = vqa_r.get("confidence", 0)
+                    return (
+                        f"[El usuario envió una imagen y preguntó: '{caption}'. "
+                        f"Respuesta VQA: {vqa_ans} (confianza: {conf:.0%}). "
+                        f"Hay imagen disponible en el contexto para más análisis.]"
+                    )
+
+            # Default: describe the image
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
             r = await HuggingFaceSuite().describe_image(image_bytes=img_bytes)
             description = r.get("description", "") if r.get("success") else ""
 
-            base = (f"[El usuario envió una foto. Descripción: {description}]"
-                    if description else "[El usuario envió una foto que no pude describir.]")
+            base = (f"[El usuario envió una foto. Descripción: {description}. Imagen disponible en contexto para VQA, transformación o análisis de documento.]"
+                    if description else "[El usuario envió una foto. Imagen disponible en contexto para VQA, img2img o document_qa.]")
             return f"{base} {caption}".strip() if caption else base
         except Exception as exc:
             logger.error("[Bot] _describe_user_photo: %s", exc)
