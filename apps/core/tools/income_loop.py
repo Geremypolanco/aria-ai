@@ -1846,9 +1846,21 @@ JSON:
                     )
                     if offer_url:
                         li_text += f"\n\n👉 {offer_url}"
-                    await pub.publish_to_linkedin(li_text[:1300])
+                    _li_r = await pub.publish_to_linkedin(li_text[:1300])
+                    _li_ok = bool(_li_r and _li_r.success)
                 except Exception:
-                    pass
+                    _li_ok = False
+                if not _li_ok:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _li_page = await _plat.linkedin(_ae, _ap)
+                            await _plat.linkedin_create_post(_li_page, li_text[:3000])
+                        except Exception:
+                            pass
                 return {
                     "success": True,
                     "summary": f"Premium offer '{offer.get('offer_name','')[:50]}' at ${offer.get('price_cents',149700)/100:.0f} — promoted on LinkedIn",
@@ -3671,6 +3683,7 @@ Return JSON:
 
             if published_gist_urls:
                 # Tweet about the Gists for developer audience reach
+                _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
@@ -3680,9 +3693,21 @@ Return JSON:
                         f"{gist_links}\n\n"
                         f"Copy-paste ready. Save hours. ⭐ if useful"
                     )
-                    await pub.publish_to_twitter(tw_text[:280])
+                    tw_r = await pub.publish_to_twitter(tw_text[:280])
+                    _tw_ok = bool(tw_r and tw_r.success)
                 except Exception:
                     pass
+                if not _tw_ok:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_ae, _ap)
+                            await _plat.twitter_thread_post(_tw_page, [tw_text[:280]])
+                        except Exception:
+                            pass
                 return {
                     "success": True,
                     "summary": f"Gist blitz: {len(published_gist_urls)} code snippets published + tweeted",
@@ -4604,6 +4629,9 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
             # Promote waitlist on social media
             distributed_to: list[str] = []
             wl_url = urls_created[0] if urls_created else ""
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
@@ -4618,9 +4646,20 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
                 tw_result = await pub.publish_to_twitter(tw_text[:280])
                 if tw_result and tw_result.success:
                     distributed_to.append("Twitter")
+                    _tw_ok = True
             except Exception:
                 pass
+            if not _tw_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_ae, _ap)
+                    if await _plat.twitter_thread_post(_tw_page, [tw_text[:280]]):
+                        distributed_to.append("Twitter")
+                except Exception:
+                    pass
 
+            _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
@@ -4636,8 +4675,18 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
                 li_result = await pub.publish_to_linkedin(li_text[:1300])
                 if li_result and li_result.success:
                     distributed_to.append("LinkedIn")
+                    _li_ok = True
             except Exception:
                 pass
+            if not _li_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _li_page = await _plat.linkedin(_ae, _ap)
+                    if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
+                        distributed_to.append("LinkedIn")
+                except Exception:
+                    pass
 
             logger.info("[IncomeLoop] Waitlist created: %s", product_name)
             return {
@@ -5252,31 +5301,54 @@ JSON:
             if cache:
                 await cache.set("aria:income:newsletter_issue_count", str(issue_num), ttl_seconds=86400 * 365)
 
-            # Promote newsletter on Twitter + LinkedIn
+            # Promote newsletter on Twitter + LinkedIn (API → browser fallback)
             nl_url = urls_created[0] if urls_created else ""
+            _nl_ae = getattr(settings, "ARIA_EMAIL", None)
+            _nl_ap = getattr(settings, "ARIA_PASSWORD", None)
+            tw_text = f"📧 ARIA Weekly #{issue_num} is out!\n\n{subject}\n\n{big_idea[:160]}"
+            if nl_url:
+                tw_text += f"\n\nRead free: {nl_url}"
+            tw_text = tw_text[:280]
+            _nl_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
-                tw_text = f"📧 ARIA Weekly #{issue_num} is out!\n\n{subject}\n\n{big_idea[:160]}"
-                if nl_url:
-                    tw_text += f"\n\nRead free: {nl_url}"
-                await pub.publish_to_twitter(tw_text[:280])
+                _nl_tw_r = await pub.publish_to_twitter(tw_text)
+                _nl_tw_ok = bool(_nl_tw_r and _nl_tw_r.success)
             except Exception:
                 pass
+            if not _nl_tw_ok and _nl_ae and _nl_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_nl_ae, _nl_ap)
+                    await _plat.twitter_thread_post(_tw_page, [tw_text])
+                except Exception:
+                    pass
 
+            li_text = (
+                f"📧 ARIA Weekly #{issue_num}: {subject}\n\n"
+                f"{big_idea}\n\n"
+                f"{newsletter_data.get('preview_text', '')}"
+            )
+            if nl_url:
+                li_text += f"\n\nRead it here: {nl_url}"
+            _nl_li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
-                li_text = (
-                    f"📧 ARIA Weekly #{issue_num}: {subject}\n\n"
-                    f"{big_idea}\n\n"
-                    f"{newsletter_data.get('preview_text', '')}"
-                )
-                if nl_url:
-                    li_text += f"\n\nRead it here: {nl_url}"
-                await pub.publish_to_linkedin(li_text[:1300])
+                _nl_li_r = await pub.publish_to_linkedin(li_text[:1300])
+                _nl_li_ok = bool(_nl_li_r and _nl_li_r.success)
             except Exception:
                 pass
+            if not _nl_li_ok and _nl_ae and _nl_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _li_page = await _plat.linkedin(_nl_ae, _nl_ap)
+                    await _plat.linkedin_create_post(_li_page, li_text[:3000])
+                except Exception:
+                    pass
 
             platform_str = "GitHub" + (" + Mailchimp" if mailchimp_ok else "") + " + Social"
             logger.info("[IncomeLoop] Newsletter issue #%d published: %s", issue_num, subject)
@@ -7561,6 +7633,8 @@ Return JSON:
             errors: list[str] = []
 
             # 3. Twitter thread
+            _ca_ae = getattr(settings, "ARIA_EMAIL", None)
+            _ca_ap = getattr(settings, "ARIA_PASSWORD", None)
             try:
                 tweets = adaptations.get("twitter_thread", [])
                 if tweets:
@@ -7583,6 +7657,16 @@ Return JSON:
                                 r = await hc.post(zapier_url, json={"text": "\n\n".join(tweets[:4])})
                                 if r.status_code < 300:
                                     published_to.append("Twitter/Zapier")
+                    # Browser fallback
+                    if "Twitter" not in published_to and "Twitter/Zapier" not in published_to and _ca_ae and _ca_ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_ca_ae, _ca_ap)
+                            if await _plat.twitter_thread_post(_tw_page, [t[:280] for t in tweets[:10]]):
+                                published_to.append("Twitter")
+                        except Exception:
+                            pass
             except Exception as exc:
                 errors.append(f"Twitter: {str(exc)[:50]}")
 
@@ -7590,13 +7674,24 @@ Return JSON:
             try:
                 lk_token = getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
                 lk_urn   = getattr(settings, "LINKEDIN_PERSON_URN", None)
+                li_text = adaptations.get("linkedin_post", f"{title}\n\n{summary}\n\n{url}")
+                _li_posted = False
                 if lk_token and lk_urn:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
-                    li_text = adaptations.get("linkedin_post", f"{title}\n\n{summary}\n\n{url}")
                     ok = await pub.publish_to_linkedin(li_text)
                     if ok:
                         published_to.append("LinkedIn")
+                        _li_posted = True
+                if not _li_posted and _ca_ae and _ca_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _li_page = await _plat.linkedin(_ca_ae, _ca_ap)
+                        if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
+                            published_to.append("LinkedIn")
+                    except Exception:
+                        pass
             except Exception as exc:
                 errors.append(f"LinkedIn: {str(exc)[:50]}")
 
@@ -8066,14 +8161,28 @@ Return JSON:
 
             # Post Twitter upvote ask using real publisher
             if upvote_ask:
+                _ph_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
-                    tw = await pub.publish_to_twitter(f"{upvote_ask}\n\n{product_url}"[:280])
+                    _ph_tw_text = f"{upvote_ask}\n\n{product_url}"[:280]
+                    tw = await pub.publish_to_twitter(_ph_tw_text)
                     if tw.success and tw.url:
                         extra_urls.append(tw.url)
+                        _ph_tw_ok = True
                 except Exception:
                     pass
+                if not _ph_tw_ok:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_ae, _ap)
+                            await _plat.twitter_thread_post(_tw_page, [_ph_tw_text])
+                        except Exception:
+                            pass
 
             # Submit "Show HN" to Hacker News via human browser
             aria_email    = getattr(settings, "ARIA_EMAIL", None)
@@ -9281,38 +9390,63 @@ JSON:
             distributed_to: list[str] = []
 
             # Post launch Twitter thread
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            _ok = False
+            tweet_texts = []
             try:
                 twitter_thread_text = launch.get("twitter_thread", "")
                 if twitter_thread_text:
                     tweets = [t.strip() for t in twitter_thread_text.split("\n") if t.strip()][:10]
                     if len(tweets) == 1:
                         tweets = [t.strip() for t in twitter_thread_text.split("\n\n") if t.strip()][:10]
+                    tweet_texts = tweets
                     if tweets:
                         from apps.distribution.publishers.api_publisher import get_api_publisher
                         pub = get_api_publisher()
                         results = await pub.publish_thread_to_twitter([t[:280] for t in tweets])
                         if any(r.success for r in results):
                             distributed_to.append("Twitter")
+                            _ok = True
             except Exception:
                 pass
+            if not _ok and _ae and _ap and tweet_texts:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_ae, _ap)
+                    await _plat.twitter_thread_post(_tw_page, [t[:280] for t in tweet_texts[:10]])
+                except Exception:
+                    pass
 
             # Post LinkedIn announcement
+            _li_ok = False
+            li_text = (
+                f"🚀 Launching: {community_name}\n\n"
+                f"{data.get('tagline', '')}\n\n"
+                f"{data.get('transformation_promise', '')}\n\n"
+                f"Founding member spots available now."
+            )
+            if urls_created:
+                li_text += f"\n\n{urls_created[0]}"
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
-                li_text = (
-                    f"🚀 Launching: {community_name}\n\n"
-                    f"{data.get('tagline', '')}\n\n"
-                    f"{data.get('transformation_promise', '')}\n\n"
-                    f"Founding member spots available now."
-                )
-                if urls_created:
-                    li_text += f"\n\n{urls_created[0]}"
                 li_result = await pub.publish_to_linkedin(li_text[:1300])
                 if li_result and li_result.success:
                     distributed_to.append("LinkedIn")
+                    _li_ok = True
             except Exception:
                 pass
+            if not _li_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _li_page = await _plat.linkedin(_ae, _ap)
+                    if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
+                        distributed_to.append("LinkedIn")
+                except Exception:
+                    pass
 
             logger.info("[IncomeLoop] community_launch: '%s' — $%d MRR at 100 members", community_name[:40], mrr)
             return {
@@ -10214,6 +10348,7 @@ JSON:
             tiers = kit_data.get("reward_tiers", [])
 
             # Announce crowdfunding on Twitter
+            _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
@@ -10225,9 +10360,21 @@ JSON:
                     f"Goal: ${goal:,}"
                     + (f"\n\n{cf_url}" if cf_url else "")
                 )
-                await pub.publish_to_twitter(tw_text[:280])
+                tw_r = await pub.publish_to_twitter(tw_text[:280])
+                _tw_ok = bool(tw_r and tw_r.success)
             except Exception:
                 pass
+            if not _tw_ok:
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        await _plat.twitter_thread_post(_tw_page, [tw_text[:280]])
+                    except Exception:
+                        pass
 
             logger.info("[IncomeLoop] crowdfunding_kit: '%s' — goal $%d", title[:60], goal)
             return {
@@ -11695,14 +11842,27 @@ Return JSON:
             twitter_teaser = teasers.get("twitter", "")
             if twitter_teaser and urls_created:
                 tweet_text = f"{twitter_teaser}\n\n🎙️ Episode notes: {urls_created[0]}"
+                _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     tw_result = await pub.publish_to_twitter(tweet_text[:280])
                     if tw_result and tw_result.success and tw_result.url:
                         urls_created.append(tw_result.url)
+                        _tw_ok = True
                 except Exception:
                     pass
+                if not _tw_ok:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_ae, _ap)
+                            await _plat.twitter_thread_post(_tw_page, [tweet_text[:280]])
+                        except Exception:
+                            pass
 
             # ── Track in Redis ─────────────────────────────────────────────────
             if cache:
@@ -11810,14 +11970,27 @@ Return JSON:
                 tweet_with_link = twitter_tweet
                 if urls_created:
                     tweet_with_link = f"{twitter_tweet[:240]}\n\n🔗 {urls_created[0]}"
+                _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     tw_result = await pub.publish_to_twitter(tweet_with_link[:280])
                     if tw_result and tw_result.success and tw_result.url:
                         urls_created.append(tw_result.url)
+                        _tw_ok = True
                 except Exception:
                     pass
+                if not _tw_ok:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_ae, _ap)
+                            await _plat.twitter_thread_post(_tw_page, [tweet_with_link[:280]])
+                        except Exception:
+                            pass
 
             # ── Reddit launch post via human browser (no API needed) ──────────
             reddit_title = saas_data.get("reddit_post_title", "")
@@ -12376,6 +12549,9 @@ Return JSON:
 
             # Promote Notion template on Twitter + LinkedIn
             sale_url = gumroad_url or (urls_created[0] if urls_created else "")
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
@@ -12387,10 +12563,20 @@ Return JSON:
                     f"Only ${price:.0f}"
                     + (f" → {sale_url}" if sale_url else "")
                 )
-                await pub.publish_to_twitter(tw_text[:280])
+                tw_r = await pub.publish_to_twitter(tw_text[:280])
+                _tw_ok = bool(tw_r and tw_r.success)
             except Exception:
                 pass
+            if not _tw_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_ae, _ap)
+                    await _plat.twitter_thread_post(_tw_page, [tw_text[:280]])
+                except Exception:
+                    pass
 
+            _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
@@ -12402,9 +12588,18 @@ Return JSON:
                     f"${price:.0f}"
                     + (f" → {sale_url}" if sale_url else "")
                 )
-                await pub.publish_to_linkedin(li_text[:1300])
+                li_r = await pub.publish_to_linkedin(li_text[:1300])
+                _li_ok = bool(li_r and li_r.success)
             except Exception:
                 pass
+            if not _li_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _li_page = await _plat.linkedin(_ae, _ap)
+                    await _plat.linkedin_create_post(_li_page, li_text[:3000])
+                except Exception:
+                    pass
 
             return {
                 "success": True,
@@ -12539,14 +12734,27 @@ Return JSON:
             tweet = f"🔧 New Chrome extension concept: {name}\n\n{tagline}\n\n{ext_data.get('problem', '')}\n\n{'•' + chr(10)+'•'.join(features[:3])}\n\n{urls_created[0] if urls_created else ''}"
             if len(tweet) > 280:
                 tweet = f"🔧 {name} — {tagline}\n\n{ext_data.get('problem', '')[:100]}\n\n{urls_created[0] if urls_created else ''}"
+            _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tweet[:280])
                 if tw_result and tw_result.success and tw_result.url:
                     urls_created.append(tw_result.url)
+                    _tw_ok = True
             except Exception:
                 pass
+            if not _tw_ok:
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        await _plat.twitter_thread_post(_tw_page, [tweet[:280]])
+                    except Exception:
+                        pass
 
             # Track in Redis
             if cache:
@@ -12689,14 +12897,27 @@ Return JSON:
             # Twitter launch
             monthly_revenue = sum(t.get("price_usd_per_month", 0) for t in pricing[1:])  # non-free tiers
             tweet = f"🚀 Launching {api_name} on RapidAPI!\n\n{tagline}\n\n✅ {endpoints[0].get('path', '') if endpoints else ''}\n✅ {endpoints[1].get('path', '') if len(endpoints) > 1 else ''}\n\nPlans from ${pricing[1].get('price_usd_per_month', 9) if len(pricing) > 1 else 9}/mo\n\n{urls_created[0] if urls_created else ''}"
+            _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tweet[:280])
                 if tw_result and tw_result.success and tw_result.url:
                     urls_created.append(tw_result.url)
+                    _tw_ok = True
             except Exception:
                 pass
+            if not _tw_ok:
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        await _plat.twitter_thread_post(_tw_page, [tweet[:280]])
+                    except Exception:
+                        pass
 
             # Store in Redis
             if cache:
@@ -13344,14 +13565,27 @@ Create compelling brand story assets that position ARIA as the most advanced aut
             # ── Publish Twitter bio update as a thread ─────────────────────────
             thread_content = f"{hero}\n\n{elevator}"
             if len(thread_content) <= 280:
+                _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     result = await pub.publish_to_twitter(thread_content)
                     if result and result.success and result.url:
                         urls_created.append(result.url)
+                        _tw_ok = True
                 except Exception:
                     pass
+                if not _tw_ok:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_ae, _ap)
+                            await _plat.twitter_thread_post(_tw_page, [thread_content[:280]])
+                        except Exception:
+                            pass
 
             # ── Archive brand story ────────────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -13495,14 +13729,27 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
 
             # ── Execute quick win immediately ──────────────────────────────────
             if quick_win:
+                _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     result = await pub.publish_to_twitter(quick_win[:280])
                     if result and result.success and result.url:
                         urls_created.append(result.url)
+                        _tw_ok = True
                 except Exception:
                     pass
+                if not _tw_ok:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_ae, _ap)
+                            await _plat.twitter_thread_post(_tw_page, [quick_win[:280]])
+                        except Exception:
+                            pass
 
             # ── Archive growth plan ───────────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -14258,14 +14505,27 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
 
             # ── Publish social post ───────────────────────────────────────────
             if social_post:
+                _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
                     pub_result = await pub.publish_to_twitter(social_post[:280])
                     if pub_result and pub_result.success and pub_result.url:
                         urls_created.append(pub_result.url)
+                        _tw_ok = True
                 except Exception:
                     pass
+                if not _tw_ok:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_ae, _ap)
+                            await _plat.twitter_thread_post(_tw_page, [social_post[:280]])
+                        except Exception:
+                            pass
 
             # ── Archive to GitHub ─────────────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -14530,24 +14790,46 @@ Generate a backlink building plan:
                 except Exception:
                     pass
 
-                # Publish amplification posts via API publisher
+                # Publish amplification posts via API publisher (with browser fallback)
                 posts = amp_plan.get("action_posts", [])
-                try:
-                    from apps.distribution.publishers.api_publisher import get_api_publisher
-                    pub = get_api_publisher()
-                    for post in posts[:3]:
-                        platform = post.get("platform", "")
-                        content = post.get("content", "")
-                        if platform and content:
-                            result = None
-                            if "twitter" in platform:
-                                result = await pub.publish_to_twitter(content)
-                            elif "linkedin" in platform:
-                                result = await pub.publish_to_linkedin(content)
-                            if result and result.success and result.url:
+                _vd_ae = getattr(settings, "ARIA_EMAIL", None)
+                _vd_ap = getattr(settings, "ARIA_PASSWORD", None)
+                for post in posts[:3]:
+                    platform = post.get("platform", "")
+                    content = post.get("content", "")
+                    if not (platform and content):
+                        continue
+                    _posted = False
+                    try:
+                        from apps.distribution.publishers.api_publisher import get_api_publisher
+                        pub = get_api_publisher()
+                        result = None
+                        if "twitter" in platform:
+                            result = await pub.publish_to_twitter(content[:280])
+                        elif "linkedin" in platform:
+                            result = await pub.publish_to_linkedin(content[:1300])
+                        if result and result.success:
+                            _posted = True
+                            if result.url:
                                 urls_created.append(result.url)
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
+                    if not _posted and _vd_ae and _vd_ap:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            if "twitter" in platform:
+                                _tw_page = await _plat.twitter(_vd_ae, _vd_ap)
+                                _u = await _plat.twitter_thread_post(_tw_page, [content[:280]])
+                                if _u:
+                                    urls_created.append(_u)
+                            elif "linkedin" in platform:
+                                _li_page = await _plat.linkedin(_vd_ae, _vd_ap)
+                                _u = await _plat.linkedin_create_post(_li_page, content[:3000])
+                                if _u:
+                                    urls_created.append(_u)
+                        except Exception:
+                            pass
 
                 # Queue follow-up product creation
                 follow_up = amp_plan.get("follow_up_product", "")
@@ -14637,6 +14919,9 @@ Generate a backlink building plan:
             lp_url = urls_created[0] if urls_created else ""
 
             # Promote lead magnet on Twitter
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
@@ -14648,10 +14933,21 @@ Generate a backlink building plan:
                 tw_result = await pub.publish_to_twitter(tw_text[:280])
                 if tw_result and tw_result.success:
                     distributed_to.append("Twitter")
+                    _tw_ok = True
             except Exception:
                 pass
+            if not _tw_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_ae, _ap)
+                    if await _plat.twitter_thread_post(_tw_page, [tw_text[:280]]):
+                        distributed_to.append("Twitter")
+                except Exception:
+                    pass
 
             # Promote on LinkedIn
+            _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
@@ -14666,8 +14962,18 @@ Generate a backlink building plan:
                 li_result = await pub.publish_to_linkedin(li_text[:1300])
                 if li_result and li_result.success:
                     distributed_to.append("LinkedIn")
+                    _li_ok = True
             except Exception:
                 pass
+            if not _li_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _li_page = await _plat.linkedin(_ae, _ap)
+                    if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
+                        distributed_to.append("LinkedIn")
+                except Exception:
+                    pass
 
             return {
                 "success": True,
@@ -14932,6 +15238,7 @@ Generate a backlink building plan:
                 pass
 
             # Promote on Twitter
+            _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
@@ -14941,9 +15248,21 @@ Generate a backlink building plan:
                     f"1 pillar + {posts_published} supporting articles published\n\n"
                     + (f"Read: {pillar_url}" if pillar_url else "")
                 )
-                await pub.publish_to_twitter(tw_text[:280])
+                tw_r = await pub.publish_to_twitter(tw_text[:280])
+                _tw_ok = bool(tw_r and tw_r.success)
             except Exception:
                 pass
+            if not _tw_ok:
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        await _plat.twitter_thread_post(_tw_page, [tw_text[:280]])
+                    except Exception:
+                        pass
 
             return {
                 "success": True,
@@ -15914,22 +16233,33 @@ Generate a backlink building plan:
                 pass
 
             # Post LinkedIn teaser
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
             li_teaser = case_study.get("linkedin_teaser", "")
             if li_teaser:
+                _li_ok = False
+                cs_url = urls_created[0] if urls_created else ""
+                li_text = f"{li_teaser}\n\n{cs_url}"[:1300] if cs_url else li_teaser[:1300]
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
                     pub = get_api_publisher()
-                    cs_url = urls_created[0] if urls_created else ""
-                    li_text = f"{li_teaser}\n\n{cs_url}"[:1300] if cs_url else li_teaser[:1300]
                     li_result = await pub.publish_to_linkedin(li_text)
                     if li_result and li_result.success:
                         distributed_to.append("LinkedIn")
+                        _li_ok = True
                 except Exception:
                     pass
+                if not _li_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _li_page = await _plat.linkedin(_ae, _ap)
+                        if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
+                            distributed_to.append("LinkedIn")
+                    except Exception:
+                        pass
 
             # Post Twitter hook
-            _ae = getattr(settings, "ARIA_EMAIL", None)
-            _ap = getattr(settings, "ARIA_PASSWORD", None)
             _cs_tw_text = f"📊 {hero_stat}\n\n{title[:160]}"
             if urls_created:
                 _cs_tw_text += f"\n\n{urls_created[0]}"
