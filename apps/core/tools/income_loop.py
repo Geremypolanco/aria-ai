@@ -10711,6 +10711,7 @@ JSON:
             # Create actual Gumroad product for "Hire ARIA" offer
             gumroad_offer = listing_data.get("gumroad_offer", {})
             gumroad_token = settings.GUMROAD_TOKEN or ""
+            _sm_gm_sold = False
             if gumroad_token and gumroad_offer:
                 try:
                     from apps.core.tools.gumroad_tools import GumroadTools
@@ -10722,8 +10723,27 @@ JSON:
                     )
                     if gr_res and gr_res.get("success") and gr_res.get("url"):
                         urls_created.append(gr_res["url"])
+                        _sm_gm_sold = True
                 except Exception:
                     pass
+            if not _sm_gm_sold and gumroad_offer:
+                _sm_ae = getattr(settings, "ARIA_EMAIL", None)
+                _sm_ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _sm_ae and _sm_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _gm_pg = await _plat.gumroad(_sm_ae, _sm_ap)
+                        _gm_url = await _plat.gumroad_create_product(
+                            _gm_pg,
+                            gumroad_offer.get("title", "Hire ARIA AI for 30 Days")[:100],
+                            int(gumroad_offer.get("price", 297) * 100),
+                            gumroad_offer.get("description", ""),
+                        )
+                        if _gm_url:
+                            urls_created.append(_gm_url)
+                    except Exception:
+                        pass
 
             tagline = listing_data.get("tagline", "")
             prices = [t.get("price_monthly", 0) for t in listing_data.get("pricing_tiers", [])]
@@ -11203,6 +11223,7 @@ Create a superior alternative product that:
                     urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/products/{today}-{safe_name}.md")
 
             # ── Also publish to Gumroad ───────────────────────────────────────
+            _cc_gm_sold = False
             if settings.GUMROAD_TOKEN and product_name:
                 try:
                     from apps.core.tools.gumroad_tools import GumroadTools
@@ -11214,8 +11235,26 @@ Create a superior alternative product that:
                     )
                     if gr_res.get("success") and gr_res.get("url"):
                         urls_created.insert(0, gr_res["url"])
+                        _cc_gm_sold = True
                 except Exception:
                     pass
+            if not _cc_gm_sold and product_name:
+                _cc_ae = getattr(settings, "ARIA_EMAIL", None)
+                _cc_ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _cc_ae and _cc_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _gm_pg = await _plat.gumroad(_cc_ae, _cc_ap)
+                        _gm_url = await _plat.gumroad_create_product(
+                            _gm_pg, product_name[:100],
+                            int(product_price * 100),
+                            product.get("description", ""),
+                        )
+                        if _gm_url:
+                            urls_created.insert(0, _gm_url)
+                    except Exception:
+                        pass
 
             differentiators = product.get("key_differentiators", [])
             return {
@@ -13192,6 +13231,7 @@ Return JSON:
             # Publish to Gumroad
             gumroad_desc = kit_data.get("gumroad_description", "")
             gumroad_token = settings.GUMROAD_TOKEN or ""
+            _wl_gm_sold = False
             if gumroad_token and gumroad_desc:
                 try:
                     gt = GumroadTools()
@@ -13202,8 +13242,25 @@ Return JSON:
                     )
                     if result and result.get("success") and result.get("url"):
                         urls_created.append(result["url"])
+                        _wl_gm_sold = True
                 except Exception:
                     pass
+            if not _wl_gm_sold and gumroad_desc:
+                _wl_ae = getattr(settings, "ARIA_EMAIL", None)
+                _wl_ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _wl_ae and _wl_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _gm_pg = await _plat.gumroad(_wl_ae, _wl_ap)
+                        _gm_url = await _plat.gumroad_create_product(
+                            _gm_pg, kit_name[:100], int(price * 100),
+                            f"{gumroad_desc}\n\nPreview: {urls_created[0] if urls_created else ''}",
+                        )
+                        if _gm_url:
+                            urls_created.append(_gm_url)
+                    except Exception:
+                        pass
 
             if cache:
                 await cache.rpush("aria:products:catalog", _json.dumps({
@@ -13342,6 +13399,7 @@ Return JSON:
 
             # Publish to Gumroad
             gumroad_token = settings.GUMROAD_TOKEN or ""
+            _dp_gm_sold = False
             if gumroad_token and description:
                 try:
                     gt = GumroadTools()
@@ -13352,8 +13410,25 @@ Return JSON:
                     )
                     if result and result.get("success") and result.get("url"):
                         urls_created.append(result["url"])
+                        _dp_gm_sold = True
                 except Exception:
                     pass
+            if not _dp_gm_sold and description:
+                _dp_ae = getattr(settings, "ARIA_EMAIL", None)
+                _dp_ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _dp_ae and _dp_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _gm_pg = await _plat.gumroad(_dp_ae, _dp_ap)
+                        _gm_url = await _plat.gumroad_create_product(
+                            _gm_pg, prod_name[:100], int(price * 100),
+                            f"{description}\n\nPreview: {urls_created[0] if urls_created else ''}",
+                        )
+                        if _gm_url:
+                            urls_created.append(_gm_url)
+                    except Exception:
+                        pass
 
             if cache:
                 await cache.rpush("aria:products:catalog", _json.dumps({
@@ -14101,6 +14176,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             checklist = listings.get("submission_checklist", [])
 
             # ── Publish to Gumroad if configured ─────────────────────────────
+            _ml_gm_sold = False
             if settings.GUMROAD_TOKEN and gumroad:
                 try:
                     from apps.core.tools.gumroad_tools import GumroadTools
@@ -14113,8 +14189,27 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                     )
                     if gr_res.get("success") and gr_res.get("url"):
                         urls_created.append(gr_res["url"])
+                        _ml_gm_sold = True
                 except Exception:
                     pass
+            if not _ml_gm_sold and gumroad:
+                _ml_ae = getattr(settings, "ARIA_EMAIL", None)
+                _ml_ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ml_ae and _ml_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _gm_pg = await _plat.gumroad(_ml_ae, _ml_ap)
+                        _gm_url = await _plat.gumroad_create_product(
+                            _gm_pg,
+                            gumroad.get("name", product_name)[:100],
+                            int(float(gumroad.get("suggested_price_usd", 29)) * 100),
+                            gumroad.get("description", ""),
+                        )
+                        if _gm_url:
+                            urls_created.append(_gm_url)
+                    except Exception:
+                        pass
 
             # ── Archive all listings to GitHub ────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
