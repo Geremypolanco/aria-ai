@@ -7515,39 +7515,39 @@ JSON:
     async def _notify_startup(self) -> None:
         """Send startup Telegram message and bootstrap portfolio + blog on first run."""
         try:
-            await asyncio.sleep(5)  # wait for bot to be ready
+            await asyncio.sleep(5)
             creds    = self.check_credentials()
             active   = list(creds.get("active", {}).keys())
             inactive = list(creds.get("inactive", {}).keys())
             from apps.core.tools.telegram_bot import get_bot
 
-            active_str = "  ·  ".join(active) if active else "ninguno configurado"
-            sep = "━━━━━━━━━━━━━━━━━━━━━━"
-
-            lines = [
-                f"🤖 <b>ARIA · ONLINE</b>",
-                sep,
-                f"<b>Módulo</b>      Income Loop",
-                f"<b>Estrategias</b> {len(STRATEGIES)} · rotando c/{INTERVAL_SECONDS//60} min",
-                f"<b>Canales</b>     {active_str}",
+            kw = 12  # key column width for <pre> block
+            data_rows = [
+                f"{'Módulo':<{kw}} Income Loop",
+                f"{'Estrategias':<{kw}} {len(STRATEGIES)} · c/{INTERVAL_SECONDS//60} min",
+                f"{'Canales':<{kw}} {', '.join(active) if active else 'ninguno'}",
             ]
 
+            pending_lines = []
             if inactive:
                 top = inactive[:4]
-                lines += ["", "💡 <i>Canales pendientes de activar:</i>"]
-                if "gumroad" in top:
-                    lines.append("  · <code>GUMROAD_TOKEN</code>  →  ventas digitales")
-                if "devto" in top:
-                    lines.append("  · <code>DEVTO_API_KEY</code>  →  artículos técnicos")
-                if "twitter" in top:
-                    lines.append("  · <code>TWITTER_*</code>  →  distribución social")
-                if "shopify" in top:
-                    lines.append("  · <code>SHOPIFY_TOKEN</code>  →  e-commerce")
+                if "gumroad"  in top: pending_lines.append("  GUMROAD_TOKEN  →  ventas digitales")
+                if "devto"    in top: pending_lines.append("  DEVTO_API_KEY  →  artículos técnicos")
+                if "twitter"  in top: pending_lines.append("  TWITTER_*      →  distribución social")
+                if "shopify"  in top: pending_lines.append("  SHOPIFY_TOKEN  →  e-commerce")
 
-            lines += ["", "<i>Sistema autónomo activo. Aria trabaja en segundo plano.</i>"]
+            sections = [
+                "🤖 <b>ARIA · SISTEMA EN LÍNEA</b>",
+                "<pre>" + "\n".join(data_rows) + "</pre>",
+            ]
+            if pending_lines:
+                sections += [
+                    "💡 <i>Canales pendientes:</i>",
+                    "<pre>" + "\n".join(pending_lines) + "</pre>",
+                ]
+            sections.append("<i>Aria trabaja en segundo plano. Te notificaré cada ingreso.</i>")
 
-            msg = "\n".join(lines)
-            await get_bot().notify_owner(msg, already_html=True)
+            await get_bot().notify_owner("\n".join(sections), already_html=True)
         except Exception as exc:
             logger.debug("[IncomeLoop] startup notify: %s", exc)
 
@@ -7614,49 +7614,51 @@ JSON:
             )
 
             if high_value:
-                header = "💰 <b>INGRESO DETECTADO</b>"
+                icon, label = "💰", "INGRESO  ·  ALTO VALOR"
             elif is_product:
-                header = "📦 <b>PRODUCTO PUBLICADO</b>"
+                icon, label = "📦", "PRODUCTO  ·  PUBLICADO"
             elif is_content:
-                header = "📝 <b>CONTENIDO PUBLICADO</b>"
+                icon, label = "✍️", "CONTENIDO  ·  PUBLICADO"
             else:
-                header = "✅ <b>ACCIÓN COMPLETADA</b>"
+                icon, label = "✅", "ACCIÓN  ·  COMPLETADA"
 
-            sep = "━━━━━━━━━━━━━━━━━━━━━━"
-            # Escape user/AI-generated content before embedding in HTML
-            safe_summary = _html.escape(result.summary[:220]).strip()
+            kw = 11
             safe_strategy = _html.escape(result.strategy)
-
-            lines = [
-                header,
-                sep,
-                f"Estrategia  <code>{safe_strategy}</code>",
-                f"Potencial   <b>${result.revenue_potential:.2f}</b>",
-                f"Ciclo       <code>#{result.cycle_id}</code>",
+            rev_str = f"${result.revenue_potential:.2f}" + (" ✦" if high_value else "")
+            data_rows = [
+                f"{'Estrategia':<{kw}} {safe_strategy}",
+                f"{'Potencial':<{kw}} {rev_str}",
+                f"{'Ciclo':<{kw}} #{result.cycle_id}  ·  {result.elapsed_seconds}s",
             ]
 
+            # Escape AI-generated summary before embedding in HTML context
+            safe_summary = _html.escape(result.summary[:280]).strip()
+
+            link_lines = []
+            for url in result.urls_created[:3]:
+                safe_url = _html.escape(url)
+                try:
+                    from urllib.parse import urlparse as _up
+                    domain = _up(url).netloc or url[:45]
+                except Exception:
+                    domain = url[:45]
+                link_lines.append(f"  🔗 <a href=\"{safe_url}\">{_html.escape(domain)}</a>")
+
+            sections = [
+                f"{icon} <b>{label}</b>",
+                "<pre>" + "\n".join(data_rows) + "</pre>",
+            ]
             if safe_summary:
-                lines += ["", f"<i>{safe_summary}</i>"]
+                sections.append(f"<i>❝ {safe_summary} ❞</i>")
+            if link_lines:
+                sections.append("\n".join(link_lines))
+            if is_product or is_content or high_value:
+                footer = []
+                if is_product or is_content: footer.append("📦 /catalogo")
+                if high_value:               footer.append("📊 /reporte")
+                sections.append("  ·  ".join(footer))
 
-            if result.urls_created:
-                lines.append("")
-                for url in result.urls_created[:3]:
-                    safe_url = _html.escape(url)
-                    # Use domain as link label for cleanliness
-                    try:
-                        from urllib.parse import urlparse
-                        domain = urlparse(url).netloc or url[:40]
-                    except Exception:
-                        domain = url[:40]
-                    lines.append(f"🔗 <a href=\"{safe_url}\">{_html.escape(domain)} →</a>")
-
-            if is_product or is_content:
-                lines += ["", "📦 /catalogo  ·  📊 /reporte"]
-            elif high_value:
-                lines += ["", "📊 /reporte"]
-
-            msg = "\n".join(lines)
-            await get_bot().notify_owner(msg, already_html=True)
+            await get_bot().notify_owner("\n\n".join(sections), already_html=True)
         except Exception:
             pass
 
@@ -12259,7 +12261,7 @@ JSON:
             # Send via Telegram
             try:
                 bot = get_bot()
-                await bot.notify_owner(telegram_msg)
+                await bot.notify_owner(telegram_msg, already_html=True)
                 logger.info("[IncomeLoop] voice_of_aria: Telegram message sent")
             except Exception as e:
                 logger.warning("[IncomeLoop] voice_of_aria: Telegram failed: %s", e)

@@ -471,30 +471,32 @@ Genera el plan de monetizacion detallado. JSON esperado:
         chat_id = str(settings.TELEGRAM_CHAT_ID) if settings.TELEGRAM_CHAT_ID else None
 
         ok        = revenue["missions_failed"] == 0
-        header    = f"{'✅' if ok else '⚠️'} <b>CICLO #{self._cycle_count}</b>"
-        sep       = "━━━━━━━━━━━━━━━━━━━━━━"
+        icon      = "✅" if ok else "⚠️"
         total_rev = revenue["total_revenue_usd"]
         foco      = _html.escape(intelligence.get("top_opportunity", "Monetización"))
         misiones  = f"{revenue['missions_successful']}/{len(results)}"
 
-        lines = [
-            header,
-            sep,
-            f"⏱  Duración    <code>{duration:.1f}s</code>",
-            f"💰 Est. rev.   <b>${total_rev:.2f}</b>",
-            f"🎯 Foco        <code>{foco}</code>",
-            f"📊 Misiones    <code>{misiones}</code>",
+        kw = 11
+        data_rows = [
+            f"{'Duración':<{kw}} {duration:.1f}s",
+            f"{'Ingresos':<{kw}} ${total_rev:.2f}",
+            f"{'Foco':<{kw}} {foco}",
+            f"{'Misiones':<{kw}} {misiones}",
         ]
-
         if revenue.get("products_listed", 0) > 0:
-            lines.append(f"📦 Productos   <code>{revenue['products_listed']}</code>")
+            data_rows.append(f"{'Productos':<{kw}} {revenue['products_listed']}")
+
+        sections = [
+            f"{icon} <b>CICLO #{self._cycle_count}  ·  COMPLETADO</b>",
+            "<pre>" + "\n".join(data_rows) + "</pre>",
+        ]
 
         shop_url = getattr(settings, "SHOPIFY_URL", None) or getattr(settings, "SHOPIFY_SHOP_NAME", None)
         if shop_url:
             safe_url = _html.escape(str(shop_url))
-            lines.append(f"\n🛒 <a href=\"https://{safe_url}\">Shopify →</a>")
+            sections.append(f"  🛒 <a href=\"https://{safe_url}\">Shopify →</a>")
 
-        await bot.notify_owner("\n".join(lines), already_html=True)
+        await bot.notify_owner("\n".join(sections), already_html=True)
 
         # Enviar screenshots si hay alguno en los resultados
         if chat_id:
