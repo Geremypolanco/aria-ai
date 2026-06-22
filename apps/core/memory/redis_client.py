@@ -104,6 +104,10 @@ class AriaCache:
         result = await self._cmd("LPUSH", key, *values)
         return result or 0
 
+    async def lpop(self, key: str) -> Optional[str]:
+        """Remove and return the first element of the list."""
+        return await self._cmd("LPOP", key)
+
     async def lrange(self, key: str, start: int, stop: int) -> list:
         """Return a slice of the list stored at key."""
         result = await self._cmd("LRANGE", key, start, stop)

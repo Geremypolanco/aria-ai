@@ -9211,7 +9211,8 @@ JSON:
             source_title = ""
             source_content = ""
             if cache:
-                raw = await cache.lindex("aria:products:catalog", 0)
+                _items = await cache.lrange("aria:products:catalog", 0, 0)
+                raw = _items[0] if _items else None
                 if raw:
                     item = _json.loads(raw) if isinstance(raw, str) else raw
                     source_title = item.get("name") or item.get("title", "")
@@ -9760,7 +9761,8 @@ JSON:
                 import json as _json
                 cache = get_cache()
                 if cache:
-                    raw = await cache.lindex("aria:products:catalog", 0)
+                    _citems = await cache.lrange("aria:products:catalog", -1, -1)
+                    raw = _citems[0] if _citems else None
                     if raw:
                         catalog_item = _json.loads(raw) if isinstance(raw, str) else raw
             except Exception:
@@ -10382,7 +10384,8 @@ JSON:
             # Get one product from catalog for spotlight
             catalog_spotlight = ""
             if cache:
-                raw_cat = await cache.lindex("aria:products:catalog", -1)
+                _spot_items = await cache.lrange("aria:products:catalog", -1, -1)
+                raw_cat = _spot_items[0] if _spot_items else None
                 if raw_cat:
                     try:
                         item = _json.loads(raw_cat) if isinstance(raw_cat, str) else raw_cat
