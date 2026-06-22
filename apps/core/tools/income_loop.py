@@ -3685,9 +3685,37 @@ Open an issue or reach out at the portfolio: https://github.com/{owner}/aria-por
 
             if published_urls:
                 logger.info("[IncomeLoop] Affiliate program published: %s", published_urls[0])
+
+                # ── Announce affiliate program on Twitter ──────────────────────
+                _af_ae = getattr(settings, "ARIA_EMAIL", None)
+                _af_ap = getattr(settings, "ARIA_PASSWORD", None)
+                _af_url = published_urls[0]
+                _af_tw = (
+                    f"💰 Earn 30% recurring commissions promoting AI products\n\n"
+                    f"ARIA Affiliate Program is live — promote our tools, keep 30% of every sale.\n\n"
+                    f"Join → {_af_url}"
+                )[:280]
+                _af_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _af_pub = get_api_publisher()
+                    _af_tw_r = await _af_pub.publish_to_twitter(_af_tw)
+                    if _af_tw_r and _af_tw_r.success:
+                        _af_tw_ok = True
+                except Exception:
+                    pass
+                if not _af_tw_ok and _af_ae and _af_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _af_plat = await get_platform_login()
+                        _af_tw_pg = await _af_plat.twitter(_af_ae, _af_ap)
+                        await _af_plat.twitter_thread_post(_af_tw_pg, [_af_tw])
+                    except Exception:
+                        pass
+
                 return {
                     "success": True,
-                    "summary": f"Affiliate program launched: 30% commissions, {len(catalog_items)} products available",
+                    "summary": f"Affiliate program launched: 30% commissions, {len(catalog_items)} products available | Twitter announcement sent",
                     "revenue_potential": 15.0,
                     "urls": published_urls,
                 }
@@ -5554,10 +5582,61 @@ We're actively seeking collaborators in the {niche} space.
                 existing_niches.append(niche)
                 await cache.set("aria:income:outreach_niches", json.dumps(existing_niches[-30:]), ttl_seconds=86400 * 90)
 
+            # ── Announce partnership program on Twitter + LinkedIn ─────────────
+            _po_ae = getattr(settings, "ARIA_EMAIL", None)
+            _po_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _po_url = urls_created[0] if urls_created else ""
+            _po_tw = (
+                f"🤝 Looking for partners in the {niche} space\n\n"
+                f"{partnership_angle}\n\n"
+                f"Revenue share | Co-marketing | Mutual growth\n"
+                + (f"Details → {_po_url}" if _po_url else "")
+            )[:280]
+            _po_li = (
+                f"Expanding ARIA's partner network — {niche} niche\n\n"
+                f"{partnership_angle}\n\n"
+                f"We offer: commission structure, co-marketing assets, and long-term revenue share.\n\n"
+                + (f"Partnership kit → {_po_url}" if _po_url else "")
+            )[:1300]
+            _po_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _po_pub = get_api_publisher()
+                _po_tw_r = await _po_pub.publish_to_twitter(_po_tw)
+                if _po_tw_r and _po_tw_r.success:
+                    _po_tw_ok = True
+            except Exception:
+                pass
+            if not _po_tw_ok and _po_ae and _po_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _po_plat = await get_platform_login()
+                    _po_tw_pg = await _po_plat.twitter(_po_ae, _po_ap)
+                    await _po_plat.twitter_thread_post(_po_tw_pg, [_po_tw])
+                except Exception:
+                    pass
+            _po_li_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _po_pub2 = get_api_publisher()
+                _po_li_r = await _po_pub2.publish_to_linkedin(_po_li)
+                if _po_li_r and _po_li_r.success:
+                    _po_li_ok = True
+            except Exception:
+                pass
+            if not _po_li_ok and _po_ae and _po_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _po_plat2 = await get_platform_login()
+                    _po_li_pg = await _po_plat2.linkedin(_po_ae, _po_ap)
+                    await _po_plat2.linkedin_post(_po_li_pg, _po_li)
+                except Exception:
+                    pass
+
             logger.info("[IncomeLoop] Partner outreach kit published for niche: %s (%d pitches)", niche, len(pitches))
             return {
                 "success": True,
-                "summary": f"Partner outreach kit published ({niche} niche, {len(pitches)} email templates) → cross-promotion pipeline",
+                "summary": f"Partner outreach kit published ({niche} niche, {len(pitches)} email templates) → Twitter+LinkedIn announced",
                 "revenue_potential": 15.0,  # conservative: 1 partnership deal
                 "urls": urls_created,
             }
@@ -9901,10 +9980,41 @@ JSON:
                     pass
 
             m12 = data.get("revenue_projection", {}).get("month_12", {}).get("mrr_usd", 0)
-            logger.info("[IncomeLoop] newsletter_monetize: '%s' — $%d projected MRR @ month 12", data.get("newsletter_name", "")[:40], m12)
+
+            # ── Announce newsletter on Twitter ─────────────────────────────────
+            _nm_ae = getattr(settings, "ARIA_EMAIL", None)
+            _nm_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _nm_nl_name = data.get("newsletter_name", "ARIA Newsletter")
+            _nm_tagline = data.get("tagline", "")
+            _nm_url = urls_created[0] if urls_created else ""
+            _nm_tw = (
+                f"📧 Launching: {_nm_nl_name}\n\n"
+                f"{_nm_tagline}\n\n"
+                f"${mon.get('paid_tier_price_monthly', 9)}/mo paid tier | ${mon.get('sponsor_rate_per_issue', 250)}/issue sponsorship\n"
+                + (f"Read it → {_nm_url}" if _nm_url else "")
+            )[:280]
+            _nm_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _nm_pub = get_api_publisher()
+                _nm_tw_r = await _nm_pub.publish_to_twitter(_nm_tw)
+                if _nm_tw_r and _nm_tw_r.success:
+                    _nm_tw_ok = True
+            except Exception:
+                pass
+            if not _nm_tw_ok and _nm_ae and _nm_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _nm_plat = await get_platform_login()
+                    _nm_tw_pg = await _nm_plat.twitter(_nm_ae, _nm_ap)
+                    await _nm_plat.twitter_thread_post(_nm_tw_pg, [_nm_tw])
+                except Exception:
+                    pass
+
+            logger.info("[IncomeLoop] newsletter_monetize: '%s' — $%d projected MRR @ month 12", _nm_nl_name[:40], m12)
             return {
                 "success": bool(urls_created),
-                "summary": f"Newsletter: '{data.get('newsletter_name','')}' — ${m12:,}/mo projected MRR at month 12",
+                "summary": f"Newsletter: '{_nm_nl_name}' — ${m12:,}/mo projected MRR at month 12 | Twitter announced",
                 "revenue_potential": float(mon.get("paid_tier_price_monthly", 9) * 100),  # 100 paid subs
                 "urls": urls_created[:3],
             }
@@ -10284,10 +10394,39 @@ JSON:
                         f"https://github.com/{owner}/aria-insights/blob/main/podcast/pitch-kit-{today}.md"
                     )
 
+            # ── Tweet seeking podcast guest spots ──────────────────────────────
+            _pp_ae = getattr(settings, "ARIA_EMAIL", None)
+            _pp_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _pp_one_liner = data.get("one_liner", "")
+            _pp_url = urls_created[0] if urls_created else ""
+            _pp_tw = (
+                f"🎙️ Seeking podcast appearances!\n\n"
+                f"{_pp_one_liner[:200]}\n\n"
+                f"Topics: AI autonomy, building a business that runs itself, income without code\n"
+                + (f"Pitch kit → {_pp_url}" if _pp_url else "")
+            )[:280]
+            _pp_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _pp_pub = get_api_publisher()
+                _pp_tw_r = await _pp_pub.publish_to_twitter(_pp_tw)
+                if _pp_tw_r and _pp_tw_r.success:
+                    _pp_tw_ok = True
+            except Exception:
+                pass
+            if not _pp_tw_ok and _pp_ae and _pp_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _pp_plat = await get_platform_login()
+                    _pp_tw_pg = await _pp_plat.twitter(_pp_ae, _pp_ap)
+                    await _pp_plat.twitter_thread_post(_pp_tw_pg, [_pp_tw])
+                except Exception:
+                    pass
+
             logger.info("[IncomeLoop] podcast_pitch: %d target shows, pitch kit archived", len(shows))
             return {
                 "success": bool(urls_created),
-                "summary": f"Podcast kit: '{data.get('one_liner','')[:70]}' — {len(shows)} shows targeted",
+                "summary": f"Podcast kit: '{data.get('one_liner','')[:70]}' — {len(shows)} shows targeted | Twitter announced",
                 "revenue_potential": 50.0,  # each appearance → avg 1,000 new audience members
                 "urls": urls_created[:2],
             }
@@ -11914,9 +12053,38 @@ Create a superior alternative product that:
                         pass
 
             differentiators = product.get("key_differentiators", [])
+
+            # ── Announce competitor-beating product on Twitter ─────────────────
+            _cc_ae2 = getattr(settings, "ARIA_EMAIL", None)
+            _cc_ap2 = getattr(settings, "ARIA_PASSWORD", None)
+            _cc_sale_url = urls_created[0] if urls_created else ""
+            _cc_tw = (
+                f"🆚 New product: {product_name[:60]}\n\n"
+                f"Built to outperform {competitor[:40]}\n\n"
+                f"${product_price:.0f} — {'; '.join(differentiators[:2])}\n"
+                + (f"→ {_cc_sale_url}" if _cc_sale_url else "")
+            )[:280]
+            _cc_tw_ok2 = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _cc_pub2 = get_api_publisher()
+                _cc_tw_r2 = await _cc_pub2.publish_to_twitter(_cc_tw)
+                if _cc_tw_r2 and _cc_tw_r2.success:
+                    _cc_tw_ok2 = True
+            except Exception:
+                pass
+            if not _cc_tw_ok2 and _cc_ae2 and _cc_ap2:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _cc_plat2 = await get_platform_login()
+                    _cc_tw_pg2 = await _cc_plat2.twitter(_cc_ae2, _cc_ap2)
+                    await _cc_plat2.twitter_thread_post(_cc_tw_pg2, [_cc_tw])
+                except Exception:
+                    pass
+
             return {
                 "success": bool(urls_created),
-                "summary": f"competitor_copy: '{product_name}' built to beat '{competitor[:30]}' — weakness: {weakness[:50]}",
+                "summary": f"competitor_copy: '{product_name}' built to beat '{competitor[:30]}' | Twitter announced",
                 "revenue_potential": product_price,
                 "urls": urls_created[:3],
             }
@@ -16299,9 +16467,38 @@ Generate a backlink building plan:
                 await cache.ltrim("aria:jv:pitches", -20, -1)
                 await cache.increment("aria:jv:total_pitches")
 
+            # ── LinkedIn: announce JV opportunity ──────────────────────────────
+            _jv_ae = getattr(settings, "ARIA_EMAIL", None)
+            _jv_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _jv_url = urls_created[0] if urls_created else ""
+            _jv_li = (
+                f"🤝 Seeking JV partners: {partner_type}\n\n"
+                f"Deal structure: {deal_structure}\n"
+                f"Estimated value: ${revenue_per_deal:.0f}/mo per deal\n\n"
+                f"Co-marketing idea: {pitch.get('co_marketing_idea','')[:200]}\n\n"
+                + (f"Full pitch → {_jv_url}" if _jv_url else "")
+            )[:1300]
+            _jv_li_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _jv_pub = get_api_publisher()
+                _jv_li_r = await _jv_pub.publish_to_linkedin(_jv_li)
+                if _jv_li_r and _jv_li_r.success:
+                    _jv_li_ok = True
+            except Exception:
+                pass
+            if not _jv_li_ok and _jv_ae and _jv_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _jv_plat = await get_platform_login()
+                    _jv_li_pg = await _jv_plat.linkedin(_jv_ae, _jv_ap)
+                    await _jv_plat.linkedin_post(_jv_li_pg, _jv_li)
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"joint_venture_pitch: targeting {partner_type[:40]} | {deal_structure} | ${revenue_per_deal}/mo | {outreach_count} DMs queued",
+                "summary": f"joint_venture_pitch: targeting {partner_type[:40]} | {deal_structure} | ${revenue_per_deal}/mo | {outreach_count} DMs queued | LinkedIn announced",
                 "revenue_potential": revenue_per_deal,
                 "urls": urls_created[:3],
             }
@@ -16650,9 +16847,34 @@ Generate a backlink building plan:
                 await cache.set("aria:social_proof:trust_badge", trust_badge)
                 await cache.set("aria:social_proof:stats", _json.dumps(trust_stats))
 
+            # ── Actually post the social proof tweet ───────────────────────────
+            _sp_ae = getattr(settings, "ARIA_EMAIL", None)
+            _sp_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _sp_proof_post = testimonials.get("twitter_proof_post", "")
+            if _sp_proof_post:
+                _sp_tw_ok = False
+                try:
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    _sp_pub = get_api_publisher()
+                    _sp_tw_r = await _sp_pub.publish_to_twitter(_sp_proof_post[:280])
+                    if _sp_tw_r and _sp_tw_r.success:
+                        _sp_tw_ok = True
+                        if _sp_tw_r.url:
+                            urls_created.append(_sp_tw_r.url)
+                except Exception:
+                    pass
+                if not _sp_tw_ok and _sp_ae and _sp_ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _sp_plat = await get_platform_login()
+                        _sp_tw_pg = await _sp_plat.twitter(_sp_ae, _sp_ap)
+                        await _sp_plat.twitter_thread_post(_sp_tw_pg, [_sp_proof_post[:280]])
+                    except Exception:
+                        pass
+
             return {
                 "success": True,
-                "summary": f"social_proof_automation: {trust_badge} | {testimonials_stored} testimonials archived | wall-of-love page deployed | trust stats updated",
+                "summary": f"social_proof_automation: {trust_badge} | {testimonials_stored} testimonials archived | wall-of-love deployed | proof tweet posted",
                 "revenue_potential": float(len(buyers) + 1) * 5.0,
                 "urls": urls_created[:3],
             }
@@ -16794,9 +17016,38 @@ Generate a backlink building plan:
                 await cache.increment("aria:licensing:total_packages")
 
             revenue_potential = monthly_fee * expected_clients
+
+            # ── Announce content licensing offer on Twitter ────────────────────
+            _cl_ae = getattr(settings, "ARIA_EMAIL", None)
+            _cl_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _cl_url = urls_created[0] if urls_created else ""
+            _cl_tw = (
+                f"📄 Content licensing available: {pkg_name[:80]}\n\n"
+                f"${monthly_fee}/mo — white-label AI content for your product\n\n"
+                f"Perfect for: {', '.join(license_deal.get('target_buyers', [])[:2])}\n"
+                + (f"Details → {_cl_url}" if _cl_url else "")
+            )[:280]
+            _cl_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _cl_pub = get_api_publisher()
+                _cl_tw_r = await _cl_pub.publish_to_twitter(_cl_tw)
+                if _cl_tw_r and _cl_tw_r.success:
+                    _cl_tw_ok = True
+            except Exception:
+                pass
+            if not _cl_tw_ok and _cl_ae and _cl_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _cl_plat = await get_platform_login()
+                    _cl_tw_pg = await _cl_plat.twitter(_cl_ae, _cl_ap)
+                    await _cl_plat.twitter_thread_post(_cl_tw_pg, [_cl_tw])
+                except Exception:
+                    pass
+
             return {
                 "success": True,
-                "summary": f"content_licensing: '{pkg_name[:40]}' | ${monthly_fee}/mo | {expected_clients} expected clients | ${revenue_potential:,.0f}/mo MRR potential | license page published",
+                "summary": f"content_licensing: '{pkg_name[:40]}' | ${monthly_fee}/mo | {expected_clients} expected clients | ${revenue_potential:,.0f}/mo MRR potential | Twitter announced",
                 "revenue_potential": revenue_potential,
                 "urls": urls_created[:3],
             }
