@@ -1,26 +1,50 @@
 """
 huggingface_suite.py — Suite completa de HuggingFace Inference API para ARIA AI.
 
-Capacidades integradas (todas con HF_TOKEN gratuito):
-  - Generación de imágenes (FLUX.1-schnell, SDXL, Stable Diffusion 3.5)
-  - Traducción automática (Helsinki-NLP — 1000+ pares de idiomas)
-  - Resumen automático (BART, Pegasus, mT5)
-  - Análisis de sentimiento (DistilBERT, RoBERTa, multilingual)
-  - Clasificación zero-shot (sin entrenamiento previo)
-  - Reconocimiento de entidades (NER — BERT, spaCy)
-  - Respuesta a preguntas (Question Answering)
-  - Embeddings de texto (sentence-transformers, all-MiniLM)
+Cubre TODOS los task groups de huggingface.co/tasks:
+
+MULTIMODAL:
+  - Visual Question Answering (ViLT, BLIP)
+  - Vision Language Model (Llama Vision, SmolVLM, Qwen2.5-VL)
+  - Document Question Answering (LayoutLM)
+  - Image-to-Image transformation (instruct-pix2pix)
+  - Image Segmentation (mask2former panoptic)
+  - Zero-Shot Image Classification (CLIP)
+  - Zero-Shot Object Detection (OWL-ViT)
+  - Mask Generation (SAM, SlimSAM)
+  - Image Feature Extraction (DINO, ViT)
+
+NLP:
+  - Traducción automática (Helsinki-NLP — 1000+ pares)
+  - Resumen automático (BART, Pegasus, mT5 multilingüe)
+  - Análisis de sentimiento (DistilBERT multilingual)
+  - Clasificación zero-shot (BART-MNLI)
+  - NER — Reconocimiento de entidades (BERT-NER)
+  - Question Answering (RoBERTa-SQuAD2)
+  - Embeddings de texto (sentence-transformers)
+  - Fill-Mask (BERT)
+  - Text Ranking / Reranking (cross-encoder)
+  - Table Question Answering (TAPAS)
+  - Structured Output via response_format (Qwen 2.5)
+  - Detección de idioma (XLM-RoBERTa — 176 idiomas)
+
+COMPUTER VISION:
+  - Generación de imágenes (FLUX.1-schnell, SDXL, SD 3.5)
+  - Image Captioning (BLIP-2, GIT)
+  - Object Detection (DETR, YOLO)
+  - Image Classification (ViT, EfficientNet)
+  - Depth Estimation (Depth-Anything-V2)
+
+AUDIO:
+  - Speech-to-Text / ASR (Whisper large-v3)
   - Text-to-Speech (Bark — voces realistas)
-  - Speech-to-Text (Whisper large-v3)
-  - Descripción de imágenes / Image Captioning (BLIP-2, GIT)
-  - Detección de objetos (DETR, YOLOs)
-  - Clasificación de imágenes (ViT, EfficientNet)
-  - Relleno de texto (Fill-mask — BERT)
-  - Extracción de features / embeddings de imágenes
-  - Clasificación de audio
-  - Estimación de profundidad (DPT, Depth-Anything)
-  - Detección de idioma
-  - Generación de código (Qwen2.5-Coder)
+  - Music Generation (MusicGen — text-to-music)
+  - Audio Classification / Emotion (wav2vec2)
+  - Audio Enhancement (speechbrain mtl-mimic-voicebank)
+
+AGENTS:
+  - Search Agent estilo smolagents (plan → search → reason → synthesize)
+  - Code Generation (Qwen2.5-Coder-32B)
 """
 from __future__ import annotations
 import asyncio
@@ -1149,6 +1173,313 @@ class HuggingFaceSuite:
             }
         except Exception as exc:
             logger.error("[HF] run_search_agent error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 27. IMAGE-TEXT-TO-TEXT — Vision Language Models (Multimodal)
+    # ══════════════════════════════════════════════════════════════
+
+    async def vision_language(
+        self,
+        image_bytes: bytes,
+        question: str,
+        model: str = "meta-llama/Llama-3.2-11B-Vision-Instruct",
+    ) -> dict[str, Any]:
+        """
+        Vision-Language Model: analiza imágenes con razonamiento avanzado.
+        Más potente que VQA básico — entiende contexto, razona y explica.
+        Modelos: meta-llama/Llama-3.2-11B-Vision-Instruct (potente),
+                 HuggingFaceTB/SmolVLM-Instruct (rápido),
+                 Qwen/Qwen2.5-VL-3B-Instruct (eficiente)
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            from huggingface_hub import AsyncInferenceClient
+            img_b64 = base64.b64encode(image_bytes).decode()
+            client = AsyncInferenceClient(provider="hf-inference", api_key=self._token)
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                            {"type": "text", "text": question},
+                        ],
+                    }],
+                    max_tokens=512,
+                    temperature=0.4,
+                ),
+                timeout=90.0,
+            )
+            answer = (response.choices[0].message.content or "").strip()
+            if answer:
+                return {"success": True, "answer": answer, "model": model, "question": question}
+            return {"success": False, "error": "Sin respuesta del modelo de visión"}
+        except Exception as exc:
+            logger.error("[HF] vision_language error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 28. IMAGE SEGMENTATION — mask2former, briaai RMBG
+    # ══════════════════════════════════════════════════════════════
+
+    async def segment_image(
+        self,
+        image_bytes: bytes,
+        model: str = "facebook/mask2former-swin-base-coco-panoptic",
+    ) -> dict[str, Any]:
+        """
+        Segmenta objetos en una imagen con máscaras.
+        Modelos: facebook/mask2former-swin-base-coco-panoptic (panoptic),
+                 briaai/RMBG-1.4 (remoción de fondo),
+                 facebook/mask2former-swin-large-cityscapes-semantic (semántico)
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            result = await self._call(model, image_bytes, binary=False, timeout=90.0)
+            if result and isinstance(result, list):
+                segments = [
+                    {
+                        "label": s.get("label", ""),
+                        "score": round(s.get("score", 0), 3),
+                        "mask_b64": s.get("mask", ""),
+                    }
+                    for s in result[:10]
+                ]
+                labels = list(dict.fromkeys(s["label"] for s in segments if s["label"]))
+                return {
+                    "success": True,
+                    "segments": segments,
+                    "unique_labels": labels,
+                    "count": len(segments),
+                    "model": model,
+                }
+            return {"success": False, "error": "Sin segmentación generada"}
+        except Exception as exc:
+            logger.error("[HF] segment_image error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 29. ZERO-SHOT OBJECT DETECTION — OWL-ViT
+    # ══════════════════════════════════════════════════════════════
+
+    async def zero_shot_detect_objects(
+        self,
+        image_bytes: bytes,
+        candidate_labels: list[str],
+        threshold: float = 0.1,
+        model: str = "google/owlvit-base-patch32",
+    ) -> dict[str, Any]:
+        """
+        Detecta objetos específicos por descripción textual sin entrenamiento (OWL-ViT).
+        Modelos: google/owlvit-base-patch32, google/owlvit-large-patch14
+        Ejemplo labels: ["a photo of a cat", "a photo of a car", "person running"]
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            img_b64 = base64.b64encode(image_bytes).decode()
+            result = await self._call(
+                model,
+                {"inputs": {"image": img_b64, "candidate_labels": candidate_labels}},
+                timeout=60.0,
+            )
+            if not result:
+                result = await self._call(
+                    model,
+                    image_bytes,
+                    binary=False,
+                    timeout=60.0,
+                )
+            if result and isinstance(result, list):
+                detected = [
+                    {"label": o.get("label", ""), "score": round(o.get("score", 0), 3), "box": o.get("box", {})}
+                    for o in result if o.get("score", 0) >= threshold
+                ]
+                return {
+                    "success": True,
+                    "detections": detected,
+                    "count": len(detected),
+                    "labels_searched": candidate_labels,
+                }
+            return {"success": False, "error": "Sin detecciones"}
+        except Exception as exc:
+            logger.error("[HF] zero_shot_detect_objects error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 30. AUDIO-TO-AUDIO — Speech Enhancement & Separation
+    # ══════════════════════════════════════════════════════════════
+
+    async def enhance_audio(
+        self,
+        audio_bytes: bytes,
+        model: str = "speechbrain/mtl-mimic-voicebank",
+    ) -> dict[str, Any]:
+        """
+        Mejora calidad de audio: reduce ruido, enhances speech.
+        Modelos: speechbrain/mtl-mimic-voicebank (enhancement),
+                 speechbrain/sepformer-wham (source separation)
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            result = await self._call(model, audio_bytes, binary=True, timeout=90.0)
+            if result and isinstance(result, bytes) and len(result) > 100:
+                return {
+                    "success": True,
+                    "audio_bytes": result,
+                    "audio_b64": base64.b64encode(result).decode(),
+                    "model": model,
+                }
+            return {"success": False, "error": "Sin audio mejorado"}
+        except Exception as exc:
+            logger.error("[HF] enhance_audio error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 31. TEXT RANKING — Cross-Encoder (Multimodal Retrieval)
+    # ══════════════════════════════════════════════════════════════
+
+    async def rank_texts(
+        self,
+        query: str,
+        passages: list[str],
+        model: str = "cross-encoder/ms-marco-MiniLM-L6-v2",
+    ) -> dict[str, Any]:
+        """
+        Ordena documentos/textos por relevancia a un query (reranking).
+        Modelo: cross-encoder/ms-marco-MiniLM-L6-v2 (eficiente),
+                Alibaba-NLP/gte-multilingual-reranker-base (multilingüe)
+        Ideal para: mejorar resultados de búsqueda, RAG reranking.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            pairs = [[query, p] for p in passages]
+            result = await self._call(model, {"inputs": pairs})
+            if result and isinstance(result, list):
+                scored = sorted(
+                    [(passages[i], float(result[i])) for i in range(min(len(passages), len(result)))],
+                    key=lambda x: x[1],
+                    reverse=True,
+                )
+                return {
+                    "success": True,
+                    "query": query,
+                    "ranked": [{"text": t[:200], "score": round(s, 4)} for t, s in scored],
+                    "top_passage": scored[0][0] if scored else "",
+                }
+            return {"success": False, "error": "Sin scores de ranking"}
+        except Exception as exc:
+            logger.error("[HF] rank_texts error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 32. IMAGE FEATURE EXTRACTION — ViT, DINO (Visual Embeddings)
+    # ══════════════════════════════════════════════════════════════
+
+    async def extract_image_features(
+        self,
+        image_bytes: bytes,
+        model: str = "facebook/dino-vitb16",
+    ) -> dict[str, Any]:
+        """
+        Extrae embeddings visuales de imágenes para búsqueda semántica visual.
+        Modelos: facebook/dino-vitb16 (robusto), google/vit-base-patch16-384 (preciso)
+        Útil para: similaridad visual, agrupamiento de imágenes, búsqueda por imagen.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            result = await self._call(model, image_bytes, binary=False, timeout=60.0)
+            if result and isinstance(result, list):
+                flat = result
+                if isinstance(flat[0], list):
+                    flat = flat[0]
+                if isinstance(flat[0], list):
+                    flat = flat[0]
+                return {
+                    "success": True,
+                    "features": flat[:100],
+                    "dimensions": len(flat),
+                    "model": model,
+                }
+            return {"success": False, "error": "Sin features de imagen"}
+        except Exception as exc:
+            logger.error("[HF] extract_image_features error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 33. TABLE QUESTION ANSWERING — TAPAS
+    # ══════════════════════════════════════════════════════════════
+
+    async def table_question_answering(
+        self,
+        table: dict[str, list],
+        question: str,
+        model: str = "google/tapas-base-finetuned-wtq",
+    ) -> dict[str, Any]:
+        """
+        Responde preguntas sobre tablas de datos.
+        Modelos: google/tapas-base-finetuned-wtq, microsoft/tapex-base
+        Ejemplo: table={"Name":["Alice","Bob"],"Score":["90","85"]}, question="Who has the highest score?"
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            result = await self._call(
+                model,
+                {"inputs": {"table": table, "query": question}},
+                timeout=60.0,
+            )
+            if result and isinstance(result, dict):
+                return {
+                    "success": True,
+                    "answer": result.get("cells", result.get("answer", "")),
+                    "aggregator": result.get("aggregator", ""),
+                    "question": question,
+                }
+            return {"success": False, "error": "Sin respuesta de tabla"}
+        except Exception as exc:
+            logger.error("[HF] table_question_answering error: %s", exc)
+            return {"success": False, "error": str(exc)}
+
+    # ══════════════════════════════════════════════════════════════
+    # 34. MASK GENERATION — SAM (Segment Anything Model)
+    # ══════════════════════════════════════════════════════════════
+
+    async def generate_masks(
+        self,
+        image_bytes: bytes,
+        model: str = "Zigeng/SlimSAM-uniform-50",
+    ) -> dict[str, Any]:
+        """
+        Genera máscaras para TODOS los objetos en una imagen (SAM).
+        Modelos: Zigeng/SlimSAM-uniform-50 (rápido), facebook/sam2-hiera-large (preciso)
+        Útil para: separar objetos, remoción de fondo avanzada, edición de imagen.
+        """
+        if not self._ok():
+            return {"success": False, "error": "HF_TOKEN no configurado"}
+        try:
+            result = await self._call(model, image_bytes, binary=False, timeout=90.0)
+            if result and isinstance(result, list):
+                masks = [
+                    {"score": round(m.get("score", 0), 3), "mask_b64": m.get("mask", "")}
+                    for m in result[:20]
+                ]
+                return {
+                    "success": True,
+                    "masks": masks,
+                    "count": len(masks),
+                    "model": model,
+                }
+            return {"success": False, "error": "Sin máscaras generadas"}
+        except Exception as exc:
+            logger.error("[HF] generate_masks error: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def analyze_competitor_content(self, content_list: list[str], niche: str) -> dict[str, Any]:

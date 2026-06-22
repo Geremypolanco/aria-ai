@@ -186,14 +186,21 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - get_github_traction → muestra stars, forks y watchers de todos los repos públicos de ARIA para medir la presencia en el mercado y crecimiento de comunidad. Args: {{}}
 - run_proactive_analysis → análisis autónomo completo: ARIA escanea Shopify, income loop, objetivos estratégicos y GitHub, identifica qué está faltando o rinde menos, y ejecuta la acción más valiosa inmediatamente sin necesidad de instrucción. Args: {{"focus": "shopify|income|github|all (default: all)"}}
 - visual_qa        → responde preguntas sobre el contenido de una imagen (Visual Question Answering). El usuario envía una foto y hace cualquier pregunta. Args: {{"image_bytes_b64": "...", "question": "¿qué hay en la imagen?"}}
+- vision_llm       → analiza imágenes con un Vision Language Model avanzado (Llama Vision / SmolVLM). Más potente que VQA — razona, explica, describe en profundidad. Args: {{"image_bytes_b64": "...", "question": "¿qué historia cuenta esta imagen?"}}
 - image_to_image   → transforma una imagen existente con instrucciones en lenguaje natural (img2img Diffusion). Args: {{"image_bytes_b64": "...", "prompt": "convierte a estilo anime"}}
+- segment_image    → segmenta objetos en una imagen generando etiquetas y máscaras (mask2former panoptic). Args: {{"image_bytes_b64": "..."}}
+- zero_shot_detect → detecta objetos específicos en una imagen por descripción textual sin entrenamiento (OWL-ViT). Args: {{"image_bytes_b64": "...", "labels": ["a cat", "a car", "a person"]}}
+- generate_masks   → genera máscaras para todos los objetos de una imagen usando SAM (Segment Anything). Args: {{"image_bytes_b64": "..."}}
 - classify_image_zero_shot → clasifica una imagen en categorías arbitrarias sin entrenamiento (CLIP). Args: {{"image_bytes_b64": "...", "labels": ["cat","dog","car"]}}
 - document_qa      → extrae información de documentos escaneados, facturas, formularios (LayoutLM). Args: {{"image_bytes_b64": "...", "question": "¿cuál es el total?"}}
 - generate_music_hf → genera música con MusicGen por descripción en texto. Args: {{"prompt": "relaxing jazz piano", "duration": 20}}
+- enhance_audio    → mejora la calidad de un audio: elimina ruido, enhances speech (speechbrain). Args: {{"audio_bytes_b64": "..."}}
 - detect_language  → detecta el idioma de cualquier texto (176 idiomas). Args: {{"text": "..."}}
 - analyze_sentiment → analiza el sentimiento de un texto (positivo/negativo/neutro). Args: {{"text": "..."}}
 - extract_entities → extrae entidades nombradas: personas, lugares, organizaciones (NER). Args: {{"text": "..."}}
 - compute_similarity → calcula la similitud semántica entre dos textos (0.0–1.0). Args: {{"text1": "...", "text2": "..."}}
+- rank_texts       → ordena documentos por relevancia a un query (cross-encoder reranking). Args: {{"query": "...", "passages": ["doc1", "doc2", "doc3"]}}
+- table_qa         → responde preguntas sobre tablas de datos (TAPAS). Args: {{"table": {{"Name":["Alice","Bob"],"Score":["90","85"]}}, "question": "¿quién tiene mejor score?"}}
 - run_smolagent    → agente autónomo de investigación: planifica → busca → razona → sintetiza (patrón smolagents). Args: {{"task": "investiga el estado del mercado de IA en 2025"}}
 
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
@@ -376,6 +383,14 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 162. Si el usuario pide extraer entidades, personas, lugares u organizaciones de un texto → usa extract_entities con text.
 163. Si el usuario pide comparar dos textos semánticamente, ver qué tan similares son, o calcular la distancia entre ideas → usa compute_similarity con text1 y text2.
 164. Si el usuario pide que ARIA investigue un tema a fondo de forma autónoma, sintetice información de múltiples fuentes, o actúe como un agente de investigación → usa run_smolagent con task.
+165. Si el usuario envía una imagen y pide un análisis profundo, descripción detallada, o razonamiento sobre su contenido (más allá de una pregunta simple) → usa vision_llm en lugar de visual_qa para mayor calidad.
+166. Si el usuario pide segmentar una imagen, separar objetos, identificar regiones, o detectar las partes de una imagen → usa segment_image.
+167. Si el usuario pide detectar objetos específicos en una imagen describiendo qué buscar (sin categorías fijas) → usa zero_shot_detect con los labels que describa.
+168. Si el usuario pide las máscaras de todos los objetos, quiere usar SAM, o necesita separar completamente los objetos de la imagen → usa generate_masks.
+169. Si el usuario pide mejorar un audio, eliminar ruido de fondo, limpiar una grabación, o hacer un audio más claro → usa enhance_audio.
+170. Si el usuario pide ordenar documentos por relevancia, hacer reranking de resultados de búsqueda, o encontrar el texto más relevante de una lista → usa rank_texts.
+171. Si el usuario proporciona una tabla de datos (CSV, dict, lista) y hace preguntas sobre sus datos → usa table_qa con la tabla y la pregunta.
+172. Si el usuario pide analizar una imagen con el modelo más avanzado disponible, pide descripción profunda con razonamiento, o quiere que ARIA entienda el contexto completo de una imagen → siempre usa vision_llm (no visual_qa ni describe_image).
 
 REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
 {learned}
@@ -2141,6 +2156,107 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     level = "muy similares" if sim > 0.8 else "similares" if sim > 0.6 else "poco similares" if sim > 0.4 else "muy diferentes"
                     return f"Similaridad semántica: {sim:.2%} ({level})", {}
                 return r.get("error", "Cálculo de similaridad no disponible"), {}
+
+            # ── VISION LANGUAGE MODEL (Image-Text-to-Text) ───────────
+            elif tool == "vision_llm":
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                question  = args.get("question", "Describe esta imagen en detalle.")
+                if not image_b64:
+                    return "Envíame primero una imagen para analizar.", {}
+                import base64 as _b64
+                image_bytes = _b64.b64decode(image_b64)
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().vision_language(image_bytes, question)
+                if r.get("success"):
+                    return f"[Vision LLM]\n{r.get('answer','')}", {}
+                return r.get("error", "Vision LLM no disponible"), {}
+
+            # ── IMAGE SEGMENTATION ────────────────────────────────────
+            elif tool == "segment_image":
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                if not image_b64:
+                    return "Envíame primero una imagen para segmentar.", {}
+                import base64 as _b64
+                image_bytes = _b64.b64decode(image_b64)
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().segment_image(image_bytes)
+                if r.get("success"):
+                    labels = r.get("unique_labels", [])
+                    count = r.get("count", 0)
+                    return f"[Segmentación] {count} segmentos detectados\nObjetos: {', '.join(labels)}", {}
+                return r.get("error", "Segmentación no disponible"), {}
+
+            # ── ZERO-SHOT OBJECT DETECTION ────────────────────────────
+            elif tool == "zero_shot_detect":
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                labels    = args.get("labels", ["person", "car", "dog", "cat", "building"])
+                if not image_b64:
+                    return "Envíame primero una imagen para detectar objetos.", {}
+                import base64 as _b64
+                image_bytes = _b64.b64decode(image_b64)
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().zero_shot_detect_objects(image_bytes, labels)
+                if r.get("success"):
+                    dets = r.get("detections", [])
+                    if dets:
+                        lines = [f"• {d['label']}: {d['score']:.0%}" for d in dets[:8]]
+                        return f"[OWL-ViT] {len(dets)} objetos detectados:\n" + "\n".join(lines), {}
+                    return "[OWL-ViT] No se detectaron los objetos buscados en la imagen.", {}
+                return r.get("error", "Detección zero-shot no disponible"), {}
+
+            # ── AUDIO ENHANCEMENT (Audio-to-Audio) ───────────────────
+            elif tool == "enhance_audio":
+                audio_b64 = args.get("audio_bytes_b64", "")
+                if not audio_b64:
+                    return "Necesito audio_bytes_b64 para mejorar el audio.", {}
+                import base64 as _b64
+                audio_bytes = _b64.b64decode(audio_b64)
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().enhance_audio(audio_bytes)
+                if r.get("success") and r.get("audio_bytes"):
+                    ab = r["audio_bytes"]
+                    return f"Audio mejorado ({len(ab)//1024}KB)", {"audio_bytes": ab}
+                return r.get("error", "Mejora de audio no disponible"), {}
+
+            # ── TEXT RANKING (Reranking para RAG) ────────────────────
+            elif tool == "rank_texts":
+                query    = args.get("query", "")
+                passages = args.get("passages", [])
+                if not query or not passages:
+                    return "Necesito query y passages para hacer reranking.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().rank_texts(query, passages)
+                if r.get("success"):
+                    ranked = r.get("ranked", [])[:5]
+                    lines = [f"{i+1}. [{s['score']:.3f}] {s['text'][:150]}" for i, s in enumerate(ranked)]
+                    return f"[Reranking para: '{query}']\n" + "\n".join(lines), {}
+                return r.get("error", "Text ranking no disponible"), {}
+
+            # ── TABLE QUESTION ANSWERING (TAPAS) ─────────────────────
+            elif tool == "table_qa":
+                table    = args.get("table", {})
+                question = args.get("question", "")
+                if not table or not question:
+                    return "Necesito table (dict de columnas→listas) y question.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().table_question_answering(table, question)
+                if r.get("success"):
+                    return f"[TAPAS] {question}\nRespuesta: {r.get('answer','')}", {}
+                return r.get("error", "Table QA no disponible"), {}
+
+            # ── MASK GENERATION (SAM) ─────────────────────────────────
+            elif tool == "generate_masks":
+                image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
+                if not image_b64:
+                    return "Envíame primero una imagen para generar máscaras.", {}
+                import base64 as _b64
+                image_bytes = _b64.b64decode(image_b64)
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                r = await HuggingFaceSuite().generate_masks(image_bytes)
+                if r.get("success"):
+                    count = r.get("count", 0)
+                    return f"[SAM] {count} máscaras de segmentación generadas para la imagen.", {}
+                return r.get("error", "SAM mask generation no disponible"), {}
 
             # ── SMOLAGENTS SEARCH AGENT ───────────────────────────────
             elif tool == "run_smolagent":
