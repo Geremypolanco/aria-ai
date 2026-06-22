@@ -3944,16 +3944,16 @@ Return JSON:
             mentions_found: list[dict] = []
             for query in search_queries[:3]:
                 try:
-                    results = await web.search(query, max_results=5)
-                    for r in results:
+                    _sr = await web.search_web(query, num_results=5)
+                    for r in _sr.get("results", []):
                         mentions_found.append({"query": query, "title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("snippet", "")})
                 except Exception:
                     pass
 
             hn_mentions: list[dict] = []
             try:
-                hn_trending = await web.get_hn_top_stories(limit=30)
-                for story in hn_trending:
+                _hn_top = await web.get_hacker_news_trending(limit=30)
+                for story in _hn_top.get("stories", []):
                     title_lower = story.get("title", "").lower()
                     if any(kw in title_lower for kw in ["autonomous ai", "ai agent", "make money ai", "ai income"]):
                         hn_mentions.append(story)
@@ -4415,8 +4415,8 @@ Return JSON:
 
             ai_trends: list[str] = []
             try:
-                results = await web.search("new AI models tools 2025 2026 released", max_results=10)
-                ai_trends = [r.get("title", "") for r in results if r.get("title")]
+                _sr2 = await web.search_web("new AI models tools 2025 2026 released", num_results=10)
+                ai_trends = [r.get("title", "") for r in _sr2.get("results", []) if r.get("title")]
             except Exception:
                 ai_trends = ["multimodal AI agents", "reasoning models", "autonomous coding", "AI voice generation"]
 
