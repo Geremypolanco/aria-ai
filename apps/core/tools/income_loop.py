@@ -9010,10 +9010,42 @@ JSON:
             if not urls_created:
                 return {"success": False, "summary": "freelance_gig: archive failed"}
 
+            # ── Promote gig availability on Twitter + LinkedIn ─────────────────
+            top_gig = gigs[0] if gigs else {}
+            _fg_ae = getattr(settings, "ARIA_EMAIL", None)
+            _fg_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _fg_url = urls_created[0] if urls_created else ""
+            tw_fg = (
+                f"🛎️ Available for hire: {top_gig.get('title','AI automation services')[:80]}\n\n"
+                f"Packages: ${top_gig.get('packages',{}).get('basic',{}).get('price',75)} / "
+                f"${top_gig.get('packages',{}).get('standard',{}).get('price',199)} / "
+                f"${top_gig.get('packages',{}).get('premium',{}).get('price',499)}\n\n"
+                f"→ {_fg_url}"
+            )[:280]
+            _fg_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _fg_pub = get_api_publisher()
+                _fg_tw_r = await _fg_pub.publish_to_twitter(tw_fg)
+                if _fg_tw_r and _fg_tw_r.success:
+                    _fg_tw_ok = True
+                    if _fg_tw_r.url:
+                        urls_created.append(_fg_tw_r.url)
+            except Exception:
+                pass
+            if not _fg_tw_ok and _fg_ae and _fg_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _fg_plat = await get_platform_login()
+                    _fg_tw_pg = await _fg_plat.twitter(_fg_ae, _fg_ap)
+                    await _fg_plat.twitter_thread_post(_fg_tw_pg, [tw_fg])
+                except Exception:
+                    pass
+
             logger.info("[IncomeLoop] freelance_gig: %d gig listings generated", len(gigs))
             return {
                 "success": True,
-                "summary": f"Freelance gigs: {len(gigs)} listings for Fiverr + Upwork — packages from $75 to $499",
+                "summary": f"Freelance gigs: {len(gigs)} listings for Fiverr + Upwork — packages from $75 to $499 | promoted on Twitter",
                 "revenue_potential": 50.0,
                 "urls": urls_created[:3],
             }
@@ -10711,10 +10743,38 @@ JSON:
                     )
 
             top_price = max((s.get("price", 0) for s in services), default=997)
+
+            # ── LinkedIn post to attract agency clients ────────────────────────
+            _da_ae = getattr(settings, "ARIA_EMAIL", None)
+            _da_ap = getattr(settings, "ARIA_PASSWORD", None)
+            _da_url = urls_created[0] if urls_created else ""
+            tw_da = (
+                f"🏢 AI agency services available:\n\n"
+                + "\n".join(f"• {s.get('name','')[:50]}: ${s.get('price',997):,}" for s in services[:3])
+                + f"\n\nFull scope → {_da_url}"
+            )[:280]
+            _da_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _da_pub = get_api_publisher()
+                _da_tw_r = await _da_pub.publish_to_twitter(tw_da)
+                if _da_tw_r and _da_tw_r.success:
+                    _da_tw_ok = True
+            except Exception:
+                pass
+            if not _da_tw_ok and _da_ae and _da_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _da_plat = await get_platform_login()
+                    _da_tw_pg = await _da_plat.twitter(_da_ae, _da_ap)
+                    await _da_plat.twitter_thread_post(_da_tw_pg, [tw_da])
+                except Exception:
+                    pass
+
             logger.info("[IncomeLoop] digital_agency: %d services, top price $%d", len(services), top_price)
             return {
                 "success": bool(urls_created),
-                "summary": f"Digital agency: {len(services)} services from $997 to ${top_price:,} + proposal + case study + SOW",
+                "summary": f"Digital agency: {len(services)} services from $997 to ${top_price:,} + proposal + case study + SOW | promoted",
                 "revenue_potential": float(min(s.get("price", 997) for s in services)),
                 "urls": urls_created[:2],
             }
@@ -11158,10 +11218,41 @@ JSON:
 
             tagline = listing_data.get("tagline", "")
             prices = [t.get("price_monthly", 0) for t in listing_data.get("pricing_tiers", [])]
+
+            # ── Announce ARIA for hire on Twitter ─────────────────────────────
+            _sm_ae2 = getattr(settings, "ARIA_EMAIL", None)
+            _sm_ap2 = getattr(settings, "ARIA_PASSWORD", None)
+            _sm_url = next((u for u in urls_created if "gumroad" in u.lower()), urls_created[0] if urls_created else "")
+            tw_sm = (
+                f"🤖 Hire ARIA AI for your business\n\n"
+                f"{tagline[:120]}\n\n"
+                f"From ${min(prices) if prices else 49}/mo → fully autonomous income generation\n"
+                f"→ {_sm_url}"
+            )[:280]
+            _sm_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _sm_pub = get_api_publisher()
+                _sm_tw_r = await _sm_pub.publish_to_twitter(tw_sm)
+                if _sm_tw_r and _sm_tw_r.success:
+                    _sm_tw_ok = True
+                    if _sm_tw_r.url:
+                        urls_created.append(_sm_tw_r.url)
+            except Exception:
+                pass
+            if not _sm_tw_ok and _sm_ae2 and _sm_ap2:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _sm_plat2 = await get_platform_login()
+                    _sm_tw_pg = await _sm_plat2.twitter(_sm_ae2, _sm_ap2)
+                    await _sm_plat2.twitter_thread_post(_sm_tw_pg, [tw_sm])
+                except Exception:
+                    pass
+
             logger.info("[IncomeLoop] self_monetize: pricing page + RapidAPI + Gumroad listing created")
             return {
                 "success": bool(urls_created),
-                "summary": f"Self-monetize: '{tagline[:70]}' — pricing ${min(prices) if prices else 49}-${max(prices) if prices else 497}/mo",
+                "summary": f"Self-monetize: '{tagline[:70]}' — pricing ${min(prices) if prices else 49}-${max(prices) if prices else 497}/mo | promoted on Twitter",
                 "revenue_potential": 297.0,  # one Gumroad "hire ARIA" sale
                 "urls": urls_created[:3],
             }
@@ -11325,10 +11416,46 @@ JSON:
                     )
 
             commission = referral_data.get("commission_pct", 40)
+
+            # ── Recruit affiliates via Twitter ─────────────────────────────────
+            _re_ae = getattr(settings, "ARIA_EMAIL", None)
+            _re_ap = getattr(settings, "ARIA_PASSWORD", None)
+            kit = referral_data.get("affiliate_kit", {})
+            tw_swipe = kit.get("twitter_swipe_1", "")
+            _re_url = urls_created[0] if urls_created else ""
+            tw_re = (
+                (tw_swipe + f"\n\n→ {_re_url}")
+                if tw_swipe
+                else (
+                    f"🤝 Join the ARIA affiliate program — earn {commission}% commission\n\n"
+                    f"{kit.get('elevator_pitch','')[:140]}\n\n"
+                    f"→ {_re_url}"
+                )
+            )[:280]
+            _re_tw_ok = False
+            try:
+                from apps.distribution.publishers.api_publisher import get_api_publisher
+                _re_pub = get_api_publisher()
+                _re_tw_r = await _re_pub.publish_to_twitter(tw_re)
+                if _re_tw_r and _re_tw_r.success:
+                    _re_tw_ok = True
+                    if _re_tw_r.url:
+                        urls_created.append(_re_tw_r.url)
+            except Exception:
+                pass
+            if not _re_tw_ok and _re_ae and _re_ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _re_plat = await get_platform_login()
+                    _re_tw_pg = await _re_plat.twitter(_re_ae, _re_ap)
+                    await _re_plat.twitter_thread_post(_re_tw_pg, [tw_re])
+                except Exception:
+                    pass
+
             logger.info("[IncomeLoop] referral_engine: %d%% commission program created", commission)
             return {
                 "success": bool(urls_created),
-                "summary": f"Referral engine: {commission}% affiliate program + kit + email sequence created",
+                "summary": f"Referral engine: {commission}% affiliate program + kit + email sequence | announced on Twitter",
                 "revenue_potential": 20.0,  # each affiliate recruited multiplies revenue
                 "urls": urls_created[:2],
             }
