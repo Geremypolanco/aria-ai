@@ -14534,7 +14534,8 @@ Generate a backlink building plan:
             web = WebTools()
             github = AriaGitHubClient()
 
-            trends = await web.get_trending_topics()
+            _hn_stories_r = await web.get_hacker_news_trending(limit=5)
+            trends = [s["title"] for s in _hn_stories_r.get("stories", [])]
             top_topic = trends[0] if trends else "AI productivity tools"
 
             plan = await complete_json(
@@ -14642,7 +14643,8 @@ Generate a backlink building plan:
             web = WebTools()
             github = AriaGitHubClient()
 
-            trends = await web.get_trending_topics()
+            _hn_stories_r = await web.get_hacker_news_trending(limit=5)
+            trends = [s["title"] for s in _hn_stories_r.get("stories", [])]
             niche = trends[0] if trends else "AI automation tools"
 
             pitch = await complete_json(
@@ -14809,7 +14811,8 @@ Generate a backlink building plan:
             web = WebTools()
             github = AriaGitHubClient()
 
-            trends = await web.get_trending_topics()
+            _hn_stories_r = await web.get_hacker_news_trending(limit=5)
+            trends = [s["title"] for s in _hn_stories_r.get("stories", [])]
             pillar_topic = trends[0] if trends else "AI automation for entrepreneurs"
 
             cluster = await complete_json(
@@ -15061,7 +15064,8 @@ Generate a backlink building plan:
             web = WebTools()
             github = AriaGitHubClient()
 
-            trends = await web.get_trending_topics()
+            _hn_stories_r = await web.get_hacker_news_trending(limit=5)
+            trends = [s["title"] for s in _hn_stories_r.get("stories", [])]
             niche = trends[0] if trends else "AI tools for creators"
 
             collab = await complete_json(
@@ -15389,8 +15393,10 @@ Generate a backlink building plan:
             web = WebTools()
             github = AriaGitHubClient()
 
-            trends = await web.get_trending_topics()
-            topic = trends[0] if trends else "The future of autonomous AI agents"
+            _trends_r = await web.get_hacker_news_trending(limit=5)
+            topic = "The future of autonomous AI agents"
+            if _trends_r.get("success") and _trends_r.get("stories"):
+                topic = _trends_r["stories"][0].get("title", topic)[:120]
 
             piece = await complete_json(
                 system="You are ARIA, a recognized thought leader in autonomous AI and digital business. Write a bold, original long-form opinion piece.",
@@ -15442,33 +15448,56 @@ Generate a backlink building plan:
             except Exception:
                 pass
 
-            # Post teaser to LinkedIn
+            # Post teaser to LinkedIn (API → browser fallback)
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            li_teaser = piece.get("linkedin_teaser", "") or f"{title}\n\n{piece.get('thesis', '')}"
+            if urls_created:
+                li_teaser += f"\n\n{urls_created[0]}"
+            _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
-                li_teaser = piece.get("linkedin_teaser", "")
-                if not li_teaser:
-                    li_teaser = f"{title}\n\n{piece.get('thesis', '')}"
-                if urls_created:
-                    li_teaser += f"\n\n{urls_created[0]}"
                 li_result = await pub.publish_to_linkedin(li_teaser[:1300])
                 if li_result and li_result.success:
                     published_channels.append("LinkedIn")
+                    _li_ok = True
             except Exception:
                 pass
+            if not _li_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _li_page = await _plat.linkedin(_ae, _ap)
+                    if await _plat.linkedin_create_post(_li_page, li_teaser[:3000]):
+                        published_channels.append("LinkedIn")
+                except Exception:
+                    pass
 
-            # Post hook to Twitter
+            # Post hook to Twitter (API → browser fallback)
+            tw_hook = piece.get("twitter_hook", f"{title[:200]}")
+            if urls_created:
+                tw_hook = f"{tw_hook[:200]}\n\n{urls_created[0]}"
+            tw_hook = tw_hook[:280]
+            _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
                 pub = get_api_publisher()
-                tw_hook = piece.get("twitter_hook", f"{title[:200]}")
-                if urls_created:
-                    tw_hook = f"{tw_hook[:200]}\n\n{urls_created[0]}"
-                tw_result = await pub.publish_to_twitter(tw_hook[:280])
+                tw_result = await pub.publish_to_twitter(tw_hook)
                 if tw_result and tw_result.success:
                     published_channels.append("Twitter")
+                    _tw_ok = True
             except Exception:
                 pass
+            if not _tw_ok and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat = await get_platform_login()
+                    _tw_page = await _plat.twitter(_ae, _ap)
+                    if await _plat.twitter_thread_post(_tw_page, [tw_hook]):
+                        published_channels.append("Twitter")
+                except Exception:
+                    pass
 
             if cache:
                 await cache.rpush("aria:thought_leadership:pieces", _json.dumps({
@@ -15647,7 +15676,8 @@ Generate a backlink building plan:
                 except Exception:
                     pass
 
-            trends = await web.get_trending_topics()
+            _hn_stories_r = await web.get_hacker_news_trending(limit=5)
+            trends = [s["title"] for s in _hn_stories_r.get("stories", [])]
             context = trends[:2] if trends else ["AI agents", "no-code tools"]
 
             experiment = await complete_json(
