@@ -1,10 +1,17 @@
 """
 Aria AI — Cliente de IA con HuggingFace como Motor Principal.
-Orden: HuggingFace (rotación de 3 modelos) → Groq → OpenAI
+Orden: HuggingFace AsyncInferenceClient (rotación de providers + modelos) → Groq → OpenAI
 
-HF Serverless Inference API es gratuita y admite los mejores modelos open-source.
-Si el modelo primario está bajo carga, rota automáticamente a modelos alternativos
-ANTES de caer a Groq — maximizando el uso del tier gratuito de HuggingFace.
+HuggingFace Inference Providers:
+  - "hf-inference": tier gratuito con cold start
+  - "together": Together AI via HF token (rápido, muchos modelos)
+  - "nebius": Nebius AI Studio via HF token
+  - "featherless-ai": especializado en 7B-70B
+  Todos accesibles con un solo HF_TOKEN — maximiza el crédito mensual gratuito.
+
+Usa huggingface_hub.AsyncInferenceClient — compatible con OpenAI API,
+soporta structured outputs (response_format), function calling, streaming,
+embeddings (feature_extraction) e imagen (text_to_image).
 """
 from __future__ import annotations
 
@@ -40,30 +47,50 @@ class AIModel(str, Enum):
 
 
 # ══════════════════════════════════════════════════════════════
-# MOTOR PRINCIPAL: HuggingFace — 3 modelos por tarea
-# Si el modelo primario está ocupado o en cold start, rota
-# automáticamente ANTES de caer a Groq.
+# MOTOR PRINCIPAL: HuggingFace AsyncInferenceClient
+# Rota entre providers Y modelos antes de caer a Groq.
+#
+# HF Inference Providers accesibles con un HF_TOKEN:
+#   "hf-inference" → gratuito (cold start posible)
+#   "together"     → Together AI, muy rápido, sin cold start
+#   "nebius"       → Nebius AI Studio, buena latencia
+#   "featherless-ai" → especializado en chat models
+#
+# Modelos actualizados a SOTA 2025:
+#   STRATEGY: Qwen2.5-72B (mejor razonamiento open-source)
+#   CODE:     Qwen2.5-Coder-32B (SOTA en coding benchmarks)
+#   FAST:     Qwen2.5-7B / Llama-3.2-3B (< 2s latency)
+#   CREATIVE: Llama-3.3-70B (mejor para generación creativa)
 # ══════════════════════════════════════════════════════════════
+
+# Provider rotation per task — tried in order before falling to Groq
+HF_PROVIDER_ROTATION: list[str] = [
+    "hf-inference",   # free tier first (uses monthly credits)
+    "together",       # Together AI via HF token — fast fallback
+    "nebius",         # Nebius — second paid fallback
+    "featherless-ai", # Featherless — third paid fallback
+]
+
 HF_MODEL_ROTATION: dict[AIModel, list[str]] = {
     AIModel.STRATEGY: [
-        "Qwen/Qwen2.5-72B-Instruct",           # Primario — más potente
-        "mistralai/Mistral-7B-Instruct-v0.3",  # Respaldo HF 1
-        "HuggingFaceH4/zephyr-7b-beta",        # Respaldo HF 2
+        "Qwen/Qwen2.5-72B-Instruct",              # SOTA — complex reasoning
+        "meta-llama/Llama-3.3-70B-Instruct",      # SOTA — instruction follow
+        "mistralai/Mistral-Small-3.1-24B-Instruct-2503",  # Good mid-size
     ],
     AIModel.CODE: [
-        "Qwen/Qwen2.5-Coder-7B-Instruct",     # Primario — código
-        "microsoft/Phi-3.5-mini-instruct",     # Respaldo HF 1
-        "mistralai/Mistral-7B-Instruct-v0.3",  # Respaldo HF 2
+        "Qwen/Qwen2.5-Coder-32B-Instruct",        # SOTA coding benchmark
+        "Qwen/Qwen2.5-Coder-7B-Instruct",         # Fast coding model
+        "meta-llama/Llama-3.3-70B-Instruct",      # Code-capable fallback
     ],
     AIModel.FAST: [
-        "microsoft/Phi-3-mini-4k-instruct",    # Primario — más rápido
-        "HuggingFaceH4/zephyr-7b-beta",        # Respaldo HF 1
-        "mistralai/Mistral-7B-Instruct-v0.3",  # Respaldo HF 2
+        "Qwen/Qwen2.5-7B-Instruct",               # Fast + capable
+        "meta-llama/Llama-3.2-3B-Instruct",       # Ultra-fast
+        "Qwen/Qwen2.5-Coder-7B-Instruct",         # Fast fallback
     ],
     AIModel.CREATIVE: [
-        "HuggingFaceH4/zephyr-7b-beta",        # Primario — mejor para creativo
-        "mistralai/Mistral-7B-Instruct-v0.3",  # Respaldo HF 1
-        "Qwen/Qwen2.5-72B-Instruct",           # Respaldo HF 2
+        "meta-llama/Llama-3.3-70B-Instruct",      # Best for creative text
+        "Qwen/Qwen2.5-72B-Instruct",              # Creative fallback
+        "mistralai/Mistral-Small-3.1-24B-Instruct-2503",  # Creative alt
     ],
 }
 
@@ -75,17 +102,17 @@ MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
     },
     AIModel.CODE: {
-        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-Coder-7B-Instruct",
+        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-Coder-32B-Instruct",
         AIProvider.GROQ:        "llama-3.3-70b-versatile",
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
     },
     AIModel.FAST: {
-        AIProvider.HUGGINGFACE: "microsoft/Phi-3-mini-4k-instruct",
+        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-7B-Instruct",
         AIProvider.GROQ:        "llama-3.1-8b-instant",
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
     },
     AIModel.CREATIVE: {
-        AIProvider.HUGGINGFACE: "HuggingFaceH4/zephyr-7b-beta",
+        AIProvider.HUGGINGFACE: "meta-llama/Llama-3.3-70B-Instruct",
         AIProvider.GROQ:        "llama-3.3-70b-versatile",
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
     },
@@ -295,8 +322,10 @@ class AriaAIClient:
         agent_name: str,
     ) -> Optional[AIResponse]:
         """
-        Intenta hasta 3 modelos HF distintos antes de rendirse.
-        Maneja cold starts y modelos bajo carga de forma transparente.
+        Rota entre providers HF Y modelos HF antes de rendirse.
+        Strategy: intenta cada modelo con hf-inference primero; si falla por
+        cold start / rate limit, prueba el mismo modelo con el siguiente provider
+        (together, nebius). Así maximizamos el uso del tier gratuito.
         """
         if not settings.hf_key:
             return AIResponse(
@@ -310,47 +339,72 @@ class AriaAIClient:
 
         for model_id in models_to_try:
             short_name = model_id.split("/")[-1]
-            try:
-                t0 = time.time()
-                content, tokens = await asyncio.wait_for(
-                    self._call_huggingface(model_id, system, user, max_tokens, temperature),
-                    timeout=PROVIDER_TIMEOUTS[AIProvider.HUGGINGFACE],
-                )
-                latency = int((time.time() - t0) * 1000)
-                self._total_tokens += tokens
-                self._health[AIProvider.HUGGINGFACE].record_success()
-                logger.info(
-                    "[%s] HF[%s] OK — %dms — %d tokens",
-                    agent_name, short_name, latency, tokens
-                )
-                return AIResponse(
-                    content=content,
-                    provider=AIProvider.HUGGINGFACE,
-                    model=model_id,
-                    tokens_used=tokens,
-                    latency_ms=latency,
-                    success=True,
-                )
+            for hf_provider in HF_PROVIDER_ROTATION:
+                try:
+                    t0 = time.time()
+                    content, tokens = await asyncio.wait_for(
+                        self._call_huggingface(
+                            model_id, system, user, max_tokens, temperature,
+                            provider=hf_provider,
+                        ),
+                        timeout=PROVIDER_TIMEOUTS[AIProvider.HUGGINGFACE],
+                    )
+                    latency = int((time.time() - t0) * 1000)
+                    self._total_tokens += tokens
+                    self._health[AIProvider.HUGGINGFACE].record_success()
+                    logger.info(
+                        "[%s] HF[%s@%s] OK — %dms — %d tokens",
+                        agent_name, short_name, hf_provider, latency, tokens
+                    )
+                    return AIResponse(
+                        content=content,
+                        provider=AIProvider.HUGGINGFACE,
+                        model=f"{hf_provider}/{model_id}",
+                        tokens_used=tokens,
+                        latency_ms=latency,
+                        success=True,
+                    )
 
-            except asyncio.TimeoutError:
-                logger.warning("[%s] HF timeout en %s — rotando", agent_name, short_name)
-                continue
-            except Exception as exc:
-                err_str = str(exc).lower()
-                if any(k in err_str for k in ["loading", "503", "currently loading", "model is loading"]):
-                    logger.info("[%s] HF cargando %s — rotando modelo", agent_name, short_name)
-                elif "rate" in err_str or "429" in err_str:
-                    logger.info("[%s] HF rate limit en %s — rotando", agent_name, short_name)
-                else:
-                    # DNS / connection error — cuenta para el circuit breaker
-                    self._health[AIProvider.HUGGINGFACE].record_failure()
-                    logger.warning("[%s] HF error %s: %s", agent_name, short_name, str(exc)[:80])
-                continue
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "[%s] HF timeout en %s@%s — rotando provider",
+                        agent_name, short_name, hf_provider
+                    )
+                    continue
+                except Exception as exc:
+                    err_str = str(exc).lower()
+                    if any(k in err_str for k in [
+                        "loading", "503", "currently loading", "model is loading",
+                        "cold", "unavailable",
+                    ]):
+                        logger.info(
+                            "[%s] HF cold start %s@%s — rotando provider",
+                            agent_name, short_name, hf_provider
+                        )
+                    elif "rate" in err_str or "429" in err_str:
+                        logger.info(
+                            "[%s] HF rate limit %s@%s — rotando provider",
+                            agent_name, short_name, hf_provider
+                        )
+                    elif "not supported" in err_str or "404" in err_str:
+                        # Model not on this provider — skip remaining providers for this model
+                        logger.debug(
+                            "[%s] HF modelo %s no soportado por %s — siguiente modelo",
+                            agent_name, short_name, hf_provider
+                        )
+                        break
+                    else:
+                        self._health[AIProvider.HUGGINGFACE].record_failure()
+                        logger.warning(
+                            "[%s] HF error %s@%s: %s",
+                            agent_name, short_name, hf_provider, str(exc)[:80]
+                        )
+                    continue
 
         self._health[AIProvider.HUGGINGFACE].record_failure()
         return AIResponse(
             content="", provider=AIProvider.HUGGINGFACE, model="none",
-            success=False, error="HF: todos los modelos de rotacion fallaron"
+            success=False, error="HF: todos los modelos y providers de rotacion fallaron"
         )
 
     # ── DISPATCH POR PROVEEDOR ────────────────────────────
@@ -384,11 +438,45 @@ class AriaAIClient:
         user: str,
         max_tokens: int,
         temperature: float,
+        provider: str = "hf-inference",
     ) -> tuple[str, int]:
+        """
+        Uses huggingface_hub.AsyncInferenceClient when available.
+        Falls back to raw httpx if the library isn't installed.
+        The AsyncInferenceClient is OpenAI-compatible and handles:
+          - provider routing (hf-inference / together / nebius / featherless-ai)
+          - automatic retries on cold starts
+          - structured outputs via response_format
+          - streaming, function calling
+        """
         hf_key = settings.hf_key
         if not hf_key:
             raise ValueError("HF_TOKEN no configurado")
 
+        try:
+            from huggingface_hub import AsyncInferenceClient
+            client = AsyncInferenceClient(
+                provider=provider,
+                api_key=hf_key,
+            )
+            response = await client.chat.completions.create(
+                model=model_id,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                max_tokens=min(max_tokens, 2048),
+                temperature=temperature,
+            )
+            content = (response.choices[0].message.content or "").strip()
+            tokens = response.usage.total_tokens if response.usage else len(content.split()) * 2
+            return content, tokens
+
+        except ImportError:
+            # huggingface_hub not installed — fall back to raw httpx
+            pass
+
+        # Raw httpx fallback (original implementation)
         payload = {
             "model": model_id,
             "messages": [
@@ -602,6 +690,77 @@ class AriaAIClient:
                 logger.warning("[Vision] HF BLIP fallback failed: %s", exc)
 
         return "No se pudo analizar la imagen (configura GROQ_API_KEY u OPENAI_API_KEY para visión)."
+
+    # ── EMBEDDINGS ────────────────────────────────────────
+
+    async def get_embeddings(
+        self,
+        texts: list[str],
+        model_id: str = "sentence-transformers/all-MiniLM-L6-v2",
+    ) -> Optional[list[list[float]]]:
+        """
+        Generate sentence embeddings using HF feature_extraction.
+        Uses AsyncInferenceClient.feature_extraction when available.
+        Useful for semantic search, clustering, RAG systems.
+
+        Returns list of embedding vectors (one per input text).
+        """
+        if not settings.hf_key:
+            return None
+        try:
+            from huggingface_hub import AsyncInferenceClient
+            client = AsyncInferenceClient(
+                provider="hf-inference",
+                api_key=settings.hf_key,
+            )
+            embeddings = await client.feature_extraction(
+                text=texts,
+                model=model_id,
+            )
+            # Returns numpy array or list; convert to Python lists
+            if hasattr(embeddings, "tolist"):
+                return embeddings.tolist()
+            return list(embeddings)
+        except Exception as exc:
+            logger.warning("[AriaAI] get_embeddings failed: %s", exc)
+            return None
+
+    # ── IMAGE GENERATION ──────────────────────────────────
+
+    async def generate_image(
+        self,
+        prompt: str,
+        model_id: str = "black-forest-labs/FLUX.1-schnell",
+        provider: str = "hf-inference",
+    ) -> Optional[bytes]:
+        """
+        Generate an image from text using FLUX via HF Inference.
+        Uses AsyncInferenceClient.text_to_image.
+        Returns raw image bytes (PNG/JPEG) or None on failure.
+
+        Supported providers for text_to_image:
+          "hf-inference", "fal-ai", "together", "replicate", "nebius"
+        """
+        if not settings.hf_key:
+            return None
+        try:
+            from huggingface_hub import AsyncInferenceClient
+            client = AsyncInferenceClient(
+                provider=provider,
+                api_key=settings.hf_key,
+            )
+            image = await asyncio.wait_for(
+                client.text_to_image(prompt, model=model_id),
+                timeout=60.0,
+            )
+            # image is a PIL.Image object
+            import io
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception as exc:
+            logger.warning("[AriaAI] generate_image failed (%s): %s", provider, exc)
+            return None
 
     # ── UTILIDADES ────────────────────────────────────────
 
