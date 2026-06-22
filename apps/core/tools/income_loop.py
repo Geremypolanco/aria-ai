@@ -47,27 +47,27 @@ from apps.core.config import settings
 
 logger = logging.getLogger("aria.income_loop")
 
-INTERVAL_SECONDS  = 1800   # 30 minutes between cycles
+INTERVAL_SECONDS  = 1200   # 20 minutes between cycles (was 30)
 FIRST_RUN_DELAY   = 45     # seconds after startup before first run
 ERROR_BACKOFF     = 300    # 5 min backoff after errors
 MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",         1),
-    ("niche_rotator",            1),
-    ("product_factory",          1),
-    ("course_builder",           1),   # mini-course with syllabus + pricing (avg $79-$127/sale)
+    ("content_pipeline",         3),   # boostado: contenido multiplica todos los canales
+    ("niche_rotator",            2),
+    ("product_factory",          5),   # boostado: crea productos Gumroad directamente
+    ("course_builder",           2),   # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network",        1),   # build own affiliate program, recruit promoters
     ("opportunity_scan",         1),
-    ("github_publish",           1),   # works with only GITHUB_TOKEN — always active
-    ("content_repurposer",       1),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
+    ("github_publish",           3),   # boostado: works with only GITHUB_TOKEN — always active
+    ("content_repurposer",       2),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas",               1),   # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing",          1),
     ("email_campaign",           1),
     ("affiliate_content",        1),   # review/comparison articles with affiliate links
-    ("ebook_factory",            1),
-    ("lead_magnet",              1),   # free resource funnel → email capture → upsell
+    ("ebook_factory",            3),   # boostado: crea ebooks Gumroad directamente
+    ("lead_magnet",              2),   # free resource funnel → email capture → upsell
     ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
     ("seo_optimizer",            1),   # improve existing posts for compounding organic traffic
     ("gist_blitz",               1),   # code snippet Gists with product CTAs (dev discovery)
@@ -84,12 +84,12 @@ STRATEGIES = [
     ("twitter_thread",           1),   # direct Twitter API thread via api_publisher (real posts)
     ("linkedin_post",            1),   # direct LinkedIn API post via api_publisher (real posts)
     ("reddit_organic",           1),   # subreddit posts → massive organic traffic → affiliate rev
-    ("stripe_checkout",          1),   # real Stripe payment link for instant revenue
+    ("stripe_checkout",          3),   # boostado: real Stripe payment link for instant revenue
     ("tiktok_script",            1),   # TikTok/Reels/YouTube Shorts viral scripts → massive reach
     ("linkedin_outreach",        1),   # B2B prospect messages → consulting/partnership leads
     ("youtube_strategy",         1),   # YouTube content plan + optimized metadata + script → channel growth
     ("product_hunt_launch",      1),   # Product Hunt launch post → massive traffic spike + backlinks
-    ("content_amplifier",        1),   # blast latest content to ALL platforms simultaneously — 5x reach
+    ("content_amplifier",        4),   # boostado: blast latest content to ALL platforms simultaneously — 5x reach
     ("cold_email_outreach",      1),   # SMTP cold emails to B2B prospects → consulting/product sales
     ("pinterest_pins",           1),   # Pinterest pin strategy → visual SEO traffic → product page clicks
     ("landing_page_deploy",      1),   # HTML landing page deployed to GitHub Pages → real SEO-indexed URL
@@ -114,7 +114,7 @@ STRATEGIES = [
     ("lead_closer",              1),   # Follow up with warm leads autonomously to close sales
     ("retargeting_campaign",     1),   # Re-engage visitors who didn't buy with personalized sequences
     ("influencer_outreach",      1),   # Pitch ARIA to micro-influencers for promotion deals
-    ("marketplace_lister",       1),   # List products on AppSumo, Envato, Gumroad marketplaces
+    ("marketplace_lister",       3),   # boostado: List products on AppSumo, Envato, Gumroad marketplaces
     ("daily_goal_tracker",       1),   # Track daily revenue vs target + take action on gaps
     ("growth_hacker",            1),   # Rapid growth experiments: A/B tests, viral loops, referrals
     ("knowledge_synthesizer",    1),   # Read latest AI/business content + ingest into knowledge base
@@ -131,11 +131,11 @@ STRATEGIES = [
     ("vc_pitch_deck",            1),   # create investor pitch deck for ARIA's products → funding + credibility
     ("job_posting_scout",        1),   # monitor freelance job boards + apply to relevant gigs → direct revenue
     ("micro_grant_hunter",       1),   # find + apply to startup grants, competitions, accelerators → non-dilutive capital
-    ("notion_template_seller",   1),   # create Notion template → publish on Gumroad + Notion marketplace ($7-$49)
+    ("notion_template_seller",   3),   # boostado: create Notion template → publish on Gumroad + Notion marketplace ($7-$49)
     ("chrome_extension_builder", 1),   # design Chrome extension concept + README + landing page → developer audience
     ("api_marketplace_lister",   1),   # list ARIA's AI API on RapidAPI/Mashape → recurring API subscription revenue
     ("white_label_kit",          1),   # build white-label package: agencies resell ARIA's AI as their own → B2B revenue
-    ("data_product_seller",      1),   # compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
+    ("data_product_seller",      3),   # boostado: compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
     ("b2b_saas_pitch",           1),   # create full B2B pitch + send cold outreach to potential enterprise clients
     ("email_list_builder",       1),   # grow email list fast: create lead magnet + landing page + subscribe form → list asset
     ("joint_venture_pitch",      1),   # find JV partners, propose revenue-share deals, create co-marketing proposals
@@ -154,7 +154,7 @@ STRATEGIES = [
     ("growth_experiment",        1),   # run one targeted growth experiment: landing page tweak, hook test, channel test
     ("app_store_listing",        1),   # create listing copy for Chrome Web Store / App Store / VS Code marketplace
     ("case_study_publisher",     1),   # write detailed case study from buyer result → social proof + SEO + lead gen
-    ("catalog_repromoter",       1),   # re-promote existing Gumroad products with fresh angles → more sales, zero creation cost
+    ("catalog_repromoter",       5),   # boostado: re-promote existing Gumroad products with fresh angles → more sales, zero creation cost
 ]
 
 # Strategies that already call publish_to_twitter/linkedin internally.
