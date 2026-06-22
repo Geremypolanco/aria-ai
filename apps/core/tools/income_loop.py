@@ -209,9 +209,10 @@ class ThompsonBandit:
             if raw and isinstance(raw, dict):
                 for n in self._names:
                     if f"{n}.a" in raw:
-                        self._alpha[n] = float(raw[f"{n}.a"])
+                        # max(0.1, ...) guards against corrupt zeros — Beta(0,x) raises ValueError
+                        self._alpha[n] = max(0.1, float(raw[f"{n}.a"]))
                     if f"{n}.b" in raw:
-                        self._beta[n]  = float(raw[f"{n}.b"])
+                        self._beta[n]  = max(0.1, float(raw[f"{n}.b"]))
                 logger.info("[Bandit] Loaded counts for %d strategies", len(self._names))
         except Exception as exc:
             logger.debug("[Bandit] load error: %s", exc)

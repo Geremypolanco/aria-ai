@@ -62,6 +62,9 @@ playwright==1.47.0
 # ── Graph-based cognition ─────────────────────────────────
 networkx==3.4.2           # Reasoning graphs, world model topology, dependency DAGs
 
+# ── Numerical / ML ────────────────────────────────────────
+numpy>=1.26.0             # Thompson Sampling bandit Beta distribution sampling
+
 # ── Observabilidad (OTel — opcional, graceful no-op si no instalado) ─
 opentelemetry-api==1.27.0
 opentelemetry-sdk==1.27.0

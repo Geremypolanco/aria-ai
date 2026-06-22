@@ -1,1 +1,505 @@
-"""\nARIA AI — Daily Business Loop\nPhase 13: THE autonomous daily operating engine.\n\nEvery 24 hours ARIA executes as a complete business:\n  - Distributes content across all platforms\n  - Publishes SEO blog posts\n  - Generates TikTok/Reels/Shorts scripts\n  - Discovers and scores new leads\n  - Sends personalized outreach\n  - Runs funnel optimizations\n  - Analyzes economic performance\n  - Adapts strategy based on what converts\n\nThis loop runs WITHOUT manual intervention.\nARIA operates like a business, not a research lab.\n"""\nfrom __future__ import annotations\n\nimport time\nimport uuid\nfrom dataclasses import dataclass, field\nfrom datetime import datetime\nfrom typing import Optional\n\nfrom apps.core.memory.redis_client import get_cache\nfrom apps.core.tools.ai_client import get_ai_client, AIModel\n\n_KEY = "runtime:business_loop:v1"\n_TTL = 86400 * 90\n\n\n# ── Business cycle definition ─────────────────────────────────────────────────\n\n# Each operation: (name, category, revenue_impact: "direct"|"indirect"|"learning")\n_MORNING_OPS = [\n    ("Generate 3 TikTok/Reels scripts", "distribution", "direct"),\n    ("Write 1 SEO blog post", "distribution", "direct"),\n    ("Schedule LinkedIn authority post", "distribution", "direct"),\n    ("Create Twitter/X thread", "distribution", "direct"),\n    ("Discover 10 new leads", "acquisition", "direct"),\n    ("Score and qualify leads", "acquisition", "direct"),\n]\n\n_MIDDAY_OPS = [\n    ("Send 10 outreach messages", "acquisition", "direct"),\n    ("Advance CRM pipeline contacts", "acquisition", "direct"),\n    ("Run Shopify product SEO batch", "shopify", "direct"),\n    ("Generate upsell offers", "shopify", "direct"),\n    ("Optimize active funnels", "conversion", "direct"),\n    ("Run abandoned cart recovery", "conversion", "direct"),\n]\n\n_AFTERNOON_OPS = [\n    ("Analyze pricing vs competitors", "market", "indirect"),\n    ("Generate email nurture sequence", "conversion", "indirect"),\n    ("Run landing page A/B test generation", "conversion", "indirect"),\n    ("Run customer retention campaigns", "retention", "direct"),\n    ("Extract economic insights", "learning", "learning"),\n    ("Update ROI patterns", "learning", "learning"),\n    ("Generate content calendar for tomorrow", "planning", "learning"),\n]\n\nALL_OPS = _MORNING_OPS + _MIDDAY_OPS + _AFTERNOON_OPS\n\n\n@dataclass\nclass BusinessOperation:\n    op_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])\n    name: str = ""\n    category: str = ""\n    revenue_impact: str = "indirect"\n    status: str = "pending"\n    result: dict = field(default_factory=dict)\n    started_at: float = 0.0\n    completed_at: float = 0.0\n    duration_seconds: float = 0.0\n    error: str = ""\n\n    def to_dict(self) -> dict:\n        return {\n            "op_id": self.op_id,\n            "name": self.name,\n            "category": self.category,\n            "revenue_impact": self.revenue_impact,\n            "status": self.status,\n            "result": self.result,\n            "started_at": self.started_at,\n            "completed_at": self.completed_at,\n            "duration_seconds": self.duration_seconds,\n            "error": self.error,\n        }\n\n\n@dataclass\nclass DailyBusinessReport:\n    report_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])\n    date: str = ""\n    ops_total: int = 0\n    ops_completed: int = 0\n    ops_failed: int = 0\n    direct_revenue_ops: int = 0\n    content_pieces_generated: int = 0\n    leads_discovered: int = 0\n    outreach_sent: int = 0\n    shopify_optimizations: int = 0\n    funnels_optimized: int = 0\n    top_insight: str = ""\n    tomorrow_priority: str = ""\n    execution_score: float = 0.0\n    created_at: float = field(default_factory=time.time)\n\n    def to_dict(self) -> dict:\n        return {\n            "report_id": self.report_id,\n            "date": self.date,\n            "ops_total": self.ops_total,\n            "ops_completed": self.ops_completed,\n            "ops_failed": self.ops_failed,\n            "direct_revenue_ops": self.direct_revenue_ops,\n            "content_pieces_generated": self.content_pieces_generated,\n            "leads_discovered": self.leads_discovered,\n            "outreach_sent": self.outreach_sent,\n            "shopify_optimizations": self.shopify_optimizations,\n            "funnels_optimized": self.funnels_optimized,\n            "top_insight": self.top_insight,\n            "tomorrow_priority": self.tomorrow_priority,\n            "execution_score": self.execution_score,\n            "created_at": self.created_at,\n        }\n\n\nclass DailyBusinessLoop:\n    """\n    ARIA's autonomous daily business engine.\n\n    Executes the full business cycle every day:\n    morning (content + discovery) → midday (outreach + optimization) →\n    afternoon (analysis + planning) → report.\n\n    State persisted in Redis (key: runtime:business_loop:v1, TTL 90d).\n    """\n\n    def __init__(self) -> None:\n        self._reports: list[dict] = []\n        self._op_history: list[dict] = []\n        self._loaded = False\n\n    async def _load(self) -> None:\n        if not self._loaded:\n            try:\n                cache = get_cache()\n                data = await cache.get(_KEY)\n                if isinstance(data, dict):\n                    self._reports = data.get("reports", [])\n                    self._op_history = data.get("op_history", [])\n            except Exception:\n                pass\n            self._loaded = True\n\n    async def _save(self) -> None:\n        try:\n            cache = get_cache()\n            await cache.set(\n                _KEY,\n                {"reports": self._reports[-90:], "op_history": self._op_history[-1000:]},\n                ttl_seconds=_TTL,\n            )\n        except Exception:\n            pass\n\n    def build_daily_ops(self) -> list[BusinessOperation]:\n        """Build today's full operation queue from all business cycles."""\n        ops = []\n        for name, category, revenue_impact in ALL_OPS:\n            ops.append(BusinessOperation(\n                name=name,\n                category=category,\n                revenue_impact=revenue_impact,\n            ))\n        return ops\n\n    async def execute_operation(self, op: BusinessOperation) -> BusinessOperation:\n        """Execute a single business operation and return result."""\n        op.started_at = time.time()\n        op.status = "running"\n\n        try:\n            result = await self._run(op)\n            op.result = result\n            op.status = "done"\n        except Exception as exc:\n            op.status = "failed"\n            op.error = str(exc)\n            op.result = {}\n\n        op.completed_at = time.time()\n        op.duration_seconds = round(op.completed_at - op.started_at, 3)\n        self._op_history.append(op.to_dict())\n        return op\n\n    async def _run(self, op: BusinessOperation) -> dict:\n        """Dispatch operation to the correct system."""\n        name = op.name\n        category = op.category\n\n        if category == "distribution":\n            return await self._distribution_op(name)\n        if category == "acquisition":\n            return await self._acquisition_op(name)\n        if category == "shopify":\n            return await self._shopify_op(name)\n        if category == "conversion":\n            return await self._conversion_op(name)\n        if category == "market":\n            return await self._market_op(name)\n        if category == "retention":\n            return await self._retention_op(name)\n        if category in ("learning", "planning"):\n            return await self._learning_op(name)\n        return {"status": "no_handler"}\n\n    async def _distribution_op(self, name: str) -> dict:\n        if "TikTok" in name or "Reels" in name:\n            from apps.distribution.tiktok.tiktok_engine import get_tiktok_engine\n            eng = get_tiktok_engine()\n            scripts = await eng.batch_generate(\n                topics=["AI productivity tools", "make money online 2024", "passive income ideas"],\n                niche="digital_products",\n            )\n            return {"status": "done", "scripts_generated": len(scripts), "titles": [s.topic for s in scripts]}\n        if "blog" in name.lower():\n            from apps.distribution.blog.blog_publisher import get_blog_publisher\n            eng = get_blog_publisher()\n            post = await eng.write_post(\n                topic="AI tools for income generation",\n                target_keyword="best AI tools to make money",\n                target_audience="entrepreneurs and solopreneurs",\n                word_target=1200,\n            )\n            return {"status": "done", "post_title": post.title, "word_count": post.word_count, "seo_score": post.seo_score}\n        if "LinkedIn" in name:\n            from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher\n            eng = get_linkedin_publisher()\n            post = await eng.create_post(\n                topic="AI automation for small businesses",\n                objective="thought_leadership",\n            )\n            return {"status": "done", "post_id": post.post_id, "word_count": post.word_count}\n        if "Twitter" in name:\n            from apps.distribution.twitter.twitter_engine import get_twitter_engine\n            eng = get_twitter_engine()\n            thread = await eng.create_thread(\n                topic="How to generate passive income with AI in 2024",\n                num_tweets=7,\n            )\n            return {"status": "done", "tweets": thread.total_tweets, "topic": "AI passive income"}\n        return {"status": "done", "name": name}\n\n    async def _acquisition_op(self, name: str) -> dict:\n        if "leads" in name.lower() or "Discover" in name:\n            from apps.acquisition.leads.lead_engine import get_lead_engine\n            eng = get_lead_engine()\n            leads = await eng.discover_leads("ecommerce", count=10)\n            return {"status": "done", "leads_discovered": len(leads), "niches": list({l.niche for l in leads})}\n        if "Score" in name or "qualify" in name.lower():\n            from apps.acquisition.leads.lead_engine import get_lead_engine\n            eng = get_lead_engine()\n            await eng._load()\n            qualified = eng.qualified_leads()\n            return {"status": "done", "qualified_count": len(qualified)}\n        if "outreach" in name.lower() or "CRM" in name:\n            from apps.acquisition.outreach.outreach_sequencer import get_outreach_sequencer\n            sequencer = get_outreach_sequencer()\n            await sequencer._load()\n            due = sequencer.contacts_due_today()[:10]\n            advanced = 0\n            for c in due:\n                if sequencer.advance_contact(c.get("contact_id", "")):\n                    advanced += 1\n            if advanced > 0:\n                await sequencer._save()\n            return {"status": "done", "contacts_advanced": advanced, "due_count": len(due)}\n        return {"status": "done", "name": name}\n\n    async def _shopify_op(self, name: str) -> dict:\n        if "SEO" in name:\n            from apps.shopify.seo.product_seo import get_product_seo_optimizer\n            eng = get_product_seo_optimizer()\n            await eng._load()\n            return {"status": "done", "stats": eng.seo_stats()}\n        if "upsell" in name.lower():\n            from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine\n            eng = get_shopify_funnel_engine()\n            await eng._load()\n            return {"status": "done", "stats": eng.funnel_stats()}\n        return {"status": "done", "name": name}\n\n    async def _conversion_op(self, name: str) -> dict:\n        if "funnel" in name.lower():\n            from apps.conversion.funnels.funnel_engine import get_funnel_engine\n            eng = get_funnel_engine()\n            await eng._load()\n            return {"status": "done", "analytics": eng.funnel_analytics()}\n        if "cart" in name.lower():\n            from apps.conversion.sms.sms_capture import get_sms_capture_engine\n            eng = get_sms_capture_engine()\n            await eng._load()\n            return {"status": "done", "stats": eng.capture_stats()}\n        if "email" in name.lower() or "nurture" in name.lower():\n            from apps.conversion.email_sequences.email_nurture import get_email_nurture_engine\n            eng = get_email_nurture_engine()\n            await eng._load()\n            return {"status": "done", "analytics": eng.sequence_analytics()}\n        if "landing" in name.lower():\n            from apps.conversion.landing_pages.landing_page_engine import get_landing_page_engine\n            eng = get_landing_page_engine()\n            await eng._load()\n            return {"status": "done", "stats": eng.page_stats()}\n        return {"status": "done", "name": name}\n\n    async def _retention_op(self, name: str) -> dict:\n        from apps.business.crm.retention import get_retention_engine\n        from apps.business.crm.crm_engine import get_crm_engine\n        engine = get_retention_engine()\n        crm = get_crm_engine()\n        at_risk = await crm.high_risk_customers()\n        candidates = await crm.retention_candidates()\n        all_customers = list({c.customer_id: c for c in at_risk + candidates}.values())\n        customer_dicts = [\n            {\n                "email": c.email,\n                "name": c.name,\n                "segment": (c.segments[0] if c.segments else ""),\n                "total_spent_usd": c.total_spent_usd,\n                "last_purchase_ts": c.last_purchase_ts,\n                "churn_risk": c.churn_risk.value if hasattr(c.churn_risk, "value") else str(c.churn_risk),\n            }\n            for c in all_customers[:100]\n        ]\n        win_back = await engine.run_win_back(customer_dicts)\n        loyalty = await engine.run_loyalty_rewards(customer_dicts)\n        return {\n            "status": "done",\n            "win_back_targeted": win_back.get("targeted", 0),\n            "loyalty_targeted": loyalty.get("targeted", 0),\n        }\n\n    async def _market_op(self, name: str) -> dict:\n        if "pricing" in name.lower():\n            from apps.market.pricing.pricing_intelligence import get_pricing_intelligence\n            eng = get_pricing_intelligence()\n            await eng._load()\n            return {"status": "done", "dashboard": eng.pricing_dashboard()}\n        return {"status": "done", "name": name}\n\n    async def _learning_op(self, name: str) -> dict:\n        if "ROI" in name or "economic" in name.lower():\n            from apps.memory.economic.economic_memory import get_economic_memory\n            eng = get_economic_memory()\n            await eng._load()\n            return {"status": "done", "summary": eng.memory_summary()}\n        if "content calendar" in name.lower():\n            from apps.video.youtube.youtube_engine import get_youtube_engine\n            eng = get_youtube_engine()\n            await eng._load()\n            return {"status": "done", "analytics": eng.channel_analytics()}\n        return {"status": "done", "name": name}\n\n    async def run(self, max_ops: int = len(ALL_OPS)) -> DailyBusinessReport:\n        """\n        Execute the full daily business loop.\n        Runs all operations, tracks results, produces economic report.\n        """\n        await self._load()\n        today = datetime.utcnow().strftime("%Y-%m-%d")\n        ops = self.build_daily_ops()[:max_ops]\n\n        report = DailyBusinessReport(date=today, ops_total=len(ops))\n        completed = failed = 0\n        direct_count = content_count = leads_count = outreach_count = shopify_count = funnel_count = 0\n\n        for op in ops:\n            op = await self.execute_operation(op)\n            if op.status == "done":\n                completed += 1\n                if op.revenue_impact == "direct":\n                    direct_count += 1\n                if op.category == "distribution":\n                    content_count += 1\n                if "leads" in op.name.lower() or "Discover" in op.name:\n                    leads_count += op.result.get("analytics", {}).get("total_leads", 0)\n                if "outreach" in op.name.lower():\n                    outreach_count += 10  # each outreach op = 10 messages\n                if op.category == "shopify":\n                    shopify_count += 1\n                if op.category == "conversion" and "funnel" in op.name.lower():\n                    funnel_count += 1\n            else:\n                failed += 1\n\n        report.ops_completed = completed\n        report.ops_failed = failed\n        report.direct_revenue_ops = direct_count\n        report.content_pieces_generated = content_count\n        report.leads_discovered = leads_count\n        report.outreach_sent = outreach_count\n        report.shopify_optimizations = shopify_count\n        report.funnels_optimized = funnel_count\n        report.execution_score = round(completed / max(len(ops), 1), 3)\n\n        ai = get_ai_client()\n        try:\n            resp = await ai.complete(\n                system="You are ARIA's strategic advisor. Give one specific insight and one tomorrow priority based on today's execution.",\n                user=(\n                    f"Date: {today}. Completed: {completed}/{len(ops)} ops. "\n                    f"Content pieces: {content_count}. Leads: {leads_count}. Outreach: {outreach_count}. "\n                    "One insight and one priority for tomorrow (be specific)."\n                ),\n                model=AIModel.FAST,\n                max_tokens=150,\n            )\n            if resp.success:\n                lines = [l.strip() for l in resp.content.strip().split("\\n") if l.strip()]\n                report.top_insight = lines[0] if lines else "Execute consistently — compound growth rewards daily action."\n                report.tomorrow_priority = lines[1] if len(lines) > 1 else "Increase outreach volume by 50%."\n        except Exception:\n            pass\n\n        if not report.top_insight:\n            report.top_insight = f"Completed {completed} of {len(ops)} operations today — execution score {report.execution_score:.0%}."\n        if not report.tomorrow_priority:\n            report.tomorrow_priority = "Prioritize content distribution and outreach for maximum reach."\n\n        self._reports.append(report.to_dict())\n        await self._save()\n        return report\n\n    async def run_morning_session(self) -> list[BusinessOperation]:\n        """Run just the morning content + discovery operations."""\n        await self._load()\n        ops = []\n        for name, category, revenue_impact in _MORNING_OPS:\n            op = BusinessOperation(name=name, category=category, revenue_impact=revenue_impact)\n            op = await self.execute_operation(op)\n            ops.append(op)\n        await self._save()\n        return ops\n\n    async def run_midday_session(self) -> list[BusinessOperation]:\n        """Run midday outreach + optimization operations."""\n        await self._load()\n        ops = []\n        for name, category, revenue_impact in _MIDDAY_OPS:\n            op = BusinessOperation(name=name, category=category, revenue_impact=revenue_impact)\n            op = await self.execute_operation(op)\n            ops.append(op)\n        await self._save()\n        return ops\n\n    async def generate_status_report(self) -> dict:\n        """Lightweight status report from current state."""\n        await self._load()\n        today = datetime.utcnow().strftime("%Y-%m-%d")\n        today_ops = [o for o in self._op_history if o.get("completed_at", 0) > time.time() - 86400]\n        done = sum(1 for o in today_ops if o.get("status") == "done")\n        return {\n            "date": today,\n            "ops_today": len(today_ops),\n            "ops_done": done,\n            "ops_failed": len(today_ops) - done,\n            "execution_score": round(done / max(len(today_ops), 1), 3),\n            "total_reports": len(self._reports),\n            "last_report_date": self._reports[-1].get("date", "never") if self._reports else "never",\n        }\n\n    def loop_stats(self) -> dict:\n        total_ops = len(self._op_history)\n        done_ops = sum(1 for o in self._op_history if o.get("status") == "done")\n        by_category: dict = {}\n        for o in self._op_history:\n            cat = o.get("category", "unknown")\n            by_category[cat] = by_category.get(cat, 0) + 1\n        return {\n            "total_ops_executed": total_ops,\n            "success_rate_pct": round(done_ops / max(total_ops, 1) * 100, 1),\n            "total_reports": len(self._reports),\n            "by_category": by_category,\n            "daily_op_count": len(ALL_OPS),\n        }\n\n    def recent_reports(self, limit: int = 7) -> list[dict]:\n        return sorted(self._reports, key=lambda r: r.get("created_at", 0), reverse=True)[:limit]\n\n\n# ── Singleton ─────────────────────────────────────────────────────────────────\n_instance: Optional[DailyBusinessLoop] = None\n\n\ndef get_daily_business_loop() -> DailyBusinessLoop:\n    global _instance\n    if _instance is None:\n        _instance = DailyBusinessLoop()\n    return _instance\n
+"""
+ARIA AI — Daily Business Loop
+Phase 13: THE autonomous daily operating engine.
+
+Every 24 hours ARIA executes as a complete business:
+  - Distributes content across all platforms
+  - Publishes SEO blog posts
+  - Generates TikTok/Reels/Shorts scripts
+  - Discovers and scores new leads
+  - Sends personalized outreach
+  - Runs funnel optimizations
+  - Analyzes economic performance
+  - Adapts strategy based on what converts
+
+This loop runs WITHOUT manual intervention.
+ARIA operates like a business, not a research lab.
+"""
+from __future__ import annotations
+
+import time
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Optional
+
+from apps.core.memory.redis_client import get_cache
+from apps.core.tools.ai_client import get_ai_client, AIModel
+
+_KEY = "runtime:business_loop:v1"
+_TTL = 86400 * 90
+
+
+# ── Business cycle definition ─────────────────────────────────────────────────
+
+# Each operation: (name, category, revenue_impact: "direct"|"indirect"|"learning")
+_MORNING_OPS = [
+    ("Generate 3 TikTok/Reels scripts", "distribution", "direct"),
+    ("Write 1 SEO blog post", "distribution", "direct"),
+    ("Schedule LinkedIn authority post", "distribution", "direct"),
+    ("Create Twitter/X thread", "distribution", "direct"),
+    ("Discover 10 new leads", "acquisition", "direct"),
+    ("Score and qualify leads", "acquisition", "direct"),
+]
+
+_MIDDAY_OPS = [
+    ("Send 10 outreach messages", "acquisition", "direct"),
+    ("Advance CRM pipeline contacts", "acquisition", "direct"),
+    ("Run Shopify product SEO batch", "shopify", "direct"),
+    ("Generate upsell offers", "shopify", "direct"),
+    ("Optimize active funnels", "conversion", "direct"),
+    ("Run abandoned cart recovery", "conversion", "direct"),
+]
+
+_AFTERNOON_OPS = [
+    ("Analyze pricing vs competitors", "market", "indirect"),
+    ("Generate email nurture sequence", "conversion", "indirect"),
+    ("Run landing page A/B test generation", "conversion", "indirect"),
+    ("Run customer retention campaigns", "retention", "direct"),
+    ("Extract economic insights", "learning", "learning"),
+    ("Update ROI patterns", "learning", "learning"),
+    ("Generate content calendar for tomorrow", "planning", "learning"),
+]
+
+ALL_OPS = _MORNING_OPS + _MIDDAY_OPS + _AFTERNOON_OPS
+
+
+@dataclass
+class BusinessOperation:
+    op_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    name: str = ""
+    category: str = ""
+    revenue_impact: str = "indirect"
+    status: str = "pending"
+    result: dict = field(default_factory=dict)
+    started_at: float = 0.0
+    completed_at: float = 0.0
+    duration_seconds: float = 0.0
+    error: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "op_id": self.op_id,
+            "name": self.name,
+            "category": self.category,
+            "revenue_impact": self.revenue_impact,
+            "status": self.status,
+            "result": self.result,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "duration_seconds": self.duration_seconds,
+            "error": self.error,
+        }
+
+
+@dataclass
+class DailyBusinessReport:
+    report_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    date: str = ""
+    ops_total: int = 0
+    ops_completed: int = 0
+    ops_failed: int = 0
+    direct_revenue_ops: int = 0
+    content_pieces_generated: int = 0
+    leads_discovered: int = 0
+    outreach_sent: int = 0
+    shopify_optimizations: int = 0
+    funnels_optimized: int = 0
+    top_insight: str = ""
+    tomorrow_priority: str = ""
+    execution_score: float = 0.0
+    created_at: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict:
+        return {
+            "report_id": self.report_id,
+            "date": self.date,
+            "ops_total": self.ops_total,
+            "ops_completed": self.ops_completed,
+            "ops_failed": self.ops_failed,
+            "direct_revenue_ops": self.direct_revenue_ops,
+            "content_pieces_generated": self.content_pieces_generated,
+            "leads_discovered": self.leads_discovered,
+            "outreach_sent": self.outreach_sent,
+            "shopify_optimizations": self.shopify_optimizations,
+            "funnels_optimized": self.funnels_optimized,
+            "top_insight": self.top_insight,
+            "tomorrow_priority": self.tomorrow_priority,
+            "execution_score": self.execution_score,
+            "created_at": self.created_at,
+        }
+
+
+class DailyBusinessLoop:
+    """
+    ARIA's autonomous daily business engine.
+
+    Executes the full business cycle every day:
+    morning (content + discovery) → midday (outreach + optimization) →
+    afternoon (analysis + planning) → report.
+
+    State persisted in Redis (key: runtime:business_loop:v1, TTL 90d).
+    """
+
+    def __init__(self) -> None:
+        self._reports: list[dict] = []
+        self._op_history: list[dict] = []
+        self._loaded = False
+
+    async def _load(self) -> None:
+        if not self._loaded:
+            try:
+                cache = get_cache()
+                data = await cache.get(_KEY)
+                if isinstance(data, dict):
+                    self._reports = data.get("reports", [])
+                    self._op_history = data.get("op_history", [])
+            except Exception:
+                pass
+            self._loaded = True
+
+    async def _save(self) -> None:
+        try:
+            cache = get_cache()
+            await cache.set(
+                _KEY,
+                {"reports": self._reports[-90:], "op_history": self._op_history[-1000:]},
+                ttl_seconds=_TTL,
+            )
+        except Exception:
+            pass
+
+    def build_daily_ops(self) -> list[BusinessOperation]:
+        """Build today's full operation queue from all business cycles."""
+        ops = []
+        for name, category, revenue_impact in ALL_OPS:
+            ops.append(BusinessOperation(
+                name=name,
+                category=category,
+                revenue_impact=revenue_impact,
+            ))
+        return ops
+
+    async def execute_operation(self, op: BusinessOperation) -> BusinessOperation:
+        """Execute a single business operation and return result."""
+        op.started_at = time.time()
+        op.status = "running"
+
+        try:
+            result = await self._run(op)
+            op.result = result
+            op.status = "done"
+        except Exception as exc:
+            op.status = "failed"
+            op.error = str(exc)
+            op.result = {}
+
+        op.completed_at = time.time()
+        op.duration_seconds = round(op.completed_at - op.started_at, 3)
+        self._op_history.append(op.to_dict())
+        return op
+
+    async def _run(self, op: BusinessOperation) -> dict:
+        """Dispatch operation to the correct system."""
+        name = op.name
+        category = op.category
+
+        if category == "distribution":
+            return await self._distribution_op(name)
+        if category == "acquisition":
+            return await self._acquisition_op(name)
+        if category == "shopify":
+            return await self._shopify_op(name)
+        if category == "conversion":
+            return await self._conversion_op(name)
+        if category == "market":
+            return await self._market_op(name)
+        if category == "retention":
+            return await self._retention_op(name)
+        if category in ("learning", "planning"):
+            return await self._learning_op(name)
+        return {"status": "no_handler"}
+
+    async def _distribution_op(self, name: str) -> dict:
+        if "TikTok" in name or "Reels" in name:
+            from apps.distribution.tiktok.tiktok_engine import get_tiktok_engine
+            eng = get_tiktok_engine()
+            scripts = await eng.batch_generate(
+                topics=["AI productivity tools", "make money online 2024", "passive income ideas"],
+                niche="digital_products",
+            )
+            return {"status": "done", "scripts_generated": len(scripts), "titles": [s.topic for s in scripts]}
+        if "blog" in name.lower():
+            from apps.distribution.blog.blog_publisher import get_blog_publisher
+            eng = get_blog_publisher()
+            post = await eng.write_post(
+                topic="AI tools for income generation",
+                target_keyword="best AI tools to make money",
+                target_audience="entrepreneurs and solopreneurs",
+                word_target=1200,
+            )
+            return {"status": "done", "post_title": post.title, "word_count": post.word_count, "seo_score": post.seo_score}
+        if "LinkedIn" in name:
+            from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+            eng = get_linkedin_publisher()
+            post = await eng.create_post(
+                topic="AI automation for small businesses",
+                objective="thought_leadership",
+            )
+            return {"status": "done", "post_id": post.post_id, "word_count": post.word_count}
+        if "Twitter" in name:
+            from apps.distribution.twitter.twitter_engine import get_twitter_engine
+            eng = get_twitter_engine()
+            thread = await eng.create_thread(
+                topic="How to generate passive income with AI in 2024",
+                num_tweets=7,
+            )
+            return {"status": "done", "tweets": thread.total_tweets, "topic": "AI passive income"}
+        return {"status": "done", "name": name}
+
+    async def _acquisition_op(self, name: str) -> dict:
+        if "leads" in name.lower() or "Discover" in name:
+            from apps.acquisition.leads.lead_engine import get_lead_engine
+            eng = get_lead_engine()
+            leads = await eng.discover_leads("ecommerce", count=10)
+            return {"status": "done", "leads_discovered": len(leads), "niches": list({l.niche for l in leads})}
+        if "Score" in name or "qualify" in name.lower():
+            from apps.acquisition.leads.lead_engine import get_lead_engine
+            eng = get_lead_engine()
+            await eng._load()
+            qualified = eng.qualified_leads()
+            return {"status": "done", "qualified_count": len(qualified)}
+        if "outreach" in name.lower() or "CRM" in name:
+            from apps.acquisition.outreach.outreach_sequencer import get_outreach_sequencer
+            sequencer = get_outreach_sequencer()
+            await sequencer._load()
+            due = sequencer.contacts_due_today()[:10]
+            advanced = 0
+            for c in due:
+                if sequencer.advance_contact(c.get("contact_id", "")):
+                    advanced += 1
+            if advanced > 0:
+                await sequencer._save()
+            return {"status": "done", "contacts_advanced": advanced, "due_count": len(due)}
+        return {"status": "done", "name": name}
+
+    async def _shopify_op(self, name: str) -> dict:
+        if "SEO" in name:
+            from apps.shopify.seo.product_seo import get_product_seo_optimizer
+            eng = get_product_seo_optimizer()
+            await eng._load()
+            return {"status": "done", "stats": eng.seo_stats()}
+        if "upsell" in name.lower():
+            from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+            eng = get_shopify_funnel_engine()
+            await eng._load()
+            return {"status": "done", "stats": eng.funnel_stats()}
+        return {"status": "done", "name": name}
+
+    async def _conversion_op(self, name: str) -> dict:
+        if "funnel" in name.lower():
+            from apps.conversion.funnels.funnel_engine import get_funnel_engine
+            eng = get_funnel_engine()
+            await eng._load()
+            return {"status": "done", "analytics": eng.funnel_analytics()}
+        if "cart" in name.lower():
+            from apps.conversion.sms.sms_capture import get_sms_capture_engine
+            eng = get_sms_capture_engine()
+            await eng._load()
+            return {"status": "done", "stats": eng.capture_stats()}
+        if "email" in name.lower() or "nurture" in name.lower():
+            from apps.conversion.email_sequences.email_nurture import get_email_nurture_engine
+            eng = get_email_nurture_engine()
+            await eng._load()
+            return {"status": "done", "analytics": eng.sequence_analytics()}
+        if "landing" in name.lower():
+            from apps.conversion.landing_pages.landing_page_engine import get_landing_page_engine
+            eng = get_landing_page_engine()
+            await eng._load()
+            return {"status": "done", "stats": eng.page_stats()}
+        return {"status": "done", "name": name}
+
+    async def _retention_op(self, name: str) -> dict:
+        from apps.business.crm.retention import get_retention_engine
+        from apps.business.crm.crm_engine import get_crm_engine
+        engine = get_retention_engine()
+        crm = get_crm_engine()
+        at_risk = await crm.high_risk_customers()
+        candidates = await crm.retention_candidates()
+        all_customers = list({c.customer_id: c for c in at_risk + candidates}.values())
+        customer_dicts = [
+            {
+                "email": c.email,
+                "name": c.name,
+                "segment": (c.segments[0] if c.segments else ""),
+                "total_spent_usd": c.total_spent_usd,
+                "last_purchase_ts": c.last_purchase_ts,
+                "churn_risk": c.churn_risk.value if hasattr(c.churn_risk, "value") else str(c.churn_risk),
+            }
+            for c in all_customers[:100]
+        ]
+        win_back = await engine.run_win_back(customer_dicts)
+        loyalty = await engine.run_loyalty_rewards(customer_dicts)
+        return {
+            "status": "done",
+            "win_back_targeted": win_back.get("targeted", 0),
+            "loyalty_targeted": loyalty.get("targeted", 0),
+        }
+
+    async def _market_op(self, name: str) -> dict:
+        if "pricing" in name.lower():
+            from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+            eng = get_pricing_intelligence()
+            await eng._load()
+            return {"status": "done", "dashboard": eng.pricing_dashboard()}
+        return {"status": "done", "name": name}
+
+    async def _learning_op(self, name: str) -> dict:
+        if "ROI" in name or "economic" in name.lower():
+            from apps.memory.economic.economic_memory import get_economic_memory
+            eng = get_economic_memory()
+            await eng._load()
+            return {"status": "done", "summary": eng.memory_summary()}
+        if "content calendar" in name.lower():
+            from apps.video.youtube.youtube_engine import get_youtube_engine
+            eng = get_youtube_engine()
+            await eng._load()
+            return {"status": "done", "analytics": eng.channel_analytics()}
+        return {"status": "done", "name": name}
+
+    async def run(self, max_ops: int = len(ALL_OPS)) -> DailyBusinessReport:
+        """
+        Execute the full daily business loop.
+        Runs all operations, tracks results, produces economic report.
+        """
+        await self._load()
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        ops = self.build_daily_ops()[:max_ops]
+
+        report = DailyBusinessReport(date=today, ops_total=len(ops))
+        completed = failed = 0
+        direct_count = content_count = leads_count = outreach_count = shopify_count = funnel_count = 0
+
+        for op in ops:
+            op = await self.execute_operation(op)
+            if op.status == "done":
+                completed += 1
+                if op.revenue_impact == "direct":
+                    direct_count += 1
+                if op.category == "distribution":
+                    content_count += 1
+                if "leads" in op.name.lower() or "Discover" in op.name:
+                    leads_count += op.result.get("analytics", {}).get("total_leads", 0)
+                if "outreach" in op.name.lower():
+                    outreach_count += 10  # each outreach op = 10 messages
+                if op.category == "shopify":
+                    shopify_count += 1
+                if op.category == "conversion" and "funnel" in op.name.lower():
+                    funnel_count += 1
+            else:
+                failed += 1
+
+        report.ops_completed = completed
+        report.ops_failed = failed
+        report.direct_revenue_ops = direct_count
+        report.content_pieces_generated = content_count
+        report.leads_discovered = leads_count
+        report.outreach_sent = outreach_count
+        report.shopify_optimizations = shopify_count
+        report.funnels_optimized = funnel_count
+        report.execution_score = round(completed / max(len(ops), 1), 3)
+
+        ai = get_ai_client()
+        try:
+            resp = await ai.complete(
+                system="You are ARIA's strategic advisor. Give one specific insight and one tomorrow priority based on today's execution.",
+                user=(
+                    f"Date: {today}. Completed: {completed}/{len(ops)} ops. "
+                    f"Content pieces: {content_count}. Leads: {leads_count}. Outreach: {outreach_count}. "
+                    "One insight and one priority for tomorrow (be specific)."
+                ),
+                model=AIModel.FAST,
+                max_tokens=150,
+            )
+            if resp.success:
+                lines = [l.strip() for l in resp.content.strip().split("\n") if l.strip()]
+                report.top_insight = lines[0] if lines else "Execute consistently — compound growth rewards daily action."
+                report.tomorrow_priority = lines[1] if len(lines) > 1 else "Increase outreach volume by 50%."
+        except Exception:
+            pass
+
+        if not report.top_insight:
+            report.top_insight = f"Completed {completed} of {len(ops)} operations today — execution score {report.execution_score:.0%}."
+        if not report.tomorrow_priority:
+            report.tomorrow_priority = "Prioritize content distribution and outreach for maximum reach."
+
+        self._reports.append(report.to_dict())
+        await self._save()
+        return report
+
+    async def run_morning_session(self) -> list[BusinessOperation]:
+        """Run just the morning content + discovery operations."""
+        await self._load()
+        ops = []
+        for name, category, revenue_impact in _MORNING_OPS:
+            op = BusinessOperation(name=name, category=category, revenue_impact=revenue_impact)
+            op = await self.execute_operation(op)
+            ops.append(op)
+        await self._save()
+        return ops
+
+    async def run_midday_session(self) -> list[BusinessOperation]:
+        """Run midday outreach + optimization operations."""
+        await self._load()
+        ops = []
+        for name, category, revenue_impact in _MIDDAY_OPS:
+            op = BusinessOperation(name=name, category=category, revenue_impact=revenue_impact)
+            op = await self.execute_operation(op)
+            ops.append(op)
+        await self._save()
+        return ops
+
+    async def generate_status_report(self) -> dict:
+        """Lightweight status report from current state."""
+        await self._load()
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today_ops = [o for o in self._op_history if o.get("completed_at", 0) > time.time() - 86400]
+        done = sum(1 for o in today_ops if o.get("status") == "done")
+        return {
+            "date": today,
+            "ops_today": len(today_ops),
+            "ops_done": done,
+            "ops_failed": len(today_ops) - done,
+            "execution_score": round(done / max(len(today_ops), 1), 3),
+            "total_reports": len(self._reports),
+            "last_report_date": self._reports[-1].get("date", "never") if self._reports else "never",
+        }
+
+    def loop_stats(self) -> dict:
+        total_ops = len(self._op_history)
+        done_ops = sum(1 for o in self._op_history if o.get("status") == "done")
+        by_category: dict = {}
+        for o in self._op_history:
+            cat = o.get("category", "unknown")
+            by_category[cat] = by_category.get(cat, 0) + 1
+        return {
+            "total_ops_executed": total_ops,
+            "success_rate_pct": round(done_ops / max(total_ops, 1) * 100, 1),
+            "total_reports": len(self._reports),
+            "by_category": by_category,
+            "daily_op_count": len(ALL_OPS),
+        }
+
+    def recent_reports(self, limit: int = 7) -> list[dict]:
+        return sorted(self._reports, key=lambda r: r.get("created_at", 0), reverse=True)[:limit]
+
+
+# ── Singleton ─────────────────────────────────────────────────────────────────
+_instance: Optional[DailyBusinessLoop] = None
+
+
+def get_daily_business_loop() -> DailyBusinessLoop:
+    global _instance
+    if _instance is None:
+        _instance = DailyBusinessLoop()
+    return _instance

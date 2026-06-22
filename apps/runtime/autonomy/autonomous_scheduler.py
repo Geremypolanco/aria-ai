@@ -4021,6 +4021,7 @@ Return JSON:
     async def _brand_monitor(obj: StrategicObjective) -> dict:
         """Search Twitter/Reddit/HN/Dev.to for ARIA mentions, respond to discussions, track brand sentiment."""
         import json as _json
+        from datetime import datetime, timezone
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
@@ -4142,6 +4143,7 @@ Return JSON:
     async def _automated_reporting(obj: StrategicObjective) -> dict:
         """Compile comprehensive 24h performance report: revenue, content, SEO, pipeline, publish to GitHub + Telegram."""
         import json as _json
+        from datetime import datetime, timezone
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
@@ -4301,6 +4303,7 @@ Return JSON:
     async def _deal_closer_bot(obj: StrategicObjective) -> dict:
         """Review warm leads, score by intent, send personalized closing emails, update deal stages in CRM."""
         import json as _json
+        from datetime import datetime, timezone
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
@@ -4420,6 +4423,7 @@ Return JSON:
     async def _content_performance_optimizer(obj: StrategicObjective) -> dict:
         """Audit published content, rewrite weak headlines, update CTAs, add internal links → better conversions."""
         import json as _json
+        from datetime import datetime, timezone
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
@@ -4489,6 +4493,7 @@ Return JSON:
     async def _revenue_diversifier(obj: StrategicObjective) -> dict:
         """Analyze income mix, identify concentration risk, initiate 2 new revenue streams."""
         import json as _json
+        from datetime import datetime, timezone
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
@@ -4569,6 +4574,7 @@ Return JSON:
     async def _skill_upgrader(obj: StrategicObjective) -> dict:
         """Read HuggingFace trending models + AI papers, identify new capabilities for ARIA, generate implementation plans."""
         import json as _json
+        from datetime import datetime, timezone
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
@@ -4638,6 +4644,7 @@ Return JSON:
     async def _viral_growth_agent(obj: StrategicObjective) -> dict:
         """Find what's gaining traction, create variants, amplify top performers across all channels."""
         import json as _json
+        from datetime import datetime, timezone
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
@@ -4754,6 +4761,7 @@ Return JSON:
     async def _market_expansion(obj: StrategicObjective) -> dict:
         """Identify new markets (geo/language/vertical), create localized content and listings, establish beachhead."""
         import json as _json
+        from datetime import datetime, timezone
         try:
             from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
