@@ -1014,6 +1014,87 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] LinkedIn create_post failed: %s", exc)
             return ""
 
+    async def hashnode_publish_article(
+        self,
+        email: str,
+        password: str,
+        title: str,
+        content_markdown: str,
+        tags: list | None = None,
+    ) -> str:
+        """
+        Publish an article to Hashnode via browser.
+        Returns the published article URL or '' on failure.
+        """
+        page = await self._browser.new_page("hashnode")
+        try:
+            await page.goto("https://hashnode.com")
+            if not await page.load_session():
+                await page.goto("https://hashnode.com/login")
+                await page._random_pause("read")
+                await page.type_human("input[name='username']", email)
+                await page.type_human("input[name='password']", password)
+                await page._random_pause("think")
+                await page.click("button[type='submit']")
+                await page._random_pause("navigate")
+                await page.save_session()
+
+            # Navigate to new article
+            await page.goto("https://hashnode.com/draft/new")
+            await page._random_pause("read")
+
+            # Fill title
+            for title_sel in ["textarea[placeholder*='Title']", "div[role='textbox'][data-testid='title']", "input[placeholder*='Title']"]:
+                try:
+                    await page.click(title_sel)
+                    await page._random_pause("action")
+                    await page.type_human(title_sel, title[:150])
+                    break
+                except Exception:
+                    continue
+            await page._random_pause("action")
+
+            # Fill content (Hashnode uses a rich text / markdown editor)
+            for content_sel in [
+                "div.ProseMirror",
+                "div[contenteditable='true']",
+                "div.cm-content",
+                "textarea[placeholder*='content' i]",
+            ]:
+                try:
+                    await page.click(content_sel)
+                    await page._random_pause("action")
+                    await page.type_human(content_sel, content_markdown[:5000])
+                    break
+                except Exception:
+                    continue
+
+            await page._random_pause("think")
+
+            # Publish
+            for pub_sel in [
+                "button:has-text('Publish')",
+                "button[aria-label='Publish']",
+                "button:has-text('Submit')",
+            ]:
+                try:
+                    await page.click(pub_sel)
+                    break
+                except Exception:
+                    continue
+
+            await page._random_pause("navigate")
+            await asyncio.sleep(4)
+            url = page.url
+            if "hashnode.com" in url and ("draft" not in url or "published" in url):
+                logger.info("[HumanBrowser] Hashnode: article published → %s", url)
+                await page.save_session()
+                return url
+            return ""
+        except Exception as exc:
+            logger.warning("[HumanBrowser] Hashnode publish failed: %s", exc)
+            return ""
+
     async def gumroad_create_product(
         self,
         page: HumanPage,

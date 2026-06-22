@@ -987,6 +987,26 @@ JSON:
                     except Exception:
                         pass
 
+                # Hashnode browser fallback when API token absent
+                if not hashnode_urls:
+                    _ae = getattr(settings, "ARIA_EMAIL", None)
+                    _ap = getattr(settings, "ARIA_PASSWORD", None)
+                    if _ae and _ap and existing_articles:
+                        try:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _art0 = existing_articles[0]
+                            _hn_url = await _plat.hashnode_publish_article(
+                                _ae, _ap,
+                                title=_art0.get("title", "")[:150],
+                                content_markdown=_art0.get("content", _art0.get("description", ""))[:5000],
+                                tags=_art0.get("tags", ["ai", "productivity"])[:5],
+                            )
+                            if _hn_url:
+                                hashnode_urls.append(_hn_url)
+                        except Exception:
+                            pass
+
                 # Discord notification for new content
                 discord_url = getattr(settings, "DISCORD_WEBHOOK_URL", None)
                 if discord_url:
@@ -10665,30 +10685,57 @@ JSON:
             except Exception as e:
                 logger.warning("[IncomeLoop] voice_of_aria: Telegram failed: %s", e)
 
-            # Post Twitter snippet if API configured
-            if twitter_snippet and (
-                getattr(settings, "TWITTER_API_KEY", None) and
-                getattr(settings, "TWITTER_ACCESS_TOKEN", None)
-            ):
-                try:
-                    from apps.distribution.publishers.api_publisher import get_api_publisher
-                    pub = get_api_publisher()
-                    r = await pub.publish_to_twitter(twitter_snippet[:280])
-                    if r and r.url:
-                        urls_created.append(r.url)
-                except Exception:
-                    pass
+            # Post Twitter snippet (API → browser fallback)
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            if twitter_snippet:
+                _tw_ok = False
+                if getattr(settings, "TWITTER_API_KEY", None) and getattr(settings, "TWITTER_ACCESS_TOKEN", None):
+                    try:
+                        from apps.distribution.publishers.api_publisher import get_api_publisher
+                        pub = get_api_publisher()
+                        r = await pub.publish_to_twitter(twitter_snippet[:280])
+                        if r and r.success:
+                            _tw_ok = True
+                            if r.url:
+                                urls_created.append(r.url)
+                    except Exception:
+                        pass
+                if not _tw_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _tw_page = await _plat.twitter(_ae, _ap)
+                        _tw_url = await _plat.twitter_thread_post(_tw_page, [twitter_snippet[:280]])
+                        if _tw_url:
+                            urls_created.append(_tw_url)
+                    except Exception:
+                        pass
 
-            # Post LinkedIn snippet if configured
-            if linkedin_snippet and getattr(settings, "LINKEDIN_ACCESS_TOKEN", None):
-                try:
-                    from apps.distribution.publishers.api_publisher import get_api_publisher
-                    pub = get_api_publisher()
-                    r = await pub.publish_to_linkedin(linkedin_snippet[:1300])
-                    if r and r.url:
-                        urls_created.append(r.url)
-                except Exception:
-                    pass
+            # Post LinkedIn snippet (API → browser fallback)
+            if linkedin_snippet:
+                _li_ok = False
+                if getattr(settings, "LINKEDIN_ACCESS_TOKEN", None):
+                    try:
+                        from apps.distribution.publishers.api_publisher import get_api_publisher
+                        pub = get_api_publisher()
+                        r = await pub.publish_to_linkedin(linkedin_snippet[:1300])
+                        if r and r.success:
+                            _li_ok = True
+                            if r.url:
+                                urls_created.append(r.url)
+                    except Exception:
+                        pass
+                if not _li_ok and _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _li_page = await _plat.linkedin(_ae, _ap)
+                        _li_url = await _plat.linkedin_create_post(_li_page, linkedin_snippet[:3000])
+                        if _li_url:
+                            urls_created.append(_li_url)
+                    except Exception:
+                        pass
 
             # Archive to GitHub
             if settings.GITHUB_TOKEN:
