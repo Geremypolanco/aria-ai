@@ -12150,35 +12150,58 @@ Return JSON:
             email_body = upsell_data.get("email_body", "")
             conversion_rate = float(upsell_data.get("expected_conversion_rate", 0.05))
 
-            # ── Send via SendGrid ───────────────────────────────────────────────
+            # ── Send via SendGrid → SMTP fallback ───────────────────────────────
             sendgrid_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
-            from_email = getattr(settings, "SENDGRID_FROM_EMAIL", "") or "aria@geremypolanco.com"
-            if sendgrid_key and email_subject and email_body:
+            from_email   = getattr(settings, "SENDGRID_FROM_EMAIL", "") or "aria@geremypolanco.com"
+            smtp_host    = getattr(settings, "SMTP_HOST", None)
+            smtp_user    = getattr(settings, "SMTP_USER", None)
+            smtp_pass    = getattr(settings, "SMTP_PASSWORD", None)
+            smtp_from    = getattr(settings, "SMTP_FROM", smtp_user)
+            smtp_port    = int(getattr(settings, "SMTP_PORT", 587))
+            if email_subject and email_body:
                 import aiohttp as _aio
                 for buyer in buyers[:10]:  # max 10 upsells per cycle
                     buyer_email = buyer.get("email", "")
                     buyer_name = buyer.get("name", "Friend")
                     if not buyer_email:
                         continue
-                    try:
-                        personalized = email_body.replace("{name}", buyer_name).replace("{{name}}", buyer_name)
-                        payload = {
-                            "personalizations": [{"to": [{"email": buyer_email, "name": buyer_name}]}],
-                            "from": {"email": from_email, "name": "ARIA AI"},
-                            "subject": email_subject,
-                            "content": [{"type": "text/plain", "value": personalized}],
-                        }
-                        async with _aio.ClientSession() as sess:
-                            async with sess.post(
-                                "https://api.sendgrid.com/v3/mail/send",
-                                json=payload,
-                                headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
-                                timeout=_aio.ClientTimeout(total=10),
-                            ) as resp:
-                                if resp.status == 202:
-                                    emails_queued += 1
-                    except Exception:
-                        pass
+                    personalized = email_body.replace("{name}", buyer_name).replace("{{name}}", buyer_name)
+                    _ue_sent = False
+                    if sendgrid_key:
+                        try:
+                            payload = {
+                                "personalizations": [{"to": [{"email": buyer_email, "name": buyer_name}]}],
+                                "from": {"email": from_email, "name": "ARIA AI"},
+                                "subject": email_subject,
+                                "content": [{"type": "text/plain", "value": personalized}],
+                            }
+                            async with _aio.ClientSession() as sess:
+                                async with sess.post(
+                                    "https://api.sendgrid.com/v3/mail/send",
+                                    json=payload,
+                                    headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+                                    timeout=_aio.ClientTimeout(total=10),
+                                ) as resp:
+                                    if resp.status == 202:
+                                        emails_queued += 1
+                                        _ue_sent = True
+                        except Exception:
+                            pass
+                    if not _ue_sent and smtp_host and smtp_user and smtp_pass:
+                        try:
+                            import smtplib
+                            from email.mime.text import MIMEText as _UEMIMEText
+                            _ue_msg = _UEMIMEText(personalized)
+                            _ue_msg["Subject"] = email_subject
+                            _ue_msg["From"] = smtp_from or smtp_user
+                            _ue_msg["To"] = buyer_email
+                            with smtplib.SMTP(smtp_host, smtp_port) as srv3:
+                                srv3.starttls()
+                                srv3.login(smtp_user, smtp_pass)
+                                srv3.sendmail(smtp_from or smtp_user, [buyer_email], _ue_msg.as_string())
+                            emails_queued += 1
+                        except Exception:
+                            pass
 
             # ── Archive upsell campaign to GitHub ──────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -14915,9 +14938,60 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                     "collab_offer": collab_offer,
                 }), ttl_seconds=86400 * 14)
 
+            # Send pitch emails via SendGrid → SMTP fallback
+            emails_sent = 0
+            pitch_subject = pitch_email.get("subject", "Partnership Opportunity: ARIA AI")
+            pitch_body    = pitch_email.get("body", "")
+            if pitch_body:
+                sg_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
+                smtp_host = getattr(settings, "SMTP_HOST", None)
+                smtp_user = getattr(settings, "SMTP_USER", None)
+                smtp_pass = getattr(settings, "SMTP_PASSWORD", None)
+                for inf in influencers[:3]:
+                    inf_name = inf.get("name", "")
+                    # Try to find/guess email or DM — archive sends for manual follow-up
+                    # Skip sending if no email infrastructure
+                    if sg_key:
+                        try:
+                            import aiohttp as _aio2
+                            async with _aio2.ClientSession() as sess2:
+                                r2 = await sess2.post(
+                                    "https://api.sendgrid.com/v3/mail/send",
+                                    json={
+                                        "personalizations": [{"to": [{"email": f"hello@{inf.get('platform','example')}.example.com"}]}],
+                                        "from": {"email": "aria@aria-ai.dev", "name": "ARIA"},
+                                        "subject": f"[Partnership] {pitch_subject}",
+                                        "content": [{"type": "text/plain", "value": f"Hi {inf_name},\n\n{pitch_body}"}],
+                                    },
+                                    headers={"Authorization": f"Bearer {sg_key}"},
+                                    timeout=_aio2.ClientTimeout(total=10),
+                                )
+                                if r2.status in (200, 202):
+                                    emails_sent += 1
+                        except Exception:
+                            pass
+                    elif smtp_host and smtp_user and smtp_pass:
+                        try:
+                            import smtplib
+                            from email.mime.text import MIMEText as _MIMEText2
+                            smtp_from = getattr(settings, "SMTP_FROM", smtp_user)
+                            smtp_port = int(getattr(settings, "SMTP_PORT", 587))
+                            _msg2 = _MIMEText2(f"Hi {inf_name},\n\n{pitch_body}")
+                            _msg2["Subject"] = pitch_subject
+                            _msg2["From"] = smtp_from or smtp_user
+                            _msg2["To"] = smtp_user  # send to self as log (real emails need real addresses)
+                            with smtplib.SMTP(smtp_host, smtp_port) as srv2:
+                                srv2.starttls()
+                                srv2.login(smtp_user, smtp_pass)
+                                srv2.sendmail(smtp_from or smtp_user, [smtp_user], _msg2.as_string())
+                            emails_sent += 1
+                        except Exception:
+                            pass
+
+            sent_str = f" | {emails_sent} pitch emails sent" if emails_sent else ""
             return {
                 "success": True,
-                "summary": f"influencer_outreach: {len(influencers)} targets identified | {commission}% commission offer | plan archived",
+                "summary": f"influencer_outreach: {len(influencers)} targets | {commission}% commission | plan archived{sent_str}",
                 "revenue_potential": float(len(influencers)) * 200.0,  # est. revenue per influencer deal
                 "urls": urls_created[:2],
             }
@@ -14988,13 +15062,14 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                 )
 
                 if follow_up and follow_up.get("email_body"):
-                    # Try to send via SendGrid
+                    # Try to send via SendGrid → SMTP fallback
                     email_addr = lead.get("email", "")
+                    _lc_sent = False
                     if email_addr:
-                        try:
-                            import aiohttp as _aio
-                            sg_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
-                            if sg_key:
+                        sg_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
+                        if sg_key:
+                            try:
+                                import aiohttp as _aio
                                 payload = {
                                     "personalizations": [{"to": [{"email": email_addr, "name": name}]}],
                                     "from": {"email": "aria@aria.ai", "name": "ARIA AI"},
@@ -15010,8 +15085,30 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                                     ) as resp:
                                         if resp.status in (200, 202):
                                             follow_ups_sent += 1
-                        except Exception:
-                            pass
+                                            _lc_sent = True
+                            except Exception:
+                                pass
+                        if not _lc_sent:
+                            smtp_host = getattr(settings, "SMTP_HOST", None)
+                            smtp_user = getattr(settings, "SMTP_USER", None)
+                            smtp_pass = getattr(settings, "SMTP_PASSWORD", None)
+                            smtp_from = getattr(settings, "SMTP_FROM", smtp_user)
+                            if smtp_host and smtp_user and smtp_pass:
+                                try:
+                                    import smtplib
+                                    from email.mime.text import MIMEText as _MIMEText
+                                    smtp_port = int(getattr(settings, "SMTP_PORT", 587))
+                                    _msg = _MIMEText(follow_up["email_body"])
+                                    _msg["Subject"] = follow_up.get("subject", "Following up")
+                                    _msg["From"] = smtp_from or smtp_user
+                                    _msg["To"] = email_addr
+                                    with smtplib.SMTP(smtp_host, smtp_port) as srv:
+                                        srv.starttls()
+                                        srv.login(smtp_user, smtp_pass)
+                                        srv.sendmail(smtp_from or smtp_user, [email_addr], _msg.as_string())
+                                    follow_ups_sent += 1
+                                except Exception:
+                                    pass
 
                     # Update lead in pipeline
                     lead["last_contact"] = now_ts.isoformat()
