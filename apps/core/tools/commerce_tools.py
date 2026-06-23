@@ -288,7 +288,9 @@ class CommerceTools:
         if not shop_url or not token:
             return {"success": False, "error": "Shopify no configurado en el servidor"}
         try:
-            url = f"https://{shop_url}/admin/api/2024-01/products.json"
+            # Normalize URL: strip scheme prefix if present (env var may include https://)
+            _base = shop_url.removeprefix("https://").removeprefix("http://").rstrip("/")
+            url = f"https://{_base}/admin/api/2025-07/products.json"
             headers = {
                 "X-Shopify-Access-Token": token,
                 "Content-Type": "application/json",
@@ -315,7 +317,7 @@ class CommerceTools:
             if res.status_code in (200, 201):
                 product = res.json().get("product", {})
                 product_id = product.get("id")
-                shop_url = f"https://{settings.SHOPIFY_URL}/products/{product.get('handle', '')}"
+                shop_url = f"https://{_base}/products/{product.get('handle', '')}"
                 logger.info("[CommerceTools] Shopify producto creado: %s", product_id)
                 return {
                     "success": True,

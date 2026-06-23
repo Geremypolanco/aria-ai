@@ -2586,7 +2586,7 @@ JSON:
                             _gm_page, prod_title[:100], int(price * 100),
                             product.get("description", "")[:2000],
                         )
-                    _gm_url = await asyncio.wait_for(_sl_gumroad_browser(), timeout=55.0)
+                    _gm_url = await asyncio.wait_for(_sl_gumroad_browser(), timeout=90.0)
                     if _gm_url:
                         return {
                             "success": True,
