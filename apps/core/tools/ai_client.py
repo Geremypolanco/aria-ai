@@ -121,7 +121,7 @@ MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
 }
 
 PROVIDER_TIMEOUTS: dict[AIProvider, float] = {
-    AIProvider.HUGGINGFACE: 35.0,  # HF puede tener cold start — más margen
+    AIProvider.HUGGINGFACE: 15.0,  # cold starts unlikely to resolve after 15s → fall to Groq fast
     AIProvider.GROQ:        12.0,
     AIProvider.OPENAI:      15.0,
     AIProvider.ANTHROPIC:   20.0,

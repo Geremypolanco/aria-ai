@@ -13516,44 +13516,25 @@ Return JSON:
                 total_products = len(raw_catalog or [])
 
             deck_data = await complete_json(
-                f"""You are a YC-trained pitch deck writer. Create a compelling investor pitch for ARIA.
-
-ARIA is an autonomous AI platform that:
-- Runs 24/7 without human intervention
-- Creates and sells digital products automatically
-- Publishes content across all major platforms
-- Manages its own revenue, CRM, and growth
-
-Current traction:
-- Income loop cycles completed: {total_cycles}
-- URLs published: {total_urls}
-- Products in catalog: {total_products}
-- Strategic objectives running: 29
-
-Create a complete 10-slide pitch deck:
-Return JSON:
+                f"""Create a 5-slide investor pitch deck for ARIA AI (autonomous income platform).
+Traction: {total_cycles} cycles, {total_urls} URLs published, {total_products} products.
+Return JSON (keep content fields under 80 words each):
 {{
-  "company_name": "ARIA AI",
-  "tagline": "...",
+  "tagline": "15-word pitch",
   "slides": [
-    {{"slide": 1, "title": "Cover", "headline": "...", "content": "..."}},
-    {{"slide": 2, "title": "Problem", "headline": "...", "content": "..."}},
-    {{"slide": 3, "title": "Solution", "headline": "...", "content": "..."}},
-    {{"slide": 4, "title": "Market Size", "headline": "...", "content": "..."}},
-    {{"slide": 5, "title": "Product", "headline": "...", "content": "..."}},
-    {{"slide": 6, "title": "Traction", "headline": "...", "content": "..."}},
-    {{"slide": 7, "title": "Business Model", "headline": "...", "content": "..."}},
-    {{"slide": 8, "title": "Competition", "headline": "...", "content": "..."}},
-    {{"slide": 9, "title": "Financials", "headline": "...", "content": "..."}},
-    {{"slide": 10, "title": "Ask", "headline": "...", "content": "..."}}
+    {{"slide": 1, "title": "Problem", "headline": "...", "content": "..."}},
+    {{"slide": 2, "title": "Solution", "headline": "...", "content": "..."}},
+    {{"slide": 3, "title": "Traction", "headline": "...", "content": "..."}},
+    {{"slide": 4, "title": "Business Model", "headline": "...", "content": "..."}},
+    {{"slide": 5, "title": "Ask", "headline": "...", "content": "..."}}
   ],
-  "one_liner": "under 15 words elevator pitch",
-  "target_investors": ["type1", "type2", "type3"],
+  "one_liner": "10-word elevator pitch",
+  "target_investors": ["Pre-seed VCs", "AI angels", "Accelerators"],
   "funding_ask_usd": 500000,
   "valuation_usd": 5000000
 }}""",
                 model="fast",
-                max_tokens=2500,
+                max_tokens=1200,
             )
 
             if not deck_data or not deck_data.get("slides"):
@@ -13808,10 +13789,10 @@ Return JSON:
 
             # ── Search for current grant opportunities ────────────────────────
             search_queries = [
-                "AI startup grant 2025 open applications non-dilutive",
-                "tech startup accelerator no equity 2025 apply",
-                "small business AI grant government 2025",
-                "indie hacker grant developer tools startup competition 2025",
+                "AI startup grant 2026 open applications non-dilutive funding",
+                "tech startup accelerator no equity 2026 apply now",
+                "small business AI grant government 2026",
+                "indie hacker developer tools startup competition grant 2026",
             ]
             grant_signals: list[str] = []
             for q in search_queries[:3]:
