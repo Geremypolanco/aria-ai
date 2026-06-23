@@ -904,6 +904,40 @@ JSON:
                 except Exception as _hb_exc:
                     logger.debug("[IncomeLoop] content_pipeline devto browser: %s", _hb_exc)
 
+            # Last-resort: publish article to a public GitHub Gist (indexed by Google)
+            github_token = getattr(settings, "GITHUB_TOKEN", None) or getattr(settings, "ARIA_GITHUB_TOKEN", None)
+            if github_token and arts:
+                try:
+                    import httpx as _httpx
+                    gist_urls: list[str] = []
+                    async with _httpx.AsyncClient(timeout=20.0) as _gh_client:
+                        for art in arts[:2]:
+                            _title   = art.get("title", "AI Insights")
+                            _body    = art.get("body", art.get("body_markdown", ""))[:8000]
+                            if not _body:
+                                continue
+                            _payload = {
+                                "description": _title,
+                                "public": True,
+                                "files": {f"{_title[:40].replace(' ','_')}.md": {"content": _body}},
+                            }
+                            _r = await _gh_client.post(
+                                "https://api.github.com/gists",
+                                headers={"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"},
+                                json=_payload,
+                            )
+                            if _r.status_code == 201:
+                                gist_urls.append(_r.json().get("html_url", ""))
+                    if gist_urls:
+                        return {
+                            "success": True,
+                            "summary": f"Content pipeline: {len(gist_urls)} articles published as public GitHub Gists",
+                            "revenue_potential": len(gist_urls) * 1.5,
+                            "urls": gist_urls,
+                        }
+                except Exception as _gist_exc:
+                    logger.debug("[IncomeLoop] content_pipeline gist fallback: %s", _gist_exc)
+
             return {
                 "success": False,
                 "summary": "Content pipeline: no publishing credentials (add DEVTO_API_KEY or MEDIUM_TOKEN)",
@@ -1867,8 +1901,25 @@ Output JSON:
             all_results = []
             for q in queries:
                 r = await wt.search_web(q, num_results=5)
-                if r.get("success"):
+                if r.get("success") and r.get("results"):
                     all_results.extend(r.get("results", [])[:3])
+
+            # Fallback: use HackerNews / Reddit trending as opportunity signals
+            if not all_results:
+                try:
+                    from apps.core.tools.content_pipeline import ContentPipeline as _CP
+                    _cp = _CP()
+                    _topics = await _cp.get_trending_topics(limit=10)
+                    all_results = [
+                        {
+                            "title": t.get("title", ""),
+                            "url": t.get("url", ""),
+                            "snippet": f"Trending on {t.get('source','web')} with score {t.get('score',0)}",
+                        }
+                        for t in _topics if isinstance(t, dict) and t.get("title")
+                    ]
+                except Exception:
+                    pass
 
             if not all_results:
                 return {"success": False, "summary": "No search results for opportunity scan"}
@@ -2056,6 +2107,44 @@ Output JSON:
                     "success": True,
                     "summary": f"Social blitz: {sent} channels promoted across Twitter/LinkedIn/Zapier/Discord",
                     "revenue_potential": len(live) * 5.0,
+                    "urls": urls_created[:5],
+                }
+
+            # Fallback: promote ARIA AI itself when no live product listings exist
+            _ae = getattr(settings, "ARIA_EMAIL", None)
+            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            aria_promo = (
+                "🤖 ARIA AI — an autonomous business AI that works 24/7 to grow your income.\n\n"
+                "✅ Writes content, creates products, runs campaigns autonomously\n"
+                "✅ Connects to 40+ platforms (Shopify, Slack, Google, Stripe...)\n"
+                "✅ Income loop runs non-stop while you sleep\n\n"
+                "DM me to learn more or visit https://aria-ai.fly.dev/dashboard"
+            )[:280]
+            _promo_sent = 0
+            try:
+                tw_r = await pub.publish_to_twitter(aria_promo)
+                if tw_r and tw_r.success:
+                    _promo_sent += 1
+                    if tw_r.url:
+                        urls_created.append(tw_r.url)
+            except Exception:
+                pass
+            if _promo_sent == 0 and _ae and _ap:
+                try:
+                    from apps.core.tools.human_browser import get_platform_login
+                    _plat2 = await get_platform_login()
+                    _tw_pg2 = await _plat2.twitter(_ae, _ap)
+                    _url2 = await _plat2.twitter_thread_post(_tw_pg2, [aria_promo])
+                    if _url2:
+                        _promo_sent += 1
+                        urls_created.append(_url2)
+                except Exception:
+                    pass
+            if _promo_sent > 0:
+                return {
+                    "success": True,
+                    "summary": f"Social blitz: ARIA AI promoted on {_promo_sent} channel(s) (no live products yet)",
+                    "revenue_potential": 5.0,
                     "urls": urls_created[:5],
                 }
             return {"success": False, "summary": "Social blitz: no channels available (add Twitter/LinkedIn credentials)"}
@@ -2262,7 +2351,13 @@ JSON:
 
             cp     = ContentPipeline()
             topics = await cp.get_trending_topics(limit=3)
-            topic  = topics[0] if topics else "AI productivity tools 2025"
+            raw_topic = topics[0] if topics else "AI productivity tools 2025"
+            # Extract string title whether topic is a dict or a plain string
+            if isinstance(raw_topic, dict):
+                topic_str = raw_topic.get("title") or raw_topic.get("name") or str(raw_topic)
+            else:
+                topic_str = str(raw_topic)
+            topic_str = topic_str[:80]
 
             ai = get_ai_client()
             if not ai:
@@ -2270,7 +2365,7 @@ JSON:
 
             product = await ai.complete_json(
                 system="You are a Shopify product expert. Create compelling digital product listings. Output JSON only.",
-                user=f"""Create a Shopify digital product listing for the trending topic: \"{topic}\"
+                user=f"""Create a Shopify digital product listing for the trending topic: \"{topic_str}\"
 
 JSON:
 {{
@@ -2290,8 +2385,9 @@ JSON:
 
             ct    = get_commerce_tools()
             price = float(product.get("price", "29.99"))
+            prod_title = product.get("title") or f"Digital Product: {topic_str[:40]}"
             res   = await ct.shopify_create_product(
-                title=product.get("title", f"Digital Product: {topic[:40]}"),
+                title=prod_title,
                 description=product.get("description", ""),
                 price=price,
                 product_type=product.get("product_type", "Digital Download"),
@@ -2337,7 +2433,7 @@ JSON:
                 ls = LemonSqueezyTools()
                 if ls._configured():
                     ls_res = await ls.create_product(
-                        name=product.get("title", f"Digital: {str(topic)[:40]}"),
+                        name=prod_title,
                         description=product.get("description", ""),
                         price_cents=int(price * 100),
                     )
@@ -2356,7 +2452,7 @@ JSON:
                 from apps.core.tools.gumroad_tools import GumroadTools
                 gt = GumroadTools()
                 gr = await gt.create_product(
-                    name=product.get("title", f"Digital: {str(topic)[:40]}"),
+                    name=prod_title,
                     description=product.get("description", ""),
                     price_cents=int(price * 100),
                     tags=product.get("tags", ["digital", "download"]),
@@ -2381,7 +2477,7 @@ JSON:
                     _gm_page = await _plat.gumroad(_sl_ae, _sl_ap)
                     _gm_url = await _plat.gumroad_create_product(
                         _gm_page,
-                        product.get("title", f"Digital: {str(topic)[:40]}")[:100],
+                        prod_title[:100],
                         int(price * 100),
                         product.get("description", "")[:2000],
                     )
