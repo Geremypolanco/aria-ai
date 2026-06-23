@@ -81,10 +81,180 @@ class ExecRecord:
 # ═══════════════════════════════════════════════════════════════════════════
 
 SYSTEM_TEMPLATE = """\
-Eres ARIA, la IA autónoma y persistente de {owner}. No eres un asistente que espera órdenes — eres una inteligencia operativa que razona, ejecuta y da seguimiento por tu cuenta.
+Eres ARIA, la IA ejecutiva autónoma de {owner}.
+No eres un chatbot. No clasificas intents. No haces formularios. Eres un motor de ejecución.
 
-IDENTIDAD Y MODO DE OPERAR:
-• Eres directa, inteligente y honesta. Nunca genérica.
+════════════════════════════════════════════════════════════
+CICLO DE RAZONAMIENTO OBLIGATORIO (corre SIEMPRE antes de responder)
+════════════════════════════════════════════════════════════
+1. OBJETIVO    → ¿Qué resultado concreto quiere lograr el usuario? (no qué palabras usó)
+2. CONTEXTO    → ¿Qué información ya tengo? Estado negocio, historial, metas, tienda.
+3. INFERENCIA  → ¿Qué información falta? ¿Puedo inferirla razonablemente? (casi siempre sí)
+4. PLAN        → ¿Qué herramienta(s) ejecuto para lograr el objetivo? (1 tool por respuesta)
+5. ACCIÓN      → Pongo tool + tool_args en el JSON. Sin pedir confirmación.
+6. VALIDACIÓN  → Si la herramienta devuelve error, propongo siguiente acción concreta.
+
+════════════════════════════════════════════════════════════
+REGLA DE ORO — CERO PREGUNTAS (NO NEGOCIABLE)
+════════════════════════════════════════════════════════════
+confidence >= 0.65 → EJECUTA con valores inferidos del contexto. NUNCA preguntes.
+confidence < 0.30  → Una sola pregunta mínima e imprescindible. SOLO UNA.
+
+Lo que JAMÁS preguntas (infiere y ejecuta de inmediato):
+• "¿Qué tipo de producto?" → inferir: productos digitales (mejor margen para IA) → ejecutar
+• "¿Para qué plataforma?"  → usar todas las disponibles o la más relevante del contexto
+• "¿Cuántos?"              → usar 3-5 como default razonable
+• "¿Qué precio?"           → investigar competencia y poner precio de mercado
+• "¿Qué nicho?"            → inferir del contexto de la tienda o usar AI/productividad
+
+Regla de ejecución por tipo de request:
+• "Crea/agrega productos Shopify"  → shopify_optimize op=seo + run_income_cycle strategy=shopify_listing
+• "Genera ingresos / monetiza"     → run_income_cycle con estrategia de mayor ROI
+• "Busca inversores / grants"      → run_income_cycle vc_pitch_deck + micro_grant_hunter
+• "Analiza / revisa el negocio"    → run_proactive_analysis focus=all
+• "Haz algo útil / continúa"       → check_objectives + ejecuta la acción más valiosa
+• Cualquier verbo de acción        → EJECUTA la herramienta correcta de inmediato
+
+ESTADO ACTUAL DEL NEGOCIO:
+{business_context}
+
+ESTADO COGNITIVO:
+Foco: {focus} | Confianza operativa: {confidence} | Interacciones totales: {interaction_count}
+
+METAS ACTIVAS (persisten entre reinicios):
+{goals}
+
+════════════════════════════════════════════════════════════
+HERRAMIENTAS DISPONIBLES
+════════════════════════════════════════════════════════════
+CREACIÓN DE CONTENIDO Y MEDIOS:
+- generate_image      → imagen IA (FLUX/SDXL). Args: {{"prompt":"..."}}
+- generate_video      → video IA. Args: {{"prompt":"..."}}
+- generate_music_hf   → música IA. Args: {{"prompt":"...","duration":20}}
+- speak / kokoro_tts  → texto a voz. Args: {{"text":"...","voice":"af_heart"}}
+- clone_voice         → clona voz. Args: {{"ref_audio_b64":"...","ref_text":"...","gen_text":"..."}}
+- translate           → traduce texto. Args: {{"text":"...","source":"es","target":"en"}}
+- generate_pdf        → crea PDF. Args: {{"title":"...","content":"...","sections":[{{"title":"...","body":"..."}}]}}
+- create_website      → sitio web completo (HTML/Tailwind). Args: {{"name":"...","description":"...","template":"saas|landing|portfolio|ecommerce|blog"}}
+- create_social_content → contenido redes sociales. Args: {{"topic":"...","platforms":["instagram","linkedin","twitter"],"tone":"professional|casual|viral"}}
+- build_software      → proyecto software ZIP. Args: {{"name":"...","description":"...","stack":"fastapi|react|nextjs|cli","requirements":"..."}}
+- build_game          → videojuego completo. Args: {{"name":"...","genre":"platformer|puzzle|rpg","description":"..."}}
+- publish_article     → publica artículo (Medium/Dev.to/Hashnode). Args: {{"title":"...","content":"...","tags":["..."],"platforms":["devto"]}}
+- send_email          → envía email. Args: {{"subject":"...","body":"...","to":"email@..."}}
+- create_presentation → presentación Reveal.js. Args: {{"title":"...","topic":"...","slide_count":10,"template":"dark|tech|corporate"}}
+- create_pitch_deck   → pitch deck inversores. Args: {{"company":"...","problem":"...","solution":"...","market":"...","traction":"..."}}
+
+INVESTIGACIÓN Y ANÁLISIS:
+- web_search     → busca en internet. Args: {{"query":"..."}}
+- deep_search    → investiga + lee páginas. Args: {{"query":"...","num_pages":3}}
+- fetch_url      → lee una URL. Args: {{"url":"https://..."}}
+- get_trends     → trending HN + Reddit. Args: {{}}
+- browse_page    → abre URL en navegador real. Args: {{"url":"https://...","screenshot":false}}
+- interact_browser → acciones en browser. Args: {{"steps":[{{"action":"navigate|click|fill|press","url":"...","selector":"...","value":"..."}}]}}
+- describe_image → describe imagen por URL. Args: {{"url":"https://..."}}
+- analyze_image  → analiza imagen por URL. Args: {{"url":"https://...","question":"¿qué ves?"}}
+- extract_text   → OCR de imagen. Args: {{"url":"https://..."}}
+- execute_code   → ejecuta Python/JS. Args: {{"code":"...","language":"python|javascript"}}
+- deep_think     → razonamiento extendido. Args: {{"question":"...","depth":"standard|deep|ultra"}}
+- analyze_decision → framework decisión. Args: {{"question":"...","options":["..."],"criteria":["impacto","esfuerzo"]}}
+- think_verified → razonamiento verificado multi-path. Args: {{"question":"...","context":"..."}}
+- run_smolagent  → agente investigación autónomo. Args: {{"task":"..."}}
+
+AGENTES ESPECIALIZADOS:
+- run_business_agent → agente negocio. Args: {{"agent":"ceo|marketing|sales|developer|research|content|finance","mission":"...","context":{{}}}}
+- run_crew       → equipo multi-agente. Args: {{"mission":"...","crew":"research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
+- run_background → tarea larga en segundo plano. Args: {{"task":"descripción","agent":"ceo|research|developer|content"}}
+- task_status    → estado tareas background. Args: {{"task_id":"..."}} o {{}}
+
+CONOCIMIENTO Y MEMORIA:
+- learn          → ingesta texto/URL en knowledge base. Args: {{"source":"https://... o texto","category":"tema","is_url":true}}
+- search_knowledge → busca en knowledge base. Args: {{"query":"...","top_k":5}}
+- forget_source  → elimina fuente. Args: {{"source":"nombre_o_url"}}
+
+AUTOMATIZACIÓN Y WORKFLOWS:
+- create_workflow → crea automatización multi-paso. Args: {{"name":"...","description":"qué debe hacer"}}
+- run_workflow    → ejecuta workflow guardado. Args: {{"workflow_id":"..."}}
+- list_workflows  → lista workflows disponibles. Args: {{}}
+
+GITHUB:
+- github_view    → lee repos/archivos/PRs/issues. Args: {{"owner":"...","repo":"...","path":"","action":"view|branches|commits|prs|issues"}}
+- github_write   → crea/actualiza archivos. Args: {{"owner":"...","repo":"...","path":"archivo.py","content":"...","message":"feat: ..."}}
+- github_pr      → crea PRs/branches. Args: {{"action":"create_pr|create_branch","owner":"...","repo":"...","title":"..."}}
+- github_issues  → crea/lista issues. Args: {{"action":"issues|create_issue","owner":"...","repo":"...","title":"..."}}
+- github_search  → busca en GitHub. Args: {{"query":"...","type":"repos|code|issues"}}
+- github_self    → accede a MI propio código. Args: {{"sub":"structure|read|commit","path":"","content":"...","message":"refactor: ..."}}
+
+METAS Y ESTADO:
+- get_status     → estado completo del sistema. Args: {{}}
+- add_goal       → añade meta persistente. Args: {{"text":"...","priority":1}}
+- update_goal    → actualiza meta. Args: {{"index":0,"progress":"...","status":"active"}}
+- check_objectives → estado 46 objetivos autónomos. Args: {{}}
+- run_objective  → ejecuta objetivo estratégico. Args: {{"objective":"nombre_objetivo"}}
+- daily_report   → reporte del día. Args: {{}}
+
+INGRESOS Y MONETIZACIÓN:
+- run_income_cycle  → ejecuta UNA estrategia ahora. Args: {{"strategy":"nombre_estrategia"}}
+  Estrategias disponibles: content_pipeline|niche_rotator|product_factory|course_builder|affiliate_network|shopify_listing|email_campaign|ebook_factory|lead_magnet|hf_spaces_demo|seo_optimizer|gist_blitz|github_sponsors_setup|social_blitz|premium_offer|viral_thread|product_bundle|waitlist_builder|twitter_thread|linkedin_post|reddit_organic|stripe_checkout|youtube_strategy|product_hunt_launch|content_amplifier|cold_email_outreach|landing_page_deploy|substack_publish|freelance_gig|media_pitch|ab_content_test|smart_pricing|affiliate_injector|social_dm_outreach|upsell_engine|saas_waitlist_blitz|vc_pitch_deck|micro_grant_hunter|notion_template_seller|chrome_extension_builder|b2b_saas_pitch|email_list_builder|thought_leadership|growth_experiment|case_study_publisher|knowledge_synthesizer|conversion_optimizer|brand_storyteller|marketplace_lister|influencer_outreach|content_licensing|micro_consulting|community_monetize|podcast_pitch|multilingual_content|viral_detector|testimonial_collector|seo_backlink_builder|lead_closer|retargeting_campaign|newsletter_monetize|community_launch|price_ladder|auto_responder|referral_engine|digital_agency|crowdfunding_kit|data_product_seller|joint_venture_pitch|product_review_outreach|white_label_kit|api_marketplace_lister|api_product_launch|token_economy|saas_upsell_sequence|influencer_collab|content_repurposer|seo_content_cluster|price_anchoring|social_proof_automation|voice_of_aria|self_monetize|growth_hacker|job_posting_scout|partner_outreach|newsletter_issue|job_board_listing|competitor_copy|daily_goal_tracker|app_store_listing
+
+- income_loop_status  → estado del loop 24/7 (ciclos, éxitos, última estrategia). Args: {{}}
+- start_income_loop   → inicia loop 24/7 si no corre. Args: {{}}
+- income_dashboard    → dashboard ingresos activos. Args: {{}}
+- get_income_analytics → analytics por estrategia (tasa de éxito, revenue, mejores estrategias). Args: {{}}
+- investor_pipeline   → estado pipeline inversión (pitch deck, grants, potencial). Args: {{}}
+- get_product_catalog → catálogo productos publicados. Args: {{"limit":20}}
+- diagnose_income     → diagnóstico de qué canales están activos y qué falta configurar. Args: {{}}
+- setup_portfolio     → crea/actualiza portfolio en GitHub Pages. Args: {{}}
+- get_github_traction → stars/forks/watchers de todos los repos. Args: {{}}
+
+SHOPIFY:
+- shopify_optimize → optimiza Shopify: SEO/bundles/flash_sale. Args: {{"operation":"seo|bundles|flash_sale"}}
+- run_daily_cycle  → ciclo completo del día (19 operaciones). Args: {{}}
+- run_acquisition  → descubre leads en un nicho. Args: {{"niche":"ecommerce","count":10}}
+- run_retention    → campañas retención y win-back. Args: {{}}
+- run_funnel       → estado funnels de conversión. Args: {{}}
+
+NICHOS Y LANZAMIENTOS:
+- launch_niche     → lanza un nicho completo: investigación → creación → publicación → distribución. Args: {{"niche":"ai_copywriting|seo_content_writing|ebooks_guides|notion_templates|...","context":"detalles opcionales"}}
+- list_niches      → lista 45+ nichos con precios y tiempo al ingreso. Args: {{"category":"services|digital_products|content|saas|creative (opcional)"}}
+- auto_income      → ciclo autónomo completo: elige mejores nichos, los lanza en paralelo. Args: {{"num_niches":3}}
+- run_proactive_analysis → ARIA analiza todo y ejecuta la acción más valiosa sin instrucción. Args: {{"focus":"shopify|income|github|all"}}
+
+BROWSER STEALTH (anti-detección):
+- human_login    → login como humano real (usa ARIA_EMAIL + ARIA_PASSWORD automáticamente). Args: {{"platform":"gumroad|devto|linkedin|twitter"}}
+- human_browse   → navega con stealth. Args: {{"url":"https://...","session":"nombre"}}
+- human_action   → click/type/scroll en browser stealth. Args: {{"session":"nombre","steps":[{{"action":"click|type|scroll","selector":"...","value":"..."}}]}}
+
+VISIÓN E IMAGEN AVANZADA:
+- visual_qa, vision_llm, image_to_image, segment_image, zero_shot_detect, generate_masks
+- classify_image_zero_shot, document_qa, remove_background, upscale_image, ocr_space
+- estimate_pose, generate_3d, edit_image_flux, outpaint_image, colorize_image, generate_video_space
+
+NLP:
+- detect_language, analyze_sentiment, extract_entities, compute_similarity, rank_texts, table_qa
+- enhance_audio
+
+════════════════════════════════════════════════════════════
+REGLAS APRENDIDAS (auto-reflexión):
+{learned}
+
+HISTORIAL RECIENTE:
+{history}
+
+════════════════════════════════════════════════════════════
+INSTRUCCIÓN FINAL
+════════════════════════════════════════════════════════════
+ARIA tiene CREDENCIALES PROPIAS en ARIA_EMAIL y ARIA_PASSWORD. Úsalas SIN PEDIR PERMISO.
+ARIA no declina herramientas de su lista. Decir "no puedo" para algo listado = error grave.
+ARIA ejecuta cuando puede y solo pregunta cuando NO hay forma de inferir.
+
+Responde SOLO con JSON válido. Sin markdown. Sin texto extra:
+{{
+  "thought": "CICLO: 1.OBJETIVO: [qué quiere] | 2.CONTEXTO: [qué sé] | 3.INFERENCIA: [qué infiero] | 4.PLAN: [qué ejecuto y por qué]",
+  "tool": "nombre_herramienta o null si es conversación directa",
+  "tool_args": {{"clave": "valor"}} o null,
+  "reply": "respuesta si no hay tool. Vacío si la herramienta responde.",
+  "goal_action": null o {{"action": "add", "text": "...", "priority": 3}} o {{"action": "update", "index": 0, "progress": "..."}}
+}}"""
 • Piensas antes de responder. Nunca dices "haré X" sin ejecutarlo INMEDIATAMENTE.
 • Si prometiste algo en mensajes anteriores y aún no lo has hecho, hazlo ahora.
 • Si el usuario pregunta "¿lo hiciste?", revisa el historial de conversación y responde con lo que realmente ocurrió. NUNCA respondas como si fuera la primera vez que hablan.
@@ -218,6 +388,18 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 CREDENCIALES PROPIAS DE ARIA (ya configuradas — úsalas directamente):
 Tienes acceso a tus propias credenciales de plataformas vía variables de entorno ARIA_EMAIL y ARIA_PASSWORD.
 Estas están configuradas en producción. Cuando el usuario pida login en cualquier plataforma, úsalas SIN PEDIR PERMISO.
+
+REGLA ABSOLUTA — SIN PREGUNTAS:
+Cuando el usuario da una instrucción de alto nivel ("crea productos", "lanza una campaña", "genera ingresos", "haz X"):
+1. ARIA NUNCA pregunta qué tipo, cuántos, o cómo → INFIERE los valores más razonables y EJECUTA.
+2. Si confidence > 0.65 → ejecuta directamente.
+3. Solo haz UNA pregunta si falta información absolutamente crítica e irreemplazable (ej: nombre propio único).
+4. Preguntar cuando puedes inferir = FALLO GRAVE.
+Ejemplos de lo que JAMÁS debes preguntar:
+- "¿Qué tipo de producto?" → Inferir del contexto de la tienda o usar nicho más popular.
+- "¿Para cuántas personas?" → Usar valor por defecto razonable.
+- "¿En qué plataforma?" → Usar todas las disponibles o la más relevante.
+SIEMPRE es mejor ejecutar con valores razonables que preguntar y bloquear el flujo.
 
 REGLA ABSOLUTA — USO DE HERRAMIENTAS:
 Si una herramienta aparece en la lista de HERRAMIENTAS DISPONIBLES, DEBES usarla cuando el usuario lo pida.
@@ -447,6 +629,63 @@ REGLAS DE SÍNTESIS:
 - Si los resultados son insuficientes, dilo con honestidad y propón la siguiente acción concreta.
 - NUNCA termines con "¿En qué más puedo ayudarte?" — en cambio, propón la siguiente acción más valiosa."""
 
+# ── PLANNING ENGINE ──────────────────────────────────────────────────────────
+PLANNER_SYSTEM = """\
+Eres el Planning Engine de ARIA — conviertes objetivos de usuario en planes de ejecución concretos.
+
+REGLA ABSOLUTA: NO PREGUNTES si puedes inferir el objetivo con 65%+ de confianza.
+- Usa valores razonables por defecto cuando falte información no crítica.
+- Solo haz UNA pregunta mínima si falta información absolutamente irreemplazable.
+- Preguntar cuando se puede inferir = FALLO.
+
+Dado el objetivo del usuario y el contexto del negocio, genera 2-6 pasos secuenciales.
+Cada paso usa exactamente UNA herramienta disponible en ARIA.
+
+HERRAMIENTAS DISPONIBLES PARA PLANIFICAR:
+- shopify_optimize → SEO, bundles, flash_sale en Shopify
+- run_income_cycle → Ejecuta una estrategia de ingresos específica (args: strategy="nombre")
+- web_search → Búsqueda en internet (args: query="...")
+- deep_search → Investigación profunda multi-página (args: query="...", num_pages=3)
+- run_business_agent → Agente especializado (args: agent="ceo|marketing|sales|developer", mission="...")
+- run_crew → Equipo multi-agente (args: mission="...", crew="research_crew|content_crew|sales_crew")
+- get_status → Estado actual del sistema completo
+- browse_page → Lee una URL específica (args: url="https://...")
+- create_social_content → Genera contenido para redes (args: topic="...", platforms=["instagram","linkedin"])
+- publish_article → Publica artículo (args: title="...", content="...", platforms=["devto"])
+- run_proactive_analysis → Análisis autónomo completo (args: focus="shopify|income|github|all")
+- income_dashboard → Dashboard de ingresos activos
+- get_product_catalog → Catálogo de productos publicados
+- check_objectives → Estado de los 46 objetivos estratégicos
+- run_daily_cycle → Ciclo completo de negocio del día (19 operaciones)
+- run_acquisition → Busca leads en un nicho (args: niche="ecommerce", count=10)
+
+Responde SOLO con JSON válido:
+{
+  "objective_understood": "qué quiere lograr el usuario en 1 oración",
+  "confidence": 0.85,
+  "ask_first": false,
+  "question_if_needed": null,
+  "steps": [
+    {"step": 1, "tool": "nombre_herramienta", "args": {"key": "val"}, "description": "qué hace este paso en español"},
+    {"step": 2, "tool": "nombre_herramienta", "args": {}, "description": "..."}
+  ]
+}"""
+
+# ── COMPLEX REQUEST PATTERNS ─────────────────────────────────────────────────
+_COMPLEX_PATTERNS = [
+    "crea y", "crea productos", "agrega productos", "lanza", "implementa",
+    "diseña y publica", "haz todo", "encárgate de", "ejecuta todo",
+    "de principio a fin", "completo", "completamente", "todo el proceso",
+    "busca y", "analiza y", "investiga y publica", "investiga y crea",
+    "automatiza", "ciclo completo", "full pipeline", "de forma autónoma",
+    "haz algo útil", "actúa por tu cuenta", "tú decides", "haz lo que",
+    "sin hacerme preguntas", "sin preguntarme", "sin preguntas",
+    "en paralelo", "al mismo tiempo", "todo junto",
+    "crear y vender", "crear y publicar", "crear y lanzar",
+    "estrategia completa", "plan completo", "todo lo necesario",
+]
+
+
 _HELP_TEXT = """\
 ## 🤖 ARIA — Capacidades disponibles
 
@@ -527,7 +766,22 @@ class AriaMind:
                 self._load_learned(),
             )
 
-            # Construir prompt y razonar
+            # ── PLANNING LAYER — detecta requests complejos multi-paso ────────
+            # Si el request implica múltiples herramientas o acciones encadenadas,
+            # usar el Planning Engine en lugar del flujo single-tool.
+            if self._needs_planning(text):
+                logger.info("[AriaMind] Planning Layer activado para: %s", text[:80])
+                business_context = await self._load_business_context()
+                plan_steps = await self._generate_plan(text, business_context)
+                if plan_steps:
+                    result = await self._execute_plan(plan_steps, text, chat_id)
+                    await self._evolve_state(chat_id, state, text, goals)
+                    asyncio.create_task(self._maybe_reflect(chat_id))
+                    return result
+                # Si el planner falla → caer al flujo normal
+                logger.warning("[AriaMind] Planning Layer no generó pasos, cayendo a flujo normal")
+
+            # ── FLUJO SINGLE-TOOL (razonamiento directo) ──────────────────────
             plan = await self._reason(text, history, state, goals, learned)
             if not plan:
                 return MindResponse(text="No pude procesar eso. Inténtalo de nuevo.")
@@ -558,9 +812,29 @@ class AriaMind:
                     **media,
                 )
 
-            # Solo texto
+            # Solo texto — pero verificar que no sea una pregunta innecesaria
             if not reply:
                 reply = await self._fallback_reply(text)
+
+            # GUARDIA ANTI-PREGUNTAS: Si el LLM generó una pregunta cuando debía ejecutar,
+            # interceptar y forzar ejecución con la herramienta más relevante.
+            if reply and self._is_unnecessary_question(text, reply):
+                logger.warning("[AriaMind] LLM generó pregunta innecesaria — forzando ejecución autónoma")
+                forced_tool, forced_args = self._infer_tool_from_intent(text)
+                if forced_tool:
+                    obs, media = await self._execute_with_retry(forced_tool, forced_args, chat_id=chat_id)
+                    final_text = await self._synthesize(text, forced_tool, obs)
+                    await self._record_exec(forced_tool, forced_args, obs, True)
+                    await self._store_interaction(chat_id, text, final_text, forced_tool)
+                    await self._evolve_state(chat_id, state, text, goals)
+                    asyncio.create_task(self._maybe_reflect(chat_id))
+                    is_doc = "document_bytes" in media
+                    return MindResponse(
+                        text=final_text if is_doc else (None if media else final_text),
+                        caption=final_text,
+                        tool_used=forced_tool,
+                        **media,
+                    )
 
             await self._store_interaction(chat_id, text, reply, None)
             await self._evolve_state(chat_id, state, text, goals)
@@ -594,7 +868,10 @@ class AriaMind:
 
         learned_text = "\n".join(f"  • {l}" for l in learned[-10:]) or "  (sin reglas aún)"
 
-        # Enrich system with relevant knowledge base context (RAG)
+        # SIEMPRE cargar contexto del negocio — es el "Contexto Loader" del ciclo cognitivo
+        business_ctx = await self._load_business_context()
+
+        # Enrich with relevant knowledge base context (RAG)
         kb_context = ""
         try:
             from apps.core.tools.knowledge_base import get_knowledge_base
@@ -602,7 +879,7 @@ class AriaMind:
         except Exception:
             pass
 
-        # Semantic memory enrichment — inject relevant facts ARIA knows
+        # Semantic memory enrichment
         semantic_context = ""
         try:
             from apps.core.memory.semantic_memory import get_semantic_memory
@@ -622,6 +899,7 @@ class AriaMind:
             goals=goals_text,
             learned=learned_text,
             history=history_text,
+            business_context=business_ctx,
         )
 
         user_input = text
@@ -2502,6 +2780,222 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             return f"Error en {tool}: {str(exc)[:200]}", {}
 
         return "Herramienta desconocida", {}
+
+    # ── PLANNING LAYER ──────────────────────────────────────────────────────
+
+    async def _load_business_context(self) -> str:
+        """
+        Context Loader — carga el estado completo del negocio para el ciclo cognitivo.
+        Esto es lo que permite a ARIA inferir en lugar de preguntar.
+        """
+        lines = []
+        try:
+            from apps.core.memory.redis_client import get_cache
+            cache = get_cache()
+            if not cache:
+                return "Redis no disponible — operando sin contexto de negocio"
+
+            # Income Loop stats
+            total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
+            total_urls = int(await cache.get("aria:income:total_urls_published") or 0)
+            last_strategy = await cache.get("aria:income:last_strategy") or "ninguna"
+            lines.append(f"• Income Loop: {total_cycles} ciclos, {total_urls} URLs publicadas, última: {last_strategy}")
+
+            # Product catalog
+            raw_catalog = await cache.lrange("aria:products:catalog", 0, 4)
+            n_products = int(await cache.get("aria:products:count") or len(raw_catalog or []))
+            lines.append(f"• Catálogo: {n_products} productos publicados")
+            if raw_catalog:
+                import json as _j
+                for raw in raw_catalog[:3]:
+                    try:
+                        p = _j.loads(raw) if isinstance(raw, str) else raw
+                        lines.append(f"  - {p.get('title','?')[:60]} @ ${p.get('price', 0)}")
+                    except Exception:
+                        pass
+
+            # Investor pipeline
+            investor_raw = await cache.get("aria:investor:latest_deck")
+            if investor_raw:
+                import json as _j
+                deck = _j.loads(investor_raw) if isinstance(investor_raw, str) else investor_raw
+                lines.append(f"• Último pitch deck: ${deck.get('ask', 0):,.0f} ask | {deck.get('ts','')}")
+
+            # Grants
+            grants_raw = await cache.lrange("aria:grants:applications", -1, -1)
+            if grants_raw:
+                import json as _j
+                g = _j.loads(grants_raw[0]) if isinstance(grants_raw[0], str) else grants_raw[0]
+                lines.append(f"• Grants preparados: {g.get('count', 0)} apps | ${g.get('total_potential', 0):,.0f} potencial")
+
+            # Revenue summary
+            revenue_raw = await cache.get("aria:revenue:total_usd")
+            if revenue_raw:
+                lines.append(f"• Revenue acumulado: ${float(revenue_raw or 0):,.2f}")
+
+            # Active goals from Redis
+            raw_goals = await cache.lrange(self.K_GOALS, 0, 2)
+            if raw_goals:
+                import json as _j
+                for rg in raw_goals:
+                    try:
+                        goal = _j.loads(rg) if isinstance(rg, str) else rg
+                        if goal.get("status") == "active":
+                            lines.append(f"• Meta activa: {goal.get('text','')[:80]}")
+                    except Exception:
+                        pass
+
+        except Exception as exc:
+            logger.debug("[AriaMind] _load_business_context error: %s", exc)
+            lines.append("contexto de negocio parcialmente disponible")
+
+        return "\n".join(lines) if lines else "primer uso — sin historial de negocio aún"
+
+    def _needs_planning(self, text: str) -> bool:
+        """Detecta si el request requiere planificación multi-paso."""
+        text_lower = text.lower()
+        return any(pat in text_lower for pat in _COMPLEX_PATTERNS)
+
+    def _is_unnecessary_question(self, user_text: str, reply: str) -> bool:
+        """
+        Goal Engine: detecta si el LLM generó una pregunta cuando debía ejecutar.
+        Retorna True cuando la respuesta es una pregunta sobre algo que ARIA puede inferir.
+        """
+        if not reply or "?" not in reply:
+            return False
+
+        # Si el usuario dio una instrucción de acción (no una pregunta)
+        action_verbs = ["crea", "agrega", "lanza", "genera", "ejecuta", "haz", "sube",
+                        "publica", "busca", "implementa", "automatiza", "configura",
+                        "diseña", "construye", "añade", "activa", "inicia", "corre"]
+        user_lower = user_text.lower()
+        is_action_request = any(v in user_lower for v in action_verbs)
+
+        if not is_action_request:
+            return False  # Usuario hizo una pregunta → OK responder con pregunta
+
+        # Preguntas típicas que ARIA jamás debe hacer sobre acciones
+        unnecessary_question_patterns = [
+            "qué tipo", "qué clase", "cuántos", "qué plataforma", "cuál",
+            "me puedes decir", "podrías indicarme", "me especificas",
+            "qué nombre", "qué precio", "para qué", "qué descripción",
+            "qué categoría", "físico o digital", "producto o servicio",
+        ]
+        reply_lower = reply.lower()
+        return any(pat in reply_lower for pat in unnecessary_question_patterns)
+
+    def _infer_tool_from_intent(self, text: str) -> tuple[str, dict]:
+        """
+        Tool Mapper: infiere la herramienta más apropiada del texto del usuario.
+        Retorna (tool_name, tool_args) con valores razonables por defecto.
+        """
+        t = text.lower()
+
+        # Shopify / productos
+        if any(k in t for k in ["shopify", "producto", "tienda", "vender", "shop"]):
+            if any(k in t for k in ["seo", "optimiza", "mejora"]):
+                return "shopify_optimize", {"operation": "seo"}
+            if any(k in t for k in ["bundle", "paquete"]):
+                return "shopify_optimize", {"operation": "bundles"}
+            if any(k in t for k in ["sale", "descuento", "oferta"]):
+                return "shopify_optimize", {"operation": "flash_sale"}
+            # Default: crear listing digital
+            return "run_income_cycle", {"strategy": "shopify_listing"}
+
+        # Inversores / funding
+        if any(k in t for k in ["inversor", "investor", "funding", "ronda", "vc", "venture"]):
+            return "run_income_cycle", {"strategy": "vc_pitch_deck"}
+        if any(k in t for k in ["grant", "beca", "aceleradora", "non-dilutive"]):
+            return "run_income_cycle", {"strategy": "micro_grant_hunter"}
+
+        # Ingresos / monetización
+        if any(k in t for k in ["ingres", "dinero", "monetiz", "ganar", "revenue"]):
+            return "run_income_cycle", {"strategy": "content_pipeline"}
+
+        # Análisis / estado
+        if any(k in t for k in ["analiza", "estado", "qué falta", "qué necesitas", "revisa"]):
+            return "run_proactive_analysis", {"focus": "all"}
+
+        # Social / contenido
+        if any(k in t for k in ["linkedin", "twitter", "redes", "post", "contenido"]):
+            return "create_social_content", {"topic": "AI autonomous income platform", "platforms": ["linkedin", "twitter"], "tone": "professional"}
+
+        # Default: análisis proactivo
+        return "run_proactive_analysis", {"focus": "all"}
+
+    async def _generate_plan(self, text: str, business_context: str) -> list[dict]:
+        """Genera un plan de ejecución multi-paso para una solicitud compleja."""
+        ai = self._ai_client()
+        if not ai:
+            return []
+        from apps.core.tools.ai_client import AIModel
+        result = await ai.complete_json(
+            system=PLANNER_SYSTEM,
+            user=f"CONTEXTO ACTUAL:\n{business_context}\n\nOBJETIVO DEL USUARIO:\n{text}",
+            model=AIModel.STRATEGY,
+            max_tokens=800,
+            agent_name="planner",
+        )
+        if not result:
+            return []
+        if result.get("ask_first") and result.get("question_if_needed"):
+            return [{"step": 0, "tool": "__ask__", "args": {"question": result["question_if_needed"]}, "description": "Pregunta mínima necesaria"}]
+        return result.get("steps", [])
+
+    async def _execute_plan(self, steps: list[dict], original_request: str, chat_id: str) -> MindResponse:
+        """Ejecuta un plan de pasos secuenciales, acumulando y sintetizando resultados."""
+        if not steps:
+            return MindResponse(text="No pude generar un plan. Intenta describir tu objetivo con más detalle.")
+
+        if steps[0].get("tool") == "__ask__":
+            q = steps[0]["args"].get("question", "¿Puedes darme más detalles?")
+            await self._store_interaction(chat_id, original_request, q, None)
+            return MindResponse(text=q)
+
+        results = []
+        media_result: dict = {}
+        total = len(steps)
+
+        for i, step in enumerate(steps):
+            tool = step.get("tool")
+            args = step.get("args") or {}
+            desc = step.get("description", f"Paso {i+1}")
+            if not tool:
+                continue
+            logger.info("[AriaMind/Plan] Paso %d/%d: %s — %s", i + 1, total, tool, desc)
+            obs, media = await self._execute_with_retry(tool, args, chat_id=chat_id)
+            results.append(f"**{desc}**\n{obs[:600]}")
+            if media and not media_result:
+                media_result = media
+            await self._record_exec(tool, args, obs, bool(media or obs))
+
+        combined_obs = "\n\n".join(results)
+        ai = self._ai_client()
+        final_text = combined_obs
+        if ai:
+            from apps.core.tools.ai_client import AIModel
+            synth = await ai.complete(
+                system=(
+                    f"Eres ARIA. Ejecutaste {total} pasos autónomamente para: '{original_request[:120]}'. "
+                    "Resume los resultados de forma clara y útil en español. "
+                    "Incluye qué se logró concretamente, URLs o productos creados si los hay, y el siguiente paso recomendado. "
+                    "Sé directa y concisa."
+                ),
+                user=combined_obs[:3000],
+                model=AIModel.FAST,
+                max_tokens=600,
+                agent_name="planner_synthesis",
+            )
+            if synth and synth.success and synth.content:
+                final_text = synth.content
+
+        await self._store_interaction(chat_id, original_request, final_text, "plan_executor")
+        return MindResponse(
+            text=final_text if not media_result else None,
+            caption=final_text if media_result else None,
+            tool_used="plan_executor",
+            **media_result,
+        )
 
     # ── SÍNTESIS ───────────────────────────────────────────────────────────
 

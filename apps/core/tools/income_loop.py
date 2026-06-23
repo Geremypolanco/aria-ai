@@ -13632,7 +13632,7 @@ Return JSON (keep content fields under 80 words each):
 
             return {
                 "success": True,
-                "summary": f"vc_pitch_deck: 10 slides | ${funding_ask:,.0f} ask | '{one_liner[:60]}' | LinkedIn + Twitter announced",
+                "summary": f"vc_pitch_deck: 5 slides | ${funding_ask:,.0f} ask | '{one_liner[:60]}' | GitHub archived",
                 "revenue_potential": float(funding_ask) * 0.001,  # 0.1% chance of funding
                 "urls": urls_created[:2],
             }
