@@ -149,8 +149,8 @@ class ProviderHealth:
     last_success_ts: float = field(default_factory=time.time)
     circuit_open: bool = False
     circuit_open_until: float = 0.0
-    _break_after: int = 5
-    _cooldown: float = 30.0
+    _break_after: int = 3
+    _cooldown: float = 60.0
 
     @property
     def success_rate(self) -> float:
@@ -802,8 +802,15 @@ class AriaAIClient:
     # ── UTILIDADES ────────────────────────────────────────
 
     def _get_available_providers(self) -> list[AIProvider]:
-        order = [AIProvider.HUGGINGFACE, AIProvider.GROQ, AIProvider.ANTHROPIC, AIProvider.OPENAI]
-        return [p for p in order if self._health[p].is_available()]
+        base_order = [AIProvider.HUGGINGFACE, AIProvider.GROQ, AIProvider.ANTHROPIC, AIProvider.OPENAI]
+        available = [p for p in base_order if self._health[p].is_available()]
+        # Adaptive ordering: if HF has >= 2 consecutive failures, promote Groq to front
+        # This cuts the 45s HF timeout-waste when HF is in a failure streak
+        hf_failures = self._health[AIProvider.HUGGINGFACE].consecutive_failures
+        if hf_failures >= 2 and AIProvider.GROQ in available and AIProvider.HUGGINGFACE in available:
+            available.remove(AIProvider.GROQ)
+            available.insert(0, AIProvider.GROQ)
+        return available
 
     def _extract_json_safe(self, text: str) -> str:
         text = text.strip()
