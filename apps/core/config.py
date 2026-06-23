@@ -194,6 +194,105 @@ class Settings(BaseSettings):
     SLACK_CLIENT_SECRET: Optional[str] = None
     SLACK_WEBHOOK_URL: Optional[str] = None  # Modo simple: solo webhook URL
 
+    # ── Microsoft / Zoom ──────────────────────────────────
+    MICROSOFT_CLIENT_ID: Optional[str] = None
+    MICROSOFT_CLIENT_SECRET: Optional[str] = None
+    ZOOM_CLIENT_ID: Optional[str] = None
+    ZOOM_CLIENT_SECRET: Optional[str] = None
+
+    # ── CRM ───────────────────────────────────────────────
+    HUBSPOT_CLIENT_ID: Optional[str] = None
+    HUBSPOT_CLIENT_SECRET: Optional[str] = None
+    HUBSPOT_PRIVATE_APP_TOKEN: Optional[str] = None
+    SALESFORCE_CLIENT_ID: Optional[str] = None
+    SALESFORCE_CLIENT_SECRET: Optional[str] = None
+
+    # ── Almacenamiento ────────────────────────────────────
+    DROPBOX_APP_KEY: Optional[str] = None
+    DROPBOX_APP_SECRET: Optional[str] = None
+    BOX_CLIENT_ID: Optional[str] = None
+    BOX_CLIENT_SECRET: Optional[str] = None
+
+    # ── Scheduling ────────────────────────────────────────
+    CALENDLY_CLIENT_ID: Optional[str] = None
+    CALENDLY_CLIENT_SECRET: Optional[str] = None
+    CALCOM_API_KEY: Optional[str] = None
+
+    # ── Diseño ────────────────────────────────────────────
+    FIGMA_CLIENT_ID: Optional[str] = None
+    FIGMA_CLIENT_SECRET: Optional[str] = None
+    FIGMA_API_TOKEN: Optional[str] = None
+
+    # ── E-commerce ────────────────────────────────────────
+    ETSY_CLIENT_ID: Optional[str] = None
+    ETSY_CLIENT_SECRET: Optional[str] = None
+    WOOCOMMERCE_URL: Optional[str] = None
+    WOOCOMMERCE_CONSUMER_KEY: Optional[str] = None
+    WOOCOMMERCE_CONSUMER_SECRET: Optional[str] = None
+    AMAZON_ACCESS_KEY: Optional[str] = None
+    AMAZON_SECRET_KEY: Optional[str] = None
+
+    # ── Analytics ─────────────────────────────────────────
+    MIXPANEL_API_SECRET: Optional[str] = None
+    MIXPANEL_PROJECT_TOKEN: Optional[str] = None
+    AMPLITUDE_API_KEY: Optional[str] = None
+    AMPLITUDE_SECRET_KEY: Optional[str] = None
+    DATADOG_API_KEY: Optional[str] = None
+    DATADOG_APP_KEY: Optional[str] = None
+
+    # ── Email Marketing ───────────────────────────────────
+    KLAVIYO_API_KEY: Optional[str] = None
+    ACTIVECAMPAIGN_URL: Optional[str] = None
+    ACTIVECAMPAIGN_API_KEY: Optional[str] = None
+    CONVERTKIT_API_SECRET: Optional[str] = None
+    BREVO_API_KEY: Optional[str] = None
+    POSTMARK_SERVER_TOKEN: Optional[str] = None
+
+    # ── DevOps ────────────────────────────────────────────
+    NETLIFY_TOKEN: Optional[str] = None
+    CLOUDFLARE_API_TOKEN: Optional[str] = None
+    CLOUDFLARE_ACCOUNT_ID: Optional[str] = None
+    FIREBASE_PROJECT_ID: Optional[str] = None
+    FIREBASE_SERVICE_ACCOUNT_TOKEN: Optional[str] = None
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+
+    # ── CMS ───────────────────────────────────────────────
+    WORDPRESS_URL: Optional[str] = None
+    WORDPRESS_USERNAME: Optional[str] = None
+    WORDPRESS_APP_PASSWORD: Optional[str] = None
+    WEBFLOW_API_TOKEN: Optional[str] = None
+    CONTENTFUL_SPACE_ID: Optional[str] = None
+    CONTENTFUL_DELIVERY_TOKEN: Optional[str] = None
+    CONTENTFUL_MANAGEMENT_TOKEN: Optional[str] = None
+    SANITY_PROJECT_ID: Optional[str] = None
+    SANITY_DATASET: str = "production"
+    SANITY_API_TOKEN: Optional[str] = None
+
+    # ── Media ─────────────────────────────────────────────
+    SPOTIFY_CLIENT_ID: Optional[str] = None
+    SPOTIFY_CLIENT_SECRET: Optional[str] = None
+    TIKTOK_CLIENT_KEY: Optional[str] = None
+    TIKTOK_CLIENT_SECRET: Optional[str] = None
+    TWITCH_CLIENT_ID: Optional[str] = None
+    TWITCH_CLIENT_SECRET: Optional[str] = None
+
+    # ── Gestión de Proyectos ──────────────────────────────
+    ASANA_ACCESS_TOKEN: Optional[str] = None
+    TRELLO_API_KEY: Optional[str] = None
+    TRELLO_TOKEN: Optional[str] = None
+    LINEAR_API_KEY: Optional[str] = None
+    JIRA_URL: Optional[str] = None
+    JIRA_EMAIL: Optional[str] = None
+    JIRA_API_TOKEN: Optional[str] = None
+    MONDAY_API_KEY: Optional[str] = None
+
+    # ── Finanzas ──────────────────────────────────────────
+    QUICKBOOKS_CLIENT_ID: Optional[str] = None
+    QUICKBOOKS_CLIENT_SECRET: Optional[str] = None
+    ALPHA_VANTAGE_API_KEY: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

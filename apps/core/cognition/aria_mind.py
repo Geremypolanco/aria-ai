@@ -242,6 +242,22 @@ NLP:
 - detect_language, analyze_sentiment, extract_entities, compute_similarity, rank_texts, table_qa
 - enhance_audio
 
+CONEXIONES (equivalente MCP de Claude):
+- gmail_list(query=...,max_results=10) | gmail_send(to=...,subject=...,body=...)
+- google_calendar(action=list|create,summary=...,start=...,end=...) | google_drive(query=...,limit=10)
+- indeed_jobs(query=...,location=Remote,max_results=10) | slack_send(message=...,channel=...)
+- ms_mail(action=list|send,to=...,subject=...,body=...) | ms_calendar(action=list|create,subject=...,start=...,end=...)
+- zoom_meetings(action=list|create,topic=...,duration=60) | crm_contacts(platform=hubspot|salesforce,action=list|create,email=...)
+- dropbox_files(action=list|search,path=...) | box_files(action=list|search,query=...)
+- calendly_events(action=list_events|list_types) | figma_files(action=list|get,file_key=...)
+- etsy_listings(action=list|transactions,shop_id=...) | woo_products(action=list|orders)
+- klaviyo_lists | klaviyo_campaign | brevo_contacts(action=list|create,email=...) | brevo_email(to=...,subject=...,html=...)
+- netlify_sites(action=list|deploys|trigger,site_id=...) | cloudflare_zones(action=list|analytics,zone_id=...)
+- wordpress_posts(action=list|create,title=...,content=...,status=draft) | webflow_sites | contentful_entries(content_type=...)
+- spotify_track | spotify_playlists | spotify_search(query=...) | youtube_channel | youtube_videos | tiktok_videos
+- ga_report(property_id=...,metrics=[...],dimensions=[...]) | mixpanel_events(events=[...]) | datadog_metrics(query=...)
+- list_connections | analyze_image_vision(question=...)
+
 ════════════════════════════════════════════════════════════
 REGLAS APRENDIDAS (auto-reflexión):
 {learned}
@@ -332,8 +348,8 @@ CONTENIDO: create_social_content | publish_article | build_software | create_web
 ANÁLISIS: run_proactive_analysis | get_income_analytics | get_product_catalog | get_github_traction
 BROWSER:  browse_page | human_login(platform=...) | human_browse | human_action
 ESTADO:   get_status | daily_report | task_status
-CONEXIONES: gmail_list | gmail_send | google_calendar | google_drive | indeed_jobs | slack_send | analyze_image_vision
-CONEXIONES (OAuth): gmail_list(query=...) | gmail_send(to=...,subject=...,body=...) | google_calendar(action=list|create) | google_drive(query=...) | indeed_jobs(query=...,location=...) | slack_send(message=...,channel=...) | list_connections | analyze_image_vision(question=...)
+CONEXIONES: gmail_list | gmail_send | google_calendar | google_drive | indeed_jobs | slack_send | analyze_image_vision | ms_mail | ms_calendar | zoom_meetings | crm_contacts | dropbox_files | spotify_track | youtube_channel | tiktok_videos | wordpress_posts | klaviyo_lists | netlify_sites | ga_report | figma_files | calendly_events | etsy_listings | list_connections
+CONEXIONES (OAuth): gmail_list(query=...) | gmail_send(to=...,subject=...,body=...) | google_calendar(action=list|create) | google_drive(query=...) | indeed_jobs(query=...,location=...) | slack_send(message=...,channel=...) | ms_mail(action=list|send,to=...,subject=...,body=...) | ms_calendar(action=list|create) | zoom_meetings(action=list|create,topic=...,duration=60) | crm_contacts(platform=hubspot|salesforce,action=list|create,email=...) | dropbox_files(action=list|search,path=...) | spotify_track | youtube_channel | tiktok_videos | wordpress_posts(action=list|create,title=...,content=...) | klaviyo_lists | netlify_sites(action=list|deploy,site_id=...) | ga_report(property_id=...,metrics=[...]) | figma_files(file_key=...) | calendly_events | etsy_listings(shop_id=...) | list_connections | analyze_image_vision(question=...)
 
 ════════════════════════════════════════════════════════════
 FORMATO DE RESPUESTA — DOS SECCIONES OBLIGATORIAS
@@ -2637,6 +2653,430 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 )
                 return (resp.content if resp.success else "Análisis visual no disponible temporalmente."), {}
 
+            # ── MICROSOFT ──────────────────────────────────────────────────────
+
+            elif tool == "ms_mail":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.microsoft_connection import MicrosoftConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "microsoft")
+                if not tokens:
+                    return "❌ Microsoft no conectado. Usa `/connect microsoft`.", {}
+                action = args.get("action", "list")
+                ms = MicrosoftConnection()
+                if action == "send":
+                    r = await ms.send_mail(tokens, args.get("to", ""), args.get("subject", ""), args.get("body", ""))
+                    return ("✅ Email enviado via Outlook" if r.get("success") else f"Error: {r}"), {}
+                msgs = await ms.list_mail(tokens, int(args.get("limit", 10)))
+                lines = [f"📧 **{m['subject'][:60]}**\nDe: {m['from'][:50]}\n{m['preview'][:100]}" for m in msgs]
+                return ("📬 **Outlook — últimos mensajes:**\n\n" + "\n\n".join(lines)) if lines else "Bandeja vacía.", {}
+
+            elif tool == "ms_calendar":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.microsoft_connection import MicrosoftConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "microsoft")
+                if not tokens:
+                    return "❌ Microsoft no conectado. Usa `/connect microsoft`.", {}
+                ms = MicrosoftConnection()
+                action = args.get("action", "list")
+                if action == "create":
+                    r = await ms.create_event(tokens, args.get("subject", "Evento"), args.get("start", ""), args.get("end", ""), args.get("location", ""))
+                    return (f"✅ Evento creado: {r.get('webLink', '')}" if r.get("success") else f"Error: {r}"), {}
+                events = await ms.list_events(tokens, int(args.get("limit", 10)))
+                lines = [f"📅 **{e['subject']}**\n🕐 {e['start']} → {e['end']}" for e in events]
+                return ("📅 **Calendar Microsoft:**\n\n" + "\n\n".join(lines)) if lines else "No hay eventos próximos.", {}
+
+            # ── ZOOM ───────────────────────────────────────────────────────────
+
+            elif tool == "zoom_meetings":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.zoom_connection import ZoomConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "zoom")
+                if not tokens:
+                    return "❌ Zoom no conectado. Usa `/connect zoom`.", {}
+                zoom = ZoomConnection()
+                action = args.get("action", "list")
+                if action == "create":
+                    r = await zoom.create_meeting(tokens, args.get("topic", "Reunión"), int(args.get("duration", 60)), args.get("start_time", ""))
+                    return (f"✅ Reunión creada:\n🔗 {r.get('join_url', '')}\n📋 ID: {r.get('id', '')}" if r.get("success") else f"Error: {r}"), {}
+                meetings = await zoom.list_meetings(tokens)
+                lines = [f"📹 **{m['topic']}**\n🕐 {m['start_time']} ({m['duration']}min)\n🔗 {m.get('join_url','')}" for m in meetings]
+                return ("📹 **Zoom Meetings:**\n\n" + "\n\n".join(lines)) if lines else "No hay reuniones.", {}
+
+            # ── CRM ────────────────────────────────────────────────────────────
+
+            elif tool == "crm_contacts":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.crm_connection import HubSpotConnection, SalesforceConnection
+                mgr = get_connection_manager()
+                platform = args.get("platform", "hubspot")
+                tokens = await mgr.get(chat_id, platform)
+                if not tokens and platform == "hubspot":
+                    from apps.core.config import settings as _s
+                    if getattr(_s, "HUBSPOT_PRIVATE_APP_TOKEN", None):
+                        tokens = {"access_token": _s.HUBSPOT_PRIVATE_APP_TOKEN}
+                if not tokens:
+                    return f"❌ {platform} no conectado. Usa `/connect {platform}`.", {}
+                action = args.get("action", "list")
+                if platform == "hubspot":
+                    hs = HubSpotConnection()
+                    if action == "create":
+                        r = await hs.create_contact(tokens, args.get("email", ""), args.get("firstname", ""), args.get("lastname", ""))
+                        return (f"✅ Contacto creado en HubSpot: ID {r.get('id')}" if r.get("success") else f"Error: {r}"), {}
+                    contacts = await hs.list_contacts(tokens, int(args.get("limit", 10)))
+                    lines = [f"👤 **{c.get('firstname','')} {c.get('lastname','')}** — {c.get('email','')}" for c in contacts]
+                    return ("👥 **HubSpot Contactos:**\n\n" + "\n".join(lines)) if lines else "Sin contactos.", {}
+                else:
+                    sf = SalesforceConnection()
+                    if action == "create":
+                        r = await sf.create_contact(tokens, args.get("lastname", ""), args.get("email", ""), args.get("firstname", ""))
+                        return (f"✅ Contacto creado en Salesforce: ID {r.get('id')}" if r.get("success") else f"Error: {r}"), {}
+                    contacts = await sf.query(tokens, f"SELECT Id, Name, Email FROM Contact LIMIT {args.get('limit', 10)}")
+                    lines = [f"👤 **{c.get('Name','')}** — {c.get('Email','')}" for c in contacts]
+                    return ("👥 **Salesforce Contactos:**\n\n" + "\n".join(lines)) if lines else "Sin contactos.", {}
+
+            # ── STORAGE ────────────────────────────────────────────────────────
+
+            elif tool == "dropbox_files":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.storage_connection import DropboxConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "dropbox")
+                if not tokens:
+                    return "❌ Dropbox no conectado. Usa `/connect dropbox`.", {}
+                action = args.get("action", "list")
+                dbx = DropboxConnection()
+                if action == "search":
+                    files = await dbx.search(tokens, args.get("query", ""), int(args.get("limit", 10)))
+                else:
+                    files = await dbx.list_folder(tokens, args.get("path", ""))
+                lines = [f"📄 **{f['name']}** ({f['type']}) {f.get('size','')}B" for f in files[:10]]
+                return ("📦 **Dropbox:**\n\n" + "\n".join(lines)) if lines else "Carpeta vacía.", {}
+
+            elif tool == "box_files":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.storage_connection import BoxConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "box")
+                if not tokens:
+                    return "❌ Box no conectado. Usa `/connect box`.", {}
+                action = args.get("action", "list")
+                box = BoxConnection()
+                if action == "search":
+                    files = await box.search(tokens, args.get("query", ""), int(args.get("limit", 10)))
+                else:
+                    files = await box.list_folder(tokens, args.get("folder_id", "0"))
+                lines = [f"📄 **{f['name']}** ({f['type']})" for f in files[:10]]
+                return ("📦 **Box:**\n\n" + "\n".join(lines)) if lines else "Carpeta vacía.", {}
+
+            # ── SCHEDULING ─────────────────────────────────────────────────────
+
+            elif tool == "calendly_events":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.scheduling_connection import CalendlyConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "calendly")
+                if not tokens:
+                    return "❌ Calendly no conectado. Usa `/connect calendly`.", {}
+                action = args.get("action", "list_events")
+                cal = CalendlyConnection()
+                if action == "list_types":
+                    types = await cal.list_event_types(tokens)
+                    lines = [f"📅 **{t['name']}** ({t['duration']}min)\n🔗 {t['scheduling_url']}" for t in types]
+                    return ("📋 **Tipos de reunión en Calendly:**\n\n" + "\n\n".join(lines)) if lines else "Sin tipos de evento.", {}
+                events = await cal.list_scheduled_events(tokens, int(args.get("limit", 10)))
+                lines = [f"📅 **{e['name']}** — {e['status']}\n🕐 {e['start_time']}" for e in events]
+                return ("📅 **Calendly — próximas reuniones:**\n\n" + "\n\n".join(lines)) if lines else "Sin reuniones.", {}
+
+            # ── DISEÑO ─────────────────────────────────────────────────────────
+
+            elif tool == "figma_files":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.design_connection import FigmaConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "figma")
+                fig = FigmaConnection()
+                action = args.get("action", "get")
+                file_key = args.get("file_key", "")
+                if action == "list":
+                    files = await fig.list_files(tokens, project_id=args.get("project_id", ""))
+                    lines = [f"🎨 **{f['name']}** — key: `{f['key']}`" for f in files]
+                    return ("🎨 **Figma archivos:**\n\n" + "\n".join(lines)) if lines else "Sin archivos.", {}
+                if not file_key:
+                    return "Proporciona file_key para obtener detalles del archivo.", {}
+                info = await fig.get_file(tokens, file_key)
+                return (f"🎨 **{info.get('name')}**\n📄 Páginas: {', '.join(info.get('pages', []))}\n📅 Modificado: {info.get('lastModified', '')}"), {}
+
+            # ── E-COMMERCE ─────────────────────────────────────────────────────
+
+            elif tool == "etsy_listings":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.ecommerce_connection import EtsyConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "etsy")
+                if not tokens:
+                    return "❌ Etsy no conectado. Usa `/connect etsy`.", {}
+                etsy = EtsyConnection()
+                shop_id = int(args.get("shop_id", 0))
+                action = args.get("action", "list")
+                if not shop_id:
+                    shop = await etsy.get_shop(tokens)
+                    shop_id = shop.get("shop_id", 0)
+                if action == "transactions":
+                    txns = await etsy.list_transactions(tokens, shop_id, int(args.get("limit", 10)))
+                    lines = [f"💰 **{t['title'][:50]}** — ${t.get('price',0):.2f} x{t.get('quantity',1)}" for t in txns]
+                    return ("💰 **Etsy Transacciones:**\n\n" + "\n".join(lines)) if lines else "Sin transacciones.", {}
+                listings = await etsy.list_listings(tokens, shop_id, int(args.get("limit", 20)))
+                lines = [f"🛍️ **{l['title'][:60]}** — ${l['price']:.2f} | {l['quantity']} en stock" for l in listings]
+                return ("🛍️ **Etsy Listings:**\n\n" + "\n".join(lines)) if lines else "Sin listings.", {}
+
+            elif tool == "woo_products":
+                from apps.core.connections.ecommerce_connection import WooCommerceConnection
+                woo = WooCommerceConnection()
+                action = args.get("action", "list")
+                if action == "orders":
+                    orders = await woo.list_orders(int(args.get("limit", 10)))
+                    lines = [f"📦 **Orden #{o['id']}** — {o['status']} | {o['currency']} {o['total']}" for o in orders]
+                    return ("📦 **WooCommerce Órdenes:**\n\n" + "\n".join(lines)) if lines else "Sin órdenes.", {}
+                products = await woo.list_products(int(args.get("limit", 20)))
+                lines = [f"🛒 **{p['name']}** — ${p['price']} | Stock: {p.get('stock','?')}" for p in products]
+                return ("🛒 **WooCommerce Productos:**\n\n" + "\n".join(lines)) if lines else "Sin productos.", {}
+
+            # ── ANALYTICS ──────────────────────────────────────────────────────
+
+            elif tool == "ga_report":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.analytics_connection import GoogleAnalyticsConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "google_analytics")
+                if not tokens:
+                    return "❌ Google Analytics no conectado. Usa `/connect google_analytics`.", {}
+                property_id = args.get("property_id", "")
+                if not property_id:
+                    return "Proporciona property_id (formato: 123456789).", {}
+                metrics = args.get("metrics", ["activeUsers", "sessions", "screenPageViews"])
+                dimensions = args.get("dimensions", ["date"])
+                report = await GoogleAnalyticsConnection().run_report(tokens, property_id, metrics, dimensions)
+                rows = report.get("rows", [])
+                lines = []
+                for row in rows[:10]:
+                    dims = [d.get("value") for d in row.get("dimensionValues", [])]
+                    mets = [m.get("value") for m in row.get("metricValues", [])]
+                    lines.append(f"{' | '.join(dims)} → {' | '.join(mets)}")
+                return (f"📊 **Google Analytics ({property_id}):**\n" + "\n".join(lines)) if lines else "Sin datos.", {}
+
+            elif tool == "mixpanel_events":
+                from apps.core.connections.analytics_connection import MixpanelConnection
+                mp = MixpanelConnection()
+                import datetime
+                to_date = datetime.date.today().isoformat()
+                from_date = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+                data = await mp.get_events(args.get("events", []), from_date, to_date)
+                return f"📊 **Mixpanel eventos:**\n{str(data)[:500]}", {}
+
+            elif tool == "datadog_metrics":
+                from apps.core.connections.analytics_connection import DataDogConnection
+                import time as _t
+                dd = DataDogConnection()
+                monitors = await dd.get_monitors()
+                lines = [f"{'🟢' if m['status']=='OK' else '🔴'} **{m['name']}** — {m['status']}" for m in monitors[:10]]
+                return ("🐶 **DataDog Monitors:**\n\n" + "\n".join(lines)) if lines else "Sin monitores.", {}
+
+            # ── EMAIL MARKETING ────────────────────────────────────────────────
+
+            elif tool == "klaviyo_lists":
+                from apps.core.connections.email_marketing_connection import KlaviyoConnection
+                kl = KlaviyoConnection()
+                lists = await kl.get_lists()
+                if isinstance(lists, list) and lists and "error" in lists[0]:
+                    return f"❌ {lists[0]['error']}", {}
+                lines = [f"📧 **{l['name']}** — ID: {l['id']}" for l in lists]
+                return ("📧 **Klaviyo Listas:**\n\n" + "\n".join(lines)) if lines else "Sin listas.", {}
+
+            elif tool == "klaviyo_campaign":
+                from apps.core.connections.email_marketing_connection import KlaviyoConnection
+                kl = KlaviyoConnection()
+                campaigns = await kl.get_campaigns()
+                if isinstance(campaigns, list) and campaigns and "error" in campaigns[0]:
+                    return f"❌ {campaigns[0]['error']}", {}
+                lines = [f"📨 **{c['name']}** — {c['status']} | Envío: {c.get('send_time','N/A')}" for c in campaigns]
+                return ("📨 **Klaviyo Campañas:**\n\n" + "\n".join(lines)) if lines else "Sin campañas.", {}
+
+            elif tool == "brevo_contacts":
+                from apps.core.connections.email_marketing_connection import BrevoConnection
+                brevo = BrevoConnection()
+                action = args.get("action", "list")
+                if action == "create":
+                    r = await brevo.create_contact(args.get("email", ""), args.get("attributes", {}))
+                    return ("✅ Contacto creado en Brevo." if r.get("success") else f"Error: {r}"), {}
+                contacts = await brevo.get_contacts(int(args.get("limit", 20)))
+                if isinstance(contacts, list) and contacts and "error" in contacts[0]:
+                    return f"❌ {contacts[0]['error']}", {}
+                lines = [f"👤 **{c['email']}**" for c in contacts[:10]]
+                return ("👥 **Brevo Contactos:**\n\n" + "\n".join(lines)) if lines else "Sin contactos.", {}
+
+            elif tool == "brevo_email":
+                from apps.core.connections.email_marketing_connection import BrevoConnection
+                brevo = BrevoConnection()
+                r = await brevo.send_transactional_email(
+                    to_email=args.get("to", ""),
+                    to_name=args.get("to_name", ""),
+                    subject=args.get("subject", ""),
+                    html_content=args.get("html", args.get("body", "")),
+                )
+                return ("✅ Email enviado via Brevo." if r.get("success") else f"Error: {r}"), {}
+
+            # ── DEVOPS ─────────────────────────────────────────────────────────
+
+            elif tool == "netlify_sites":
+                from apps.core.connections.devops_connection import NetlifyConnection
+                net = NetlifyConnection()
+                action = args.get("action", "list")
+                if action == "trigger":
+                    site_id = args.get("site_id", "")
+                    if not site_id:
+                        return "Proporciona site_id para triggear deploy.", {}
+                    r = await net.trigger_deploy(site_id)
+                    return ("✅ Deploy triggered en Netlify." if r.get("success") else f"Error: {r}"), {}
+                if action == "deploys":
+                    site_id = args.get("site_id", "")
+                    deploys = await net.get_deploys(site_id, int(args.get("limit", 5)))
+                    lines = [f"🚀 **{d['state']}** | {d['branch']} | {d['created_at'][:10]}\n{d.get('error_message','')}" for d in deploys]
+                    return ("🚀 **Netlify Deploys:**\n\n" + "\n\n".join(lines)) if lines else "Sin deploys.", {}
+                sites = await net.list_sites()
+                if isinstance(sites, list) and sites and "error" in sites[0]:
+                    return f"❌ {sites[0]['error']}", {}
+                lines = [f"🌐 **{s['name']}** — {s['url']} | {s['state']}" for s in sites]
+                return ("🌐 **Netlify Sites:**\n\n" + "\n".join(lines)) if lines else "Sin sites.", {}
+
+            elif tool == "cloudflare_zones":
+                from apps.core.connections.devops_connection import CloudflareConnection
+                cf = CloudflareConnection()
+                action = args.get("action", "list")
+                if action == "analytics":
+                    zone_id = args.get("zone_id", "")
+                    if not zone_id:
+                        return "Proporciona zone_id.", {}
+                    data = await cf.get_analytics(zone_id)
+                    return f"📊 **Cloudflare Analytics:**\nRequests: {data.get('requests', {}).get('all',0):,}\nUniques: {data.get('uniques', {}).get('all',0):,}\nBandwidth: {data.get('bandwidth', {}).get('all',0):,} bytes", {}
+                if action == "purge":
+                    zone_id = args.get("zone_id", "")
+                    r = await cf.purge_cache(zone_id, args.get("files", []))
+                    return ("✅ Cache purgada." if r.get("success") else f"Error: {r}"), {}
+                zones = await cf.list_zones()
+                if isinstance(zones, list) and zones and "error" in zones[0]:
+                    return f"❌ {zones[0]['error']}", {}
+                lines = [f"🌐 **{z['name']}** — {z['status']}" for z in zones]
+                return ("🌐 **Cloudflare Zones:**\n\n" + "\n".join(lines)) if lines else "Sin zonas.", {}
+
+            # ── CMS ────────────────────────────────────────────────────────────
+
+            elif tool == "wordpress_posts":
+                from apps.core.connections.cms_connection import WordPressConnection
+                wp = WordPressConnection()
+                action = args.get("action", "list")
+                if action == "create":
+                    r = await wp.create_post(
+                        args.get("title", ""), args.get("content", ""),
+                        args.get("status", "draft"),
+                    )
+                    return (f"✅ Post creado: {r.get('link','')}" if r.get("success") else f"Error: {r}"), {}
+                posts = await wp.list_posts(args.get("status", "publish"), int(args.get("limit", 10)))
+                if isinstance(posts, list) and posts and "error" in posts[0]:
+                    return f"❌ {posts[0]['error']}", {}
+                lines = [f"📝 **{p['title'][:60]}** — {p['status']}\n🔗 {p['link']}" for p in posts]
+                return ("📝 **WordPress Posts:**\n\n" + "\n\n".join(lines)) if lines else "Sin posts.", {}
+
+            elif tool == "webflow_sites":
+                from apps.core.connections.cms_connection import WebflowConnection
+                wf = WebflowConnection()
+                sites = await wf.list_sites()
+                if isinstance(sites, list) and sites and "error" in sites[0]:
+                    return f"❌ {sites[0]['error']}", {}
+                lines = [f"🌐 **{s['displayName']}** — {s['shortName']}\n📅 Publicado: {s.get('lastPublished','')}" for s in sites]
+                return ("🌐 **Webflow Sites:**\n\n" + "\n\n".join(lines)) if lines else "Sin sites.", {}
+
+            elif tool == "contentful_entries":
+                from apps.core.connections.cms_connection import ContentfulConnection
+                cf = ContentfulConnection()
+                entries = await cf.get_entries(args.get("content_type", ""), int(args.get("limit", 10)))
+                if isinstance(entries, list) and entries and "error" in (entries[0] if entries else {}):
+                    return f"❌ {entries[0].get('error','')}", {}
+                return f"📄 **Contentful:** {len(entries)} entradas encontradas.", {}
+
+            # ── MEDIA ──────────────────────────────────────────────────────────
+
+            elif tool == "spotify_track":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.media_connection import SpotifyConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "spotify")
+                if not tokens:
+                    return "❌ Spotify no conectado. Usa `/connect spotify`.", {}
+                track = await SpotifyConnection().get_current_track(tokens)
+                if not track.get("playing"):
+                    return "🎵 Spotify: nada reproduciéndose ahora.", {}
+                return (f"🎵 **{track['track']}** — {track['artist']}\n💿 {track['album']}"), {}
+
+            elif tool == "spotify_playlists":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.media_connection import SpotifyConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "spotify")
+                if not tokens:
+                    return "❌ Spotify no conectado. Usa `/connect spotify`.", {}
+                playlists = await SpotifyConnection().list_playlists(tokens, int(args.get("limit", 10)))
+                lines = [f"🎵 **{p['name']}** — {p['tracks']} canciones" for p in playlists]
+                return ("🎵 **Spotify Playlists:**\n\n" + "\n".join(lines)) if lines else "Sin playlists.", {}
+
+            elif tool == "spotify_search":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.media_connection import SpotifyConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "spotify")
+                if not tokens:
+                    return "❌ Spotify no conectado. Usa `/connect spotify`.", {}
+                results = await SpotifyConnection().search(tokens, args.get("query", ""), args.get("type", "track"))
+                tracks = results.get("tracks", {}).get("items", [])
+                lines = [f"🎵 **{t['name']}** — {', '.join(a['name'] for a in t.get('artists',[]))}" for t in tracks[:10]]
+                return ("🔍 **Spotify Search:**\n\n" + "\n".join(lines)) if lines else "Sin resultados.", {}
+
+            elif tool == "youtube_channel":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.media_connection import YouTubeConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "youtube")
+                if not tokens:
+                    return "❌ YouTube no conectado. Usa `/connect youtube`.", {}
+                ch = await YouTubeConnection().get_channel(tokens)
+                if not ch:
+                    return "No se pudo obtener info del canal.", {}
+                return (f"📺 **{ch['title']}**\n👥 Suscriptores: {int(ch.get('subscribers','0')):,}\n👁️ Vistas: {int(ch.get('views','0')):,}\n🎬 Videos: {ch.get('videos','?')}"), {}
+
+            elif tool == "youtube_videos":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.media_connection import YouTubeConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "youtube")
+                if not tokens:
+                    return "❌ YouTube no conectado. Usa `/connect youtube`.", {}
+                videos = await YouTubeConnection().list_videos(tokens, int(args.get("limit", 10)))
+                lines = [f"🎬 **{v['title'][:60]}**\n📅 {v['published'][:10]}" for v in videos]
+                return ("🎬 **YouTube Videos:**\n\n" + "\n\n".join(lines)) if lines else "Sin videos.", {}
+
+            elif tool == "tiktok_videos":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.media_connection import TikTokConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "tiktok")
+                if not tokens:
+                    return "❌ TikTok no conectado. Usa `/connect tiktok`.", {}
+                videos = await TikTokConnection().list_videos(tokens, int(args.get("limit", 20)))
+                lines = [f"🎵 **{v.get('title','Video')}** — {v.get('view_count',0):,} vistas | {v.get('like_count',0):,} likes" for v in videos[:10]]
+                return ("🎵 **TikTok Videos:**\n\n" + "\n".join(lines)) if lines else "Sin videos.", {}
+
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
             return f"Error en {tool}: {str(exc)[:200]}", {}
@@ -3534,6 +3974,155 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                       "1. Obtén API key en **serpapi.com** (plan gratuito: 100 búsquedas/mes)\n"
                       "2. `flyctl secrets set SERP_API_KEY='...' --app aria-ai`\n\n"
                       "Con esto ARIA puede buscar empleos en Indeed, Google Jobs y más."),
+                tool_used="connect",
+            )
+
+        # ── Servicios con OAuth web flow ──────────────────────────────────────
+        _OAUTH_SERVICES = {
+            "microsoft": ("MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET",
+                          "portal.azure.com → App registrations → New registration",
+                          "Outlook mail, Teams, OneDrive, Calendar"),
+            "zoom": ("ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET",
+                     "marketplace.zoom.us → Develop → Build App → OAuth",
+                     "meetings, grabaciones, participantes"),
+            "hubspot": ("HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET",
+                        "app.hubspot.com → Settings → Account Setup → Integrations → Private Apps",
+                        "contactos, deals, pipeline CRM"),
+            "salesforce": ("SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET",
+                           "setup.salesforce.com → Apps → App Manager → New Connected App",
+                           "CRM enterprise, oportunidades, cuentas"),
+            "dropbox": ("DROPBOX_APP_KEY", "DROPBOX_APP_SECRET",
+                        "www.dropbox.com/developers → App Console → Create app",
+                        "archivos, carpetas, compartir"),
+            "box": ("BOX_CLIENT_ID", "BOX_CLIENT_SECRET",
+                    "developer.box.com → My Apps → Create New App",
+                    "almacenamiento empresarial, colaboración"),
+            "calendly": ("CALENDLY_CLIENT_ID", "CALENDLY_CLIENT_SECRET",
+                         "developer.calendly.com → My Apps → Create new application",
+                         "agenda, tipos de reunión, programación"),
+            "figma": ("FIGMA_CLIENT_ID", "FIGMA_CLIENT_SECRET",
+                      "figma.com/developers → Your apps → Create new app",
+                      "archivos de diseño, comentarios, prototipos"),
+            "canva": ("CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET",
+                      "developers.canva.com → Apps → Create app",
+                      "diseños, assets, templates"),
+            "etsy": ("ETSY_CLIENT_ID", "ETSY_CLIENT_SECRET",
+                     "developers.etsy.com → Register as a developer → Create new app",
+                     "listings, transacciones, tienda"),
+            "google_analytics": ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+                                 "console.cloud.google.com → APIs & Services → Credentials (mismo que Google)",
+                                 "reportes GA4, usuarios activos, conversiones"),
+            "spotify": ("SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET",
+                        "developer.spotify.com → Dashboard → Create app",
+                        "reproducción actual, top tracks, playlists"),
+            "youtube": ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+                        "console.cloud.google.com → APIs → YouTube Data API v3 (mismo que Google)",
+                        "canal, videos, analytics"),
+            "tiktok": ("TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET",
+                       "developers.tiktok.com → Manage Apps → Create app",
+                       "videos, info de usuario, cuenta"),
+            "twitch": ("TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET",
+                       "dev.twitch.tv → Your Console → Applications → Register Your Application",
+                       "streams, canal, seguidores, subscriptores"),
+        }
+
+        # ── Servicios solo-API-key (no OAuth web) ─────────────────────────────
+        _API_KEY_SERVICES = {
+            "hubspot": ("HUBSPOT_PRIVATE_APP_TOKEN",
+                        "app.hubspot.com → Settings → Integrations → Private Apps → Create private app",
+                        "También funciona con Private App Token (más simple que OAuth)"),
+            "calcom": ("CALCOM_API_KEY",
+                       "app.cal.com → Settings → Developer → API Keys → Create key",
+                       "Cal.com no usa OAuth — solo API key"),
+            "mixpanel": ("MIXPANEL_API_SECRET",
+                         "mixpanel.com → Project Settings → Access Keys → API Secret",
+                         "Product analytics, funnels, retención"),
+            "amplitude": ("AMPLITUDE_API_KEY",
+                          "app.amplitude.com → Settings → Projects → [tu proyecto] → General → API Key",
+                          "Analytics de producto, cohortes, journeys"),
+            "datadog": ("DATADOG_API_KEY",
+                        "app.datadoghq.com → Organization Settings → API Keys → New Key",
+                        "Infraestructura, logs, APM, monitors"),
+            "klaviyo": ("KLAVIYO_API_KEY",
+                        "klaviyo.com → Settings → API keys → Create Private API Key",
+                        "Email marketing, SMS, listas, campañas"),
+            "activecampaign": ("ACTIVECAMPAIGN_API_KEY",
+                               "account.activecampaign.com → Settings → Developer → API Access",
+                               "También necesitas ACTIVECAMPAIGN_URL (tu URL de cuenta)"),
+            "convertkit": ("CONVERTKIT_API_SECRET",
+                           "app.convertkit.com → Settings → Advanced → API Secret",
+                           "Newsletter, suscriptores, forms"),
+            "brevo": ("BREVO_API_KEY",
+                      "app.brevo.com → Transactional → Settings → SMTP & API → API Keys → Generate a new API key",
+                      "Email transaccional, campañas, contactos"),
+            "postmark": ("POSTMARK_SERVER_TOKEN",
+                         "account.postmarkapp.com → [Server] → API Tokens → Server API Token",
+                         "Email transaccional de alta entregabilidad"),
+            "netlify": ("NETLIFY_TOKEN",
+                        "app.netlify.com → User Settings → Applications → Personal access tokens",
+                        "Sites, deploys, functions"),
+            "cloudflare": ("CLOUDFLARE_API_TOKEN",
+                           "dash.cloudflare.com → My Profile → API Tokens → Create Token",
+                           "DNS, CDN, analytics, cache"),
+            "firebase": ("FIREBASE_PROJECT_ID",
+                         "console.firebase.google.com → Project Settings → Service accounts → Generate new private key",
+                         "También necesitas FIREBASE_SERVICE_ACCOUNT_TOKEN"),
+            "aws_s3": ("AWS_ACCESS_KEY_ID",
+                       "console.aws.amazon.com → IAM → Users → Security credentials → Create access key",
+                       "También necesitas AWS_SECRET_ACCESS_KEY"),
+            "wordpress": ("WORDPRESS_URL",
+                          "Tu sitio WordPress → Users → Profile → Application Passwords → Add New",
+                          "También necesitas WORDPRESS_USERNAME y WORDPRESS_APP_PASSWORD"),
+            "webflow": ("WEBFLOW_API_TOKEN",
+                        "webflow.com → Account → Integrations → API Access → Generate API token",
+                        "Sites, collections, items"),
+            "contentful": ("CONTENTFUL_SPACE_ID",
+                           "app.contentful.com → Settings → API keys → Add API key",
+                           "También necesitas CONTENTFUL_DELIVERY_TOKEN y CONTENTFUL_MANAGEMENT_TOKEN"),
+            "sanity": ("SANITY_PROJECT_ID",
+                       "sanity.io/manage → [tu proyecto] → API → Tokens → Add API token",
+                       "También necesitas SANITY_API_TOKEN y SANITY_PROJECT_ID"),
+            "woocommerce": ("WOOCOMMERCE_URL",
+                            "Tu tienda WooCommerce → WooCommerce → Settings → Advanced → REST API → Add key",
+                            "También necesitas WOOCOMMERCE_CONSUMER_KEY y WOOCOMMERCE_CONSUMER_SECRET"),
+        }
+
+        # Check if it's an OAuth service
+        if service in _OAUTH_SERVICES:
+            env1, env2, instructions, capabilities = _OAUTH_SERVICES[service]
+            auth_url = mgr.get_auth_url(service, chat_id)
+            from apps.core.config import settings as _s
+            has_creds = bool(getattr(_s, env1, None) and (not env2 or getattr(_s, env2, None)))
+            if not has_creds:
+                return MindResponse(
+                    text=(f"⚙️ Para conectar **{service.capitalize()}**, agrega estas credenciales en Fly.io:\n\n"
+                          f"1. Obtén en: **{instructions}**\n"
+                          f"2. `flyctl secrets set {env1}='...' {env2}='...' --app aria-ai`\n\n"
+                          f"Con {service.capitalize()} conectado, ARIA puede: {capabilities}"),
+                    tool_used="connect",
+                )
+            if auth_url:
+                return MindResponse(
+                    text=(f"🔗 **Conectar {service.capitalize()} a ARIA**\n\n"
+                          f"Haz clic aquí para autorizar:\n{auth_url}\n\n"
+                          f"ARIA tendrá acceso a: {capabilities}"),
+                    tool_used="connect",
+                )
+
+        # Check if it's an API-key service
+        if service in _API_KEY_SERVICES:
+            env_var, instructions, description = _API_KEY_SERVICES[service]
+            from apps.core.config import settings as _s
+            if getattr(_s, env_var, None):
+                return MindResponse(
+                    text=f"✅ **{service.capitalize()} ya configurado**. ARIA puede usar sus herramientas.",
+                    tool_used="connect",
+                )
+            return MindResponse(
+                text=(f"⚙️ Para conectar **{service.capitalize()}**:\n\n"
+                      f"1. Obtén en: **{instructions}**\n"
+                      f"2. `flyctl secrets set {env_var}='...' --app aria-ai`\n\n"
+                      f"ℹ️ {description}"),
                 tool_used="connect",
             )
 
