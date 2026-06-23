@@ -803,13 +803,24 @@ class AriaAIClient:
 
     def _get_available_providers(self) -> list[AIProvider]:
         base_order = [AIProvider.HUGGINGFACE, AIProvider.GROQ, AIProvider.ANTHROPIC, AIProvider.OPENAI]
-        available = [p for p in base_order if self._health[p].is_available()]
+
+        # Skip providers with no API key configured — no point trying them
+        has_key = {
+            AIProvider.HUGGINGFACE: bool(settings.hf_key),
+            AIProvider.GROQ:        bool(settings.GROQ_API_KEY),
+            AIProvider.ANTHROPIC:   bool(settings.ANTHROPIC_API_KEY),
+            AIProvider.OPENAI:      bool(settings.OPENAI_API_KEY),
+        }
+
+        available = [p for p in base_order if has_key[p] and self._health[p].is_available()]
+
         # Adaptive ordering: if HF has >= 2 consecutive failures, promote Groq to front
-        # This cuts the 45s HF timeout-waste when HF is in a failure streak
+        # Cuts the 45s waste (3 models × 15s) before reaching the working provider
         hf_failures = self._health[AIProvider.HUGGINGFACE].consecutive_failures
         if hf_failures >= 2 and AIProvider.GROQ in available and AIProvider.HUGGINGFACE in available:
             available.remove(AIProvider.GROQ)
             available.insert(0, AIProvider.GROQ)
+
         return available
 
     def _extract_json_safe(self, text: str) -> str:
