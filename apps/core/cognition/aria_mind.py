@@ -322,24 +322,14 @@ BROWSER:  browse_page | human_login(platform=...) | human_browse | human_action
 ESTADO:   get_status | daily_report | task_status
 
 ════════════════════════════════════════════════════════════
-RESPONDE SOLO CON JSON VÁLIDO
+FORMATO DE RESPUESTA — DOS SECCIONES OBLIGATORIAS
 ════════════════════════════════════════════════════════════
-{{
-  "reasoning": "Observé [X del paso anterior]. El objetivo [estado]. Por tanto ejecuto [herramienta] porque [razón concreta basada en lo observado].",
-  "done": false,
-  "direct_reply": null,
-  "tool": "nombre_herramienta",
-  "args": {{"key": "value"}}
-}}
+PENSAMIENTO: [Razona en 3-5 oraciones: qué observaste en pasos anteriores, qué significa, qué herramienta elegirás y por qué esa y no otra]
+ACCIÓN: {{"reasoning": "síntesis de 1 oración basada en evidencia real", "done": false, "tool": "nombre_herramienta", "args": {{"key": "value"}}}}
 
-Si el objetivo está logrado (done=true):
-{{
-  "reasoning": "El objetivo está logrado: [evidencia concreta de los pasos ejecutados].",
-  "done": true,
-  "direct_reply": "Respuesta final completa en español con todos los resultados logrados y URLs/datos concretos.",
-  "tool": null,
-  "args": null
-}}"""
+Si el objetivo ya está logrado con evidencia concreta:
+PENSAMIENTO: [Explica qué evidencia confirma que el objetivo fue logrado]
+ACCIÓN: {{"reasoning": "objetivo logrado: [evidencia]", "done": true, "direct_reply": "Respuesta final completa en español con resultados concretos, URLs y datos.", "tool": null, "args": null}}"""
 
 MAX_AGENT_STEPS = 6  # máximo de pasos en el loop ReAct
 
@@ -2616,12 +2606,12 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         media_result: dict = {}
 
         for step in range(1, MAX_AGENT_STEPS + 1):
-            # Construir texto de observaciones acumuladas
+            # Construir texto de observaciones acumuladas con indicadores ✓/✗
             if observations:
                 obs_text = "\n".join(
-                    f"[Paso {o['step']}] Herramienta: {o['tool']}\n"
+                    f"[Paso {o['step']}] {'✓' if o.get('success') else '✗'} {o['tool']}\n"
                     f"Razonamiento: {o['reasoning'][:200]}\n"
-                    f"Resultado observado: {o['result'][:500]}"
+                    f"Resultado: {o['result'][:500]}"
                     for o in observations
                 )
             else:
@@ -2648,6 +2638,8 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                             "step": 1, "tool": fallback_tool,
                             "reasoning": f"[fallback intent] {text[:100]}",
                             "result": obs[:800],
+                            "success": bool(obs),
+                            "type": "media" if media else "text",
                         })
                         if media and not media_result:
                             media_result = media
@@ -2685,16 +2677,35 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             obs, media = await self._execute_with_retry(tool, args, chat_id=chat_id)
 
             # OBSERVE: guardar el resultado real para que el siguiente paso lo use
+            step_success = bool(obs) and "error" not in obs.lower()[:120]
             observations.append({
                 "step": step,
                 "tool": tool,
                 "reasoning": reasoning,
-                "result": obs[:800],  # resultado real, no el esperado
+                "result": obs[:800],
+                "success": step_success,
+                "type": "media" if media else "text",
             })
             if media and not media_result:
                 media_result = media
 
             await self._record_exec(tool, args, obs, bool(media or obs))
+
+            # Adaptive exit: quick done-check after a successful step
+            if step_success and step < MAX_AGENT_STEPS - 1:
+                from apps.core.tools.ai_client import AIModel as _AIModel
+                _ai2 = self._ai_client()
+                if _ai2:
+                    _check = await _ai2.complete_json(
+                        system='Responde SOLO JSON sin texto adicional: {"done": true} si el objetivo está logrado con evidencia concreta, {"done": false} si no.',
+                        user=f"Objetivo: {text[:200]}\nÚltimo resultado ({tool}): {obs[:300]}",
+                        model=_AIModel.FAST,
+                        max_tokens=30,
+                        agent_name=f"agent_done_check_{step}",
+                    )
+                    if _check and _check.get("done"):
+                        logger.info("[AgentLoop] Adaptive exit en paso %d — objetivo logrado", step)
+                        break
 
         # Loop terminó (max_steps o break) → sintetizar todos los resultados
         if not observations:
@@ -2764,36 +2775,50 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
         user_msg = f"Ejecuta el paso {current_step}. Basa tu decisión en las observaciones anteriores."
 
-        result = await ai.complete_json(
+        import re as _re
+
+        # Use complete() — expect PENSAMIENTO: + ACCIÓN: mixed-text format
+        raw = await ai.complete(
             system=prompt,
             user=user_msg,
-            model=AIModel.FAST,  # FAST → less tokens, faster, lower rate-limit cost
-            max_tokens=800,
+            model=AIModel.FAST,
+            max_tokens=900,
             agent_name=f"agent_step_{current_step}",
         )
+        if raw and raw.success and raw.content:
+            content = raw.content.strip()
+            # Log chain-of-thought reasoning
+            pens_match = _re.search(r"PENSAMIENTO:\s*(.+?)(?=ACCIÓN:|$)", content, _re.DOTALL | _re.IGNORECASE)
+            if pens_match:
+                logger.debug("[AgentStep %d] CoT: %s", current_step, pens_match.group(1).strip()[:300])
+            # Extract JSON from ACCIÓN: section
+            accion_match = _re.search(r"ACCIÓN:\s*(.+)", content, _re.DOTALL | _re.IGNORECASE)
+            json_src = accion_match.group(1).strip() if accion_match else content
+            json_src = _re.sub(r"```(?:json)?\n?", "", json_src).strip().rstrip("`").strip()
+            idx = json_src.find("{")
+            end = json_src.rfind("}")
+            if idx != -1 and end > idx:
+                try:
+                    return json.loads(json_src[idx:end + 1])
+                except Exception:
+                    pass
+            # Fallback: any JSON object in full content
+            idx = content.find("{")
+            end = content.rfind("}")
+            if idx != -1 and end > idx:
+                try:
+                    return json.loads(content[idx:end + 1])
+                except Exception:
+                    pass
 
-        if result is None:
-            # JSON parsing failed — try raw complete() with manual extraction
-            raw = await ai.complete(
-                system=prompt,
-                user=user_msg + "\n\nResponde SOLO JSON. Sin texto adicional.",
-                model=AIModel.FAST,
-                max_tokens=800,
-                agent_name=f"agent_step_{current_step}_retry",
-            )
-            if raw and raw.success and raw.content:
-                import re as _re
-                txt = raw.content.strip()
-                txt = _re.sub(r"```(?:json)?\n?", "", txt).strip().rstrip("`").strip()
-                idx = txt.find("{")
-                end = txt.rfind("}")
-                if idx != -1 and end > idx:
-                    try:
-                        result = json.loads(txt[idx:end + 1])
-                    except Exception:
-                        pass
-
-        return result
+        # Last resort: complete_json() with explicit JSON-only instruction
+        return await ai.complete_json(
+            system=prompt,
+            user=user_msg + "\n\nResponde SOLO con la sección ACCIÓN como JSON válido. Sin texto previo.",
+            model=AIModel.FAST,
+            max_tokens=600,
+            agent_name=f"agent_step_{current_step}_json",
+        )
 
     def _is_unnecessary_question(self, user_text: str, reply: str) -> bool:
         """
