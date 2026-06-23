@@ -115,6 +115,15 @@ Regla de ejecución por tipo de request:
 • "Haz algo útil / continúa"       → check_objectives + ejecuta la acción más valiosa
 • Cualquier verbo de acción        → EJECUTA la herramienta correcta de inmediato
 
+════════════════════════════════════════════════════════════
+CONSTITUCIÓN DE HONESTIDAD (PRINCIPIOS CORE — NO NEGOCIABLE)
+════════════════════════════════════════════════════════════
+CERTEZA     → Solo di "logré X" si el resultado de la herramienta lo confirma explícitamente
+INCERTIDUMBRE → Usa "estimo", "según los datos disponibles", "probablemente" sin evidencia directa
+TRANSPARENCIA → Si una herramienta falló: dilo. Si el resultado fue parcial: dilo. No suavices.
+COMPLETITUD → Siempre incluye: qué se ejecutó, resultado concreto (URLs/IDs/cifras), qué sigue
+PROHIBICIÓN → Jamás inventes URLs, IDs, cifras, ventas o confirmaciones que no vengan de una tool real
+
 ESTADO ACTUAL DEL NEGOCIO:
 {business_context}
 
@@ -307,6 +316,9 @@ INSTRUCCIÓN PARA ESTE PASO
 
 REGLA DE ORO: Si tienes suficiente información para actuar → actúa. Incertidumbre no es excusa.
 
+PARALELISMO: Cuando 2+ herramientas son completamente independientes (los resultados de una no alimentan a la otra), ejecútalas en paralelo usando parallel_tools en lugar de tool:
+ACCIÓN: {{"reasoning": "...", "done": false, "parallel_tools": [{{"tool": "A", "args": {{}}}}, {{"tool": "B", "args": {{}}}}]}}
+
 ════════════════════════════════════════════════════════════
 HERRAMIENTAS DISPONIBLES (resumen ejecutivo)
 ════════════════════════════════════════════════════════════
@@ -450,7 +462,7 @@ class AriaMind:
     K_EXECS    = "aria:mind:execs"            # list[dict], 30d
     K_ICOUNT   = "aria:mind:icount:{cid}"    # int, 30d
 
-    REFLECT_EVERY = 30        # reflexión cada N interacciones
+    REFLECT_EVERY = 8         # reflexión cada N interacciones
     MAX_HISTORY   = 20        # mensajes en contexto
     MAX_EXECS     = 50        # registros de ejecución guardados
 
@@ -469,6 +481,10 @@ class AriaMind:
                 self._load_goals(),
                 self._load_learned(),
             )
+
+            # Context window management — compress if history grew too long
+            if len(history) > 30:
+                history = await self._compress_history(chat_id, history)
 
             # 2. GOAL ENGINE — detecta si es una solicitud de acción (ReAct) o conversación simple
             if self._needs_agent_loop(text):
@@ -2480,11 +2496,17 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
     # ── PLANNING LAYER ──────────────────────────────────────────────────────
 
+    _biz_ctx_cache: dict = {}  # {"content": str, "ts": float}
+
     async def _load_business_context(self) -> str:
         """
         Context Loader — carga el estado completo del negocio para el ciclo cognitivo.
-        Esto es lo que permite a ARIA inferir en lugar de preguntar.
+        Cacheado 5 min en memoria para evitar redundant Redis reads (equivalente a prompt caching).
         """
+        now = time.time()
+        cached = self._biz_ctx_cache
+        if cached.get("ts") and now - cached["ts"] < 300:
+            return cached["content"]
         lines = []
         try:
             from apps.core.memory.redis_client import get_cache
@@ -2546,7 +2568,9 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             logger.debug("[AriaMind] _load_business_context error: %s", exc)
             lines.append("contexto de negocio parcialmente disponible")
 
-        return "\n".join(lines) if lines else "primer uso — sin historial de negocio aún"
+        result = "\n".join(lines) if lines else "primer uso — sin historial de negocio aún"
+        self._biz_ctx_cache.update({"content": result, "ts": time.time()})
+        return result
 
     def _needs_agent_loop(self, text: str) -> bool:
         """
@@ -2659,9 +2683,37 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     **media_result,
                 )
 
+            reasoning = decision.get("reasoning", "")
+
+            # Parallel execution — independent tools run simultaneously
+            parallel = decision.get("parallel_tools")
+            if parallel and isinstance(parallel, list) and len(parallel) > 1:
+                valid = [pt for pt in parallel if isinstance(pt, dict) and pt.get("tool")]
+                logger.info("[AgentLoop] Paso %d: %d tools en paralelo", step, len(valid))
+                results = await asyncio.gather(
+                    *[self._execute_with_retry(pt["tool"], pt.get("args") or {}, chat_id=chat_id)
+                      for pt in valid],
+                    return_exceptions=True,
+                )
+                for pt, res in zip(valid, results):
+                    if isinstance(res, Exception):
+                        p_obs, p_media = f"Error: {res}", {}
+                    else:
+                        p_obs, p_media = res
+                    p_ok = bool(p_obs) and "error" not in p_obs.lower()[:120]
+                    observations.append({
+                        "step": step, "tool": pt["tool"],
+                        "reasoning": f"{reasoning} [paralelo]",
+                        "result": p_obs[:800], "success": p_ok,
+                        "type": "media" if p_media else "text",
+                    })
+                    if p_media and not media_result:
+                        media_result = p_media
+                    await self._record_exec(pt["tool"], pt.get("args") or {}, p_obs, p_ok)
+                continue
+
             tool = decision.get("tool")
             args = decision.get("args") or {}
-            reasoning = decision.get("reasoning", "")
 
             if not tool or tool in ("null", "none", None):
                 # Direct reply without tool
@@ -2735,7 +2787,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 agent_name="agent_synthesis",
             )
             if synth and synth.success and synth.content:
-                final_text = synth.content
+                final_text = await self._self_critique(text, synth.content)
 
         await self._store_interaction(chat_id, text, final_text, "agent_loop")
         await self._evolve_state(chat_id, state, text, goals)
@@ -2819,6 +2871,73 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             max_tokens=600,
             agent_name=f"agent_step_{current_step}_json",
         )
+
+    async def _self_critique(self, request: str, draft: str) -> str:
+        """
+        Constitutional AI pass — evalúa la respuesta antes de enviarla.
+        Equivalente al RLHF/CAI de Claude: principios embebidos en el ciclo, no post-filtro.
+        """
+        ai = self._ai_client()
+        if not ai or len(draft.strip()) < 25:
+            return draft
+        from apps.core.tools.ai_client import AIModel
+        check = await ai.complete_json(
+            system=(
+                "Evalúa esta respuesta de IA en 3 dimensiones:\n"
+                "1. Ejecución: ¿hizo lo pedido con evidencia real (no lo prometió — lo hizo)?\n"
+                "2. Honestidad: ¿no inventa URLs, cifras, confirmaciones sin tool result real?\n"
+                "3. Utilidad: ¿da información accionable y concreta (no vagüedades)?\n"
+                'Responde SOLO JSON: {"score": 1-10, "issue": "descripción breve o null", '
+                '"improved": "versión mejorada en español si score<6, sino null"}'
+            ),
+            user=f"Pedido: {request[:250]}\nRespuesta: {draft[:700]}",
+            model=AIModel.FAST,
+            max_tokens=500,
+            agent_name="self_critique",
+        )
+        if check and isinstance(check.get("score"), (int, float)):
+            if check["score"] < 6 and check.get("improved"):
+                logger.info("[SelfCritique] Score %.0f → mejorando respuesta", check["score"])
+                return str(check["improved"])
+        return draft
+
+    async def _compress_history(self, chat_id: str, history: list) -> list:
+        """
+        Context window management — cuando el historial crece > 30 msgs,
+        comprime los más antiguos en un resumen. Mismo patrón que Claude.
+        """
+        if len(history) <= 30:
+            return history
+        to_compress = history[:-10]
+        keep_recent = history[-10:]
+        ai = self._ai_client()
+        if not ai:
+            return keep_recent
+        from apps.core.tools.ai_client import AIModel
+        text_block = "\n".join(
+            f"{m['role'].upper()}: {m.get('content', '')[:200]}" for m in to_compress
+        )
+        resp = await ai.complete(
+            system=(
+                "Resume esta conversación en 4-6 oraciones. "
+                "Incluye: qué pidió el usuario, qué ejecutó ARIA, resultados concretos obtenidos. "
+                "Sin introducciones. Directo al grano."
+            ),
+            user=text_block[:3000],
+            model=AIModel.FAST,
+            max_tokens=300,
+            agent_name="history_compress",
+        )
+        if resp and resp.success and resp.content:
+            summary = [{"role": "system", "content": f"[HISTORIAL COMPRIMIDO] {resp.content.strip()}"}]
+            compressed = summary + keep_recent
+            cache = self._cache_client()
+            if cache:
+                await cache.set(self.K_HISTORY.format(cid=chat_id), compressed,
+                                ttl_seconds=86400 * 7)
+            logger.info("[AriaMind] Historial comprimido: %d → %d mensajes", len(history), len(compressed))
+            return compressed
+        return keep_recent
 
     def _is_unnecessary_question(self, user_text: str, reply: str) -> bool:
         """
@@ -2983,7 +3102,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             agent_name="aria_synthesis",
         )
         if resp and resp.success and resp.content:
-            return resp.content.strip()
+            return await self._self_critique(user_input, resp.content.strip())
         return observation[:600]
 
     async def _fallback_reply(self, text: str) -> str:
