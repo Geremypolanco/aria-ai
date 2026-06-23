@@ -2940,20 +2940,22 @@ JSON:
             except Exception:
                 pass
 
-            # Gumroad browser fallback: create product via stealth browser
+            # Gumroad browser fallback: create product via stealth browser (60s timeout)
             _eb_ae = getattr(settings, "ARIA_EMAIL", None)
             _eb_ap = getattr(settings, "ARIA_PASSWORD", None)
             if _eb_ae and _eb_ap:
                 try:
-                    from apps.core.tools.human_browser import get_platform_login
-                    _plat = await get_platform_login()
-                    _gm_page = await _plat.gumroad(_eb_ae, _eb_ap)
-                    _gm_url = await _plat.gumroad_create_product(
-                        _gm_page,
-                        ebook.get("title", f"The Complete Guide to {topic_str[:30]}")[:100],
-                        ebook.get("price_cents", 1700),
-                        full_description[:2000],
-                    )
+                    async def _ef_gm_browser() -> str:
+                        from apps.core.tools.human_browser import get_platform_login
+                        _plat = await get_platform_login()
+                        _gm_page = await _plat.gumroad(_eb_ae, _eb_ap)
+                        return await _plat.gumroad_create_product(
+                            _gm_page,
+                            ebook.get("title", f"The Complete Guide to {topic_str[:30]}")[:100],
+                            ebook.get("price_cents", 1700),
+                            full_description[:2000],
+                        )
+                    _gm_url = await asyncio.wait_for(_ef_gm_browser(), timeout=60.0)
                     if _gm_url:
                         price = ebook.get("price_cents", 1700) / 100
                         return {
