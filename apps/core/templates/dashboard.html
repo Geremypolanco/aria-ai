@@ -708,48 +708,63 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
       </div>
     </div>
     <div class="modal-body">
-      <!-- System status -->
+      <!-- System status grid -->
       <div style="margin-bottom:20px">
         <div style="font-size:12px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px">Estado del sistema</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:12px">
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">WebSocket</div>
-            <div style="font-size:14px;font-weight:600" :style="wsConnected?'color:var(--green)':'color:var(--text3)'" x-text="wsConnected?'Conectado':'Desconectado'"></div>
+            <div style="font-size:13px;font-weight:600" :style="wsConnected?'color:var(--green)':'color:var(--text3)'" x-text="wsConnected?'Conectado':'Desconectado'"></div>
           </div>
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:12px">
-            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Income Loop</div>
-            <div style="font-size:14px;font-weight:600" :style="incomeRunning?'color:var(--green)':'color:var(--text3)'" x-text="incomeRunning?'Activo':'Detenido'"></div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Agentes</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text)" x-text="sysStatus?.agents?.registered ?? '…'"></div>
           </div>
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:12px">
-            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Sesión ID</div>
-            <div style="font-size:12px;color:var(--text2);font-family:'JetBrains Mono',monospace" x-text="sessionId.slice(0,16)+'...'"></div>
-          </div>
-          <div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:12px">
-            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Mensajes</div>
-            <div style="font-size:14px;font-weight:600;color:var(--text)" x-text="messages.length"></div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">ARIA Core</div>
+            <div style="font-size:13px;font-weight:600" :style="sysStatus?.aria==='running'?'color:var(--green)':'color:var(--yellow)'" x-text="sysStatus?.aria ?? '…'"></div>
           </div>
         </div>
       </div>
 
-      <!-- Income loop control -->
+      <!-- Income loop analytics -->
       <div style="margin-bottom:20px">
         <div style="font-size:12px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px">Income Loop 24/7</div>
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:14px">
-          <div style="font-size:13.5px;color:var(--text);margin-bottom:4px">Motor de ingresos autónomo</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:12px">ARIA ejecuta estrategias automáticamente para maximizar ingresos.</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+            <div>
+              <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Ciclos totales</div>
+              <div style="font-size:18px;font-weight:700;color:var(--text)" x-text="incomeStats?.total_cycles ?? '…'"></div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Tasa de éxito</div>
+              <div style="font-size:18px;font-weight:700" :style="(incomeStats?.overall_success_rate??0)>10?'color:var(--green)':'color:var(--yellow)'" x-text="incomeStats ? incomeStats.overall_success_rate+'%' : '…'"></div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Estado</div>
+              <div style="font-size:13px;font-weight:600" :style="incomeRunning?'color:var(--green)':'color:var(--text3)'" x-text="incomeRunning?'Activo ●':'Detenido'"></div>
+            </div>
+          </div>
+          <!-- Top strategy -->
+          <div x-show="incomeStats?.per_strategy?.length" style="background:var(--surface2);border-radius:7px;padding:10px;margin-bottom:12px;font-size:12px">
+            <span style="color:var(--text3)">Mejor estrategia: </span>
+            <span style="color:var(--accent);font-weight:600" x-text="incomeStats?.per_strategy?.[0]?.strategy?.replace(/_/g,' ')"></span>
+            <span style="color:var(--text3)"> · </span>
+            <span style="color:var(--green)" x-text="incomeStats?.per_strategy?.[0]?.win_rate+'% win rate'"></span>
+          </div>
           <div style="display:flex;gap:8px">
             <button class="pill-btn primary" x-show="!incomeRunning" @click="startIncome()">▶ Iniciar Loop</button>
             <button class="pill-btn" x-show="incomeRunning" @click="stopIncome()" style="border-color:var(--red);color:var(--red)">⏹ Detener</button>
-            <button class="pill-btn" @click="sendQuick('income_dashboard');showSettings=false">Ver Dashboard</button>
+            <button class="pill-btn" @click="sendQuick('Dame el dashboard completo del income loop con estadísticas de cada estrategia');showSettings=false">Ver analytics</button>
           </div>
         </div>
       </div>
 
       <!-- Clear data -->
       <div>
-        <div style="font-size:12px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px">Datos</div>
+        <div style="font-size:12px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px">Datos locales</div>
         <button class="pill-btn" @click="clearAllHistory();showSettings=false" style="border-color:var(--red);color:var(--red)">
-          Borrar todo el historial
+          Borrar historial de chat
         </button>
       </div>
     </div>
@@ -813,6 +828,8 @@ function ariaApp() {
 
     // System
     incomeRunning: false,
+    incomeStats: null,
+    sysStatus: null,
 
     // Sidebar
     sidebarCollapsed: false,
@@ -1141,32 +1158,80 @@ function ariaApp() {
     // ── Connections ───────────────────────────────
     async openConnections() {
       this.showConnections = true;
-      const serviceMap = {
-        google: 'Google (Gmail, Calendar, Drive)',
-        slack: 'Slack (mensajes, canales)',
-        microsoft: 'Microsoft (Outlook, Teams, OneDrive)',
-        zoom: 'Zoom (meetings)',
-        hubspot: 'HubSpot (CRM)',
-        salesforce: 'Salesforce (CRM)',
-        spotify: 'Spotify (música)',
-        youtube: 'YouTube (canal)',
-        tiktok: 'TikTok',
-        twitch: 'Twitch',
-        figma: 'Figma (diseño)',
-        canva: 'Canva (diseño gráfico)',
-        etsy: 'Etsy (tienda)',
-        woocommerce: 'WooCommerce',
-        netlify: 'Netlify (deploy)',
-        cloudflare: 'Cloudflare',
-        wordpress: 'WordPress',
-        klaviyo: 'Klaviyo (email marketing)',
-        brevo: 'Brevo / Sendinblue',
-        indeed: 'Indeed (empleo)',
-        calendly: 'Calendly (agenda)',
+      this.connectionsList = [];
+      const services = [
+        // Comunicación
+        { s:'google',      n:'Google',          d:'Gmail, Calendar, Drive' },
+        { s:'slack',       n:'Slack',            d:'Mensajes y canales' },
+        { s:'microsoft',   n:'Microsoft',        d:'Outlook, Teams, OneDrive' },
+        { s:'zoom',        n:'Zoom',             d:'Reuniones y webinars' },
+        { s:'discord',     n:'Discord',          d:'Servidor y mensajes' },
+        // CRM
+        { s:'hubspot',     n:'HubSpot',          d:'CRM y marketing' },
+        { s:'salesforce',  n:'Salesforce',       d:'CRM empresarial' },
+        // Almacenamiento
+        { s:'dropbox',     n:'Dropbox',          d:'Archivos en la nube' },
+        { s:'box',         n:'Box',              d:'Almacenamiento empresarial' },
+        // E-commerce
+        { s:'etsy',        n:'Etsy',             d:'Tienda artesanal' },
+        { s:'woocommerce', n:'WooCommerce',      d:'Tienda WordPress' },
+        { s:'shopify',     n:'Shopify',          d:'Tienda online' },
+        // Diseño
+        { s:'figma',       n:'Figma',            d:'Diseño colaborativo' },
+        { s:'canva',       n:'Canva',            d:'Diseño gráfico' },
+        // Media
+        { s:'spotify',     n:'Spotify',          d:'Música y podcasts' },
+        { s:'youtube',     n:'YouTube',          d:'Canal y videos' },
+        { s:'tiktok',      n:'TikTok',           d:'Videos cortos' },
+        { s:'twitch',      n:'Twitch',           d:'Streaming en vivo' },
+        // Agenda
+        { s:'calendly',    n:'Calendly',         d:'Agenda y reuniones' },
+        { s:'calcom',      n:'Cal.com',          d:'Agenda open source' },
+        // CMS
+        { s:'wordpress',   n:'WordPress',        d:'Blog y web' },
+        { s:'webflow',     n:'Webflow',          d:'Sitios web visuales' },
+        { s:'contentful',  n:'Contentful',       d:'CMS headless' },
+        { s:'sanity',      n:'Sanity',           d:'CMS estructurado' },
+        // Analytics
+        { s:'google_analytics', n:'Google Analytics', d:'Analítica web' },
+        { s:'mixpanel',    n:'Mixpanel',         d:'Analítica de producto' },
+        { s:'amplitude',   n:'Amplitude',        d:'Analítica de usuario' },
+        { s:'datadog',     n:'DataDog',          d:'Monitorización DevOps' },
+        // Email marketing
+        { s:'klaviyo',     n:'Klaviyo',          d:'Email marketing ecommerce' },
+        { s:'activecampaign', n:'ActiveCampaign', d:'CRM y automatización' },
+        { s:'convertkit',  n:'ConvertKit',       d:'Newsletter y creators' },
+        { s:'brevo',       n:'Brevo',            d:'Email y SMS marketing' },
+        { s:'postmark',    n:'Postmark',         d:'Email transaccional' },
+        // DevOps
+        { s:'netlify',     n:'Netlify',          d:'Deploy y hosting' },
+        { s:'cloudflare',  n:'Cloudflare',       d:'CDN y seguridad' },
+        { s:'firebase',    n:'Firebase',         d:'Backend Google' },
+        { s:'aws_s3',      n:'AWS S3',           d:'Almacenamiento Amazon' },
+        // Empleo
+        { s:'indeed',      n:'Indeed',           d:'Búsqueda de empleo' },
+      ];
+      let activeSet = new Set();
+      try {
+        const r = await fetch('/api/v1/income/credentials');
+        if(r.ok) {
+          const d = await r.json();
+          activeSet = new Set(d.active || []);
+        }
+      } catch(e) {}
+      const credMap = {
+        shopify: 'shopify', google: 'ai_generation', slack: 'slack',
+        spotify: 'spotify', youtube: 'youtube'
       };
-      this.connectionsList = Object.entries(serviceMap).map(([service, name]) => ({
-        service, name, desc: `Comando: /connect ${service}`, connected: false
-      }));
+      this.connectionsList = services.map(({ s, n, d }) => {
+        const cred = credMap[s] || s;
+        const connected = activeSet.has(cred);
+        return {
+          service: s, name: n,
+          desc: connected ? `${d} · Configurado` : d,
+          connected
+        };
+      });
     },
 
     connectService(service) {
@@ -1203,7 +1268,17 @@ function ariaApp() {
     },
 
     // ── Settings ──────────────────────────────────
-    openSettings() { this.showSettings = true; },
+    async openSettings() {
+      this.showSettings = true;
+      try {
+        const [ar, sr] = await Promise.all([
+          fetch('/api/v1/income/analytics'),
+          fetch('/api/v1/status')
+        ]);
+        if(ar.ok) this.incomeStats = await ar.json();
+        if(sr.ok) this.sysStatus = await sr.json();
+      } catch(e) {}
+    },
 
     // ── Scroll ────────────────────────────────────
     scrollBottom() {
