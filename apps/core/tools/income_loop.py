@@ -13577,7 +13577,7 @@ Return JSON (keep content fields under 80 words each):
                     "ts": today, "url": urls_created[0] if urls_created else "", "ask": funding_ask
                 }), ttl_seconds=86400 * 30)
 
-            # ── LinkedIn "building in public" post about the pitch deck ─────────
+            # ── LinkedIn + Twitter announce (with 25s hard timeout each) ──────────
             _vc_ae = getattr(settings, "ARIA_EMAIL", None)
             _vc_ap = getattr(settings, "ARIA_PASSWORD", None)
             _vc_url = urls_created[0] if urls_created else ""
@@ -13587,48 +13587,48 @@ Return JSON (keep content fields under 80 words each):
                 f"Seeking ${funding_ask:,.0f} at ${valuation:,.0f} valuation\n\n"
                 f"Deck: {_vc_url}"
             )[:1300]
-            _vc_li_ok = False
-            try:
-                from apps.distribution.publishers.api_publisher import get_api_publisher
-                _vc_pub = get_api_publisher()
-                _vc_li_r = await _vc_pub.publish_to_linkedin(li_vc)
-                if _vc_li_r and _vc_li_r.success:
-                    _vc_li_ok = True
-            except Exception:
-                pass
-            if not _vc_li_ok and _vc_ae and _vc_ap:
+
+            async def _try_linkedin():
                 try:
-                    from apps.core.tools.human_browser import get_platform_login
-                    _vc_plat = await get_platform_login()
-                    _vc_li_pg = await _vc_plat.linkedin(_vc_ae, _vc_ap)
-                    await _vc_plat.linkedin_post(_vc_li_pg, li_vc)
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    r = await get_api_publisher().publish_to_linkedin(li_vc)
+                    if r and r.success:
+                        return
+                    if _vc_ae and _vc_ap:
+                        from apps.core.tools.human_browser import get_platform_login
+                        plat = await get_platform_login()
+                        pg = await plat.linkedin(_vc_ae, _vc_ap)
+                        await plat.linkedin_post(pg, li_vc)
                 except Exception:
                     pass
 
-            # ── Twitter: announce pitch deck ──────────────────────────────────
-            _vc_tw = (
-                f"🚀 ARIA is raising ${funding_ask:,}\n\n"
-                f"{one_liner}\n\n"
-                f"Autonomous AI that creates & sells products 24/7 — we're building in public"
-                + (f"\n\nDeck → {_vc_url}" if _vc_url else "")
-            )[:280]
-            _vc_tw_ok = False
-            try:
-                from apps.distribution.publishers.api_publisher import get_api_publisher
-                _vc_pub2 = get_api_publisher()
-                _vc_tw_r = await _vc_pub2.publish_to_twitter(_vc_tw)
-                if _vc_tw_r and _vc_tw_r.success:
-                    _vc_tw_ok = True
-            except Exception:
-                pass
-            if not _vc_tw_ok and _vc_ae and _vc_ap:
+            async def _try_twitter():
+                _tw_text = (
+                    f"🚀 ARIA is raising ${funding_ask:,}\n\n"
+                    f"{one_liner}\n\n"
+                    f"Autonomous AI that creates & sells products 24/7 — building in public"
+                    + (f"\n\nDeck → {_vc_url}" if _vc_url else "")
+                )[:280]
                 try:
-                    from apps.core.tools.human_browser import get_platform_login
-                    _vc_plat2 = await get_platform_login()
-                    _vc_tw_pg = await _vc_plat2.twitter(_vc_ae, _vc_ap)
-                    await _vc_plat2.twitter_thread_post(_vc_tw_pg, [_vc_tw])
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
+                    r = await get_api_publisher().publish_to_twitter(_tw_text)
+                    if r and r.success:
+                        return
+                    if _vc_ae and _vc_ap:
+                        from apps.core.tools.human_browser import get_platform_login
+                        plat = await get_platform_login()
+                        pg = await plat.twitter(_vc_ae, _vc_ap)
+                        await plat.twitter_thread_post(pg, [_tw_text])
                 except Exception:
                     pass
+
+            # Run both with a 25s cap — browser automation can hang indefinitely
+            import asyncio as _aio
+            await _aio.gather(
+                _aio.wait_for(_try_linkedin(), timeout=25),
+                _aio.wait_for(_try_twitter(), timeout=25),
+                return_exceptions=True,
+            )
 
             return {
                 "success": True,
