@@ -2111,8 +2111,7 @@ Output JSON:
                 }
 
             # Fallback: promote ARIA AI itself when no live product listings exist
-            _ae = getattr(settings, "ARIA_EMAIL", None)
-            _ap = getattr(settings, "ARIA_PASSWORD", None)
+            # API-only (no browser) to stay within request timeout
             aria_promo = (
                 "🤖 ARIA AI — an autonomous business AI that works 24/7 to grow your income.\n\n"
                 "✅ Writes content, creates products, runs campaigns autonomously\n"
@@ -2122,28 +2121,30 @@ Output JSON:
             )[:280]
             _promo_sent = 0
             try:
-                tw_r = await pub.publish_to_twitter(aria_promo)
+                tw_r = await asyncio.wait_for(pub.publish_to_twitter(aria_promo), timeout=15.0)
                 if tw_r and tw_r.success:
                     _promo_sent += 1
                     if tw_r.url:
                         urls_created.append(tw_r.url)
             except Exception:
                 pass
-            if _promo_sent == 0 and _ae and _ap:
-                try:
-                    from apps.core.tools.human_browser import get_platform_login
-                    _plat2 = await get_platform_login()
-                    _tw_pg2 = await _plat2.twitter(_ae, _ap)
-                    _url2 = await _plat2.twitter_thread_post(_tw_pg2, [aria_promo])
-                    if _url2:
-                        _promo_sent += 1
-                        urls_created.append(_url2)
-                except Exception:
-                    pass
+            try:
+                lk_promo = (
+                    "🤖 Introducing ARIA AI — an autonomous business AI that works 24/7.\n\n"
+                    "I've been building ARIA to automate every aspect of running an online business:\n"
+                    "📝 Content creation • 🛍️ Product listing • 📧 Email campaigns • 📊 Analytics\n\n"
+                    "All running autonomously, 24/7, without me lifting a finger.\n\n"
+                    "What would you automate first? 👇\n\n#AI #Automation #SideIncome #SaaS"
+                )
+                lk_r = await asyncio.wait_for(pub.publish_to_linkedin(lk_promo), timeout=15.0)
+                if lk_r and lk_r.success:
+                    _promo_sent += 1
+            except Exception:
+                pass
             if _promo_sent > 0:
                 return {
                     "success": True,
-                    "summary": f"Social blitz: ARIA AI promoted on {_promo_sent} channel(s) (no live products yet)",
+                    "summary": f"Social blitz: ARIA AI promoted on {_promo_sent} channel(s) via API (no live products yet)",
                     "revenue_potential": 5.0,
                     "urls": urls_created[:5],
                 }
