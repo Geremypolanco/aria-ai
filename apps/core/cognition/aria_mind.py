@@ -332,6 +332,8 @@ CONTENIDO: create_social_content | publish_article | build_software | create_web
 ANÁLISIS: run_proactive_analysis | get_income_analytics | get_product_catalog | get_github_traction
 BROWSER:  browse_page | human_login(platform=...) | human_browse | human_action
 ESTADO:   get_status | daily_report | task_status
+CONEXIONES: gmail_list | gmail_send | google_calendar | google_drive | indeed_jobs | slack_send | analyze_image_vision
+CONEXIONES (OAuth): gmail_list(query=...) | gmail_send(to=...,subject=...,body=...) | google_calendar(action=list|create) | google_drive(query=...) | indeed_jobs(query=...,location=...) | slack_send(message=...,channel=...) | list_connections | analyze_image_vision(question=...)
 
 ════════════════════════════════════════════════════════════
 FORMATO DE RESPUESTA — DOS SECCIONES OBLIGATORIAS
@@ -485,6 +487,16 @@ class AriaMind:
             # Context window management — compress if history grew too long
             if len(history) > 30:
                 history = await self._compress_history(chat_id, history)
+
+            # /connect command — OAuth connection flow
+            if text.strip().lower().startswith("/connect"):
+                parts = text.strip().split(maxsplit=1)
+                service = parts[1].strip().lower() if len(parts) > 1 else ""
+                return await self._handle_connect_command(service, chat_id)
+
+            if text.strip().lower() in ("/connections", "/conexiones", "mis conexiones", "que tienes conectado"):
+                obs, media = await self._execute_with_retry("list_connections", {}, chat_id=chat_id)
+                return MindResponse(text=obs, tool_used="list_connections")
 
             # 2. GOAL ENGINE — detecta si es una solicitud de acción (ReAct) o conversación simple
             if self._needs_agent_loop(text):
@@ -2488,6 +2500,143 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     return f"[Video generado — URL: {r.get('video_url', '')}]", {}
                 return r.get("error", "Wan2.2 no disponible (puede haber cola)"), {}
 
+            # ── CONNECTIONS — Google, Indeed, Slack (equivalente MCP de Claude) ──
+
+            elif tool == "gmail_list":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.google_connection import GoogleConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "google")
+                if not tokens:
+                    return ("Google no conectado. Usa /connect google para conectar tu cuenta "
+                            "y acceder a Gmail, Calendar y Drive."), {}
+                query = args.get("query", "is:unread")
+                max_r = int(args.get("max_results", 10))
+                msgs = await GoogleConnection().gmail_list(tokens, max_r, query)
+                if not msgs:
+                    return "No se encontraron mensajes con ese criterio.", {}
+                lines = [f"📧 **{m['subject'][:60]}**\nDe: {m['from'][:50]}\n{m['snippet'][:120]}"
+                         for m in msgs]
+                return f"📬 {len(msgs)} emails encontrados:\n\n" + "\n\n".join(lines), {}
+
+            elif tool == "gmail_send":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.google_connection import GoogleConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "google")
+                if not tokens:
+                    return "Google no conectado. Usa /connect google primero.", {}
+                to = args.get("to", "")
+                subject = args.get("subject", "")
+                body = args.get("body", "")
+                if not to or not body:
+                    return "Se requiere: to (email), subject, body.", {}
+                r = await GoogleConnection().gmail_send(tokens, to, subject, body)
+                return (f"✅ Email enviado a {to}\nAsunto: {subject}" if r.get("success")
+                        else f"Error al enviar: {r}"), {}
+
+            elif tool == "google_calendar":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.google_connection import GoogleConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "google")
+                if not tokens:
+                    return "Google no conectado. Usa /connect google primero.", {}
+                action = args.get("action", "list")
+                if action == "create":
+                    r = await GoogleConnection().calendar_create(
+                        tokens,
+                        title=args.get("title", "Nuevo evento"),
+                        start=args.get("start", ""),
+                        end=args.get("end", ""),
+                        description=args.get("description", ""),
+                        location=args.get("location", ""),
+                    )
+                    return (f"✅ Evento creado: {args.get('title')}\n🔗 {r.get('link', '')}"
+                            if r.get("success") else f"Error: {r}"), {}
+                else:
+                    events = await GoogleConnection().calendar_list(tokens, int(args.get("max_results", 10)))
+                    if not events:
+                        return "No hay eventos próximos en tu calendario.", {}
+                    lines = [f"📅 **{e['title']}**\n🕐 {e['start']}\n📍 {e.get('location','')}"
+                             for e in events[:5]]
+                    return f"📆 Próximos {len(events)} eventos:\n\n" + "\n\n".join(lines), {}
+
+            elif tool == "google_drive":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.google_connection import GoogleConnection
+                mgr = get_connection_manager()
+                tokens = await mgr.get(chat_id, "google")
+                if not tokens:
+                    return "Google no conectado. Usa /connect google primero.", {}
+                query = args.get("query", "")
+                files = await GoogleConnection().drive_search(tokens, query, int(args.get("max_results", 10)))
+                if not files:
+                    return f"No se encontraron archivos con '{query}' en Drive.", {}
+                lines = [f"📄 **{f['name']}** ({f['type']})\n🔗 {f['link']}" for f in files[:5]]
+                return f"🗂️ {len(files)} archivos encontrados:\n\n" + "\n\n".join(lines), {}
+
+            elif tool == "indeed_jobs":
+                from apps.core.connections.indeed_connection import IndeedConnection
+                query = args.get("query", "")
+                location = args.get("location", "Remote")
+                max_r = int(args.get("max_results", 10))
+                emp_type = args.get("employment_type", "")
+                if not query:
+                    return "Se requiere: query (ej: 'Python developer')", {}
+                jobs = await IndeedConnection().search_jobs(query, location, max_r, emp_type)
+                if not jobs:
+                    return f"No se encontraron empleos para '{query}' en {location}.", {}
+                lines = [f"💼 **{j['title']}** @ {j['company']}\n📍 {j['location']} {j.get('salary','')}\n🔗 {j.get('link','')} "
+                         for j in jobs[:5]]
+                return f"🔍 {len(jobs)} empleos encontrados en Indeed:\n\n" + "\n\n".join(lines), {}
+
+            elif tool == "slack_send":
+                from apps.core.connections.manager import get_connection_manager
+                from apps.core.connections.slack_connection import SlackConnection
+                mgr = get_connection_manager()
+                text_msg = args.get("message", args.get("text", ""))
+                channel = args.get("channel", "")
+                # Try OAuth tokens first, fallback to webhook
+                tokens = await mgr.get(chat_id, "slack")
+                if tokens and channel:
+                    r = await SlackConnection().send_message(tokens, channel, text_msg)
+                    return (f"✅ Mensaje enviado a #{channel} en Slack"
+                            if r.get("success") else f"Error Slack: {r.get('error')}"), {}
+                else:
+                    r = await SlackConnection().send_webhook(text_msg)
+                    return ("✅ Mensaje enviado a Slack via webhook"
+                            if r.get("success") else "Error: configura SLACK_WEBHOOK_URL o usa /connect slack"), {}
+
+            elif tool == "list_connections":
+                from apps.core.connections.manager import get_connection_manager
+                mgr = get_connection_manager()
+                connected = await mgr.list_connected(chat_id)
+                available = list(mgr.AVAILABLE.keys())
+                lines = []
+                for s in available:
+                    name = mgr.AVAILABLE[s]
+                    status = "✅" if s in connected else "❌"
+                    lines.append(f"{status} **{s}** — {name}")
+                return ("🔌 **Conexiones de ARIA**\n\n" + "\n".join(lines) +
+                        "\n\nUsa `/connect <servicio>` para conectar una cuenta."), {}
+
+            elif tool == "analyze_image_vision":
+                image_b64 = get_image_context(chat_id)
+                if not image_b64:
+                    return "No hay imagen en el contexto. Envíame una imagen primero.", {}
+                question = args.get("question", "Describe esta imagen en detalle y extrae toda la información relevante.")
+                ai = self._ai_client()
+                if not ai:
+                    return "Motor de IA no disponible.", {}
+                resp = await ai.complete_vision(
+                    system="Eres ARIA — analiza imágenes con máximo detalle. Responde en español.",
+                    user=question,
+                    image_b64=image_b64,
+                    agent_name="aria_vision_tool",
+                )
+                return (resp.content if resp.success else "Análisis visual no disponible temporalmente."), {}
+
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
             return f"Error en {tool}: {str(exc)[:200]}", {}
@@ -3311,6 +3460,93 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             await cache.release_lock("aria:mind:reflect")
 
     # ── COGNITIVE COMMANDS ─────────────────────────────────────────────────
+
+    async def _handle_connect_command(self, service: str, chat_id: str) -> MindResponse:
+        """
+        /connect <service> — inicia flujo OAuth para conectar una cuenta.
+        Equivalente al sistema MCP de Claude pero para Aria.
+        """
+        from apps.core.connections.manager import get_connection_manager
+        mgr = get_connection_manager()
+
+        if not service:
+            available = "\n".join(f"• `/connect {k}` — {v}" for k, v in mgr.AVAILABLE.items())
+            connected = await mgr.list_connected(chat_id)
+            conn_text = f"Ya conectados: {', '.join(connected)}" if connected else "Ninguno conectado aún"
+            return MindResponse(
+                text=f"🔌 **Conectar una cuenta a ARIA**\n\n{available}\n\n{conn_text}",
+                tool_used="connect",
+            )
+
+        if service in ("google",):
+            auth_url = mgr.get_auth_url(service, chat_id)
+            if not auth_url:
+                return MindResponse(
+                    text=(f"⚙️ Para conectar Google, necesito que agregues estas 2 credenciales en Fly.io:\n\n"
+                          "1. Obtén en **console.cloud.google.com** → APIs & Services → Credentials → OAuth 2.0 Client IDs\n"
+                          "2. Agrega en Fly.io:\n"
+                          "   `flyctl secrets set GOOGLE_CLIENT_ID='...' GOOGLE_CLIENT_SECRET='...' --app aria-ai`\n\n"
+                          "Con Google conectado, ARIA puede leer tu Gmail, Calendar y Drive directamente."),
+                    tool_used="connect",
+                )
+            return MindResponse(
+                text=(f"🔗 **Conectar Google a ARIA**\n\n"
+                      f"Haz clic aquí para autorizar:\n{auth_url}\n\n"
+                      "Esto dará a ARIA acceso a:\n• 📧 Gmail (leer + enviar)\n"
+                      "• 📅 Google Calendar\n• 🗂️ Google Drive\n\n"
+                      "Tus credenciales se guardan encriptadas y solo ARIA las usa."),
+                tool_used="connect",
+            )
+
+        if service == "slack":
+            webhook = getattr(__import__("apps.core.config", fromlist=["settings"]).settings, "SLACK_WEBHOOK_URL", None)
+            if webhook:
+                return MindResponse(
+                    text="✅ **Slack ya configurado** via webhook. ARIA puede enviar mensajes.\nPara acceso completo (leer canales), configura SLACK_CLIENT_ID + SLACK_CLIENT_SECRET.",
+                    tool_used="connect",
+                )
+            auth_url = mgr.get_auth_url(service, chat_id)
+            if not auth_url:
+                return MindResponse(
+                    text=("⚙️ Para conectar Slack:\n\n"
+                          "**Modo simple (webhook):**\n"
+                          "1. Ve a api.slack.com/apps → Create App → Incoming Webhooks\n"
+                          "2. `flyctl secrets set SLACK_WEBHOOK_URL='https://hooks.slack.com/...' --app aria-ai`\n\n"
+                          "**Modo completo (OAuth):**\n"
+                          "1. Ve a api.slack.com/apps → OAuth & Permissions\n"
+                          "2. `flyctl secrets set SLACK_CLIENT_ID='...' SLACK_CLIENT_SECRET='...' --app aria-ai`"),
+                    tool_used="connect",
+                )
+            return MindResponse(
+                text=f"🔗 **Conectar Slack a ARIA**\n\nHaz clic aquí:\n{auth_url}",
+                tool_used="connect",
+            )
+
+        if service == "indeed":
+            from apps.core.config import settings as _s
+            if getattr(_s, "SERP_API_KEY", None):
+                return MindResponse(
+                    text="✅ **Indeed ya conectado** via SerpAPI. ARIA puede buscar empleos con `indeed_jobs`.",
+                    tool_used="connect",
+                )
+            return MindResponse(
+                text=("⚙️ Para conectar Indeed:\n\n"
+                      "1. Obtén API key en **serpapi.com** (plan gratuito: 100 búsquedas/mes)\n"
+                      "2. `flyctl secrets set SERP_API_KEY='...' --app aria-ai`\n\n"
+                      "Con esto ARIA puede buscar empleos en Indeed, Google Jobs y más."),
+                tool_used="connect",
+            )
+
+        if await mgr.is_connected(chat_id, service):
+            return MindResponse(
+                text=f"✅ **{service.capitalize()} ya está conectado.**\nUsa `/connect` para ver todas las conexiones.",
+                tool_used="connect",
+            )
+
+        return MindResponse(
+            text=f"Servicio '{service}' no reconocido.\nServicios disponibles: {', '.join(mgr.AVAILABLE.keys())}",
+            tool_used="connect",
+        )
 
     async def _handle_plan_command(self, goal: str) -> MindResponse:
         """

@@ -182,6 +182,18 @@ class Settings(BaseSettings):
     ARIA_EMAIL: Optional[str] = None
     ARIA_PASSWORD: Optional[str] = None
 
+    # ── CONEXIONES OAuth (equivalente a MCP de Claude) ────────────────────
+    # Google OAuth (DIFERENTE de GOOGLE_API_KEY — para acceso a Gmail/Calendar/Drive)
+    # Obtén en: console.cloud.google.com → APIs & Services → Credentials → OAuth 2.0
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+
+    # Slack OAuth (para enviar/leer mensajes en workspaces)
+    # Obtén en: api.slack.com/apps → Create App → OAuth & Permissions
+    SLACK_CLIENT_ID: Optional[str] = None
+    SLACK_CLIENT_SECRET: Optional[str] = None
+    SLACK_WEBHOOK_URL: Optional[str] = None  # Modo simple: solo webhook URL
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

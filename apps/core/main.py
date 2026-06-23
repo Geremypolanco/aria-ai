@@ -2931,6 +2931,50 @@ async def dashboard():
         return "<h1>Dashboard</h1><p>Template not found. Check apps/core/templates/dashboard.html</p>"
 
 
+@app.get("/oauth/callback/{service}")
+async def oauth_callback(service: str, request: Request):
+    """
+    OAuth callback endpoint — recibe el code de Google/Slack/etc.
+    State = chat_id del usuario de Telegram que inició la conexión.
+    """
+    params = dict(request.query_params)
+    code = params.get("code", "")
+    state = params.get("state", "")  # chat_id
+    error = params.get("error", "")
+
+    if error:
+        logger.warning("[OAuth] Error en callback %s: %s", service, error)
+        return HTMLResponse(
+            f"<h2>Error conectando {service}</h2><p>{error}</p>"
+            "<p>Puedes cerrar esta ventana y reintentar desde Telegram.</p>",
+            status_code=400,
+        )
+    if not code or not state:
+        return HTMLResponse("<h2>Parámetros inválidos</h2>", status_code=400)
+
+    try:
+        from apps.core.connections.manager import get_connection_manager
+        mgr = get_connection_manager()
+        success = await mgr.handle_callback(service, code, state)
+        if success:
+            # Notify user via Telegram
+            msg = f"✅ <b>{service.capitalize()} conectado</b> — ARIA ya puede acceder a tu cuenta."
+            await send_telegram(msg)
+            return HTMLResponse(
+                f"<h2>✅ {service.capitalize()} conectado exitosamente</h2>"
+                "<p>Puedes cerrar esta ventana. ARIA confirmará en Telegram.</p>"
+                "<style>body{{font-family:sans-serif;text-align:center;padding:50px;background:#0f172a;color:#e2e8f0}}</style>",
+            )
+        else:
+            return HTMLResponse(
+                f"<h2>Error procesando {service}</h2><p>Revisa los logs de ARIA.</p>",
+                status_code=500,
+            )
+    except Exception as exc:
+        logger.error("[OAuth] Callback error %s: %s", service, exc)
+        return HTMLResponse(f"<h2>Error interno: {exc}</h2>", status_code=500)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Redirects to the dashboard."""

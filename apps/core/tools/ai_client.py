@@ -45,6 +45,7 @@ class AIModel(str, Enum):
     CODE = "code"
     FAST = "fast"
     CREATIVE = "creative"
+    VISION = "vision"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -66,36 +67,48 @@ class AIModel(str, Enum):
 
 # Provider rotation per task — only free tier; paid providers require separate subscriptions
 HF_PROVIDER_ROTATION: list[str] = [
-    "hf-inference",   # free tier (uses monthly credits)
+    "together",          # Together AI via HF token — fast, no cold start
+    "nebius",            # Nebius AI Studio — good latency, many models
+    "hf-inference",      # Official HF — free tier (cold starts possible)
+    "featherless-ai",    # Specialized in chat models
 ]
 
 HF_MODEL_ROTATION: dict[AIModel, list[str]] = {
     AIModel.STRATEGY: [
-        "Qwen/Qwen2.5-72B-Instruct",              # SOTA — complex reasoning
-        "meta-llama/Llama-3.3-70B-Instruct",      # SOTA — instruction follow
+        "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",     # Best open reasoning
+        "Qwen/Qwen2.5-72B-Instruct",                      # SOTA instruction following
+        "meta-llama/Llama-3.3-70B-Instruct",              # Excellent baseline
+        "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",      # Fast reasoning
         "mistralai/Mistral-Small-3.1-24B-Instruct-2503",  # Good mid-size
     ],
     AIModel.CODE: [
-        "Qwen/Qwen2.5-Coder-32B-Instruct",        # SOTA coding benchmark
-        "Qwen/Qwen2.5-Coder-7B-Instruct",         # Fast coding model
-        "meta-llama/Llama-3.3-70B-Instruct",      # Code-capable fallback
+        "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "Qwen/Qwen2.5-Coder-7B-Instruct",
     ],
     AIModel.FAST: [
-        "Qwen/Qwen2.5-7B-Instruct",               # Fast + capable
-        "meta-llama/Llama-3.2-3B-Instruct",       # Ultra-fast
-        "Qwen/Qwen2.5-Coder-7B-Instruct",         # Fast fallback
+        "Qwen/Qwen2.5-7B-Instruct",
+        "meta-llama/Llama-3.2-3B-Instruct",
+        "mistralai/Mistral-7B-Instruct-v0.3",
+        "Qwen/Qwen2.5-Coder-7B-Instruct",
     ],
     AIModel.CREATIVE: [
-        "meta-llama/Llama-3.3-70B-Instruct",      # Best for creative text
-        "Qwen/Qwen2.5-72B-Instruct",              # Creative fallback
-        "mistralai/Mistral-Small-3.1-24B-Instruct-2503",  # Creative alt
+        "meta-llama/Llama-3.3-70B-Instruct",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+    ],
+    AIModel.VISION: [
+        "meta-llama/Llama-3.2-11B-Vision-Instruct",
+        "Qwen/Qwen2-VL-7B-Instruct",
+        "microsoft/Phi-3.5-vision-instruct",
     ],
 }
 
 # Modelo primario por proveedor (para _dispatch directo)
 MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
     AIModel.STRATEGY: {
-        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-72B-Instruct",
+        AIProvider.HUGGINGFACE: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
         AIProvider.GROQ:        "llama-3.3-70b-versatile",
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
         AIProvider.ANTHROPIC:   "claude-haiku-4-5-20251001",
@@ -118,10 +131,16 @@ MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
         AIProvider.ANTHROPIC:   "claude-haiku-4-5-20251001",
     },
+    AIModel.VISION: {
+        AIProvider.HUGGINGFACE: "meta-llama/Llama-3.2-11B-Vision-Instruct",
+        AIProvider.GROQ:        "llava-v1.5-7b-4096-preview",
+        AIProvider.OPENAI:      "gpt-4o-mini",
+        AIProvider.ANTHROPIC:   "claude-haiku-4-5-20251001",
+    },
 }
 
 PROVIDER_TIMEOUTS: dict[AIProvider, float] = {
-    AIProvider.HUGGINGFACE: 15.0,  # cold starts unlikely to resolve after 15s → fall to Groq fast
+    AIProvider.HUGGINGFACE: 25.0,  # cold starts unlikely to resolve after 25s → fall to Groq fast
     AIProvider.GROQ:        12.0,
     AIProvider.OPENAI:      15.0,
     AIProvider.ANTHROPIC:   20.0,
@@ -312,6 +331,49 @@ class AriaAIClient:
         except json.JSONDecodeError as exc:
             logger.error("JSON invalido: %s | contenido: %s", exc, response.content[:200])
             return None
+
+    async def complete_vision(
+        self,
+        system: str,
+        user: str,
+        image_b64: str,
+        image_mime: str = "image/jpeg",
+        max_tokens: int = 1000,
+        agent_name: str = "aria_vision",
+    ) -> "AIResponse":
+        """Vision + text completion. Routes to HF vision models first, falls back to Groq."""
+        if not settings.hf_key:
+            return AIResponse(
+                content="", provider=AIProvider.HUGGINGFACE, model="none",
+                success=False, error="HF_TOKEN no configurado para vision"
+            )
+        for model_id in HF_MODEL_ROTATION[AIModel.VISION]:
+            short = model_id.split("/")[-1]
+            for hf_prov in HF_PROVIDER_ROTATION:
+                try:
+                    t0 = time.time()
+                    content, tokens = await asyncio.wait_for(
+                        self._call_huggingface_vision(
+                            model_id, system, user, image_b64, image_mime, max_tokens, hf_prov
+                        ),
+                        timeout=30.0,
+                    )
+                    latency = int((time.time() - t0) * 1000)
+                    self._total_tokens += tokens
+                    self._health[AIProvider.HUGGINGFACE].record_success()
+                    logger.info("[%s] HF-Vision[%s@%s] OK — %dms", agent_name, short, hf_prov, latency)
+                    return AIResponse(
+                        content=content, provider=AIProvider.HUGGINGFACE,
+                        model=f"{hf_prov}/{model_id}", tokens_used=tokens,
+                        latency_ms=latency, success=True,
+                    )
+                except Exception as exc:
+                    logger.debug("[%s] HF-Vision %s@%s: %s", agent_name, short, hf_prov, str(exc)[:60])
+                    continue
+        return AIResponse(
+            content="", provider=AIProvider.HUGGINGFACE, model="none",
+            success=False, error="HF vision: todos los modelos fallaron"
+        )
 
     # ── HF MODEL ROTATION ─────────────────────────────────
 
@@ -512,6 +574,39 @@ class AriaAIClient:
             raise ValueError(f"HF sin choices: {str(data)[:100]}")
         content = choices[0].get("message", {}).get("content", "").strip()
         tokens = data.get("usage", {}).get("total_tokens", len(content.split()) * 2)
+        return content, tokens
+
+    async def _call_huggingface_vision(
+        self,
+        model_id: str,
+        system: str,
+        user: str,
+        image_b64: str,
+        image_mime: str,
+        max_tokens: int,
+        provider: str = "hf-inference",
+    ) -> tuple[str, int]:
+        """HF vision call — image + text in the same message."""
+        hf_key = settings.hf_key
+        if not hf_key:
+            raise ValueError("HF_TOKEN no configurado")
+        from huggingface_hub import AsyncInferenceClient
+        client = AsyncInferenceClient(provider=provider, api_key=hf_key)
+        image_url = f"data:{image_mime};base64,{image_b64}"
+        response = await client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                    {"type": "text", "text": user},
+                ]},
+            ],
+            max_tokens=min(max_tokens, 2048),
+            temperature=0.4,
+        )
+        content = (response.choices[0].message.content or "").strip()
+        tokens = response.usage.total_tokens if response.usage else len(content.split()) * 2
         return content, tokens
 
     async def _call_groq(
