@@ -2493,6 +2493,8 @@ JSON:
                 price=price,
                 product_type=product.get("product_type", "Digital Download"),
             )
+            if not res.get("success"):
+                logger.warning("[IncomeLoop] shopify_listing Shopify failed: %s", res.get("error", "unknown")[:120])
 
             if res.get("success"):
                 url = res.get("shop_url", "")
@@ -2567,8 +2569,9 @@ JSON:
                         "revenue_potential": price,
                         "urls": [gr.get("url", "")] if gr.get("url") else [],
                     }
-            except Exception:
-                pass
+                logger.warning("[IncomeLoop] shopify_listing Gumroad API failed: %s", gr.get("error", "no token")[:80])
+            except Exception as _gr_exc:
+                logger.warning("[IncomeLoop] shopify_listing Gumroad exception: %s", _gr_exc)
 
             # Gumroad browser fallback
             _sl_ae = getattr(settings, "ARIA_EMAIL", None)
@@ -2583,7 +2586,7 @@ JSON:
                             _gm_page, prod_title[:100], int(price * 100),
                             product.get("description", "")[:2000],
                         )
-                    _gm_url = await asyncio.wait_for(_sl_gumroad_browser(), timeout=25.0)
+                    _gm_url = await asyncio.wait_for(_sl_gumroad_browser(), timeout=55.0)
                     if _gm_url:
                         return {
                             "success": True,
