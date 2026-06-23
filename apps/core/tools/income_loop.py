@@ -1022,6 +1022,8 @@ JSON:
                     import httpx as _hf_cp_http
                     _hf_un = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
                     _hf_urls_cp: list[str] = []
+                    from datetime import datetime as _dt_cp
+                    _week_cp = _dt_cp.utcnow().strftime("%Y-w%W")
                     async with _hf_cp_http.AsyncClient(timeout=20.0) as _hfc:
                         for _art_cp in arts[:2]:
                             _t_cp = _art_cp.get("title", "AI Insights")[:50]
@@ -1029,14 +1031,14 @@ JSON:
                             if not _b_cp:
                                 continue
                             _rn_cp = _t_cp.lower().replace(" ", "-").replace("'", "")
-                            _rn_cp = "".join(c for c in _rn_cp if c.isalnum() or c == "-")[:28] + "-article"
+                            _rn_cp = "".join(c for c in _rn_cp if c.isalnum() or c == "-")[:22] + f"-{_week_cp}-art"
                             _readme_cp = f"---\ntitle: {_t_cp}\ntags:\n- article\n- AI\n---\n\n{_b_cp}\n\n---\n*Published by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
                             _cr_cp = await _hfc.post(
                                 "https://huggingface.co/api/repos/create",
                                 headers={"Authorization": f"Bearer {_hf_token_cp}", "Content-Type": "application/json"},
                                 json={"type": "dataset", "name": _rn_cp, "private": False},
                             )
-                            if _cr_cp.status_code in (200, 201):
+                            if _cr_cp.status_code in (200, 201, 409):
                                 import base64 as _hf_b64_cp
                                 await _hfc.put(
                                     f"https://huggingface.co/api/datasets/{_hf_un}/{_rn_cp}/raw/main/README.md",
@@ -2664,8 +2666,10 @@ JSON:
                 try:
                     import httpx as _hf_http
                     _hf_username = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
-                    _repo_name = prod_title[:40].lower().replace(" ", "-").replace("'", "").replace(":", "")
-                    _repo_name = "".join(c for c in _repo_name if c.isalnum() or c == "-")[:32] + "-product"
+                    from datetime import datetime as _dt_sl
+                    _day_sl = _dt_sl.utcnow().strftime("%m%d")
+                    _repo_name = prod_title[:32].lower().replace(" ", "-").replace("'", "").replace(":", "")
+                    _repo_name = "".join(c for c in _repo_name if c.isalnum() or c == "-")[:26] + f"-{_day_sl}-prod"
                     _readme = (
                         f"---\ntitle: {prod_title[:50]}\nemoji: 🛍️\ncolorFrom: purple\ncolorTo: blue\n"
                         f"sdk: static\npinned: true\n---\n\n"
@@ -2680,7 +2684,7 @@ JSON:
                             headers={"Authorization": f"Bearer {hf_token}", "Content-Type": "application/json"},
                             json={"type": "space", "name": _repo_name, "private": False, "sdk": "static"},
                         )
-                        if _cr.status_code in (200, 201):
+                        if _cr.status_code in (200, 201, 409):
                             import base64 as _hf_b64
                             _readme_b64 = _hf_b64.b64encode(_readme.encode()).decode()
                             await _hc.put(
@@ -2734,12 +2738,11 @@ JSON:
                     topic_str = "AI side income strategies for solopreneurs"
 
             ai = get_ai_client()
-            if not ai:
-                return {"success": False, "summary": "AI unavailable"}
-
-            ebook = await ai.complete_json(
-                system="You are a bestselling ebook author. Create detailed, valuable ebooks that people buy. Output JSON only.",
-                user=f"""Create a complete sellable ebook on: \"{topic_str}\"
+            ebook = None
+            if ai:
+                ebook = await ai.complete_json(
+                    system="You are a bestselling ebook author. Create detailed, valuable ebooks that people buy. Output JSON only.",
+                    user=f"""Create a complete sellable ebook on: \"{topic_str}\"
 
 JSON:
 {{
@@ -2751,9 +2754,9 @@ JSON:
   \"tags\": [\"ebook\", \"guide\", \"productivity\"],
   \"category\": \"Self-Help\"
 }}""",
-                model=AIModel.STRATEGY,
-                max_tokens=1500,
-            )
+                    model=AIModel.STRATEGY,
+                    max_tokens=1500,
+                )
 
             if not ebook:
                 # AI unavailable — use pre-built ebook as fallback
