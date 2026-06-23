@@ -2638,6 +2638,20 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             if not decision:
                 logger.warning("[AgentLoop] _agent_think_step returned None en paso %d", step)
+                if step == 1:
+                    # First step failed: use intent-based fallback so Aria does SOMETHING useful
+                    fallback_tool, fallback_args = self._infer_tool_from_intent(text)
+                    if fallback_tool:
+                        logger.info("[AgentLoop] Fallback intent→tool: %s %s", fallback_tool, fallback_args)
+                        obs, media = await self._execute_with_retry(fallback_tool, fallback_args, chat_id=chat_id)
+                        observations.append({
+                            "step": 1, "tool": fallback_tool,
+                            "reasoning": f"[fallback intent] {text[:100]}",
+                            "result": obs[:800],
+                        })
+                        if media and not media_result:
+                            media_result = media
+                        await self._record_exec(fallback_tool, fallback_args, obs, bool(obs))
                 break
 
             # Si el objetivo está logrado → responder
@@ -2748,13 +2762,36 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             business_context=business_context,
         )
 
+        user_msg = f"Ejecuta el paso {current_step}. Basa tu decisión en las observaciones anteriores."
+
         result = await ai.complete_json(
             system=prompt,
-            user=f"Ejecuta el paso {current_step}. Basa tu decisión en las observaciones anteriores.",
-            model=AIModel.STRATEGY,
-            max_tokens=600,
+            user=user_msg,
+            model=AIModel.FAST,  # FAST → less tokens, faster, lower rate-limit cost
+            max_tokens=800,
             agent_name=f"agent_step_{current_step}",
         )
+
+        if result is None:
+            # JSON parsing failed — try raw complete() with manual extraction
+            raw = await ai.complete(
+                system=prompt,
+                user=user_msg + "\n\nResponde SOLO JSON. Sin texto adicional.",
+                model=AIModel.FAST,
+                max_tokens=800,
+                agent_name=f"agent_step_{current_step}_retry",
+            )
+            if raw and raw.success and raw.content:
+                import re as _re
+                txt = raw.content.strip()
+                txt = _re.sub(r"```(?:json)?\n?", "", txt).strip().rstrip("`").strip()
+                idx = txt.find("{")
+                end = txt.rfind("}")
+                if idx != -1 and end > idx:
+                    try:
+                        result = json.loads(txt[idx:end + 1])
+                    except Exception:
+                        pass
 
         return result
 
