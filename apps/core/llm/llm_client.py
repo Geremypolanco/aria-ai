@@ -6,6 +6,14 @@ from __future__ import annotations
 
 from typing import Optional
 
+_MODEL_MAP = {
+    "fast": "fast",
+    "strategy": "strategy",
+    "code": "code",
+    "creative": "creative",
+    "standard": "strategy",  # alias
+}
+
 
 async def complete_json(
     user: str,
@@ -18,8 +26,10 @@ async def complete_json(
     ai = get_ai_client()
     if ai is None:
         return None
+    model_key = _MODEL_MAP.get(model, "strategy")
+    ai_model = AIModel(model_key)
     return await ai.complete_json(
         system=system,
         user=user,
-        model=AIModel.STANDARD,
+        model=ai_model,
     )

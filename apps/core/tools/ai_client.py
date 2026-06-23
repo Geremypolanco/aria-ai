@@ -37,6 +37,7 @@ class AIProvider(str, Enum):
     HUGGINGFACE = "huggingface"
     GROQ = "groq"
     OPENAI = "openai"
+    ANTHROPIC = "anthropic"
 
 
 class AIModel(str, Enum):
@@ -63,12 +64,9 @@ class AIModel(str, Enum):
 #   CREATIVE: Llama-3.3-70B (mejor para generación creativa)
 # ══════════════════════════════════════════════════════════════
 
-# Provider rotation per task — tried in order before falling to Groq
+# Provider rotation per task — only free tier; paid providers require separate subscriptions
 HF_PROVIDER_ROTATION: list[str] = [
-    "hf-inference",   # free tier first (uses monthly credits)
-    "together",       # Together AI via HF token — fast fallback
-    "nebius",         # Nebius — second paid fallback
-    "featherless-ai", # Featherless — third paid fallback
+    "hf-inference",   # free tier (uses monthly credits)
 ]
 
 HF_MODEL_ROTATION: dict[AIModel, list[str]] = {
@@ -100,21 +98,25 @@ MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-72B-Instruct",
         AIProvider.GROQ:        "llama-3.3-70b-versatile",
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
+        AIProvider.ANTHROPIC:   "claude-haiku-4-5-20251001",
     },
     AIModel.CODE: {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-Coder-32B-Instruct",
         AIProvider.GROQ:        "llama-3.3-70b-versatile",
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
+        AIProvider.ANTHROPIC:   "claude-haiku-4-5-20251001",
     },
     AIModel.FAST: {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-7B-Instruct",
         AIProvider.GROQ:        "llama-3.1-8b-instant",
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
+        AIProvider.ANTHROPIC:   "claude-haiku-4-5-20251001",
     },
     AIModel.CREATIVE: {
         AIProvider.HUGGINGFACE: "meta-llama/Llama-3.3-70B-Instruct",
         AIProvider.GROQ:        "llama-3.3-70b-versatile",
         AIProvider.OPENAI:      settings.OPENAI_MODEL,
+        AIProvider.ANTHROPIC:   "claude-haiku-4-5-20251001",
     },
 }
 
@@ -122,6 +124,7 @@ PROVIDER_TIMEOUTS: dict[AIProvider, float] = {
     AIProvider.HUGGINGFACE: 35.0,  # HF puede tener cold start — más margen
     AIProvider.GROQ:        12.0,
     AIProvider.OPENAI:      15.0,
+    AIProvider.ANTHROPIC:   20.0,
 }
 
 
@@ -146,8 +149,8 @@ class ProviderHealth:
     last_success_ts: float = field(default_factory=time.time)
     circuit_open: bool = False
     circuit_open_until: float = 0.0
-    _break_after: int = 3
-    _cooldown: float = 60.0
+    _break_after: int = 5
+    _cooldown: float = 30.0
 
     @property
     def success_rate(self) -> float:
@@ -422,6 +425,8 @@ class AriaAIClient:
         t0 = time.time()
         if provider == AIProvider.GROQ:
             content, tokens = await self._call_groq(model_id, system, user, max_tokens, temperature)
+        elif provider == AIProvider.ANTHROPIC:
+            content, tokens = await self._call_anthropic(model_id, system, user, max_tokens, temperature)
         else:
             content, tokens = await self._call_openai(model_id, system, user, max_tokens, temperature)
         latency = int((time.time() - t0) * 1000)
@@ -559,6 +564,38 @@ class AriaAIClient:
         data = resp.json()
         content = data["choices"][0]["message"]["content"].strip()
         tokens = data.get("usage", {}).get("total_tokens", 0)
+        return content, tokens
+
+    async def _call_anthropic(
+        self,
+        model_id: str,
+        system: str,
+        user: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> tuple[str, int]:
+        if not settings.ANTHROPIC_API_KEY:
+            raise ValueError("ANTHROPIC_API_KEY no configurado")
+        resp = await self._http.post(
+            "https://api.anthropic.com/v1/messages",
+            json={
+                "model": model_id,
+                "max_tokens": min(max_tokens, 4096),
+                "temperature": temperature,
+                "system": system,
+                "messages": [{"role": "user", "content": user}],
+            },
+            headers={
+                "x-api-key": settings.ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["content"][0]["text"].strip()
+        usage = data.get("usage", {})
+        tokens = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
         return content, tokens
 
     # ── STREAMING ─────────────────────────────────────────
@@ -765,7 +802,7 @@ class AriaAIClient:
     # ── UTILIDADES ────────────────────────────────────────
 
     def _get_available_providers(self) -> list[AIProvider]:
-        order = [AIProvider.HUGGINGFACE, AIProvider.GROQ, AIProvider.OPENAI]
+        order = [AIProvider.HUGGINGFACE, AIProvider.GROQ, AIProvider.ANTHROPIC, AIProvider.OPENAI]
         return [p for p in order if self._health[p].is_available()]
 
     def _extract_json_safe(self, text: str) -> str:

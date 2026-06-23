@@ -182,6 +182,7 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - diagnose_income  → muestra qué canales de ingresos están activos y cuáles necesitan credenciales. Muestra exactamente qué secrets añadir en Fly.io para activar cada canal. Args: {{}}
 - setup_portfolio  → crea o actualiza el portfolio profesional de ARIA en GitHub Pages (aria-portfolio). Incluye capacidades, productos publicados, artículos del blog, y links de afiliado. Args: {{}}
 - get_income_analytics → reporte de analíticas por estrategia: cuántas veces corrió cada estrategia, tasa de éxito, revenue acumulado, mejores estrategias. Úsalo cuando el usuario pida el reporte, estadísticas de ingresos, qué estrategia funciona mejor o analíticas. Args: {{}}
+- investor_pipeline → muestra el estado completo del pipeline de inversión: pitch deck más reciente, grants preparados, potencial total de financiamiento. Úsalo cuando el usuario pregunte por inversores, grants, fundraising, o el pipeline de inversión. Args: {{}}
 - get_product_catalog → catálogo completo de todos los productos, artículos, demos y recursos publicados por ARIA con sus URLs y revenue potencial. Úsalo cuando el usuario pida ver los productos, el catálogo, qué ha publicado ARIA o cuánto ha generado. Args: {{"limit": 20}}
 - get_github_traction → muestra stars, forks y watchers de todos los repos públicos de ARIA para medir la presencia en el mercado y crecimiento de comunidad. Args: {{}}
 - run_proactive_analysis → análisis autónomo completo: ARIA escanea Shopify, income loop, objetivos estratégicos y GitHub, identifica qué está faltando o rinde menos, y ejecuta la acción más valiosa inmediatamente sin necesidad de instrucción. Args: {{"focus": "shopify|income|github|all (default: all)"}}
@@ -408,6 +409,7 @@ REGLAS DE RAZONAMIENTO AUTÓNOMO:
 176. Si el usuario pide mejorar la resolución de una imagen, hacer upscaling, aumentar la calidad de una foto, o agrandar una imagen sin perder nitidez → usa upscale_image con image_bytes_b64.
 177. Si el usuario sube una imagen con texto impreso y pide OCR, extracción de texto, leer fórmulas matemáticas, o extraer datos de tabla visual → usa ocr_space con image_bytes_b64 y task.
 178. Si el usuario pide detectar la postura corporal, el esqueleto, los keypoints del cuerpo humano, analizar movimiento deportivo, o ver las articulaciones en una imagen → usa estimate_pose.
+184. Si el usuario pide ver el estado del pipeline de inversión, quiere saber qué grants ha encontrado ARIA, ver el último pitch deck, conocer el potencial de financiamiento, o pregunta por inversores, aceleradoras, grants o fundraising → usa investor_pipeline.
 179. Si el usuario pide crear un modelo 3D, generar un objeto en 3D desde una foto, visualizar en 3D, o convertir imagen a 3D → usa generate_3d con image_bytes_b64 o prompt.
 180. Si el usuario pide editar, modificar, transformar o cambiar el contenido de una imagen con instrucciones de texto (agregar/quitar elementos, cambiar estilo, reemplazar objetos, cambiar fondo con texto) → usa edit_image_flux.
 181. Si el usuario pide ampliar una imagen, extender los bordes, ver más contexto de una foto, expandir el encuadre, o "hacer la imagen más grande manteniendo el contexto" → usa outpaint_image.
@@ -1326,6 +1328,53 @@ class AriaMind:
                     lines.append("\n**Nichos con errores:**")
                     for n in result["failed_niches"]:
                         lines.append(f"  ⚠️ {n['niche']}: {', '.join(n.get('errors',[])[:2])}")
+                return "\n".join(lines), {}
+
+            # ── INVESTOR PIPELINE ─────────────────────────────────────────
+            elif tool == "investor_pipeline":
+                import json as _json
+                from apps.core.memory.redis_client import get_cache
+                cache = get_cache()
+                lines = ["📊 <b>PIPELINE DE INVERSIÓN — ARIA</b>\n"]
+                if cache:
+                    # Investor deck
+                    investor_raw = await cache.get("aria:investor:latest_deck")
+                    if investor_raw:
+                        deck = _json.loads(investor_raw) if isinstance(investor_raw, str) else investor_raw
+                        ask = deck.get("ask", 0)
+                        url = deck.get("url", "")
+                        ts  = deck.get("ts", "")
+                        lines.append(f"<b>🚀 Último Pitch Deck</b>")
+                        lines.append(f"  Ask: ${ask:,.0f}  |  {ts}")
+                        if url:
+                            lines.append(f"  <a href=\"{url}\">Ver deck →</a>")
+                    else:
+                        lines.append("<i>No se ha generado un pitch deck aún.</i>")
+                        lines.append("Ejecuta: <code>run_income_cycle strategy=vc_pitch_deck</code>")
+                    lines.append("")
+                    # Grants
+                    grant_potential = float(await cache.get("aria:grants:total_potential") or 0)
+                    raw_grants = await cache.lrange("aria:grants:applications", -3, -1)
+                    grants = []
+                    for r in (raw_grants or []):
+                        try:
+                            grants.append(_json.loads(r) if isinstance(r, str) else r)
+                        except Exception:
+                            pass
+                    if grants:
+                        lines.append(f"<b>💰 Grants Identificados</b>")
+                        lines.append(f"  Potencial total: ${grant_potential:,.0f}")
+                        for g in grants[-2:]:
+                            best = g.get("best", "—")
+                            count = g.get("count", 0)
+                            lines.append(f"  • {best} ({count} aplicaciones)")
+                    else:
+                        lines.append("<i>No se han preparado aplicaciones de grants aún.</i>")
+                        lines.append("Ejecuta: <code>run_income_cycle strategy=micro_grant_hunter</code>")
+                    lines.append("")
+                    lines.append("<i>ARIA ejecuta vc_pitch_deck y micro_grant_hunter automáticamente cada ciclo.</i>")
+                else:
+                    lines.append("⚠️ Redis no disponible — sin datos de pipeline")
                 return "\n".join(lines), {}
 
             # ── INCOME LOOP 24/7 ──────────────────────────────────────────

@@ -128,9 +128,9 @@ STRATEGIES = [
     ("upsell_engine",            1),   # create upsell offers for existing buyers → increase LTV instantly
     ("podcast_producer",         1),   # produce AI audio script + episode notes + show outline → launch a podcast
     ("saas_waitlist_blitz",      1),   # build + fill a micro-SaaS waitlist in one shot: landing + email capture + launch
-    ("vc_pitch_deck",            1),   # create investor pitch deck for ARIA's products → funding + credibility
+    ("vc_pitch_deck",            4),   # boostado: create investor pitch deck for ARIA → funding + credibility
     ("job_posting_scout",        1),   # monitor freelance job boards + apply to relevant gigs → direct revenue
-    ("micro_grant_hunter",       1),   # find + apply to startup grants, competitions, accelerators → non-dilutive capital
+    ("micro_grant_hunter",       4),   # boostado: find + apply to startup grants, accelerators → non-dilutive capital
     ("notion_template_seller",   3),   # boostado: create Notion template → publish on Gumroad + Notion marketplace ($7-$49)
     ("chrome_extension_builder", 1),   # design Chrome extension concept + README + landing page → developer audience
     ("api_marketplace_lister",   1),   # list ARIA's AI API on RapidAPI/Mashape → recurring API subscription revenue
@@ -382,8 +382,9 @@ class IncomeLoop:
             self._weights_refresh_cycle = self._cycle
             asyncio.create_task(self._refresh_adaptive_weights())
 
-        # Notify on wins
-        if result.success and result.urls_created:
+        # Notify on wins — also notify high-value strategies even without URLs (e.g. vc_pitch_deck, micro_grant_hunter)
+        _HIGH_VALUE_STRATEGIES = {"vc_pitch_deck", "micro_grant_hunter", "stripe_checkout", "gumroad_checkout"}
+        if result.success and (result.urls_created or (result.revenue_potential >= 50 and result.strategy in _HIGH_VALUE_STRATEGIES)):
             await self._notify_win(result)
 
         # Product launch sequence: announce newly created products on the blog + Dev.to + Hashnode
@@ -1587,7 +1588,7 @@ JSON: {{"name": "...", "description": "... (200+ words with clear value prop)", 
                                     system="You write viral Dev.to articles. Output JSON only.",
                                     user=f"""Write a Dev.to article about {niche_name}.
 JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["ai", "business"]}}""",
-                                    model=AIModel.STANDARD, max_tokens=1500,
+                                    model=AIModel.STRATEGY, max_tokens=1500,
                                 )
                                 if _nr_art:
                                     _dt_page = await _plat.devto(_nr_ae, _nr_ap)

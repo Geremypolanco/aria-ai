@@ -41,7 +41,7 @@ python-multipart==0.0.12
 tenacity==9.0.0
 
 # ── IA adicional (Solo si es necesario) ───────────────────────
-# anthropic==0.34.2
+# anthropic>=0.40.0  (API llamada via httpx — no se necesita el SDK)
 # google-generativeai==0.7.2
 
 # ── HTTP async ────────────────────────────────────────────
