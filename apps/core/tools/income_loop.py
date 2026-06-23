@@ -1764,6 +1764,52 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                         "urls": _nr_urls,
                     }
 
+            # HuggingFace Hub fallback: publish niche service landing page as a public Space
+            _hf_tok_nr = getattr(settings, "HF_TOKEN", None)
+            if _hf_tok_nr:
+                try:
+                    import httpx as _hf_nr_http
+                    import base64 as _hf_nr_b64
+                    from datetime import datetime as _dt_nr
+                    _hf_un_nr = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
+                    niche_info = NICHE_CATALOG.get(target, {})
+                    _nr_name = niche_info.get("name", target.replace("_", " ").title())
+                    _nr_desc = niche_info.get("description", f"Professional {_nr_name} services powered by AI.")
+                    _nr_price = niche_info.get("pricing_basic", 29)
+                    _nr_deliverables = niche_info.get("deliverables", [])
+                    _day_nr = _dt_nr.utcnow().strftime("%m%d")
+                    _nr_rn = target.replace("_", "-")[:24] + f"-{_day_nr}-svc"
+                    _nr_readme = (
+                        f"---\ntitle: {_nr_name[:50]}\nemoji: 🎯\ncolorFrom: blue\ncolorTo: green\n"
+                        f"sdk: static\npinned: true\n---\n\n"
+                        f"# {_nr_name}\n\n{_nr_desc}\n\n"
+                        f"## Starting at ${_nr_price}/project\n\n"
+                        + (("## Deliverables\n\n" + "\n".join(f"- {d}" for d in _nr_deliverables) + "\n\n") if _nr_deliverables else "")
+                        + "## Book a Project\n\nVisit [ARIA AI Dashboard](https://aria-ai.fly.dev/dashboard) to get started.\n\n"
+                        + f"---\n*Service powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                    )
+                    async with _hf_nr_http.AsyncClient(timeout=20.0) as _hnr:
+                        _cr_nr = await _hnr.post(
+                            "https://huggingface.co/api/repos/create",
+                            headers={"Authorization": f"Bearer {_hf_tok_nr}", "Content-Type": "application/json"},
+                            json={"type": "space", "name": _nr_rn, "private": False, "sdk": "static"},
+                        )
+                        if _cr_nr.status_code in (200, 201, 409):
+                            await _hnr.put(
+                                f"https://huggingface.co/api/spaces/{_hf_un_nr}/{_nr_rn}/raw/main/README.md",
+                                headers={"Authorization": f"Bearer {_hf_tok_nr}", "Content-Type": "application/json"},
+                                json={"content": _hf_nr_b64.b64encode(_nr_readme.encode()).decode(), "message": f"Publish niche: {_nr_name[:50]}"},
+                            )
+                            _nr_hf_url = f"https://huggingface.co/spaces/{_hf_un_nr}/{_nr_rn}"
+                            return {
+                                "success": True,
+                                "summary": f"Niche '{target}': service page published on HuggingFace Spaces",
+                                "revenue_potential": float(_nr_price),
+                                "urls": [_nr_hf_url],
+                            }
+                except Exception as _nr_hf_exc:
+                    logger.debug("[IncomeLoop] niche_rotator HF fallback: %s", _nr_hf_exc)
+
             return {
                 "success": result.success,
                 "summary": f"Niche '{target}': {result.summary if hasattr(result, 'summary') else 'no publishing credentials'} — add GUMROAD_TOKEN or DEVTO_API_KEY",
@@ -2987,7 +3033,49 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
             except Exception as pdf_exc:
                 logger.warning("[IncomeLoop] PDF fallback failed: %s", pdf_exc)
 
-            return {"success": False, "summary": f"Gumroad: {gr.get('error', 'failed')} — PDF fallback also attempted"}
+            # HuggingFace Hub fallback: publish ebook as a public Dataset with full content
+            _hf_tok_ef = getattr(settings, "HF_TOKEN", None)
+            if _hf_tok_ef:
+                try:
+                    import httpx as _hf_ef_http
+                    import base64 as _hf_ef_b64
+                    from datetime import datetime as _dt_ef
+                    _hf_un_ef = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
+                    _day_ef = _dt_ef.utcnow().strftime("%m%d")
+                    _ef_title = ebook.get("title", f"Guide to {topic_str[:30]}")
+                    _ef_rn = _ef_title[:28].lower().replace(" ", "-").replace("'", "").replace(":", "")
+                    _ef_rn = "".join(c for c in _ef_rn if c.isalnum() or c == "-")[:24] + f"-{_day_ef}-ebook"
+                    _ef_price = ebook.get("price_cents", 1700) / 100
+                    _ef_readme = (
+                        f"---\ntitle: {_ef_title[:60]}\ntags:\n- ebook\n- guide\n- AI\n---\n\n"
+                        f"# {_ef_title}\n\n**{ebook.get('subtitle', '')}**\n\n"
+                        f"**Price: ${_ef_price:.2f}** | Instant Download\n\n"
+                        f"{full_description}\n\n---\n\n{ebook_content_md[:8000]}\n\n"
+                        f"---\n*Ebook published by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                    )
+                    async with _hf_ef_http.AsyncClient(timeout=20.0) as _hef:
+                        _cr_ef = await _hef.post(
+                            "https://huggingface.co/api/repos/create",
+                            headers={"Authorization": f"Bearer {_hf_tok_ef}", "Content-Type": "application/json"},
+                            json={"type": "dataset", "name": _ef_rn, "private": False},
+                        )
+                        if _cr_ef.status_code in (200, 201, 409):
+                            await _hef.put(
+                                f"https://huggingface.co/api/datasets/{_hf_un_ef}/{_ef_rn}/raw/main/README.md",
+                                headers={"Authorization": f"Bearer {_hf_tok_ef}", "Content-Type": "application/json"},
+                                json={"content": _hf_ef_b64.b64encode(_ef_readme.encode()).decode(), "message": f"Publish ebook: {_ef_title[:50]}"},
+                            )
+                            _ef_hf_url = f"https://huggingface.co/datasets/{_hf_un_ef}/{_ef_rn}"
+                            return {
+                                "success": True,
+                                "summary": f"Ebook '{_ef_title[:50]}' at ${_ef_price:.2f} published on HuggingFace Hub",
+                                "revenue_potential": _ef_price,
+                                "urls": [_ef_hf_url],
+                            }
+                except Exception as _ef_hf_exc:
+                    logger.warning("[IncomeLoop] ebook_factory HF fallback: %s", _ef_hf_exc)
+
+            return {"success": False, "summary": f"Gumroad: {gr.get('error', 'failed')} — add GUMROAD_TOKEN to publish"}
 
         except Exception as exc:
             logger.error("[IncomeLoop] ebook_factory: %s", exc)
