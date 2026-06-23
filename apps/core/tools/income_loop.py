@@ -938,6 +938,61 @@ JSON:
                 except Exception as _gist_exc:
                     logger.debug("[IncomeLoop] content_pipeline gist fallback: %s", _gist_exc)
 
+            # Reddit API fallback — post article summaries to relevant subreddits
+            reddit_id     = getattr(settings, "REDDIT_CLIENT_ID", None)
+            reddit_secret = getattr(settings, "REDDIT_CLIENT_SECRET", None)
+            reddit_token  = getattr(settings, "REDDIT_REFRESH_TOKEN", None)
+            reddit_user   = getattr(settings, "REDDIT_USERNAME", None)
+            if reddit_id and reddit_secret and reddit_token and arts:
+                try:
+                    import httpx as _httpx
+                    import time as _time
+                    reddit_urls: list[str] = []
+                    # Get access token via refresh token grant
+                    async with _httpx.AsyncClient(timeout=15.0) as _rc:
+                        _tok_r = await _rc.post(
+                            "https://www.reddit.com/api/v1/access_token",
+                            data={"grant_type": "refresh_token", "refresh_token": reddit_token},
+                            auth=(reddit_id, reddit_secret),
+                            headers={"User-Agent": "ARIA-AI/1.0"},
+                        )
+                        _access = _tok_r.json().get("access_token", "") if _tok_r.status_code == 200 else ""
+                    if _access:
+                        _subreddits = ["Entrepreneur", "SideProject", "passive_income"]
+                        async with _httpx.AsyncClient(
+                            timeout=15.0,
+                            headers={"Authorization": f"Bearer {_access}", "User-Agent": "ARIA-AI/1.0"},
+                        ) as _rc2:
+                            for art, subreddit in zip(arts[:2], _subreddits):
+                                _art_title = art.get("title", "")
+                                _art_body  = art.get("body", art.get("body_markdown", ""))[:900]
+                                if not _art_title or not _art_body:
+                                    continue
+                                _submit = await _rc2.post(
+                                    "https://oauth.reddit.com/api/submit",
+                                    data={
+                                        "sr": subreddit, "kind": "self",
+                                        "title": _art_title[:300],
+                                        "text": _art_body,
+                                        "nsfw": False, "spoiler": False,
+                                        "resubmit": True,
+                                    },
+                                )
+                                if _submit.status_code == 200:
+                                    _url = _submit.json().get("json", {}).get("data", {}).get("url", "")
+                                    if _url:
+                                        reddit_urls.append(_url)
+                                await asyncio.sleep(2)  # respect rate limits
+                    if reddit_urls:
+                        return {
+                            "success": True,
+                            "summary": f"Content pipeline: {len(reddit_urls)} posts published to Reddit",
+                            "revenue_potential": len(reddit_urls) * 2.0,
+                            "urls": reddit_urls,
+                        }
+                except Exception as _reddit_exc:
+                    logger.debug("[IncomeLoop] content_pipeline reddit fallback: %s", _reddit_exc)
+
             return {
                 "success": False,
                 "summary": "Content pipeline: no publishing credentials (add DEVTO_API_KEY or MEDIUM_TOKEN)",
@@ -2031,10 +2086,12 @@ Output JSON:
                     pass
                 if not _tw_ok and _ae and _ap:
                     try:
-                        from apps.core.tools.human_browser import get_platform_login
-                        _plat = await get_platform_login()
-                        _tw_page = await _plat.twitter(_ae, _ap)
-                        _tw_url = await _plat.twitter_thread_post(_tw_page, [tweet])
+                        async def _browser_tweet() -> str:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _tw_page = await _plat.twitter(_ae, _ap)
+                            return await _plat.twitter_thread_post(_tw_page, [tweet])
+                        _tw_url = await asyncio.wait_for(_browser_tweet(), timeout=20.0)
                         if _tw_url:
                             sent += 1
                             urls_created.append(_tw_url)
@@ -2050,7 +2107,7 @@ Output JSON:
                 )
                 _li_ok = False
                 try:
-                    lk_result = await pub.publish_to_linkedin(lk_content)
+                    lk_result = await asyncio.wait_for(pub.publish_to_linkedin(lk_content), timeout=15.0)
                     if lk_result.success:
                         sent += 1
                         _li_ok = True
@@ -2058,10 +2115,12 @@ Output JSON:
                     pass
                 if not _li_ok and _ae and _ap:
                     try:
-                        from apps.core.tools.human_browser import get_platform_login
-                        _plat = await get_platform_login()
-                        _li_page = await _plat.linkedin(_ae, _ap)
-                        _li_url = await _plat.linkedin_create_post(_li_page, lk_content[:3000])
+                        async def _browser_linkedin() -> str:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _plat = await get_platform_login()
+                            _li_page = await _plat.linkedin(_ae, _ap)
+                            return await _plat.linkedin_create_post(_li_page, lk_content[:3000])
+                        _li_url = await asyncio.wait_for(_browser_linkedin(), timeout=20.0)
                         if _li_url:
                             sent += 1
                     except Exception:
@@ -2377,7 +2436,7 @@ JSON:
   \"tags\": [\"digital\", \"download\", \"productivity\"],
   \"status\": \"active\"
 }}""",
-                model=AIModel.FAST,
+                model=AIModel.STRATEGY,
                 max_tokens=800,
             )
 
@@ -2415,10 +2474,12 @@ JSON:
                     pass
                 if not _sl_tw_ok and _sl_tw_ae and _sl_tw_ap:
                     try:
-                        from apps.core.tools.human_browser import get_platform_login
-                        _sl_plat2 = await get_platform_login()
-                        _sl_tw_pg = await _sl_plat2.twitter(_sl_tw_ae, _sl_tw_ap)
-                        await _sl_plat2.twitter_thread_post(_sl_tw_pg, [_sl_tw])
+                        async def _sl_browser_tweet() -> None:
+                            from apps.core.tools.human_browser import get_platform_login
+                            _sl_plat2 = await get_platform_login()
+                            _sl_tw_pg = await _sl_plat2.twitter(_sl_tw_ae, _sl_tw_ap)
+                            await _sl_plat2.twitter_thread_post(_sl_tw_pg, [_sl_tw])
+                        await asyncio.wait_for(_sl_browser_tweet(), timeout=20.0)
                     except Exception:
                         pass
                 return {
