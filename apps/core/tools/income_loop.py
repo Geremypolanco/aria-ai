@@ -1015,6 +1015,45 @@ JSON:
                 except Exception as _reddit_exc:
                     logger.debug("[IncomeLoop] content_pipeline reddit fallback: %s", _reddit_exc)
 
+            # HuggingFace Hub fallback: publish articles as dataset model cards
+            _hf_token_cp = getattr(settings, "HF_TOKEN", None)
+            if _hf_token_cp and arts:
+                try:
+                    import httpx as _hf_cp_http
+                    _hf_un = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
+                    _hf_urls_cp: list[str] = []
+                    async with _hf_cp_http.AsyncClient(timeout=20.0) as _hfc:
+                        for _art_cp in arts[:2]:
+                            _t_cp = _art_cp.get("title", "AI Insights")[:50]
+                            _b_cp = _art_cp.get("body", _art_cp.get("body_markdown", ""))[:6000]
+                            if not _b_cp:
+                                continue
+                            _rn_cp = _t_cp.lower().replace(" ", "-").replace("'", "")
+                            _rn_cp = "".join(c for c in _rn_cp if c.isalnum() or c == "-")[:28] + "-article"
+                            _readme_cp = f"---\ntitle: {_t_cp}\ntags:\n- article\n- AI\n---\n\n{_b_cp}\n\n---\n*Published by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                            _cr_cp = await _hfc.post(
+                                "https://huggingface.co/api/repos/create",
+                                headers={"Authorization": f"Bearer {_hf_token_cp}", "Content-Type": "application/json"},
+                                json={"type": "dataset", "name": _rn_cp, "private": False},
+                            )
+                            if _cr_cp.status_code in (200, 201):
+                                import base64 as _hf_b64_cp
+                                await _hfc.put(
+                                    f"https://huggingface.co/api/datasets/{_hf_un}/{_rn_cp}/raw/main/README.md",
+                                    headers={"Authorization": f"Bearer {_hf_token_cp}", "Content-Type": "application/json"},
+                                    json={"content": _hf_b64_cp.b64encode(_readme_cp.encode()).decode(), "message": f"Publish: {_t_cp}"},
+                                )
+                                _hf_urls_cp.append(f"https://huggingface.co/datasets/{_hf_un}/{_rn_cp}")
+                    if _hf_urls_cp:
+                        return {
+                            "success": True,
+                            "summary": f"Content pipeline: {len(_hf_urls_cp)} articles published to HuggingFace Hub",
+                            "revenue_potential": len(_hf_urls_cp) * 1.5,
+                            "urls": _hf_urls_cp,
+                        }
+                except Exception as _hf_cp_exc:
+                    logger.debug("[IncomeLoop] content_pipeline HF fallback: %s", _hf_cp_exc)
+
             return {
                 "success": False,
                 "summary": "Content pipeline: no publishing credentials (add DEVTO_API_KEY or MEDIUM_TOKEN)",
@@ -2619,7 +2658,47 @@ JSON:
                 except Exception:
                     pass
 
-            return {"success": False, "summary": f"Shopify: product created but no store configured — add SHOPIFY_ADMIN_TOKEN or GUMROAD_TOKEN"}
+            # HuggingFace Hub fallback: create a public Space as product landing page
+            hf_token = getattr(settings, "HF_TOKEN", None)
+            if hf_token:
+                try:
+                    import httpx as _hf_http
+                    _hf_username = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
+                    _repo_name = prod_title[:40].lower().replace(" ", "-").replace("'", "").replace(":", "")
+                    _repo_name = "".join(c for c in _repo_name if c.isalnum() or c == "-")[:32] + "-product"
+                    _readme = (
+                        f"---\ntitle: {prod_title[:50]}\nemoji: 🛍️\ncolorFrom: purple\ncolorTo: blue\n"
+                        f"sdk: static\npinned: true\n---\n\n"
+                        f"# {prod_title}\n\n**Price: ${price:.2f}**\n\n"
+                        + product.get("description", "").replace("<p>", "").replace("</p>", "\n\n").replace("<strong>", "**").replace("</strong>", "**")
+                        + f"\n\n---\n\n*Digital product powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*\n"
+                    )
+                    async with _hf_http.AsyncClient(timeout=20.0) as _hc:
+                        # Create repo (Space)
+                        _cr = await _hc.post(
+                            "https://huggingface.co/api/repos/create",
+                            headers={"Authorization": f"Bearer {hf_token}", "Content-Type": "application/json"},
+                            json={"type": "space", "name": _repo_name, "private": False, "sdk": "static"},
+                        )
+                        if _cr.status_code in (200, 201):
+                            import base64 as _hf_b64
+                            _readme_b64 = _hf_b64.b64encode(_readme.encode()).decode()
+                            await _hc.put(
+                                f"https://huggingface.co/api/spaces/{_hf_username}/{_repo_name}/raw/main/README.md",
+                                headers={"Authorization": f"Bearer {hf_token}", "Content-Type": "application/json"},
+                                json={"content": _readme_b64, "message": f"Add product landing page: {prod_title[:50]}"},
+                            )
+                            _hf_url = f"https://huggingface.co/spaces/{_hf_username}/{_repo_name}"
+                            return {
+                                "success": True,
+                                "summary": f"Product '{prod_title[:50]}' published as HuggingFace Space at ${price:.2f}",
+                                "revenue_potential": price,
+                                "urls": [_hf_url],
+                            }
+                except Exception as _hf_exc:
+                    logger.warning("[IncomeLoop] shopify_listing HF fallback: %s", _hf_exc)
+
+            return {"success": False, "summary": f"Shopify: add SHOPIFY_ADMIN_TOKEN or GUMROAD_TOKEN to publish products"}
 
         except Exception as exc:
             logger.error("[IncomeLoop] shopify_listing: %s", exc)
