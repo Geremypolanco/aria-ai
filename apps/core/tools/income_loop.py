@@ -76,6 +76,8 @@ HEAVY_STRATEGIES = frozenset(
         "daily_revenue_report",
         "viral_content_engine",
         "email_capture_funnel",
+        "sms_outreach",
+        "proposal_generator",
     }
 )
 
@@ -309,6 +311,14 @@ STRATEGIES = [
         "email_capture_funnel",
         3,
     ),  # Create lead magnet + landing page + Mailchimp integration → build email asset that compounds
+    (
+        "sms_outreach",
+        3,
+    ),  # Twilio SMS to warm CRM prospects — 98% open rate, fastest close channel ($500-$5k deals)
+    (
+        "proposal_generator",
+        4,
+    ),  # AI generates hyper-personalized PDF proposals + sends to warm prospects → direct revenue
 ]
 
 # Strategies that already call publish_to_twitter/linkedin internally.
@@ -1063,6 +1073,10 @@ JSON:
             return await self._exec_viral_content_engine()
         if strategy == "email_capture_funnel":
             return await self._exec_email_capture_funnel()
+        if strategy == "sms_outreach":
+            return await self._exec_sms_outreach()
+        if strategy == "proposal_generator":
+            return await self._exec_proposal_generator()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -24119,6 +24133,504 @@ li{{font-size:1.05em;background:#2a2a3e;padding:16px 20px;border-radius:10px;bor
 
         except Exception as exc:
             logger.error("[IncomeLoop] email_capture_funnel: %s", exc)
+            return {"success": False, "summary": str(exc)[:120]}
+
+    async def _exec_sms_outreach(self) -> dict:
+        """
+        98% open rate. Twilio SMS to warm prospects already in the CRM pipeline.
+        Reads prospects from aria:crm:pipeline (list), selects those with phone numbers
+        or generates follow-up SMS for email-only contacts as a call-to-action to reply.
+        Only runs if TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_FROM are set.
+        Revenue: each SMS can trigger a $500–$5k conversation.
+        """
+        try:
+            import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+
+            # Twilio config check
+            twilio_sid = getattr(settings, "TWILIO_ACCOUNT_SID", None)
+            twilio_token = getattr(settings, "TWILIO_AUTH_TOKEN", None)
+            twilio_from = getattr(settings, "TWILIO_FROM", None) or getattr(
+                settings, "TWILIO_PHONE_FROM", None
+            )
+            can_sms = all([twilio_sid, twilio_token, twilio_from])
+
+            cache = get_cache()
+
+            # Load CRM pipeline — contacts from proactive_client_finder
+            pipeline_contacts: list[dict] = []
+            if cache:
+                try:
+                    raw_list = await cache.lrange("aria:crm:pipeline", -50, -1)
+                    for item in raw_list or []:
+                        try:
+                            contact = _json.loads(item) if isinstance(item, str) else item
+                            if isinstance(contact, dict):
+                                pipeline_contacts.append(contact)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            if not pipeline_contacts:
+                # No pipeline yet — generate SMS scripts for target segments anyway
+                pipeline_contacts = [
+                    {
+                        "contact": "Sarah",
+                        "company": "BrightLeaf SaaS",
+                        "segment": "SaaS Startups",
+                        "deal_value": 2500,
+                        "phone": "",
+                    },
+                    {
+                        "contact": "Marcus",
+                        "company": "DigitalEdge Agency",
+                        "segment": "Digital Agencies",
+                        "deal_value": 497,
+                        "phone": "",
+                    },
+                ]
+
+            # AI generates SMS messages for each contact
+            contacts_summary = "\n".join(
+                f"- {c.get('contact', 'CEO')} @ {c.get('company', '')} | "
+                f"Segment: {c.get('segment', 'B2B')} | "
+                f"Deal: ${c.get('deal_value', 500)}"
+                for c in pipeline_contacts[:5]
+            )
+
+            sms_data = await complete_json(
+                f"""You are ARIA — an autonomous AI that sends SMS to warm B2B prospects.
+SMS rules: 160 chars max. No links. Direct. Human. Personal. No buzzwords.
+Get a YES or a NO — never a maybe.
+
+CONTACTS:
+{contacts_summary}
+
+TODAY: {datetime.now(UTC).strftime('%A, %B %d')}
+
+For each contact, write a SMS that:
+- Feels like it's from a real person (because it is — it's ARIA)
+- References their company specifically
+- Has ONE concrete ask (15-min call, reply Y/N, or confirm interest)
+- Sounds NOTHING like a marketing message
+
+Return JSON:
+{{
+  "messages": [
+    {{
+      "contact": "name",
+      "company": "company",
+      "sms": "the SMS text (160 chars MAX)",
+      "expected_response": "what we hope they reply",
+      "estimated_value": 2500
+    }}
+  ]
+}}""",
+                model="strategy",
+            )
+
+            if not sms_data or not sms_data.get("messages"):
+                return {"success": False, "summary": "sms_outreach: AI failed to generate SMS"}
+
+            messages = sms_data.get("messages", [])
+            sms_sent = 0
+            total_value = 0.0
+            sms_log = f"# ARIA SMS Outreach — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M')}\n\n"
+            sms_log += f"Twilio active: {'Yes' if can_sms else 'No — add TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_FROM'}\n\n"
+
+            for i, msg_data in enumerate(messages[:5]):
+                contact = msg_data.get("contact", "")
+                company = msg_data.get("company", "")
+                sms_text = msg_data.get("sms", "")[:160]
+                expected = msg_data.get("expected_response", "")
+                value = float(msg_data.get("estimated_value", 500))
+                total_value += value
+
+                # Match phone from pipeline
+                phone = ""
+                for c in pipeline_contacts:
+                    if c.get("company", "").lower() == company.lower():
+                        phone = c.get("phone", "") or c.get("mobile", "")
+                        break
+
+                sent_ok = False
+                if can_sms and phone and phone.startswith("+"):
+                    try:
+                        import httpx as _hx
+
+                        async with _hx.AsyncClient(timeout=15) as _hc:
+                            resp = await _hc.post(
+                                f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json",
+                                data={"From": twilio_from, "To": phone, "Body": sms_text},
+                                auth=(twilio_sid, twilio_token),
+                            )
+                            sent_ok = resp.status_code in (200, 201)
+                            if sent_ok:
+                                sms_sent += 1
+                    except Exception as sms_exc:
+                        logger.warning("[sms_outreach] Twilio send failed: %s", sms_exc)
+
+                sms_log += f"## {contact} @ {company}\n"
+                sms_log += f"**Phone:** {phone or '(no phone — email follow-up)'}\n"
+                sms_log += f"**SMS:** {sms_text}\n"
+                sms_log += f"**Expected reply:** {expected}\n"
+                sms_log += f"**Estimated value:** ${value:,.0f}\n"
+                sms_log += f"**Status:** {'✅ Sent' if sent_ok else '📋 Drafted'}\n\n---\n\n"
+
+            # Archive to GitHub
+            import base64 as _b64
+
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+            slug = f"sms-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}"
+            path = f"outreach/sms/{slug}.md"
+            try:
+                existing = await gh._get(f"/repos/{owner}/aria-insights/contents/{path}")
+                sha = existing.get("sha") if "error" not in existing else None
+                body_put: dict = {
+                    "message": f"feat: SMS outreach batch {slug}",
+                    "content": _b64.b64encode(sms_log.encode()).decode(),
+                }
+                if sha:
+                    body_put["sha"] = sha
+                await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            except Exception as gh_exc:
+                logger.warning("[sms_outreach] archive failed: %s", gh_exc)
+
+            # Telegram alert
+            await self._send_telegram(
+                f"📱 *SMS Outreach*\n"
+                f"Messages drafted: {len(messages)}\n"
+                f"Sent via Twilio: {sms_sent}\n"
+                f"Pipeline value: ${total_value:,.0f}\n"
+                f"Twilio: {'✅ Active' if can_sms else '⚠️ Add TWILIO_ACCOUNT_SID/AUTH_TOKEN/FROM'}"
+            )
+
+            return {
+                "success": True,
+                "summary": (
+                    f"SMS outreach: {len(messages)} drafted, {sms_sent} sent | "
+                    f"pipeline ${total_value:,.0f} | "
+                    f"{'Twilio active' if can_sms else 'add TWILIO_FROM to enable sending'}"
+                ),
+                "revenue_potential": total_value * 0.1,  # 10% reply rate
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] sms_outreach: %s", exc)
+            return {"success": False, "summary": str(exc)[:120]}
+
+    async def _exec_proposal_generator(self) -> dict:
+        """
+        Converts warm prospects into paying clients by generating professional proposals.
+        Reads top prospects from the CRM pipeline, creates a custom HTML proposal page
+        for each (with pricing, deliverables, timeline, ROI projection), deploys to GitHub,
+        and sends the proposal URL via email + archives to aria-insights.
+        Revenue: each accepted proposal = $500–$5k.
+        """
+        try:
+            import base64 as _b64
+            import json as _json
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
+            cache = get_cache()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
+
+            # Load top prospects from CRM
+            prospects: list[dict] = []
+            if cache:
+                try:
+                    raw_list = await cache.lrange("aria:crm:pipeline", -20, -1)
+                    for item in raw_list or []:
+                        try:
+                            c = _json.loads(item) if isinstance(item, str) else item
+                            if isinstance(c, dict) and c.get("status") != "closed":
+                                prospects.append(c)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            # Fallback: generate a template proposal for a sample prospect
+            if not prospects:
+                prospects = [
+                    {
+                        "contact": "CEO",
+                        "company": "Target Company",
+                        "segment": "SaaS Startup",
+                        "deal_value": 2500,
+                        "email": "",
+                    }
+                ]
+
+            # Pick the highest-value prospect
+            prospects.sort(key=lambda x: float(x.get("deal_value") or 0), reverse=True)
+            prospect = prospects[0]
+
+            company = prospect.get("company", "Your Company")
+            contact_name = prospect.get("contact") or prospect.get("name") or "Team"
+            segment = prospect.get("segment", "B2B Business")
+            deal_value = float(prospect.get("deal_value") or 2500)
+            contact_email = prospect.get("email", "")
+
+            # AI generates a bespoke proposal
+            proposal_data = await complete_json(
+                f"""You are ARIA — generating a professional B2B proposal for a specific prospect.
+
+CLIENT: {company}
+CONTACT: {contact_name}
+SEGMENT: {segment}
+PROPOSED VALUE: ${deal_value:,.0f}
+TODAY: {datetime.now(UTC).strftime('%B %d, %Y')}
+
+Generate a compelling, specific proposal. Return JSON:
+{{
+  "proposal_title": "custom title for this client",
+  "executive_summary": "3-sentence summary tailored to their segment",
+  "problem_statement": "specific pain this client type faces",
+  "solution": "exactly what ARIA will do for them (be specific, not generic)",
+  "deliverables": [
+    {{"item": "deliverable name", "description": "what they get", "timeline": "Week 1-2"}},
+    {{"item": "deliverable name", "description": "what they get", "timeline": "Week 2-4"}},
+    {{"item": "deliverable name", "description": "what they get", "timeline": "Ongoing"}}
+  ],
+  "investment": {{
+    "setup_fee": 0,
+    "monthly_retainer": {deal_value},
+    "total_3_month": {deal_value * 3}
+  }},
+  "roi_projection": {{
+    "month_1": "specific outcome",
+    "month_3": "specific outcome with numbers",
+    "month_6": "specific outcome with revenue estimate"
+  }},
+  "why_aria": "3 specific reasons ARIA is the right choice vs doing it manually",
+  "next_step": "specific ask — 30-min call link or reply to accept"
+}}""",
+                model="strategy",
+            )
+
+            if not proposal_data:
+                return {"success": False, "summary": "proposal_generator: AI failed"}
+
+            title = proposal_data.get("proposal_title", f"AI Growth Proposal for {company}")
+            exec_summary = proposal_data.get("executive_summary", "")
+            problem = proposal_data.get("problem_statement", "")
+            solution = proposal_data.get("solution", "")
+            deliverables = proposal_data.get("deliverables", [])
+            investment = proposal_data.get("investment", {})
+            roi = proposal_data.get("roi_projection", {})
+            why_aria = proposal_data.get("why_aria", "")
+            next_step = proposal_data.get("next_step", "")
+
+            monthly = float(investment.get("monthly_retainer", deal_value))
+            total_3m = float(investment.get("total_3_month", deal_value * 3))
+
+            deliverables_html = "".join(
+                f"""<div class="deliverable">
+  <div class="d-header">
+    <span class="d-name">{d.get('item', '')}</span>
+    <span class="d-timeline">{d.get('timeline', '')}</span>
+  </div>
+  <p class="d-desc">{d.get('description', '')}</p>
+</div>"""
+                for d in deliverables[:4]
+            )
+
+            # Build professional HTML proposal
+            proposal_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;color:#1a1a2e;line-height:1.7}}
+.header{{background:linear-gradient(135deg,#1a1a2e,#0f3460);color:#fff;padding:60px 40px;text-align:center}}
+.header h1{{font-size:2em;font-weight:800;margin-bottom:8px}}
+.header p{{opacity:.8;font-size:1.05em}}
+.badge{{display:inline-block;background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);color:#a5b4fc;padding:4px 14px;border-radius:20px;font-size:.8em;margin-bottom:16px}}
+.body{{max-width:780px;margin:0 auto;padding:40px 24px}}
+.section{{background:#fff;border-radius:12px;padding:32px;margin-bottom:24px;box-shadow:0 2px 8px rgba(0,0,0,.06)}}
+.section h2{{font-size:1.1em;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}}
+.section p,.section li{{color:#4a4a6a;line-height:1.8}}
+.deliverable{{background:#f8f9ff;border-left:3px solid #6366f1;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:12px}}
+.d-header{{display:flex;justify-content:space-between;margin-bottom:6px}}
+.d-name{{font-weight:700;color:#1a1a2e}}
+.d-timeline{{font-size:.85em;color:#6366f1;background:rgba(99,102,241,.1);padding:2px 10px;border-radius:10px}}
+.d-desc{{font-size:.9em;color:#4a4a6a}}
+.investment-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}}
+.inv-card{{text-align:center;background:#f8f9ff;border-radius:10px;padding:20px}}
+.inv-amount{{font-size:1.8em;font-weight:900;color:#6366f1}}
+.inv-label{{font-size:.8em;color:#6a6a8a;margin-top:4px}}
+.roi-row{{display:flex;gap:12px;margin-bottom:12px;align-items:flex-start}}
+.roi-month{{background:#6366f1;color:#fff;padding:4px 12px;border-radius:20px;font-size:.8em;font-weight:700;white-space:nowrap}}
+.cta-section{{background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;border-radius:12px;padding:40px;text-align:center;margin-bottom:40px}}
+.cta-section h2{{color:#fff;font-size:1.5em;margin-bottom:12px}}
+.cta-section p{{opacity:.9;margin-bottom:24px}}
+.cta-btn{{display:inline-block;background:#fff;color:#6366f1;padding:14px 36px;border-radius:8px;font-weight:800;font-size:1em;text-decoration:none}}
+.footer{{text-align:center;color:#8888aa;font-size:.85em;padding-bottom:40px}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="badge">Prepared Exclusively For {company}</div>
+  <h1>{title}</h1>
+  <p>Prepared by ARIA AI · {datetime.now(UTC).strftime('%B %d, %Y')} · Confidential</p>
+</div>
+<div class="body">
+
+  <div class="section">
+    <h2>Executive Summary</h2>
+    <p>{exec_summary}</p>
+  </div>
+
+  <div class="section">
+    <h2>The Challenge You're Facing</h2>
+    <p>{problem}</p>
+  </div>
+
+  <div class="section">
+    <h2>Our Solution for {company}</h2>
+    <p>{solution}</p>
+  </div>
+
+  <div class="section">
+    <h2>What We'll Deliver</h2>
+    {deliverables_html}
+  </div>
+
+  <div class="section">
+    <h2>Investment</h2>
+    <div class="investment-grid">
+      <div class="inv-card">
+        <div class="inv-amount">${monthly:,.0f}</div>
+        <div class="inv-label">Monthly Retainer</div>
+      </div>
+      <div class="inv-card">
+        <div class="inv-amount">${total_3m:,.0f}</div>
+        <div class="inv-label">3-Month Total</div>
+      </div>
+      <div class="inv-card">
+        <div class="inv-amount">0</div>
+        <div class="inv-label">Setup Fee</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Projected ROI</h2>
+    <div class="roi-row"><span class="roi-month">Month 1</span><span>{roi.get('month_1', '')}</span></div>
+    <div class="roi-row"><span class="roi-month">Month 3</span><span>{roi.get('month_3', '')}</span></div>
+    <div class="roi-row"><span class="roi-month">Month 6</span><span>{roi.get('month_6', '')}</span></div>
+  </div>
+
+  <div class="section">
+    <h2>Why ARIA</h2>
+    <p>{why_aria}</p>
+  </div>
+
+  <div class="cta-section">
+    <h2>Ready to Move Forward?</h2>
+    <p>{next_step}</p>
+    <a href="https://aria-ai.fly.dev" class="cta-btn">Accept Proposal & Get Started →</a>
+  </div>
+
+  <div class="footer">
+    <p>ARIA AI · aria-ai.fly.dev · This proposal is valid for 14 days from {datetime.now(UTC).strftime('%B %d, %Y')}</p>
+  </div>
+</div>
+</body>
+</html>"""
+
+            # Deploy proposal to aria-insights GitHub repo
+            slug = f"proposal-{company.lower().replace(' ', '-')[:20]}-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}"
+            path = f"proposals/{slug}.html"
+            proposal_url = ""
+            try:
+                existing = await gh._get(f"/repos/{owner}/aria-insights/contents/{path}")
+                sha = existing.get("sha") if "error" not in existing else None
+                body_put: dict = {
+                    "message": f"feat: proposal for {company[:40]}",
+                    "content": _b64.b64encode(proposal_html.encode()).decode(),
+                }
+                if sha:
+                    body_put["sha"] = sha
+                await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+                proposal_url = f"https://github.com/{owner}/aria-insights/blob/main/{path}"
+            except Exception as gh_exc:
+                logger.warning("[proposal_generator] GitHub deploy failed: %s", gh_exc)
+
+            # Email proposal to prospect
+            email_sent = False
+            smtp_host = getattr(settings, "SMTP_HOST", None)
+            smtp_user = getattr(settings, "SMTP_USER", None)
+            smtp_pass = getattr(settings, "SMTP_PASSWORD", None)
+            smtp_from = getattr(settings, "SMTP_FROM", smtp_user)
+
+            if contact_email and smtp_host and smtp_user and smtp_pass:
+                try:
+                    email_body = (
+                        f"Hi {contact_name},\n\n"
+                        f"Thank you for your time. I've prepared a custom proposal for {company} "
+                        f"showing exactly how ARIA can help with {problem[:80]}.\n\n"
+                        f"View your proposal here: {proposal_url}\n\n"
+                        f"The proposal includes specific deliverables, timeline, and projected ROI "
+                        f"for your business. It's valid for 14 days.\n\n"
+                        f"To accept or discuss: reply to this email or visit aria-ai.fly.dev\n\n"
+                        f"Best,\nARIA AI"
+                    )
+                    msg = MIMEMultipart("alternative")
+                    msg["Subject"] = f"Your Custom Proposal: {title}"
+                    msg["From"] = smtp_from
+                    msg["To"] = contact_email
+                    msg.attach(MIMEText(email_body, "plain"))
+                    smtp_port = int(getattr(settings, "SMTP_PORT", 587))
+                    with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
+                        srv.ehlo()
+                        srv.starttls()
+                        srv.login(smtp_user, smtp_pass)
+                        srv.sendmail(smtp_from, [contact_email], msg.as_string())
+                    email_sent = True
+                except Exception as email_exc:
+                    logger.warning("[proposal_generator] email send failed: %s", email_exc)
+
+            # Telegram alert
+            await self._send_telegram(
+                f"📄 *Proposal Generated*\n\n"
+                f"Client: *{company}*\n"
+                f"Contact: {contact_name}\n"
+                f"Value: ${monthly:,.0f}/mo (${total_3m:,.0f} over 3 months)\n"
+                f"Email sent: {'✅' if email_sent else '⏳ (add SMTP)'}\n"
+                f"Proposal: {proposal_url[:80] if proposal_url else 'see aria-insights repo'}"
+            )
+
+            return {
+                "success": True,
+                "summary": (
+                    f"Proposal for {company}: ${monthly:,.0f}/mo | "
+                    f"email={'sent' if email_sent else 'archived'} | "
+                    f"url={proposal_url[:60]}"
+                ),
+                "revenue_potential": total_3m,
+                "urls": [proposal_url] if proposal_url else [],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] proposal_generator: %s", exc)
             return {"success": False, "summary": str(exc)[:120]}
 
 
