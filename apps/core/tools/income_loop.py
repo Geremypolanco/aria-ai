@@ -71,6 +71,7 @@ HEAVY_STRATEGIES = frozenset(
         "micro_saas_niche_tool",
         "aria_subscription_launch",
         "dfy_content_package",
+        "platform_self_onboard",
     }
 )
 
@@ -284,6 +285,10 @@ STRATEGIES = [
         "dfy_content_package",
         3,
     ),  # Done-For-You 30-day content package for a niche → Gumroad listing $197-$497/sale
+    (
+        "platform_self_onboard",
+        2,
+    ),  # Autonomous login + API token extraction for missing platforms → unlocks more revenue channels
 ]
 
 # Strategies that already call publish_to_twitter/linkedin internally.
@@ -1028,6 +1033,8 @@ JSON:
             return await self._exec_aria_subscription_launch()
         if strategy == "dfy_content_package":
             return await self._exec_dfy_content_package()
+        if strategy == "platform_self_onboard":
+            return await self._exec_platform_self_onboard()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -23359,6 +23366,21 @@ JSON:
 
         except Exception as exc:
             logger.error("[IncomeLoop] dfy_content_package: %s", exc)
+            return {"success": False, "summary": str(exc)[:100]}
+
+    async def _exec_platform_self_onboard(self) -> dict:
+        """
+        ARIA logs into platforms where tokens are missing and extracts API keys
+        using the stealth browser automation engine.
+        Uses ARIA_EMAIL + ARIA_PASSWORD secrets already configured in Fly.io.
+        Each new token immediately unlocks additional revenue strategies.
+        """
+        try:
+            from apps.core.tools.platform_onboarder import run_self_onboard_strategy
+
+            return await run_self_onboard_strategy()
+        except Exception as exc:
+            logger.error("[IncomeLoop] platform_self_onboard: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
 
