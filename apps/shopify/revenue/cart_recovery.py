@@ -10,6 +10,8 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from apps.core.memory.redis_client import get_cache
+
 logger = logging.getLogger(__name__)
 
 _REDIS_KEY = "shopify:cart_recovery:v1"
@@ -82,8 +84,6 @@ class CartRecoveryEngine:
         if self._loaded:
             return
         try:
-            from apps.core.memory.redis_client import get_cache  # type: ignore
-
             cache = get_cache()
             data = await cache.get(_REDIS_KEY)
             if data and isinstance(data, list):
@@ -94,8 +94,6 @@ class CartRecoveryEngine:
 
     async def _save(self) -> None:
         try:
-            from apps.core.memory.redis_client import get_cache  # type: ignore
-
             cache = get_cache()
             await cache.set(_REDIS_KEY, self._carts, ttl_seconds=_REDIS_TTL)
         except Exception:

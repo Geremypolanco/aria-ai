@@ -7,6 +7,7 @@ Design principles:
   - Each fixture is documented with what it provides and what it replaces.
   - Async tests use pytest-asyncio with asyncio_mode="auto".
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,12 +31,14 @@ os.environ.setdefault("HF_TOKEN", "hf_test_token")
 
 # ── Event loop ────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="session")
 def event_loop_policy():
     return asyncio.DefaultEventLoopPolicy()
 
 
 # ── Redis mock ────────────────────────────────────────────────────────────
+
 
 class MockRedisClient:
     """
@@ -82,14 +85,14 @@ class MockRedisClient:
         lst = self._lists.get(key, [])
         if end == -1:
             return lst[start:]
-        return lst[start:end + 1]
+        return lst[start : end + 1]
 
     async def ltrim(self, key: str, start: int, end: int) -> bool:
         if key in self._lists:
             if end == -1:
                 self._lists[key] = self._lists[key][start:]
             else:
-                self._lists[key] = self._lists[key][start:end + 1]
+                self._lists[key] = self._lists[key][start : end + 1]
         return True
 
     async def acquire_lock(self, name: str, ttl_seconds: int = 300) -> bool:
@@ -124,9 +127,11 @@ def mock_redis_patched(mock_redis: MockRedisClient):
 
 # ── AI Client mock ────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_ai_response():
     """Factory for creating mock AIResponse objects."""
+
     def _factory(
         content: str = "Mock AI response",
         success: bool = True,
@@ -142,6 +147,7 @@ def mock_ai_response():
         mock.tokens_used = tokens
         mock.error = None if success else "Mock error"
         return mock
+
     return _factory
 
 
@@ -155,22 +161,27 @@ def mock_ai_client(mock_ai_response):
     """
     mock = AsyncMock()
     mock.complete = AsyncMock(return_value=mock_ai_response())
-    mock.complete_json = AsyncMock(return_value={
-        "thought": "Mock reasoning",
-        "tool": "none",
-        "tool_args": {},
-        "reply": "Mock reply",
-    })
+    mock.complete_json = AsyncMock(
+        return_value={
+            "thought": "Mock reasoning",
+            "tool": "none",
+            "tool_args": {},
+            "reply": "Mock reply",
+        }
+    )
     mock.stream_complete = AsyncMock(return_value=iter(["Mock", " ", "stream"]))
-    mock.get_health_summary = MagicMock(return_value={
-        "huggingface": {"available": True, "success_rate_pct": 100.0},
-    })
+    mock.get_health_summary = MagicMock(
+        return_value={
+            "huggingface": {"available": True, "success_rate_pct": 100.0},
+        }
+    )
 
     with patch("apps.core.tools.ai_client.get_ai_client", return_value=mock):
         yield mock
 
 
 # ── FastAPI test client ───────────────────────────────────────────────────
+
 
 @pytest.fixture
 def app():
@@ -183,6 +194,7 @@ def app():
         _mock_lifespan.return_value.__aexit__ = AsyncMock(return_value=False)
 
         from apps.core.main import app as _app
+
         return _app
 
 
@@ -190,11 +202,12 @@ def app():
 def client(app):
     """HTTP test client for the ARIA FastAPI application."""
     from fastapi.testclient import TestClient
-    with TestClient(app, raise_server_exceptions=False) as c:
-        yield c
+
+    return TestClient(app, raise_server_exceptions=False)
 
 
 # ── Supabase mock ─────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_supabase():
@@ -202,13 +215,17 @@ def mock_supabase():
     mock = MagicMock()
     mock.table.return_value.insert.return_value.execute.return_value = {"data": [], "error": None}
     mock.table.return_value.select.return_value.execute.return_value = {"data": [], "error": None}
-    mock.table.return_value.update.return_value.eq.return_value.execute.return_value = {"data": [], "error": None}
+    mock.table.return_value.update.return_value.eq.return_value.execute.return_value = {
+        "data": [],
+        "error": None,
+    }
 
     with patch("apps.core.memory.supabase_client.get_db", return_value=mock):
         yield mock
 
 
 # ── Telegram mock ─────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_telegram():
@@ -225,10 +242,12 @@ def mock_telegram():
 
 # ── Metrics isolation ─────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def reset_metrics():
     """Reset AriaMetrics singleton state between tests."""
     from apps.core.observability.metrics import AriaMetrics
+
     AriaMetrics._instance = None
     yield
     AriaMetrics._instance = None

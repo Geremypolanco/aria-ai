@@ -9,6 +9,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from apps.core.memory.redis_client import get_cache
+
 logger = logging.getLogger(__name__)
 
 _REDIS_KEY = "shopify:recommendations:v1"
@@ -72,8 +74,6 @@ class ProductRecommender:
         if self._loaded:
             return
         try:
-            from apps.core.memory.redis_client import get_cache  # type: ignore
-
             cache = get_cache()
             data = await cache.get(_REDIS_KEY)
             if data and isinstance(data, dict):
@@ -85,8 +85,6 @@ class ProductRecommender:
 
     async def _save(self) -> None:
         try:
-            from apps.core.memory.redis_client import get_cache  # type: ignore
-
             cache = get_cache()
             await cache.set(
                 _REDIS_KEY,

@@ -1,4 +1,5 @@
 """Phase 13 tests — Daily Business Loop (DailyBusinessLoop)."""
+
 from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,7 +12,9 @@ def _mock_cache():
     return c
 
 
-def _mock_ai(content="Execution consistency drives compound growth over time.\nIncrease outreach volume by 50% tomorrow."):
+def _mock_ai(
+    content="Execution consistency drives compound growth over time.\nIncrease outreach volume by 50% tomorrow.",
+):
     ai = MagicMock()
     r = MagicMock()
     r.success = True
@@ -26,6 +29,7 @@ class TestDailyBusinessLoop:
         with patch("apps.runtime.daily_business_loop.get_cache", return_value=_mock_cache()):
             with patch("apps.runtime.daily_business_loop.get_ai_client", return_value=_mock_ai()):
                 from apps.runtime.daily_business_loop import DailyBusinessLoop
+
                 return DailyBusinessLoop()
 
     # ── build_daily_ops ───────────────────────────────────────────────────────
@@ -40,6 +44,7 @@ class TestDailyBusinessLoop:
 
     def test_build_daily_ops_are_business_operations(self, loop):
         from apps.runtime.daily_business_loop import BusinessOperation
+
         ops = loop.build_daily_ops()
         assert all(isinstance(op, BusinessOperation) for op in ops)
 
@@ -49,7 +54,16 @@ class TestDailyBusinessLoop:
 
     def test_build_daily_ops_have_categories(self, loop):
         ops = loop.build_daily_ops()
-        valid = {"distribution", "acquisition", "shopify", "conversion", "market", "learning", "planning"}
+        valid = {
+            "distribution",
+            "acquisition",
+            "shopify",
+            "conversion",
+            "market",
+            "learning",
+            "planning",
+            "retention",
+        }
         assert all(op.category in valid for op in ops)
 
     def test_build_daily_ops_start_as_pending(self, loop):
@@ -116,6 +130,7 @@ class TestDailyBusinessLoop:
     @pytest.mark.asyncio
     async def test_run_returns_report(self, loop):
         from apps.runtime.daily_business_loop import DailyBusinessReport
+
         report = await loop.run(max_ops=3)
         assert isinstance(report, DailyBusinessReport)
         assert report.report_id
@@ -224,10 +239,21 @@ class TestDailyBusinessLoop:
 
     def test_business_operation_to_dict_has_required_keys(self, loop):
         from apps.runtime.daily_business_loop import BusinessOperation
+
         op = BusinessOperation(name="Test", category="distribution", revenue_impact="direct")
         d = op.to_dict()
-        required = {"op_id", "name", "category", "revenue_impact", "status",
-                    "result", "started_at", "completed_at", "duration_seconds", "error"}
+        required = {
+            "op_id",
+            "name",
+            "category",
+            "revenue_impact",
+            "status",
+            "result",
+            "started_at",
+            "completed_at",
+            "duration_seconds",
+            "error",
+        }
         assert required.issubset(d.keys())
 
     # ── DailyBusinessReport.to_dict ───────────────────────────────────────────
@@ -237,10 +263,21 @@ class TestDailyBusinessLoop:
         report = await loop.run(max_ops=2)
         d = report.to_dict()
         required = {
-            "report_id", "date", "ops_total", "ops_completed", "ops_failed",
-            "direct_revenue_ops", "content_pieces_generated", "leads_discovered",
-            "outreach_sent", "shopify_optimizations", "funnels_optimized",
-            "top_insight", "tomorrow_priority", "execution_score", "created_at",
+            "report_id",
+            "date",
+            "ops_total",
+            "ops_completed",
+            "ops_failed",
+            "direct_revenue_ops",
+            "content_pieces_generated",
+            "leads_discovered",
+            "outreach_sent",
+            "shopify_optimizations",
+            "funnels_optimized",
+            "top_insight",
+            "tomorrow_priority",
+            "execution_score",
+            "created_at",
         }
         assert required.issubset(d.keys())
 
