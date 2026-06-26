@@ -18,6 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
 
 COPY apps/ apps/
+COPY docs/ docs/
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

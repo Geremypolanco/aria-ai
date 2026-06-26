@@ -1378,10 +1378,9 @@ async def subscribe_redirect(tier: str):
                     link = link.decode()
                 return RedirectResponse(url=str(link), status_code=302)
 
-    # No Stripe link yet → send them to the landing page (lead capture form)
-    return RedirectResponse(
-        url=f"https://geremypolanco.github.io/aria-ai/?plan={tier}", status_code=302
-    )
+    # No Stripe link yet → send them to the landing page (lead capture form),
+    # served by this same app so the front door is always live.
+    return RedirectResponse(url=f"/?plan={tier}", status_code=302)
 
 
 @app.post("/telegram/webhook")
@@ -3362,11 +3361,26 @@ async def oauth_callback(service: str, request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Redirects to the dashboard."""
-    return """<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/dashboard">
+    """Serve the public ARIA landing page (lead-capture funnel front door)."""
+    import pathlib
+
+    for candidate in (
+        pathlib.Path("/app/docs/index.html"),
+        pathlib.Path(__file__).resolve().parents[2] / "docs" / "index.html",
+    ):
+        try:
+            if candidate.is_file():
+                return HTMLResponse(candidate.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+    # Fallback if the landing asset is missing — never break the front door
+    return HTMLResponse(
+        """<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/dashboard">
     <title>ARIA AI</title></head><body>
     <p>Redirigiendo al <a href="/dashboard">Dashboard de ARIA</a>...</p>
     </body></html>"""
+    )
 
 
 if __name__ == "__main__":
