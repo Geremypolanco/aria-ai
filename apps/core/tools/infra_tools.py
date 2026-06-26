@@ -1,21 +1,21 @@
-
+import logging
 import os
 import subprocess
-import logging
-from typing import Any, Dict, List
+from typing import Any
 
 logger = logging.getLogger("aria.infra")
+
 
 class InfraTools:
     """
     Herramientas de infraestructura para que ARIA gestione su propio entorno.
     """
 
-    async def manage_files(self, action: str, path: str, content: str = None) -> Dict[str, Any]:
+    async def manage_files(self, action: str, path: str, content: str = None) -> dict[str, Any]:
         """Gestión avanzada de archivos (read, write, append, delete, list)."""
         try:
             if action == "read":
-                with open(path, "r") as f:
+                with open(path) as f:
                     return {"success": True, "content": f.read()}
             elif action == "write":
                 os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -28,7 +28,7 @@ class InfraTools:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def execute_system_command(self, command: str) -> Dict[str, Any]:
+    async def execute_system_command(self, command: str) -> dict[str, Any]:
         """Ejecuta comandos de sistema para instalar dependencias o configurar el entorno."""
         try:
             # Lista de comandos prohibidos por seguridad
@@ -36,20 +36,19 @@ class InfraTools:
             if any(f in command for f in forbidden):
                 return {"success": False, "error": "Comando prohibido por seguridad"}
 
-            result = subprocess.run(
-                command, shell=True, capture_output=True, text=True, timeout=60
-            )
+            result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
             return {
                 "success": result.returncode == 0,
                 "stdout": result.stdout,
-                "stderr": result.stderr
+                "stderr": result.stderr,
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def monitor_api_health(self, endpoints: List[str]) -> Dict[str, Any]:
+    async def monitor_api_health(self, endpoints: list[str]) -> dict[str, Any]:
         """Verifica si las APIs críticas están respondiendo."""
         import httpx
+
         results = {}
         async with httpx.AsyncClient() as client:
             for url in endpoints:

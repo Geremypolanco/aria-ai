@@ -53,18 +53,19 @@ class Orchestrator(BaseAgent):
         if any(x in m_lower for x in ["create", "genera", "crea", "haz", "dibuja"]):
             # Identificar formato
             fmt = "image"
-            if any(x in m_lower for x in ["video", "clip", "película"]): fmt = "video"
-            elif any(x in m_lower for x in ["música", "canción", "audio", "music"]): fmt = "music"
-            elif any(x in m_lower for x in ["software", "código", "app"]): fmt = "software"
+            if any(x in m_lower for x in ["video", "clip", "película"]):
+                fmt = "video"
+            elif any(x in m_lower for x in ["música", "canción", "audio", "music"]):
+                fmt = "music"
+            elif any(x in m_lower for x in ["software", "código", "app"]):
+                fmt = "software"
 
             agent = await self._get_agent("content")
             if agent:
                 logger.info(f"[Orchestrator] Delegando creación de {fmt} al ContentAgent")
-                return await agent.execute({
-                    "task": "creative_creation",
-                    "format": fmt,
-                    "topic": mission_text
-                })
+                return await agent.execute(
+                    {"task": "creative_creation", "format": fmt, "topic": mission_text}
+                )
 
         return {"success": False, "error": "Misión no reconocida o agente no disponible"}
 
@@ -418,11 +419,11 @@ Genera el plan de monetizacion detallado. JSON esperado:
     def _auto_discover_agents(self) -> None:
         """Carga dinamicamente todos los agentes disponibles."""
         try:
+            from apps.core.agents.business.investor_agent import InvestorAgent
             from apps.core.agents.cfo_agent import CFOAgent
             from apps.core.agents.content_agent import ContentAgent
             from apps.core.agents.ecommerce_agent import EcommerceAgent
             from apps.core.agents.pm_agent import PMAgent
-            from apps.core.agents.business.investor_agent import InvestorAgent
 
             self._agents["content"] = ContentAgent()
             self._agents["cfo"] = CFOAgent()

@@ -10,13 +10,16 @@ Referencia:
   - GDELT Project: https://www.gdeltproject.org/
   - OpenAlex API: https://openalex.org/
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
+
 import httpx
 
 logger = logging.getLogger("aria.market_radar")
+
 
 class AriaMarketRadar:
     """
@@ -49,6 +52,7 @@ class AriaMarketRadar:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _market_radar_instance: AriaMarketRadar | None = None
+
 
 def get_market_radar() -> AriaMarketRadar:
     """Retorna el singleton del radar de mercado."""

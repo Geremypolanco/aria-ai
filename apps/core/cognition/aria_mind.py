@@ -9,15 +9,13 @@ Principios:
   - La auto-reflexión periódica genera reglas que afectan futuro comportamiento.
   - ARIA no dice "lo haré" sin hacerlo. Ejecuta o reporta honestamente.
 """
+
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import time
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 logger = logging.getLogger("aria.mind")
 
@@ -25,25 +23,26 @@ logger = logging.getLogger("aria.mind")
 # TIPOS
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class MindResponse:
-    text: Optional[str] = None
-    image_bytes: Optional[bytes] = None
-    video_bytes: Optional[bytes] = None
-    audio_bytes: Optional[bytes] = None
-    document_bytes: Optional[bytes] = None
-    document_filename: Optional[str] = None
-    caption: Optional[str] = None
-    tool_used: Optional[str] = None
+    text: str | None = None
+    image_bytes: bytes | None = None
+    video_bytes: bytes | None = None
+    audio_bytes: bytes | None = None
+    document_bytes: bytes | None = None
+    document_filename: str | None = None
+    caption: str | None = None
+    tool_used: str | None = None
     silent: bool = False
 
 
 @dataclass
 class Goal:
     text: str
-    priority: int = 5          # 1 (más alto) – 10 (más bajo)
-    status: str = "active"     # active | paused | done
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    priority: int = 5  # 1 (más alto) – 10 (más bajo)
+    status: str = "active"  # active | paused | done
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     progress: str = ""
 
     def to_prompt(self) -> str:
@@ -53,6 +52,7 @@ class Goal:
 @dataclass
 class ExecRecord:
     """Registro de ejecución de una herramienta."""
+
     ts: str
     tool: str
     success: bool
@@ -252,22 +252,23 @@ Escribe cualquier pregunta o instrucción en lenguaje natural — ARIA entiende 
 # ARIA MIND
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class AriaMind:
 
     # Redis keys
-    K_HISTORY  = "aria:mind:history:{cid}"   # list[dict], 7d
-    K_STATE    = "aria:mind:state:{cid}"      # CogState dict, 30d
-    K_GOALS    = "aria:mind:goals"            # list[dict], 365d — SOBREVIVE REINICIOS
-    K_LEARNED  = "aria:mind:learned"          # list[str], 365d
-    K_EXECS    = "aria:mind:execs"            # list[dict], 30d
-    K_ICOUNT   = "aria:mind:icount:{cid}"    # int, 30d
+    K_HISTORY = "aria:mind:history:{cid}"  # list[dict], 7d
+    K_STATE = "aria:mind:state:{cid}"  # CogState dict, 30d
+    K_GOALS = "aria:mind:goals"  # list[dict], 365d — SOBREVIVE REINICIOS
+    K_LEARNED = "aria:mind:learned"  # list[str], 365d
+    K_EXECS = "aria:mind:execs"  # list[dict], 30d
+    K_ICOUNT = "aria:mind:icount:{cid}"  # int, 30d
 
-    REFLECT_EVERY = 30        # reflexión cada N interacciones
-    MAX_HISTORY   = 20        # mensajes en contexto
-    MAX_EXECS     = 50        # registros de ejecución guardados
+    REFLECT_EVERY = 30  # reflexión cada N interacciones
+    MAX_HISTORY = 20  # mensajes en contexto
+    MAX_EXECS = 50  # registros de ejecución guardados
 
     def __init__(self) -> None:
-        self._ai    = None
+        self._ai = None
         self._cache = None
 
     # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
@@ -279,7 +280,9 @@ class AriaMind:
             if stripped in ("/help", "/ayuda", "help", "ayuda"):
                 return MindResponse(text=_HELP_TEXT)
             if stripped in ("/clear", "/limpiar", "/reset"):
-                return MindResponse(text="🗑 Conversación reiniciada. ¿En qué te ayudo?", silent=False)
+                return MindResponse(
+                    text="🗑 Conversación reiniciada. ¿En qué te ayudo?", silent=False
+                )
             if stripped in ("/status", "/estado", "status"):
                 return await self._build_status()
 
@@ -298,26 +301,35 @@ class AriaMind:
 
             # DETECTAR NECESIDAD DE AUTONOMÍA (Estilo Claude Code / Agente de Propósito General)
             # Si el plan indica una tarea compleja o el usuario pide ejecución real
-            if plan.get("autonomous_execution") or "ejecuta" in text.lower() or "haz" in text.lower():
+            if (
+                plan.get("autonomous_execution")
+                or "ejecuta" in text.lower()
+                or "haz" in text.lower()
+            ):
                 from apps.core.cognition.aria_agent import AriaAgent
-                agent = AriaAgent(identity=SYSTEM_TEMPLATE.format(
-                    owner=getattr(settings, "OWNER_NAME", "su dueño"),
-                    focus=state.get("focus", "ejecución autónoma"),
-                    confidence="100%",
-                    interaction_count=state.get("interaction_count", 0),
-                    goals="\n".join([g["text"] for g in goals]),
-                    learned="\n".join(learned),
-                    history="",
-                ))
+                from apps.core.config import settings
+
+                agent = AriaAgent(
+                    identity=SYSTEM_TEMPLATE.format(
+                        owner=getattr(settings, "OWNER_NAME", "su dueño"),
+                        focus=state.get("focus", "ejecución autónoma"),
+                        confidence="100%",
+                        interaction_count=state.get("interaction_count", 0),
+                        goals="\n".join([g["text"] for g in goals]),
+                        learned="\n".join(learned),
+                        history="",
+                    )
+                )
                 agent_result = await agent.run(text)
                 if agent_result["success"]:
                     return MindResponse(text=agent_result["output"])
-                else:
-                    return MindResponse(text=f"Lo intenté de forma autónoma pero fallé: {agent_result['error']}")
+                return MindResponse(
+                    text=f"Lo intenté de forma autónoma pero fallé: {agent_result['error']}"
+                )
 
-            tool     = plan.get("tool")
+            tool = plan.get("tool")
             tool_args = plan.get("tool_args") or {}
-            reply    = (plan.get("reply") or "").strip()
+            reply = (plan.get("reply") or "").strip()
 
             # Actualizar metas si el plan lo indica
             goal_action = plan.get("goal_action")
@@ -356,8 +368,9 @@ class AriaMind:
 
     # ── RAZONAMIENTO ───────────────────────────────────────────────────────
 
-    async def _reason(self, text: str, history: list, state: dict,
-                       goals: list[dict], learned: list[str]) -> Optional[dict]:
+    async def _reason(
+        self, text: str, history: list, state: dict, goals: list[dict], learned: list[str]
+    ) -> dict | None:
         ai = self._ai_client()
         if not ai:
             return {"tool": None, "reply": "Motor de IA no disponible ahora."}
@@ -365,15 +378,18 @@ class AriaMind:
         from apps.core.config import settings
         from apps.core.tools.ai_client import AIModel
 
-        goals_text = "\n".join(
-            f"  {i+1}. {Goal(**g).to_prompt()}"
-            for i, g in enumerate(goals[:8])
-        ) or "  (ninguna definida)"
+        goals_text = (
+            "\n".join(f"  {i+1}. {Goal(**g).to_prompt()}" for i, g in enumerate(goals[:8]))
+            or "  (ninguna definida)"
+        )
 
-        history_text = "\n".join(
-            ("Tú: " if m.get("role") == "user" else "ARIA: ") + m.get("content", "")[:200]
-            for m in history[-self.MAX_HISTORY:]
-        ) or "(primera conversación)"
+        history_text = (
+            "\n".join(
+                ("Tú: " if m.get("role") == "user" else "ARIA: ") + m.get("content", "")[:200]
+                for m in history[-self.MAX_HISTORY :]
+            )
+            or "(primera conversación)"
+        )
 
         learned_text = "\n".join(f"  • {l}" for l in learned[-10:]) or "  (sin reglas aún)"
 
@@ -381,6 +397,7 @@ class AriaMind:
         kb_context = ""
         try:
             from apps.core.tools.knowledge_base import get_knowledge_base
+
             kb_context = await get_knowledge_base().search_formatted(text, top_k=3)
         except Exception:
             pass
@@ -426,8 +443,9 @@ class AriaMind:
 
     # ── EJECUCIÓN CON RETRY + FALLBACK ────────────────────────────────────
 
-    async def _execute_with_retry(self, tool: str, args: dict,
-                                   max_retries: int = 3) -> tuple[str, dict]:
+    async def _execute_with_retry(
+        self, tool: str, args: dict, max_retries: int = 3
+    ) -> tuple[str, dict]:
         """
         Ejecuta la herramienta con hasta max_retries intentos.
         Cada intento puede usar parámetros adaptados.
@@ -436,16 +454,20 @@ class AriaMind:
         last_error = ""
         for attempt in range(max_retries):
             if attempt > 0:
-                await asyncio.sleep(2 ** attempt)  # backoff: 2s, 4s
+                await asyncio.sleep(2**attempt)  # backoff: 2s, 4s
 
             obs, media = await self._execute_tool(tool, args, attempt)
 
             # Si hay media o la obs no indica error → éxito
-            if media or (obs and not obs.lower().startswith(("error", "no se pudo", "falló", "fail"))):
+            if media or (
+                obs and not obs.lower().startswith(("error", "no se pudo", "falló", "fail"))
+            ):
                 return obs, media
 
             last_error = obs
-            logger.warning("[AriaMind] tool=%s attempt=%d/%d: %s", tool, attempt+1, max_retries, obs[:80])
+            logger.warning(
+                "[AriaMind] tool=%s attempt=%d/%d: %s", tool, attempt + 1, max_retries, obs[:80]
+            )
 
             # Adaptar args para el próximo intento
             args = self._adapt_args(tool, args, obs, attempt)
@@ -479,36 +501,51 @@ class AriaMind:
                 steps = 4 if "schnell" in model_id else 25
 
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().generate_image(
-                    prompt=prompt, model=model_id,
-                    width=1024, height=1024, num_inference_steps=steps)
+                    prompt=prompt,
+                    model=model_id,
+                    width=1024,
+                    height=1024,
+                    num_inference_steps=steps,
+                )
 
                 if r.get("success") and r.get("image_bytes"):
                     model_short = model_id.split("/")[-1]
                     return f"Imagen generada con {model_short}", {"image_bytes": r["image_bytes"]}
-                
+
                 # FALLBACK A POLLINATIONS SI HF FALLA (No requiere API Key)
-                logger.info("[AriaMind] HF imagen fallo o sin token, intentando Pollinations fallback...")
+                logger.info(
+                    "[AriaMind] HF imagen fallo o sin token, intentando Pollinations fallback..."
+                )
                 try:
                     import httpx
+
                     poll_url = f"https://image.pollinations.ai/prompt/{prompt.replace(' ', '%20')}?width=1024&height=1024&nologo=true"
                     async with httpx.AsyncClient(timeout=30.0) as client:
                         resp = await client.get(poll_url)
                         if resp.status_code == 200:
                             logger.info("[AriaMind] Imagen generada exitosamente via Pollinations")
-                            return f"Imagen generada (via Pollinations)", {"image_bytes": resp.content}
+                            return "Imagen generada (via Pollinations)", {
+                                "image_bytes": resp.content
+                            }
                 except Exception as e:
                     logger.error("[AriaMind] Pollinations fallback fallo: %s", e)
 
-                return f"⚠️ No pude generar la imagen en este momento ({r.get('error', 'Proveedor no disponible')}). Por favor, verifica que HF_TOKEN esté configurado correctamente.", {}
+                return (
+                    f"⚠️ No pude generar la imagen en este momento ({r.get('error', 'Proveedor no disponible')}). Por favor, verifica que HF_TOKEN esté configurado correctamente.",
+                    {},
+                )
 
             # ── VIDEO ─────────────────────────────────────────────────────
-            elif tool == "generate_video":
+            if tool == "generate_video":
                 prompt = args.get("prompt", "")
                 from apps.core.tools.creative_engine import CreativeEngine
+
                 r = await CreativeEngine().generate_video(prompt)
                 if r.get("success"):
                     import base64 as _b64
+
                     raw = r.get("video_bytes")
                     if not raw:
                         v64 = r.get("video_b64") or r.get("video_base64")
@@ -516,27 +553,36 @@ class AriaMind:
                             raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
                     if raw:
                         return f"Video generado ({len(raw)//1024}KB)", {"video_bytes": raw}
-                return f"⚠️ Error en generación de video: {r.get('error', 'Proveedor no disponible')}", {}
+                return (
+                    f"⚠️ Error en generación de video: {r.get('error', 'Proveedor no disponible')}",
+                    {},
+                )
 
             # ── MÚSICA ────────────────────────────────────────────────────
-            elif tool == "generate_music":
+            if tool == "generate_music":
                 prompt = args.get("prompt", "")
                 dur = int(args.get("duration", 30))
                 from apps.core.tools.creative_engine import CreativeEngine
+
                 r = await CreativeEngine().generate_music(prompt, duration=dur)
                 if r.get("success"):
                     import base64 as _b64
+
                     ab64 = r.get("audio_base64") or r.get("audio_b64")
                     if ab64:
                         # Si ya es bytes (por alguna razón) no decodificar, si es str, decodificar
                         audio_data = ab64 if isinstance(ab64, bytes) else _b64.b64decode(ab64)
                         return f"Música generada ({dur}s)", {"audio_bytes": audio_data}
-                return f"⚠️ Error en generación de música: {r.get('error', 'Proveedor no disponible')}", {}
+                return (
+                    f"⚠️ Error en generación de música: {r.get('error', 'Proveedor no disponible')}",
+                    {},
+                )
 
             # ── BÚSQUEDA WEB ──────────────────────────────────────────────
-            elif tool == "web_search":
+            if tool == "web_search":
                 query = args.get("query", "")
                 from apps.core.tools.web_tools import WebTools
+
                 r = await WebTools().search_web(query, num_results=10)
                 if r.get("success") and r.get("results"):
                     source = r.get("source", "web")
@@ -550,10 +596,11 @@ class AriaMind:
                 return "Sin resultados de búsqueda. Intenta reformular la query.", {}
 
             # ── BÚSQUEDA PROFUNDA ─────────────────────────────────────────
-            elif tool == "deep_search":
+            if tool == "deep_search":
                 query = args.get("query", "")
                 num_pages = min(int(args.get("num_pages", 3)), 5)
                 from apps.core.tools.web_tools import WebTools
+
                 wt = WebTools()
                 r = await wt.search_web(query, num_results=num_pages + 2)
                 if not r.get("success") or not r.get("results"):
@@ -563,7 +610,7 @@ class AriaMind:
                 fetch_tasks = [wt.fetch_page(url, max_chars=2000) for url in urls]
                 pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
                 parts = [f"[Deep Search: {query}]"]
-                for i, (res, page) in enumerate(zip(r["results"], pages)):
+                for i, (res, page) in enumerate(zip(r["results"], pages, strict=False)):
                     title = res.get("title", f"Resultado {i+1}")
                     url = res.get("url", "")
                     if isinstance(page, dict) and page.get("success") and page.get("text"):
@@ -574,66 +621,80 @@ class AriaMind:
                 return "\n\n---\n\n".join(parts), {}
 
             # ── FETCH DE URL ──────────────────────────────────────────────
-            elif tool == "fetch_url":
+            if tool == "fetch_url":
                 url = args.get("url", "")
                 if not url:
                     return "Necesito una URL para leer.", {}
                 from apps.core.tools.web_tools import WebTools
+
                 r = await WebTools().fetch_page(url, max_chars=4000)
                 if r.get("success") and r.get("text"):
                     return f"[Contenido de {url}]\n\n{r['text']}", {}
                 return f"No se pudo leer la URL: {r.get('error', 'Sin respuesta')}", {}
 
             # ── TENDENCIAS ────────────────────────────────────────────────
-            elif tool == "get_trends":
+            if tool == "get_trends":
                 from apps.core.tools.web_tools import WebTools
+
                 wt = WebTools()
                 hn, rd = await asyncio.gather(
                     wt.get_hacker_news_trending(limit=5),
                     wt.get_reddit_trending(limit=5),
-                    return_exceptions=True)
+                    return_exceptions=True,
+                )
                 parts = []
                 if isinstance(hn, dict) and hn.get("success"):
-                    hn_titles = [s.get("title","")[:70] for s in hn.get("stories",[])[:4]]
+                    hn_titles = [s.get("title", "")[:70] for s in hn.get("stories", [])[:4]]
                     parts.append("HN: " + " | ".join(hn_titles))
                 if isinstance(rd, dict) and rd.get("success"):
-                    rd_titles = [p.get("title","")[:70] for p in rd.get("posts",[])[:4]]
+                    rd_titles = [p.get("title", "")[:70] for p in rd.get("posts", [])[:4]]
                     parts.append("Reddit: " + " | ".join(rd_titles))
                 return "\n".join(parts) if parts else "Sin tendencias disponibles", {}
 
             # ── ESTADO DEL SISTEMA ────────────────────────────────────────
-            elif tool == "get_status":
+            if tool == "get_status":
                 try:
                     from apps.core.training.continuous_trainer import get_trainer
+
                     s = get_trainer().get_status()
                     skills = s.get("skill_scores", {})
-                    skills_str = ", ".join(f"{k}:{v:.0f}%" for k, v in skills.items()) or "evaluando"
-                    return (f"Ciclo #{s.get('cycle', 0)} | Skills: {skills_str} | "
-                            f"Running: {s.get('running', False)}"), {}
+                    skills_str = (
+                        ", ".join(f"{k}:{v:.0f}%" for k, v in skills.items()) or "evaluando"
+                    )
+                    return (
+                        f"Ciclo #{s.get('cycle', 0)} | Skills: {skills_str} | "
+                        f"Running: {s.get('running', False)}"
+                    ), {}
                 except Exception as e:
                     return f"Sistema activo (error obteniendo detalle: {e})", {}
 
             # ── CICLO DE INGRESOS ─────────────────────────────────────────
             elif tool == "run_income":
                 from apps.core.agents.orchestrator import Orchestrator
+
                 r = await Orchestrator().run_cycle()
                 rev = r.get("revenue_summary", {}).get("total_revenue_usd", 0)
                 pub = r.get("revenue_summary", {}).get("items_published", 0)
-                t   = r.get("cycle_time_s", 0)
-                return (f"Ciclo completado en {t:.0f}s — "
-                        f"Revenue: ${rev:.2f} — Publicaciones: {pub}"), {}
+                t = r.get("cycle_time_s", 0)
+                return (
+                    f"Ciclo completado en {t:.0f}s — " f"Revenue: ${rev:.2f} — Publicaciones: {pub}"
+                ), {}
 
             # ── SQUARE (API CUADRADA) ─────────────────────────────────────
             elif tool == "square_sell":
                 from apps.core.integrations.square_engine import SquareEngine
+
                 engine = SquareEngine()
                 name = args.get("name", "Producto Aria")
                 desc = args.get("description", "Generado por Aria AI")
-                price = int(args.get("price", 1000)) # cents
+                price = int(args.get("price", 1000))  # cents
                 r = await engine.create_catalog_item(name, desc, price)
                 if r.get("success"):
                     link = await engine.create_payment_link(r["data"]["object"]["id"], name, price)
-                    return f"Producto creado en Square: {name}. Link de pago: {link.get('payment_link')}", {}
+                    return (
+                        f"Producto creado en Square: {name}. Link de pago: {link.get('payment_link')}",
+                        {},
+                    )
                 return f"Error en Square: {r.get('error')}", {}
 
             # ── TEXT-TO-SPEECH (BARK) ─────────────────────────────────────────
@@ -641,6 +702,7 @@ class AriaMind:
                 text_input = args.get("text", "")
                 voice = args.get("voice", "v2/es_speaker_1")
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().text_to_speech_bark(text_input, voice_preset=voice)
                 if r.get("success") and r.get("audio_bytes"):
                     ab = r["audio_bytes"]
@@ -653,6 +715,7 @@ class AriaMind:
                 source = args.get("source", "es")
                 target = args.get("target", "en")
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().translate(text_input, source=source, target=target)
                 if r.get("success"):
                     return f"[{source}→{target}] {r.get('translated', '')}", {}
@@ -664,17 +727,21 @@ class AriaMind:
                 content = args.get("content", "")
                 sections = args.get("sections") or []
                 from apps.core.tools.pdf_generator import generate_pdf as _gen_pdf
+
                 r = await _gen_pdf(title=title, content=content, sections=sections)
                 if r.get("success") and r.get("pdf_bytes"):
                     fname = r.get("filename", "documento.pdf")
-                    size  = r.get("size_kb", 0)
-                    return (f"PDF generado: {fname} ({size}KB)",
-                            {"document_bytes": r["pdf_bytes"], "document_filename": fname})
+                    size = r.get("size_kb", 0)
+                    return (
+                        f"PDF generado: {fname} ({size}KB)",
+                        {"document_bytes": r["pdf_bytes"], "document_filename": fname},
+                    )
                 return r.get("error", "No se pudo generar el PDF"), {}
 
             # ── SITIO WEB ─────────────────────────────────────────────────────
             elif tool == "create_website":
                 from apps.core.tools.website_engine import WebsiteEngine
+
                 r = await WebsiteEngine().generate_website(
                     name=args.get("name", "My Website"),
                     description=args.get("description", ""),
@@ -683,17 +750,20 @@ class AriaMind:
                 )
                 if r.get("success") and r.get("html_bytes"):
                     fname = r.get("filename", "website.html")
-                    size  = len(r["html_bytes"]) // 1024
-                    return (f"Sitio web generado: {fname} ({size}KB)",
-                            {"document_bytes": r["html_bytes"], "document_filename": fname})
+                    size = len(r["html_bytes"]) // 1024
+                    return (
+                        f"Sitio web generado: {fname} ({size}KB)",
+                        {"document_bytes": r["html_bytes"], "document_filename": fname},
+                    )
                 return r.get("error", "Website generation failed"), {}
 
             # ── CONTENIDO SOCIAL ──────────────────────────────────────────────
             elif tool == "create_social_content":
-                topic     = args.get("topic", "")
+                topic = args.get("topic", "")
                 platforms = args.get("platforms", ["instagram", "linkedin", "twitter"])
-                tone      = args.get("tone", "professional")
+                tone = args.get("tone", "professional")
                 from apps.core.tools.social_engine import SocialContentEngine
+
                 r = await SocialContentEngine().create_content_pack(topic, platforms, tone)
                 if r.get("success"):
                     lines = [f"Contenido generado para {r.get('generated', 0)} plataformas:\n"]
@@ -706,6 +776,7 @@ class AriaMind:
             # ── SOFTWARE / APP ────────────────────────────────────────────────
             elif tool == "build_software":
                 from apps.core.tools.software_builder import SoftwareBuilder
+
                 r = await SoftwareBuilder().build_project(
                     name=args.get("name", "MyApp"),
                     description=args.get("description", ""),
@@ -714,15 +785,16 @@ class AriaMind:
                 )
                 if r.get("success") and r.get("zip_bytes"):
                     fname = r.get("filename", "project.zip")
-                    size  = r.get("size_kb", 0)
+                    size = r.get("size_kb", 0)
                     files = r.get("files", [])
-                    obs   = f"Proyecto generado: {fname} ({size}KB) — {len(files)} archivos: {', '.join(files[:6])}"
+                    obs = f"Proyecto generado: {fname} ({size}KB) — {len(files)} archivos: {', '.join(files[:6])}"
                     return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
                 return r.get("error", "Software build failed"), {}
 
             # ── VIDEOJUEGO ────────────────────────────────────────────────────
             elif tool == "build_game":
                 from apps.core.tools.game_builder import GameBuilder
+
                 r = await GameBuilder().create_game(
                     name=args.get("name", "MyGame"),
                     genre=args.get("genre", "arcade"),
@@ -731,19 +803,20 @@ class AriaMind:
                 )
                 if r.get("success") and r.get("zip_bytes"):
                     fname = r.get("filename", "game.zip")
-                    size  = r.get("size_kb", 0)
+                    size = r.get("size_kb", 0)
                     files = r.get("files", [])
-                    obs   = f"Juego generado ({r.get('engine', '')}): {fname} ({size}KB) — {len(files)} archivos"
+                    obs = f"Juego generado ({r.get('engine', '')}): {fname} ({size}KB) — {len(files)} archivos"
                     return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
                 return r.get("error", "Game build failed"), {}
 
             # ── PUBLICAR ARTÍCULO ─────────────────────────────────────────
             elif tool == "publish_article":
-                title   = args.get("title", "")
+                title = args.get("title", "")
                 content = args.get("content", "")
-                tags    = args.get("tags", [])
+                tags = args.get("tags", [])
                 platforms = args.get("platforms", ["devto"])
                 from apps.core.tools.publishing_tools import PublishingTools
+
                 pt = PublishingTools()
                 results = {}
                 for plat in platforms:
@@ -762,9 +835,10 @@ class AriaMind:
             # ── ENVIAR EMAIL / NEWSLETTER ─────────────────────────────────
             elif tool == "send_email":
                 subject = args.get("subject", "")
-                body    = args.get("body", "")
-                to      = args.get("to", "")
+                body = args.get("body", "")
+                to = args.get("to", "")
                 from apps.core.tools.publishing_tools import PublishingTools
+
                 r = await PublishingTools().send_newsletter(subject, body, to_override=to)
                 if r.get("success"):
                     return f"Email enviado vía {r.get('provider', 'email')}", {}
@@ -772,10 +846,11 @@ class AriaMind:
 
             # ── DESCRIBIR IMAGEN ──────────────────────────────────────────
             elif tool == "describe_image":
-                url   = args.get("url", "")
+                url = args.get("url", "")
                 if not url:
                     return "Necesito una URL de imagen.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().describe_image(image_url=url)
                 if r.get("success"):
                     return f"Descripción: {r.get('description', '')}", {}
@@ -783,9 +858,10 @@ class AriaMind:
 
             # ── EJECUTAR CÓDIGO (SANDBOX) ─────────────────────────────────
             elif tool == "execute_code":
-                code     = args.get("code", "")
+                code = args.get("code", "")
                 language = args.get("language", "python")
                 from apps.core.tools.code_runner import CodeRunner
+
                 r = await CodeRunner().run(code=code, language=language)
                 output = r.get("stdout", "") or r.get("stderr", "") or "(sin salida)"
                 status = "OK" if r.get("success") else "ERROR"
@@ -793,12 +869,13 @@ class AriaMind:
 
             # ── NAVEGADOR SANDBOX ─────────────────────────────────────────
             elif tool == "browse_page":
-                url        = args.get("url", "")
-                take_shot  = args.get("screenshot", False)
+                url = args.get("url", "")
+                take_shot = args.get("screenshot", False)
                 from apps.core.tools.browser_sandbox import get_sandbox
+
                 r = await get_sandbox().browse(url, extract=True, screenshot=take_shot)
                 content = r.get("content", "")[:3000]
-                title   = r.get("title", url)
+                title = r.get("title", url)
                 obs = f"[PÁGINA: {title}]\n{content}"
                 media: dict = {}
                 if take_shot and r.get("screenshot_bytes"):
@@ -806,8 +883,9 @@ class AriaMind:
                 return obs, media
 
             elif tool == "interact_browser":
-                steps  = args.get("steps", [])
+                steps = args.get("steps", [])
                 from apps.core.tools.browser_sandbox import get_sandbox
+
                 session = get_sandbox()._get_session()
                 r = await session.interact_with_page(steps)
                 summary = f"Pasos ejecutados: {r.get('steps_executed',0)}, exitosos: {r.get('steps_succeeded',0)}"
@@ -817,14 +895,13 @@ class AriaMind:
                 )
                 return f"[BROWSER] {summary}\n{details}", {}
 
-
-
             # ── AGENTE DE NEGOCIO ─────────────────────────────────────────
             elif tool == "run_business_agent":
                 agent_name = args.get("agent", "ceo")
-                mission    = args.get("mission", "")
-                context    = args.get("context", {})
+                mission = args.get("mission", "")
+                context = args.get("context", {})
                 from apps.core.agents.business_hub import BusinessHub
+
                 r = await BusinessHub().dispatch(agent_name, mission, context)
                 summary = r.get("summary", r.get("result", str(r))[:400])
                 return f"[{agent_name.upper()}] {summary}", {}
@@ -850,29 +927,34 @@ class AriaMind:
             # ── RAZONAMIENTO EXTENDIDO ────────────────────────────────────
             elif tool == "deep_think":
                 question = args.get("question", "")
-                depth    = args.get("depth", "auto")
-                context  = args.get("context", "")
+                depth = args.get("depth", "auto")
+                context = args.get("context", "")
                 from apps.core.tools.deep_think import get_deep_think
+
                 result = await get_deep_think().think(question, context=context, depth=depth)
                 obs = f"[DEEP THINK — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
                 return obs, {}
 
             elif tool == "analyze_decision":
                 question = args.get("question", "")
-                options  = args.get("options", [])
+                options = args.get("options", [])
                 criteria = args.get("criteria", [])
                 from apps.core.tools.deep_think import get_deep_think
+
                 result = await get_deep_think().analyze_decision(question, options, criteria)
                 return f"[DECISIÓN]\n{result['recommendation']}", {}
 
             # ── PRESENTACIONES ────────────────────────────────────────────
             elif tool == "create_presentation":
-                title       = args.get("title", "Presentación")
-                topic       = args.get("topic", title)
+                title = args.get("title", "Presentación")
+                topic = args.get("topic", title)
                 slide_count = int(args.get("slide_count", 10))
-                template    = args.get("template", "dark")
+                template = args.get("template", "dark")
                 from apps.core.tools.presentation_builder import PresentationBuilder
-                r = await PresentationBuilder().create_presentation(title, topic, slide_count, template)
+
+                r = await PresentationBuilder().create_presentation(
+                    title, topic, slide_count, template
+                )
                 if r.get("success") and r.get("html_bytes"):
                     fname = r.get("filename", "presentation.html")
                     obs = f"Presentación '{title}' generada: {r['slide_count']} slides"
@@ -880,13 +962,16 @@ class AriaMind:
                 return "No se pudo generar la presentación", {}
 
             elif tool == "create_pitch_deck":
-                company  = args.get("company", "")
-                problem  = args.get("problem", "")
+                company = args.get("company", "")
+                problem = args.get("problem", "")
                 solution = args.get("solution", "")
-                market   = args.get("market", "")
+                market = args.get("market", "")
                 traction = args.get("traction", "")
                 from apps.core.tools.presentation_builder import PresentationBuilder
-                r = await PresentationBuilder().create_pitch_deck(company, problem, solution, market, traction)
+
+                r = await PresentationBuilder().create_pitch_deck(
+                    company, problem, solution, market, traction
+                )
                 if r.get("success") and r.get("html_bytes"):
                     fname = r.get("filename", "pitch_deck.html")
                     obs = f"Pitch deck '{company}' generado: {r['slide_count']} slides"
@@ -895,9 +980,10 @@ class AriaMind:
 
             # ── MULTIMODAL ────────────────────────────────────────────────
             elif tool == "analyze_image":
-                url      = args.get("url", "")
+                url = args.get("url", "")
                 question = args.get("question", "Describe esta imagen en detalle.")
                 from apps.core.tools.multimodal import get_multimodal
+
                 r = await get_multimodal().analyze_image(image_url=url, question=question)
                 if r.get("success"):
                     return f"[ANÁLISIS DE IMAGEN]\n{r['analysis']}", {}
@@ -906,24 +992,27 @@ class AriaMind:
             elif tool == "extract_text":
                 url = args.get("url", "")
                 from apps.core.tools.multimodal import get_multimodal
+
                 r = await get_multimodal().extract_text(image_url=url)
                 if r.get("success"):
                     return f"[OCR]\n{r['analysis']}", {}
                 return f"No pude extraer texto: {r.get('error', 'error desconocido')}", {}
 
             elif tool == "edit_image":
-                url         = args.get("url", "")
+                url = args.get("url", "")
                 instruction = args.get("instruction", "")
                 from apps.core.tools.multimodal import get_multimodal
+
                 r = await get_multimodal().edit_image(image_url=url, instruction=instruction)
                 if r.get("success") and r.get("image_bytes"):
                     return f"Imagen editada: '{instruction}'", {"image_bytes": r["image_bytes"]}
                 return f"No pude editar la imagen: {r.get('error', 'error desconocido')}", {}
 
             elif tool == "analyze_video":
-                url      = args.get("url", "")
+                url = args.get("url", "")
                 question = args.get("question", "Describe este video en detalle.")
                 from apps.core.tools.multimodal import get_multimodal
+
                 r = await get_multimodal().analyze_video_url(url, question)
                 if r.get("success"):
                     frames = r.get("frames_analyzed", 0)
@@ -932,31 +1021,38 @@ class AriaMind:
 
             # ── BACKGROUND TASKS ─────────────────────────────────────────
             elif tool == "run_background":
-                task_name  = args.get("task", "")
+                task_name = args.get("task", "")
                 agent_name = args.get("agent", "ceo")
-                from apps.core.tools.task_manager import get_task_manager
                 from apps.core.agents.business_hub import BusinessHub
+                from apps.core.tools.task_manager import get_task_manager
 
                 async def _bg():
                     return await BusinessHub().dispatch(agent_name, task_name, {})
 
-                mgr     = get_task_manager()
+                mgr = get_task_manager()
                 task_id = await mgr.submit(
                     name=task_name,
                     coro=_bg(),
                     description=f"{agent_name}: {task_name}",
                     session_id=None,
                 )
-                return f"Tarea '{task_name}' iniciada en segundo plano (ID: {task_id}). Te avisaré cuando termine.", {}
+                return (
+                    f"Tarea '{task_name}' iniciada en segundo plano (ID: {task_id}). Te avisaré cuando termine.",
+                    {},
+                )
 
             elif tool == "task_status":
                 task_id = args.get("task_id", "")
                 from apps.core.tools.task_manager import get_task_manager
+
                 mgr = get_task_manager()
                 if task_id:
                     record = mgr.get_task(task_id)
                     if record:
-                        return f"[Tarea {task_id}] {record.status.value}: {record.result or record.error or 'en progreso'}", {}
+                        return (
+                            f"[Tarea {task_id}] {record.status.value}: {record.result or record.error or 'en progreso'}",
+                            {},
+                        )
                     return f"Tarea {task_id} no encontrada.", {}
                 tasks = mgr.list_tasks(limit=10)
                 if not tasks:
@@ -966,39 +1062,50 @@ class AriaMind:
 
             # ── KNOWLEDGE BASE (RAG) ──────────────────────────────────────
             elif tool == "learn":
-                source   = args.get("source", "")
+                source = args.get("source", "")
                 category = args.get("category", "general")
-                is_url   = args.get("is_url", source.startswith("http"))
+                is_url = args.get("is_url", source.startswith("http"))
                 from apps.core.tools.knowledge_base import get_knowledge_base
+
                 kb = get_knowledge_base()
                 if is_url:
                     r = await kb.ingest_url(source, category=category)
                 else:
                     r = await kb.ingest_text(source, source=category, category=category)
                 if r.get("success"):
-                    return (f"✅ Aprendido: {r['chunks_added']} fragmentos de '{source[:60]}' "
-                            f"(total en KB: {r['total_chunks']})"), {}
+                    return (
+                        f"✅ Aprendido: {r['chunks_added']} fragmentos de '{source[:60]}' "
+                        f"(total en KB: {r['total_chunks']})"
+                    ), {}
                 return f"No pude aprender esa fuente: {r.get('error', 'error')}", {}
 
             elif tool == "search_knowledge":
                 query = args.get("query", "")
                 top_k = int(args.get("top_k", 5))
                 from apps.core.tools.knowledge_base import get_knowledge_base
+
                 formatted = await get_knowledge_base().search_formatted(query, top_k=top_k)
                 if formatted:
                     return formatted, {}
-                return "No encontré información relevante en la base de conocimiento. Prueba a usar 'learn' primero.", {}
+                return (
+                    "No encontré información relevante en la base de conocimiento. Prueba a usar 'learn' primero.",
+                    {},
+                )
 
             elif tool == "forget_source":
                 source = args.get("source", "")
                 from apps.core.tools.knowledge_base import get_knowledge_base
+
                 deleted = get_knowledge_base().delete_source(source)
-                return f"Eliminados {deleted} fragmentos de '{source}' de la base de conocimiento.", {}
+                return (
+                    f"Eliminados {deleted} fragmentos de '{source}' de la base de conocimiento.",
+                    {},
+                )
 
             # ── MULTI-AGENT CREW ──────────────────────────────────────────
             elif tool == "run_crew":
-                mission    = args.get("mission", "")
-                crew_name  = args.get("crew", "research_crew")
+                mission = args.get("mission", "")
+                crew_name = args.get("crew", "research_crew")
                 from apps.core.tools.crew_engine import get_crew_engine
                 from apps.core.tools.deep_think import ProgressStream
 
@@ -1019,61 +1126,83 @@ class AriaMind:
 
             # ── WORKFLOW ENGINE ───────────────────────────────────────────
             elif tool == "create_workflow":
-                name        = args.get("name", "Workflow")
+                name = args.get("name", "Workflow")
                 description = args.get("description", "")
                 from apps.core.tools.workflow_engine import get_workflow_engine
+
                 r = await get_workflow_engine().create(name, description)
                 if r.get("success"):
-                    steps_str = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(r.get("steps_preview", [])))
-                    return (f"✅ Workflow '{name}' creado (ID: {r['workflow_id']}, {r['steps']} pasos):\n"
-                            f"{steps_str}\n\nUsa run_workflow con id='{r['workflow_id']}' para ejecutarlo."), {}
+                    steps_str = "\n".join(
+                        f"  {i+1}. {s}" for i, s in enumerate(r.get("steps_preview", []))
+                    )
+                    return (
+                        f"✅ Workflow '{name}' creado (ID: {r['workflow_id']}, {r['steps']} pasos):\n"
+                        f"{steps_str}\n\nUsa run_workflow con id='{r['workflow_id']}' para ejecutarlo."
+                    ), {}
                 return f"No pude crear el workflow: {r.get('error', 'error')}", {}
 
             elif tool == "run_workflow":
                 wid = args.get("workflow_id", "")
                 from apps.core.tools.workflow_engine import get_workflow_engine
+
                 r = await get_workflow_engine().run(wid)
                 if r.get("success"):
                     steps_summary = "; ".join(
                         f"paso{s['step']}={'OK' if s['success'] else 'FAIL'}"
                         for s in r.get("results", [])
                     )
-                    return (f"[WORKFLOW '{r.get('name', wid)}' — {r['steps_run']} pasos]\n"
-                            f"{steps_summary}\n\n{r.get('final_output', '')}"), {}
+                    return (
+                        f"[WORKFLOW '{r.get('name', wid)}' — {r['steps_run']} pasos]\n"
+                        f"{steps_summary}\n\n{r.get('final_output', '')}"
+                    ), {}
                 return f"Error ejecutando workflow: {r.get('error', 'error')}", {}
 
             elif tool == "list_workflows":
                 from apps.core.tools.workflow_engine import get_workflow_engine
+
                 wfs = get_workflow_engine().list()
                 if not wfs:
                     return "No hay workflows guardados. Usa create_workflow para crear uno.", {}
-                lines = [f"• [{w['id']}] **{w['name']}** — {w['description'][:60]} (runs: {w['run_count']})" for w in wfs]
+                lines = [
+                    f"• [{w['id']}] **{w['name']}** — {w['description'][:60]} (runs: {w['run_count']})"
+                    for w in wfs
+                ]
                 return "[WORKFLOWS]\n" + "\n".join(lines), {}
 
             # ── THINK VERIFIED (Test-Time Compute) ────────────────────────
             elif tool == "think_verified":
                 question = args.get("question", "")
-                context  = args.get("context", "")
+                context = args.get("context", "")
                 from apps.core.tools.deep_think import get_deep_think
+
                 result = await get_deep_think().think_verified(question, context=context, paths=2)
                 obs = f"[RAZONAMIENTO VERIFICADO — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
                 return obs, {}
 
             # ── NICHE REVENUE ENGINE ─────────────────────────────────────
             elif tool == "launch_niche":
-                niche   = args.get("niche", "")
+                niche = args.get("niche", "")
                 context = args.get("context", "")
                 if not niche:
                     from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
                     top5 = get_niche_revenue_engine().get_top_niches_by_potential(n=3)
                     names = [n["key"] for n in top5]
-                    return (f"Especifica un nicho. Top 3 recomendados ahora mismo: {', '.join(names)}\n"
-                            f"Usa list_niches para ver todos los 45 disponibles."), {}
-                from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine, NICHE_CATALOG
+                    return (
+                        f"Especifica un nicho. Top 3 recomendados ahora mismo: {', '.join(names)}\n"
+                        f"Usa list_niches para ver todos los 45 disponibles."
+                    ), {}
+                from apps.core.tools.niche_revenue_engine import (
+                    NICHE_CATALOG,
+                    get_niche_revenue_engine,
+                )
+
                 if niche not in NICHE_CATALOG:
                     close = [k for k in NICHE_CATALOG if niche.lower() in k.lower()]
-                    return (f"Nicho '{niche}' no encontrado."
-                            + (f" ¿Quisiste decir: {', '.join(close[:3])}?" if close else "")), {}
+                    return (
+                        f"Nicho '{niche}' no encontrado."
+                        + (f" ¿Quisiste decir: {', '.join(close[:3])}?" if close else "")
+                    ), {}
                 result = await get_niche_revenue_engine().launch_niche(niche, context=context)
                 lines = [
                     f"[LAUNCH: {result.niche_name}]",
@@ -1092,25 +1221,32 @@ class AriaMind:
                     lines.append(f"Advertencias: {'; '.join(result.errors[:3])}")
                 if result.listing:
                     lines.append(f"\n**Listing:** {result.listing.title}")
-                    lines.append(f"Precio: ${result.listing.pricing_tiers['basic']['price']} – ${result.listing.pricing_tiers['premium']['price']}")
+                    lines.append(
+                        f"Precio: ${result.listing.pricing_tiers['basic']['price']} – ${result.listing.pricing_tiers['premium']['price']}"
+                    )
                 return "\n".join(lines), {}
 
             elif tool == "income_dashboard":
                 from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
                 return get_niche_revenue_engine().income_dashboard(), {}
 
             elif tool == "list_niches":
-                category = args.get("category", None)
-                tier     = args.get("tier", None)
+                category = args.get("category")
+                tier = args.get("tier")
                 from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
                 return get_niche_revenue_engine().list_all_niches(category=category, tier=tier), {}
 
             elif tool == "auto_income":
                 num_niches = int(args.get("num_niches", 3))
                 from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
-                result = await get_niche_revenue_engine().autonomous_income_cycle(num_niches=num_niches)
+
+                result = await get_niche_revenue_engine().autonomous_income_cycle(
+                    num_niches=num_niches
+                )
                 lines = [
-                    f"[AUTO INCOME CYCLE]",
+                    "[AUTO INCOME CYCLE]",
                     f"Nichos intentados: {result['niches_attempted']}",
                     f"Nichos exitosos: {result['niches_succeeded']}",
                     f"Listings en vivo: {result['total_listings_live']}",
@@ -1124,7 +1260,9 @@ class AriaMind:
                 if result.get("successful_niches"):
                     lines.append("\n**Nichos lanzados:**")
                     for n in result["successful_niches"]:
-                        lines.append(f"  ✅ {n['niche']} — potencial ${n.get('revenue_potential',0)}/sale")
+                        lines.append(
+                            f"  ✅ {n['niche']} — potencial ${n.get('revenue_potential',0)}/sale"
+                        )
                 if result.get("failed_niches"):
                     lines.append("\n**Nichos con errores:**")
                     for n in result["failed_niches"]:
@@ -1134,27 +1272,38 @@ class AriaMind:
             # ── INCOME LOOP 24/7 ──────────────────────────────────────────
             elif tool == "income_loop_status":
                 from apps.core.tools.income_loop import get_income_loop
+
                 return get_income_loop().get_status(), {}
 
             elif tool == "start_income_loop":
                 from apps.core.tools.income_loop import get_income_loop
+
                 loop = get_income_loop()
                 if loop.is_running:
-                    return "El income loop 24/7 ya está corriendo. Usa income_loop_status para ver su estado.", {}
+                    return (
+                        "El income loop 24/7 ya está corriendo. Usa income_loop_status para ver su estado.",
+                        {},
+                    )
                 await loop.start()
-                return "✅ Income loop 24/7 iniciado. Ejecutará estrategias de ingresos cada 30 minutos de forma autónoma.", {}
+                return (
+                    "✅ Income loop 24/7 iniciado. Ejecutará estrategias de ingresos cada 30 minutos de forma autónoma.",
+                    {},
+                )
 
             elif tool == "run_income_cycle":
-                from apps.core.tools.income_loop import get_income_loop, STRATEGIES
-                loop      = get_income_loop()
-                strategy  = args.get("strategy", "")
-                valid     = [s[0] for s in STRATEGIES]
+                from apps.core.tools.income_loop import STRATEGIES, get_income_loop
+
+                loop = get_income_loop()
+                strategy = args.get("strategy", "")
+                valid = [s[0] for s in STRATEGIES]
                 if strategy and strategy not in valid:
                     return f"Estrategia inválida. Opciones: {', '.join(valid)}", {}
                 import random as _rnd
+
                 if not strategy:
-                    strategy = _rnd.choices([s[0] for s in STRATEGIES],
-                                            weights=[s[1] for s in STRATEGIES], k=1)[0]
+                    strategy = _rnd.choices(
+                        [s[0] for s in STRATEGIES], weights=[s[1] for s in STRATEGIES], k=1
+                    )[0]
                 obs = await loop._execute(strategy)
                 lines = [
                     f"[INCOME CYCLE — {strategy}]",
@@ -1169,16 +1318,23 @@ class AriaMind:
                 return "\n".join(lines), {}
 
             # ── GITHUB ───────────────────────────────────────────────────
-            elif tool in ("github_view", "github_write", "github_pr",
-                          "github_issues", "github_search", "github_self"):
+            elif tool in (
+                "github_view",
+                "github_write",
+                "github_pr",
+                "github_issues",
+                "github_search",
+                "github_self",
+            ):
                 from apps.core.tools.github_client import github_dispatch
+
                 action_map = {
-                    "github_view":   args.get("action", "view"),
-                    "github_write":  "write",
-                    "github_pr":     args.get("action", "create_pr"),
+                    "github_view": args.get("action", "view"),
+                    "github_write": "write",
+                    "github_pr": args.get("action", "create_pr"),
                     "github_issues": args.get("action", "issues"),
                     "github_search": "search",
-                    "github_self":   "self",
+                    "github_self": "self",
                 }
                 gh_action = action_map[tool]
                 obs = await github_dispatch(gh_action, args)
@@ -1202,10 +1358,13 @@ class AriaMind:
             return observation[:400]
 
         from apps.core.tools.ai_client import AIModel
+
         resp = await ai.complete(
             system=SYNTHESIS_SYSTEM,
-            user=(f"El usuario pidió: {user_input[:400]}\n"
-                  f"Usé la herramienta '{tool}' y obtuve:\n{observation[:2000]}"),
+            user=(
+                f"El usuario pidió: {user_input[:400]}\n"
+                f"Usé la herramienta '{tool}' y obtuve:\n{observation[:2000]}"
+            ),
             model=AIModel.STRATEGY,
             max_tokens=800,
             temperature=0.35,
@@ -1221,6 +1380,7 @@ class AriaMind:
         if not ai:
             return "Entendido."
         from apps.core.tools.ai_client import AIModel
+
         resp = await ai.complete(
             system=(
                 "Eres ARIA, asistente inteligente. Responde en español de forma directa y completa. "
@@ -1244,8 +1404,9 @@ class AriaMind:
                 return s
         return {"focus": "", "confidence": 0.7, "interaction_count": 0}
 
-    async def _evolve_state(self, chat_id: str, current: dict,
-                             text: str, goals: list[dict]) -> None:
+    async def _evolve_state(
+        self, chat_id: str, current: dict, text: str, goals: list[dict]
+    ) -> None:
         """Actualiza el estado cognitivo después de cada interacción."""
         cache = self._cache_client()
         if not cache:
@@ -1277,10 +1438,12 @@ class AriaMind:
 
     async def _apply_goal_action(self, action: dict, goals: list[dict]) -> list[dict]:
         if action.get("action") == "add":
-            goals.append(Goal(
-                text=action.get("text", ""),
-                priority=int(action.get("priority", 5)),
-            ).__dict__)
+            goals.append(
+                Goal(
+                    text=action.get("text", ""),
+                    priority=int(action.get("priority", 5)),
+                ).__dict__
+            )
             await self._save_goals(goals)
         elif action.get("action") == "update":
             idx = action.get("index", 0)
@@ -1308,8 +1471,9 @@ class AriaMind:
                 return h
         return []
 
-    async def _store_interaction(self, chat_id: str, user_text: str,
-                                  aria_text: Optional[str], tool: Optional[str]) -> None:
+    async def _store_interaction(
+        self, chat_id: str, user_text: str, aria_text: str | None, tool: str | None
+    ) -> None:
         cache = self._cache_client()
         if not cache:
             return
@@ -1319,9 +1483,14 @@ class AriaMind:
             history = []
         history.append({"role": "user", "content": user_text[:300]})
         if aria_text:
-            history.append({"role": "assistant", "content": aria_text[:300],
-                             **({"tool": tool} if tool else {})})
-        history = history[-(self.MAX_HISTORY * 2):]
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": aria_text[:300],
+                    **({"tool": tool} if tool else {}),
+                }
+            )
+        history = history[-(self.MAX_HISTORY * 2) :]
         await cache.set(key, history, ttl_seconds=86400 * 7)
 
     async def _record_exec(self, tool: str, args: dict, obs: str, success: bool) -> None:
@@ -1332,14 +1501,16 @@ class AriaMind:
         execs = await cache.get(self.K_EXECS) or []
         if not isinstance(execs, list):
             execs = []
-        execs.append({
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "tool": tool,
-            "success": success,
-            "in": str(args)[:100],
-            "out": obs[:150],
-        })
-        execs = execs[-self.MAX_EXECS:]
+        execs.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "tool": tool,
+                "success": success,
+                "in": str(args)[:100],
+                "out": obs[:150],
+            }
+        )
+        execs = execs[-self.MAX_EXECS :]
         await cache.set(self.K_EXECS, execs, ttl_seconds=86400 * 30)
 
     # ── AUTO-REFLEXIÓN ─────────────────────────────────────────────────────
@@ -1381,6 +1552,7 @@ class AriaMind:
                 return
 
             from apps.core.tools.ai_client import AIModel
+
             resp = await ai.complete(
                 system=(
                     "Eres el módulo de auto-mejora de ARIA. "
@@ -1421,6 +1593,7 @@ class AriaMind:
         if self._ai is None:
             try:
                 from apps.core.tools.ai_client import get_ai_client
+
                 self._ai = get_ai_client()
             except Exception as e:
                 logger.error("[AriaMind] No se pudo cargar ai_client: %s", e)
@@ -1430,6 +1603,7 @@ class AriaMind:
         if self._cache is None:
             try:
                 from apps.core.memory.redis_client import get_cache
+
                 self._cache = get_cache()
             except Exception as e:
                 logger.warning("[AriaMind] No se pudo cargar cache: %s", e)
@@ -1442,6 +1616,7 @@ class AriaMind:
         try:
             from apps.core.config import settings
             from apps.core.tools.telegram_bot import get_bot
+
             chat_id = str(getattr(settings, "TELEGRAM_CHAT_ID", "") or "")
             if chat_id:
                 await get_bot().notify_owner(message)
@@ -1455,6 +1630,7 @@ class AriaMind:
         # AI providers
         try:
             from apps.core.tools.ai_client import get_ai_client
+
             health = get_ai_client().get_health_summary()
             providers = {k: v for k, v in health.items() if k != "_totals"}
             totals = health.get("_totals", {})
@@ -1465,14 +1641,18 @@ class AriaMind:
                 calls = info.get("total_calls", 0)
                 lines.append(f"  {icon} **{name}** — {rate:.0f}% éxito · {calls} llamadas")
             if totals:
-                lines.append(f"\n  Tokens totales: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`")
+                lines.append(
+                    f"\n  Tokens totales: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`"
+                )
         except Exception:
             lines.append("  Sin datos de proveedores")
 
         # Goals
         try:
             goals = await self._load_goals()
-            active = [g for g in goals if isinstance(g, dict) and g.get("status", "active") == "active"]
+            active = [
+                g for g in goals if isinstance(g, dict) and g.get("status", "active") == "active"
+            ]
             lines.append(f"\n**Metas activas:** {len(active)}")
             for g in active[:5]:
                 p = g.get("priority", "")
@@ -1485,24 +1665,30 @@ class AriaMind:
         # Background tasks
         try:
             from apps.core.tools.task_manager import get_task_manager
+
             stats = get_task_manager().stats()
             running = stats.get("running", 0)
             queued = stats.get("queued", 0)
             completed = stats.get("completed", 0)
-            lines.append(f"\n**Tareas en segundo plano:** {running} activas · {queued} en cola · {completed} completadas")
+            lines.append(
+                f"\n**Tareas en segundo plano:** {running} activas · {queued} en cola · {completed} completadas"
+            )
         except Exception:
             pass
 
         # Knowledge base
         try:
             from apps.core.tools.knowledge_base import get_knowledge_base
+
             kb = get_knowledge_base()
             kstats = kb.stats()
-            lines.append(f"\n**Base de conocimiento:** {kstats.get('total_chunks', 0)} fragmentos en {len(kstats.get('by_category', {}))} categorías")
+            lines.append(
+                f"\n**Base de conocimiento:** {kstats.get('total_chunks', 0)} fragmentos en {len(kstats.get('by_category', {}))} categorías"
+            )
         except Exception:
             pass
 
-        lines.append(f"\n**Timestamp:** `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}`")
+        lines.append(f"\n**Timestamp:** `{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}`")
         lines.append("\nUsa `/help` para ver todas las capacidades disponibles.")
         return MindResponse(text="\n".join(lines))
 
@@ -1511,7 +1697,8 @@ class AriaMind:
 # SINGLETON
 # ═══════════════════════════════════════════════════════════════════════════
 
-_mind: Optional[AriaMind] = None
+_mind: AriaMind | None = None
+
 
 def get_aria_mind() -> AriaMind:
     global _mind

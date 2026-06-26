@@ -15,17 +15,18 @@ Referencia:
   - Metabase: https://github.com/metabase/metabase
   - Apache Superset: https://github.com/apache/superset
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.bi_engine")
 
 # ── Metabase API Client ──────────────────────────────────────────────────────
 try:
     import httpx
+
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
@@ -33,6 +34,7 @@ except ImportError:
 
 
 # ── Metabase Client ──────────────────────────────────────────────────────────
+
 
 class AriaMetabaseClient:
     """
@@ -106,9 +108,8 @@ class AriaMetabaseClient:
                     self._initialized = True
                     logger.info("[Metabase] Sesión iniciada correctamente")
                     return True
-                else:
-                    logger.warning("[Metabase] Error de autenticación: %d", response.status_code)
-                    return False
+                logger.warning("[Metabase] Error de autenticación: %d", response.status_code)
+                return False
 
         except Exception as exc:
             logger.warning("[Metabase] No se pudo conectar a %s: %s", self._host, exc)
@@ -167,12 +168,11 @@ class AriaMetabaseClient:
                         "columns": data.get("data", {}).get("cols", []),
                         "row_count": data.get("row_count", 0),
                     }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"HTTP {response.status_code}",
-                        "sql": sql,
-                    }
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}",
+                    "sql": sql,
+                }
 
         except Exception as exc:
             return {"success": False, "error": str(exc), "sql": sql}
@@ -216,11 +216,10 @@ class AriaMetabaseClient:
                         "name": name,
                         "url": f"{self._host}/dashboard/{dashboard_id}",
                     }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"HTTP {response.status_code}",
-                    }
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}",
+                }
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -283,6 +282,7 @@ class AriaMetabaseClient:
 
 
 # ── Apache Superset Client ───────────────────────────────────────────────────
+
 
 class AriaSupersetClient:
     """
@@ -352,9 +352,8 @@ class AriaSupersetClient:
                     self._initialized = True
                     logger.info("[Superset] Sesión iniciada correctamente")
                     return True
-                else:
-                    logger.warning("[Superset] Error de autenticación: %d", response.status_code)
-                    return False
+                logger.warning("[Superset] Error de autenticación: %d", response.status_code)
+                return False
 
         except Exception as exc:
             logger.warning("[Superset] No se pudo conectar a %s: %s", self._host, exc)
@@ -416,11 +415,10 @@ class AriaSupersetClient:
                         "columns": data.get("columns", []),
                         "row_count": len(data.get("data", [])),
                     }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"HTTP {response.status_code}: {response.text[:200]}",
-                    }
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}: {response.text[:200]}",
+                }
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -470,11 +468,10 @@ class AriaSupersetClient:
                         "name": name,
                         "url": f"{self._host}/explore/?slice_id={chart_id}",
                     }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"HTTP {response.status_code}",
-                    }
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}",
+                }
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -517,11 +514,10 @@ class AriaSupersetClient:
                         "name": "ARIA Executive Dashboard",
                         "url": f"{self._host}/superset/dashboard/{dashboard_id}/",
                     }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"HTTP {response.status_code}",
-                    }
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}",
+                }
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -536,6 +532,7 @@ class AriaSupersetClient:
 
 
 # ── Motor Unificado de Business Intelligence ─────────────────────────────────
+
 
 class AriaBIEngine:
     """
@@ -635,6 +632,7 @@ def get_bi_engine() -> AriaBIEngine:
     global _bi_engine_instance
     if _bi_engine_instance is None:
         import os
+
         _bi_engine_instance = AriaBIEngine(
             metabase_host=os.getenv("METABASE_HOST", "http://localhost:3000"),
             metabase_password=os.getenv("METABASE_PASSWORD", ""),

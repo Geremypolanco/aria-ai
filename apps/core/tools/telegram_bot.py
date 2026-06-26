@@ -189,12 +189,19 @@ class AriaTelegramBot:
                 return
             platform = parts[1].lower()
             from apps.core.tools.social_media import SocialMediaManager
+
             sm = SocialMediaManager()
             url = sm.get_auth_url(platform)
             if url:
-                await self._send(chat_id, f"🔗 Haz clic aquí para conectar tu cuenta de {platform.capitalize()}:\n\n{url}")
+                await self._send(
+                    chat_id,
+                    f"🔗 Haz clic aquí para conectar tu cuenta de {platform.capitalize()}:\n\n{url}",
+                )
             else:
-                await self._send(chat_id, f"❌ No se pudo generar la URL de conexión para {platform}. Revisa las credenciales en el servidor.")
+                await self._send(
+                    chat_id,
+                    f"❌ No se pudo generar la URL de conexión para {platform}. Revisa las credenciales en el servidor.",
+                )
             return
 
         # Typing indicator immediately

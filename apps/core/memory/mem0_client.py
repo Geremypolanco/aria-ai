@@ -9,22 +9,24 @@ Integra Mem0 para que ARIA pueda:
 
 Referencia: https://github.com/mem0ai/mem0
 """
+
 from __future__ import annotations
 
 import logging
-import os
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.mem0")
 
 # ── Mem0 Import con fallback ─────────────────────────────────────────────────
 try:
     from mem0 import Memory
+
     MEM0_AVAILABLE = True
     logger.info("[Mem0] Librería cargada correctamente.")
 except ImportError:
     MEM0_AVAILABLE = False
     logger.warning("[Mem0] mem0 no instalado. Usando fallback.")
+
 
 class AriaMem0Client:
     """
@@ -37,7 +39,7 @@ class AriaMem0Client:
             "vector_store": {"provider": "qdrant", "config": {"host": "localhost", "port": 6333}},
         }
         self._memory = None
-        
+
         if MEM0_AVAILABLE:
             try:
                 self._memory = Memory.from_config(self.config)
@@ -72,7 +74,7 @@ class AriaMem0Client:
         """Retorna todos los hechos recordados para un usuario."""
         if not self._memory:
             return []
-        
+
         try:
             return self._memory.get_all(user_id=user_id)
         except Exception as exc:
@@ -82,6 +84,7 @@ class AriaMem0Client:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _mem0_instance: AriaMem0Client | None = None
+
 
 def get_mem0_client() -> AriaMem0Client:
     """Retorna el singleton del cliente Mem0."""

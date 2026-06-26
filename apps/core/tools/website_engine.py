@@ -259,8 +259,7 @@ def _build_fallback_html(
     """
     features_items = sections if sections else ["Fast & Reliable", "Easy to Use", "Affordable"]
 
-    features_html = "\n".join(
-        f"""
+    features_html = "\n".join(f"""
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 flex flex-col gap-3
                     hover:shadow-md transition-shadow duration-300">
           <div class="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
@@ -274,9 +273,7 @@ def _build_fallback_html(
           <p class="text-gray-500 text-sm leading-relaxed">
             Leverage {feat.lower()} to scale your business effortlessly and delight every customer.
           </p>
-        </div>"""
-        for feat in features_items
-    )
+        </div>""" for feat in features_items)
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -562,14 +559,11 @@ def _build_landing_page_html(
     dark = colors["dark"]
     accent = colors["accent"]
 
-    feature_items = "\n".join(
-        f"""      <li class="flex items-start gap-3">
+    feature_items = "\n".join(f"""      <li class="flex items-start gap-3">
         <span class="mt-1 flex-shrink-0 w-5 h-5 rounded-full bg-{primary}
                      text-white text-xs flex items-center justify-center font-bold">✓</span>
         <span class="text-gray-700 text-base">{feat}</span>
-      </li>"""
-        for feat in features
-    )
+      </li>""" for feat in features)
 
     return f"""<!DOCTYPE html>
 <html lang="en">

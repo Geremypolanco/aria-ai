@@ -9,21 +9,24 @@ Permite que ARIA envíe eventos de tracking a múltiples destinos:
 
 Referencia: https://www.rudderstack.com/docs/sources/event-streams/sdks/rudderstack-python-sdk/
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.event_router")
 
 # ── RudderStack Import con fallback ──────────────────────────────────────────
 try:
     import rudderanalytics
+
     RUDDER_AVAILABLE = True
     logger.info("[RudderStack] SDK cargado correctamente.")
 except ImportError:
     RUDDER_AVAILABLE = False
     logger.warning("[RudderStack] rudder-sdk-python no instalado.")
+
 
 class AriaEventRouter:
     """
@@ -34,7 +37,7 @@ class AriaEventRouter:
     def __init__(self, write_key: str = "", data_plane_url: str = "") -> None:
         self.write_key = write_key
         self.data_plane_url = data_plane_url
-        
+
         if RUDDER_AVAILABLE and write_key:
             rudderanalytics.write_key = write_key
             rudderanalytics.data_plane_url = data_plane_url
@@ -56,13 +59,15 @@ class AriaEventRouter:
 # ── Singleton ────────────────────────────────────────────────────────────────
 _event_router_instance: AriaEventRouter | None = None
 
+
 def get_event_router() -> AriaEventRouter:
     """Retorna el singleton del enrutador de eventos."""
     global _event_router_instance
     if _event_router_instance is None:
         import os
+
         _event_router_instance = AriaEventRouter(
             write_key=os.getenv("RUDDERSTACK_WRITE_KEY", ""),
-            data_plane_url=os.getenv("RUDDERSTACK_DATA_PLANE_URL", "")
+            data_plane_url=os.getenv("RUDDERSTACK_DATA_PLANE_URL", ""),
         )
     return _event_router_instance

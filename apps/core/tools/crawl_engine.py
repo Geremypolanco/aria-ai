@@ -14,11 +14,12 @@ Referencia:
   - Crawl4AI: https://github.com/unclecode/crawl4ai
   - Firecrawl: https://github.com/firecrawl/firecrawl
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger("aria.crawl_engine")
@@ -26,7 +27,11 @@ logger = logging.getLogger("aria.crawl_engine")
 # ── Crawl4AI Import con fallback ─────────────────────────────────────────────
 try:
     from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
-    from crawl4ai.extraction_strategy import LLMExtractionStrategy, JsonCssExtractionStrategy
+    from crawl4ai.extraction_strategy import (  # noqa: F401
+        JsonCssExtractionStrategy,
+        LLMExtractionStrategy,
+    )
+
     CRAWL4AI_AVAILABLE = True
     logger.info("[Crawl4AI] Librería cargada correctamente.")
 except ImportError:
@@ -43,6 +48,7 @@ except ImportError:
 # ── Firecrawl Import con fallback ────────────────────────────────────────────
 try:
     from firecrawl import FirecrawlApp
+
     FIRECRAWL_AVAILABLE = True
     logger.info("[Firecrawl] Librería cargada correctamente.")
 except ImportError:
@@ -57,8 +63,10 @@ except ImportError:
 
 # ── Modelos de Datos ─────────────────────────────────────────────────────────
 
+
 class CrawlResult:
     """Resultado estandarizado de un crawl."""
+
     def __init__(
         self,
         url: str,
@@ -95,6 +103,7 @@ class CrawlResult:
 
 
 # ── Motor de Crawling con Crawl4AI ───────────────────────────────────────────
+
 
 class Crawl4AIEngine:
     """
@@ -135,9 +144,7 @@ class Crawl4AIEngine:
             )
 
             if extract_schema:
-                config.extraction_strategy = JsonCssExtractionStrategy(
-                    schema=extract_schema
-                )
+                config.extraction_strategy = JsonCssExtractionStrategy(schema=extract_schema)
 
             async with AsyncWebCrawler() as crawler:
                 result = await crawler.arun(url=url, config=config)
@@ -149,14 +156,16 @@ class Crawl4AIEngine:
                         html=result.html or "",
                         text=result.text or "",
                         metadata=result.metadata or {},
-                        links=result.links.get("internal", []) + result.links.get("external", [])
-                        if hasattr(result, "links") and result.links else [],
+                        links=(
+                            result.links.get("internal", []) + result.links.get("external", [])
+                            if hasattr(result, "links") and result.links
+                            else []
+                        ),
                         success=True,
                         source="crawl4ai",
                     )
-                else:
-                    logger.warning("[Crawl4AI] Crawl fallido para %s: %s", url, result.error_message)
-                    return await self._httpx_fallback(url)
+                logger.warning("[Crawl4AI] Crawl fallido para %s: %s", url, result.error_message)
+                return await self._httpx_fallback(url)
 
         except Exception as exc:
             logger.error("[Crawl4AI] Error en crawl de %s: %s", url, exc)
@@ -196,23 +205,27 @@ class Crawl4AIEngine:
             # Detectar precios
             if extract_pricing:
                 import re
-                prices = re.findall(r'\$[\d,]+(?:\.\d{2})?(?:/(?:mo|month|yr|year|mes|año))?', result.markdown)
+
+                prices = re.findall(
+                    r"\$[\d,]+(?:\.\d{2})?(?:/(?:mo|month|yr|year|mes|año))?", result.markdown
+                )
                 analysis["detected_prices"] = prices[:10]
 
             # Detectar características
             if extract_features:
                 features = []
-                for line in result.markdown.split('\n'):
-                    if any(kw in line.lower() for kw in ['feature', 'include', 'benefit', 'característica']):
+                for line in result.markdown.split("\n"):
+                    if any(
+                        kw in line.lower()
+                        for kw in ["feature", "include", "benefit", "característica"]
+                    ):
                         if len(line) > 10:
                             features.append(line.strip())
                 analysis["detected_features"] = features[:10]
 
             # Detectar tecnologías
-            tech_keywords = ['react', 'vue', 'angular', 'shopify', 'wordpress', 'stripe', 'paypal']
-            analysis["detected_tech"] = [
-                tech for tech in tech_keywords if tech in content_lower
-            ]
+            tech_keywords = ["react", "vue", "angular", "shopify", "wordpress", "stripe", "paypal"]
+            analysis["detected_tech"] = [tech for tech in tech_keywords if tech in content_lower]
 
         return analysis
 
@@ -284,6 +297,7 @@ class Crawl4AIEngine:
 
 # ── Motor de Conversión con Firecrawl ────────────────────────────────────────
 
+
 class FirecrawlEngine:
     """
     Motor de conversión web a datos con Firecrawl.
@@ -343,10 +357,9 @@ class FirecrawlEngine:
                     success=True,
                     source="firecrawl",
                 )
-            else:
-                logger.warning("[Firecrawl] Scrape fallido para %s", url)
-                crawl4ai = Crawl4AIEngine()
-                return await crawl4ai.crawl_url(url)
+            logger.warning("[Firecrawl] Scrape fallido para %s", url)
+            crawl4ai = Crawl4AIEngine()
+            return await crawl4ai.crawl_url(url)
 
         except Exception as exc:
             logger.error("[Firecrawl] Error en scrape de %s: %s", url, exc)
@@ -454,8 +467,7 @@ class FirecrawlEngine:
         main_page = await self.scrape_url(business_url)
 
         # Intentar páginas clave
-        base_url = f"{urlparse(business_url).scheme}://{urlparse(business_url).netloc}"
-        key_pages = ["/pricing", "/features", "/about", "/blog"]
+        f"{urlparse(business_url).scheme}://{urlparse(business_url).netloc}"
 
         analysis = {
             "url": business_url,
@@ -476,6 +488,7 @@ class FirecrawlEngine:
 
 
 # ── Motor Unificado de Market Intelligence ───────────────────────────────────
+
 
 class MarketIntelligenceEngine:
     """
@@ -513,14 +526,11 @@ class MarketIntelligenceEngine:
         logger.info("[MarketIntelligence] Analizando %d competidores", len(competitor_urls))
 
         # Crawlear todos en paralelo con Crawl4AI
-        tasks = [
-            self.crawl4ai.crawl_competitor(url)
-            for url in competitor_urls
-        ]
+        tasks = [self.crawl4ai.crawl_competitor(url) for url in competitor_urls]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         competitors = []
-        for url, result in zip(competitor_urls, results):
+        for url, result in zip(competitor_urls, results, strict=False):
             if isinstance(result, Exception):
                 competitors.append({"url": url, "error": str(result), "success": False})
             else:
@@ -587,8 +597,12 @@ class MarketIntelligenceEngine:
             "total_pages": site_map.get("total_pages", 0),
             "pages_sample": site_map.get("links", [])[:20],
             "main_page_content_length": len(main_page.markdown or ""),
-            "external_links": len([l for l in main_page.links if urlparse(l).netloc != urlparse(url).netloc]),
-            "internal_links": len([l for l in main_page.links if urlparse(l).netloc == urlparse(url).netloc]),
+            "external_links": len(
+                [l for l in main_page.links if urlparse(l).netloc != urlparse(url).netloc]
+            ),
+            "internal_links": len(
+                [l for l in main_page.links if urlparse(l).netloc == urlparse(url).netloc]
+            ),
             "source": main_page.source,
         }
 
@@ -602,6 +616,7 @@ def get_market_intelligence_engine() -> MarketIntelligenceEngine:
     global _engine_instance
     if _engine_instance is None:
         import os
+
         _engine_instance = MarketIntelligenceEngine(
             firecrawl_api_key=os.getenv("FIRECRAWL_API_KEY", ""),
         )

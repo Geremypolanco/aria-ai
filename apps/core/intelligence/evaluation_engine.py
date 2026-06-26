@@ -15,18 +15,24 @@ Referencia:
   - Inspect AI: https://github.com/UKGovernmentBEIS/inspect_ai
   - DeepEval: https://github.com/confident-ai/deepeval
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.evaluation_engine")
 
 # ── DeepEval Import con fallback ─────────────────────────────────────────────
 try:
-    from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric, ContextualPrecisionMetric
+    from deepeval.metrics import (
+        AnswerRelevancyMetric,
+        ContextualPrecisionMetric,  # noqa: F401
+        FaithfulnessMetric,
+    )
     from deepeval.test_case import LLMTestCase
+
     DEEPEVAL_AVAILABLE = True
     logger.info("[DeepEval] Librería cargada correctamente.")
 except ImportError:
@@ -36,20 +42,22 @@ except ImportError:
 # ── Inspect AI / OpenEvals (Placeholder por ser frameworks de CLI/Lab) ───────
 # En producción se integran mediante la ejecución de sus suites de evaluación.
 
+
 class EvaluationResult:
     """Resultado estandarizado de una evaluación."""
+
     def __init__(
         self,
         score: float,
         reason: str = "",
         metrics: dict[str, float] | None = None,
-        success: bool = True
+        success: bool = True,
     ) -> None:
         self.score = score  # 0.0 a 1.0
         self.reason = reason
         self.metrics = metrics or {}
         self.success = success
-        self.timestamp = datetime.now(timezone.utc).isoformat()
+        self.timestamp = datetime.now(UTC).isoformat()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -57,7 +65,7 @@ class EvaluationResult:
             "reason": self.reason,
             "metrics": self.metrics,
             "success": self.success,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
         }
 
 
@@ -74,10 +82,7 @@ class AriaEvaluationEngine:
         self._history: list[dict[str, Any]] = []
 
     async def evaluate_response(
-        self,
-        input_text: str,
-        output_text: str,
-        context: list[str] | None = None
+        self, input_text: str, output_text: str, context: list[str] | None = None
     ) -> EvaluationResult:
         """
         Evalúa una respuesta generada por un agente.
@@ -91,9 +96,7 @@ class AriaEvaluationEngine:
             try:
                 # Caso de prueba para DeepEval
                 test_case = LLMTestCase(
-                    input=input_text,
-                    actual_output=output_text,
-                    retrieval_context=context or []
+                    input=input_text, actual_output=output_text, retrieval_context=context or []
                 )
 
                 # Métrica de Relevancia
@@ -111,11 +114,15 @@ class AriaEvaluationEngine:
 
                 result = EvaluationResult(
                     score=total_score,
-                    reason=relevancy_metric.reason if hasattr(relevancy_metric, "reason") else "Evaluación completada",
+                    reason=(
+                        relevancy_metric.reason
+                        if hasattr(relevancy_metric, "reason")
+                        else "Evaluación completada"
+                    ),
                     metrics={
                         "relevancy": relevancy_metric.score,
-                        "faithfulness": faithfulness_score
-                    }
+                        "faithfulness": faithfulness_score,
+                    },
                 )
                 self._history.append(result.to_dict())
                 return result
@@ -127,29 +134,24 @@ class AriaEvaluationEngine:
         return EvaluationResult(
             score=0.8,
             reason="Evaluación simplificada (DeepEval no disponible)",
-            metrics={"simplified": 0.8}
+            metrics={"simplified": 0.8},
         )
 
-    async def judge_decision(
-        self,
-        task: str,
-        decision: str,
-        reasoning: str
-    ) -> EvaluationResult:
+    async def judge_decision(self, task: str, decision: str, reasoning: str) -> EvaluationResult:
         """
         Juzga si una decisión tomada por un agente es lógica y alineada con la tarea.
         Inspirado en Inspect AI.
         """
         # Aquí se implementaría la lógica de 'LLM-as-a-judge'
         logger.info("[EvaluationEngine] Juzgando decisión para la tarea: %s", task)
-        
+
         # Simulación de evaluación de razonamiento
         score = 0.9 if len(reasoning) > 50 else 0.5
-        
+
         return EvaluationResult(
             score=score,
             reason="Razonamiento analizado correctamente",
-            metrics={"logic_score": score}
+            metrics={"logic_score": score},
         )
 
     def get_evaluation_history(self) -> list[dict[str, Any]]:
@@ -159,6 +161,7 @@ class AriaEvaluationEngine:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _evaluation_instance: AriaEvaluationEngine | None = None
+
 
 def get_evaluation_engine() -> AriaEvaluationEngine:
     """Retorna el singleton del motor de evaluación."""

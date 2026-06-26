@@ -8,13 +8,16 @@ Permite que ARIA opere software de gestión real:
 
 ARIA deja de recomendar y empieza a operar el negocio.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
+
 import httpx
 
 logger = logging.getLogger("aria.business_os")
+
 
 class AriaBusinessOSConnector:
     """
@@ -43,13 +46,14 @@ class AriaBusinessOSConnector:
 # ── Singleton ────────────────────────────────────────────────────────────────
 _business_os_instance: AriaBusinessOSConnector | None = None
 
+
 def get_business_os_connector() -> AriaBusinessOSConnector:
     """Retorna el singleton del conector de Business OS."""
     global _business_os_instance
     if _business_os_instance is None:
         import os
+
         _business_os_instance = AriaBusinessOSConnector(
-            erp_url=os.getenv("ERP_URL", ""),
-            api_key=os.getenv("ERP_API_KEY", "")
+            erp_url=os.getenv("ERP_URL", ""), api_key=os.getenv("ERP_API_KEY", "")
         )
     return _business_os_instance

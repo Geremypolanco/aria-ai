@@ -10,17 +10,17 @@ Referencia:
   - Whisper: https://github.com/openai/whisper
   - ComfyUI: https://github.com/comfyanonymous/ComfyUI
 """
+
 from __future__ import annotations
 
 import logging
-import os
-from typing import Any, Optional
 
 logger = logging.getLogger("aria.multimedia")
 
 # ── Whisper Import con fallback ──────────────────────────────────────────────
 try:
     import whisper
+
     WHISPER_AVAILABLE = True
     logger.info("[Whisper] Librería cargada correctamente.")
 except ImportError:
@@ -29,7 +29,8 @@ except ImportError:
 
 # ── ComfyUI API Client ───────────────────────────────────────────────────────
 try:
-    import httpx
+    import httpx  # noqa: F401
+
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
@@ -53,7 +54,7 @@ class AriaMultimediaEngine:
         try:
             if self._whisper_model is None:
                 self._whisper_model = whisper.load_model("base")
-            
+
             result = self._whisper_model.transcribe(file_path)
             return result.get("text", "")
         except Exception as exc:
@@ -72,6 +73,7 @@ class AriaMultimediaEngine:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _multimedia_instance: AriaMultimediaEngine | None = None
+
 
 def get_multimedia_engine() -> AriaMultimediaEngine:
     """Retorna el singleton del motor multimedia."""

@@ -9,23 +9,29 @@ Proporciona capacidades de:
 
 Referencia: https://docs.llamaindex.ai/
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
 
 logger = logging.getLogger("aria.document_engine")
 
 # ── LlamaIndex Import con fallback ───────────────────────────────────────────
 try:
-    from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageContext
-    from llama_index.core import Settings
+    from llama_index.core import (  # noqa: F401
+        Settings,
+        SimpleDirectoryReader,
+        StorageContext,
+        VectorStoreIndex,
+    )
+
     LLAMA_INDEX_AVAILABLE = True
     logger.info("[LlamaIndex] Librería cargada correctamente.")
 except ImportError:
     LLAMA_INDEX_AVAILABLE = False
     logger.warning("[LlamaIndex] llama-index no instalado. Usando fallback.")
+
 
 class AriaDocumentEngine:
     """
@@ -36,7 +42,7 @@ class AriaDocumentEngine:
     def __init__(self, index_dir: str = "./storage") -> None:
         self.index_dir = index_dir
         self._index = None
-        
+
         if LLAMA_INDEX_AVAILABLE:
             # Configuración por defecto (usando OpenAI por simplicidad)
             try:
@@ -50,7 +56,7 @@ class AriaDocumentEngine:
         """Indexa todos los documentos en un directorio."""
         if not LLAMA_INDEX_AVAILABLE:
             return
-        
+
         try:
             documents = SimpleDirectoryReader(directory_path).load_data()
             self._index = VectorStoreIndex.from_documents(documents)
@@ -63,7 +69,7 @@ class AriaDocumentEngine:
         """Consulta el conocimiento indexado."""
         if not self._index:
             return "No hay documentos indexados para responder."
-        
+
         try:
             query_engine = self._index.as_query_engine()
             response = query_engine.query(query)
@@ -75,6 +81,7 @@ class AriaDocumentEngine:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _document_engine_instance: AriaDocumentEngine | None = None
+
 
 def get_document_engine() -> AriaDocumentEngine:
     """Retorna el singleton del motor de documentos."""

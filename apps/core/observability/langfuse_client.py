@@ -9,22 +9,24 @@ Integra Langfuse para:
 
 Referencia: https://langfuse.com/docs/sdk/python
 """
+
 from __future__ import annotations
 
 import logging
-import os
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.langfuse")
 
 # ── Langfuse Import con fallback ─────────────────────────────────────────────
 try:
     from langfuse import Langfuse
+
     LANGFUSE_AVAILABLE = True
     logger.info("[Langfuse] SDK cargado correctamente.")
 except ImportError:
     LANGFUSE_AVAILABLE = False
     logger.warning("[Langfuse] langfuse no instalado.")
+
 
 class AriaLangfuseClient:
     """
@@ -33,10 +35,7 @@ class AriaLangfuseClient:
     """
 
     def __init__(
-        self,
-        public_key: str = "",
-        secret_key: str = "",
-        host: str = "https://cloud.langfuse.com"
+        self, public_key: str = "", secret_key: str = "", host: str = "https://cloud.langfuse.com"
     ) -> None:
         self.public_key = public_key
         self.secret_key = secret_key
@@ -45,11 +44,7 @@ class AriaLangfuseClient:
 
         if LANGFUSE_AVAILABLE and public_key and secret_key:
             try:
-                self._client = Langfuse(
-                    public_key=public_key,
-                    secret_key=secret_key,
-                    host=host
-                )
+                self._client = Langfuse(public_key=public_key, secret_key=secret_key, host=host)
                 logger.info("[Langfuse] Inicializado en %s", host)
             except Exception as exc:
                 logger.error("[Langfuse] Error inicializando: %s", exc)
@@ -60,7 +55,7 @@ class AriaLangfuseClient:
         user_id: str,
         input_data: Any,
         output_data: Any,
-        metadata: dict[str, Any] | None = None
+        metadata: dict[str, Any] | None = None,
     ):
         """Registra un rastro de interacción completo."""
         if not self._client:
@@ -73,7 +68,7 @@ class AriaLangfuseClient:
                 user_id=user_id,
                 input=input_data,
                 output=output_data,
-                metadata=metadata or {}
+                metadata=metadata or {},
             )
             logger.info("[Langfuse] Traza registrada: %s", name)
         except Exception as exc:
@@ -83,14 +78,16 @@ class AriaLangfuseClient:
 # ── Singleton ────────────────────────────────────────────────────────────────
 _langfuse_instance: AriaLangfuseClient | None = None
 
+
 def get_langfuse_client() -> AriaLangfuseClient:
     """Retorna el singleton del cliente Langfuse."""
     global _langfuse_instance
     if _langfuse_instance is None:
         import os
+
         _langfuse_instance = AriaLangfuseClient(
             public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
             secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
-            host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+            host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
         )
     return _langfuse_instance

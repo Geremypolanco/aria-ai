@@ -14,19 +14,19 @@ Referencia:
   - Prefect: https://www.prefect.io/
   - Kestra: https://kestra.io/
 """
+
 from __future__ import annotations
 
 import logging
-import asyncio
-from typing import Any, Callable, Coroutine
-from datetime import timedelta
+from typing import Any
 
 logger = logging.getLogger("aria.workflow_manager")
 
 # ── Temporal Import con fallback ─────────────────────────────────────────────
 try:
-    from temporalio import workflow
+    from temporalio import workflow  # noqa: F401
     from temporalio.client import Client as TemporalClient
+
     TEMPORAL_AVAILABLE = True
     logger.info("[Temporal] SDK cargado correctamente.")
 except ImportError:
@@ -35,7 +35,8 @@ except ImportError:
 
 # ── Prefect Import con fallback ──────────────────────────────────────────────
 try:
-    from prefect import flow, task
+    from prefect import flow, task  # noqa: F401
+
     PREFECT_AVAILABLE = True
     logger.info("[Prefect] SDK cargado correctamente.")
 except ImportError:
@@ -70,7 +71,7 @@ class AriaWorkflowManager:
             logger.info("[WorkflowManager] Iniciando workflow Temporal: %s", workflow_name)
             # await self._temporal_client.start_workflow(...)
             return f"Workflow {workflow_name} iniciado en Temporal."
-        
+
         if PREFECT_AVAILABLE:
             # Fallback a Prefect si Temporal no está disponible
             logger.info("[WorkflowManager] Iniciando flow en Prefect: %s", workflow_name)
@@ -87,6 +88,7 @@ class AriaWorkflowManager:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _workflow_manager_instance: AriaWorkflowManager | None = None
+
 
 def get_workflow_manager() -> AriaWorkflowManager:
     """Retorna el singleton del gestor de workflows."""
