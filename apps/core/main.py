@@ -1351,34 +1351,103 @@ except Exception as _e:
     logger.error("Error montando webhooks: %s", _e)
 
 
-@app.get("/subscribe/{tier}")
-async def subscribe_redirect(tier: str):
+# Pricing tiers — (Stripe amount in cents, product label)
+_ARIA_TIERS = {
+    "starter": (2900, "ARIA Starter — $29/mo"),
+    "pro": (9700, "ARIA Pro — $97/mo"),
+    "agency": (49700, "ARIA Agency — $497/mo"),
+}
+
+
+async def _get_or_create_stripe_link(tier: str) -> str | None:
     """
-    Redirect a pricing-CTA click to the live Stripe payment link for the tier.
+    Return a live Stripe payment-link URL for a tier, creating it on first use.
 
-    Links are created + cached in Redis by the ``aria_subscription_launch``
-    income-loop strategy (key ``aria:stripe:link:{tier}``). If no link exists
-    yet (Stripe not configured, or strategy hasn't run), fall back to the lead
-    capture flow so the prospect is never dropped.
+    Checks the Redis cache first (populated here or by the aria_subscription_launch
+    income-loop strategy). On a miss, and if STRIPE_SECRET_KEY is configured, creates
+    the Stripe product → recurring price → payment link on the fly, caches it for 90
+    days, and returns it. Returns None if Stripe isn't configured or the API fails, so
+    the caller can fall back to the lead-capture landing. Never raises.
     """
-    from fastapi.responses import RedirectResponse
-
-    tier = (tier or "").lower().strip()
-    if tier not in ("starter", "pro", "agency"):
-        return RedirectResponse(url="https://aria-ai.fly.dev", status_code=302)
-
+    cache = None
     with contextlib.suppress(Exception):
         from apps.core.memory.redis_client import get_cache
 
         cache = get_cache()
         if cache:
-            link = await cache.get(f"aria:stripe:link:{tier}")
-            if link:
-                if isinstance(link, bytes):
-                    link = link.decode()
-                return RedirectResponse(url=str(link), status_code=302)
+            cached = await cache.get(f"aria:stripe:link:{tier}")
+            if cached:
+                return cached.decode() if isinstance(cached, bytes) else str(cached)
 
-    # No Stripe link yet → send them to the landing page (lead capture form),
+    stripe_key = getattr(settings, "STRIPE_SECRET_KEY", None)
+    if not stripe_key or tier not in _ARIA_TIERS:
+        return None
+
+    cents, label = _ARIA_TIERS[tier]
+    try:
+        import httpx as _hx
+
+        async with _hx.AsyncClient(timeout=25) as hc:
+            prod_r = await hc.post(
+                "https://api.stripe.com/v1/products",
+                data={"name": label, "description": f"ARIA AI {tier.title()} Plan"},
+                auth=(stripe_key, ""),
+            )
+            if prod_r.status_code != 200:
+                return None
+            price_r = await hc.post(
+                "https://api.stripe.com/v1/prices",
+                data={
+                    "product": prod_r.json()["id"],
+                    "unit_amount": cents,
+                    "currency": "usd",
+                    "recurring[interval]": "month",
+                },
+                auth=(stripe_key, ""),
+            )
+            if price_r.status_code != 200:
+                return None
+            pl_r = await hc.post(
+                "https://api.stripe.com/v1/payment_links",
+                data={
+                    "line_items[0][price]": price_r.json()["id"],
+                    "line_items[0][quantity]": "1",
+                },
+                auth=(stripe_key, ""),
+            )
+            if pl_r.status_code != 200:
+                return None
+            link = pl_r.json().get("url", "")
+            if link and cache:
+                with contextlib.suppress(Exception):
+                    await cache.set(f"aria:stripe:link:{tier}", link, ttl_seconds=86400 * 90)
+            return link or None
+    except Exception as exc:
+        logger.warning("[subscribe] Stripe link creation failed for %s: %s", tier, exc)
+        return None
+
+
+@app.get("/subscribe/{tier}")
+async def subscribe_redirect(tier: str):
+    """
+    Redirect a pricing-CTA click straight to a live Stripe checkout.
+
+    The payment link is created on first use (and cached for 90 days), so the
+    checkout works immediately without waiting for the aria_subscription_launch
+    income-loop strategy to run. If Stripe isn't configured or the API fails,
+    fall back to the lead-capture landing so the prospect is never dropped.
+    """
+    from fastapi.responses import RedirectResponse
+
+    tier = (tier or "").lower().strip()
+    if tier not in _ARIA_TIERS:
+        return RedirectResponse(url="https://aria-ai.fly.dev", status_code=302)
+
+    link = await _get_or_create_stripe_link(tier)
+    if link:
+        return RedirectResponse(url=link, status_code=302)
+
+    # No live Stripe link → send them to the landing page (lead capture form),
     # served by this same app so the front door is always live.
     return RedirectResponse(url=f"/?plan={tier}", status_code=302)
 
