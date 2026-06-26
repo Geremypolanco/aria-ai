@@ -473,7 +473,8 @@ class WebTools:
                 "products": [],
             }
         try:
-            query = """
+            query = (
+                """
             {
               posts(order: VOTES, first: %d) {
                 edges {
@@ -485,7 +486,9 @@ class WebTools:
                 }
               }
             }
-            """ % limit
+            """
+                % limit
+            )
             res = await self._http.post(
                 "https://api.producthunt.com/v2/api/graphql",
                 json={"query": query},

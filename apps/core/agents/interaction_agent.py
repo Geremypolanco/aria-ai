@@ -85,12 +85,14 @@ class InteractionAgent(BaseAgent):
                 title = await page.title()
 
                 # Extraer links
-                links = await page.evaluate("""
+                links = await page.evaluate(
+                    """
                     () => Array.from(document.querySelectorAll('a')).map(a => ({
                         text: a.textContent,
                         href: a.href
                     }))
-                """)
+                """
+                )
 
                 await browser.close()
 
