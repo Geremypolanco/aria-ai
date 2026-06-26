@@ -13,17 +13,17 @@ Referencia:
   - Browser Use: https://github.com/browser-use/browser-use
   - Playwright: https://playwright.dev/python/
 """
+
 from __future__ import annotations
 
 import logging
-import asyncio
-from typing import Any, Optional
 
 logger = logging.getLogger("aria.browser_operator")
 
 # ── Playwright Import con fallback ───────────────────────────────────────────
 try:
     from playwright.async_api import async_playwright
+
     PLAYWRIGHT_AVAILABLE = True
     logger.info("[Playwright] Librería cargada correctamente.")
 except ImportError:
@@ -32,7 +32,8 @@ except ImportError:
 
 # ── Browser Use Import con fallback ──────────────────────────────────────────
 try:
-    from browser_use import Agent as BrowserAgent
+    from browser_use import Agent as BrowserAgent  # noqa: F401
+
     BROWSER_USE_AVAILABLE = True
     logger.info("[Browser Use] Librería cargada correctamente.")
 except ImportError:
@@ -70,7 +71,7 @@ class AriaBrowserOperator:
     async def run_task(self, instruction: str) -> str:
         """
         Ejecuta una tarea en el navegador usando Browser Use.
-        
+
         Args:
             instruction: Tarea en lenguaje natural (ej: 'Busca los precios de la competencia en X sitio')
         """
@@ -81,11 +82,11 @@ class AriaBrowserOperator:
             # Browser Use Agent requiere un LLM para orquestar la navegación
             # Aquí se integraría con el ai_client de Aria
             logger.info("[BrowserOperator] Ejecutando tarea: %s", instruction)
-            
+
             # Nota: La implementación real requiere pasar el LLM configurado
             # agent = BrowserAgent(task=instruction, llm=get_ai_client().get_model())
             # result = await agent.run()
-            
+
             return f"Tarea '{instruction}' simulada con éxito (Browser Use)."
         except Exception as exc:
             logger.error("[BrowserOperator] Error ejecutando tarea: %s", exc)
@@ -95,7 +96,7 @@ class AriaBrowserOperator:
         """Toma una captura de pantalla de una URL."""
         if not self._browser:
             await self.start()
-        
+
         try:
             page = await self._browser.new_page()
             await page.goto(url)
@@ -108,6 +109,7 @@ class AriaBrowserOperator:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _browser_operator_instance: AriaBrowserOperator | None = None
+
 
 def get_browser_operator() -> AriaBrowserOperator:
     """Retorna el singleton del operador de navegador."""

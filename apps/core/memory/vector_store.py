@@ -11,17 +11,18 @@ Referencia:
   - Qdrant: https://qdrant.tech/
   - Weaviate: https://weaviate.io/
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
 
 logger = logging.getLogger("aria.vector_store")
 
 # ── Qdrant Import con fallback ───────────────────────────────────────────────
 try:
     from qdrant_client import QdrantClient
+
     QDRANT_AVAILABLE = True
 except ImportError:
     QDRANT_AVAILABLE = False
@@ -29,6 +30,7 @@ except ImportError:
 # ── Weaviate Import con fallback ─────────────────────────────────────────────
 try:
     import weaviate
+
     WEAVIATE_AVAILABLE = True
 except ImportError:
     WEAVIATE_AVAILABLE = False
@@ -50,7 +52,7 @@ class AriaVectorStore:
                 logger.info("[VectorStore] Qdrant conectado en %s:%d", host, port)
             except Exception as exc:
                 logger.error("[VectorStore] Error conectando a Qdrant: %s", exc)
-        
+
         elif provider == "weaviate" and WEAVIATE_AVAILABLE:
             try:
                 # Conexión simplificada para Weaviate v4
@@ -65,13 +67,16 @@ class AriaVectorStore:
             return []
 
         if self.provider == "qdrant":
-            return self.client.search(collection_name=collection, query_vector=query_vector, limit=limit)
-        
+            return self.client.search(
+                collection_name=collection, query_vector=query_vector, limit=limit
+            )
+
         return []
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _vector_store_instance: AriaVectorStore | None = None
+
 
 def get_vector_store() -> AriaVectorStore:
     """Retorna el singleton del almacén vectorial."""

@@ -11,14 +11,14 @@ ARIA mantiene un modelo interno persistente de su entorno:
 TODO ES REAL. Sin mocks. Sin placeholders.
 Persiste en Supabase + Redis. Actualiza por eventos.
 """
+
 from __future__ import annotations
-import asyncio
+
 import json
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Any, Optional
-from apps.core.config import settings
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.world_state")
 
@@ -35,7 +35,7 @@ class WorldState:
             "projects": {},
             "tasks": {},
             "system": {
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": datetime.now(UTC).isoformat(),
                 "api_health": {},
                 "error_counts": {},
                 "last_action": None,
@@ -49,8 +49,8 @@ class WorldState:
 
     def update_user(self, user_id: str, data: dict) -> None:
         if user_id not in self._state["users"]:
-            self._state["users"][user_id] = {"created_at": datetime.now(timezone.utc).isoformat()}
-        self._state["users"][user_id].update({**data, "last_seen": datetime.now(timezone.utc).isoformat()})
+            self._state["users"][user_id] = {"created_at": datetime.now(UTC).isoformat()}
+        self._state["users"][user_id].update({**data, "last_seen": datetime.now(UTC).isoformat()})
         self._dirty = True
         self._record_event("user_update", {"user_id": user_id, **data})
 
@@ -62,7 +62,7 @@ class WorldState:
     def set_project(self, project_id: str, status: str, data: dict = None) -> None:
         self._state["projects"][project_id] = {
             "status": status,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             **(data or {}),
         }
         self._dirty = True
@@ -72,8 +72,11 @@ class WorldState:
         return self._state["projects"].get(project_id, {})
 
     def list_active_projects(self) -> list[dict]:
-        return [{"id": k, **v} for k, v in self._state["projects"].items()
-                if v.get("status") not in ("done", "cancelled")]
+        return [
+            {"id": k, **v}
+            for k, v in self._state["projects"].items()
+            if v.get("status") not in ("done", "cancelled")
+        ]
 
     # ── TAREAS ────────────────────────────────────────────────────
 
@@ -82,7 +85,7 @@ class WorldState:
             "type": task_type,
             "status": "pending",
             "payload": payload,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "attempts": 0,
         }
         self._dirty = True
@@ -90,46 +93,54 @@ class WorldState:
 
     def update_task(self, task_id: str, status: str, result: dict = None) -> None:
         if task_id in self._state["tasks"]:
-            self._state["tasks"][task_id].update({
-                "status": status,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "attempts": self._state["tasks"][task_id].get("attempts", 0) + 1,
-                **({"result": result} if result else {}),
-            })
+            self._state["tasks"][task_id].update(
+                {
+                    "status": status,
+                    "updated_at": datetime.now(UTC).isoformat(),
+                    "attempts": self._state["tasks"][task_id].get("attempts", 0) + 1,
+                    **({"result": result} if result else {}),
+                }
+            )
             self._dirty = True
             self._record_event("task_update", {"task_id": task_id, "status": status})
 
     def get_pending_tasks(self) -> list[dict]:
-        return [{"id": k, **v} for k, v in self._state["tasks"].items()
-                if v.get("status") in ("pending", "retry")]
+        return [
+            {"id": k, **v}
+            for k, v in self._state["tasks"].items()
+            if v.get("status") in ("pending", "retry")
+        ]
 
     def get_failed_tasks(self) -> list[dict]:
-        return [{"id": k, **v} for k, v in self._state["tasks"].items()
-                if v.get("status") == "failed"]
+        return [
+            {"id": k, **v} for k, v in self._state["tasks"].items() if v.get("status") == "failed"
+        ]
 
     # ── SISTEMA ───────────────────────────────────────────────────
 
     def update_api_health(self, api_name: str, healthy: bool, latency_ms: float = None) -> None:
         self._state["system"]["api_health"][api_name] = {
             "healthy": healthy,
-            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "checked_at": datetime.now(UTC).isoformat(),
             **({"latency_ms": latency_ms} if latency_ms else {}),
         }
         if not healthy:
-            self._state["system"]["error_counts"][api_name] = \
+            self._state["system"]["error_counts"][api_name] = (
                 self._state["system"]["error_counts"].get(api_name, 0) + 1
+            )
 
     def record_action(self, action: str, result: str = "ok") -> None:
         self._state["system"]["last_action"] = {
-            "action": action, "result": result,
-            "at": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "result": result,
+            "at": datetime.now(UTC).isoformat(),
         }
         self._dirty = True
 
     # ── LÍNEA TEMPORAL ────────────────────────────────────────────
 
     def _record_event(self, event_type: str, data: dict) -> None:
-        event = {"type": event_type, "ts": datetime.now(timezone.utc).isoformat(), **data}
+        event = {"type": event_type, "ts": datetime.now(UTC).isoformat(), **data}
         self._state["timeline"].append(event)
         if len(self._state["timeline"]) > 500:
             self._state["timeline"] = self._state["timeline"][-200:]
@@ -141,7 +152,7 @@ class WorldState:
 
     def snapshot(self) -> dict:
         return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "active_projects": len(self.list_active_projects()),
             "pending_tasks": len(self.get_pending_tasks()),
             "failed_tasks": len(self.get_failed_tasks()),
@@ -158,21 +169,27 @@ class WorldState:
             return
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
-                await cache.set("aria:world_state", json.dumps(self._state, default=str, ttl_seconds=3600))
+                await cache.set(
+                    "aria:world_state", json.dumps(self._state, default=str, ttl_seconds=3600)
+                )
         except Exception as exc:
             logger.warning("[WorldState] Redis persist failed: %s", exc)
 
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             if db:
-                await db.table("aria_world_state").upsert({
-                    "key": "current",
-                    "state": self._state,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }).execute()
+                await db.table("aria_world_state").upsert(
+                    {
+                        "key": "current",
+                        "state": self._state,
+                        "updated_at": datetime.now(UTC).isoformat(),
+                    }
+                ).execute()
         except Exception:
             pass
 
@@ -183,21 +200,25 @@ class WorldState:
     async def load(self) -> bool:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 raw = await cache.get("aria:world_state")
                 if raw:
                     self._state = json.loads(raw)
-                    logger.info("[WorldState] Estado cargado desde Redis (%d proyectos, %d tareas)",
-                                len(self._state.get("projects", {})),
-                                len(self._state.get("tasks", {})))
+                    logger.info(
+                        "[WorldState] Estado cargado desde Redis (%d proyectos, %d tareas)",
+                        len(self._state.get("projects", {})),
+                        len(self._state.get("tasks", {})),
+                    )
                     return True
         except Exception as exc:
             logger.warning("[WorldState] Load failed: %s", exc)
         return False
 
 
-_world_state: Optional[WorldState] = None
+_world_state: WorldState | None = None
+
 
 def get_world_state() -> WorldState:
     global _world_state

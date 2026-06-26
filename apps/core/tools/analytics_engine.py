@@ -10,11 +10,11 @@ ARIA utiliza DuckDB para transformar datos crudos en inteligencia de negocio.
 
 Referencia: https://duckdb.org/docs/api/python/overview
 """
+
 from __future__ import annotations
 
 import logging
-import os
-from typing import Any, Optional
+
 import pandas as pd
 
 logger = logging.getLogger("aria.analytics")
@@ -22,6 +22,7 @@ logger = logging.getLogger("aria.analytics")
 # ── DuckDB Import con fallback ───────────────────────────────────────────────
 try:
     import duckdb
+
     DUCKDB_AVAILABLE = True
     logger.info("[DuckDB] Librería cargada correctamente.")
 except ImportError:
@@ -38,7 +39,7 @@ class AriaAnalyticsEngine:
     def __init__(self, db_path: str = ":memory:") -> None:
         self.db_path = db_path
         self._conn = None
-        
+
         if DUCKDB_AVAILABLE:
             try:
                 self._conn = duckdb.connect(self.db_path)
@@ -60,12 +61,15 @@ class AriaAnalyticsEngine:
 
     async def summarize_revenue(self):
         """Genera un resumen de ingresos ultra-rápido."""
-        query = "SELECT product, SUM(amount) as total FROM sales GROUP BY product ORDER BY total DESC"
+        query = (
+            "SELECT product, SUM(amount) as total FROM sales GROUP BY product ORDER BY total DESC"
+        )
         return await self.run_analysis(query)
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _analytics_instance: AriaAnalyticsEngine | None = None
+
 
 def get_analytics_engine() -> AriaAnalyticsEngine:
     """Retorna el singleton del motor analítico."""

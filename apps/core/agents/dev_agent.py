@@ -2,9 +2,12 @@
 dev_agent.py — Developer Agent con HuggingFace Code Generation + análisis de imágenes.
 Genera código, analiza repositorios, crea productos digitales completos.
 """
+
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
 from apps.core.tools.ai_client import AIModel
 
@@ -17,17 +20,23 @@ class DevAgent(BaseAgent):
             name="dev",
             description="Desarrollo de software y productos digitales — código con HuggingFace Qwen2.5-Coder",
             capabilities=[
-                "code_generation", "product_development", "api_integration",
-                "database_design", "frontend_development", "automation_scripts",
-                "code_review", "bug_fixing", "architecture_design",
+                "code_generation",
+                "product_development",
+                "api_integration",
+                "database_design",
+                "frontend_development",
+                "automation_scripts",
+                "code_review",
+                "bug_fixing",
+                "architecture_design",
             ],
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        task        = context.get("task", "")
-        product     = context.get("product", {})
-        language    = context.get("coding_language", "python")
-        build_type  = context.get("build_type", "api")
+        task = context.get("task", "")
+        product = context.get("product", {})
+        language = context.get("coding_language", "python")
+        build_type = context.get("build_type", "api")
 
         results: dict[str, Any] = {"success": True, "agent": "dev_agent"}
 
@@ -47,10 +56,14 @@ class DevAgent(BaseAgent):
         await self._log("dev_task_complete", f"Tarea: {task[:80]} | Lenguaje: {language}")
         return results
 
-    async def _build_digital_product(self, product: dict, task: str, language: str, build_type: str) -> dict[str, Any]:
+    async def _build_digital_product(
+        self, product: dict, task: str, language: str, build_type: str
+    ) -> dict[str, Any]:
         """Construye un producto digital completo usando HuggingFace Qwen2.5-Coder."""
         import asyncio
+
         from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
         hf = HuggingFaceSuite()
 
         product_name = product.get("name", "Digital Product")
@@ -74,48 +87,66 @@ class DevAgent(BaseAgent):
         )
 
         # Ejecutar en paralelo
-        backend_task  = hf.generate_code(backend_prompt, language)
+        backend_task = hf.generate_code(backend_prompt, language)
         frontend_task = hf.generate_code(frontend_prompt, "html")
-        readme_task   = hf.generate_code(
+        readme_task = hf.generate_code(
             f"Write a complete README.md for {product_name}: {product_desc}. Include setup, API docs, deployment.",
-            "markdown"
+            "markdown",
         )
 
-        backend, frontend, readme = await asyncio.gather(backend_task, frontend_task, readme_task, return_exceptions=True)
+        backend, frontend, readme = await asyncio.gather(
+            backend_task, frontend_task, readme_task, return_exceptions=True
+        )
 
         return {
             "product": product_name,
-            "backend_code": backend.get("code","") if isinstance(backend,dict) and backend.get("success") else "",
-            "frontend_code": frontend.get("code","") if isinstance(frontend,dict) and frontend.get("success") else "",
-            "readme": readme.get("code","") if isinstance(readme,dict) and readme.get("success") else "",
+            "backend_code": (
+                backend.get("code", "")
+                if isinstance(backend, dict) and backend.get("success")
+                else ""
+            ),
+            "frontend_code": (
+                frontend.get("code", "")
+                if isinstance(frontend, dict) and frontend.get("success")
+                else ""
+            ),
+            "readme": (
+                readme.get("code", "") if isinstance(readme, dict) and readme.get("success") else ""
+            ),
             "build_type": build_type,
         }
 
     async def _generate_code_solution(self, task: str, language: str) -> dict[str, Any]:
         """Genera solución de código para cualquier tarea."""
         from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
         hf = HuggingFaceSuite()
         result = await hf.generate_code(task, language)
 
         if not result.get("success"):
             # Fallback a ai_client
             from apps.core.tools.ai_client import get_ai_client
+
             ai = get_ai_client()
             response = await ai.complete(
                 system=f"Expert {language} developer. Write clean, production-ready code only.",
                 user=task,
                 model=AIModel.CODE,
             )
-            return {"code": response.content if response else "", "language": language, "model": "fallback"}
+            return {
+                "code": response.content if response else "",
+                "language": language,
+                "model": "fallback",
+            }
 
         return result
 
     async def _generate_documentation(self, task: str, results: dict) -> str:
         """Genera documentación técnica del código producido."""
         code_preview = ""
-        if results.get("artifact",{}).get("backend_code"):
+        if results.get("artifact", {}).get("backend_code"):
             code_preview = results["artifact"]["backend_code"][:500]
-        elif results.get("code",{}).get("code"):
+        elif results.get("code", {}).get("code"):
             code_preview = results["code"]["code"][:500]
 
         if not code_preview:

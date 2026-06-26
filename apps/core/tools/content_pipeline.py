@@ -9,6 +9,7 @@ Flujo completo:
 5. Distribuye en redes sociales
 6. Registra todo en Supabase para tracking
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,8 +17,7 @@ import json
 import logging
 import re
 import time
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
 
 import httpx
 
@@ -39,40 +39,85 @@ AFFILIATE_CATALOG: dict[str, list[dict]] = {
         {"keyword": "webcam", "asin": "B08CS18WVP", "title": "Webcam HD"},
         {"keyword": "microphone", "asin": "B07WYYLYVK", "title": "Micrófono USB"},
         {"keyword": "ssd", "asin": "B08GTYFC37", "title": "SSD rápido"},
+        {"keyword": "usb hub", "asin": "B07NSGFRMW", "title": "USB-C Hub"},
+        {"keyword": "cable management", "asin": "B07TPKN6PX", "title": "Cable management"},
     ],
     "ai": [
         {"keyword": "gpu", "asin": "B092PX4K4B", "title": "GPU para ML"},
         {"keyword": "book ai", "asin": "B0BX7BWJMR", "title": "Libro de IA"},
         {"keyword": "raspberry pi", "asin": "B09TTNF8BT", "title": "Raspberry Pi"},
+        {"keyword": "ai headset", "asin": "B0CM5DXNX3", "title": "Headset para productividad AI"},
+        {"keyword": "ai notebook", "asin": "B09V3KXJPB", "title": "Notebook IA recomendado"},
     ],
     "business": [
         {"keyword": "business book", "asin": "B079JN6B2Y", "title": "Libro de negocios"},
         {"keyword": "kindle", "asin": "B09SWS2R84", "title": "Kindle Paperwhite"},
         {"keyword": "desk", "asin": "B08CHRM5CC", "title": "Escritorio standing"},
         {"keyword": "chair", "asin": "B09HCPHTX1", "title": "Silla ergonómica"},
+        {"keyword": "planner", "asin": "B07VQ6KRVY", "title": "Planificador ejecutivo"},
+        {"keyword": "whiteboard", "asin": "B07MB4PZXB", "title": "Pizarrón portátil"},
     ],
     "finance": [
         {"keyword": "book finance", "asin": "B076NCZRNL", "title": "Libro finanzas"},
         {"keyword": "calculator", "asin": "B00000J1ER", "title": "Calculadora financiera"},
+        {"keyword": "rich dad poor dad", "asin": "B07HPG8KJX", "title": "Rich Dad Poor Dad"},
+        {"keyword": "investing book", "asin": "B00JGB01W2", "title": "The Intelligent Investor"},
     ],
     "fitness": [
         {"keyword": "fitness tracker", "asin": "B09B4P7LLN", "title": "Fitness tracker"},
         {"keyword": "protein", "asin": "B07QMSL3Z5", "title": "Proteína"},
         {"keyword": "yoga mat", "asin": "B07DQHV8NK", "title": "Esterilla yoga"},
+        {"keyword": "resistance bands", "asin": "B01AVDVHTI", "title": "Bandas de resistencia"},
+        {"keyword": "foam roller", "asin": "B00O6XNJZ4", "title": "Rodillo de espuma"},
     ],
     "marketing": [
         {"keyword": "marketing book", "asin": "B07H1ZYSL6", "title": "Libro de marketing"},
         {"keyword": "seo book", "asin": "B09N9WG1DT", "title": "Libro SEO"},
+        {"keyword": "copywriting", "asin": "B01N7V61GO", "title": "Breakthrough Advertising"},
+        {"keyword": "influence book", "asin": "B002BD2UUC", "title": "Influence - Cialdini"},
     ],
     "crypto": [
         {"keyword": "hardware wallet", "asin": "B08Z51WMRB", "title": "Hardware wallet"},
         {"keyword": "crypto book", "asin": "B07T2XHX6G", "title": "Libro de crypto"},
+        {"keyword": "bitcoin book", "asin": "B07C7KDBWZ", "title": "Bitcoin Standard"},
+    ],
+    "productivity": [
+        {"keyword": "time management book", "asin": "B004DEPHOY", "title": "Getting Things Done"},
+        {"keyword": "deep work book", "asin": "B00X47ZVXM", "title": "Deep Work - Cal Newport"},
+        {"keyword": "pomodoro timer", "asin": "B01N6TBSML", "title": "Timer Pomodoro"},
+        {"keyword": "notebook", "asin": "B01EB3OSLW", "title": "Cuaderno Leuchtturm1917"},
+        {"keyword": "standing mat", "asin": "B07P3DJBY7", "title": "Alfombrilla standing desk"},
+    ],
+    "ecommerce": [
+        {"keyword": "dropshipping book", "asin": "B099TTDYXT", "title": "Dropshipping guide"},
+        {"keyword": "label printer", "asin": "B08VRTJ9XR", "title": "Impresora de etiquetas"},
+        {"keyword": "scale", "asin": "B0012BTXKC", "title": "Báscula postal"},
+        {"keyword": "packaging", "asin": "B01N1MGFEC", "title": "Materiales de packaging"},
+    ],
+    "content_creator": [
+        {"keyword": "ring light", "asin": "B07DLGNLZG", "title": "Ring light para streaming"},
+        {"keyword": "green screen", "asin": "B07XSCMNKD", "title": "Chroma key portátil"},
+        {"keyword": "tripod", "asin": "B08FQZRBBR", "title": "Trípode flexible"},
+        {"keyword": "sd card", "asin": "B07H9DVLBB", "title": "Tarjeta SD rápida"},
+        {"keyword": "capture card", "asin": "B07Z7KL9B2", "title": "Tarjeta de captura 4K"},
     ],
 }
 
 CLICKBANK_PRODUCTS = [
-    {"id": "cb_prod_1", "vendor": "clickbank", "hoplink_base": "https://vendor.clickbank.net/?affiliate=AFFILIATE&vendor=VENDOR", "title": "Curso IA para negocios", "commission": "75%"},
-    {"id": "cb_prod_2", "vendor": "clickbank", "hoplink_base": "https://vendor.clickbank.net/?affiliate=AFFILIATE&vendor=VENDOR2", "title": "Curso Marketing Digital", "commission": "60%"},
+    {
+        "id": "cb_prod_1",
+        "vendor": "clickbank",
+        "hoplink_base": "https://vendor.clickbank.net/?affiliate=AFFILIATE&vendor=VENDOR",
+        "title": "Curso IA para negocios",
+        "commission": "75%",
+    },
+    {
+        "id": "cb_prod_2",
+        "vendor": "clickbank",
+        "hoplink_base": "https://vendor.clickbank.net/?affiliate=AFFILIATE&vendor=VENDOR2",
+        "title": "Curso Marketing Digital",
+        "commission": "60%",
+    },
 ]
 
 
@@ -118,16 +163,20 @@ class ContentPipeline:
             ids = res.json()[:15]
             topics = []
             for story_id in ids[:8]:
-                story_res = await self._http.get(f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json")
+                story_res = await self._http.get(
+                    f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json"
+                )
                 story = story_res.json()
                 if story and story.get("title"):
-                    topics.append({
-                        "title": story["title"],
-                        "url": story.get("url", ""),
-                        "score": story.get("score", 0),
-                        "source": "hackernews",
-                        "category": self._detect_category(story["title"]),
-                    })
+                    topics.append(
+                        {
+                            "title": story["title"],
+                            "url": story.get("url", ""),
+                            "score": story.get("score", 0),
+                            "source": "hackernews",
+                            "category": self._detect_category(story["title"]),
+                        }
+                    )
             return topics
         except Exception as exc:
             logger.warning("[ContentPipeline] HN error: %s", exc)
@@ -147,14 +196,20 @@ class ContentPipeline:
                     posts = res.json().get("data", {}).get("children", [])
                     for post in posts[:3]:
                         data = post.get("data", {})
-                        if data.get("title") and not data.get("is_self", False) or data.get("selftext"):
-                            topics.append({
-                                "title": data["title"],
-                                "url": f"https://reddit.com{data.get('permalink', '')}",
-                                "score": data.get("score", 0),
-                                "source": f"reddit/{sub}",
-                                "category": self._detect_category(data["title"]),
-                            })
+                        if (
+                            data.get("title")
+                            and not data.get("is_self", False)
+                            or data.get("selftext")
+                        ):
+                            topics.append(
+                                {
+                                    "title": data["title"],
+                                    "url": f"https://reddit.com{data.get('permalink', '')}",
+                                    "score": data.get("score", 0),
+                                    "source": f"reddit/{sub}",
+                                    "category": self._detect_category(data["title"]),
+                                }
+                            )
             except Exception:
                 continue
         return topics
@@ -183,7 +238,11 @@ class ContentPipeline:
                 headers={
                     "Accept": "application/json",
                     "Content-Type": "application/json",
-                    "Authorization": f"Bearer {settings.PRODUCT_HUNT_TOKEN}" if settings.PRODUCT_HUNT_TOKEN else "",
+                    "Authorization": (
+                        f"Bearer {settings.PRODUCT_HUNT_TOKEN}"
+                        if settings.PRODUCT_HUNT_TOKEN
+                        else ""
+                    ),
                 },
             )
             if res.status_code == 200:
@@ -204,26 +263,52 @@ class ContentPipeline:
 
     def _detect_category(self, title: str) -> str:
         title_lower = title.lower()
-        if any(w in title_lower for w in ["ai", "gpt", "llm", "machine learning", "neural", "openai", "claude", "gemini"]):
+        if any(
+            w in title_lower
+            for w in [
+                "ai",
+                "gpt",
+                "llm",
+                "machine learning",
+                "neural",
+                "openai",
+                "claude",
+                "gemini",
+            ]
+        ):
             return "ai"
-        if any(w in title_lower for w in ["startup", "business", "revenue", "saas", "entrepreneur", "money"]):
+        if any(
+            w in title_lower
+            for w in ["startup", "business", "revenue", "saas", "entrepreneur", "money"]
+        ):
             return "business"
-        if any(w in title_lower for w in ["crypto", "bitcoin", "ethereum", "blockchain", "defi", "nft"]):
+        if any(
+            w in title_lower for w in ["crypto", "bitcoin", "ethereum", "blockchain", "defi", "nft"]
+        ):
             return "crypto"
-        if any(w in title_lower for w in ["python", "javascript", "typescript", "react", "nextjs", "api", "code", "dev"]):
+        if any(
+            w in title_lower
+            for w in ["python", "javascript", "typescript", "react", "nextjs", "api", "code", "dev"]
+        ):
             return "tech"
-        if any(w in title_lower for w in ["marketing", "seo", "traffic", "social media", "ads", "growth"]):
+        if any(
+            w in title_lower
+            for w in ["marketing", "seo", "traffic", "social media", "ads", "growth"]
+        ):
             return "marketing"
-        if any(w in title_lower for w in ["finance", "invest", "stock", "trading", "passive income"]):
+        if any(
+            w in title_lower for w in ["finance", "invest", "stock", "trading", "passive income"]
+        ):
             return "finance"
         return "tech"
 
     # ── GENERACIÓN DE CONTENIDO ───────────────────────────
 
-    async def generate_article(self, topic: dict, language: str = "es") -> Optional[dict]:
+    async def generate_article(self, topic: dict, language: str = "es") -> dict | None:
         """Genera un artículo SEO completo con IA."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             category = topic.get("category", "tech")
 
@@ -267,10 +352,14 @@ Tono: experto pero accesible, como un blogger senior."""
             parsed["category"] = category
             parsed["source_topic"] = topic
             parsed["language"] = language
-            parsed["generated_at"] = datetime.now(timezone.utc).isoformat()
+            parsed["generated_at"] = datetime.now(UTC).isoformat()
             parsed["word_count"] = len(article_text.split())
 
-            logger.info("[ContentPipeline] Artículo generado: %s (%d palabras)", parsed.get("title", "")[:50], parsed["word_count"])
+            logger.info(
+                "[ContentPipeline] Artículo generado: %s (%d palabras)",
+                parsed.get("title", "")[:50],
+                parsed["word_count"],
+            )
             return parsed
 
         except Exception as exc:
@@ -283,10 +372,9 @@ Tono: experto pero accesible, como un blogger senior."""
         title = topic.get("title", "Artículo")
         meta = ""
         tags = []
-        body = text
 
         for line in lines:
-            if line.startswith("**H1:") or line.startswith("# "):
+            if line.startswith(("**H1:", "# ")):
                 title = line.replace("**H1:", "").replace("**", "").replace("# ", "").strip()
             elif line.startswith("**META:"):
                 meta = line.replace("**META:", "").replace("**", "").strip()
@@ -379,6 +467,7 @@ Tono: experto pero accesible, como un blogger senior."""
     async def publish_everywhere(self, article: dict) -> dict:
         """Publica el artículo en todas las plataformas configuradas."""
         from apps.core.tools.publishing_tools import PublishingTools
+
         publisher = PublishingTools()
 
         results = await asyncio.gather(
@@ -404,6 +493,7 @@ Tono: experto pero accesible, como un blogger senior."""
     async def distribute_social(self, article: dict) -> dict:
         """Distribuye el artículo en redes sociales."""
         from apps.core.tools.social_content_tools import SocialContentTools
+
         social = SocialContentTools()
 
         title = article.get("title", "")
@@ -477,16 +567,20 @@ Tono: experto pero accesible, como un blogger senior."""
                 # 6. Guardar en Supabase
                 await self._save_article(article, topic)
 
-                published.append({
-                    "title": article.get("title", ""),
-                    "platforms": [p["platform"] for p in article.get("published_to", [])],
-                    "urls": article.get("published_to", []),
-                    "affiliate_links": article.get("affiliate_links_injected", 0),
-                    "word_count": article.get("word_count", 0),
-                })
+                published.append(
+                    {
+                        "title": article.get("title", ""),
+                        "platforms": [p["platform"] for p in article.get("published_to", [])],
+                        "urls": article.get("published_to", []),
+                        "affiliate_links": article.get("affiliate_links_injected", 0),
+                        "word_count": article.get("word_count", 0),
+                    }
+                )
 
             except Exception as exc:
-                logger.error("[ContentPipeline] Error en artículo %s: %s", topic.get("title", "")[:40], exc)
+                logger.error(
+                    "[ContentPipeline] Error en artículo %s: %s", topic.get("title", "")[:40], exc
+                )
                 errors.append(str(exc))
 
         elapsed = int(time.time() - start)
@@ -496,12 +590,13 @@ Tono: experto pero accesible, como un blogger senior."""
             "articles": published,
             "errors": errors,
             "elapsed_seconds": elapsed,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         logger.info(
             "[ContentPipeline] Pipeline completado — %d artículos en %ds",
-            len(published), elapsed,
+            len(published),
+            elapsed,
         )
         return result
 
@@ -509,23 +604,28 @@ Tono: experto pero accesible, como un blogger senior."""
         """Guarda el artículo publicado en Supabase."""
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             urls = article.get("published_to", [])
             primary_url = urls[0]["url"] if urls else ""
-            db._client.table("products").insert({
-                "name": article.get("title", "")[:200],
-                "type": "content_article",
-                "platform": ",".join(p["platform"] for p in urls),
-                "url": primary_url,
-                "status": "published",
-                "metadata": json.dumps({
-                    "category": article.get("category"),
-                    "language": article.get("language"),
-                    "word_count": article.get("word_count"),
-                    "affiliate_links": article.get("affiliate_links_injected", 0),
-                    "tags": article.get("tags", []),
-                    "source_topic": topic.get("title", ""),
-                }),
-            }).execute()
+            db._client.table("products").insert(
+                {
+                    "name": article.get("title", "")[:200],
+                    "type": "content_article",
+                    "platform": ",".join(p["platform"] for p in urls),
+                    "url": primary_url,
+                    "status": "published",
+                    "metadata": json.dumps(
+                        {
+                            "category": article.get("category"),
+                            "language": article.get("language"),
+                            "word_count": article.get("word_count"),
+                            "affiliate_links": article.get("affiliate_links_injected", 0),
+                            "tags": article.get("tags", []),
+                            "source_topic": topic.get("title", ""),
+                        }
+                    ),
+                }
+            ).execute()
         except Exception as exc:
             logger.warning("[ContentPipeline] No pude guardar artículo en DB: %s", exc)

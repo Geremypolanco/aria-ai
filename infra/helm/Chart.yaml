@@ -1,0 +1,14 @@
+apiVersion: v2
+name: aria-ai
+description: ARIA AI — Cognitive Infrastructure Platform
+type: application
+version: 2.0.0
+appVersion: "2.0.0"
+keywords:
+  - ai
+  - cognitive-platform
+  - autonomous-agent
+home: https://aria-ai.fly.dev
+maintainers:
+  - name: ARIA Team
+dependencies: []

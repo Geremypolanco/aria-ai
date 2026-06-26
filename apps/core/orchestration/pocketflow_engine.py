@@ -13,11 +13,12 @@ Arquitectura:
                 ↑                                        ↓
                 └──────────── FeedbackNode ──────────────┘
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.pocketflow_engine")
 
@@ -28,7 +29,8 @@ logger = logging.getLogger("aria.pocketflow_engine")
 # - SharedStore: comunicación entre nodos dentro de un flow
 
 try:
-    from pocketflow import Node, Flow, AsyncNode, AsyncFlow
+    from pocketflow import AsyncFlow, AsyncNode, Flow, Node
+
     POCKETFLOW_AVAILABLE = True
     logger.info("[PocketFlow] Librería cargada correctamente.")
 except ImportError:
@@ -42,13 +44,14 @@ except ImportError:
     # ── Fallback mínimo para mantener compatibilidad ──────────────────────────
     class Node:  # type: ignore[no-redef]
         """Nodo base de PocketFlow (fallback)."""
+
         def prep(self, shared: dict) -> Any:
             return None
 
         def exec(self, prep_res: Any) -> Any:
             return "default"
 
-        def post(self, shared: dict, prep_res: Any, exec_res: Any) -> Optional[str]:
+        def post(self, shared: dict, prep_res: Any, exec_res: Any) -> str | None:
             return exec_res
 
         def run(self, shared: dict) -> str:
@@ -59,13 +62,14 @@ except ImportError:
 
     class AsyncNode(Node):  # type: ignore[no-redef]
         """Nodo asíncrono de PocketFlow (fallback)."""
+
         async def prep_async(self, shared: dict) -> Any:
             return self.prep(shared)
 
         async def exec_async(self, prep_res: Any) -> Any:
             return self.exec(prep_res)
 
-        async def post_async(self, shared: dict, prep_res: Any, exec_res: Any) -> Optional[str]:
+        async def post_async(self, shared: dict, prep_res: Any, exec_res: Any) -> str | None:
             return self.post(shared, prep_res, exec_res)
 
         async def run_async(self, shared: dict) -> str:
@@ -76,11 +80,12 @@ except ImportError:
 
     class Flow:  # type: ignore[no-redef]
         """Flow de PocketFlow (fallback)."""
+
         def __init__(self, start: Node):
             self.start = start
             self._transitions: dict[tuple, Node] = {}
 
-        def add_edge(self, node: Node, action: str, next_node: Node) -> "Flow":
+        def add_edge(self, node: Node, action: str, next_node: Node) -> Flow:
             self._transitions[(id(node), action)] = next_node
             return self
 
@@ -96,6 +101,7 @@ except ImportError:
 
     class AsyncFlow(Flow):  # type: ignore[no-redef]
         """AsyncFlow de PocketFlow (fallback)."""
+
         async def run_async(self, shared: dict) -> dict:
             current = self.start
             visited = 0
@@ -112,11 +118,13 @@ except ImportError:
 
 # ── Nodos de Decisión para ARIA AI ──────────────────────────────────────────
 
+
 class AnalyzeContextNode(AsyncNode):
     """
     Nodo 1: Analiza el contexto de la misión entrante.
     Determina tipo de tarea, urgencia y agente óptimo.
     """
+
     async def prep_async(self, shared: dict) -> dict:
         return {
             "mission": shared.get("mission", ""),
@@ -139,7 +147,9 @@ class AnalyzeContextNode(AsyncNode):
         elif any(kw in mission for kw in ["estrategia", "strategy", "plan", "decision"]):
             task_type = "strategy"
 
-        urgency = "high" if any(kw in mission for kw in ["urgente", "ahora", "inmediato"]) else "normal"
+        urgency = (
+            "high" if any(kw in mission for kw in ["urgente", "ahora", "inmediato"]) else "normal"
+        )
 
         return {
             "task_type": task_type,
@@ -149,7 +159,9 @@ class AnalyzeContextNode(AsyncNode):
 
     async def post_async(self, shared: dict, prep_res: dict, exec_res: dict) -> str:
         shared["analysis"] = exec_res
-        logger.info("[PocketFlow] Análisis: tipo=%s urgencia=%s", exec_res["task_type"], exec_res["urgency"])
+        logger.info(
+            "[PocketFlow] Análisis: tipo=%s urgencia=%s", exec_res["task_type"], exec_res["urgency"]
+        )
         return exec_res["task_type"]  # Action = tipo de tarea para routing
 
 
@@ -158,6 +170,7 @@ class StrategyDecisionNode(AsyncNode):
     Nodo 2: Toma decisiones estratégicas de alto nivel.
     Determina el plan de acción óptimo para misiones de estrategia.
     """
+
     async def prep_async(self, shared: dict) -> dict:
         return shared.get("analysis", {})
 
@@ -179,6 +192,7 @@ class RevenueDecisionNode(AsyncNode):
     Nodo 2b: Decisiones de revenue y monetización.
     Selecciona el canal de ingresos más prometedor.
     """
+
     async def prep_async(self, shared: dict) -> dict:
         return shared.get("analysis", {})
 
@@ -200,6 +214,7 @@ class CodingDecisionNode(AsyncNode):
     Nodo 2c: Decisiones de desarrollo autónomo.
     Determina si usar Aider, SWE-agent o dev_agent nativo.
     """
+
     async def prep_async(self, shared: dict) -> dict:
         return shared.get("analysis", {})
 
@@ -221,6 +236,7 @@ class ResearchDecisionNode(AsyncNode):
     Nodo 2d: Decisiones de investigación de mercado.
     Selecciona entre Crawl4AI, Firecrawl o web_tools.
     """
+
     async def prep_async(self, shared: dict) -> dict:
         return shared.get("analysis", {})
 
@@ -239,6 +255,7 @@ class ResearchDecisionNode(AsyncNode):
 
 class GeneralDecisionNode(AsyncNode):
     """Nodo de decisión general para tareas no clasificadas."""
+
     async def prep_async(self, shared: dict) -> dict:
         return shared.get("analysis", {})
 
@@ -259,6 +276,7 @@ class ExecuteNode(AsyncNode):
     Nodo 3: Ejecuta la decisión tomada.
     Delega al agente apropiado de Aria.
     """
+
     async def prep_async(self, shared: dict) -> dict:
         return {
             "decision": shared.get("decision", {}),
@@ -287,6 +305,7 @@ class AuditNode(AsyncNode):
     Nodo 4: Audita el resultado de la ejecución.
     Integra con el ExecutionPipeline existente de Aria.
     """
+
     async def prep_async(self, shared: dict) -> dict:
         return {
             "execution": shared.get("execution", {}),
@@ -299,7 +318,9 @@ class AuditNode(AsyncNode):
         return {
             "quality_score": quality_score,
             "passed": quality_score >= 75,
-            "notes": "Ejecución completada correctamente" if quality_score >= 75 else "Requiere revisión",
+            "notes": (
+                "Ejecución completada correctamente" if quality_score >= 75 else "Requiere revisión"
+            ),
         }
 
     async def post_async(self, shared: dict, prep_res: dict, exec_res: dict) -> str:
@@ -311,6 +332,7 @@ class AuditNode(AsyncNode):
 
 class CompleteNode(AsyncNode):
     """Nodo final: consolida el resultado del flow."""
+
     async def prep_async(self, shared: dict) -> dict:
         return shared
 
@@ -329,6 +351,7 @@ class CompleteNode(AsyncNode):
 
 
 # ── Factory del Flow de Decisión de ARIA ────────────────────────────────────
+
 
 def build_aria_decision_flow() -> AsyncFlow:
     """
@@ -365,7 +388,13 @@ def build_aria_decision_flow() -> AsyncFlow:
     flow.add_edge(analyze, "general", general_decide)
 
     # Todos los nodos de decisión van a Execute
-    for decide_node in [strategy_decide, revenue_decide, coding_decide, research_decide, general_decide]:
+    for decide_node in [
+        strategy_decide,
+        revenue_decide,
+        coding_decide,
+        research_decide,
+        general_decide,
+    ]:
         flow.add_edge(decide_node, "execute", execute)
 
     # Execute → Audit → Complete
@@ -377,6 +406,7 @@ def build_aria_decision_flow() -> AsyncFlow:
 
 
 # ── Interfaz pública ─────────────────────────────────────────────────────────
+
 
 class AriaDecisionEngine:
     """
@@ -435,10 +465,7 @@ class AriaDecisionEngine:
         Returns:
             Lista de resultados de cada decisión.
         """
-        tasks = [
-            self.decide(m.get("mission", ""), m.get("context"))
-            for m in missions
-        ]
+        tasks = [self.decide(m.get("mission", ""), m.get("context")) for m in missions]
         return await asyncio.gather(*tasks, return_exceptions=False)
 
 

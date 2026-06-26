@@ -13,13 +13,14 @@ ARIA usa deep_think para:
   - Investigación que requiere síntesis profunda
   - Planificación de proyectos grandes
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger("aria.deep_think")
 
@@ -27,7 +28,7 @@ logger = logging.getLogger("aria.deep_think")
 @dataclass
 class ThinkingResult:
     answer: str
-    thinking_trace: Optional[str]
+    thinking_trace: str | None
     thinking_tokens: int
     total_tokens: int
     duration_ms: int
@@ -54,21 +55,48 @@ class DeepThink:
 
     # Presupuestos de tokens de pensamiento (similar a Claude 3.7)
     BUDGETS = {
-        "fast":     0,      # Sin pensamiento explícito
-        "standard": 2000,   # Pensamiento breve
-        "deep":     8000,   # Pensamiento profundo
-        "ultra":    32000,  # Máximo razonamiento
+        "fast": 0,  # Sin pensamiento explícito
+        "standard": 2000,  # Pensamiento breve
+        "deep": 8000,  # Pensamiento profundo
+        "ultra": 32000,  # Máximo razonamiento
     }
 
     # Keywords que indican que se necesita pensamiento profundo
     DEEP_TRIGGERS = [
-        "estrategia", "strategy", "analiza", "analyze", "evalúa", "evaluate",
-        "decide", "decisión", "decision", "complejo", "complex", "optimiza",
-        "optimize", "diseña arquitectura", "arquitectura", "architecture",
-        "por qué", "why", "cómo debería", "how should", "mejor forma",
-        "trade-off", "trade off", "compara", "compare", "prioriza",
-        "planifica", "roadmap", "debug difícil", "razona", "think through",
-        "investiga a fondo", "analiza en profundidad", "deep dive",
+        "estrategia",
+        "strategy",
+        "analiza",
+        "analyze",
+        "evalúa",
+        "evaluate",
+        "decide",
+        "decisión",
+        "decision",
+        "complejo",
+        "complex",
+        "optimiza",
+        "optimize",
+        "diseña arquitectura",
+        "arquitectura",
+        "architecture",
+        "por qué",
+        "why",
+        "cómo debería",
+        "how should",
+        "mejor forma",
+        "trade-off",
+        "trade off",
+        "compara",
+        "compare",
+        "prioriza",
+        "planifica",
+        "roadmap",
+        "debug difícil",
+        "razona",
+        "think through",
+        "investiga a fondo",
+        "analiza en profundidad",
+        "deep dive",
     ]
 
     async def think(
@@ -92,7 +120,8 @@ class DeepThink:
 
         budget = self.BUDGETS.get(depth, 0)
 
-        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+
         client = get_ai_client()
 
         sys_prompt = system or (
@@ -130,10 +159,11 @@ class DeepThink:
 
         # Extract thinking trace if present
         thinking_trace = None
-        answer         = (response.content if hasattr(response, "content") else str(response)) or ""
+        answer = (response.content if hasattr(response, "content") else str(response)) or ""
 
         if budget > 0 and "<think>" in answer:
             import re
+
             trace_m = re.search(r"<think>(.*?)</think>", answer, re.DOTALL)
             if trace_m:
                 thinking_trace = trace_m.group(1).strip()
@@ -141,11 +171,14 @@ class DeepThink:
 
         # Estimate token counts
         thinking_tokens = len((thinking_trace or "").split()) * 4 // 3
-        total_tokens    = len(answer.split()) * 4 // 3 + thinking_tokens
+        total_tokens = len(answer.split()) * 4 // 3 + thinking_tokens
 
         logger.info(
             "[DeepThink] depth=%s budget=%d duration=%dms ~%d tokens",
-            depth, budget, duration_ms, total_tokens
+            depth,
+            budget,
+            duration_ms,
+            total_tokens,
         )
 
         return ThinkingResult(
@@ -195,8 +228,10 @@ class DeepThink:
         Framework de decisión estructurado con análisis multi-criterio.
         Como un consultor de McKinsey pensando en voz alta.
         """
-        options_text  = "\n".join(f"  {i+1}. {o}" for i, o in enumerate(options))
-        criteria_text = "\n".join(f"  - {c}" for c in (criteria or ["impacto", "esfuerzo", "riesgo", "costo"]))
+        options_text = "\n".join(f"  {i+1}. {o}" for i, o in enumerate(options))
+        criteria_text = "\n".join(
+            f"  - {c}" for c in (criteria or ["impacto", "esfuerzo", "riesgo", "costo"])
+        )
 
         prompt = (
             f"Decisión a tomar: {question}\n\n"
@@ -231,7 +266,8 @@ class DeepThink:
         )
 
         result = await self.think(
-            prompt, depth="deep",
+            prompt,
+            depth="deep",
             system=(
                 "Eres un senior engineer con 20 años de experiencia. "
                 "Diagnosticas problemas de forma metódica: síntomas → causa raíz → solución. "
@@ -257,11 +293,13 @@ class DeepThink:
         Inspirado en GPT-5 / Claude 4.5 inference-time scaling.
         """
         import time as _time
+
         t0 = _time.monotonic()
 
         # Generate N candidate answers in parallel
-        tasks = [self.think(question, context=context, depth="deep", system=system)
-                 for _ in range(paths)]
+        tasks = [
+            self.think(question, context=context, depth="deep", system=system) for _ in range(paths)
+        ]
         candidates: list[ThinkingResult] = await asyncio.gather(*tasks, return_exceptions=True)
         candidates = [r for r in candidates if isinstance(r, ThinkingResult) and r.answer]
 
@@ -271,7 +309,8 @@ class DeepThink:
             return candidates[0]
 
         # Self-evaluation: ask the model to pick the best answer
-        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+
         client = get_ai_client()
         eval_prompt = (
             f"Pregunta original: {question}\n\n"
@@ -289,13 +328,16 @@ class DeepThink:
 
         # Parse choice
         import re
+
         m = re.search(r"\b([1-9])\b", eval_text or "")
         chosen_idx = (int(m.group(1)) - 1) if m and int(m.group(1)) <= len(candidates) else 0
         best = candidates[chosen_idx]
 
         logger.info(
             "[DeepThink/verified] paths=%d chosen=%d duration=%dms",
-            paths, chosen_idx + 1, int((_time.monotonic() - t0) * 1000)
+            paths,
+            chosen_idx + 1,
+            int((_time.monotonic() - t0) * 1000),
         )
         return best
 
@@ -323,6 +365,7 @@ class DeepThink:
 # PROGRESS STREAMING — Manus-style progress updates
 # ══════════════════════════════════════════════════════════════
 
+
 class ProgressStream:
     """
     Transmite actualizaciones de progreso en tiempo real durante tareas largas.
@@ -331,7 +374,7 @@ class ProgressStream:
 
     def __init__(self, session_id: str, task_name: str) -> None:
         self.session_id = session_id
-        self.task_name  = task_name
+        self.task_name = task_name
         self._steps: list[dict] = []
 
     async def update(self, step: str, detail: str = "", icon: str = "⚡") -> None:
@@ -346,6 +389,7 @@ class ProgressStream:
             if chat_id.isdigit():
                 try:
                     from apps.core.tools.telegram_bot import get_bot
+
                     msg = f"{icon} **{step}**" + (f"\n_{detail}_" if detail else "")
                     await get_bot()._send_message(int(chat_id), msg)
                 except Exception:
@@ -354,6 +398,7 @@ class ProgressStream:
         # Push to WebSocket activity log
         try:
             from apps.core.routes.api import _log_activity
+
             _log_activity("INFO", f"[{self.task_name}] {step}", category="progress")
         except Exception:
             pass
@@ -369,7 +414,7 @@ class ProgressStream:
 
 
 # Singleton
-_deep_think: Optional[DeepThink] = None
+_deep_think: DeepThink | None = None
 
 
 def get_deep_think() -> DeepThink:

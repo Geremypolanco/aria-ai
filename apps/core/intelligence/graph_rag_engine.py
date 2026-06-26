@@ -9,13 +9,14 @@ Implementa la metodología GraphRAG de Microsoft para:
 
 Referencia: https://github.com/microsoft/graphrag
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
 
 logger = logging.getLogger("aria.graph_rag")
+
 
 class AriaGraphRAGEngine:
     """
@@ -48,6 +49,7 @@ class AriaGraphRAGEngine:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _graph_rag_instance: AriaGraphRAGEngine | None = None
+
 
 def get_graph_rag_engine() -> AriaGraphRAGEngine:
     """Retorna el singleton del motor GraphRAG."""

@@ -16,11 +16,12 @@ Integración con Aria:
 
 Referencia: https://ai.pydantic.dev/
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Union
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -29,8 +30,9 @@ logger = logging.getLogger("aria.pydantic_agents")
 # ── PydanticAI Import con fallback ───────────────────────────────────────────
 try:
     from pydantic_ai import Agent as PydanticAgent
-    from pydantic_ai.models.openai import OpenAIModel
     from pydantic_ai import RunContext
+    from pydantic_ai.models.openai import OpenAIModel
+
     PYDANTIC_AI_AVAILABLE = True
     logger.info("[PydanticAI] Librería cargada correctamente.")
 except ImportError:
@@ -47,8 +49,10 @@ except ImportError:
 
 # ── Modelos de Datos Tipados (Pydantic v2) ───────────────────────────────────
 
+
 class AgentTask(BaseModel):
     """Input tipado para cualquier agente de ARIA."""
+
     mission: str = Field(..., description="Descripción clara de la tarea a ejecutar")
     agent_name: str = Field(default="orchestrator", description="Nombre del agente objetivo")
     context: dict[str, Any] = Field(default_factory=dict, description="Contexto adicional")
@@ -59,6 +63,7 @@ class AgentTask(BaseModel):
 
 class AgentDecision(BaseModel):
     """Output tipado de una decisión de agente."""
+
     action: str = Field(..., description="Acción a ejecutar")
     agent: str = Field(..., description="Agente que ejecutará la acción")
     reasoning: str = Field(..., description="Razonamiento detrás de la decisión")
@@ -69,16 +74,18 @@ class AgentDecision(BaseModel):
 
 class MarketAnalysis(BaseModel):
     """Output tipado de análisis de mercado."""
+
     niche: str = Field(..., description="Nicho analizado")
     opportunities: list[str] = Field(..., description="Oportunidades identificadas")
     competitors: list[str] = Field(default_factory=list, description="Competidores detectados")
     recommended_strategy: str = Field(..., description="Estrategia recomendada")
     confidence_score: float = Field(..., ge=0.0, le=1.0, description="Confianza del análisis")
-    estimated_market_size: Optional[str] = Field(None, description="Tamaño estimado del mercado")
+    estimated_market_size: str | None = Field(None, description="Tamaño estimado del mercado")
 
 
 class RevenueStrategy(BaseModel):
     """Output tipado de estrategia de ingresos."""
+
     primary_channel: str = Field(..., description="Canal principal de monetización")
     secondary_channels: list[str] = Field(default_factory=list, description="Canales secundarios")
     action_plan: list[str] = Field(..., description="Plan de acción paso a paso")
@@ -89,21 +96,23 @@ class RevenueStrategy(BaseModel):
 
 class CodeTask(BaseModel):
     """Output tipado para tareas de desarrollo."""
+
     task_type: str = Field(..., description="Tipo: fix_bug/add_feature/refactor/create_pr")
     files_to_modify: list[str] = Field(default_factory=list, description="Archivos a modificar")
     description: str = Field(..., description="Descripción detallada de los cambios")
     test_required: bool = Field(default=True, description="¿Requiere tests?")
-    pr_title: Optional[str] = Field(None, description="Título del PR si aplica")
+    pr_title: str | None = Field(None, description="Título del PR si aplica")
 
 
 class AgentAuditLog(BaseModel):
     """Log de auditoría tipado para cada ejecución de agente."""
+
     agent_name: str
     task: AgentTask
-    decision: Optional[AgentDecision] = None
-    output: Optional[dict[str, Any]] = None
+    decision: AgentDecision | None = None
+    output: dict[str, Any] | None = None
     success: bool = False
-    error: Optional[str] = None
+    error: str | None = None
     duration_ms: int = 0
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     llm_calls: int = 0
@@ -111,6 +120,7 @@ class AgentAuditLog(BaseModel):
 
 
 # ── Aria Typed Agent (wrapper sobre PydanticAI o nativo) ────────────────────
+
 
 class AriaTypedAgent:
     """
@@ -151,7 +161,9 @@ class AriaTypedAgent:
                 )
                 logger.info("[AriaTypedAgent] %s inicializado con PydanticAI", name)
             except Exception as exc:
-                logger.warning("[AriaTypedAgent] Error inicializando PydanticAI para %s: %s", name, exc)
+                logger.warning(
+                    "[AriaTypedAgent] Error inicializando PydanticAI para %s: %s", name, exc
+                )
         else:
             logger.info("[AriaTypedAgent] %s usando validación Pydantic nativa", name)
 
@@ -163,6 +175,7 @@ class AriaTypedAgent:
             Tuple de (output_tipado, audit_log)
         """
         import time
+
         start_ms = int(time.monotonic() * 1000)
 
         audit = AgentAuditLog(
@@ -197,7 +210,8 @@ class AriaTypedAgent:
     async def _run_with_aria_client(self, task: AgentTask) -> BaseModel:
         """Fallback: usa el ai_client nativo de Aria con validación Pydantic."""
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             schema = self.output_type.model_json_schema()
             response = await ai.think(
@@ -212,9 +226,7 @@ class AriaTypedAgent:
             logger.warning("[AriaTypedAgent] Fallback ai_client error: %s", exc)
 
         # Retornar output mínimo válido
-        return self.output_type.model_validate(
-            self._get_default_output(task)
-        )
+        return self.output_type.model_validate(self._get_default_output(task))
 
     def _get_default_output(self, task: AgentTask) -> dict[str, Any]:
         """Genera output por defecto según el tipo de salida."""
@@ -227,14 +239,14 @@ class AriaTypedAgent:
                 "tools_required": [],
                 "estimated_roi": 0.0,
             }
-        elif self.output_type == MarketAnalysis:
+        if self.output_type == MarketAnalysis:
             return {
                 "niche": task.context.get("niche", "general"),
                 "opportunities": ["Analizar mercado", "Identificar competidores"],
                 "recommended_strategy": "Investigación inicial",
                 "confidence_score": 0.5,
             }
-        elif self.output_type == RevenueStrategy:
+        if self.output_type == RevenueStrategy:
             return {
                 "primary_channel": "digital_products",
                 "action_plan": ["Analizar nicho", "Crear producto", "Publicar"],
@@ -265,11 +277,13 @@ class AriaTypedAgent:
 
 # ── Agentes Tipados Especializados de ARIA ───────────────────────────────────
 
+
 class AriaStrategyAgent(AriaTypedAgent):
     """
     Strategy Engine tipado de ARIA AI.
     Toma decisiones de alto nivel con razonamiento auditable.
     """
+
     def __init__(self) -> None:
         super().__init__(
             name="strategy",
@@ -288,6 +302,7 @@ class AriaMarketAnalystAgent(AriaTypedAgent):
     Market Intelligence Agent tipado de ARIA AI.
     Analiza mercados y oportunidades con output validado.
     """
+
     def __init__(self) -> None:
         super().__init__(
             name="market_analyst",
@@ -306,6 +321,7 @@ class AriaRevenueAgent(AriaTypedAgent):
     Revenue Strategy Agent tipado de ARIA AI.
     Diseña estrategias de monetización con proyecciones validadas.
     """
+
     def __init__(self) -> None:
         super().__init__(
             name="revenue_strategy",
@@ -324,6 +340,7 @@ class AriaCodeAgent(AriaTypedAgent):
     Autonomous Code Agent tipado de ARIA AI.
     Planifica tareas de desarrollo con output estructurado.
     """
+
     def __init__(self) -> None:
         super().__init__(
             name="code_planner",
@@ -338,6 +355,7 @@ class AriaCodeAgent(AriaTypedAgent):
 
 
 # ── Registry de Agentes Tipados ──────────────────────────────────────────────
+
 
 class AriaAgentRegistry:
     """
@@ -380,7 +398,9 @@ class AriaAgentRegistry:
         """Ejecuta un agente por nombre."""
         agent = self.get(name)
         if not agent:
-            raise ValueError(f"Agente '{name}' no encontrado. Disponibles: {list(self._agents.keys())}")
+            raise ValueError(
+                f"Agente '{name}' no encontrado. Disponibles: {list(self._agents.keys())}"
+            )
         return await agent.run(task)
 
     def get_all_stats(self) -> dict[str, Any]:

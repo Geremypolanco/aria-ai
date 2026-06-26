@@ -4,13 +4,12 @@ Generates complete self-contained HTML using Tailwind CSS (CDN).
 Supports multiple templates: saas, landing, portfolio, ecommerce, blog, restaurant.
 Uses AIModel.CODE for AI-powered generation with a beautiful fallback template.
 """
+
 from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Optional
-
-from apps.core.config import settings
+from typing import Any
 
 logger = logging.getLogger("aria.website_engine")
 
@@ -19,13 +18,33 @@ SUPPORTED_TEMPLATES = {"saas", "landing", "portfolio", "ecommerce", "blog", "res
 
 # Color palettes for landing page generator
 COLOR_SCHEMES: dict[str, dict[str, str]] = {
-    "blue":   {"primary": "blue-600",   "light": "blue-50",   "dark": "blue-900",  "accent": "blue-500"},
-    "purple": {"primary": "purple-600", "light": "purple-50", "dark": "purple-900","accent": "purple-500"},
-    "green":  {"primary": "green-600",  "light": "green-50",  "dark": "green-900", "accent": "green-500"},
-    "red":    {"primary": "red-600",    "light": "red-50",    "dark": "red-900",   "accent": "red-500"},
-    "orange": {"primary": "orange-600", "light": "orange-50", "dark": "orange-900","accent": "orange-500"},
-    "teal":   {"primary": "teal-600",   "light": "teal-50",   "dark": "teal-900",  "accent": "teal-500"},
-    "indigo": {"primary": "indigo-600", "light": "indigo-50", "dark": "indigo-900","accent": "indigo-500"},
+    "blue": {"primary": "blue-600", "light": "blue-50", "dark": "blue-900", "accent": "blue-500"},
+    "purple": {
+        "primary": "purple-600",
+        "light": "purple-50",
+        "dark": "purple-900",
+        "accent": "purple-500",
+    },
+    "green": {
+        "primary": "green-600",
+        "light": "green-50",
+        "dark": "green-900",
+        "accent": "green-500",
+    },
+    "red": {"primary": "red-600", "light": "red-50", "dark": "red-900", "accent": "red-500"},
+    "orange": {
+        "primary": "orange-600",
+        "light": "orange-50",
+        "dark": "orange-900",
+        "accent": "orange-500",
+    },
+    "teal": {"primary": "teal-600", "light": "teal-50", "dark": "teal-900", "accent": "teal-500"},
+    "indigo": {
+        "primary": "indigo-600",
+        "light": "indigo-50",
+        "dark": "indigo-900",
+        "accent": "indigo-500",
+    },
 }
 
 
@@ -45,6 +64,7 @@ class WebsiteEngine:
     async def _get_ai(self):
         if self._ai is None:
             from apps.core.tools.ai_client import get_ai_client_async
+
             self._ai = await get_ai_client_async()
         return self._ai
 
@@ -219,9 +239,11 @@ class WebsiteEngine:
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 
+
 def _import_ai_model_code():
     """Lazy import to avoid circular imports at module load time."""
     from apps.core.tools.ai_client import AIModel
+
     return AIModel.CODE
 
 

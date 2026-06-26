@@ -11,6 +11,7 @@ Agente de cumplimiento legal y ético que:
 Principio: ARIA opera SIEMPRE dentro de los limites legales y eticos.
 Si hay duda, consulta al supervisor humano via Telegram.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,26 +26,57 @@ logger = logging.getLogger("aria.compliance_agent")
 
 # Patrones absolutamente prohibidos — NUNCA se aprueban bajo ninguna circunstancia
 HARD_PROHIBITIONS: list[str] = [
-    "spam", "phishing", "malware", "ddos", "ransomware",
-    "hack", "unauthorized_access", "brute_force",
-    "fake_reviews", "astroturfing", "deceptive_advertising",
-    "copyright_infringement", "plagiarism", "data_theft",
-    "illegal_content", "pyramid_scheme", "ponzi_scheme",
-    "money_laundering", "tax_evasion", "insider_trading",
-    "identity_theft", "social_engineering_attack",
-    "scrape_without_permission", "gdpr_violation",
+    "spam",
+    "phishing",
+    "malware",
+    "ddos",
+    "ransomware",
+    "hack",
+    "unauthorized_access",
+    "brute_force",
+    "fake_reviews",
+    "astroturfing",
+    "deceptive_advertising",
+    "copyright_infringement",
+    "plagiarism",
+    "data_theft",
+    "illegal_content",
+    "pyramid_scheme",
+    "ponzi_scheme",
+    "money_laundering",
+    "tax_evasion",
+    "insider_trading",
+    "identity_theft",
+    "social_engineering_attack",
+    "scrape_without_permission",
+    "gdpr_violation",
 ]
 
 # Categorias de bajo riesgo — se auto-aprueban sin revision adicional
 AUTO_APPROVE_CATEGORIES: list[str] = [
-    "content_creation", "seo_optimization", "blog_post",
-    "email_newsletter", "social_media_post", "tweet",
-    "market_research", "trend_analysis", "competitor_analysis",
-    "product_listing", "affiliate_link", "product_description",
-    "api_integration", "code_improvement", "bug_fix",
-    "data_analysis", "performance_optimization",
-    "digital_product", "ebook", "template", "course_outline",
-    "keyword_research", "backlink_outreach",
+    "content_creation",
+    "seo_optimization",
+    "blog_post",
+    "email_newsletter",
+    "social_media_post",
+    "tweet",
+    "market_research",
+    "trend_analysis",
+    "competitor_analysis",
+    "product_listing",
+    "affiliate_link",
+    "product_description",
+    "api_integration",
+    "code_improvement",
+    "bug_fix",
+    "data_analysis",
+    "performance_optimization",
+    "digital_product",
+    "ebook",
+    "template",
+    "course_outline",
+    "keyword_research",
+    "backlink_outreach",
 ]
 
 
@@ -59,9 +91,13 @@ class ComplianceAgent(BaseAgent):
             name="compliance",
             description="Revision legal/etica — freno de emergencia — auto-aprobacion de bajo riesgo",
             capabilities=[
-                "legal_review", "ethics_check", "risk_assessment",
-                "policy_enforcement", "emergency_brake",
-                "auto_approval", "normative_learning",
+                "legal_review",
+                "ethics_check",
+                "risk_assessment",
+                "policy_enforcement",
+                "emergency_brake",
+                "auto_approval",
+                "normative_learning",
             ],
         )
         self._emergency_brake_active: bool = False
@@ -73,16 +109,15 @@ class ComplianceAgent(BaseAgent):
         mode = context.get("mode", "review")
         if mode == "review":
             return await self._review_action(context)
-        elif mode == "emergency_brake":
+        if mode == "emergency_brake":
             return await self._activate_emergency_brake(context.get("reason", "Activacion manual"))
-        elif mode == "reset":
+        if mode == "reset":
             return self._deactivate_emergency_brake()
-        elif mode == "status":
+        if mode == "status":
             return self._get_status()
-        elif mode == "learn_normative":
+        if mode == "learn_normative":
             return await self._learn_normative(context.get("source", ""))
-        else:
-            return await self._review_action(context)
+        return await self._review_action(context)
 
     # ══════════════════════════════════════════════════════════════
     # REVISION DE ACCIONES
@@ -140,7 +175,9 @@ class ComplianceAgent(BaseAgent):
                 }
 
         # 3. Acciones con costo o impacto alto — revision con IA
-        if amount_usd > 0 or any(kw in full_text for kw in ["delete", "deploy", "publish", "send_bulk", "purchase"]):
+        if amount_usd > 0 or any(
+            kw in full_text for kw in ["delete", "deploy", "publish", "send_bulk", "purchase"]
+        ):
             return await self._ai_review(action_type, description, amount_usd)
 
         # 4. Default: aprobar con riesgo medio
@@ -162,6 +199,7 @@ class ComplianceAgent(BaseAgent):
         """Revision detallada con IA para acciones de mayor impacto."""
         try:
             from apps.core.tools.ai_client import get_ai_client
+
             ai = get_ai_client()
             if not ai:
                 return {
@@ -277,6 +315,7 @@ class ComplianceAgent(BaseAgent):
 
         try:
             from apps.core.tools.ai_client import get_ai_client
+
             ai = get_ai_client()
             if not ai:
                 return {"success": False, "error": "IA no disponible"}

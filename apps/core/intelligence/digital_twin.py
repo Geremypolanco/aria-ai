@@ -9,21 +9,24 @@ ARIA no solo ve datos, entiende las interconexiones de la organización.
 
 Referencia: https://networkx.org/
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.digital_twin")
 
 # ── NetworkX Import con fallback ─────────────────────────────────────────────
 try:
     import networkx as nx
+
     NETWORKX_AVAILABLE = True
     logger.info("[NetworkX] Librería cargada correctamente.")
 except ImportError:
     NETWORKX_AVAILABLE = False
     logger.warning("[NetworkX] networkx no instalado.")
+
 
 class AriaDigitalTwin:
     """
@@ -34,7 +37,9 @@ class AriaDigitalTwin:
     def __init__(self) -> None:
         self.graph = nx.DiGraph() if NETWORKX_AVAILABLE else None
 
-    def add_entity(self, entity_id: str, entity_type: str, properties: dict[str, Any] | None = None):
+    def add_entity(
+        self, entity_id: str, entity_type: str, properties: dict[str, Any] | None = None
+    ):
         """Añade una entidad (Cliente, Producto, etc.) al gemelo digital."""
         if self.graph is not None:
             self.graph.add_node(entity_id, type=entity_type, **(properties or {}))
@@ -44,7 +49,9 @@ class AriaDigitalTwin:
         """Define una relación entre dos entidades."""
         if self.graph is not None:
             self.graph.add_edge(source_id, target_id, relation=rel_type, weight=weight)
-            logger.debug("[DigitalTwin] Relación añadida: %s -[%s]-> %s", source_id, rel_type, target_id)
+            logger.debug(
+                "[DigitalTwin] Relación añadida: %s -[%s]-> %s", source_id, rel_type, target_id
+            )
 
     def simulate_impact(self, change_node: str, new_weight: float) -> dict[str, Any]:
         """Simula el impacto de un cambio en un nodo específico."""
@@ -55,6 +62,7 @@ class AriaDigitalTwin:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _digital_twin_instance: AriaDigitalTwin | None = None
+
 
 def get_digital_twin() -> AriaDigitalTwin:
     """Retorna el singleton del gemelo digital."""

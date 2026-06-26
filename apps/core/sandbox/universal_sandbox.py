@@ -13,15 +13,12 @@ Características:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import os
-import subprocess
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger("aria.sandbox")
 
@@ -32,13 +29,13 @@ class SandboxSession:
     def __init__(self, session_id: str = None, language: str = "python"):
         self.session_id = session_id or str(uuid.uuid4())[:12]
         self.language = language
-        self.created_at = datetime.now(timezone.utc)
+        self.created_at = datetime.now(UTC)
         self.last_activity = self.created_at
-        self.files: Dict[str, str] = {}
-        self.environment_vars: Dict[str, str] = {}
-        self.installed_packages: List[str] = []
-        self.execution_history: List[Dict[str, Any]] = []
-        self.process: Optional[asyncio.subprocess.Process] = None
+        self.files: dict[str, str] = {}
+        self.environment_vars: dict[str, str] = {}
+        self.installed_packages: list[str] = []
+        self.execution_history: list[dict[str, Any]] = []
+        self.process: asyncio.subprocess.Process | None = None
         self.working_directory = Path(tempfile.mkdtemp(prefix=f"aria_{session_id}_"))
 
     async def initialize(self) -> bool:
@@ -84,10 +81,10 @@ class SandboxSession:
         except Exception as exc:
             logger.error(f"[Sandbox] Error iniciando REPL: {exc}")
 
-    async def execute_code(self, code: str, timeout: int = 30) -> Dict[str, Any]:
+    async def execute_code(self, code: str, timeout: int = 30) -> dict[str, Any]:
         """Ejecuta código en el sandbox."""
         execution_id = str(uuid.uuid4())[:8]
-        self.last_activity = datetime.now(timezone.utc)
+        self.last_activity = datetime.now(UTC)
 
         logger.info(f"[Sandbox] Ejecutando código en sesión {self.session_id}")
 
@@ -102,13 +99,15 @@ class SandboxSession:
                 result = await self._execute_generic(code, timeout)
 
             # Registrar ejecución
-            self.execution_history.append({
-                "execution_id": execution_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "code": code[:500],
-                "success": result.get("success", False),
-                "output": result.get("output", "")[:500],
-            })
+            self.execution_history.append(
+                {
+                    "execution_id": execution_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "code": code[:500],
+                    "success": result.get("success", False),
+                    "output": result.get("output", "")[:500],
+                }
+            )
 
             return {
                 "execution_id": execution_id,
@@ -118,7 +117,7 @@ class SandboxSession:
                 "execution_time": result.get("execution_time", 0),
             }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {
                 "execution_id": execution_id,
                 "success": False,
@@ -133,7 +132,7 @@ class SandboxSession:
                 "execution_time": 0,
             }
 
-    async def _execute_python(self, code: str, timeout: int) -> Dict[str, Any]:
+    async def _execute_python(self, code: str, timeout: int) -> dict[str, Any]:
         """Ejecuta código Python."""
         start_time = datetime.now()
 
@@ -152,9 +151,7 @@ class SandboxSession:
                 timeout=timeout,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=timeout
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
             execution_time = (datetime.now() - start_time).total_seconds()
 
@@ -172,7 +169,7 @@ class SandboxSession:
                 "execution_time": (datetime.now() - start_time).total_seconds(),
             }
 
-    async def _execute_javascript(self, code: str, timeout: int) -> Dict[str, Any]:
+    async def _execute_javascript(self, code: str, timeout: int) -> dict[str, Any]:
         """Ejecuta código JavaScript/Node.js."""
         start_time = datetime.now()
 
@@ -189,9 +186,7 @@ class SandboxSession:
                 timeout=timeout,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=timeout
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
             execution_time = (datetime.now() - start_time).total_seconds()
 
@@ -209,7 +204,7 @@ class SandboxSession:
                 "execution_time": (datetime.now() - start_time).total_seconds(),
             }
 
-    async def _execute_bash(self, code: str, timeout: int) -> Dict[str, Any]:
+    async def _execute_bash(self, code: str, timeout: int) -> dict[str, Any]:
         """Ejecuta comandos Bash."""
         start_time = datetime.now()
 
@@ -221,9 +216,7 @@ class SandboxSession:
                 cwd=str(self.working_directory),
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=timeout
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
             execution_time = (datetime.now() - start_time).total_seconds()
 
@@ -241,14 +234,14 @@ class SandboxSession:
                 "execution_time": (datetime.now() - start_time).total_seconds(),
             }
 
-    async def _execute_generic(self, code: str, timeout: int) -> Dict[str, Any]:
+    async def _execute_generic(self, code: str, timeout: int) -> dict[str, Any]:
         """Fallback para lenguajes genéricos."""
         return {
             "success": False,
             "error": f"Lenguaje {self.language} no soportado directamente",
         }
 
-    async def install_package(self, package: str) -> Dict[str, Any]:
+    async def install_package(self, package: str) -> dict[str, Any]:
         """Instala un paquete en el sandbox."""
         logger.info(f"[Sandbox] Instalando paquete {package} en sesión {self.session_id}")
 
@@ -260,7 +253,10 @@ class SandboxSession:
             elif self.language == "go":
                 cmd = ["go", "get", package]
             else:
-                return {"success": False, "error": f"No se puede instalar paquetes en {self.language}"}
+                return {
+                    "success": False,
+                    "error": f"No se puede instalar paquetes en {self.language}",
+                }
 
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -269,9 +265,7 @@ class SandboxSession:
                 cwd=str(self.working_directory),
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=60
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
 
             if process.returncode == 0:
                 self.installed_packages.append(package)
@@ -297,7 +291,7 @@ class SandboxSession:
             logger.error(f"[Sandbox] Error escribiendo archivo: {exc}")
             return False
 
-    async def read_file(self, path: str) -> Optional[str]:
+    async def read_file(self, path: str) -> str | None:
         """Lee un archivo del sandbox."""
         try:
             file_path = self.working_directory / path
@@ -308,12 +302,16 @@ class SandboxSession:
             logger.error(f"[Sandbox] Error leyendo archivo: {exc}")
             return None
 
-    async def list_files(self, directory: str = ".") -> List[str]:
+    async def list_files(self, directory: str = ".") -> list[str]:
         """Lista archivos en un directorio del sandbox."""
         try:
             dir_path = self.working_directory / directory
             if dir_path.exists():
-                return [str(f.relative_to(self.working_directory)) for f in dir_path.rglob("*") if f.is_file()]
+                return [
+                    str(f.relative_to(self.working_directory))
+                    for f in dir_path.rglob("*")
+                    if f.is_file()
+                ]
             return []
         except Exception as exc:
             logger.error(f"[Sandbox] Error listando archivos: {exc}")
@@ -328,6 +326,7 @@ class SandboxSession:
 
             # Eliminar archivos temporales
             import shutil
+
             shutil.rmtree(self.working_directory, ignore_errors=True)
 
             logger.info(f"[Sandbox] Sesión {self.session_id} limpiada")
@@ -339,7 +338,7 @@ class SandboxManager:
     """Gestor de sesiones de sandbox."""
 
     def __init__(self):
-        self.sessions: Dict[str, SandboxSession] = {}
+        self.sessions: dict[str, SandboxSession] = {}
 
     async def create_session(self, language: str = "python") -> SandboxSession:
         """Crea una nueva sesión de sandbox."""
@@ -349,7 +348,7 @@ class SandboxManager:
             return session
         return None
 
-    async def get_session(self, session_id: str) -> Optional[SandboxSession]:
+    async def get_session(self, session_id: str) -> SandboxSession | None:
         """Obtiene una sesión existente."""
         return self.sessions.get(session_id)
 

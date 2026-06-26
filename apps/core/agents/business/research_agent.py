@@ -4,10 +4,13 @@ Research Agent — Investigación profunda de mercado, competidores y tendencias
 Combina búsqueda web, análisis de noticias, HuggingFace models y síntesis con IA
 para producir reportes de inteligencia accionables.
 """
+
 from __future__ import annotations
+
 import asyncio
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
 
 logger = logging.getLogger("aria.business.research")
@@ -25,15 +28,19 @@ class ResearchAgent(BaseAgent):
             name="research",
             description="Investigación profunda: mercado, competidores, tendencias, datos reales de internet",
             capabilities=[
-                "market_research", "competitor_analysis", "trend_analysis",
-                "web_research", "data_synthesis", "report_generation",
+                "market_research",
+                "competitor_analysis",
+                "trend_analysis",
+                "web_research",
+                "data_synthesis",
+                "report_generation",
             ],
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission     = context.get("mission", "Análisis de mercado general")
-        topic       = context.get("topic", mission)
-        depth       = context.get("depth", "deep")  # quick | deep | comprehensive
+        mission = context.get("mission", "Análisis de mercado general")
+        topic = context.get("topic", mission)
+        depth = context.get("depth", "deep")  # quick | deep | comprehensive
         output_type = context.get("output", "report")  # report | bullets | pdf
 
         results: dict[str, Any] = {"success": True, "agent": "research", "topic": topic}
@@ -65,6 +72,7 @@ class ResearchAgent(BaseAgent):
         # Generar PDF si se solicita
         if output_type == "pdf":
             from apps.core.tools.pdf_generator import generate_pdf
+
             pdf_result = await generate_pdf(
                 title=f"Reporte: {topic[:50]}",
                 content=report,
@@ -78,11 +86,13 @@ class ResearchAgent(BaseAgent):
 
     async def _quick_research(self, topic: str) -> dict:
         from apps.core.tools.web_tools import WebTools
+
         return await WebTools().search_web(topic, num_results=5)
 
     async def _deep_research(self, topic: str) -> dict:
         """Búsqueda profunda: múltiples queries + fetch de páginas top."""
         from apps.core.tools.web_tools import WebTools
+
         wt = WebTools()
 
         queries = [
@@ -109,7 +119,7 @@ class ResearchAgent(BaseAgent):
         if urls_to_fetch:
             fetch_tasks = [wt.fetch_page(url, max_chars=2000) for url in urls_to_fetch[:3]]
             pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
-            for url, page in zip(urls_to_fetch, pages):
+            for url, page in zip(urls_to_fetch, pages, strict=False):
                 if isinstance(page, dict) and page.get("success"):
                     all_results.append({"url": url, "content": page.get("text", "")[:1500]})
 
@@ -117,6 +127,7 @@ class ResearchAgent(BaseAgent):
 
     async def _analyze_trends(self, topic: str) -> dict:
         from apps.core.tools.web_tools import WebTools
+
         wt = WebTools()
         hn, rd = await asyncio.gather(
             wt.get_hacker_news_trending(limit=10),
@@ -126,16 +137,23 @@ class ResearchAgent(BaseAgent):
         relevant_hn = []
         relevant_rd = []
         if isinstance(hn, dict) and hn.get("success"):
-            relevant_hn = [s for s in hn.get("stories", [])
-                          if any(w in (s.get("title", "")).lower() for w in topic.lower().split())][:5]
+            relevant_hn = [
+                s
+                for s in hn.get("stories", [])
+                if any(w in (s.get("title", "")).lower() for w in topic.lower().split())
+            ][:5]
         if isinstance(rd, dict) and rd.get("success"):
-            relevant_rd = [p for p in rd.get("posts", [])
-                          if any(w in (p.get("title", "")).lower() for w in topic.lower().split())][:5]
+            relevant_rd = [
+                p
+                for p in rd.get("posts", [])
+                if any(w in (p.get("title", "")).lower() for w in topic.lower().split())
+            ][:5]
         return {"hackernews": relevant_hn, "reddit": relevant_rd}
 
     async def _analyze_sentiment(self, topic: str) -> dict:
         try:
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
             return await HuggingFaceSuite().analyze_sentiment(f"{topic} market trends growth")
         except Exception:
             return {}

@@ -8,22 +8,25 @@ Utiliza Ray y RLlib para optimizar decisiones económicas:
 
 Referencia: https://docs.ray.io/en/latest/rllib/index.html
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.economic_brain")
 
 # ── Ray Import con fallback ──────────────────────────────────────────────────
 try:
     import ray
-    from ray import rllib
+    from ray import rllib  # noqa: F401
+
     RAY_AVAILABLE = True
     logger.info("[Ray] SDK cargado correctamente.")
 except ImportError:
     RAY_AVAILABLE = False
     logger.warning("[Ray] ray/rllib no instalado.")
+
 
 class AriaEconomicBrain:
     """
@@ -42,16 +45,12 @@ class AriaEconomicBrain:
         """Optimiza la distribución de presupuesto basada en el estado actual del mercado."""
         logger.info("[EconomicBrain] Calculando asignación óptima de presupuesto...")
         # Simulación de política de RL
-        return {
-            "LinkedIn": 0.45,
-            "YouTube": 0.25,
-            "SEO": 0.20,
-            "Email": 0.10
-        }
+        return {"LinkedIn": 0.45, "YouTube": 0.25, "SEO": 0.20, "Email": 0.10}
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _economic_brain_instance: AriaEconomicBrain | None = None
+
 
 def get_economic_brain() -> AriaEconomicBrain:
     """Retorna el singleton del cerebro económico."""

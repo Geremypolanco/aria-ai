@@ -15,24 +15,27 @@ Integración con Aria:
 
 Referencia: https://github.com/getzep/zep
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.zep_client")
 
 # ── Zep Import con fallback ──────────────────────────────────────────────────
 try:
     from zep_cloud.client import AsyncZep
-    from zep_cloud.types import Message, RoleType
+    from zep_cloud.types import Message, RoleType  # noqa: F401
+
     ZEP_AVAILABLE = True
     logger.info("[Zep] Librería zep-cloud cargada correctamente.")
 except ImportError:
     try:
         # Intentar zep-python (versión community)
         from zep_python.client import AsyncZep  # type: ignore[no-redef]
+
         ZEP_AVAILABLE = True
         logger.info("[Zep] Librería zep-python cargada correctamente.")
     except ImportError:
@@ -46,6 +49,7 @@ except ImportError:
 
 
 # ── Implementación Fallback con Supabase ─────────────────────────────────────
+
 
 class SupabaseMemoryFallback:
     """
@@ -64,6 +68,7 @@ class SupabaseMemoryFallback:
         # Persistir en Supabase si está disponible
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             for msg in messages:
                 await db.log_error(
@@ -80,14 +85,12 @@ class SupabaseMemoryFallback:
     async def search_memory(self, session_id: str, query: str, limit: int = 5) -> list[dict]:
         msgs = self._sessions.get(session_id, [])
         query_lower = query.lower()
-        results = [
-            m for m in msgs
-            if query_lower in m.get("content", "").lower()
-        ]
+        results = [m for m in msgs if query_lower in m.get("content", "").lower()]
         return results[-limit:]
 
 
 # ── Cliente Principal de Zep para ARIA ──────────────────────────────────────
+
 
 class AriaZepClient:
     """
@@ -146,7 +149,7 @@ class AriaZepClient:
             self._initialized = True
             return False
 
-    async def ensure_session(self, session_id: str, user_id: Optional[str] = None) -> bool:
+    async def ensure_session(self, session_id: str, user_id: str | None = None) -> bool:
         """
         Asegura que existe una sesión en Zep.
 
@@ -194,7 +197,7 @@ class AriaZepClient:
         message_dict = {
             "role": role,
             "content": content,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "metadata": metadata or {},
         }
 
@@ -258,7 +261,7 @@ class AriaZepClient:
                     }
                     for r in (results or [])
                 ]
-            elif self._fallback:
+            if self._fallback:
                 return await self._fallback.search_memory(session_id, query, limit)
 
         except Exception as exc:
@@ -292,7 +295,9 @@ class AriaZepClient:
                         {
                             "role": m.role if hasattr(m, "role") else "unknown",
                             "content": m.content if hasattr(m, "content") else str(m),
-                            "timestamp": m.created_at.isoformat() if hasattr(m, "created_at") else "",
+                            "timestamp": (
+                                m.created_at.isoformat() if hasattr(m, "created_at") else ""
+                            ),
                         }
                         for m in (memory.messages or [])[-limit:]
                     ]
@@ -337,7 +342,7 @@ class AriaZepClient:
                 "agent": agent_name,
                 "success": success,
                 "roi": roi,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             },
         )
 
@@ -377,6 +382,7 @@ def get_zep_client() -> AriaZepClient:
     global _zep_instance
     if _zep_instance is None:
         import os
+
         _zep_instance = AriaZepClient(
             api_key=os.getenv("ZEP_API_KEY", ""),
         )

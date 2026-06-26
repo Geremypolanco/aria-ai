@@ -14,23 +14,23 @@ Referencia:
   - Aider: https://github.com/Aider-AI/aider
   - SWE-agent: https://github.com/SWE-agent/SWE-agent
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
-import subprocess
-import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.autonomous_coder")
 
 # ── Aider Import con fallback ────────────────────────────────────────────────
 try:
     from aider.coders import Coder
-    from aider.models import Model
     from aider.io import InputOutput
+    from aider.models import Model
+
     AIDER_AVAILABLE = True
     logger.info("[Aider] Librería cargada correctamente.")
 except ImportError:
@@ -46,7 +46,8 @@ except ImportError:
 
 # ── SWE-agent Import con fallback ────────────────────────────────────────────
 try:
-    import sweagent
+    import sweagent  # noqa: F401
+
     SWEAGENT_AVAILABLE = True
     logger.info("[SWE-agent] Librería cargada correctamente.")
 except ImportError:
@@ -59,6 +60,7 @@ except ImportError:
 
 
 # ── Motor de Aider ───────────────────────────────────────────────────────────
+
 
 class AriaAiderEngine:
     """
@@ -131,13 +133,12 @@ class AriaAiderEngine:
                 auto_commit=auto_commit,
                 commit_message=commit_message,
             )
-        else:
-            return await self._modify_with_subprocess(
-                file_path=str(full_path),
-                instruction=instruction,
-                auto_commit=auto_commit,
-                commit_message=commit_message,
-            )
+        return await self._modify_with_subprocess(
+            file_path=str(full_path),
+            instruction=instruction,
+            auto_commit=auto_commit,
+            commit_message=commit_message,
+        )
 
     async def _modify_with_aider(
         self,
@@ -209,10 +210,12 @@ class AriaAiderEngine:
         try:
             cmd = [
                 "aider",
-                "--model", self._model,
+                "--model",
+                self._model,
                 "--yes",
                 "--no-pretty",
-                "--message", instruction,
+                "--message",
+                instruction,
                 file_path,
             ]
 
@@ -252,7 +255,7 @@ class AriaAiderEngine:
             self._history.append(result)
             return result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {
                 "success": False,
                 "error": "Timeout en Aider (120s)",
@@ -334,12 +337,16 @@ class AriaAiderEngine:
             Dict con la URL del PR creado
         """
         import re
+
         branch = branch_name or f"aria/auto-{re.sub(r'[^a-z0-9-]', '-', title.lower())[:40]}"
 
         try:
             # Crear rama
             await asyncio.create_subprocess_exec(
-                "git", "checkout", "-b", branch,
+                "git",
+                "checkout",
+                "-b",
+                branch,
                 cwd=str(self._repo_path),
             )
 
@@ -350,10 +357,15 @@ class AriaAiderEngine:
 
             # Crear PR con GitHub CLI
             process = await asyncio.create_subprocess_exec(
-                "gh", "pr", "create",
-                "--title", title,
-                "--body", description,
-                "--head", branch,
+                "gh",
+                "pr",
+                "create",
+                "--title",
+                title,
+                "--body",
+                description,
+                "--head",
+                branch,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(self._repo_path),
@@ -369,12 +381,11 @@ class AriaAiderEngine:
                     "branch": branch,
                     "title": title,
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": stderr.decode()[:500],
-                    "branch": branch,
-                }
+            return {
+                "success": False,
+                "error": stderr.decode()[:500],
+                "branch": branch,
+            }
 
         except Exception as exc:
             logger.error("[Aider] Error creando PR: %s", exc)
@@ -386,6 +397,7 @@ class AriaAiderEngine:
 
 
 # ── Motor de SWE-agent ───────────────────────────────────────────────────────
+
 
 class AriaSWEAgentEngine:
     """
@@ -434,8 +446,7 @@ class AriaSWEAgentEngine:
         """
         if SWEAGENT_AVAILABLE:
             return await self._resolve_with_sweagent(repo, issue_number, create_pr)
-        else:
-            return await self._resolve_with_github_api(repo, issue_number, create_pr)
+        return await self._resolve_with_github_api(repo, issue_number, create_pr)
 
     async def _resolve_with_sweagent(
         self,
@@ -446,11 +457,17 @@ class AriaSWEAgentEngine:
         """Resuelve issue usando SWE-agent nativo."""
         try:
             cmd = [
-                "python", "-m", "sweagent.run",
-                "--model_name", self._model,
-                "--data.type", "github",
-                f"--data.repo_name", repo,
-                f"--data.issue_number", str(issue_number),
+                "python",
+                "-m",
+                "sweagent.run",
+                "--model_name",
+                self._model,
+                "--data.type",
+                "github",
+                "--data.repo_name",
+                repo,
+                "--data.issue_number",
+                str(issue_number),
             ]
 
             if create_pr:
@@ -482,7 +499,7 @@ class AriaSWEAgentEngine:
             self._history.append(result)
             return result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {
                 "success": False,
                 "error": "Timeout en SWE-agent (300s)",
@@ -505,6 +522,7 @@ class AriaSWEAgentEngine:
         """
         try:
             import httpx
+
             github_token = os.getenv("GITHUB_TOKEN", "")
             headers = {"Authorization": f"token {github_token}"} if github_token else {}
 
@@ -520,7 +538,8 @@ class AriaSWEAgentEngine:
 
             # Analizar con IA
             try:
-                from apps.core.tools.ai_client import get_ai_client, AIModel
+                from apps.core.tools.ai_client import AIModel, get_ai_client
+
                 ai = get_ai_client()
                 analysis = await ai.think(
                     system=(
@@ -579,7 +598,8 @@ class AriaSWEAgentEngine:
             file_list = "\n".join(str(f.relative_to(repo_path)) for f in python_files)
 
             try:
-                from apps.core.tools.ai_client import get_ai_client, AIModel
+                from apps.core.tools.ai_client import AIModel, get_ai_client
+
                 ai = get_ai_client()
                 analysis = await ai.think(
                     system=(
@@ -615,6 +635,7 @@ class AriaSWEAgentEngine:
 
 
 # ── Motor Unificado de Codificación Autónoma ────────────────────────────────
+
 
 class AriaAutonomousCoderEngine:
     """
@@ -667,14 +688,14 @@ class AriaAutonomousCoderEngine:
                 issue_number=ctx["issue_number"],
             )
 
-        elif improvement_type in ("feature", "bug_fix", "refactor"):
+        if improvement_type in ("feature", "bug_fix", "refactor"):
             instruction = ctx.get("instruction", f"Improve {target}: {improvement_type}")
             return await self.aider.modify_file(
                 file_path=target,
                 instruction=instruction,
             )
 
-        elif improvement_type == "test":
+        if improvement_type == "test":
             instruction = f"Add comprehensive unit tests for {target}"
             test_file = target.replace(".py", "_test.py").replace("apps/", "tests/")
             return await self.aider.create_feature(

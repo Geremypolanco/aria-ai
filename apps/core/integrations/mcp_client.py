@@ -5,12 +5,14 @@ Este cliente permite a ARIA conectarse e interactuar con cualquier servidor MCP,
 extendiendo dinámicamente sus capacidades con nuevas herramientas, recursos y prompts.
 """
 
-import asyncio
-import json
 import logging
-from typing import Any, Dict, List, Optional, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import httpx
+
+if TYPE_CHECKING:
+    import asyncio
 
 logger = logging.getLogger("aria.mcp_client")
 
@@ -18,17 +20,17 @@ logger = logging.getLogger("aria.mcp_client")
 class McpClient:
     """Cliente MCP para interactuar con servidores que implementan el Model Context Protocol."""
 
-    def __init__(self, server_url: str, client_info: Dict[str, str]):
+    def __init__(self, server_url: str, client_info: dict[str, str]):
         self.server_url = server_url
         self.client_info = client_info
-        self.session_id: Optional[str] = None
-        self.capabilities: Dict[str, Any] = {}
-        self.tools: Dict[str, Any] = {}
-        self.resources: Dict[str, Any] = {}
-        self.prompts: Dict[str, Any] = {}
+        self.session_id: str | None = None
+        self.capabilities: dict[str, Any] = {}
+        self.tools: dict[str, Any] = {}
+        self.resources: dict[str, Any] = {}
+        self.prompts: dict[str, Any] = {}
         self._request_id_counter = 0
-        self._response_callbacks: Dict[int, asyncio.Future] = {}
-        self._notification_handlers: Dict[str, List[Callable]] = {}
+        self._response_callbacks: dict[int, asyncio.Future] = {}
+        self._notification_handlers: dict[str, list[Callable]] = {}
 
     async def connect(self) -> bool:
         """Establece conexión e inicializa el servidor MCP."""
@@ -50,18 +52,19 @@ class McpClient:
             if response and response.get("capabilities"):
                 self.session_id = response.get("sessionId", "default")
                 self.capabilities = response["capabilities"]
-                logger.info(f"[MCP Client] Conectado a {self.server_url}. Session ID: {self.session_id}")
+                logger.info(
+                    f"[MCP Client] Conectado a {self.server_url}. Session ID: {self.session_id}"
+                )
                 logger.debug(f"[MCP Client] Capacidades del servidor: {self.capabilities}")
                 await self.discover_all_primitives()
                 return True
-            else:
-                logger.error(f"[MCP Client] Fallo en inicialización: {response}")
-                return False
+            logger.error(f"[MCP Client] Fallo en inicialización: {response}")
+            return False
         except Exception as exc:
             logger.error(f"[MCP Client] Error al conectar: {exc}")
             return False
 
-    async def _send_request(self, method: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def _send_request(self, method: str, params: dict[str, Any]) -> dict[str, Any] | None:
         """Envía una solicitud JSON-RPC al servidor MCP."""
         self._request_id_counter += 1
         request_id = self._request_id_counter
@@ -81,12 +84,11 @@ class McpClient:
 
                 if "result" in response_json:
                     return response_json["result"]
-                elif "error" in response_json:
+                if "error" in response_json:
                     logger.error("[MCP Client] Error del servidor: %s", response_json["error"])
                     return None
-                else:
-                    logger.warning(f"[MCP Client] Respuesta inesperada: {response_json}")
-                    return None
+                logger.warning(f"[MCP Client] Respuesta inesperada: {response_json}")
+                return None
         except httpx.HTTPStatusError as e:
             logger.error(f"[MCP Client] Error HTTP {e.response.status_code}: {e.response.text}")
             return None
@@ -98,12 +100,12 @@ class McpClient:
         """Descubre todas las herramientas, recursos y prompts disponibles."""
         if self.capabilities.get("tools"):
             await self.list_tools()
-        if self.capabilities.get("resources"): # Asumiendo que los recursos también se listan
+        if self.capabilities.get("resources"):  # Asumiendo que los recursos también se listan
             await self.list_resources()
-        if self.capabilities.get("prompts"): # Asumiendo que los prompts también se listan
+        if self.capabilities.get("prompts"):  # Asumiendo que los prompts también se listan
             await self.list_prompts()
 
-    async def list_tools(self) -> List[Dict[str, Any]]:
+    async def list_tools(self) -> list[dict[str, Any]]:
         """Lista las herramientas disponibles en el servidor MCP."""
         response = await self._send_request(method="tools/list", params={})
         if response and response.get("tools"):
@@ -112,13 +114,18 @@ class McpClient:
             return list(self.tools.values())
         return []
 
-    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
         """Invoca una herramienta en el servidor MCP."""
         if tool_name not in self.tools:
             logger.warning(f"[MCP Client] Herramienta [33m{tool_name}[0m no encontrada.")
-            return {"isError": True, "content": [{"type": "text", "text": f"Herramienta {tool_name} no encontrada."}]}
+            return {
+                "isError": True,
+                "content": [{"type": "text", "text": f"Herramienta {tool_name} no encontrada."}],
+            }
 
-        logger.info(f"[MCP Client] Llamando herramienta [32m{tool_name}[0m con argumentos: {arguments}")
+        logger.info(
+            f"[MCP Client] Llamando herramienta [32m{tool_name}[0m con argumentos: {arguments}"
+        )
         response = await self._send_request(
             method="tools/call",
             params={
@@ -128,7 +135,7 @@ class McpClient:
         )
         return response
 
-    async def list_resources(self) -> List[Dict[str, Any]]:
+    async def list_resources(self) -> list[dict[str, Any]]:
         """Lista los recursos disponibles en el servidor MCP."""
         response = await self._send_request(method="resources/list", params={})
         if response and response.get("resources"):
@@ -137,12 +144,12 @@ class McpClient:
             return list(self.resources.values())
         return []
 
-    async def get_resource(self, uri: str) -> Optional[Dict[str, Any]]:
+    async def get_resource(self, uri: str) -> dict[str, Any] | None:
         """Obtiene el contenido de un recurso del servidor MCP."""
         response = await self._send_request(method="resources/get", params={"uri": uri})
         return response
 
-    async def list_prompts(self) -> List[Dict[str, Any]]:
+    async def list_prompts(self) -> list[dict[str, Any]]:
         """Lista los prompts disponibles en el servidor MCP."""
         response = await self._send_request(method="prompts/list", params={})
         if response and response.get("prompts"):
@@ -151,7 +158,7 @@ class McpClient:
             return list(self.prompts.values())
         return []
 
-    async def get_prompt(self, name: str) -> Optional[Dict[str, Any]]:
+    async def get_prompt(self, name: str) -> dict[str, Any] | None:
         """Obtiene un prompt del servidor MCP."""
         response = await self._send_request(method="prompts/get", params={"name": name})
         return response
@@ -162,7 +169,7 @@ class McpClient:
             self._notification_handlers[method] = []
         self._notification_handlers[method].append(handler)
 
-    async def _handle_notification(self, notification: Dict[str, Any]):
+    async def _handle_notification(self, notification: dict[str, Any]):
         """Maneja notificaciones entrantes."""
         method = notification.get("method")
         if method and method in self._notification_handlers:
@@ -184,9 +191,11 @@ class McpManager:
     """Gestiona múltiples clientes MCP."""
 
     def __init__(self):
-        self.clients: Dict[str, McpClient] = {}
+        self.clients: dict[str, McpClient] = {}
 
-    async def add_server(self, server_name: str, server_url: str, client_info: Dict[str, str]) -> Optional[McpClient]:
+    async def add_server(
+        self, server_name: str, server_url: str, client_info: dict[str, str]
+    ) -> McpClient | None:
         """Añade y conecta un nuevo servidor MCP."""
         client = McpClient(server_url, client_info)
         if await client.connect():
@@ -194,11 +203,13 @@ class McpManager:
             return client
         return None
 
-    def get_client(self, server_name: str) -> Optional[McpClient]:
+    def get_client(self, server_name: str) -> McpClient | None:
         """Obtiene un cliente MCP por nombre."""
         return self.clients.get(server_name)
 
-    async def call_tool_on_server(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def call_tool_on_server(
+        self, server_name: str, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Llama a una herramienta en un servidor MCP específico."""
         client = self.get_client(server_name)
         if client:

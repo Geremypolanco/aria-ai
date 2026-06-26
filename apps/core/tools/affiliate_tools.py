@@ -11,6 +11,7 @@ Plataformas soportadas:
 Principio: Si una API no esta configurada, lo dice explicitamente.
 NUNCA retorna datos hardcodeados como si fueran resultados reales de busqueda.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -18,8 +19,7 @@ import hashlib
 import hmac
 import json
 import logging
-from typing import Any, Optional
-from urllib.parse import quote_plus
+from typing import Any
 
 import httpx
 
@@ -35,14 +35,16 @@ class AffiliateTools:
 
     # ── AMAZON ASSOCIATES ─────────────────────────────────
 
-    def build_amazon_link(self, asin: str, tag: Optional[str] = None) -> str:
+    def build_amazon_link(self, asin: str, tag: str | None = None) -> str:
         """
         Construye un link de afiliado Amazon usando el tag de Associates.
         Requiere AMAZON_ASSOCIATE_TAG configurado.
         """
         affiliate_tag = tag or getattr(settings, "AMAZON_ASSOCIATE_TAG", None)
         if not affiliate_tag:
-            logger.warning("[Affiliate] AMAZON_ASSOCIATE_TAG no configurado — link sin tag de afiliado")
+            logger.warning(
+                "[Affiliate] AMAZON_ASSOCIATE_TAG no configurado — link sin tag de afiliado"
+            )
             return f"https://www.amazon.com/dp/{asin}"
         return f"https://www.amazon.com/dp/{asin}?tag={affiliate_tag}"
 
@@ -70,7 +72,7 @@ class AffiliateTools:
             return {
                 "success": False,
                 "error": f"Amazon PA API no disponible. Faltan secrets: {', '.join(missing)}. "
-                         f"Registrate en: https://affiliate-program.amazon.com/",
+                f"Registrate en: https://affiliate-program.amazon.com/",
                 "products": [],
                 "available": False,
             }
@@ -122,7 +124,8 @@ class AffiliateTools:
                 return hmac.new(key, msg.encode(), hashlib.sha256).digest()
 
             signing_key = sign(
-                sign(sign(sign(f"AWS4{secret_key}".encode(), date_stamp), region), region), "aws4_request"
+                sign(sign(sign(f"AWS4{secret_key}".encode(), date_stamp), region), region),
+                "aws4_request",
             )
             signature = hmac.new(signing_key, string_to_sign.encode(), hashlib.sha256).hexdigest()
             auth_header = (
@@ -156,20 +159,24 @@ class AffiliateTools:
                         .get("DisplayAmount", "N/A")
                     )
                     image = (
-                        item.get("Images", {})
-                        .get("Primary", {})
-                        .get("Medium", {})
-                        .get("URL", "")
+                        item.get("Images", {}).get("Primary", {}).get("Medium", {}).get("URL", "")
                     )
                     affiliate_link = self.build_amazon_link(asin)
-                    products.append({
-                        "asin": asin,
-                        "title": title,
-                        "price": price,
-                        "image": image,
-                        "affiliate_link": affiliate_link,
-                    })
-                return {"success": True, "products": products, "count": len(products), "query": keywords}
+                    products.append(
+                        {
+                            "asin": asin,
+                            "title": title,
+                            "price": price,
+                            "image": image,
+                            "affiliate_link": affiliate_link,
+                        }
+                    )
+                return {
+                    "success": True,
+                    "products": products,
+                    "count": len(products),
+                    "query": keywords,
+                }
 
             return {
                 "success": False,
@@ -183,7 +190,7 @@ class AffiliateTools:
 
     # ── CLICKBANK ─────────────────────────────────────────
 
-    def build_clickbank_link(self, vendor: str, affiliate_id: Optional[str] = None) -> dict[str, Any]:
+    def build_clickbank_link(self, vendor: str, affiliate_id: str | None = None) -> dict[str, Any]:
         """
         Construye hop link de ClickBank.
         affiliate_id proviene de CLICKBANK_AFFILIATE_ID en secrets.
@@ -201,7 +208,9 @@ class AffiliateTools:
 
     # ── HOTMART ───────────────────────────────────────────
 
-    def build_hotmart_link(self, product_id: str, affiliate_id: Optional[str] = None) -> dict[str, Any]:
+    def build_hotmart_link(
+        self, product_id: str, affiliate_id: str | None = None
+    ) -> dict[str, Any]:
         """
         Construye link de afiliado Hotmart.
         affiliate_id proviene de HOTMART_AFFILIATE_ID en secrets.
@@ -251,7 +260,11 @@ class AffiliateTools:
                     ],
                     "count": len(products),
                 }
-            return {"success": False, "error": f"Gumroad API HTTP {res.status_code}: {res.text[:200]}", "products": []}
+            return {
+                "success": False,
+                "error": f"Gumroad API HTTP {res.status_code}: {res.text[:200]}",
+                "products": [],
+            }
         except Exception as exc:
             logger.error("[Affiliate] get_own_products error: %s", exc)
             return {"success": False, "error": str(exc), "products": []}
@@ -302,9 +315,9 @@ class AffiliateTools:
             tag = getattr(settings, "AMAZON_ASSOCIATE_TAG", "")
             # Inyectar llamada a accion al final del contenido
             cta = (
-                f'\n\n---\n*Links de afiliado: Los productos mencionados pueden encontrarse '
+                f"\n\n---\n*Links de afiliado: Los productos mencionados pueden encontrarse "
                 f'en [Amazon]({self.build_amazon_link("", tag)}). '
-                f'Como afiliado de Amazon, recibo una comision por compras elegibles.*'
+                f"Como afiliado de Amazon, recibo una comision por compras elegibles.*"
             )
             injected_content += cta
             links_injected += 1
@@ -325,11 +338,13 @@ class AffiliateTools:
         Llamar antes de usar este modulo para saber que se puede hacer.
         """
         amazon_tag = getattr(settings, "AMAZON_ASSOCIATE_TAG", None)
-        amazon_pa = all([
-            getattr(settings, "AMAZON_PA_ACCESS_KEY", None),
-            getattr(settings, "AMAZON_PA_SECRET_KEY", None),
-            getattr(settings, "AMAZON_PA_PARTNER_TAG", None),
-        ])
+        amazon_pa = all(
+            [
+                getattr(settings, "AMAZON_PA_ACCESS_KEY", None),
+                getattr(settings, "AMAZON_PA_SECRET_KEY", None),
+                getattr(settings, "AMAZON_PA_PARTNER_TAG", None),
+            ]
+        )
         clickbank = bool(getattr(settings, "CLICKBANK_AFFILIATE_ID", None))
         hotmart = bool(getattr(settings, "HOTMART_AFFILIATE_ID", None))
         gumroad = bool(getattr(settings, "GUMROAD_TOKEN", None))
@@ -342,12 +357,14 @@ class AffiliateTools:
             "gumroad_own_products": gumroad,
             "any_available": any([amazon_tag, amazon_pa, clickbank, hotmart, gumroad]),
             "missing": [
-                name for name, avail in [
+                name
+                for name, avail in [
                     ("AMAZON_ASSOCIATE_TAG", amazon_tag),
                     ("Amazon PA API (3 keys)", amazon_pa),
                     ("CLICKBANK_AFFILIATE_ID", clickbank),
                     ("HOTMART_AFFILIATE_ID", hotmart),
                     ("GUMROAD_TOKEN (productos propios)", gumroad),
-                ] if not avail
+                ]
+                if not avail
             ],
         }

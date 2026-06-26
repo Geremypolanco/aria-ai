@@ -11,16 +11,17 @@ Referencia:
   - CrewAI: https://github.com/joaomdmoura/crewAI
   - AutoGen: https://github.com/microsoft/autogen
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
 
 logger = logging.getLogger("aria.multi_agent_hub")
 
 # ── CrewAI Import con fallback ───────────────────────────────────────────────
 try:
-    from crewai import Agent, Task, Crew, Process
+    from crewai import Agent, Crew, Process, Task
+
     CREWAI_AVAILABLE = True
     logger.info("[CrewAI] Librería cargada correctamente.")
 except ImportError:
@@ -29,7 +30,8 @@ except ImportError:
 
 # ── AutoGen Import con fallback ──────────────────────────────────────────────
 try:
-    import autogen
+    import autogen  # noqa: F401
+
     AUTOGEN_AVAILABLE = True
     logger.info("[AutoGen] Librería cargada correctamente.")
 except ImportError:
@@ -53,29 +55,31 @@ class AriaMultiAgentHub:
 
         # Definir Agentes
         researcher = Agent(
-            role='Market Researcher',
-            goal=f'Find trending topics about {topic}',
-            backstory='Expert in market analysis and trend spotting.',
-            verbose=True
+            role="Market Researcher",
+            goal=f"Find trending topics about {topic}",
+            backstory="Expert in market analysis and trend spotting.",
+            verbose=True,
         )
 
         writer = Agent(
-            role='Content Creator',
-            goal=f'Write a viral thread about {topic}',
-            backstory='Expert in viral content and storytelling.',
-            verbose=True
+            role="Content Creator",
+            goal=f"Write a viral thread about {topic}",
+            backstory="Expert in viral content and storytelling.",
+            verbose=True,
         )
 
         # Definir Tareas
-        task1 = Task(description=f'Research {topic}', agent=researcher, expected_output="A list of 5 trends.")
-        task2 = Task(description=f'Write thread about {topic}', agent=writer, expected_output="A 10-tweet thread.")
+        task1 = Task(
+            description=f"Research {topic}", agent=researcher, expected_output="A list of 5 trends."
+        )
+        task2 = Task(
+            description=f"Write thread about {topic}",
+            agent=writer,
+            expected_output="A 10-tweet thread.",
+        )
 
         # Orquestar
-        crew = Crew(
-            agents=[researcher, writer],
-            tasks=[task1, task2],
-            process=Process.sequential
-        )
+        Crew(agents=[researcher, writer], tasks=[task1, task2], process=Process.sequential)
 
         logger.info("[MultiAgentHub] Iniciando Crew de Marketing para: %s", topic)
         # result = crew.kickoff()
@@ -85,13 +89,14 @@ class AriaMultiAgentHub:
         """Ejecuta una conversación entre agentes usando AutoGen."""
         if not AUTOGEN_AVAILABLE:
             return "AutoGen no disponible."
-        
+
         logger.info("[MultiAgentHub] Iniciando chat de AutoGen para: %s", task)
         return f"Chat de AutoGen para '{task}' completado."
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _multi_agent_instance: AriaMultiAgentHub | None = None
+
 
 def get_multi_agent_hub() -> AriaMultiAgentHub:
     """Retorna el singleton del hub de multi-agentes."""

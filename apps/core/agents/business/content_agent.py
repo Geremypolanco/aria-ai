@@ -3,12 +3,13 @@ Content Agent — Crea y publica contenido: artículos, newsletters, videos, pod
 
 Publica en: Medium, Dev.to, Hashnode, email (Resend/Mailgun), redes sociales.
 """
+
 from __future__ import annotations
-import asyncio
+
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
-from apps.core.tools.ai_client import AIModel
 
 logger = logging.getLogger("aria.business.content")
 
@@ -25,17 +26,21 @@ class ContentAgent(BaseAgent):
             name="content",
             description="Crea y publica artículos, newsletters, social posts en todas las plataformas",
             capabilities=[
-                "article_writing", "newsletter", "social_posts",
-                "seo_content", "publishing", "email_marketing",
+                "article_writing",
+                "newsletter",
+                "social_posts",
+                "seo_content",
+                "publishing",
+                "email_marketing",
             ],
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission      = context.get("mission", "Crear artículo")
-        topic        = context.get("topic", mission)
+        mission = context.get("mission", "Crear artículo")
+        topic = context.get("topic", mission)
         content_type = context.get("type", "article")  # article|newsletter|social|all
         auto_publish = context.get("auto_publish", False)
-        platforms    = context.get("platforms", ["devto"])
+        platforms = context.get("platforms", ["devto"])
 
         results: dict[str, Any] = {"success": True, "agent": "content", "topic": topic}
 
@@ -44,8 +49,7 @@ class ContentAgent(BaseAgent):
             results["article"] = article
             if auto_publish and article.get("success"):
                 pub = await self._publish_article(
-                    article["title"], article["content"],
-                    article.get("tags", []), platforms
+                    article["title"], article["content"], article.get("tags", []), platforms
                 )
                 results["article_published"] = pub
 
@@ -60,6 +64,7 @@ class ContentAgent(BaseAgent):
 
         if content_type in ("social", "all"):
             from apps.core.tools.social_engine import SocialContentEngine
+
             social = await SocialContentEngine().create_content_pack(topic=topic)
             results["social"] = social
 
@@ -70,6 +75,7 @@ class ContentAgent(BaseAgent):
         """Escribe artículo SEO completo de ~1500 palabras."""
         # Primero investigar
         from apps.core.tools.web_tools import WebTools
+
         search = await WebTools().search_web(f"{topic} guide 2025", num_results=5)
         context_data = ""
         if search.get("success"):
@@ -89,7 +95,9 @@ class ContentAgent(BaseAgent):
             ),
         )
 
-        title = article_content.split("\n")[0].lstrip("#").strip()[:100] if article_content else topic
+        title = (
+            article_content.split("\n")[0].lstrip("#").strip()[:100] if article_content else topic
+        )
         tags = [topic.split()[0], "AI", "productivity", "technology"]
 
         return {
@@ -128,20 +136,26 @@ class ContentAgent(BaseAgent):
             "body": content,
         }
 
-    async def _publish_article(
-        self, title: str, content: str, tags: list, platforms: list
-    ) -> dict:
+    async def _publish_article(self, title: str, content: str, tags: list, platforms: list) -> dict:
         from apps.core.tools.publishing_tools import PublishingTools
+
         pt = PublishingTools()
+        article = {
+            "title": title,
+            "body": content,
+            "body_html": content,
+            "tags": tags,
+            "meta_description": "",
+        }
         results = {}
         for platform in platforms:
             try:
                 if platform == "devto":
-                    results[platform] = await pt.publish_to_devto(title, content, tags)
+                    results[platform] = await pt.publish_devto(article)
                 elif platform == "medium":
-                    results[platform] = await pt.publish_to_medium(title, content, tags)
+                    results[platform] = await pt.publish_medium(article)
                 elif platform == "hashnode":
-                    results[platform] = await pt.publish_to_hashnode(title, content, tags)
+                    results[platform] = await pt.publish_hashnode(article)
             except Exception as exc:
                 results[platform] = {"success": False, "error": str(exc)}
         return results
@@ -149,6 +163,7 @@ class ContentAgent(BaseAgent):
     async def _send_newsletter(self, subject: str, body: str) -> dict:
         try:
             from apps.core.tools.publishing_tools import PublishingTools
+
             return await PublishingTools().send_newsletter(subject, body)
         except Exception as exc:
             return {"success": False, "error": str(exc)}

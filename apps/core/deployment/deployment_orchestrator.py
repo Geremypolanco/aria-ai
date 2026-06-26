@@ -10,19 +10,18 @@ Proporciona:
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.deployment")
 
 
 class DeploymentStatus(Enum):
     """Estados posibles de un despliegue."""
+
     PENDING = "pending"
     BUILDING = "building"
     DEPLOYING = "deploying"
@@ -33,6 +32,7 @@ class DeploymentStatus(Enum):
 
 class DeploymentPlatform(Enum):
     """Plataformas de despliegue soportadas."""
+
     VERCEL = "vercel"
     FLY_IO = "fly_io"
     AWS = "aws"
@@ -49,30 +49,30 @@ class Deployment:
         deployment_id: str,
         platform: DeploymentPlatform,
         project_path: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
     ):
         self.deployment_id = deployment_id
         self.platform = platform
         self.project_path = project_path
         self.config = config
         self.status = DeploymentStatus.PENDING
-        self.created_at = datetime.now(timezone.utc)
-        self.started_at: Optional[datetime] = None
-        self.completed_at: Optional[datetime] = None
-        self.logs: List[str] = []
-        self.url: Optional[str] = None
-        self.version: Optional[str] = None
-        self.previous_version: Optional[str] = None
-        self.error: Optional[str] = None
+        self.created_at = datetime.now(UTC)
+        self.started_at: datetime | None = None
+        self.completed_at: datetime | None = None
+        self.logs: list[str] = []
+        self.url: str | None = None
+        self.version: str | None = None
+        self.previous_version: str | None = None
+        self.error: str | None = None
 
     def add_log(self, message: str):
         """Añade un mensaje al log de despliegue."""
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         log_entry = f"[{timestamp}] {message}"
         self.logs.append(log_entry)
         logger.info(f"[Deployment {self.deployment_id}] {message}")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convierte el despliegue a diccionario."""
         return {
             "deployment_id": self.deployment_id,
@@ -93,17 +93,17 @@ class DeploymentOrchestrator:
     """Orquestador de despliegues multi-cloud."""
 
     def __init__(self):
-        self.deployments: Dict[str, Deployment] = {}
-        self.deployment_history: List[Dict[str, Any]] = []
+        self.deployments: dict[str, Deployment] = {}
+        self.deployment_history: list[dict[str, Any]] = []
 
     async def deploy(
         self,
         platform: DeploymentPlatform,
         project_path: str,
-        config: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
         """Inicia un despliegue."""
-        deployment_id = f"{platform.value}_{datetime.now(timezone.utc).timestamp()}"
+        deployment_id = f"{platform.value}_{datetime.now(UTC).timestamp()}"
         deployment = Deployment(deployment_id, platform, project_path, config)
 
         self.deployments[deployment_id] = deployment
@@ -111,7 +111,7 @@ class DeploymentOrchestrator:
 
         try:
             deployment.status = DeploymentStatus.BUILDING
-            deployment.started_at = datetime.now(timezone.utc)
+            deployment.started_at = datetime.now(UTC)
 
             if platform == DeploymentPlatform.VERCEL:
                 result = await self._deploy_vercel(deployment)
@@ -138,7 +138,7 @@ class DeploymentOrchestrator:
                 deployment.error = result.get("error")
                 deployment.add_log(f"Despliegue fallido: {deployment.error}")
 
-            deployment.completed_at = datetime.now(timezone.utc)
+            deployment.completed_at = datetime.now(UTC)
             self.deployment_history.append(deployment.to_dict())
 
             return {
@@ -153,14 +153,14 @@ class DeploymentOrchestrator:
             logger.error(f"[Deployment] Error durante despliegue: {exc}")
             deployment.status = DeploymentStatus.FAILED
             deployment.error = str(exc)
-            deployment.completed_at = datetime.now(timezone.utc)
+            deployment.completed_at = datetime.now(UTC)
             return {
                 "success": False,
                 "deployment_id": deployment_id,
                 "error": str(exc),
             }
 
-    async def _deploy_vercel(self, deployment: Deployment) -> Dict[str, Any]:
+    async def _deploy_vercel(self, deployment: Deployment) -> dict[str, Any]:
         """Despliega a Vercel."""
         deployment.add_log("Preparando despliegue a Vercel...")
 
@@ -189,18 +189,17 @@ class DeploymentOrchestrator:
                 return {
                     "success": True,
                     "url": url,
-                    "version": datetime.now(timezone.utc).isoformat(),
+                    "version": datetime.now(UTC).isoformat(),
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": result.stderr,
-                }
+            return {
+                "success": False,
+                "error": result.stderr,
+            }
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def _deploy_fly_io(self, deployment: Deployment) -> Dict[str, Any]:
+    async def _deploy_fly_io(self, deployment: Deployment) -> dict[str, Any]:
         """Despliega a Fly.io."""
         deployment.add_log("Preparando despliegue a Fly.io...")
 
@@ -224,18 +223,17 @@ class DeploymentOrchestrator:
                 return {
                     "success": True,
                     "url": url,
-                    "version": datetime.now(timezone.utc).isoformat(),
+                    "version": datetime.now(UTC).isoformat(),
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": result.stderr,
-                }
+            return {
+                "success": False,
+                "error": result.stderr,
+            }
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def _deploy_aws(self, deployment: Deployment) -> Dict[str, Any]:
+    async def _deploy_aws(self, deployment: Deployment) -> dict[str, Any]:
         """Despliega a AWS."""
         deployment.add_log("Preparando despliegue a AWS...")
 
@@ -250,13 +248,13 @@ class DeploymentOrchestrator:
             return {
                 "success": True,
                 "url": f"https://{stack_name}.{region}.aws.com",
-                "version": datetime.now(timezone.utc).isoformat(),
+                "version": datetime.now(UTC).isoformat(),
             }
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def _deploy_gcp(self, deployment: Deployment) -> Dict[str, Any]:
+    async def _deploy_gcp(self, deployment: Deployment) -> dict[str, Any]:
         """Despliega a Google Cloud Platform."""
         deployment.add_log("Preparando despliegue a GCP...")
 
@@ -265,10 +263,16 @@ class DeploymentOrchestrator:
             service_name = deployment.config.get("service_name", "aria-service")
 
             cmd = [
-                "gcloud", "run", "deploy", service_name,
-                "--source", deployment.project_path,
-                "--project", project_id,
-                "--region", "us-central1",
+                "gcloud",
+                "run",
+                "deploy",
+                service_name,
+                "--source",
+                deployment.project_path,
+                "--project",
+                project_id,
+                "--region",
+                "us-central1",
             ]
 
             result = subprocess.run(
@@ -285,18 +289,17 @@ class DeploymentOrchestrator:
                 return {
                     "success": True,
                     "url": url,
-                    "version": datetime.now(timezone.utc).isoformat(),
+                    "version": datetime.now(UTC).isoformat(),
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": result.stderr,
-                }
+            return {
+                "success": False,
+                "error": result.stderr,
+            }
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def _deploy_azure(self, deployment: Deployment) -> Dict[str, Any]:
+    async def _deploy_azure(self, deployment: Deployment) -> dict[str, Any]:
         """Despliega a Microsoft Azure."""
         deployment.add_log("Preparando despliegue a Azure...")
 
@@ -305,9 +308,13 @@ class DeploymentOrchestrator:
             app_name = deployment.config.get("app_name", "aria-app")
 
             cmd = [
-                "az", "webapp", "up",
-                "--name", app_name,
-                "--resource-group", resource_group,
+                "az",
+                "webapp",
+                "up",
+                "--name",
+                app_name,
+                "--resource-group",
+                resource_group,
             ]
 
             result = subprocess.run(
@@ -325,18 +332,17 @@ class DeploymentOrchestrator:
                 return {
                     "success": True,
                     "url": url,
-                    "version": datetime.now(timezone.utc).isoformat(),
+                    "version": datetime.now(UTC).isoformat(),
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": result.stderr,
-                }
+            return {
+                "success": False,
+                "error": result.stderr,
+            }
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def _deploy_docker(self, deployment: Deployment) -> Dict[str, Any]:
+    async def _deploy_docker(self, deployment: Deployment) -> dict[str, Any]:
         """Despliega usando Docker."""
         deployment.add_log("Preparando despliegue Docker...")
 
@@ -345,7 +351,13 @@ class DeploymentOrchestrator:
             registry = deployment.config.get("registry", "docker.io")
 
             # Construir imagen
-            cmd_build = ["docker", "build", "-t", f"{registry}/{image_name}:latest", deployment.project_path]
+            cmd_build = [
+                "docker",
+                "build",
+                "-t",
+                f"{registry}/{image_name}:latest",
+                deployment.project_path,
+            ]
             result = subprocess.run(cmd_build, capture_output=True, text=True, timeout=300)
 
             if result.returncode != 0:
@@ -361,10 +373,9 @@ class DeploymentOrchestrator:
                 return {
                     "success": True,
                     "url": f"{registry}/{image_name}:latest",
-                    "version": datetime.now(timezone.utc).isoformat(),
+                    "version": datetime.now(UTC).isoformat(),
                 }
-            else:
-                return {"success": False, "error": result.stderr}
+            return {"success": False, "error": result.stderr}
 
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -383,7 +394,7 @@ class DeploymentOrchestrator:
                 return line.strip()
         return "https://deployment.run.app"
 
-    async def rollback(self, deployment_id: str) -> Dict[str, Any]:
+    async def rollback(self, deployment_id: str) -> dict[str, Any]:
         """Revierte un despliegue a la versión anterior."""
         deployment = self.deployments.get(deployment_id)
         if not deployment:
@@ -401,14 +412,14 @@ class DeploymentOrchestrator:
             "version": deployment.previous_version,
         }
 
-    def get_deployment_status(self, deployment_id: str) -> Optional[Dict[str, Any]]:
+    def get_deployment_status(self, deployment_id: str) -> dict[str, Any] | None:
         """Obtiene el estado de un despliegue."""
         deployment = self.deployments.get(deployment_id)
         if deployment:
             return deployment.to_dict()
         return None
 
-    def get_all_deployments(self) -> List[Dict[str, Any]]:
+    def get_all_deployments(self) -> list[dict[str, Any]]:
         """Obtiene todos los despliegues."""
         return [d.to_dict() for d in self.deployments.values()]
 

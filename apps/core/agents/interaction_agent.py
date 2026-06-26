@@ -12,15 +12,11 @@ Capacidades de Manus:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import os
-import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from apps.core.agents.base_agent import BaseAgent
-from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.interaction_agent")
 
@@ -40,10 +36,10 @@ class InteractionAgent(BaseAgent):
                 "credential_handling",
             ],
         )
-        self.browser_context: Optional[Any] = None
+        self.browser_context: Any | None = None
         self.current_directory = Path.cwd()
 
-    async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Punto de entrada principal."""
         action = context.get("action", "")
         params = context.get("params", {})
@@ -53,28 +49,27 @@ class InteractionAgent(BaseAgent):
         try:
             if action == "navigate":
                 return await self._navigate(params.get("url", ""))
-            elif action == "execute_shell":
+            if action == "execute_shell":
                 return await self._execute_shell(params.get("command", ""))
-            elif action == "write_file":
+            if action == "write_file":
                 return await self._write_file(params.get("path", ""), params.get("content", ""))
-            elif action == "read_file":
+            if action == "read_file":
                 return await self._read_file(params.get("path", ""))
-            elif action == "list_files":
+            if action == "list_files":
                 return await self._list_files(params.get("directory", "."))
-            elif action == "click_element":
+            if action == "click_element":
                 return await self._click_element(params.get("selector", ""))
-            elif action == "fill_form":
+            if action == "fill_form":
                 return await self._fill_form(params.get("form_data", {}))
-            elif action == "screenshot":
+            if action == "screenshot":
                 return await self._take_screenshot(params.get("filename", "screenshot.png"))
-            else:
-                return {"success": False, "error": f"Acción no reconocida: {action}"}
+            return {"success": False, "error": f"Acción no reconocida: {action}"}
 
         except Exception as exc:
             logger.error(f"[InteractionAgent] Error ejecutando acción: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _navigate(self, url: str) -> Dict[str, Any]:
+    async def _navigate(self, url: str) -> dict[str, Any]:
         """Navega a una URL usando Chromium headless."""
         try:
             from playwright.async_api import async_playwright
@@ -90,12 +85,14 @@ class InteractionAgent(BaseAgent):
                 title = await page.title()
 
                 # Extraer links
-                links = await page.evaluate("""
+                links = await page.evaluate(
+                    """
                     () => Array.from(document.querySelectorAll('a')).map(a => ({
                         text: a.textContent,
                         href: a.href
                     }))
-                """)
+                """
+                )
 
                 await browser.close()
 
@@ -112,7 +109,7 @@ class InteractionAgent(BaseAgent):
             logger.error(f"[InteractionAgent] Error navegando: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _execute_shell(self, command: str) -> Dict[str, Any]:
+    async def _execute_shell(self, command: str) -> dict[str, Any]:
         """Ejecuta un comando shell."""
         logger.info(f"[InteractionAgent] Ejecutando comando: {command[:80]}")
 
@@ -134,12 +131,12 @@ class InteractionAgent(BaseAgent):
                 "return_code": process.returncode,
             }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {"success": False, "error": "Comando excedió timeout de 60 segundos"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def _write_file(self, path: str, content: str) -> Dict[str, Any]:
+    async def _write_file(self, path: str, content: str) -> dict[str, Any]:
         """Escribe un archivo."""
         try:
             file_path = self.current_directory / path
@@ -156,7 +153,7 @@ class InteractionAgent(BaseAgent):
             logger.error(f"[InteractionAgent] Error escribiendo archivo: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _read_file(self, path: str) -> Dict[str, Any]:
+    async def _read_file(self, path: str) -> dict[str, Any]:
         """Lee un archivo."""
         try:
             file_path = self.current_directory / path
@@ -177,7 +174,7 @@ class InteractionAgent(BaseAgent):
             logger.error(f"[InteractionAgent] Error leyendo archivo: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _list_files(self, directory: str) -> Dict[str, Any]:
+    async def _list_files(self, directory: str) -> dict[str, Any]:
         """Lista archivos en un directorio."""
         try:
             dir_path = self.current_directory / directory
@@ -187,11 +184,13 @@ class InteractionAgent(BaseAgent):
 
             files = []
             for item in dir_path.iterdir():
-                files.append({
-                    "name": item.name,
-                    "type": "directory" if item.is_dir() else "file",
-                    "size": item.stat().st_size if item.is_file() else 0,
-                })
+                files.append(
+                    {
+                        "name": item.name,
+                        "type": "directory" if item.is_dir() else "file",
+                        "size": item.stat().st_size if item.is_file() else 0,
+                    }
+                )
 
             return {
                 "success": True,
@@ -204,10 +203,9 @@ class InteractionAgent(BaseAgent):
             logger.error(f"[InteractionAgent] Error listando archivos: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _click_element(self, selector: str) -> Dict[str, Any]:
+    async def _click_element(self, selector: str) -> dict[str, Any]:
         """Hace click en un elemento de la página."""
         try:
-            from playwright.async_api import async_playwright
 
             if not self.browser_context:
                 return {"success": False, "error": "No hay navegador activo"}
@@ -228,10 +226,9 @@ class InteractionAgent(BaseAgent):
             logger.error(f"[InteractionAgent] Error haciendo click: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _fill_form(self, form_data: Dict[str, str]) -> Dict[str, Any]:
+    async def _fill_form(self, form_data: dict[str, str]) -> dict[str, Any]:
         """Rellena un formulario en la página."""
         try:
-            from playwright.async_api import async_playwright
 
             if not self.browser_context:
                 return {"success": False, "error": "No hay navegador activo"}
@@ -256,10 +253,9 @@ class InteractionAgent(BaseAgent):
             logger.error(f"[InteractionAgent] Error rellenando formulario: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _take_screenshot(self, filename: str) -> Dict[str, Any]:
+    async def _take_screenshot(self, filename: str) -> dict[str, Any]:
         """Toma una captura de pantalla."""
         try:
-            from playwright.async_api import async_playwright
 
             if not self.browser_context:
                 return {"success": False, "error": "No hay navegador activo"}

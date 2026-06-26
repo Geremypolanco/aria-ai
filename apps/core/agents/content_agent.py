@@ -12,16 +12,13 @@ Ejecuta el pipeline completo:
 
 Se ejecuta en cada ciclo autónomo del orchestrator.
 """
+
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
-from datetime import datetime, timezone
 from typing import Any
 
 from apps.core.agents.base_agent import BaseAgent
-from apps.core.config import settings
 
 logger = logging.getLogger("aria.content_agent")
 
@@ -54,47 +51,53 @@ class ContentAgent(BaseAgent):
 
         if task == "full_pipeline":
             return await self._run_full_pipeline(language, num_articles)
-        elif task == "trending_only":
+        if task == "trending_only":
             return await self._get_trends_report()
-        elif task == "create_product":
+        if task == "create_product":
             topic = context.get("topic", "inteligencia artificial para negocios")
             category = context.get("category", "business")
             return await self._create_product(topic, category)
-        elif task == "newsletter":
+        if task == "newsletter":
             return await self._send_newsletter_digest()
-        elif task == "creative_creation":
+        if task == "creative_creation":
             format = context.get("format", "image")
             topic = context.get("topic", "cyberpunk city")
             return await self._run_creative_task(format, topic)
-        else:
-            return await self._run_full_pipeline(language, num_articles)
+        return await self._run_full_pipeline(language, num_articles)
 
     async def _run_creative_task(self, format: str, topic: str) -> dict:
         """Ejecuta tareas de creación multimedia real."""
         from apps.core.tools.creative_engine import CreativeEngine
+
         creative = CreativeEngine()
-        
+
         if format in ["music", "song"]:
             return await creative.generate_music(topic)
-        elif format in ["video", "clip"]:
+        if format in ["video", "clip"]:
             return await creative.generate_video(topic)
-        elif format in ["manga", "anime"]:
+        if format in ["manga", "anime"]:
             return await creative.create_manga_page(topic)
-        elif format in ["software", "app", "game"]:
+        if format in ["software", "app", "game"]:
             return await creative.generate_software_module(topic)
-        elif format == "landing":
-            return await creative.create_landing_page(topic, ["AI Powered", "Autonomous", "Revenue Driven"])
-        else:
-            # Default to high-quality image
-            from apps.core.tools.content_tools import ContentTools
-            ct = ContentTools()
-            return await ct.generate_and_upload_image(topic)
+        if format == "landing":
+            return await creative.create_landing_page(
+                topic, ["AI Powered", "Autonomous", "Revenue Driven"]
+            )
+        # Default to high-quality image
+        from apps.core.tools.content_tools import ContentTools
+
+        ct = ContentTools()
+        return await ct.generate_and_upload_image(topic)
 
     async def _run_full_pipeline(self, language: str = "es", num_articles: int = 3) -> dict:
         """Pipeline completo: tendencias → artículos → publicación → distribución."""
         from apps.core.tools.content_pipeline import ContentPipeline
 
-        logger.info("[ContentAgent] Iniciando pipeline completo — %d artículos en %s", num_articles, language)
+        logger.info(
+            "[ContentAgent] Iniciando pipeline completo — %d artículos en %s",
+            num_articles,
+            language,
+        )
 
         pipeline = ContentPipeline()
         result = await pipeline.run_pipeline(num_articles=num_articles, language=language)
@@ -113,9 +116,10 @@ class ContentAgent(BaseAgent):
 
         # Construir resumen
         articles_count = result.get("articles_published", 0)
-        result["summary"] = (
-            f"Pipeline completado: {articles_count} artículos publicados. "
-            + (f"Producto digital creado en Gumroad." if result.get("digital_product", {}).get("success") else "")
+        result["summary"] = f"Pipeline completado: {articles_count} artículos publicados. " + (
+            "Producto digital creado en Gumroad."
+            if result.get("digital_product", {}).get("success")
+            else ""
         )
 
         logger.info("[ContentAgent] Pipeline completado — %d artículos", articles_count)
@@ -124,6 +128,7 @@ class ContentAgent(BaseAgent):
     async def _get_trends_report(self) -> dict:
         """Obtiene y reporta las tendencias actuales."""
         from apps.core.tools.content_pipeline import ContentPipeline
+
         pipeline = ContentPipeline()
         topics = await pipeline.get_trending_topics(limit=15)
         return {
@@ -136,10 +141,10 @@ class ContentAgent(BaseAgent):
     async def _create_product(self, topic: str, category: str) -> dict:
         """Crea un producto digital en Gumroad."""
         from apps.core.tools.affiliate_tools import AffiliateTools
+
         tools = AffiliateTools()
         result = await tools.auto_create_digital_product(topic, category)
         return result
-
 
     # ── CAPACIDADES HF (siempre disponibles con HF_TOKEN) ────────────────────
 
@@ -147,6 +152,7 @@ class ContentAgent(BaseAgent):
         """Traduce texto usando HuggingFace Helsinki-NLP."""
         try:
             from apps.core.tools.hf_discovery import get_hf
+
             result = await get_hf().translate(text, source_lang=source, target_lang=target)
             if result.get("success") and result.get("translation"):
                 return result["translation"]
@@ -158,6 +164,7 @@ class ContentAgent(BaseAgent):
         """Analiza el sentimiento de un texto con HuggingFace."""
         try:
             from apps.core.tools.hf_discovery import get_hf
+
             return await get_hf().analyze_sentiment(text[:500])
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -166,6 +173,7 @@ class ContentAgent(BaseAgent):
         """Clasifica el tema de un texto sin entrenamiento previo."""
         try:
             from apps.core.tools.hf_discovery import get_hf
+
             return await get_hf().classify_text(text[:400], topics)
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -174,6 +182,7 @@ class ContentAgent(BaseAgent):
         """Genera imagen de portada para un artículo usando FLUX/SDXL."""
         try:
             from apps.core.tools.hf_discovery import get_hf
+
             prompt = f"Professional blog cover image for article: {title}. Modern, clean design, tech aesthetic."
             return await get_hf().generate_image(prompt)
         except Exception as exc:
@@ -183,6 +192,7 @@ class ContentAgent(BaseAgent):
         """Resume artículo largo para posts de redes sociales."""
         try:
             from apps.core.tools.hf_discovery import get_hf
+
             result = await get_hf().summarize(article_text[:2000], max_length=max_length)
             if result.get("success") and result.get("summary"):
                 return result["summary"]
@@ -194,6 +204,7 @@ class ContentAgent(BaseAgent):
         """Extrae personas, empresas y temas de un artículo para SEO y targeting."""
         try:
             from apps.core.tools.hf_discovery import get_hf
+
             return await get_hf().extract_entities(text[:512])
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -202,20 +213,28 @@ class ContentAgent(BaseAgent):
         """Reporta qué capacidades HF están disponibles para este agente."""
         try:
             from apps.core.tools.hf_discovery import get_hf
+
             report = await get_hf().capability_report()
             return {
                 "available": report.get("available", False),
                 "tasks_count": report.get("tasks_count", 0),
                 "content_relevant": [
-                    t for t in report.get("supported_tasks", [])
-                    if t in ["translation", "summarization", "sentiment-analysis",
-                             "image-generation", "text-to-speech", "zero-shot-classification",
-                             "named-entity-recognition"]
+                    t
+                    for t in report.get("supported_tasks", [])
+                    if t
+                    in [
+                        "translation",
+                        "summarization",
+                        "sentiment-analysis",
+                        "image-generation",
+                        "text-to-speech",
+                        "zero-shot-classification",
+                        "named-entity-recognition",
+                    ]
                 ],
             }
         except Exception as exc:
             return {"available": False, "error": str(exc)}
-
 
     async def _send_newsletter_digest(self) -> dict:
         """Envía digest de los últimos artículos publicados."""

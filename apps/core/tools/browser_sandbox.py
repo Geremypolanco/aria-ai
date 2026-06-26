@@ -13,16 +13,13 @@ ARIA puede interactuar con cualquier sitio web como un humano:
 
 Motor: Playwright (headless Chromium) con fallback a httpx para páginas estáticas.
 """
+
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import os
 import re
-import tempfile
-import uuid
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -61,6 +58,7 @@ class BrowserSession:
             return True
         try:
             from playwright.async_api import async_playwright
+
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=True,
@@ -126,7 +124,7 @@ class BrowserSession:
             except Exception as exc:
                 return {"success": False, "url": url, "error": str(exc)}
 
-    async def get_content(self, url: Optional[str] = None, max_chars: int = 8000) -> dict[str, Any]:
+    async def get_content(self, url: str | None = None, max_chars: int = 8000) -> dict[str, Any]:
         """Extrae el texto limpio de la página actual (o navega a url primero)."""
         if url:
             nav = await self.navigate(url)
@@ -142,7 +140,8 @@ class BrowserSession:
                 # También intentar extraer datos estructurados
                 try:
                     links = await self._page.eval_on_selector_all(
-                        "a[href]", "els => els.map(e => ({text: e.textContent.trim(), href: e.href})).filter(e => e.text && e.href).slice(0, 30)"
+                        "a[href]",
+                        "els => els.map(e => ({text: e.textContent.trim(), href: e.href})).filter(e => e.text && e.href).slice(0, 30)",
                     )
                 except Exception:
                     links = []
@@ -159,7 +158,10 @@ class BrowserSession:
                 return {"success": False, "error": str(exc)}
         else:
             if not url:
-                return {"success": False, "error": "Se requiere URL cuando Playwright no está disponible"}
+                return {
+                    "success": False,
+                    "error": "Se requiere URL cuando Playwright no está disponible",
+                }
             try:
                 r = await self._http.get(url)
                 text = _extract_text(r.text)
@@ -199,7 +201,7 @@ class BrowserSession:
         except Exception as exc:
             return {"success": False, "selector": selector, "error": str(exc)}
 
-    async def press_key(self, key: str, selector: Optional[str] = None) -> dict[str, Any]:
+    async def press_key(self, key: str, selector: str | None = None) -> dict[str, Any]:
         """Presiona una tecla (ej: 'Enter', 'Tab', 'Escape')."""
         if not await self._ensure_browser():
             return {"success": False, "error": "Playwright requerido"}
@@ -283,7 +285,7 @@ class BrowserSession:
         except Exception as exc:
             return {"success": False, "error": str(exc), "script": script[:200]}
 
-    async def extract_json_from_page(self, url: Optional[str] = None) -> dict[str, Any]:
+    async def extract_json_from_page(self, url: str | None = None) -> dict[str, Any]:
         """Extrae todos los datos JSON de la página (scripts, data-attributes, etc.)."""
         if url:
             await self.navigate(url)
@@ -321,9 +323,9 @@ class BrowserSession:
 
     async def screenshot(
         self,
-        url: Optional[str] = None,
+        url: str | None = None,
         full_page: bool = True,
-        selector: Optional[str] = None,
+        selector: str | None = None,
     ) -> dict[str, Any]:
         """
         Captura screenshot de la página actual o de una URL.
@@ -343,7 +345,9 @@ class BrowserSession:
             if selector:
                 element = await self._page.query_selector(selector)
                 if element:
-                    img_bytes = await element.screenshot(**{k: v for k, v in kwargs.items() if k != "full_page"})
+                    img_bytes = await element.screenshot(
+                        **{k: v for k, v in kwargs.items() if k != "full_page"}
+                    )
                 else:
                     return {"success": False, "error": f"Selector no encontrado: {selector}"}
             else:
@@ -385,9 +389,7 @@ class BrowserSession:
     # BÚSQUEDA AVANZADA
     # ══════════════════════════════════════════════════════════════
 
-    async def search_and_extract(
-        self, query: str, extract_links: bool = True
-    ) -> dict[str, Any]:
+    async def search_and_extract(self, query: str, extract_links: bool = True) -> dict[str, Any]:
         """
         Busca en DuckDuckGo y extrae contenido de los primeros resultados.
         Sin API key necesaria.
@@ -402,7 +404,7 @@ class BrowserSession:
             try:
                 results = await self._page.eval_on_selector_all(
                     "a.result__a",
-                    "els => els.map(e => ({title: e.textContent.trim(), href: e.href})).slice(0, 10)"
+                    "els => els.map(e => ({title: e.textContent.trim(), href: e.href})).slice(0, 10)",
                 )
                 return {
                     "success": True,
@@ -477,6 +479,7 @@ class BrowserSession:
 # FUNCIONES DE UTILIDAD
 # ══════════════════════════════════════════════════════════════
 
+
 def _extract_text(html: str) -> str:
     """Extrae texto limpio de HTML."""
     for tag in ("script", "style", "nav", "footer", "header", "aside", "noscript", "iframe"):
@@ -496,6 +499,7 @@ def _extract_text(html: str) -> str:
 # ══════════════════════════════════════════════════════════════
 # SANDBOX MANAGER — Interfaz de alto nivel para ARIA
 # ══════════════════════════════════════════════════════════════
+
 
 class SandboxManager:
     """
@@ -550,14 +554,14 @@ class SandboxManager:
     async def run_browser_task(
         self,
         task_description: str,
-        start_url: Optional[str] = None,
+        start_url: str | None = None,
         session_id: str = "default",
     ) -> dict[str, Any]:
         """
         ARIA describe una tarea en lenguaje natural y el sandbox la ejecuta.
         Genera instrucciones step-by-step con IA y las ejecuta en el navegador.
         """
-        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.ai_client import AIModel, get_ai_client
 
         client = get_ai_client()
         context_url = f"\nURL inicial: {start_url}" if start_url else ""
@@ -590,7 +594,7 @@ class SandboxManager:
 
 
 # Singleton
-_sandbox: Optional[SandboxManager] = None
+_sandbox: SandboxManager | None = None
 
 
 def get_sandbox() -> SandboxManager:

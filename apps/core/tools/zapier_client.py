@@ -14,14 +14,14 @@ Flujo:
 Configuracion requerida en Fly.io:
   fly secrets set ZAPIER_WEBHOOK_URL="https://hooks.zapier.com/hooks/catch/..."
 """
+
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -35,6 +35,7 @@ CALLBACK_KEY_PREFIX = "zapier:callback:"
 
 class ZapierEvents:
     """Constantes de eventos que ARIA puede disparar en Zapier."""
+
     # Genericos
     SEARCH_PRODUCTS = "search_products"
     SEND_EMAIL = "send_email"
@@ -65,7 +66,7 @@ class ZapierClient:
     """
 
     def __init__(self) -> None:
-        self.webhook_url: Optional[str] = getattr(settings, "ZAPIER_WEBHOOK_URL", None)
+        self.webhook_url: str | None = getattr(settings, "ZAPIER_WEBHOOK_URL", None)
         self._pending: dict[str, asyncio.Future] = {}
 
     def is_configured(self) -> bool:
@@ -76,11 +77,16 @@ class ZapierClient:
         if not self.webhook_url:
             raise RuntimeError(
                 "ZAPIER_WEBHOOK_URL no configurado. "
-                "Ejecuta: fly secrets set ZAPIER_WEBHOOK_URL=\"https://hooks.zapier.com/...\"",
+                'Ejecuta: fly secrets set ZAPIER_WEBHOOK_URL="https://hooks.zapier.com/..."',
             )
 
-    async def trigger(self, event: str, data: dict[str, Any] | None = None,
-                      chat_id: str | None = None, timeout: float = 10.0) -> dict[str, Any]:
+    async def trigger(
+        self,
+        event: str,
+        data: dict[str, Any] | None = None,
+        chat_id: str | None = None,
+        timeout: float = 10.0,
+    ) -> dict[str, Any]:
         """
         Envia un evento a Zapier y devuelve la respuesta HTTP inmediata.
         Para esperar el resultado del Zap usa trigger_and_wait().
@@ -110,10 +116,14 @@ class ZapierClient:
             logger.error("Zapier trigger error: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def trigger_and_wait(self, event: str, data: dict[str, Any] | None = None,
-                               chat_id: str | None = None,
-                               trigger_timeout: float = 10.0,
-                               callback_timeout: float = 30.0) -> dict[str, Any]:
+    async def trigger_and_wait(
+        self,
+        event: str,
+        data: dict[str, Any] | None = None,
+        chat_id: str | None = None,
+        trigger_timeout: float = 10.0,
+        callback_timeout: float = 30.0,
+    ) -> dict[str, Any]:
         """
         Envia el evento y espera hasta callback_timeout segundos
         por la respuesta del Zap via /zapier/callback.
@@ -136,7 +146,7 @@ class ZapierClient:
                 resp = await client.post(self.webhook_url, json=payload)
                 resp.raise_for_status()
             result = await asyncio.wait_for(future, timeout=callback_timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._pending.pop(payload["request_id"], None)
             return {
                 "request_id": payload["request_id"],
@@ -160,7 +170,7 @@ class ZapierClient:
 
 
 # Singleton global
-_zapier_client: Optional[ZapierClient] = None
+_zapier_client: ZapierClient | None = None
 
 
 def get_zapier_client() -> ZapierClient:

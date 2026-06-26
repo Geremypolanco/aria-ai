@@ -4,12 +4,14 @@ Marketing Agent — SEO, contenido viral, campañas y crecimiento de marca.
 Maneja: SEO research, blog posts, social media calendar, email campaigns,
         ad copy, keyword analysis, competitor analysis, content strategy.
 """
+
 from __future__ import annotations
+
 import asyncio
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
-from apps.core.tools.ai_client import AIModel
 
 logger = logging.getLogger("aria.business.marketing")
 
@@ -26,15 +28,20 @@ class MarketingAgent(BaseAgent):
             name="marketing",
             description="SEO, contenido viral, campañas de email, redes sociales y crecimiento de marca",
             capabilities=[
-                "seo", "content_creation", "social_media", "email_campaigns",
-                "competitor_analysis", "keyword_research", "growth_hacking",
+                "seo",
+                "content_creation",
+                "social_media",
+                "email_campaigns",
+                "competitor_analysis",
+                "keyword_research",
+                "growth_hacking",
             ],
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission  = context.get("mission", "Crear estrategia de marketing completa")
-        niche    = context.get("niche", "AI tools")
-        budget   = context.get("budget", "bootstrap")
+        mission = context.get("mission", "Crear estrategia de marketing completa")
+        niche = context.get("niche", "AI tools")
+        context.get("budget", "bootstrap")
         channels = context.get("channels", ["social", "seo", "email"])
 
         results: dict[str, Any] = {"success": True, "agent": "marketing", "mission": mission}
@@ -53,7 +60,7 @@ class MarketingAgent(BaseAgent):
         task_results = await asyncio.gather(
             *[coro for _, coro in tasks_to_run], return_exceptions=True
         )
-        for (key, _), result in zip(tasks_to_run, task_results):
+        for (key, _), result in zip(tasks_to_run, task_results, strict=False):
             results[key] = result if not isinstance(result, Exception) else {"error": str(result)}
 
         # Publicar contenido si está configurado
@@ -79,6 +86,7 @@ class MarketingAgent(BaseAgent):
     async def _create_social_content(self, niche: str, mission: str) -> dict:
         """Genera contenido para todas las plataformas principales."""
         from apps.core.tools.social_engine import SocialContentEngine
+
         engine = SocialContentEngine()
         topic = f"{mission} — {niche}"
         pack = await engine.create_content_pack(
@@ -114,6 +122,7 @@ class MarketingAgent(BaseAgent):
     async def _publish_social(self, social_content: dict) -> dict:
         """Publica contenido generado en redes sociales activas."""
         from apps.core.tools.social_engine import SocialContentTools
+
         poster = SocialContentTools()
         published = {}
         for platform, content in social_content.get("platforms", {}).items():

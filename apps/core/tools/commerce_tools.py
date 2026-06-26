@@ -2,10 +2,11 @@
 commerce_tools.py — Herramientas de comercio electrónico.
 Gumroad, Stripe, PayPal, Shopify — creación de productos y cobros.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -27,7 +28,7 @@ class CommerceTools:
         name: str,
         description: str,
         price_cents: int = 997,
-        file_url: Optional[str] = None,
+        file_url: str | None = None,
     ) -> dict[str, Any]:
         """Crea un producto digital en Gumroad."""
         if not settings.GUMROAD_TOKEN:
@@ -61,7 +62,7 @@ class CommerceTools:
             logger.error("[CommerceTools] Error Gumroad create: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def gumroad_get_sales(self, product_id: Optional[str] = None) -> dict[str, Any]:
+    async def gumroad_get_sales(self, product_id: str | None = None) -> dict[str, Any]:
         """Obtiene las ventas de Gumroad."""
         if not settings.GUMROAD_TOKEN:
             return {"success": False, "error": "GUMROAD_TOKEN no configurado"}
@@ -74,7 +75,12 @@ class CommerceTools:
                 data = res.json()
                 sales = data.get("sales", [])
                 total = sum(float(s.get("price", 0)) / 100 for s in sales)
-                return {"success": True, "total_usd": total, "count": len(sales), "sales": sales[:10]}
+                return {
+                    "success": True,
+                    "total_usd": total,
+                    "count": len(sales),
+                    "sales": sales[:10],
+                }
             return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -87,8 +93,13 @@ class CommerceTools:
             return {"success": False, "error": "GUMROAD_TOKEN no configurado"}
         try:
             data = {"access_token": settings.GUMROAD_TOKEN, **updates}
-            res = await self._http.put(f"https://api.gumroad.com/v2/products/{product_id}", data=data)
-            return {"success": res.status_code == 200, "data": res.json() if res.status_code == 200 else {}}
+            res = await self._http.put(
+                f"https://api.gumroad.com/v2/products/{product_id}", data=data
+            )
+            return {
+                "success": res.status_code == 200,
+                "data": res.json() if res.status_code == 200 else {},
+            }
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
@@ -116,7 +127,10 @@ class CommerceTools:
                 data={"name": name, "description": description},
             )
             if prod_res.status_code != 200:
-                return {"success": False, "error": f"Stripe product HTTP {prod_res.status_code}: {prod_res.text[:200]}"}
+                return {
+                    "success": False,
+                    "error": f"Stripe product HTTP {prod_res.status_code}: {prod_res.text[:200]}",
+                }
             product_id = prod_res.json()["id"]
 
             # 2. Crear precio
@@ -183,7 +197,11 @@ class CommerceTools:
             )
             if res.status_code == 200:
                 session = res.json()
-                return {"success": True, "checkout_url": session.get("url"), "session_id": session.get("id")}
+                return {
+                    "success": True,
+                    "checkout_url": session.get("url"),
+                    "session_id": session.get("id"),
+                }
             return {"success": False, "error": f"HTTP {res.status_code}: {res.text[:200]}"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -209,7 +227,7 @@ class CommerceTools:
 
     # ── PAYPAL ────────────────────────────────────────────
 
-    async def _paypal_get_token(self) -> Optional[str]:
+    async def _paypal_get_token(self) -> str | None:
         """Obtiene access token de PayPal."""
         if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_SECRET:
             return None
@@ -265,7 +283,11 @@ class CommerceTools:
             if res.status_code in (200, 201):
                 plan = res.json()
                 links = {link["rel"]: link["href"] for link in plan.get("links", [])}
-                return {"success": True, "plan_id": plan.get("id"), "approve_url": links.get("approve", "")}
+                return {
+                    "success": True,
+                    "plan_id": plan.get("id"),
+                    "approve_url": links.get("approve", ""),
+                }
             return {"success": False, "error": f"PayPal HTTP {res.status_code}: {res.text[:200]}"}
         except Exception as exc:
             logger.error("[CommerceTools] Error PayPal create: %s", exc)
@@ -288,7 +310,9 @@ class CommerceTools:
         if not shop_url or not token:
             return {"success": False, "error": "Shopify no configurado en el servidor"}
         try:
-            url = f"https://{shop_url}/admin/api/2024-01/products.json"
+            # Normalize URL: strip scheme prefix if present (env var may include https://)
+            _base = shop_url.removeprefix("https://").removeprefix("http://").rstrip("/")
+            url = f"https://{_base}/admin/api/2025-07/products.json"
             headers = {
                 "X-Shopify-Access-Token": token,
                 "Content-Type": "application/json",
@@ -315,7 +339,7 @@ class CommerceTools:
             if res.status_code in (200, 201):
                 product = res.json().get("product", {})
                 product_id = product.get("id")
-                shop_url = f"https://{settings.SHOPIFY_URL}/products/{product.get('handle', '')}"
+                shop_url = f"https://{_base}/products/{product.get('handle', '')}"
                 logger.info("[CommerceTools] Shopify producto creado: %s", product_id)
                 return {
                     "success": True,
@@ -339,11 +363,18 @@ class CommerceTools:
         try:
             url = f"https://{shop_url}/admin/api/2024-01/orders.json"
             headers = {"X-Shopify-Access-Token": token}
-            res = await self._http.get(url, headers=headers, params={"limit": limit, "status": "any"})
+            res = await self._http.get(
+                url, headers=headers, params={"limit": limit, "status": "any"}
+            )
             if res.status_code == 200:
                 orders = res.json().get("orders", [])
                 total = sum(float(o.get("total_price", 0)) for o in orders)
-                return {"success": True, "orders": orders[:5], "count": len(orders), "total_usd": total}
+                return {
+                    "success": True,
+                    "orders": orders[:5],
+                    "count": len(orders),
+                    "total_usd": total,
+                }
             return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -353,7 +384,7 @@ class CommerceTools:
 
 
 # ── SINGLETON ─────────────────────────────────────────────
-_instance: Optional[CommerceTools] = None
+_instance: CommerceTools | None = None
 
 
 def get_commerce_tools() -> CommerceTools:

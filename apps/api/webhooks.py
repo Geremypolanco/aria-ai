@@ -6,12 +6,12 @@ disparar tareas automáticamente en el orquestador.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel
 
-from apps.core.agents.aria_orchestrator import AriaOrchestrator
+from apps.core.agents.orchestrator import Orchestrator as AriaOrchestrator
 
 logger = logging.getLogger("aria.webhooks")
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -22,27 +22,27 @@ orchestrator = AriaOrchestrator()
 
 class ZapierPayload(BaseModel):
     """Estructura del payload enviado por Zapier."""
+
     action: str
     task: str
-    data: Optional[Dict[str, Any]] = None
-    user_id: Optional[str] = "default"
+    data: dict[str, Any] | None = None
+    user_id: str | None = "default"
 
 
 @router.post("/zapier")
 async def handle_zapier_webhook(
-    payload: ZapierPayload,
-    x_zapier_signature: Optional[str] = Header(None)
+    payload: ZapierPayload, x_zapier_signature: str | None = Header(None)
 ):
     """
     Recibe un webhook de Zapier para ejecutar una tarea en Aria.
-    
+
     Ejemplo de flujo:
     1. Un correo llega a Gmail.
     2. Zapier captura el evento.
     3. Zapier envía un POST a este endpoint con la tarea: "Analiza este correo y crea un resumen".
     """
     logger.info(f"[Webhook] Recibida petición de Zapier: {payload.action}")
-    
+
     # Validar firma (opcional pero recomendado)
     # if not validate_signature(payload, x_zapier_signature):
     #     raise HTTPException(status_code=401, detail="Invalid signature")
@@ -51,13 +51,9 @@ async def handle_zapier_webhook(
     # En una implementación real, esto se enviaría a una cola de tareas (Redis/Celery)
     context = {
         "task": payload.task,
-        "user_context": {
-            "source": "zapier",
-            "action": payload.action,
-            "data": payload.data
-        }
+        "user_context": {"source": "zapier", "action": payload.action, "data": payload.data},
     }
-    
+
     # Por ahora, ejecutamos y devolvemos el resultado inicial
     try:
         # En producción, esto debería ser asíncrono y devolver un ID de tarea
@@ -66,7 +62,7 @@ async def handle_zapier_webhook(
             "success": True,
             "message": "Tarea recibida y procesada",
             "task_id": "zap_" + str(hash(payload.task))[:8],
-            "result": result
+            "result": result,
         }
     except Exception as exc:
         logger.error(f"[Webhook] Error procesando tarea de Zapier: {exc}")

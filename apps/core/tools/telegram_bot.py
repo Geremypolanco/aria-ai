@@ -1,26 +1,27 @@
 """
-AriaTelegramBot v7 — Elite Professional Edition.
+AriaTelegramBot v8 — Conversational Intelligence Edition.
 
-Diseño de clase mundial:
-  ✦ Typing indicator (sendChatAction) antes de cada respuesta
-  ✦ Placeholder → editMessageText para sensación de streaming
-  ✦ Comandos registrados con setMyCommands (/start, /ayuda, /estado, /limpiar)
-  ✦ Bienvenida rica con inline keyboard
-  ✦ Markdown → HTML conversion segura
-  ✦ Formateo específico por tipo de herramienta
-  ✦ Menú de acción rápida via inline keyboard
-  ✦ Manejo robusto de errores con mensajes claros
+ARIA no es un menú. Es una IA que razona, actúa y sigue el hilo.
 
-Todo input (texto libre O comandos) sigue pasando por AriaMind.
-El bot solo se encarga de I/O de alto nivel.
+Principios:
+  ✦ Sin teclados de botones — ARIA entiende lenguaje natural
+  ✦ Sin traducciones de slash commands — AriaMind maneja todo
+  ✦ Bienvenida proactiva: ARIA reporta qué ha estado haciendo
+  ✦ Contexto de conversación real — recordatorio de acciones previas
+  ✦ Typing indicator + placeholder para sensación de respuesta en vivo
+  ✦ Markdown → HTML seguro para Telegram
+
+Todo input pasa por AriaMind. El bot solo maneja I/O.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import html
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -30,76 +31,24 @@ logger = logging.getLogger("aria.telegram_bot")
 
 TELEGRAM_API = "https://api.telegram.org/bot"
 
-# ── Inline keyboard layouts ────────────────────────────────────────────────
+# No keyboards — ARIA is conversational, not a menu app.
 
-QUICK_ACTIONS_KB = {
-    "inline_keyboard": [
-        [
-            {"text": "🔍 Buscar en web",      "callback_data": "quick_search"},
-            {"text": "🎨 Generar imagen",      "callback_data": "quick_image"},
-        ],
-        [
-            {"text": "📊 Estado del sistema",  "callback_data": "quick_status"},
-            {"text": "🧠 Razonamiento profundo","callback_data": "quick_think"},
-        ],
-        [
-            {"text": "📚 Base de conocimiento","callback_data": "quick_kb"},
-            {"text": "⚙️ Ver mis capacidades", "callback_data": "quick_help"},
-        ],
-    ]
-}
-
-START_KB = {
-    "inline_keyboard": [
-        [
-            {"text": "⚡ Ver capacidades",     "callback_data": "quick_help"},
-            {"text": "📊 Estado",               "callback_data": "quick_status"},
-        ],
-        [
-            {"text": "💡 Ejemplo: busca tendencias de IA", "callback_data": "example_trends"},
-        ],
-    ]
-}
-
-# ── Bot commands to register ───────────────────────────────────────────────
+# ── Bot commands (minimal — ARIA understands natural language) ─────────────
 
 BOT_COMMANDS = [
-    {"command": "start",    "description": "Bienvenida e introducción a ARIA"},
-    {"command": "ayuda",    "description": "Ver todas las capacidades"},
-    {"command": "estado",   "description": "Estado del sistema en tiempo real"},
-    {"command": "limpiar",  "description": "Limpiar historial de la conversación"},
-    {"command": "busca",    "description": "Buscar algo en internet"},
-    {"command": "imagen",   "description": "Generar una imagen con IA"},
-    {"command": "piensa",   "description": "Razonamiento profundo sobre un tema"},
-    {"command": "metas",    "description": "Ver metas activas de ARIA"},
+    {"command": "start", "description": "Activar ARIA y ver qué ha estado haciendo"},
+    {"command": "limpiar", "description": "Borrar el historial de conversación"},
 ]
 
-# ── Welcome message ────────────────────────────────────────────────────────
-
-WELCOME_MESSAGE = """\
-<b>✦ ARIA está en línea</b>
-
-Soy tu inteligencia operativa personal — no un chatbot genérico.
-
-<b>Lo que puedo hacer ahora mismo:</b>
-• 🔍 Buscar e investigar en internet en tiempo real
-• 🎨 Generar imágenes, música y video con IA
-• 💻 Escribir, revisar y mejorar código
-• 📊 Analizar datos y tomar decisiones estratégicas
-• 🤖 Coordinar equipos de agentes especializados
-• 📁 Leer y mejorar mi propio código fuente
-• 🌐 Crear sitios web, presentaciones y PDFs
-• 📧 Enviar emails y publicar contenido
-
-<i>Habla conmigo en lenguaje natural. Sin comandos especiales.</i>"""
+# ── Welcome handled dynamically by _send_welcome (proactive status report) ─
 
 
 class AriaTelegramBot:
     """Interfaz Telegram de ARIA — I/O de clase mundial."""
 
     def __init__(self) -> None:
-        self._http    = httpx.AsyncClient(timeout=60.0)
-        self._offset  = 0
+        self._http = httpx.AsyncClient(timeout=60.0)
+        self._offset = 0
         self._running = False
         self._commands_registered = False
 
@@ -161,8 +110,11 @@ class AriaTelegramBot:
         url = f"{TELEGRAM_API}{settings.telegram_token}/getUpdates"
         r = await self._http.get(
             url,
-            params={"timeout": 10, "offset": self._offset,
-                    "allowed_updates": '["message","callback_query"]'},
+            params={
+                "timeout": 10,
+                "offset": self._offset,
+                "allowed_updates": '["message","callback_query"]',
+            },
             timeout=15.0,
         )
         if r.status_code != 200:
@@ -179,7 +131,7 @@ class AriaTelegramBot:
 
     # ── File downloads ─────────────────────────────────────────────────────
 
-    async def _download_file(self, file_id: str) -> Optional[bytes]:
+    async def _download_file(self, file_id: str) -> bytes | None:
         try:
             r = await self._http.get(
                 f"{TELEGRAM_API}{settings.telegram_token}/getFile",
@@ -209,11 +161,12 @@ class AriaTelegramBot:
 
         text = msg.get("text", "").strip()
 
-        # Photo → describe with BLIP-2
-        if not text and msg.get("photo"):
-            text = await self._describe_user_photo(msg, chat_id)
-            if not text:
+        # Photo → describe/VQA (handles both standalone photos and photos with captions)
+        if msg.get("photo"):
+            photo_text = await self._describe_user_photo(msg, chat_id)
+            if not photo_text:
                 return
+            text = photo_text  # always process photo through AriaMind with context
 
         # Voice/audio → transcribe with Whisper
         if not text and (msg.get("voice") or msg.get("audio")):
@@ -236,12 +189,19 @@ class AriaTelegramBot:
                 return
             platform = parts[1].lower()
             from apps.core.tools.social_media import SocialMediaManager
+
             sm = SocialMediaManager()
             url = sm.get_auth_url(platform)
             if url:
-                await self._send(chat_id, f"🔗 Haz clic aquí para conectar tu cuenta de {platform.capitalize()}:\n\n{url}")
+                await self._send(
+                    chat_id,
+                    f"🔗 Haz clic aquí para conectar tu cuenta de {platform.capitalize()}:\n\n{url}",
+                )
             else:
-                await self._send(chat_id, f"❌ No se pudo generar la URL de conexión para {platform}. Revisa las credenciales en el servidor.")
+                await self._send(
+                    chat_id,
+                    f"❌ No se pudo generar la URL de conexión para {platform}. Revisa las credenciales en el servidor.",
+                )
             return
 
         # Typing indicator immediately
@@ -250,33 +210,38 @@ class AriaTelegramBot:
         # Send placeholder "thinking" message
         placeholder_id = await self._send_placeholder(chat_id)
 
-        # Slash commands → CommandRouter (before AriaMind)
-        if text.startswith("/") and text not in ("/start",):
+        # /limpiar resets conversation history
+        if text.strip().lower() in ("/limpiar", "/clear", "/reset", "limpiar"):
             try:
-                from apps.core.commands.aria_commands import get_command_router
-                router = get_command_router()
-                if router.is_command(text):
-                    cmd_response = await router.handle(text, session_id=f"telegram:{chat_id}")
-                    if cmd_response:
-                        await self._edit_or_send(chat_id, placeholder_id, cmd_response)
-                        return
-            except Exception as exc:
-                logger.error("[Bot] CommandRouter error: %s", exc)
+                from apps.core.cognition.aria_mind import get_aria_mind
 
-        # Everything through AriaMind
+                mind = get_aria_mind()
+                await mind._clear_history(chat_id)
+            except Exception:
+                pass
+            await self._edit_or_send(
+                chat_id, placeholder_id, "🗑 Historial borrado. ¿En qué trabajamos ahora?"
+            )
+            return
+
+        # Everything through AriaMind — no pre-programmed shortcuts
         try:
             from apps.core.cognition.aria_mind import get_aria_mind
-            mind     = get_aria_mind()
+
+            mind = get_aria_mind()
             response = await mind.handle(text, chat_id)
         except Exception as exc:
             logger.error("[Bot] AriaMind error: %s", exc)
-            await self._edit_or_send(chat_id, placeholder_id,
-                                     "⚠️ Algo falló internamente. Inténtalo de nuevo.")
+            await self._edit_or_send(
+                chat_id, placeholder_id, "⚠️ Algo falló internamente. Inténtalo de nuevo."
+            )
             return
 
         if response.silent or (
-            not response.text and not response.image_bytes
-            and not response.video_bytes and not response.audio_bytes
+            not response.text
+            and not response.image_bytes
+            and not response.video_bytes
+            and not response.audio_bytes
             and not response.document_bytes
         ):
             if placeholder_id:
@@ -284,7 +249,12 @@ class AriaTelegramBot:
             return
 
         # Delete placeholder before sending media
-        if response.image_bytes or response.video_bytes or response.audio_bytes or response.document_bytes:
+        if (
+            response.image_bytes
+            or response.video_bytes
+            or response.audio_bytes
+            or response.document_bytes
+        ):
             if placeholder_id:
                 await self._delete_message(chat_id, placeholder_id)
 
@@ -297,7 +267,10 @@ class AriaTelegramBot:
         if response.video_bytes:
             ok = await self._send_video_bytes(chat_id, response.video_bytes, response.caption)
             if not ok and response.caption:
-                await self._send(chat_id, f"🎬 Video generado — demasiado grande para Telegram.\n{response.caption}")
+                await self._send(
+                    chat_id,
+                    f"🎬 Video generado — demasiado grande para Telegram.\n{response.caption}",
+                )
             return
 
         if response.audio_bytes:
@@ -308,7 +281,9 @@ class AriaTelegramBot:
 
         if response.document_bytes:
             fname = response.document_filename or "documento.pdf"
-            ok = await self._send_document_bytes(chat_id, response.document_bytes, fname, response.caption)
+            ok = await self._send_document_bytes(
+                chat_id, response.document_bytes, fname, response.caption
+            )
             if not ok and response.caption:
                 await self._send(chat_id, response.caption)
             if response.text:
@@ -319,41 +294,15 @@ class AriaTelegramBot:
             await self._edit_or_send(chat_id, placeholder_id, response.text)
 
     async def _handle_callback(self, cbq: dict[str, Any]) -> None:
-        """Handle inline keyboard button presses."""
-        chat_id   = str(cbq["message"]["chat"]["id"])
-        cb_id     = cbq["id"]
-        data      = cbq.get("data", "")
-
-        if not self._is_authorized(chat_id):
-            return
-
-        # Acknowledge the callback immediately
+        """Acknowledge any residual callback queries gracefully."""
+        cb_id = cbq.get("id", "")
         await self._answer_callback(cb_id)
-
-        mapping = {
-            "quick_search": "busca las últimas tendencias en inteligencia artificial",
-            "quick_image":  "genera una imagen de un paisaje futurista con IA",
-            "quick_status": "/estado",
-            "quick_think":  "usa razonamiento profundo para explicar qué es la computación cuántica",
-            "quick_kb":     "¿qué hay en mi base de conocimiento?",
-            "quick_help":   "/ayuda",
-            "example_trends": "busca las últimas noticias sobre modelos de lenguaje grandes",
-        }
-
-        user_text = mapping.get(data)
-        if user_text:
-            # Synthesize a fake message object and handle it
-            fake_msg = {
-                "chat": {"id": int(chat_id)},
-                "text": user_text,
-            }
-            await self._handle_message(fake_msg)
 
     # ── Media input processing ─────────────────────────────────────────────
 
     async def _describe_user_photo(self, msg: dict[str, Any], chat_id: str) -> str:
         try:
-            photos  = msg["photo"]
+            photos = msg["photo"]
             file_id = photos[-1]["file_id"]
             caption = msg.get("caption", "").strip()
 
@@ -362,12 +311,71 @@ class AriaTelegramBot:
                 await self._send(chat_id, "⚠️ No pude descargar la imagen.")
                 return ""
 
+            # Store image in AriaMind context — enables VQA, img2img, document_qa
+            import base64 as _b64
+
+            from apps.core.cognition.aria_mind import set_image_context
+
+            set_image_context(chat_id, _b64.b64encode(img_bytes).decode())
+
+            # If caption looks like a question → route directly to VQA
+            _is_question = caption and (
+                caption.endswith("?")
+                or any(
+                    caption.lower().startswith(w)
+                    for w in (
+                        "qué",
+                        "que",
+                        "cuántos",
+                        "cuantos",
+                        "cómo",
+                        "como",
+                        "dónde",
+                        "donde",
+                        "quién",
+                        "quien",
+                        "cuál",
+                        "cual",
+                        "what",
+                        "how",
+                        "who",
+                        "where",
+                        "when",
+                        "why",
+                        "which",
+                        "is ",
+                        "are ",
+                        "do ",
+                        "does ",
+                        "can ",
+                        "¿",
+                    )
+                )
+            )
+            if _is_question:
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+                vqa_r = await HuggingFaceSuite().visual_question_answering(img_bytes, caption)
+                if vqa_r.get("success"):
+                    vqa_ans = vqa_r.get("answer", "")
+                    conf = vqa_r.get("confidence", 0)
+                    return (
+                        f"[El usuario envió una imagen y preguntó: '{caption}'. "
+                        f"Respuesta VQA: {vqa_ans} (confianza: {conf:.0%}). "
+                        f"Hay imagen disponible en el contexto para más análisis.]"
+                    )
+
+            # Default: describe the image
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
             r = await HuggingFaceSuite().describe_image(image_bytes=img_bytes)
             description = r.get("description", "") if r.get("success") else ""
 
-            base = (f"[El usuario envió una foto. Descripción: {description}]"
-                    if description else "[El usuario envió una foto que no pude describir.]")
+            base = (
+                f"[El usuario envió una foto. Descripción: {description}. Imagen disponible en contexto para VQA, transformación o análisis de documento.]"
+                if description
+                else "[El usuario envió una foto. Imagen disponible en contexto para VQA, img2img o document_qa.]"
+            )
             return f"{base} {caption}".strip() if caption else base
         except Exception as exc:
             logger.error("[Bot] _describe_user_photo: %s", exc)
@@ -375,7 +383,7 @@ class AriaTelegramBot:
 
     async def _transcribe_user_audio(self, msg: dict[str, Any], chat_id: str) -> str:
         try:
-            voice   = msg.get("voice") or msg.get("audio") or {}
+            voice = msg.get("voice") or msg.get("audio") or {}
             file_id = voice.get("file_id", "")
             if not file_id:
                 return ""
@@ -386,6 +394,7 @@ class AriaTelegramBot:
                 return ""
 
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
             r = await HuggingFaceSuite().transcribe(audio_bytes)
             transcript = r.get("transcript", "").strip() if r.get("success") else ""
 
@@ -418,9 +427,9 @@ class AriaTelegramBot:
         code_blocks: list[str] = []
 
         def save_code_block(m: re.Match) -> str:
-            lang  = m.group(1) or ""
-            code  = m.group(2)
-            safe  = html.escape(code)
+            lang = m.group(1) or ""
+            code = m.group(2)
+            safe = html.escape(code)
             label = f"<i>[{lang}]</i>\n" if lang else ""
             block = f"{label}<pre><code>{safe}</code></pre>"
             code_blocks.append(block)
@@ -440,11 +449,11 @@ class AriaTelegramBot:
 
         # 5. Bold **text** or __text__
         text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
-        text = re.sub(r"__(.+?)__",     r"<b>\1</b>", text)
+        text = re.sub(r"__(.+?)__", r"<b>\1</b>", text)
 
         # 6. Italic *text* or _text_ (not inside words)
         text = re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"<i>\1</i>", text)
-        text = re.sub(r"(?<!\w)_(?!\s)(.+?)(?<!\s)_(?!\w)",   r"<i>\1</i>", text)
+        text = re.sub(r"(?<!\w)_(?!\s)(.+?)(?<!\s)_(?!\w)", r"<i>\1</i>", text)
 
         # 7. Strikethrough ~~text~~
         text = re.sub(r"~~(.+?)~~", r"<s>\1</s>", text)
@@ -460,34 +469,37 @@ class AriaTelegramBot:
     # ── Sending helpers ────────────────────────────────────────────────────
 
     async def _send_welcome(self, chat_id: str) -> None:
+        """Proactive welcome: ARIA reports what she's been doing, not a menu."""
         if not settings.telegram_token:
             return
         try:
-            await self._http.post(
-                f"{TELEGRAM_API}{settings.telegram_token}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": WELCOME_MESSAGE,
-                    "parse_mode": "HTML",
-                    "reply_markup": START_KB,
-                },
+            # Delegate the whole welcome to AriaMind so she can reason and report
+            from apps.core.cognition.aria_mind import get_aria_mind
+
+            mind = get_aria_mind()
+            response = await mind.handle(
+                "Hola, acabo de conectarme. Dame un reporte rápido de qué has estado haciendo "
+                "mientras estaba desconectado: ciclos de ingresos ejecutados, productos creados, "
+                "URLs publicadas, y qué planeas hacer ahora.",
+                chat_id,
             )
+            text = response.text or "ARIA en línea. ¿Qué hacemos?"
+            await self._send(chat_id, self._md_to_html(text), already_html=True)
         except Exception as exc:
             logger.error("[Bot] _send_welcome: %s", exc)
+            await self._send(chat_id, "ARIA en línea. Habla conmigo en lenguaje natural.")
 
     async def _send_action(self, chat_id: str, action: str = "typing") -> None:
         if not settings.telegram_token:
             return
-        try:
+        with contextlib.suppress(Exception):
             await self._http.post(
                 f"{TELEGRAM_API}{settings.telegram_token}/sendChatAction",
                 json={"chat_id": chat_id, "action": action},
                 timeout=5.0,
             )
-        except Exception:
-            pass
 
-    async def _send_placeholder(self, chat_id: str) -> Optional[int]:
+    async def _send_placeholder(self, chat_id: str) -> int | None:
         """Send a subtle 'thinking' placeholder; returns message_id."""
         if not settings.telegram_token:
             return None
@@ -506,8 +518,7 @@ class AriaTelegramBot:
             logger.warning("[Bot] _send_placeholder: %s", exc)
         return None
 
-    async def _edit_or_send(self, chat_id: str, message_id: Optional[int],
-                             text: str) -> None:
+    async def _edit_or_send(self, chat_id: str, message_id: int | None, text: str) -> None:
         """Edit placeholder if available; otherwise send new message."""
         html_text = self._md_to_html(text)
 
@@ -554,32 +565,28 @@ class AriaTelegramBot:
     async def _delete_message(self, chat_id: str, message_id: int) -> None:
         if not settings.telegram_token or not message_id:
             return
-        try:
+        with contextlib.suppress(Exception):
             await self._http.post(
                 f"{TELEGRAM_API}{settings.telegram_token}/deleteMessage",
                 json={"chat_id": chat_id, "message_id": message_id},
                 timeout=5.0,
             )
-        except Exception:
-            pass
 
     async def _answer_callback(self, callback_query_id: str) -> None:
         if not settings.telegram_token:
             return
-        try:
+        with contextlib.suppress(Exception):
             await self._http.post(
                 f"{TELEGRAM_API}{settings.telegram_token}/answerCallbackQuery",
                 json={"callback_query_id": callback_query_id},
                 timeout=5.0,
             )
-        except Exception:
-            pass
 
     async def _send(self, chat_id: str, text: str, already_html: bool = False) -> bool:
         if not settings.telegram_token or not text:
             return False
         html_text = text if already_html else self._md_to_html(text)
-        for chunk in [html_text[i:i+4000] for i in range(0, len(html_text), 4000)]:
+        for chunk in [html_text[i : i + 4000] for i in range(0, len(html_text), 4000)]:
             try:
                 r = await self._http.post(
                     f"{TELEGRAM_API}{settings.telegram_token}/sendMessage",
@@ -591,23 +598,22 @@ class AriaTelegramBot:
                     },
                 )
                 if r.status_code != 200:
-                    logger.warning("[Bot] sendMessage %d: %s",
-                                   r.status_code, r.text[:100])
+                    logger.warning("[Bot] sendMessage %d: %s", r.status_code, r.text[:100])
             except Exception as exc:
                 logger.error("[Bot] _send: %s", exc)
         return True
 
     # ── Media sending ──────────────────────────────────────────────────────
 
-    async def _send_photo_bytes(self, chat_id: str, image_bytes: bytes,
-                                 caption: str = None,
-                                 filename: str = "aria.png") -> bool:
+    async def _send_photo_bytes(
+        self, chat_id: str, image_bytes: bytes, caption: str = None, filename: str = "aria.png"
+    ) -> bool:
         if not settings.telegram_token or not image_bytes:
             return False
         try:
             d: dict = {"chat_id": chat_id}
             if caption:
-                d["caption"]    = self._md_to_html(caption)[:1024]
+                d["caption"] = self._md_to_html(caption)[:1024]
                 d["parse_mode"] = "HTML"
             r = await self._http.post(
                 f"{TELEGRAM_API}{settings.telegram_token}/sendPhoto",
@@ -621,15 +627,15 @@ class AriaTelegramBot:
             logger.error("[Bot] _send_photo_bytes: %s", exc)
             return False
 
-    async def _send_video_bytes(self, chat_id: str, video_bytes: bytes,
-                                 caption: str = None,
-                                 filename: str = "aria.mp4") -> bool:
+    async def _send_video_bytes(
+        self, chat_id: str, video_bytes: bytes, caption: str = None, filename: str = "aria.mp4"
+    ) -> bool:
         if not settings.telegram_token or not video_bytes:
             return False
         try:
             d: dict = {"chat_id": chat_id}
             if caption:
-                d["caption"]    = self._md_to_html(caption)[:1024]
+                d["caption"] = self._md_to_html(caption)[:1024]
                 d["parse_mode"] = "HTML"
             r = await self._http.post(
                 f"{TELEGRAM_API}{settings.telegram_token}/sendVideo",
@@ -641,15 +647,15 @@ class AriaTelegramBot:
             logger.error("[Bot] _send_video_bytes: %s", exc)
             return False
 
-    async def _send_audio_bytes(self, chat_id: str, audio_bytes: bytes,
-                                 caption: str = None,
-                                 filename: str = "aria.wav") -> bool:
+    async def _send_audio_bytes(
+        self, chat_id: str, audio_bytes: bytes, caption: str = None, filename: str = "aria.wav"
+    ) -> bool:
         if not settings.telegram_token or not audio_bytes:
             return False
         try:
             d: dict = {"chat_id": chat_id}
             if caption:
-                d["caption"]    = self._md_to_html(caption)[:1024]
+                d["caption"] = self._md_to_html(caption)[:1024]
                 d["parse_mode"] = "HTML"
             r = await self._http.post(
                 f"{TELEGRAM_API}{settings.telegram_token}/sendAudio",
@@ -661,15 +667,15 @@ class AriaTelegramBot:
             logger.error("[Bot] _send_audio_bytes: %s", exc)
             return False
 
-    async def _send_document_bytes(self, chat_id: str, doc_bytes: bytes,
-                                    filename: str = "documento.pdf",
-                                    caption: str = None) -> bool:
+    async def _send_document_bytes(
+        self, chat_id: str, doc_bytes: bytes, filename: str = "documento.pdf", caption: str = None
+    ) -> bool:
         if not settings.telegram_token or not doc_bytes:
             return False
         try:
             d: dict = {"chat_id": chat_id}
             if caption:
-                d["caption"]    = self._md_to_html(caption)[:1024]
+                d["caption"] = self._md_to_html(caption)[:1024]
                 d["parse_mode"] = "HTML"
             mime = "application/pdf" if filename.endswith(".pdf") else "application/octet-stream"
             r = await self._http.post(
@@ -686,12 +692,12 @@ class AriaTelegramBot:
 
     # ── Proactive notifications ────────────────────────────────────────────
 
-    async def notify_owner(self, message: str) -> bool:
+    async def notify_owner(self, message: str, already_html: bool = False) -> bool:
         """ARIA decides proactively to notify the owner. Use sparingly."""
         chat_id = str(getattr(settings, "TELEGRAM_CHAT_ID", "") or "")
         if not chat_id:
             return False
-        return await self._send(chat_id, message)
+        return await self._send(chat_id, message, already_html=already_html)
 
     async def close(self) -> None:
         self._running = False
@@ -700,7 +706,8 @@ class AriaTelegramBot:
 
 # ── Singleton ──────────────────────────────────────────────────────────────
 
-_bot: Optional[AriaTelegramBot] = None
+_bot: AriaTelegramBot | None = None
+
 
 def get_bot() -> AriaTelegramBot:
     global _bot

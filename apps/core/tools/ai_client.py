@@ -1,11 +1,19 @@
 """
 Aria AI — Cliente de IA con HuggingFace como Motor Principal.
-Orden: HuggingFace (rotación de 3 modelos) → Groq → OpenAI
+Orden: HuggingFace AsyncInferenceClient (rotación de providers + modelos) → Groq → OpenAI
 
-HF Serverless Inference API es gratuita y admite los mejores modelos open-source.
-Si el modelo primario está bajo carga, rota automáticamente a modelos alternativos
-ANTES de caer a Groq — maximizando el uso del tier gratuito de HuggingFace.
+HuggingFace Inference Providers:
+  - "hf-inference": tier gratuito con cold start
+  - "together": Together AI via HF token (rápido, muchos modelos)
+  - "nebius": Nebius AI Studio via HF token
+  - "featherless-ai": especializado en 7B-70B
+  Todos accesibles con un solo HF_TOKEN — maximiza el crédito mensual gratuito.
+
+Usa huggingface_hub.AsyncInferenceClient — compatible con OpenAI API,
+soporta structured outputs (response_format), function calling, streaming,
+embeddings (feature_extraction) e imagen (text_to_image).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,86 +23,131 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, AsyncIterator, Optional
+from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import httpx
 from groq import AsyncGroq
 
 from apps.core.config import settings
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
 logger = logging.getLogger("aria.ai_client")
 
 
-class AIProvider(str, Enum):
+class AIProvider(StrEnum):
     HUGGINGFACE = "huggingface"
     GROQ = "groq"
     OPENAI = "openai"
+    ANTHROPIC = "anthropic"
 
 
-class AIModel(str, Enum):
+class AIModel(StrEnum):
     STRATEGY = "strategy"
     CODE = "code"
     FAST = "fast"
     CREATIVE = "creative"
+    VISION = "vision"
 
 
 # ══════════════════════════════════════════════════════════════
-# MOTOR PRINCIPAL: HuggingFace — 3 modelos por tarea
-# Si el modelo primario está ocupado o en cold start, rota
-# automáticamente ANTES de caer a Groq.
+# MOTOR PRINCIPAL: HuggingFace AsyncInferenceClient
+# Rota entre providers Y modelos antes de caer a Groq.
+#
+# HF Inference Providers accesibles con un HF_TOKEN:
+#   "hf-inference" → gratuito (cold start posible)
+#   "together"     → Together AI, muy rápido, sin cold start
+#   "nebius"       → Nebius AI Studio, buena latencia
+#   "featherless-ai" → especializado en chat models
+#
+# Modelos actualizados a SOTA 2025:
+#   STRATEGY: Qwen2.5-72B (mejor razonamiento open-source)
+#   CODE:     Qwen2.5-Coder-32B (SOTA en coding benchmarks)
+#   FAST:     Qwen2.5-7B / Llama-3.2-3B (< 2s latency)
+#   CREATIVE: Llama-3.3-70B (mejor para generación creativa)
 # ══════════════════════════════════════════════════════════════
+
+# Provider rotation per task — only free tier; paid providers require separate subscriptions
+HF_PROVIDER_ROTATION: list[str] = [
+    "together",  # Together AI via HF token — fast, no cold start
+    "nebius",  # Nebius AI Studio — good latency, many models
+    "hf-inference",  # Official HF — free tier (cold starts possible)
+    "featherless-ai",  # Specialized in chat models
+]
+
 HF_MODEL_ROTATION: dict[AIModel, list[str]] = {
     AIModel.STRATEGY: [
-        "Qwen/Qwen2.5-72B-Instruct",           # Primario — más potente
-        "mistralai/Mistral-7B-Instruct-v0.3",  # Respaldo HF 1
-        "HuggingFaceH4/zephyr-7b-beta",        # Respaldo HF 2
+        "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",  # Best open reasoning
+        "Qwen/Qwen2.5-72B-Instruct",  # SOTA instruction following
+        "meta-llama/Llama-3.3-70B-Instruct",  # Excellent baseline
+        "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",  # Fast reasoning
+        "mistralai/Mistral-Small-3.1-24B-Instruct-2503",  # Good mid-size
     ],
     AIModel.CODE: [
-        "Qwen/Qwen2.5-Coder-7B-Instruct",     # Primario — código
-        "microsoft/Phi-3.5-mini-instruct",     # Respaldo HF 1
-        "mistralai/Mistral-7B-Instruct-v0.3",  # Respaldo HF 2
+        "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "Qwen/Qwen2.5-Coder-7B-Instruct",
     ],
     AIModel.FAST: [
-        "microsoft/Phi-3-mini-4k-instruct",    # Primario — más rápido
-        "HuggingFaceH4/zephyr-7b-beta",        # Respaldo HF 1
-        "mistralai/Mistral-7B-Instruct-v0.3",  # Respaldo HF 2
+        "Qwen/Qwen2.5-7B-Instruct",
+        "meta-llama/Llama-3.2-3B-Instruct",
+        "mistralai/Mistral-7B-Instruct-v0.3",
+        "Qwen/Qwen2.5-Coder-7B-Instruct",
     ],
     AIModel.CREATIVE: [
-        "HuggingFaceH4/zephyr-7b-beta",        # Primario — mejor para creativo
-        "mistralai/Mistral-7B-Instruct-v0.3",  # Respaldo HF 1
-        "Qwen/Qwen2.5-72B-Instruct",           # Respaldo HF 2
+        "meta-llama/Llama-3.3-70B-Instruct",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+    ],
+    AIModel.VISION: [
+        "meta-llama/Llama-3.2-11B-Vision-Instruct",
+        "Qwen/Qwen2-VL-7B-Instruct",
+        "microsoft/Phi-3.5-vision-instruct",
     ],
 }
 
 # Modelo primario por proveedor (para _dispatch directo)
 MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
     AIModel.STRATEGY: {
-        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-72B-Instruct",
-        AIProvider.GROQ:        "llama-3.3-70b-versatile",
-        AIProvider.OPENAI:      settings.OPENAI_MODEL,
+        AIProvider.HUGGINGFACE: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        AIProvider.GROQ: "llama-3.3-70b-versatile",
+        AIProvider.OPENAI: settings.OPENAI_MODEL,
+        AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
     },
     AIModel.CODE: {
-        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-Coder-7B-Instruct",
-        AIProvider.GROQ:        "llama-3.3-70b-versatile",
-        AIProvider.OPENAI:      settings.OPENAI_MODEL,
+        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-Coder-32B-Instruct",
+        AIProvider.GROQ: "llama-3.3-70b-versatile",
+        AIProvider.OPENAI: settings.OPENAI_MODEL,
+        AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
     },
     AIModel.FAST: {
-        AIProvider.HUGGINGFACE: "microsoft/Phi-3-mini-4k-instruct",
-        AIProvider.GROQ:        "llama-3.1-8b-instant",
-        AIProvider.OPENAI:      settings.OPENAI_MODEL,
+        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-7B-Instruct",
+        AIProvider.GROQ: "llama-3.1-8b-instant",
+        AIProvider.OPENAI: settings.OPENAI_MODEL,
+        AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
     },
     AIModel.CREATIVE: {
-        AIProvider.HUGGINGFACE: "HuggingFaceH4/zephyr-7b-beta",
-        AIProvider.GROQ:        "llama-3.3-70b-versatile",
-        AIProvider.OPENAI:      settings.OPENAI_MODEL,
+        AIProvider.HUGGINGFACE: "meta-llama/Llama-3.3-70B-Instruct",
+        AIProvider.GROQ: "llama-3.3-70b-versatile",
+        AIProvider.OPENAI: settings.OPENAI_MODEL,
+        AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
+    },
+    AIModel.VISION: {
+        AIProvider.HUGGINGFACE: "meta-llama/Llama-3.2-11B-Vision-Instruct",
+        AIProvider.GROQ: "llava-v1.5-7b-4096-preview",
+        AIProvider.OPENAI: "gpt-4o-mini",
+        AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
     },
 }
 
 PROVIDER_TIMEOUTS: dict[AIProvider, float] = {
-    AIProvider.HUGGINGFACE: 35.0,  # HF puede tener cold start — más margen
-    AIProvider.GROQ:        12.0,
-    AIProvider.OPENAI:      15.0,
+    AIProvider.HUGGINGFACE: 25.0,  # cold starts unlikely to resolve after 25s → fall to Groq fast
+    AIProvider.GROQ: 12.0,
+    AIProvider.OPENAI: 15.0,
+    AIProvider.ANTHROPIC: 20.0,
 }
 
 
@@ -106,13 +159,14 @@ class AIResponse:
     tokens_used: int = 0
     latency_ms: int = 0
     success: bool = True
-    error: Optional[str] = None
+    error: str | None = None
     attempts: int = 1
 
 
 @dataclass
 class ProviderHealth:
     """Circuit breaker por proveedor con cooldown automático."""
+
     consecutive_failures: int = 0
     total_calls: int = 0
     total_errors: int = 0
@@ -164,9 +218,7 @@ class AriaAIClient:
     _OAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 
     def __init__(self) -> None:
-        self._health: dict[AIProvider, ProviderHealth] = {
-            p: ProviderHealth() for p in AIProvider
-        }
+        self._health: dict[AIProvider, ProviderHealth] = {p: ProviderHealth() for p in AIProvider}
         self._groq = AsyncGroq(api_key=settings.GROQ_API_KEY or "no-key")
         self._http = httpx.AsyncClient(
             timeout=httpx.Timeout(40.0, connect=8.0),
@@ -203,7 +255,7 @@ class AriaAIClient:
             )
 
         providers = self._get_available_providers()
-        last_error: Optional[str] = None
+        last_error: str | None = None
         attempts = 0
 
         for provider in providers:
@@ -235,12 +287,15 @@ class AriaAIClient:
                     response.content = self._extract_json_safe(response.content)
                 logger.info(
                     "[%s] OK %s via %s — %dms — %d tokens",
-                    agent_name, model.value, provider.value,
-                    response.latency_ms, response.tokens_used,
+                    agent_name,
+                    model.value,
+                    provider.value,
+                    response.latency_ms,
+                    response.tokens_used,
                 )
                 return response
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._health[provider].record_failure()
                 last_error = f"{provider.value}: timeout tras {PROVIDER_TIMEOUTS[provider]:.0f}s"
                 self._total_fallbacks += 1
@@ -252,7 +307,9 @@ class AriaAIClient:
                 self._total_fallbacks += 1
                 logger.warning("[%s] Error en %s: %s", agent_name, provider.value, last_error)
 
-        logger.error("[%s] Todos los proveedores fallaron. Ultimo error: %s", agent_name, last_error)
+        logger.error(
+            "[%s] Todos los proveedores fallaron. Ultimo error: %s", agent_name, last_error
+        )
         return AIResponse(
             content="",
             provider=AIProvider.HUGGINGFACE,
@@ -269,11 +326,15 @@ class AriaAIClient:
         model: AIModel = AIModel.STRATEGY,
         max_tokens: int = 2000,
         agent_name: str = "aria",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Atajo tipado — retorna dict directamente."""
         response = await self.complete(
-            system=system, user=user, model=model,
-            max_tokens=max_tokens, json_mode=True, agent_name=agent_name,
+            system=system,
+            user=user,
+            model=model,
+            max_tokens=max_tokens,
+            json_mode=True,
+            agent_name=agent_name,
         )
         if not response.success or not response.content:
             return None
@@ -282,6 +343,62 @@ class AriaAIClient:
         except json.JSONDecodeError as exc:
             logger.error("JSON invalido: %s | contenido: %s", exc, response.content[:200])
             return None
+
+    async def complete_vision(
+        self,
+        system: str,
+        user: str,
+        image_b64: str,
+        image_mime: str = "image/jpeg",
+        max_tokens: int = 1000,
+        agent_name: str = "aria_vision",
+    ) -> AIResponse:
+        """Vision + text completion. Routes to HF vision models first, falls back to Groq."""
+        if not settings.hf_key:
+            return AIResponse(
+                content="",
+                provider=AIProvider.HUGGINGFACE,
+                model="none",
+                success=False,
+                error="HF_TOKEN no configurado para vision",
+            )
+        for model_id in HF_MODEL_ROTATION[AIModel.VISION]:
+            short = model_id.split("/")[-1]
+            for hf_prov in HF_PROVIDER_ROTATION:
+                try:
+                    t0 = time.time()
+                    content, tokens = await asyncio.wait_for(
+                        self._call_huggingface_vision(
+                            model_id, system, user, image_b64, image_mime, max_tokens, hf_prov
+                        ),
+                        timeout=30.0,
+                    )
+                    latency = int((time.time() - t0) * 1000)
+                    self._total_tokens += tokens
+                    self._health[AIProvider.HUGGINGFACE].record_success()
+                    logger.info(
+                        "[%s] HF-Vision[%s@%s] OK — %dms", agent_name, short, hf_prov, latency
+                    )
+                    return AIResponse(
+                        content=content,
+                        provider=AIProvider.HUGGINGFACE,
+                        model=f"{hf_prov}/{model_id}",
+                        tokens_used=tokens,
+                        latency_ms=latency,
+                        success=True,
+                    )
+                except Exception as exc:
+                    logger.debug(
+                        "[%s] HF-Vision %s@%s: %s", agent_name, short, hf_prov, str(exc)[:60]
+                    )
+                    continue
+        return AIResponse(
+            content="",
+            provider=AIProvider.HUGGINGFACE,
+            model="none",
+            success=False,
+            error="HF vision: todos los modelos fallaron",
+        )
 
     # ── HF MODEL ROTATION ─────────────────────────────────
 
@@ -293,15 +410,20 @@ class AriaAIClient:
         max_tokens: int,
         temperature: float,
         agent_name: str,
-    ) -> Optional[AIResponse]:
+    ) -> AIResponse | None:
         """
-        Intenta hasta 3 modelos HF distintos antes de rendirse.
-        Maneja cold starts y modelos bajo carga de forma transparente.
+        Rota entre providers HF Y modelos HF antes de rendirse.
+        Strategy: intenta cada modelo con hf-inference primero; si falla por
+        cold start / rate limit, prueba el mismo modelo con el siguiente provider
+        (together, nebius). Así maximizamos el uso del tier gratuito.
         """
         if not settings.hf_key:
             return AIResponse(
-                content="", provider=AIProvider.HUGGINGFACE, model="none",
-                success=False, error="HF_TOKEN no configurado"
+                content="",
+                provider=AIProvider.HUGGINGFACE,
+                model="none",
+                success=False,
+                error="HF_TOKEN no configurado",
             )
 
         models_to_try = HF_MODEL_ROTATION.get(
@@ -310,47 +432,101 @@ class AriaAIClient:
 
         for model_id in models_to_try:
             short_name = model_id.split("/")[-1]
-            try:
-                t0 = time.time()
-                content, tokens = await asyncio.wait_for(
-                    self._call_huggingface(model_id, system, user, max_tokens, temperature),
-                    timeout=PROVIDER_TIMEOUTS[AIProvider.HUGGINGFACE],
-                )
-                latency = int((time.time() - t0) * 1000)
-                self._total_tokens += tokens
-                self._health[AIProvider.HUGGINGFACE].record_success()
-                logger.info(
-                    "[%s] HF[%s] OK — %dms — %d tokens",
-                    agent_name, short_name, latency, tokens
-                )
-                return AIResponse(
-                    content=content,
-                    provider=AIProvider.HUGGINGFACE,
-                    model=model_id,
-                    tokens_used=tokens,
-                    latency_ms=latency,
-                    success=True,
-                )
+            for hf_provider in HF_PROVIDER_ROTATION:
+                try:
+                    t0 = time.time()
+                    content, tokens = await asyncio.wait_for(
+                        self._call_huggingface(
+                            model_id,
+                            system,
+                            user,
+                            max_tokens,
+                            temperature,
+                            provider=hf_provider,
+                        ),
+                        timeout=PROVIDER_TIMEOUTS[AIProvider.HUGGINGFACE],
+                    )
+                    latency = int((time.time() - t0) * 1000)
+                    self._total_tokens += tokens
+                    self._health[AIProvider.HUGGINGFACE].record_success()
+                    logger.info(
+                        "[%s] HF[%s@%s] OK — %dms — %d tokens",
+                        agent_name,
+                        short_name,
+                        hf_provider,
+                        latency,
+                        tokens,
+                    )
+                    return AIResponse(
+                        content=content,
+                        provider=AIProvider.HUGGINGFACE,
+                        model=f"{hf_provider}/{model_id}",
+                        tokens_used=tokens,
+                        latency_ms=latency,
+                        success=True,
+                    )
 
-            except asyncio.TimeoutError:
-                logger.warning("[%s] HF timeout en %s — rotando", agent_name, short_name)
-                continue
-            except Exception as exc:
-                err_str = str(exc).lower()
-                if any(k in err_str for k in ["loading", "503", "currently loading", "model is loading"]):
-                    logger.info("[%s] HF cargando %s — rotando modelo", agent_name, short_name)
-                elif "rate" in err_str or "429" in err_str:
-                    logger.info("[%s] HF rate limit en %s — rotando", agent_name, short_name)
-                else:
-                    # DNS / connection error — cuenta para el circuit breaker
-                    self._health[AIProvider.HUGGINGFACE].record_failure()
-                    logger.warning("[%s] HF error %s: %s", agent_name, short_name, str(exc)[:80])
-                continue
+                except TimeoutError:
+                    logger.warning(
+                        "[%s] HF timeout en %s@%s — rotando provider",
+                        agent_name,
+                        short_name,
+                        hf_provider,
+                    )
+                    continue
+                except Exception as exc:
+                    err_str = str(exc).lower()
+                    if any(
+                        k in err_str
+                        for k in [
+                            "loading",
+                            "503",
+                            "currently loading",
+                            "model is loading",
+                            "cold",
+                            "unavailable",
+                        ]
+                    ):
+                        logger.info(
+                            "[%s] HF cold start %s@%s — rotando provider",
+                            agent_name,
+                            short_name,
+                            hf_provider,
+                        )
+                    elif "rate" in err_str or "429" in err_str:
+                        logger.info(
+                            "[%s] HF rate limit %s@%s — rotando provider",
+                            agent_name,
+                            short_name,
+                            hf_provider,
+                        )
+                    elif "not supported" in err_str or "404" in err_str:
+                        # Model not on this provider — skip remaining providers for this model
+                        logger.debug(
+                            "[%s] HF modelo %s no soportado por %s — siguiente modelo",
+                            agent_name,
+                            short_name,
+                            hf_provider,
+                        )
+                        break
+                    else:
+                        self._health[AIProvider.HUGGINGFACE].record_failure()
+                        logger.warning(
+                            "[%s] HF error %s@%s: %s",
+                            agent_name,
+                            short_name,
+                            hf_provider,
+                            str(exc)[:80],
+                        )
+                    continue
 
         self._health[AIProvider.HUGGINGFACE].record_failure()
         return AIResponse(
-            content="", provider=AIProvider.HUGGINGFACE, model="none",
-            success=False, error="HF: todos los modelos de rotacion fallaron"
+            content="",
+            provider=AIProvider.HUGGINGFACE,
+            model="none",
+            success=False,
+            error="HF: todos los modelos y providers de rotacion fallaron",
         )
 
     # ── DISPATCH POR PROVEEDOR ────────────────────────────
@@ -368,13 +544,23 @@ class AriaAIClient:
         t0 = time.time()
         if provider == AIProvider.GROQ:
             content, tokens = await self._call_groq(model_id, system, user, max_tokens, temperature)
+        elif provider == AIProvider.ANTHROPIC:
+            content, tokens = await self._call_anthropic(
+                model_id, system, user, max_tokens, temperature
+            )
         else:
-            content, tokens = await self._call_openai(model_id, system, user, max_tokens, temperature)
+            content, tokens = await self._call_openai(
+                model_id, system, user, max_tokens, temperature
+            )
         latency = int((time.time() - t0) * 1000)
         self._total_tokens += tokens
         return AIResponse(
-            content=content, provider=provider, model=model_id,
-            tokens_used=tokens, latency_ms=latency, success=True,
+            content=content,
+            provider=provider,
+            model=model_id,
+            tokens_used=tokens,
+            latency_ms=latency,
+            success=True,
         )
 
     async def _call_huggingface(
@@ -384,11 +570,46 @@ class AriaAIClient:
         user: str,
         max_tokens: int,
         temperature: float,
+        provider: str = "hf-inference",
     ) -> tuple[str, int]:
+        """
+        Uses huggingface_hub.AsyncInferenceClient when available.
+        Falls back to raw httpx if the library isn't installed.
+        The AsyncInferenceClient is OpenAI-compatible and handles:
+          - provider routing (hf-inference / together / nebius / featherless-ai)
+          - automatic retries on cold starts
+          - structured outputs via response_format
+          - streaming, function calling
+        """
         hf_key = settings.hf_key
         if not hf_key:
             raise ValueError("HF_TOKEN no configurado")
 
+        try:
+            from huggingface_hub import AsyncInferenceClient
+
+            client = AsyncInferenceClient(
+                provider=provider,
+                api_key=hf_key,
+            )
+            response = await client.chat.completions.create(
+                model=model_id,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                max_tokens=min(max_tokens, 2048),
+                temperature=temperature,
+            )
+            content = (response.choices[0].message.content or "").strip()
+            tokens = response.usage.total_tokens if response.usage else len(content.split()) * 2
+            return content, tokens
+
+        except ImportError:
+            # huggingface_hub not installed — fall back to raw httpx
+            pass
+
+        # Raw httpx fallback (original implementation)
         payload = {
             "model": model_id,
             "messages": [
@@ -419,6 +640,43 @@ class AriaAIClient:
             raise ValueError(f"HF sin choices: {str(data)[:100]}")
         content = choices[0].get("message", {}).get("content", "").strip()
         tokens = data.get("usage", {}).get("total_tokens", len(content.split()) * 2)
+        return content, tokens
+
+    async def _call_huggingface_vision(
+        self,
+        model_id: str,
+        system: str,
+        user: str,
+        image_b64: str,
+        image_mime: str,
+        max_tokens: int,
+        provider: str = "hf-inference",
+    ) -> tuple[str, int]:
+        """HF vision call — image + text in the same message."""
+        hf_key = settings.hf_key
+        if not hf_key:
+            raise ValueError("HF_TOKEN no configurado")
+        from huggingface_hub import AsyncInferenceClient
+
+        client = AsyncInferenceClient(provider=provider, api_key=hf_key)
+        image_url = f"data:{image_mime};base64,{image_b64}"
+        response = await client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                        {"type": "text", "text": user},
+                    ],
+                },
+            ],
+            max_tokens=min(max_tokens, 2048),
+            temperature=0.4,
+        )
+        content = (response.choices[0].message.content or "").strip()
+        tokens = response.usage.total_tokens if response.usage else len(content.split()) * 2
         return content, tokens
 
     async def _call_groq(
@@ -473,6 +731,38 @@ class AriaAIClient:
         tokens = data.get("usage", {}).get("total_tokens", 0)
         return content, tokens
 
+    async def _call_anthropic(
+        self,
+        model_id: str,
+        system: str,
+        user: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> tuple[str, int]:
+        if not settings.ANTHROPIC_API_KEY:
+            raise ValueError("ANTHROPIC_API_KEY no configurado")
+        resp = await self._http.post(
+            "https://api.anthropic.com/v1/messages",
+            json={
+                "model": model_id,
+                "max_tokens": min(max_tokens, 4096),
+                "temperature": temperature,
+                "system": system,
+                "messages": [{"role": "user", "content": user}],
+            },
+            headers={
+                "x-api-key": settings.ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["content"][0]["text"].strip()
+        usage = data.get("usage", {})
+        tokens = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+        return content, tokens
+
     # ── STREAMING ─────────────────────────────────────────
 
     async def stream_complete(
@@ -511,12 +801,17 @@ class AriaAIClient:
 
         # Fallback: full response, yield in ~30-char chunks to simulate streaming
         try:
-            resp = await self.complete(system=system, user=user, model=model,
-                                        max_tokens=max_tokens, temperature=temperature)
+            resp = await self.complete(
+                system=system,
+                user=user,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
             text = resp.content or ""
             chunk_size = 28
             for i in range(0, len(text), chunk_size):
-                yield text[i:i + chunk_size]
+                yield text[i : i + chunk_size]
                 await asyncio.sleep(0.012)
         except Exception as exc:
             yield f"[Error: {exc}]"
@@ -539,17 +834,25 @@ class AriaAIClient:
         if settings.GROQ_API_KEY and self._health[AIProvider.GROQ].is_available():
             try:
                 from groq import AsyncGroq
+
                 groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
                 resp = await asyncio.wait_for(
                     groq_client.chat.completions.create(
                         model="llama-3.2-11b-vision-preview",
-                        messages=[{
-                            "role": "user",
-                            "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_base64}"}},
-                                {"type": "text", "text": question},
-                            ],
-                        }],
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:{media_type};base64,{image_base64}"
+                                        },
+                                    },
+                                    {"type": "text", "text": question},
+                                ],
+                            }
+                        ],
                         max_tokens=max_tokens,
                     ),
                     timeout=30.0,
@@ -567,13 +870,20 @@ class AriaAIClient:
                     self._OAI_ENDPOINT,
                     json={
                         "model": "gpt-4o-mini",
-                        "messages": [{
-                            "role": "user",
-                            "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_base64}"}},
-                                {"type": "text", "text": question},
-                            ],
-                        }],
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:{media_type};base64,{image_base64}"
+                                        },
+                                    },
+                                    {"type": "text", "text": question},
+                                ],
+                            }
+                        ],
                         "max_tokens": max_tokens,
                     },
                     headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
@@ -601,13 +911,116 @@ class AriaAIClient:
             except Exception as exc:
                 logger.warning("[Vision] HF BLIP fallback failed: %s", exc)
 
-        return "No se pudo analizar la imagen (configura GROQ_API_KEY u OPENAI_API_KEY para visión)."
+        return (
+            "No se pudo analizar la imagen (configura GROQ_API_KEY u OPENAI_API_KEY para visión)."
+        )
+
+    # ── EMBEDDINGS ────────────────────────────────────────
+
+    async def get_embeddings(
+        self,
+        texts: list[str],
+        model_id: str = "sentence-transformers/all-MiniLM-L6-v2",
+    ) -> list[list[float]] | None:
+        """
+        Generate sentence embeddings using HF feature_extraction.
+        Uses AsyncInferenceClient.feature_extraction when available.
+        Useful for semantic search, clustering, RAG systems.
+
+        Returns list of embedding vectors (one per input text).
+        """
+        if not settings.hf_key:
+            return None
+        try:
+            from huggingface_hub import AsyncInferenceClient
+
+            client = AsyncInferenceClient(
+                provider="hf-inference",
+                api_key=settings.hf_key,
+            )
+            embeddings = await client.feature_extraction(
+                text=texts,
+                model=model_id,
+            )
+            # Returns numpy array or list; convert to Python lists
+            if hasattr(embeddings, "tolist"):
+                return embeddings.tolist()
+            return list(embeddings)
+        except Exception as exc:
+            logger.warning("[AriaAI] get_embeddings failed: %s", exc)
+            return None
+
+    # ── IMAGE GENERATION ──────────────────────────────────
+
+    async def generate_image(
+        self,
+        prompt: str,
+        model_id: str = "black-forest-labs/FLUX.1-schnell",
+        provider: str = "hf-inference",
+    ) -> bytes | None:
+        """
+        Generate an image from text using FLUX via HF Inference.
+        Uses AsyncInferenceClient.text_to_image.
+        Returns raw image bytes (PNG/JPEG) or None on failure.
+
+        Supported providers for text_to_image:
+          "hf-inference", "fal-ai", "together", "replicate", "nebius"
+        """
+        if not settings.hf_key:
+            return None
+        try:
+            from huggingface_hub import AsyncInferenceClient
+
+            client = AsyncInferenceClient(
+                provider=provider,
+                api_key=settings.hf_key,
+            )
+            image = await asyncio.wait_for(
+                client.text_to_image(prompt, model=model_id),
+                timeout=60.0,
+            )
+            # image is a PIL.Image object
+            import io
+
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception as exc:
+            logger.warning("[AriaAI] generate_image failed (%s): %s", provider, exc)
+            return None
 
     # ── UTILIDADES ────────────────────────────────────────
 
     def _get_available_providers(self) -> list[AIProvider]:
-        order = [AIProvider.HUGGINGFACE, AIProvider.GROQ, AIProvider.OPENAI]
-        return [p for p in order if self._health[p].is_available()]
+        base_order = [
+            AIProvider.HUGGINGFACE,
+            AIProvider.GROQ,
+            AIProvider.ANTHROPIC,
+            AIProvider.OPENAI,
+        ]
+
+        # Skip providers with no API key configured — no point trying them
+        has_key = {
+            AIProvider.HUGGINGFACE: bool(settings.hf_key),
+            AIProvider.GROQ: bool(settings.GROQ_API_KEY),
+            AIProvider.ANTHROPIC: bool(settings.ANTHROPIC_API_KEY),
+            AIProvider.OPENAI: bool(settings.OPENAI_API_KEY),
+        }
+
+        available = [p for p in base_order if has_key[p] and self._health[p].is_available()]
+
+        # Adaptive ordering: if HF has >= 2 consecutive failures, promote Groq to front
+        # Cuts the 45s waste (3 models × 15s) before reaching the working provider
+        hf_failures = self._health[AIProvider.HUGGINGFACE].consecutive_failures
+        if (
+            hf_failures >= 2
+            and AIProvider.GROQ in available
+            and AIProvider.HUGGINGFACE in available
+        ):
+            available.remove(AIProvider.GROQ)
+            available.insert(0, AIProvider.GROQ)
+
+        return available
 
     def _extract_json_safe(self, text: str) -> str:
         text = text.strip()
@@ -618,7 +1031,7 @@ class AriaAIClient:
             if idx != -1:
                 end_idx = text.rfind(end_char)
                 if end_idx > idx:
-                    return text[idx:end_idx + 1]
+                    return text[idx : end_idx + 1]
         return text
 
     def get_health_summary(self) -> dict:
@@ -640,7 +1053,7 @@ class AriaAIClient:
 
 
 # ── SINGLETON ─────────────────────────────────────────────
-_client_instance: Optional[AriaAIClient] = None
+_client_instance: AriaAIClient | None = None
 _client_lock = asyncio.Lock()
 
 
@@ -652,7 +1065,7 @@ async def get_ai_client_async() -> AriaAIClient:
     return _client_instance
 
 
-def get_ai_client() -> Optional[AriaAIClient]:
+def get_ai_client() -> AriaAIClient | None:
     global _client_instance
     if _client_instance is None:
         _client_instance = AriaAIClient()
@@ -668,12 +1081,13 @@ async def refresh_model_rotation_from_redis() -> bool:
     global HF_MODEL_ROTATION
     try:
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         raw = await cache.get("aria:model_router:hf_rotation")
         if not raw:
             logger.debug("[AIClient] Sin rotación dinámica en Redis — usando config estática")
             return False
-        dynamic = __import__('json').loads(raw)
+        dynamic = __import__("json").loads(raw)
         if not dynamic:
             return False
         # Validar y mergear: el config dinámico tiene prioridad pero se usan enum keys

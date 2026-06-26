@@ -1,12 +1,16 @@
 """
 Investor Agent — Búsqueda de capital, outreach a VCs/Angels y pitch decks.
 """
+
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
 
 logger = logging.getLogger("aria.business.investor")
+
 
 class InvestorAgent(BaseAgent):
     IDENTITY = (
@@ -22,7 +26,10 @@ class InvestorAgent(BaseAgent):
             name="investor",
             description="Búsqueda de capital, outreach a inversores, pitch decks y gestión de equity",
             capabilities=[
-                "investor_research", "outreach", "pitch_decks", "linkedin_networking",
+                "investor_research",
+                "outreach",
+                "pitch_decks",
+                "linkedin_networking",
             ],
         )
 
@@ -46,7 +53,9 @@ class InvestorAgent(BaseAgent):
             outreach_results = await self._execute_outreach(pitches)
             results["outreach_results"] = outreach_results
 
-        results["summary"] = f"Encontrados {len(investors)} inversionistas potenciales. Campaña de outreach lista."
+        results["summary"] = (
+            f"Encontrados {len(investors)} inversionistas potenciales. Campaña de outreach lista."
+        )
         return results
 
     async def _research_investors(self, niche: str) -> list[dict]:
@@ -56,7 +65,7 @@ class InvestorAgent(BaseAgent):
             {"name": "TechStars AI", "type": "Accelerator", "focus": "AI/ML"},
             {"name": "Y Combinator", "type": "Accelerator", "focus": "General Tech"},
             {"name": "Sequoia Capital", "type": "VC", "focus": "High Growth"},
-            {"name": "AngelList AI Syndicate", "type": "Angel Group", "focus": "Early Stage AI"}
+            {"name": "AngelList AI Syndicate", "type": "Angel Group", "focus": "Early Stage AI"},
         ]
 
     async def _generate_pitches(self, investors: list[dict], amount: str) -> list[dict]:
@@ -65,8 +74,8 @@ class InvestorAgent(BaseAgent):
             pitch = await self.think(
                 system=self.IDENTITY,
                 user=f"Redacta un mensaje de LinkedIn personalizado para {inv['name']} ({inv['type']}). "
-                     f"Estamos buscando {amount} para escalar Aria AI, una IA autónoma que genera revenue real en Shopify. "
-                     f"Enfócate en tracción real y ROI inmediato."
+                f"Estamos buscando {amount} para escalar Aria AI, una IA autónoma que genera revenue real en Shopify. "
+                f"Enfócate en tracción real y ROI inmediato.",
             )
             pitches.append({"investor": inv["name"], "pitch": pitch})
         return pitches
@@ -74,6 +83,7 @@ class InvestorAgent(BaseAgent):
     async def _execute_outreach(self, pitches: list[dict]) -> dict:
         """Ejecuta el posteo en LinkedIn o envío de mensajes."""
         from apps.core.tools.social_media import SocialMediaManager
+
         sm = SocialMediaManager()
         results = []
         for p in pitches:

@@ -2,10 +2,14 @@
 buffer_tools.py — Automatización de redes sociales via Buffer API.
 Publica en Twitter/X, LinkedIn, Facebook, Instagram automáticamente.
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Any, Optional
+from typing import Any
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.buffer_tools")
@@ -33,7 +37,11 @@ class BufferTools:
                 return {
                     "success": True,
                     "profiles": [
-                        {"id": p["id"], "service": p["service"], "handle": p.get("formatted_username", "")}
+                        {
+                            "id": p["id"],
+                            "service": p["service"],
+                            "handle": p.get("formatted_username", ""),
+                        }
                         for p in profiles
                     ],
                 }
@@ -45,9 +53,9 @@ class BufferTools:
     async def post_update(
         self,
         text: str,
-        profile_ids: Optional[list[str]] = None,
+        profile_ids: list[str] | None = None,
         now: bool = False,
-        media_url: Optional[str] = None,
+        media_url: str | None = None,
     ) -> dict[str, Any]:
         """Publica un update en todos (o algunos) perfiles conectados."""
         if not self._token:

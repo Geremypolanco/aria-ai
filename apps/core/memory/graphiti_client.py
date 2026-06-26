@@ -15,22 +15,24 @@ Integración con Aria:
 
 Referencia: https://github.com/getzep/graphiti
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.graphiti_client")
 
 # ── Graphiti Import con fallback ─────────────────────────────────────────────
 try:
     from graphiti_core import Graphiti
-    from graphiti_core.nodes import EpisodeType
+    from graphiti_core.nodes import EpisodeType  # noqa: F401
     from graphiti_core.search.search_config_recipes import (
-        NODE_HYBRID_SEARCH_RRF,
-        EDGE_HYBRID_SEARCH_RRF,
+        EDGE_HYBRID_SEARCH_RRF,  # noqa: F401
+        NODE_HYBRID_SEARCH_RRF,  # noqa: F401
     )
+
     GRAPHITI_AVAILABLE = True
     logger.info("[Graphiti] Librería cargada correctamente.")
 except ImportError:
@@ -44,6 +46,7 @@ except ImportError:
 
 
 # ── Implementación Fallback de Grafo en Memoria ──────────────────────────────
+
 
 class InMemoryGraph:
     """
@@ -61,7 +64,7 @@ class InMemoryGraph:
         name: str,
         episode_body: str,
         source_description: str = "",
-        reference_time: Optional[datetime] = None,
+        reference_time: datetime | None = None,
         source: str = "text",
     ) -> None:
         episode = {
@@ -69,7 +72,7 @@ class InMemoryGraph:
             "body": episode_body,
             "source": source,
             "source_description": source_description,
-            "timestamp": (reference_time or datetime.now(timezone.utc)).isoformat(),
+            "timestamp": (reference_time or datetime.now(UTC)).isoformat(),
         }
         self._episodes.append(episode)
         logger.debug("[InMemoryGraph] Episodio añadido: %s", name)
@@ -117,6 +120,7 @@ ARIA_RELATION_TYPES = {
 
 
 # ── Cliente Principal de Graphiti para ARIA ──────────────────────────────────
+
 
 class AriaGraphitiClient:
     """
@@ -176,6 +180,7 @@ class AriaGraphitiClient:
             if self._use_falkordb:
                 # FalkorDB es más ligero y fácil de desplegar con Docker
                 from graphiti_core.driver.falkordb_driver import FalkorDBDriver
+
                 driver = FalkorDBDriver(
                     host=self._falkordb_host,
                     port=self._falkordb_port,
@@ -244,7 +249,7 @@ class AriaGraphitiClient:
                     name=f"{event_type}_{entity_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                     episode_body=episode_body,
                     source_description=f"ARIA AI - {event_type}",
-                    reference_time=reference_time or datetime.now(timezone.utc),
+                    reference_time=reference_time or datetime.now(UTC),
                     source="text",
                 )
             elif self._fallback:
@@ -327,12 +332,16 @@ class AriaGraphitiClient:
                 return [
                     {
                         "fact": r.fact if hasattr(r, "fact") else str(r),
-                        "valid_at": r.valid_at.isoformat() if hasattr(r, "valid_at") and r.valid_at else None,
+                        "valid_at": (
+                            r.valid_at.isoformat()
+                            if hasattr(r, "valid_at") and r.valid_at
+                            else None
+                        ),
                         "source": source,
                     }
                     for r in results
                 ]
-            elif self._fallback:
+            if self._fallback:
                 return await self._fallback.search(query, num_results=limit)
 
         except Exception as exc:
@@ -392,6 +401,7 @@ def get_graphiti_client() -> AriaGraphitiClient:
     global _graphiti_instance
     if _graphiti_instance is None:
         import os
+
         _graphiti_instance = AriaGraphitiClient(
             neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
             neo4j_user=os.getenv("NEO4J_USER", "neo4j"),

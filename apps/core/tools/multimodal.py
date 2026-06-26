@@ -10,13 +10,13 @@ Inspirado en Gemini Omni:
 
 Usa Claude (vision) para análisis y HF para transformaciones.
 """
+
 from __future__ import annotations
 
 import asyncio
 import base64
-import io
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -46,7 +46,8 @@ class MultimodalEngine:
         Acepta URL o bytes directos.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import get_ai_client
+
             client = get_ai_client()
 
             if image_url and not image_bytes:
@@ -85,9 +86,7 @@ class MultimodalEngine:
             logger.error("[Multimodal] analyze_image error: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def extract_text(
-        self, image_url: str = "", image_bytes: bytes = b""
-    ) -> dict[str, Any]:
+    async def extract_text(self, image_url: str = "", image_bytes: bytes = b"") -> dict[str, Any]:
         """OCR: extrae texto visible en una imagen."""
         return await self.analyze_image(
             image_url=image_url,
@@ -95,9 +94,7 @@ class MultimodalEngine:
             question="Extrae TODO el texto visible en esta imagen, exactamente como aparece, preservando estructura y formato.",
         )
 
-    async def analyze_chart(
-        self, image_url: str = "", image_bytes: bytes = b""
-    ) -> dict[str, Any]:
+    async def analyze_chart(self, image_url: str = "", image_bytes: bytes = b"") -> dict[str, Any]:
         """Analiza gráficas, tablas y diagramas."""
         return await self.analyze_image(
             image_url=image_url,
@@ -138,6 +135,7 @@ class MultimodalEngine:
         Usa InstructPix2Pix de HF como motor de edición.
         """
         from apps.core.config import settings
+
         if not settings.hf_key:
             return {"success": False, "error": "HF_TOKEN no configurado"}
 
@@ -170,7 +168,10 @@ class MultimodalEngine:
                     "image_bytes": res.content,
                     "instruction": instruction,
                 }
-            return {"success": False, "error": f"HF InstructPix2Pix: {res.status_code} {res.text[:200]}"}
+            return {
+                "success": False,
+                "error": f"HF InstructPix2Pix: {res.status_code} {res.text[:200]}",
+            }
 
         except Exception as exc:
             logger.error("[Multimodal] edit_image error: %s", exc)
@@ -181,6 +182,7 @@ class MultimodalEngine:
     ) -> dict[str, Any]:
         """Elimina el fondo de una imagen."""
         from apps.core.config import settings
+
         if not settings.hf_key:
             return {"success": False, "error": "HF_TOKEN no configurado"}
 
@@ -255,15 +257,15 @@ class MultimodalEngine:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             analyses = [
-                r.get("analysis", "") for r in results
-                if isinstance(r, dict) and r.get("success")
+                r.get("analysis", "") for r in results if isinstance(r, dict) and r.get("success")
             ]
 
             if not analyses:
                 return {"success": False, "error": "No se pudo analizar ningún frame"}
 
             # Synthesize into coherent description
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+
             client = get_ai_client()
             synthesis = await client.complete(
                 model=AIModel.FAST,
@@ -288,9 +290,11 @@ class MultimodalEngine:
     def _extract_frames(self, video_bytes: bytes, max_frames: int = 4) -> list[bytes]:
         """Extract evenly-spaced frames from video using OpenCV or ffmpeg."""
         try:
+            import os
+            import tempfile
+
             import cv2
-            import numpy as np
-            import tempfile, os
+            import numpy as np  # noqa: F401
 
             with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
                 f.write(video_bytes)
@@ -366,7 +370,7 @@ class MultimodalEngine:
         await self._http.aclose()
 
 
-_engine: Optional[MultimodalEngine] = None
+_engine: MultimodalEngine | None = None
 
 
 def get_multimodal() -> MultimodalEngine:

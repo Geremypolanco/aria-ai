@@ -1,9 +1,12 @@
 """
 Finance Agent — Tracking de revenue, costos, P&L y forecasting autónomo.
 """
+
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
 
 logger = logging.getLogger("aria.business.finance")
@@ -21,15 +24,19 @@ class FinanceAgent(BaseAgent):
             name="finance",
             description="Revenue tracking, P&L, forecasting, análisis de costos y métricas financieras",
             capabilities=[
-                "revenue_tracking", "cost_analysis", "forecasting",
-                "stripe_analytics", "shopify_analytics", "pl_statement",
+                "revenue_tracking",
+                "cost_analysis",
+                "forecasting",
+                "stripe_analytics",
+                "shopify_analytics",
+                "pl_statement",
             ],
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission  = context.get("mission", "Generar reporte financiero")
-        period   = context.get("period", "month")  # day|week|month|quarter
-        include  = context.get("include", ["revenue", "costs", "forecast"])
+        mission = context.get("mission", "Generar reporte financiero")
+        period = context.get("period", "month")  # day|week|month|quarter
+        context.get("include", ["revenue", "costs", "forecast"])
 
         results: dict[str, Any] = {"success": True, "agent": "finance", "period": period}
 
@@ -61,6 +68,7 @@ class FinanceAgent(BaseAgent):
         if settings.STRIPE_SECRET_KEY:
             try:
                 from apps.core.tools.commerce_tools import CommerceTools
+
                 stripe_data = await CommerceTools().stripe_get_revenue()
                 if stripe_data.get("success"):
                     revenue["sources"]["stripe"] = stripe_data
@@ -72,9 +80,13 @@ class FinanceAgent(BaseAgent):
         if settings.SHOPIFY_URL and settings.SHOPIFY_ADMIN_TOKEN:
             try:
                 from apps.core.integrations.shopify_engine import ShopifyEngine
+
                 shop_url = settings.SHOPIFY_URL.replace("https://", "").rstrip("/")
-                engine = ShopifyEngine(shop_name=shop_url, access_token=settings.SHOPIFY_ADMIN_TOKEN)
+                engine = ShopifyEngine(
+                    shop_name=shop_url, access_token=settings.SHOPIFY_ADMIN_TOKEN
+                )
                 import asyncio as _asyncio
+
                 shop_data = await _asyncio.get_event_loop().run_in_executor(
                     None, lambda: engine.get_orders_report(limit=50)
                 )

@@ -9,13 +9,14 @@ ARIA puede crear:
 
 Inspirado en: Manus `slides` tool + Google Slides API
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.presentation_builder")
 
@@ -72,7 +73,7 @@ class PresentationBuilder:
         outline: [{"title": "...", "bullets": ["...", "..."], "notes": "..."}]
         """
         slides = await self._enrich_slides(title, outline)
-        html   = self._render_html(title, slides, template, True)
+        html = self._render_html(title, slides, template, True)
         return {
             "success": True,
             "title": title,
@@ -94,7 +95,8 @@ class PresentationBuilder:
         10 slides: Problem, Solution, Market, Product, Traction,
                    Business Model, Team, Competition, Ask, Closing.
         """
-        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+
         client = get_ai_client()
 
         content = await client.complete(
@@ -114,8 +116,10 @@ class PresentationBuilder:
             ),
         )
 
-        slides = self._parse_slides_json(content) or self._default_pitch_deck(company, problem, solution)
-        html   = self._render_html(f"{company} — Pitch Deck", slides, "corporate", True)
+        slides = self._parse_slides_json(content) or self._default_pitch_deck(
+            company, problem, solution
+        )
+        html = self._render_html(f"{company} — Pitch Deck", slides, "corporate", True)
 
         return {
             "success": True,
@@ -133,8 +137,10 @@ class PresentationBuilder:
         Retorna lista de bytes de imágenes.
         """
         try:
+            import os
+            import tempfile
+
             from playwright.async_api import async_playwright
-            import tempfile, os
 
             with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
                 f.write(html_content)
@@ -143,7 +149,7 @@ class PresentationBuilder:
             images = []
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
-                page    = await browser.new_page(viewport={"width": 1280, "height": 720})
+                page = await browser.new_page(viewport={"width": 1280, "height": 720})
                 await page.goto(f"file://{tmp_path}", wait_until="networkidle")
                 await asyncio.sleep(1)
 
@@ -168,7 +174,8 @@ class PresentationBuilder:
     # ══════════════════════════════════════════════════════════════
 
     async def _generate_outline(self, title: str, topic: str, count: int) -> list[str]:
-        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+
         client = get_ai_client()
         resp = await client.complete(
             model=AIModel.FAST,
@@ -179,12 +186,13 @@ class PresentationBuilder:
                 f"Responde SOLO con una lista numerada: 1. Título\\n2. Título\\n..."
             ),
         )
-        lines  = [l.strip() for l in resp.split("\n") if l.strip()]
+        lines = [l.strip() for l in resp.split("\n") if l.strip()]
         titles = [re.sub(r"^\d+[\.\)]\s*", "", l) for l in lines if re.match(r"^\d", l)]
         return titles[:count] if titles else [f"Slide {i+1}" for i in range(count)]
 
     async def _generate_slides(self, title: str, topic: str, outline: list[str]) -> list[dict]:
-        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+
         client = get_ai_client()
 
         async def gen_slide(slide_title: str, idx: int) -> dict:
@@ -204,7 +212,7 @@ class PresentationBuilder:
             slide.setdefault("title", slide_title)
             return slide
 
-        tasks  = [gen_slide(t, i) for i, t in enumerate(outline)]
+        tasks = [gen_slide(t, i) for i, t in enumerate(outline)]
         slides = await asyncio.gather(*tasks, return_exceptions=True)
         return [s if isinstance(s, dict) else {"title": outline[i]} for i, s in enumerate(slides)]
 
@@ -215,7 +223,7 @@ class PresentationBuilder:
     # PRIVATE — PARSING
     # ══════════════════════════════════════════════════════════════
 
-    def _parse_slides_json(self, text: str) -> Optional[list[dict]]:
+    def _parse_slides_json(self, text: str) -> list[dict] | None:
         try:
             text = re.sub(r"^```[a-z]*\n?", "", text.strip(), flags=re.M)
             text = re.sub(r"\n?```$", "", text.strip())
@@ -263,28 +271,28 @@ class PresentationBuilder:
         speaker_notes: bool = False,
     ) -> str:
         theme_map = {
-            "dark":      "black",
-            "light":     "white",
+            "dark": "black",
+            "light": "white",
             "corporate": "moon",
-            "minimal":   "simple",
-            "tech":      "dracula",
-            "warm":      "serif",
+            "minimal": "simple",
+            "tech": "dracula",
+            "warm": "serif",
         }
         reveal_theme = theme_map.get(template, "black")
 
         slides_html = ""
         for slide in slides:
-            slide_title    = slide.get("title", "")
+            slide_title = slide.get("title", "")
             slide_subtitle = slide.get("subtitle", "")
-            bullets        = slide.get("bullets", [])
-            highlight      = slide.get("highlight", "")
-            notes          = slide.get("notes", "")
+            bullets = slide.get("bullets", [])
+            highlight = slide.get("highlight", "")
+            notes = slide.get("notes", "")
 
             bullets_html = "".join(f"<li>{b}</li>" for b in bullets[:6]) if bullets else ""
-            list_html    = f"<ul>{bullets_html}</ul>" if bullets_html else ""
-            sub_html     = f"<p class='subtitle'>{slide_subtitle}</p>" if slide_subtitle else ""
-            hi_html      = f"<div class='highlight-box'>{highlight}</div>" if highlight else ""
-            notes_html   = f"<aside class='notes'>{notes}</aside>" if notes and speaker_notes else ""
+            list_html = f"<ul>{bullets_html}</ul>" if bullets_html else ""
+            sub_html = f"<p class='subtitle'>{slide_subtitle}</p>" if slide_subtitle else ""
+            hi_html = f"<div class='highlight-box'>{highlight}</div>" if highlight else ""
+            notes_html = f"<aside class='notes'>{notes}</aside>" if notes and speaker_notes else ""
 
             slides_html += f"""
         <section>

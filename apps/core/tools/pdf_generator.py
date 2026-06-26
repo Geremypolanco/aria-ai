@@ -1,6 +1,7 @@
 """
 pdf_generator.py — Genera PDFs estructurados usando fpdf2 (puro Python, sin deps de sistema).
 """
+
 from __future__ import annotations
 
 import logging

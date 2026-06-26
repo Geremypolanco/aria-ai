@@ -15,19 +15,21 @@ Referencia:
   - GrowthBook: https://github.com/growthbook/growthbook-python
   - PostHog: https://github.com/posthog/posthog-python
 """
+
 from __future__ import annotations
 
 import hashlib
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.growth_engine")
 
 # ── GrowthBook Import con fallback ───────────────────────────────────────────
 try:
-    from growthbook import GrowthBook, Experiment, Result
+    from growthbook import Experiment, GrowthBook, Result  # noqa: F401
+
     GROWTHBOOK_AVAILABLE = True
     logger.info("[GrowthBook] Librería cargada correctamente.")
 except ImportError:
@@ -43,6 +45,7 @@ except ImportError:
 # ── PostHog Import con fallback ──────────────────────────────────────────────
 try:
     import posthog
+
     POSTHOG_AVAILABLE = True
     logger.info("[PostHog] Librería cargada correctamente.")
 except ImportError:
@@ -56,6 +59,7 @@ except ImportError:
 
 
 # ── GrowthBook Engine ────────────────────────────────────────────────────────
+
 
 class AriaGrowthBookEngine:
     """
@@ -165,14 +169,13 @@ class AriaGrowthBookEngine:
             # Distribución ponderada
             cumulative = 0.0
             normalized_hash = (hash_value % 10000) / 10000.0
-            for variant, weight in zip(variants, weights):
+            for variant, weight in zip(variants, weights, strict=False):
                 cumulative += weight
                 if normalized_hash <= cumulative:
                     return variant
             return variants[-1]
-        else:
-            # Distribución uniforme
-            return variants[hash_value % len(variants)]
+        # Distribución uniforme
+        return variants[hash_value % len(variants)]
 
     def _record_assignment(
         self,
@@ -187,12 +190,12 @@ class AriaGrowthBookEngine:
                 "id": experiment_id,
                 "assignments": {},
                 "conversions": [],
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
             }
         self._experiments[experiment_id]["assignments"][user_id] = {
             "variant": variant,
             "in_experiment": in_experiment,
-            "assigned_at": datetime.now(timezone.utc).isoformat(),
+            "assigned_at": datetime.now(UTC).isoformat(),
         }
 
     def track_conversion(
@@ -216,7 +219,7 @@ class AriaGrowthBookEngine:
             "user_id": user_id,
             "value": value,
             "metric": metric,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self._results.append(conversion)
 
@@ -225,7 +228,9 @@ class AriaGrowthBookEngine:
 
         logger.info(
             "[GrowthBook] Conversión registrada: exp=%s user=%s value=%.2f",
-            experiment_id, user_id, value,
+            experiment_id,
+            user_id,
+            value,
         )
 
     def get_experiment_results(self, experiment_id: str) -> dict[str, Any]:
@@ -269,8 +274,11 @@ class AriaGrowthBookEngine:
             "total_users": len(assignments),
             "total_conversions": len(conversions),
             "variants": variant_stats,
-            "winner": max(variant_stats.items(), key=lambda x: x[1]["total_value"])[0]
-            if variant_stats else None,
+            "winner": (
+                max(variant_stats.items(), key=lambda x: x[1]["total_value"])[0]
+                if variant_stats
+                else None
+            ),
         }
 
     def get_all_experiments(self) -> list[dict[str, Any]]:
@@ -287,6 +295,7 @@ class AriaGrowthBookEngine:
 
 
 # ── PostHog Analytics Engine ─────────────────────────────────────────────────
+
 
 class AriaPostHogEngine:
     """
@@ -353,7 +362,7 @@ class AriaPostHogEngine:
             properties: Propiedades del evento (amount, channel, niche, etc.)
         """
         props = properties or {}
-        props["timestamp"] = datetime.now(timezone.utc).isoformat()
+        props["timestamp"] = datetime.now(UTC).isoformat()
         props["source"] = "aria_ai"
 
         event_data = {
@@ -517,6 +526,7 @@ class AriaPostHogEngine:
 
 # ── Motor Unificado de Growth ────────────────────────────────────────────────
 
+
 class AriaGrowthEngine:
     """
     Motor unificado de Revenue & Growth para ARIA AI.
@@ -587,7 +597,9 @@ class AriaGrowthEngine:
             },
         )
 
-        logger.info("[GrowthEngine] Experimento %s: user=%s variante=%s", experiment_id, user_id, variant)
+        logger.info(
+            "[GrowthEngine] Experimento %s: user=%s variante=%s", experiment_id, user_id, variant
+        )
 
         return {
             "experiment_id": experiment_id,
@@ -654,6 +666,7 @@ def get_growth_engine() -> AriaGrowthEngine:
     global _growth_engine_instance
     if _growth_engine_instance is None:
         import os
+
         _growth_engine_instance = AriaGrowthEngine(
             posthog_api_key=os.getenv("POSTHOG_API_KEY", ""),
             posthog_host=os.getenv("POSTHOG_HOST", "https://app.posthog.com"),

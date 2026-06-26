@@ -2,10 +2,14 @@
 canva_tools.py — Creación de diseños via Canva Connect API.
 Genera imágenes, infografías y materiales de marketing automáticamente.
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Any, Optional
+from typing import Any
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.canva_tools")
@@ -17,9 +21,9 @@ class CanvaTools:
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
-        self._access_token: Optional[str] = None
+        self._access_token: str | None = None
 
-    async def _get_token(self) -> Optional[str]:
+    async def _get_token(self) -> str | None:
         """Obtiene access token via OAuth2 client credentials."""
         if self._access_token:
             return self._access_token
@@ -27,13 +31,20 @@ class CanvaTools:
             return None
         try:
             import base64
+
             creds = base64.b64encode(
                 f"{settings.CANVA_CLIENT_ID}:{settings.CANVA_CLIENT_SECRET}".encode()
             ).decode()
             res = await self._http.post(
                 "https://api.canva.com/rest/v1/oauth/token",
-                headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"},
-                data={"grant_type": "client_credentials", "scope": "design:content:write asset:read"},
+                headers={
+                    "Authorization": f"Basic {creds}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data={
+                    "grant_type": "client_credentials",
+                    "scope": "design:content:write asset:read",
+                },
             )
             if res.status_code == 200:
                 self._access_token = res.json().get("access_token")
@@ -57,7 +68,10 @@ class CanvaTools:
                 designs = res.json().get("items", [])
                 return {
                     "success": True,
-                    "designs": [{"id": d["id"], "title": d.get("title", ""), "url": d.get("view_url", "")} for d in designs],
+                    "designs": [
+                        {"id": d["id"], "title": d.get("title", ""), "url": d.get("view_url", "")}
+                        for d in designs
+                    ],
                     "count": len(designs),
                 }
             return {"success": False, "error": f"HTTP {res.status_code}"}

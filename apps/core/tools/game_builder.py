@@ -7,6 +7,7 @@ Engines soportados:
   - phaser   (JavaScript/HTML5 — juegos web, self-contained)
   - godot    (GDScript — motor open source profesional)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,11 +20,11 @@ logger = logging.getLogger("aria.game_builder")
 
 GENRE_PROMPTS = {
     "platformer": "2D platformer with player movement, jumping, enemies, coins, and level progression",
-    "puzzle":     "logic puzzle game with levels of increasing difficulty, score tracking",
-    "rpg":        "top-down RPG with player stats, inventory, NPCs, and combat",
-    "shooter":    "top-down or side-scrolling shooter with bullets, enemies, lives, and score",
-    "arcade":     "classic arcade game with simple mechanics, high score, and multiple lives",
-    "adventure":  "point-and-click adventure with dialogue, inventory puzzles, and story",
+    "puzzle": "logic puzzle game with levels of increasing difficulty, score tracking",
+    "rpg": "top-down RPG with player stats, inventory, NPCs, and combat",
+    "shooter": "top-down or side-scrolling shooter with bullets, enemies, lives, and score",
+    "arcade": "classic arcade game with simple mechanics, high score, and multiple lives",
+    "adventure": "point-and-click adventure with dialogue, inventory puzzles, and story",
 }
 
 
@@ -47,22 +48,21 @@ class GameBuilder:
 
         if engine == "pygame":
             return await self._build_pygame(name, genre, full_desc)
-        elif engine == "phaser":
+        if engine == "phaser":
             return await self._build_phaser(name, genre, full_desc)
-        elif engine == "godot":
+        if engine == "godot":
             return await self._build_godot(name, genre, full_desc)
-        else:
-            return await self._build_pygame(name, genre, full_desc)
+        return await self._build_pygame(name, genre, full_desc)
 
     async def _build_pygame(self, name: str, genre: str, description: str) -> dict[str, Any]:
         """Generate a complete Pygame project."""
         files_to_gen = [
-            ("main.py",        "Entry point, game loop, initialization"),
-            ("game.py",        "Main game class with scene management and game state"),
-            ("player.py",      "Player class with movement, animations, and collision"),
-            ("entities.py",    "Enemy and other game entity classes"),
-            ("ui.py",          "HUD, menu, score display, game over screen"),
-            ("constants.py",   "Game constants: FPS, colors, screen size, speeds"),
+            ("main.py", "Entry point, game loop, initialization"),
+            ("game.py", "Main game class with scene management and game state"),
+            ("player.py", "Player class with movement, animations, and collision"),
+            ("entities.py", "Enemy and other game entity classes"),
+            ("ui.py", "HUD, menu, score display, game over screen"),
+            ("constants.py", "Game constants: FPS, colors, screen size, speeds"),
             ("requirements.txt", "Python dependencies (pygame, etc.)"),
         ]
 
@@ -74,45 +74,57 @@ class GameBuilder:
     async def _build_phaser(self, name: str, genre: str, description: str) -> dict[str, Any]:
         """Generate a self-contained Phaser 3 HTML5 game."""
         files_to_gen = [
-            ("game.js",              "Complete Phaser 3 game — all scenes, physics, input, and game logic"),
-            ("scenes/BootScene.js",  "Asset preloading scene"),
-            ("scenes/MenuScene.js",  "Main menu with start button"),
-            ("scenes/GameScene.js",  "Main gameplay scene with all mechanics"),
-            ("scenes/UIScene.js",    "HUD overlay: score, lives, timer"),
+            ("game.js", "Complete Phaser 3 game — all scenes, physics, input, and game logic"),
+            ("scenes/BootScene.js", "Asset preloading scene"),
+            ("scenes/MenuScene.js", "Main menu with start button"),
+            ("scenes/GameScene.js", "Main gameplay scene with all mechanics"),
+            ("scenes/UIScene.js", "HUD overlay: score, lives, timer"),
         ]
 
-        files = await self._generate_files(name, genre, description, "Phaser 3 JavaScript", files_to_gen)
+        files = await self._generate_files(
+            name, genre, description, "Phaser 3 JavaScript", files_to_gen
+        )
 
         # Generate self-contained index.html
         files["index.html"] = self._phaser_index(name)
-        files["README.md"] = f"# {name}\n\nA {genre} game built with Phaser 3.\n\nOpen `index.html` in a browser to play.\n"
+        files["README.md"] = (
+            f"# {name}\n\nA {genre} game built with Phaser 3.\n\nOpen `index.html` in a browser to play.\n"
+        )
 
         return self._pack_zip(name, "phaser", files)
 
     async def _build_godot(self, name: str, genre: str, description: str) -> dict[str, Any]:
         """Generate a Godot 4 GDScript project."""
         files_to_gen = [
-            ("Main.gd",    "Main game controller script"),
-            ("Player.gd",  "Player movement, input handling, and stats"),
-            ("Enemy.gd",   "Enemy AI and behavior"),
-            ("GameUI.gd",  "HUD and menu logic"),
-            ("GameData.gd","Global game data singleton"),
+            ("Main.gd", "Main game controller script"),
+            ("Player.gd", "Player movement, input handling, and stats"),
+            ("Enemy.gd", "Enemy AI and behavior"),
+            ("GameUI.gd", "HUD and menu logic"),
+            ("GameData.gd", "Global game data singleton"),
         ]
 
-        files = await self._generate_files(name, genre, description, "Godot 4 GDScript", files_to_gen)
+        files = await self._generate_files(
+            name, genre, description, "Godot 4 GDScript", files_to_gen
+        )
         files["project.godot"] = self._godot_project(name)
-        files["README.md"] = f"# {name}\n\nA {genre} game for Godot 4.\n\nOpen `project.godot` in Godot Engine to run.\n"
+        files["README.md"] = (
+            f"# {name}\n\nA {genre} game for Godot 4.\n\nOpen `project.godot` in Godot Engine to run.\n"
+        )
 
         return self._pack_zip(name, "godot", files)
 
     async def _generate_files(
         self,
-        name: str, genre: str, description: str, engine_desc: str,
+        name: str,
+        genre: str,
+        description: str,
+        engine_desc: str,
         files_to_gen: list[tuple[str, str]],
     ) -> dict[str, str]:
         """Use AI to generate each game file concurrently."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
         except Exception:
             return {path: f"# {path}\n# TODO: implement {role}\n" for path, role in files_to_gen}
@@ -129,7 +141,9 @@ class GameBuilder:
                         f"Game: {name} ({genre})\nDescription: {description}\n\n"
                         f"Generate '{path}': {role}"
                     ),
-                    model=AIModel.CODE, max_tokens=1500, temperature=0.3,
+                    model=AIModel.CODE,
+                    max_tokens=1500,
+                    temperature=0.3,
                     agent_name="game_builder",
                 )
                 content = resp.content.strip() if (resp and resp.success) else f"# {path}\n# TODO\n"
@@ -142,7 +156,7 @@ class GameBuilder:
 
         tasks = [gen(path, role) for path, role in files_to_gen]
         results = await asyncio.gather(*tasks)
-        return {path: content for path, content in results}
+        return dict(results)
 
     def _pack_zip(self, name: str, engine: str, files: dict[str, str]) -> dict[str, Any]:
         root = name.replace(" ", "-").lower()
@@ -208,6 +222,7 @@ renderer/rendering_method="forward_plus"
         """Generate a full game design document using AI."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             resp = await ai.complete(
                 system="You are a game designer. Create concise, actionable game design documents.",
@@ -215,7 +230,9 @@ renderer/rendering_method="forward_plus"
                     f"Create a game design document for a {genre} game targeting {target_audience}. "
                     f"Include: concept, core mechanics, progression, art style, monetization."
                 ),
-                model=AIModel.STRATEGY, max_tokens=1000, temperature=0.7,
+                model=AIModel.STRATEGY,
+                max_tokens=1000,
+                temperature=0.7,
                 agent_name="game_concept",
             )
             if resp and resp.success:
@@ -224,10 +241,13 @@ renderer/rendering_method="forward_plus"
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def create_game_asset_prompts(self, game_name: str, style: str = "pixel art") -> dict[str, Any]:
+    async def create_game_asset_prompts(
+        self, game_name: str, style: str = "pixel art"
+    ) -> dict[str, Any]:
         """Generate image generation prompts for all game assets."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             resp = await ai.complete(
                 system="Generate detailed image prompts for AI image generators (FLUX, SDXL).",
@@ -237,7 +257,9 @@ renderer/rendering_method="forward_plus"
                     f"UI elements (health bar, coins), logo/title screen. "
                     f"Format as JSON dict with asset names as keys."
                 ),
-                model=AIModel.STRATEGY, max_tokens=800, temperature=0.6,
+                model=AIModel.STRATEGY,
+                max_tokens=800,
+                temperature=0.6,
                 agent_name="game_assets",
             )
             if resp and resp.success:

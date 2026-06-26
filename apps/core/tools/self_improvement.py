@@ -12,15 +12,19 @@ ARIA puede:
 
 Principio: NINGUNA funcion retorna datos simulados. Si algo falla, lo dice.
 """
+
 from __future__ import annotations
+
 import ast
 import base64
 import json
 import logging
 import re
 import time
-from typing import Any, Optional
+from typing import Any
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.self_improvement")
@@ -99,7 +103,9 @@ class SelfImprovementEngine:
 
     def _can_github(self) -> bool:
         if not self._token:
-            logger.error("[SelfImprovement] GITHUB_TOKEN no configurado — no puedo leer ni escribir codigo")
+            logger.error(
+                "[SelfImprovement] GITHUB_TOKEN no configurado — no puedo leer ni escribir codigo"
+            )
             return False
         return True
 
@@ -156,7 +162,8 @@ class SelfImprovementEngine:
             if res.status_code == 200:
                 tree = res.json().get("tree", [])
                 return [
-                    item["path"] for item in tree
+                    item["path"]
+                    for item in tree
                     if item["type"] == "blob"
                     and item["path"].startswith(path)
                     and item["path"].endswith(".py")
@@ -170,11 +177,12 @@ class SelfImprovementEngine:
     async def read_multiple_files(self, file_paths: list[str]) -> dict[str, dict]:
         """Lee multiples archivos en paralelo."""
         import asyncio
+
         tasks = [self.read_file(f) for f in file_paths]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return {
             path: (r if isinstance(r, dict) else {"success": False, "error": str(r)})
-            for path, r in zip(file_paths, results)
+            for path, r in zip(file_paths, results, strict=False)
         }
 
     # ══════════════════════════════════════════════════════════════
@@ -197,7 +205,11 @@ class SelfImprovementEngine:
             res = await self._http.get(
                 f"https://api.machines.dev/v1/apps/{app_name}/logs",
                 headers={
-                    "Authorization": self._fly_token if self._fly_token.startswith("FlyV1") else f"Bearer {self._fly_token}",
+                    "Authorization": (
+                        self._fly_token
+                        if self._fly_token.startswith("FlyV1")
+                        else f"Bearer {self._fly_token}"
+                    ),
                     "Accept": "application/json",
                 },
                 params={"limit": lines},
@@ -209,7 +221,10 @@ class SelfImprovementEngine:
                     for entry in (logs if isinstance(logs, list) else logs.get("data", []))
                 )
                 return {"success": True, "logs": log_text, "lines": lines}
-            return {"success": False, "error": f"Fly.io API HTTP {res.status_code}: {res.text[:300]}"}
+            return {
+                "success": False,
+                "error": f"Fly.io API HTTP {res.status_code}: {res.text[:300]}",
+            }
         except Exception as exc:
             logger.error("[SelfImprovement] read_production_logs error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -220,6 +235,7 @@ class SelfImprovementEngine:
             return {"success": False, "error": "No hay logs para analizar"}
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             response = await ai.complete(
                 system="Analista de sistemas Python. Responde SOLO con JSON valido.",
@@ -255,6 +271,7 @@ class SelfImprovementEngine:
         """Analiza la calidad del codigo con Qwen2.5-Coder. Sin simulaciones."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             response = await ai.complete(
                 system="Senior Python developer revisando codigo de IA autonoma. Responde SOLO con JSON valido.",
@@ -301,11 +318,12 @@ class SelfImprovementEngine:
         original_code: str,
         analysis: dict,
         specific_improvement: str = "",
-        log_lessons: Optional[dict] = None,
+        log_lessons: dict | None = None,
     ) -> dict[str, Any]:
         """Genera una version mejorada del codigo con Qwen2.5-Coder."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
 
             instructions = []
@@ -318,7 +336,9 @@ class SelfImprovementEngine:
             for item in analysis.get("missing_error_handling", [])[:2]:
                 instructions.append(f"AGREGA manejo de error: {item}")
             for sim in analysis.get("simulations_found", [])[:2]:
-                instructions.append(f"ELIMINA simulacion — retorna error explicito si API no disponible: {sim}")
+                instructions.append(
+                    f"ELIMINA simulacion — retorna error explicito si API no disponible: {sim}"
+                )
             if specific_improvement:
                 instructions.append(f"MEJORA ESPECIFICA: {specific_improvement}")
             if log_lessons:
@@ -356,7 +376,7 @@ class SelfImprovementEngine:
             # Limpiar markdown fences si el modelo los incluyo
             for fence in ["```python\n", "```python", "```\n", "```"]:
                 if improved.startswith(fence):
-                    improved = improved[len(fence):]
+                    improved = improved[len(fence) :]
             if improved.endswith("```"):
                 improved = improved[:-3]
             improved = improved.strip()
@@ -414,7 +434,7 @@ class SelfImprovementEngine:
             return {
                 "success": False,
                 "error": f"Rate limit o GITHUB_TOKEN no disponible. "
-                         f"Proximo push disponible en {self.MIN_PUSH_INTERVAL_SECONDS}s",
+                f"Proximo push disponible en {self.MIN_PUSH_INTERVAL_SECONDS}s",
             }
         if file_path in self.PROTECTED_FILES:
             return {
@@ -444,7 +464,9 @@ class SelfImprovementEngine:
             if res.status_code in (200, 201):
                 SelfImprovementEngine._last_push_time = time.time()
                 commit = res.json().get("commit", {})
-                logger.info("[SelfImprovement] Push exitoso: %s → %s", file_path, commit.get("sha", "")[:8])
+                logger.info(
+                    "[SelfImprovement] Push exitoso: %s → %s", file_path, commit.get("sha", "")[:8]
+                )
                 return {
                     "success": True,
                     "file": file_path,
@@ -468,7 +490,7 @@ class SelfImprovementEngine:
         self,
         file_path: str,
         specific_improvement: str = "",
-        log_lessons: Optional[dict] = None,
+        log_lessons: dict | None = None,
     ) -> dict[str, Any]:
         """
         Flujo completo de auto-mejora de un archivo:
@@ -483,7 +505,11 @@ class SelfImprovementEngine:
         # Paso 1: Leer
         file_data = await self.read_file(file_path)
         if not file_data["success"]:
-            return {"success": False, "file": file_path, "error": f"No se pudo leer: {file_data['error']}"}
+            return {
+                "success": False,
+                "file": file_path,
+                "error": f"No se pudo leer: {file_data['error']}",
+            }
 
         original_code = file_data["content"]
         original_sha = file_data["sha"]
@@ -492,7 +518,11 @@ class SelfImprovementEngine:
         # Paso 2: Analizar
         analysis_result = await self.analyze_code_quality(file_path, original_code)
         if not analysis_result["success"]:
-            logger.warning("[SelfImprovement] Analisis fallido para %s: %s", file_path, analysis_result["error"])
+            logger.warning(
+                "[SelfImprovement] Analisis fallido para %s: %s",
+                file_path,
+                analysis_result["error"],
+            )
             analysis = {"bugs": [], "inefficiencies": [], "quality_score": 50}
         else:
             analysis = analysis_result["analysis"]
@@ -535,7 +565,7 @@ class SelfImprovementEngine:
     async def improve_multiple_files(
         self,
         file_paths: list[str],
-        log_lessons: Optional[dict] = None,
+        log_lessons: dict | None = None,
         max_concurrent: int = 2,
     ) -> list[dict[str, Any]]:
         """
@@ -544,13 +574,14 @@ class SelfImprovementEngine:
         """
         results = []
         import asyncio
+
         for i in range(0, len(file_paths), max_concurrent):
-            batch = file_paths[i:i + max_concurrent]
+            batch = file_paths[i : i + max_concurrent]
             batch_results = await asyncio.gather(
                 *[self.improve_file(fp, log_lessons=log_lessons) for fp in batch],
                 return_exceptions=True,
             )
-            for fp, r in zip(batch, batch_results):
+            for fp, r in zip(batch, batch_results, strict=False):
                 if isinstance(r, Exception):
                     results.append({"success": False, "file": fp, "error": str(r)})
                 else:
@@ -576,7 +607,9 @@ class SelfImprovementEngine:
             warning_count = log_text.lower().count("warning")
             critical_count = log_text.lower().count("critical")
             score -= min(30, critical_count * 10 + error_count * 2 + warning_count)
-            details.append(f"Logs: {critical_count} criticos, {error_count} errores, {warning_count} warnings")
+            details.append(
+                f"Logs: {critical_count} criticos, {error_count} errores, {warning_count} warnings"
+            )
         else:
             details.append(f"Logs no disponibles: {logs_result['error']}")
             score -= 10  # penalizacion por no poder monitorear

@@ -14,16 +14,17 @@ Revenue channels (in priority order):
   5. Email sequences — Mailchimp / direct campaigns
   6. Social media — LinkedIn / Twitter / Instagram via Zapier
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
 
 logger = logging.getLogger("aria.niche_revenue")
 
@@ -39,9 +40,23 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 1,
         "platforms": ["gumroad", "medium", "devto", "fiverr_browser", "upwork_browser"],
-        "pricing_basic": 29, "pricing_standard": 79, "pricing_premium": 199,
-        "keywords": ["ai copywriter", "sales copy", "conversion copy", "copywriting service", "landing page copy"],
-        "deliverables": ["5 sales emails", "landing page copy", "social media copy", "blog post", "product descriptions"],
+        "pricing_basic": 29,
+        "pricing_standard": 79,
+        "pricing_premium": 199,
+        "keywords": [
+            "ai copywriter",
+            "sales copy",
+            "conversion copy",
+            "copywriting service",
+            "landing page copy",
+        ],
+        "deliverables": [
+            "5 sales emails",
+            "landing page copy",
+            "social media copy",
+            "blog post",
+            "product descriptions",
+        ],
         "turnaround_days": 2,
         "market_size_usd_bn": 42,
         "competition": "medium",
@@ -53,9 +68,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 1,
         "platforms": ["medium", "devto", "hashnode", "upwork_browser"],
-        "pricing_basic": 49, "pricing_standard": 149, "pricing_premium": 499,
-        "keywords": ["seo writer", "blog writing", "keyword articles", "content marketing", "organic traffic"],
-        "deliverables": ["3 SEO articles", "keyword research", "meta descriptions", "internal link map"],
+        "pricing_basic": 49,
+        "pricing_standard": 149,
+        "pricing_premium": 499,
+        "keywords": [
+            "seo writer",
+            "blog writing",
+            "keyword articles",
+            "content marketing",
+            "organic traffic",
+        ],
+        "deliverables": [
+            "3 SEO articles",
+            "keyword research",
+            "meta descriptions",
+            "internal link map",
+        ],
         "turnaround_days": 3,
         "market_size_usd_bn": 66,
         "competition": "high",
@@ -67,9 +95,21 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 1,
         "platforms": ["gumroad", "fiverr_browser", "zapier"],
-        "pricing_basic": 99, "pricing_standard": 299, "pricing_premium": 799,
-        "keywords": ["social media manager", "content calendar", "instagram management", "linkedin content"],
-        "deliverables": ["30 posts/month", "content calendar", "hashtag strategy", "engagement reporting"],
+        "pricing_basic": 99,
+        "pricing_standard": 299,
+        "pricing_premium": 799,
+        "keywords": [
+            "social media manager",
+            "content calendar",
+            "instagram management",
+            "linkedin content",
+        ],
+        "deliverables": [
+            "30 posts/month",
+            "content calendar",
+            "hashtag strategy",
+            "engagement reporting",
+        ],
         "turnaround_days": 5,
         "market_size_usd_bn": 23,
         "competition": "high",
@@ -81,9 +121,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 1,
         "platforms": ["gumroad", "upwork_browser"],
-        "pricing_basic": 79, "pricing_standard": 249, "pricing_premium": 699,
-        "keywords": ["email sequence", "email marketing", "welcome series", "drip campaign", "newsletter"],
-        "deliverables": ["7-email welcome sequence", "broadcast templates", "subject line swipe file", "A/B testing guide"],
+        "pricing_basic": 79,
+        "pricing_standard": 249,
+        "pricing_premium": 699,
+        "keywords": [
+            "email sequence",
+            "email marketing",
+            "welcome series",
+            "drip campaign",
+            "newsletter",
+        ],
+        "deliverables": [
+            "7-email welcome sequence",
+            "broadcast templates",
+            "subject line swipe file",
+            "A/B testing guide",
+        ],
         "turnaround_days": 3,
         "market_size_usd_bn": 11,
         "competition": "medium",
@@ -95,9 +148,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 1,
         "platforms": ["gumroad", "fiverr_browser", "etsy_browser"],
-        "pricing_basic": 19, "pricing_standard": 49, "pricing_premium": 149,
-        "keywords": ["logo design", "ai logo", "brand identity", "business logo", "startup branding"],
-        "deliverables": ["5 logo concepts", "brand color palette", "typography guide", "PNG/SVG files"],
+        "pricing_basic": 19,
+        "pricing_standard": 49,
+        "pricing_premium": 149,
+        "keywords": [
+            "logo design",
+            "ai logo",
+            "brand identity",
+            "business logo",
+            "startup branding",
+        ],
+        "deliverables": [
+            "5 logo concepts",
+            "brand color palette",
+            "typography guide",
+            "PNG/SVG files",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 5,
         "competition": "very_high",
@@ -109,9 +175,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 1,
         "platforms": ["gumroad", "fiverr_browser", "upwork_browser"],
-        "pricing_basic": 29, "pricing_standard": 79, "pricing_premium": 199,
-        "keywords": ["resume writer", "CV writing", "ATS resume", "linkedin profile", "career documents"],
-        "deliverables": ["ATS-optimized resume", "cover letter", "LinkedIn summary", "keyword optimization"],
+        "pricing_basic": 29,
+        "pricing_standard": 79,
+        "pricing_premium": 199,
+        "keywords": [
+            "resume writer",
+            "CV writing",
+            "ATS resume",
+            "linkedin profile",
+            "career documents",
+        ],
+        "deliverables": [
+            "ATS-optimized resume",
+            "cover letter",
+            "LinkedIn summary",
+            "keyword optimization",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 3,
         "competition": "high",
@@ -123,8 +202,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 1,
         "platforms": ["gumroad", "fiverr_browser"],
-        "pricing_basic": 39, "pricing_standard": 99, "pricing_premium": 249,
-        "keywords": ["video script", "youtube script", "explainer script", "tiktok script", "faceless youtube"],
+        "pricing_basic": 39,
+        "pricing_standard": 99,
+        "pricing_premium": 249,
+        "keywords": [
+            "video script",
+            "youtube script",
+            "explainer script",
+            "tiktok script",
+            "faceless youtube",
+        ],
         "deliverables": ["full video script", "hook options", "B-roll notes", "thumbnail concept"],
         "turnaround_days": 2,
         "market_size_usd_bn": 8,
@@ -137,24 +224,44 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 1,
         "platforms": ["gumroad", "upwork_browser"],
-        "pricing_basic": 99, "pricing_standard": 299, "pricing_premium": 799,
-        "keywords": ["business plan", "startup plan", "investor pitch", "financial projections", "executive summary"],
-        "deliverables": ["20-page business plan", "financial model", "competitive analysis", "executive summary"],
+        "pricing_basic": 99,
+        "pricing_standard": 299,
+        "pricing_premium": 799,
+        "keywords": [
+            "business plan",
+            "startup plan",
+            "investor pitch",
+            "financial projections",
+            "executive summary",
+        ],
+        "deliverables": [
+            "20-page business plan",
+            "financial model",
+            "competitive analysis",
+            "executive summary",
+        ],
         "turnaround_days": 5,
         "market_size_usd_bn": 2,
         "competition": "low",
         "time_to_revenue": "3-7 days",
         "team": ["researcher", "creator", "writer", "publisher"],
     },
-
     # ── TIER 2: Digital Products (scalable, passive) ──────────────────────
     "ebooks_guides": {
         "name": "AI-Generated eBooks & Digital Guides",
         "category": "digital_products",
         "tier": 2,
         "platforms": ["gumroad", "medium"],
-        "pricing_basic": 9, "pricing_standard": 27, "pricing_premium": 97,
-        "keywords": ["ebook", "digital guide", "how to guide", "online course material", "pdf download"],
+        "pricing_basic": 9,
+        "pricing_standard": 27,
+        "pricing_premium": 97,
+        "keywords": [
+            "ebook",
+            "digital guide",
+            "how to guide",
+            "online course material",
+            "pdf download",
+        ],
         "deliverables": ["40-60 page ebook", "action checklists", "resource list", "PDF format"],
         "turnaround_days": 1,
         "market_size_usd_bn": 18,
@@ -167,9 +274,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 2,
         "platforms": ["gumroad", "etsy_browser"],
-        "pricing_basic": 9, "pricing_standard": 19, "pricing_premium": 49,
-        "keywords": ["notion template", "productivity system", "notion dashboard", "second brain", "gtd notion"],
-        "deliverables": ["Notion template", "setup guide", "video walkthrough outline", "bonus templates"],
+        "pricing_basic": 9,
+        "pricing_standard": 19,
+        "pricing_premium": 49,
+        "keywords": [
+            "notion template",
+            "productivity system",
+            "notion dashboard",
+            "second brain",
+            "gtd notion",
+        ],
+        "deliverables": [
+            "Notion template",
+            "setup guide",
+            "video walkthrough outline",
+            "bonus templates",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 1,
         "competition": "medium",
@@ -181,9 +301,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 2,
         "platforms": ["gumroad", "etsy_browser"],
-        "pricing_basic": 7, "pricing_standard": 17, "pricing_premium": 37,
-        "keywords": ["chatgpt prompts", "ai prompts", "prompt engineering", "prompt pack", "gpt prompts"],
-        "deliverables": ["100+ curated prompts", "use case guide", "prompt optimization tips", "bonus prompts"],
+        "pricing_basic": 7,
+        "pricing_standard": 17,
+        "pricing_premium": 37,
+        "keywords": [
+            "chatgpt prompts",
+            "ai prompts",
+            "prompt engineering",
+            "prompt pack",
+            "gpt prompts",
+        ],
+        "deliverables": [
+            "100+ curated prompts",
+            "use case guide",
+            "prompt optimization tips",
+            "bonus prompts",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 2,
         "competition": "high",
@@ -195,9 +328,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 2,
         "platforms": ["gumroad", "etsy_browser"],
-        "pricing_basic": 9, "pricing_standard": 19, "pricing_premium": 49,
-        "keywords": ["canva template", "instagram template", "social media design", "brand kit", "canva pro"],
-        "deliverables": ["30 Canva templates", "brand customization guide", "font pairings", "color palettes"],
+        "pricing_basic": 9,
+        "pricing_standard": 19,
+        "pricing_premium": 49,
+        "keywords": [
+            "canva template",
+            "instagram template",
+            "social media design",
+            "brand kit",
+            "canva pro",
+        ],
+        "deliverables": [
+            "30 Canva templates",
+            "brand customization guide",
+            "font pairings",
+            "color palettes",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 3,
         "competition": "very_high",
@@ -209,9 +355,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 2,
         "platforms": ["gumroad"],
-        "pricing_basic": 27, "pricing_standard": 97, "pricing_premium": 297,
-        "keywords": ["online course", "mini course", "skill course", "learn online", "digital course"],
-        "deliverables": ["5-module course outline", "lesson scripts", "worksheets", "resource list"],
+        "pricing_basic": 27,
+        "pricing_standard": 97,
+        "pricing_premium": 297,
+        "keywords": [
+            "online course",
+            "mini course",
+            "skill course",
+            "learn online",
+            "digital course",
+        ],
+        "deliverables": [
+            "5-module course outline",
+            "lesson scripts",
+            "worksheets",
+            "resource list",
+        ],
         "turnaround_days": 2,
         "market_size_usd_bn": 325,
         "competition": "high",
@@ -223,9 +382,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 2,
         "platforms": ["gumroad", "etsy_browser"],
-        "pricing_basic": 9, "pricing_standard": 19, "pricing_premium": 49,
-        "keywords": ["excel template", "spreadsheet template", "budget tracker", "business dashboard", "google sheets"],
-        "deliverables": ["Excel/Sheets template", "instruction guide", "formula documentation", "customization video"],
+        "pricing_basic": 9,
+        "pricing_standard": 19,
+        "pricing_premium": 49,
+        "keywords": [
+            "excel template",
+            "spreadsheet template",
+            "budget tracker",
+            "business dashboard",
+            "google sheets",
+        ],
+        "deliverables": [
+            "Excel/Sheets template",
+            "instruction guide",
+            "formula documentation",
+            "customization video",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 2,
         "competition": "medium",
@@ -237,8 +409,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 2,
         "platforms": ["gumroad", "etsy_browser"],
-        "pricing_basic": 19, "pricing_standard": 49, "pricing_premium": 149,
-        "keywords": ["freelance contract", "legal template", "client agreement", "NDA template", "invoice template"],
+        "pricing_basic": 19,
+        "pricing_standard": 49,
+        "pricing_premium": 149,
+        "keywords": [
+            "freelance contract",
+            "legal template",
+            "client agreement",
+            "NDA template",
+            "invoice template",
+        ],
         "deliverables": ["5 contract templates", "usage guide", "customization checklist", "FAQ"],
         "turnaround_days": 1,
         "market_size_usd_bn": 4,
@@ -246,16 +426,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "time_to_revenue": "same day",
         "team": ["creator", "writer", "publisher"],
     },
-
     # ── TIER 3: Content Monetization ──────────────────────────────────────
     "affiliate_seo_blog": {
         "name": "Affiliate SEO Blog Content",
         "category": "content",
         "tier": 3,
         "platforms": ["medium", "devto", "hashnode"],
-        "pricing_basic": 0, "pricing_standard": 0, "pricing_premium": 0,
+        "pricing_basic": 0,
+        "pricing_standard": 0,
+        "pricing_premium": 0,
         "keywords": ["best products", "reviews", "comparison", "alternatives", "how to"],
-        "deliverables": ["SEO article", "affiliate links", "comparison tables", "social distribution"],
+        "deliverables": [
+            "SEO article",
+            "affiliate links",
+            "comparison tables",
+            "social distribution",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 17,
         "competition": "very_high",
@@ -267,9 +453,21 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "content",
         "tier": 3,
         "platforms": ["gumroad", "medium"],
-        "pricing_basic": 9, "pricing_standard": 19, "pricing_premium": 49,
-        "keywords": ["newsletter", "substack", "weekly digest", "industry insights", "premium content"],
-        "deliverables": ["weekly newsletter issue", "subscriber acquisition plan", "monetization strategy"],
+        "pricing_basic": 9,
+        "pricing_standard": 19,
+        "pricing_premium": 49,
+        "keywords": [
+            "newsletter",
+            "substack",
+            "weekly digest",
+            "industry insights",
+            "premium content",
+        ],
+        "deliverables": [
+            "weekly newsletter issue",
+            "subscriber acquisition plan",
+            "monetization strategy",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 1,
         "competition": "medium",
@@ -281,9 +479,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "content",
         "tier": 3,
         "platforms": ["gumroad", "medium"],
-        "pricing_basic": 19, "pricing_standard": 49, "pricing_premium": 149,
-        "keywords": ["youtube script", "faceless channel", "youtube automation", "video content", "youtube seo"],
-        "deliverables": ["10 video scripts", "thumbnails concepts", "SEO titles", "description templates"],
+        "pricing_basic": 19,
+        "pricing_standard": 49,
+        "pricing_premium": 149,
+        "keywords": [
+            "youtube script",
+            "faceless channel",
+            "youtube automation",
+            "video content",
+            "youtube seo",
+        ],
+        "deliverables": [
+            "10 video scripts",
+            "thumbnails concepts",
+            "SEO titles",
+            "description templates",
+        ],
         "turnaround_days": 2,
         "market_size_usd_bn": 30,
         "competition": "medium",
@@ -295,24 +506,44 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "content",
         "tier": 3,
         "platforms": ["fiverr_browser", "upwork_browser"],
-        "pricing_basic": 29, "pricing_standard": 79, "pricing_premium": 199,
-        "keywords": ["podcast show notes", "podcast writing", "podcast script", "episode summary", "podcast SEO"],
-        "deliverables": ["show notes", "episode transcript summary", "SEO keywords", "social media clips"],
+        "pricing_basic": 29,
+        "pricing_standard": 79,
+        "pricing_premium": 199,
+        "keywords": [
+            "podcast show notes",
+            "podcast writing",
+            "podcast script",
+            "episode summary",
+            "podcast SEO",
+        ],
+        "deliverables": [
+            "show notes",
+            "episode transcript summary",
+            "SEO keywords",
+            "social media clips",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 4,
         "competition": "low",
         "time_to_revenue": "2-5 days",
         "team": ["creator", "writer", "publisher"],
     },
-
     # ── TIER 4: Tech & Automation Services ────────────────────────────────
     "saas_micro_tools": {
         "name": "AI Micro-SaaS Tools & Scripts",
         "category": "saas",
         "tier": 4,
         "platforms": ["gumroad", "github_marketplace"],
-        "pricing_basic": 9, "pricing_standard": 29, "pricing_premium": 99,
-        "keywords": ["saas tool", "automation script", "ai tool", "productivity tool", "no-code tool"],
+        "pricing_basic": 9,
+        "pricing_standard": 29,
+        "pricing_premium": 99,
+        "keywords": [
+            "saas tool",
+            "automation script",
+            "ai tool",
+            "productivity tool",
+            "no-code tool",
+        ],
         "deliverables": ["working tool/script", "documentation", "setup guide", "lifetime access"],
         "turnaround_days": 3,
         "market_size_usd_bn": 195,
@@ -325,9 +556,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 4,
         "platforms": ["gumroad", "upwork_browser"],
-        "pricing_basic": 99, "pricing_standard": 299, "pricing_premium": 999,
-        "keywords": ["zapier automation", "make automation", "ai automation", "workflow automation", "no-code expert"],
-        "deliverables": ["automation audit", "workflow implementation", "documentation", "training session"],
+        "pricing_basic": 99,
+        "pricing_standard": 299,
+        "pricing_premium": 999,
+        "keywords": [
+            "zapier automation",
+            "make automation",
+            "ai automation",
+            "workflow automation",
+            "no-code expert",
+        ],
+        "deliverables": [
+            "automation audit",
+            "workflow implementation",
+            "documentation",
+            "training session",
+        ],
         "turnaround_days": 5,
         "market_size_usd_bn": 19,
         "competition": "low",
@@ -339,8 +583,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "saas",
         "tier": 4,
         "platforms": ["gumroad", "upwork_browser", "fiverr_browser"],
-        "pricing_basic": 149, "pricing_standard": 499, "pricing_premium": 1499,
-        "keywords": ["chatbot development", "ai chatbot", "customer service bot", "whatsapp bot", "telegram bot"],
+        "pricing_basic": 149,
+        "pricing_standard": 499,
+        "pricing_premium": 1499,
+        "keywords": [
+            "chatbot development",
+            "ai chatbot",
+            "customer service bot",
+            "whatsapp bot",
+            "telegram bot",
+        ],
         "deliverables": ["chatbot setup", "flow design", "integration", "testing", "documentation"],
         "turnaround_days": 7,
         "market_size_usd_bn": 1.3,
@@ -353,8 +605,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 4,
         "platforms": ["gumroad", "upwork_browser"],
-        "pricing_basic": 49, "pricing_standard": 149, "pricing_premium": 499,
-        "keywords": ["data analysis", "business report", "excel analysis", "dashboard creation", "insights report"],
+        "pricing_basic": 49,
+        "pricing_standard": 149,
+        "pricing_premium": 499,
+        "keywords": [
+            "data analysis",
+            "business report",
+            "excel analysis",
+            "dashboard creation",
+            "insights report",
+        ],
         "deliverables": ["analysis report", "visualizations", "recommendations", "raw data"],
         "turnaround_days": 3,
         "market_size_usd_bn": 29,
@@ -367,9 +627,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "saas",
         "tier": 4,
         "platforms": ["gumroad", "fiverr_browser"],
-        "pricing_basic": 49, "pricing_standard": 149, "pricing_premium": 499,
-        "keywords": ["landing page", "sales page", "lead generation page", "squeeze page", "conversion page"],
-        "deliverables": ["complete HTML landing page", "mobile responsive", "copy included", "CTA optimization"],
+        "pricing_basic": 49,
+        "pricing_standard": 149,
+        "pricing_premium": 499,
+        "keywords": [
+            "landing page",
+            "sales page",
+            "lead generation page",
+            "squeeze page",
+            "conversion page",
+        ],
+        "deliverables": [
+            "complete HTML landing page",
+            "mobile responsive",
+            "copy included",
+            "CTA optimization",
+        ],
         "turnaround_days": 2,
         "market_size_usd_bn": 8,
         "competition": "high",
@@ -381,8 +654,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "saas",
         "tier": 4,
         "platforms": ["gumroad", "upwork_browser"],
-        "pricing_basic": 49, "pricing_standard": 149, "pricing_premium": 499,
-        "keywords": ["web scraping", "data collection", "python scraper", "price monitoring", "lead scraping"],
+        "pricing_basic": 49,
+        "pricing_standard": 149,
+        "pricing_premium": 499,
+        "keywords": [
+            "web scraping",
+            "data collection",
+            "python scraper",
+            "price monitoring",
+            "lead scraping",
+        ],
         "deliverables": ["Python scraping script", "CSV output", "documentation", "usage guide"],
         "turnaround_days": 3,
         "market_size_usd_bn": 4,
@@ -390,15 +671,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "time_to_revenue": "3-5 days",
         "team": ["creator", "writer", "publisher"],
     },
-
     # ── TIER 5: Creative Services ──────────────────────────────────────────
     "ai_music_production": {
         "name": "AI Music Production & Licensing",
         "category": "creative",
         "tier": 5,
         "platforms": ["gumroad"],
-        "pricing_basic": 19, "pricing_standard": 49, "pricing_premium": 149,
-        "keywords": ["ai music", "royalty free music", "background music", "stock music", "beat production"],
+        "pricing_basic": 19,
+        "pricing_standard": 49,
+        "pricing_premium": 149,
+        "keywords": [
+            "ai music",
+            "royalty free music",
+            "background music",
+            "stock music",
+            "beat production",
+        ],
         "deliverables": ["5 AI-generated tracks", "licensing terms", "WAV + MP3 formats"],
         "turnaround_days": 1,
         "market_size_usd_bn": 2.4,
@@ -411,9 +699,23 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "creative",
         "tier": 5,
         "platforms": ["gumroad", "fiverr_browser"],
-        "pricing_basic": 49, "pricing_standard": 149, "pricing_premium": 499,
-        "keywords": ["brand identity", "brand package", "logo bundle", "brand guidelines", "visual identity"],
-        "deliverables": ["logo set", "color palette", "typography system", "brand guidelines PDF", "social media kit"],
+        "pricing_basic": 49,
+        "pricing_standard": 149,
+        "pricing_premium": 499,
+        "keywords": [
+            "brand identity",
+            "brand package",
+            "logo bundle",
+            "brand guidelines",
+            "visual identity",
+        ],
+        "deliverables": [
+            "logo set",
+            "color palette",
+            "typography system",
+            "brand guidelines PDF",
+            "social media kit",
+        ],
         "turnaround_days": 3,
         "market_size_usd_bn": 5,
         "competition": "high",
@@ -425,9 +727,21 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 5,
         "platforms": ["fiverr_browser", "upwork_browser"],
-        "pricing_basic": 29, "pricing_standard": 79, "pricing_premium": 199,
-        "keywords": ["content repurposing", "blog to video", "podcast to article", "content distribution", "multi-format"],
-        "deliverables": ["5 repurposed content pieces", "platform-optimized versions", "scheduling plan"],
+        "pricing_basic": 29,
+        "pricing_standard": 79,
+        "pricing_premium": 199,
+        "keywords": [
+            "content repurposing",
+            "blog to video",
+            "podcast to article",
+            "content distribution",
+            "multi-format",
+        ],
+        "deliverables": [
+            "5 repurposed content pieces",
+            "platform-optimized versions",
+            "scheduling plan",
+        ],
         "turnaround_days": 2,
         "market_size_usd_bn": 6,
         "competition": "low",
@@ -439,9 +753,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 5,
         "platforms": ["gumroad", "fiverr_browser"],
-        "pricing_basic": 49, "pricing_standard": 99, "pricing_premium": 299,
-        "keywords": ["press release", "PR writing", "news release", "media outreach", "public relations"],
-        "deliverables": ["press release", "distribution list", "follow-up email template", "media kit outline"],
+        "pricing_basic": 49,
+        "pricing_standard": 99,
+        "pricing_premium": 299,
+        "keywords": [
+            "press release",
+            "PR writing",
+            "news release",
+            "media outreach",
+            "public relations",
+        ],
+        "deliverables": [
+            "press release",
+            "distribution list",
+            "follow-up email template",
+            "media kit outline",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 3,
         "competition": "medium",
@@ -453,9 +780,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 5,
         "platforms": ["upwork_browser"],
-        "pricing_basic": 99, "pricing_standard": 299, "pricing_premium": 999,
-        "keywords": ["grant writing", "nonprofit grants", "startup funding", "grant proposal", "government grants"],
-        "deliverables": ["grant proposal", "executive summary", "budget narrative", "evaluation plan"],
+        "pricing_basic": 99,
+        "pricing_standard": 299,
+        "pricing_premium": 999,
+        "keywords": [
+            "grant writing",
+            "nonprofit grants",
+            "startup funding",
+            "grant proposal",
+            "government grants",
+        ],
+        "deliverables": [
+            "grant proposal",
+            "executive summary",
+            "budget narrative",
+            "evaluation plan",
+        ],
         "turnaround_days": 7,
         "market_size_usd_bn": 1,
         "competition": "low",
@@ -467,24 +807,44 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 5,
         "platforms": ["fiverr_browser", "upwork_browser"],
-        "pricing_basic": 49, "pricing_standard": 149, "pricing_premium": 499,
-        "keywords": ["linkedin ghostwriter", "thought leadership", "personal brand linkedin", "linkedin posts", "executive linkedin"],
-        "deliverables": ["12 LinkedIn posts/month", "profile optimization", "engagement strategy", "analytics report"],
+        "pricing_basic": 49,
+        "pricing_standard": 149,
+        "pricing_premium": 499,
+        "keywords": [
+            "linkedin ghostwriter",
+            "thought leadership",
+            "personal brand linkedin",
+            "linkedin posts",
+            "executive linkedin",
+        ],
+        "deliverables": [
+            "12 LinkedIn posts/month",
+            "profile optimization",
+            "engagement strategy",
+            "analytics report",
+        ],
         "turnaround_days": 3,
         "market_size_usd_bn": 5,
         "competition": "medium",
         "time_to_revenue": "2-5 days",
         "team": ["researcher", "creator", "writer", "publisher"],
     },
-
     # ── TIER 6: Passive & Affiliate Income ────────────────────────────────
     "amazon_affiliate_content": {
         "name": "Amazon Affiliate Product Review Content",
         "category": "affiliate",
         "tier": 6,
         "platforms": ["medium", "devto", "hashnode"],
-        "pricing_basic": 0, "pricing_standard": 0, "pricing_premium": 0,
-        "keywords": ["best products", "product review", "amazon recommendations", "buying guide", "top picks"],
+        "pricing_basic": 0,
+        "pricing_standard": 0,
+        "pricing_premium": 0,
+        "keywords": [
+            "best products",
+            "product review",
+            "amazon recommendations",
+            "buying guide",
+            "top picks",
+        ],
         "deliverables": ["5 review articles", "comparison tables", "affiliate links", "SEO titles"],
         "turnaround_days": 1,
         "market_size_usd_bn": 9,
@@ -497,8 +857,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 6,
         "platforms": ["etsy_browser", "gumroad"],
-        "pricing_basic": 3, "pricing_standard": 9, "pricing_premium": 27,
-        "keywords": ["etsy digital download", "printable", "digital art", "planner printable", "wall art digital"],
+        "pricing_basic": 3,
+        "pricing_standard": 9,
+        "pricing_premium": 27,
+        "keywords": [
+            "etsy digital download",
+            "printable",
+            "digital art",
+            "planner printable",
+            "wall art digital",
+        ],
         "deliverables": ["10 printable designs", "commercial license", "instant download files"],
         "turnaround_days": 1,
         "market_size_usd_bn": 13,
@@ -511,9 +879,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "ecommerce",
         "tier": 6,
         "platforms": ["zapier", "gumroad"],
-        "pricing_basic": 15, "pricing_standard": 29, "pricing_premium": 49,
+        "pricing_basic": 15,
+        "pricing_standard": 29,
+        "pricing_premium": 49,
         "keywords": ["print on demand", "custom t-shirt", "merch", "redbubble", "teespring"],
-        "deliverables": ["20 design concepts", "niche selection report", "platform setup guide", "marketing plan"],
+        "deliverables": [
+            "20 design concepts",
+            "niche selection report",
+            "platform setup guide",
+            "marketing plan",
+        ],
         "turnaround_days": 2,
         "market_size_usd_bn": 8,
         "competition": "high",
@@ -525,8 +900,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 6,
         "platforms": ["gumroad"],
-        "pricing_basic": 9, "pricing_standard": 29, "pricing_premium": 99,
-        "keywords": ["stock photos ai", "royalty free", "stock music", "ai generated art", "license free media"],
+        "pricing_basic": 9,
+        "pricing_standard": 29,
+        "pricing_premium": 99,
+        "keywords": [
+            "stock photos ai",
+            "royalty free",
+            "stock music",
+            "ai generated art",
+            "license free media",
+        ],
         "deliverables": ["50 AI images", "10 music tracks", "5 video clips", "commercial license"],
         "turnaround_days": 1,
         "market_size_usd_bn": 4,
@@ -539,24 +922,44 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "creative",
         "tier": 6,
         "platforms": ["gumroad"],
-        "pricing_basic": 19, "pricing_standard": 49, "pricing_premium": 199,
-        "keywords": ["nft art", "digital art collection", "ai art", "generative art", "digital collectible"],
-        "deliverables": ["10-piece art collection", "high-res files", "certificate of authenticity", "metadata"],
+        "pricing_basic": 19,
+        "pricing_standard": 49,
+        "pricing_premium": 199,
+        "keywords": [
+            "nft art",
+            "digital art collection",
+            "ai art",
+            "generative art",
+            "digital collectible",
+        ],
+        "deliverables": [
+            "10-piece art collection",
+            "high-res files",
+            "certificate of authenticity",
+            "metadata",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 3,
         "competition": "medium",
         "time_to_revenue": "1-7 days",
         "team": ["creator", "publisher"],
     },
-
     # ── TIER 7: High-Ticket & B2B ─────────────────────────────────────────
     "ai_agency_white_label": {
         "name": "White-Label AI Services for Agencies",
         "category": "b2b",
         "tier": 7,
         "platforms": ["gumroad", "upwork_browser"],
-        "pricing_basic": 499, "pricing_standard": 1499, "pricing_premium": 4999,
-        "keywords": ["white label ai", "agency ai solution", "resell ai", "ai for agencies", "private label ai"],
+        "pricing_basic": 499,
+        "pricing_standard": 1499,
+        "pricing_premium": 4999,
+        "keywords": [
+            "white label ai",
+            "agency ai solution",
+            "resell ai",
+            "ai for agencies",
+            "private label ai",
+        ],
         "deliverables": ["branded AI setup", "client portal", "monthly reports", "support package"],
         "turnaround_days": 14,
         "market_size_usd_bn": 62,
@@ -569,9 +972,23 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "b2b",
         "tier": 7,
         "platforms": ["gumroad", "upwork_browser"],
-        "pricing_basic": 499, "pricing_standard": 1499, "pricing_premium": 4999,
-        "keywords": ["fractional cmo", "marketing strategy", "growth consulting", "startup marketing", "marketing director"],
-        "deliverables": ["marketing audit", "90-day strategy", "content calendar", "KPI dashboard", "monthly reviews"],
+        "pricing_basic": 499,
+        "pricing_standard": 1499,
+        "pricing_premium": 4999,
+        "keywords": [
+            "fractional cmo",
+            "marketing strategy",
+            "growth consulting",
+            "startup marketing",
+            "marketing director",
+        ],
+        "deliverables": [
+            "marketing audit",
+            "90-day strategy",
+            "content calendar",
+            "KPI dashboard",
+            "monthly reviews",
+        ],
         "turnaround_days": 7,
         "market_size_usd_bn": 6,
         "competition": "low",
@@ -583,9 +1000,23 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "b2b",
         "tier": 7,
         "platforms": ["gumroad", "upwork_browser"],
-        "pricing_basic": 299, "pricing_standard": 999, "pricing_premium": 2999,
-        "keywords": ["saas growth", "product led growth", "b2b growth consultant", "churn reduction", "mrr growth"],
-        "deliverables": ["growth audit", "PLG framework", "onboarding optimization", "churn analysis", "roadmap"],
+        "pricing_basic": 299,
+        "pricing_standard": 999,
+        "pricing_premium": 2999,
+        "keywords": [
+            "saas growth",
+            "product led growth",
+            "b2b growth consultant",
+            "churn reduction",
+            "mrr growth",
+        ],
+        "deliverables": [
+            "growth audit",
+            "PLG framework",
+            "onboarding optimization",
+            "churn analysis",
+            "roadmap",
+        ],
         "turnaround_days": 7,
         "market_size_usd_bn": 15,
         "competition": "medium",
@@ -597,9 +1028,23 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 7,
         "platforms": ["upwork_browser", "fiverr_browser"],
-        "pricing_basic": 79, "pricing_standard": 249, "pricing_premium": 799,
-        "keywords": ["technical writer", "api documentation", "developer docs", "user manual", "knowledge base"],
-        "deliverables": ["API docs", "user guide", "README files", "architecture diagrams", "changelog"],
+        "pricing_basic": 79,
+        "pricing_standard": 249,
+        "pricing_premium": 799,
+        "keywords": [
+            "technical writer",
+            "api documentation",
+            "developer docs",
+            "user manual",
+            "knowledge base",
+        ],
+        "deliverables": [
+            "API docs",
+            "user guide",
+            "README files",
+            "architecture diagrams",
+            "changelog",
+        ],
         "turnaround_days": 5,
         "market_size_usd_bn": 5,
         "competition": "low",
@@ -611,25 +1056,50 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "b2b",
         "tier": 7,
         "platforms": ["gumroad", "fiverr_browser"],
-        "pricing_basic": 149, "pricing_standard": 499, "pricing_premium": 1499,
-        "keywords": ["pitch deck", "investor presentation", "startup pitch", "seed funding", "vc pitch"],
-        "deliverables": ["10-slide pitch deck", "executive summary", "financial model template", "investor outreach"],
+        "pricing_basic": 149,
+        "pricing_standard": 499,
+        "pricing_premium": 1499,
+        "keywords": [
+            "pitch deck",
+            "investor presentation",
+            "startup pitch",
+            "seed funding",
+            "vc pitch",
+        ],
+        "deliverables": [
+            "10-slide pitch deck",
+            "executive summary",
+            "financial model template",
+            "investor outreach",
+        ],
         "turnaround_days": 3,
         "market_size_usd_bn": 2,
         "competition": "low",
         "time_to_revenue": "2-5 days",
         "team": ["researcher", "creator", "writer", "publisher"],
     },
-
     # ── TIER 8: Ultra-Scalable / SaaS ─────────────────────────────────────
     "ai_newsletter_agency": {
         "name": "AI-Powered Newsletter Agency Package",
         "category": "saas",
         "tier": 8,
         "platforms": ["gumroad"],
-        "pricing_basic": 97, "pricing_standard": 297, "pricing_premium": 997,
-        "keywords": ["newsletter agency", "email newsletter service", "beehiiv newsletter", "substack ghostwriter", "newsletter growth"],
-        "deliverables": ["4 newsletter issues/month", "subject line testing", "subscriber growth plan", "sponsorship pitch"],
+        "pricing_basic": 97,
+        "pricing_standard": 297,
+        "pricing_premium": 997,
+        "keywords": [
+            "newsletter agency",
+            "email newsletter service",
+            "beehiiv newsletter",
+            "substack ghostwriter",
+            "newsletter growth",
+        ],
+        "deliverables": [
+            "4 newsletter issues/month",
+            "subject line testing",
+            "subscriber growth plan",
+            "sponsorship pitch",
+        ],
         "turnaround_days": 7,
         "market_size_usd_bn": 2,
         "competition": "low",
@@ -641,9 +1111,23 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "saas",
         "tier": 8,
         "platforms": ["gumroad"],
-        "pricing_basic": 47, "pricing_standard": 147, "pricing_premium": 497,
-        "keywords": ["micro saas", "saas boilerplate", "saas starter", "indie hacker toolkit", "saas template"],
-        "deliverables": ["FastAPI/NextJS boilerplate", "Stripe integration", "auth system", "dashboard template", "docs"],
+        "pricing_basic": 47,
+        "pricing_standard": 147,
+        "pricing_premium": 497,
+        "keywords": [
+            "micro saas",
+            "saas boilerplate",
+            "saas starter",
+            "indie hacker toolkit",
+            "saas template",
+        ],
+        "deliverables": [
+            "FastAPI/NextJS boilerplate",
+            "Stripe integration",
+            "auth system",
+            "dashboard template",
+            "docs",
+        ],
         "turnaround_days": 2,
         "market_size_usd_bn": 195,
         "competition": "medium",
@@ -655,9 +1139,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 8,
         "platforms": ["gumroad"],
-        "pricing_basic": 9, "pricing_standard": 19, "pricing_premium": 39,
-        "keywords": ["amazon kdp", "self publishing", "kindle book", "ebook publishing", "passive income books"],
-        "deliverables": ["complete book manuscript", "cover design brief", "KDP listing copy", "keyword research"],
+        "pricing_basic": 9,
+        "pricing_standard": 19,
+        "pricing_premium": 39,
+        "keywords": [
+            "amazon kdp",
+            "self publishing",
+            "kindle book",
+            "ebook publishing",
+            "passive income books",
+        ],
+        "deliverables": [
+            "complete book manuscript",
+            "cover design brief",
+            "KDP listing copy",
+            "keyword research",
+        ],
         "turnaround_days": 3,
         "market_size_usd_bn": 19,
         "competition": "high",
@@ -669,9 +1166,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 8,
         "platforms": ["gumroad"],
-        "pricing_basic": 197, "pricing_standard": 497, "pricing_premium": 1497,
-        "keywords": ["cohort course", "online cohort", "community course", "group program", "accountability program"],
-        "deliverables": ["6-week curriculum", "community setup guide", "live session scripts", "certificate template"],
+        "pricing_basic": 197,
+        "pricing_standard": 497,
+        "pricing_premium": 1497,
+        "keywords": [
+            "cohort course",
+            "online cohort",
+            "community course",
+            "group program",
+            "accountability program",
+        ],
+        "deliverables": [
+            "6-week curriculum",
+            "community setup guide",
+            "live session scripts",
+            "certificate template",
+        ],
         "turnaround_days": 7,
         "market_size_usd_bn": 325,
         "competition": "medium",
@@ -683,9 +1193,23 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "ecommerce",
         "tier": 8,
         "platforms": ["gumroad", "fiverr_browser"],
-        "pricing_basic": 99, "pricing_standard": 299, "pricing_premium": 799,
-        "keywords": ["shopify store", "dropshipping setup", "ecommerce store", "shopify expert", "online store"],
-        "deliverables": ["complete Shopify store", "10 products", "theme setup", "apps configured", "training"],
+        "pricing_basic": 99,
+        "pricing_standard": 299,
+        "pricing_premium": 799,
+        "keywords": [
+            "shopify store",
+            "dropshipping setup",
+            "ecommerce store",
+            "shopify expert",
+            "online store",
+        ],
+        "deliverables": [
+            "complete Shopify store",
+            "10 products",
+            "theme setup",
+            "apps configured",
+            "training",
+        ],
         "turnaround_days": 5,
         "market_size_usd_bn": 6,
         "competition": "high",
@@ -697,9 +1221,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "saas",
         "tier": 8,
         "platforms": ["gumroad", "medium"],
-        "pricing_basic": 0, "pricing_standard": 0, "pricing_premium": 0,
-        "keywords": ["ai tools list", "best ai tools", "ai directory", "ai comparison", "top ai apps"],
-        "deliverables": ["curated directory", "comparison articles", "weekly updates", "monetized with affiliates"],
+        "pricing_basic": 0,
+        "pricing_standard": 0,
+        "pricing_premium": 0,
+        "keywords": [
+            "ai tools list",
+            "best ai tools",
+            "ai directory",
+            "ai comparison",
+            "top ai apps",
+        ],
+        "deliverables": [
+            "curated directory",
+            "comparison articles",
+            "weekly updates",
+            "monetized with affiliates",
+        ],
         "turnaround_days": 2,
         "market_size_usd_bn": 200,
         "competition": "high",
@@ -711,9 +1248,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 1,
         "platforms": ["gumroad", "etsy_browser"],
-        "pricing_basic": 9, "pricing_standard": 27, "pricing_premium": 77,
-        "keywords": ["meal plan", "fitness plan", "weight loss guide", "workout plan", "nutrition guide"],
-        "deliverables": ["4-week meal plan", "workout schedule", "shopping lists", "progress tracker"],
+        "pricing_basic": 9,
+        "pricing_standard": 27,
+        "pricing_premium": 77,
+        "keywords": [
+            "meal plan",
+            "fitness plan",
+            "weight loss guide",
+            "workout plan",
+            "nutrition guide",
+        ],
+        "deliverables": [
+            "4-week meal plan",
+            "workout schedule",
+            "shopping lists",
+            "progress tracker",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 100,
         "competition": "high",
@@ -725,8 +1275,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 2,
         "platforms": ["fiverr_browser", "upwork_browser"],
-        "pricing_basic": 29, "pricing_standard": 79, "pricing_premium": 249,
-        "keywords": ["real estate copywriter", "property listing", "realtor content", "mls description", "real estate seo"],
+        "pricing_basic": 29,
+        "pricing_standard": 79,
+        "pricing_premium": 249,
+        "keywords": [
+            "real estate copywriter",
+            "property listing",
+            "realtor content",
+            "mls description",
+            "real estate seo",
+        ],
         "deliverables": ["5 property descriptions", "agent bio", "email templates", "social posts"],
         "turnaround_days": 1,
         "market_size_usd_bn": 3,
@@ -739,8 +1297,16 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 1,
         "platforms": ["fiverr_browser", "upwork_browser"],
-        "pricing_basic": 29, "pricing_standard": 99, "pricing_premium": 299,
-        "keywords": ["translation service", "localization", "english to spanish", "document translation", "website translation"],
+        "pricing_basic": 29,
+        "pricing_standard": 99,
+        "pricing_premium": 299,
+        "keywords": [
+            "translation service",
+            "localization",
+            "english to spanish",
+            "document translation",
+            "website translation",
+        ],
         "deliverables": ["translated document", "quality review", "glossary", "localization notes"],
         "turnaround_days": 2,
         "market_size_usd_bn": 56,
@@ -753,9 +1319,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 2,
         "platforms": ["gumroad", "etsy_browser"],
-        "pricing_basic": 19, "pricing_standard": 49, "pricing_premium": 149,
-        "keywords": ["children book", "kids story", "picture book", "bedtime story", "early reader"],
-        "deliverables": ["complete children's book", "illustration prompts", "page layout guide", "KDP-ready format"],
+        "pricing_basic": 19,
+        "pricing_standard": 49,
+        "pricing_premium": 149,
+        "keywords": [
+            "children book",
+            "kids story",
+            "picture book",
+            "bedtime story",
+            "early reader",
+        ],
+        "deliverables": [
+            "complete children's book",
+            "illustration prompts",
+            "page layout guide",
+            "KDP-ready format",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 4,
         "competition": "medium",
@@ -767,9 +1346,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 2,
         "platforms": ["gumroad"],
-        "pricing_basic": 27, "pricing_standard": 77, "pricing_premium": 197,
-        "keywords": ["personal finance", "budgeting guide", "debt free", "financial freedom", "money management"],
-        "deliverables": ["budget tracker", "debt payoff calculator", "savings plan", "investment starter guide"],
+        "pricing_basic": 27,
+        "pricing_standard": 77,
+        "pricing_premium": 197,
+        "keywords": [
+            "personal finance",
+            "budgeting guide",
+            "debt free",
+            "financial freedom",
+            "money management",
+        ],
+        "deliverables": [
+            "budget tracker",
+            "debt payoff calculator",
+            "savings plan",
+            "investment starter guide",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 10,
         "competition": "high",
@@ -781,9 +1373,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "services",
         "tier": 2,
         "platforms": ["fiverr_browser", "gumroad"],
-        "pricing_basic": 49, "pricing_standard": 149, "pricing_premium": 399,
-        "keywords": ["airbnb optimization", "airbnb listing", "vacation rental", "airbnb host", "short term rental"],
-        "deliverables": ["listing rewrite", "pricing strategy", "photo tips guide", "guest communication templates"],
+        "pricing_basic": 49,
+        "pricing_standard": 149,
+        "pricing_premium": 399,
+        "keywords": [
+            "airbnb optimization",
+            "airbnb listing",
+            "vacation rental",
+            "airbnb host",
+            "short term rental",
+        ],
+        "deliverables": [
+            "listing rewrite",
+            "pricing strategy",
+            "photo tips guide",
+            "guest communication templates",
+        ],
         "turnaround_days": 2,
         "market_size_usd_bn": 9,
         "competition": "low",
@@ -795,9 +1400,22 @@ NICHE_CATALOG: dict[str, dict] = {
         "category": "digital_products",
         "tier": 3,
         "platforms": ["gumroad", "medium"],
-        "pricing_basic": 19, "pricing_standard": 47, "pricing_premium": 147,
-        "keywords": ["crypto guide", "bitcoin tutorial", "defi explained", "web3 beginner", "blockchain basics"],
-        "deliverables": ["beginner's guide ebook", "glossary", "wallet setup tutorial", "portfolio tracker"],
+        "pricing_basic": 19,
+        "pricing_standard": 47,
+        "pricing_premium": 147,
+        "keywords": [
+            "crypto guide",
+            "bitcoin tutorial",
+            "defi explained",
+            "web3 beginner",
+            "blockchain basics",
+        ],
+        "deliverables": [
+            "beginner's guide ebook",
+            "glossary",
+            "wallet setup tutorial",
+            "portfolio tracker",
+        ],
         "turnaround_days": 1,
         "market_size_usd_bn": 6,
         "competition": "high",
@@ -811,6 +1429,7 @@ NICHE_CATALOG: dict[str, dict] = {
 # DATA MODELS
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class ServiceListing:
     niche_key: str
@@ -818,11 +1437,11 @@ class ServiceListing:
     tagline: str
     description: str
     deliverables: list[str]
-    pricing_tiers: dict[str, dict]   # {"basic": {"price": 29, "desc": "..."}, ...}
+    pricing_tiers: dict[str, dict]  # {"basic": {"price": 29, "desc": "..."}, ...}
     keywords: list[str]
     target_audience: str
     portfolio_samples: list[str]
-    faq: list[dict]                   # [{"q": "...", "a": "..."}]
+    faq: list[dict]  # [{"q": "...", "a": "..."}]
     turnaround_days: int
     revision_policy: str
     platforms: list[str]
@@ -832,14 +1451,14 @@ class ServiceListing:
     checklist_passed: bool = False
     listing_urls: dict[str, str] = field(default_factory=dict)
     revenue: float = 0.0
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
 
 
 @dataclass
 class ChecklistResult:
     passed: bool
-    score: int             # 0-100
+    score: int  # 0-100
     gates_passed: list[str]
     gates_failed: list[str]
     recommendations: list[str]
@@ -849,8 +1468,8 @@ class ChecklistResult:
 class NicheRunResult:
     niche_key: str
     niche_name: str
-    listing: Optional[ServiceListing]
-    checklist: Optional[ChecklistResult]
+    listing: ServiceListing | None
+    checklist: ChecklistResult | None
     published_urls: list[dict]
     seo_article_urls: list[dict]
     revenue_potential_usd: float
@@ -862,6 +1481,7 @@ class NicheRunResult:
 # ═══════════════════════════════════════════════════════════════════════════
 # PRE-PUBLICATION QUALITY CHECKLIST — 14 mandatory gates
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class PrePublicationChecklist:
     """
@@ -902,7 +1522,9 @@ class PrePublicationChecklist:
             passed.append("title_seo_optimized")
         else:
             failed.append("title_seo_optimized")
-            recs.append(f"Include a keyword in the title. Suggested: '{listing.keywords[0] if listing.keywords else '...'}'")
+            recs.append(
+                f"Include a keyword in the title. Suggested: '{listing.keywords[0] if listing.keywords else '...'}'"
+            )
 
         # 3. Description >= 200 words
         word_count = len(listing.description.split())
@@ -910,7 +1532,9 @@ class PrePublicationChecklist:
             passed.append("description_min_length")
         else:
             failed.append("description_min_length")
-            recs.append(f"Description has {word_count} words. Minimum 200. Add more value propositions and details.")
+            recs.append(
+                f"Description has {word_count} words. Minimum 200. Add more value propositions and details."
+            )
 
         # 4. Deliverables >= 3
         if len(listing.deliverables) >= 3:
@@ -921,8 +1545,10 @@ class PrePublicationChecklist:
 
         # 5. Pricing tiers complete
         if all(t in listing.pricing_tiers for t in ("basic", "standard", "premium")):
-            prices_ok = all(listing.pricing_tiers[t].get("price", 0) > 0
-                            for t in ("basic", "standard", "premium"))
+            prices_ok = all(
+                listing.pricing_tiers[t].get("price", 0) > 0
+                for t in ("basic", "standard", "premium")
+            )
             if prices_ok:
                 passed.append("pricing_tiers_complete")
             else:
@@ -989,8 +1615,19 @@ class PrePublicationChecklist:
             recs.append("Add at least one portfolio sample or example.")
 
         # 14. CTA in description
-        cta_words = ["contact", "order now", "get started", "click", "buy", "message",
-                     "contáct", "ordena", "compra", "empieza", "solicita"]
+        cta_words = [
+            "contact",
+            "order now",
+            "get started",
+            "click",
+            "buy",
+            "message",
+            "contáct",
+            "ordena",
+            "compra",
+            "empieza",
+            "solicita",
+        ]
         desc_lower = listing.description.lower()
         if any(w in desc_lower for w in cta_words):
             passed.append("cta_in_description")
@@ -1012,6 +1649,7 @@ class PrePublicationChecklist:
 # NICHE TEAM — Virtual team roles that generate all content
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class NicheTeam:
     """
     Virtual team for one niche. Each role uses the AI client to generate content.
@@ -1019,12 +1657,13 @@ class NicheTeam:
     """
 
     def __init__(self, niche_key: str, niche_data: dict) -> None:
-        self.niche_key  = niche_key
+        self.niche_key = niche_key
         self.niche_data = niche_data
 
     async def _ai(self, system: str, user: str, max_tokens: int = 2000) -> str:
-        from apps.core.tools.ai_client import get_ai_client, AIModel
-        ai  = get_ai_client()
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+
+        ai = get_ai_client()
         if not ai:
             return ""
         resp = await ai.complete(
@@ -1033,6 +1672,7 @@ class NicheTeam:
             model=AIModel.STRATEGY,
             max_tokens=max_tokens,
             temperature=0.7,
+            json_mode=True,
             agent_name=f"niche_{self.niche_key}",
         )
         return resp.content.strip() if resp and resp.success and resp.content else ""
@@ -1040,18 +1680,21 @@ class NicheTeam:
     async def research(self) -> dict:
         """Market research: validates demand, competition, and opportunity score."""
         from apps.core.tools.market_tools import get_market_tools
+
         mt = get_market_tools()
         niche_name = self.niche_data["name"]
-        keywords   = self.niche_data["keywords"][:3]
+        keywords = self.niche_data["keywords"][:3]
 
         # Check news demand
-        news = await mt.get_trending_news(query=f"{niche_name} online freelance", language="en", page_size=5)
+        news = await mt.get_trending_news(
+            query=f"{niche_name} online freelance", language="en", page_size=5
+        )
 
         # Score the opportunity
         score = mt.score_opportunity(
             niche=niche_name,
             news_count=len(news),
-            search_results=[{"position": i+1} for i in range(5)],
+            search_results=[{"position": i + 1} for i in range(5)],
             competition_level=self.niche_data.get("competition", "medium"),
         )
 
@@ -1114,11 +1757,19 @@ Deliverables: {', '.join(niche['deliverables'])}
                 "tagline": f"Get expert {niche_name.lower()} that drives real results",
                 "description": f"I provide professional {niche_name.lower()} services. {' '.join(niche['deliverables'])}. Order now to get started.",
                 "target_audience": "Small business owners, entrepreneurs, and freelancers who need professional results fast.",
-                "portfolio_samples": [f"Sample {niche_name}: Professional example showcasing quality and expertise"],
+                "portfolio_samples": [
+                    f"Sample {niche_name}: Professional example showcasing quality and expertise"
+                ],
                 "faq": [
                     {"q": "What do I get?", "a": f"You get: {', '.join(niche['deliverables'])}"},
-                    {"q": "How long does it take?", "a": f"Delivery within {niche['turnaround_days']} business days"},
-                    {"q": "Do you offer revisions?", "a": "Yes, up to 2 revisions included in all packages"},
+                    {
+                        "q": "How long does it take?",
+                        "a": f"Delivery within {niche['turnaround_days']} business days",
+                    },
+                    {
+                        "q": "Do you offer revisions?",
+                        "a": "Yes, up to 2 revisions included in all packages",
+                    },
                 ],
                 "revision_policy": "Up to 2 revisions included. Additional revisions available.",
                 "tags": niche["keywords"][:5],
@@ -1131,9 +1782,18 @@ Deliverables: {', '.join(niche['deliverables'])}
             description=data.get("description", ""),
             deliverables=niche["deliverables"],
             pricing_tiers={
-                "basic":    {"price": niche["pricing_basic"],    "description": f"Basic {niche_name} package"},
-                "standard": {"price": niche["pricing_standard"], "description": f"Standard {niche_name} package"},
-                "premium":  {"price": niche["pricing_premium"],  "description": f"Premium {niche_name} package"},
+                "basic": {
+                    "price": niche["pricing_basic"],
+                    "description": f"Basic {niche_name} package",
+                },
+                "standard": {
+                    "price": niche["pricing_standard"],
+                    "description": f"Standard {niche_name} package",
+                },
+                "premium": {
+                    "price": niche["pricing_premium"],
+                    "description": f"Premium {niche_name} package",
+                },
             },
             keywords=niche["keywords"],
             target_audience=data.get("target_audience", ""),
@@ -1178,8 +1838,8 @@ Include the service pricing: ${listing.pricing_tiers['basic']['price']} - ${list
 
         # Parse article
         title = listing.title
-        meta  = f"Professional {kw} service. {listing.tagline}"
-        tags  = listing.keywords[:4]
+        meta = f"Professional {kw} service. {listing.tagline}"
+        tags = listing.keywords[:4]
 
         for line in body.split("\n"):
             if line.startswith("**H1:"):
@@ -1235,12 +1895,14 @@ Output as JSON: {{"linkedin": "...", "twitter": "...", "instagram": "...", "redd
 # NICHE PUBLISHER — Routes listings to correct platforms
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class NichePublisher:
 
     async def publish_to_gumroad(self, listing: ServiceListing) -> dict:
         """Publish digital product to Gumroad via API."""
         try:
             from apps.core.tools.gumroad_tools import GumroadTools
+
             gt = GumroadTools()
 
             # Build Gumroad product description
@@ -1272,23 +1934,28 @@ class NichePublisher:
             return {"success": False, "error": str(exc)}
 
     async def publish_article(self, article: dict) -> list[dict]:
-        """Publish SEO article to Medium/dev.to/Hashnode."""
+        """Publish SEO article to Medium/dev.to/Hashnode in parallel."""
         try:
             from apps.core.tools.publishing_tools import PublishingTools
-            pub  = PublishingTools()
-            results = []
-            for coro, platform in [
-                (pub.publish_devto(article), "devto"),
-                (pub.publish_medium(article), "medium"),
-                (pub.publish_hashnode(article), "hashnode"),
-            ]:
+
+            pub = PublishingTools()
+
+            async def _safe_publish(coro, platform: str):
                 try:
                     r = await asyncio.wait_for(coro, timeout=30)
                     if isinstance(r, dict) and r.get("success"):
-                        results.append({"platform": platform, "url": r.get("url", "")})
+                        return {"platform": platform, "url": r.get("url", "")}
                 except Exception as exc:
                     logger.warning("[Publisher] Article %s: %s", platform, exc)
-            return results
+                return None
+
+            outcomes = await asyncio.gather(
+                _safe_publish(pub.publish_devto(article), "devto"),
+                _safe_publish(pub.publish_medium(article), "medium"),
+                _safe_publish(pub.publish_hashnode(article), "hashnode"),
+                return_exceptions=False,
+            )
+            return [r for r in outcomes if r]
         except Exception as exc:
             logger.error("[Publisher] publish_article: %s", exc)
             return []
@@ -1297,6 +1964,7 @@ class NichePublisher:
         """Fire Zapier event to distribute to connected apps (Twitter, LinkedIn, etc.)."""
         try:
             from apps.core.tools.zapier_connector import ZapierConnector
+
             zc = ZapierConnector()
             return await zc.dispatch_event(
                 "NEW_PRODUCT",
@@ -1309,7 +1977,7 @@ class NichePublisher:
                     "keywords": ", ".join(listing.keywords[:4]),
                     "gumroad_url": gumroad_url,
                     "category": listing.category,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             )
         except Exception as exc:
@@ -1325,21 +1993,36 @@ class NichePublisher:
             return [
                 {"action": "navigate", "url": "https://www.fiverr.com/new-gig"},
                 {"action": "fill", "selector": "input[name='title']", "value": listing.title[:80]},
-                {"action": "fill", "selector": "textarea[name='description']", "value": listing.description[:1200]},
-                {"action": "fill", "selector": "input[name='search_tags']", "value": ", ".join(listing.keywords[:5])},
+                {
+                    "action": "fill",
+                    "selector": "textarea[name='description']",
+                    "value": listing.description[:1200],
+                },
+                {
+                    "action": "fill",
+                    "selector": "input[name='search_tags']",
+                    "value": ", ".join(listing.keywords[:5]),
+                },
                 {"action": "screenshot"},
             ]
-        elif "upwork" in platform:
+        if "upwork" in platform:
             return [
-                {"action": "navigate", "url": "https://www.upwork.com/nx/create-profile/categories"},
+                {
+                    "action": "navigate",
+                    "url": "https://www.upwork.com/nx/create-profile/categories",
+                },
                 {"action": "screenshot"},
                 {"action": "extract_text", "selector": "body"},
             ]
-        elif "etsy" in platform:
+        if "etsy" in platform:
             return [
                 {"action": "navigate", "url": "https://www.etsy.com/your/listings/create"},
                 {"action": "fill", "selector": "input[name='title']", "value": listing.title[:140]},
-                {"action": "fill", "selector": "textarea[name='description']", "value": listing.description[:1000]},
+                {
+                    "action": "fill",
+                    "selector": "textarea[name='description']",
+                    "value": listing.description[:1000],
+                },
                 {"action": "screenshot"},
             ]
         return []
@@ -1349,6 +2032,7 @@ class NichePublisher:
 # MAIN ENGINE
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class NicheRevenueEngine:
     """
     Orchestrates the full autonomous income cycle across all niches.
@@ -1357,54 +2041,73 @@ class NicheRevenueEngine:
 
     def __init__(self) -> None:
         self._checklist = PrePublicationChecklist()
-        self._publisher  = NichePublisher()
+        self._publisher = NichePublisher()
 
-    def _redis(self):
+    async def _save_listing(self, listing: ServiceListing) -> None:
+        """Persist listing to Redis as part of the all-listings JSON array."""
         try:
-            from apps.core.tools.knowledge_base import get_knowledge_base
-            return get_knowledge_base()._redis
-        except Exception:
-            return None
+            from apps.core.memory.redis_client import get_cache
 
-    def _save_listing(self, listing: ServiceListing) -> None:
-        r = self._redis()
-        if r:
-            try:
-                r.hset("aria:income:listings", listing.id, json.dumps(asdict(listing)))
-            except Exception:
-                pass
+            cache = get_cache()
+            if not cache:
+                return
+            existing = await cache.get("aria:income:listings_v2") or []
+            if isinstance(existing, str):
+                existing = json.loads(existing)
+            # Upsert by id
+            updated = [l for l in existing if l.get("id") != listing.id]
+            updated.append(asdict(listing))
+            await cache.set("aria:income:listings_v2", json.dumps(updated), ttl_seconds=86400 * 90)
+        except Exception as exc:
+            logger.debug("[NicheEngine] _save_listing error: %s", exc)
 
-    def _load_listings(self) -> list[ServiceListing]:
-        r = self._redis()
-        if not r:
-            return []
+    async def _load_listings(self) -> list[ServiceListing]:
+        """Load all listings from Redis."""
         try:
-            raw = r.hgetall("aria:income:listings") or {}
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if not cache:
+                return []
+            raw = await cache.get("aria:income:listings_v2")
+            if not raw:
+                return []
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            if not isinstance(data, list):
+                return []
             result = []
-            for v in raw.values():
-                try:
-                    d = json.loads(v if isinstance(v, str) else v.decode())
+            for d in data:
+                with contextlib.suppress(Exception):
                     result.append(ServiceListing(**d))
-                except Exception:
-                    pass
             return result
         except Exception:
             return []
 
-    def _record_revenue(self, niche_key: str, amount: float, platform: str) -> None:
-        r = self._redis()
-        if not r:
-            return
+    async def _record_revenue(self, niche_key: str, amount: float, platform: str) -> None:
+        """Record revenue for a niche."""
         try:
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if not cache:
+                return
             key = f"aria:income:revenue:{niche_key}"
-            existing = float(r.get(key) or 0)
-            r.set(key, existing + amount)
-            r.rpush("aria:income:log", json.dumps({
-                "niche": niche_key, "amount": amount,
-                "platform": platform, "ts": datetime.now(timezone.utc).isoformat()
-            }))
-        except Exception:
-            pass
+            existing = float(await cache.get(key) or 0)
+            await cache.set(key, str(existing + amount), ttl_seconds=86400 * 365)
+            await cache.rpush(
+                "aria:income:log",
+                json.dumps(
+                    {
+                        "niche": niche_key,
+                        "amount": amount,
+                        "platform": platform,
+                        "ts": datetime.now(UTC).isoformat(),
+                    }
+                ),
+            )
+            await cache.ltrim("aria:income:log", -500, -1)
+        except Exception as exc:
+            logger.debug("[NicheEngine] _record_revenue error: %s", exc)
 
     def get_top_niches_by_potential(self, n: int = 5, category: str = None) -> list[dict]:
         """Returns top N niches ranked by market size × speed × competition inverse."""
@@ -1412,10 +2115,11 @@ class NicheRevenueEngine:
         for key, data in NICHE_CATALOG.items():
             if category and data["category"] != category:
                 continue
-            market     = min(data.get("market_size_usd_bn", 1), 100)
+            market = min(data.get("market_size_usd_bn", 1), 100)
             tier_score = (6 - data.get("tier", 3)) * 10
-            comp_inv   = {"low": 30, "medium": 20, "high": 10, "very_high": 5}.get(
-                data.get("competition", "medium"), 15)
+            comp_inv = {"low": 30, "medium": 20, "high": 10, "very_high": 5}.get(
+                data.get("competition", "medium"), 15
+            )
             score = market + tier_score + comp_inv
             scored.append({"key": key, "score": score, **data})
         scored.sort(key=lambda x: x["score"], reverse=True)
@@ -1436,9 +2140,16 @@ class NicheRevenueEngine:
         niche_data = NICHE_CATALOG.get(niche_key)
         if not niche_data:
             return NicheRunResult(
-                niche_key=niche_key, niche_name="Unknown", listing=None,
-                checklist=None, published_urls=[], seo_article_urls=[],
-                revenue_potential_usd=0, elapsed_seconds=0, errors=["Niche not found"], success=False,
+                niche_key=niche_key,
+                niche_name="Unknown",
+                listing=None,
+                checklist=None,
+                published_urls=[],
+                seo_article_urls=[],
+                revenue_potential_usd=0,
+                elapsed_seconds=0,
+                errors=["Niche not found"],
+                success=False,
             )
 
         team = NicheTeam(niche_key, niche_data)
@@ -1462,24 +2173,40 @@ class NicheRevenueEngine:
 
         if not listing:
             return NicheRunResult(
-                niche_key=niche_key, niche_name=niche_data["name"], listing=None,
-                checklist=None, published_urls=[], seo_article_urls=[],
-                revenue_potential_usd=0, elapsed_seconds=int(time.time()-start),
-                errors=errors, success=False,
+                niche_key=niche_key,
+                niche_name=niche_data["name"],
+                listing=None,
+                checklist=None,
+                published_urls=[],
+                seo_article_urls=[],
+                revenue_potential_usd=0,
+                elapsed_seconds=int(time.time() - start),
+                errors=errors,
+                success=False,
             )
 
         # ── PHASE 3: PRE-PUBLICATION CHECKLIST ───────────────────────────
         checklist = self._checklist.run(listing)
-        logger.info("[NicheEngine] Checklist: score=%d passed=%s", checklist.score, checklist.passed)
+        logger.info(
+            "[NicheEngine] Checklist: score=%d passed=%s", checklist.score, checklist.passed
+        )
 
         if not checklist.passed and checklist.score < 70:
-            errors.append(f"Checklist failed ({checklist.score}/100). Failed gates: {checklist.gates_failed}")
-            self._save_listing(listing)
+            errors.append(
+                f"Checklist failed ({checklist.score}/100). Failed gates: {checklist.gates_failed}"
+            )
+            await self._save_listing(listing)
             return NicheRunResult(
-                niche_key=niche_key, niche_name=niche_data["name"], listing=listing,
-                checklist=checklist, published_urls=[], seo_article_urls=[],
+                niche_key=niche_key,
+                niche_name=niche_data["name"],
+                listing=listing,
+                checklist=checklist,
+                published_urls=[],
+                seo_article_urls=[],
                 revenue_potential_usd=niche_data["pricing_premium"],
-                elapsed_seconds=int(time.time()-start), errors=errors, success=False,
+                elapsed_seconds=int(time.time() - start),
+                errors=errors,
+                success=False,
             )
 
         listing.checklist_passed = True
@@ -1520,7 +2247,7 @@ class NicheRevenueEngine:
             errors.append(f"Zapier: {exc}")
 
         listing.status = "live" if published_urls else "published_partial"
-        self._save_listing(listing)
+        await self._save_listing(listing)
 
         return NicheRunResult(
             niche_key=niche_key,
@@ -1530,7 +2257,7 @@ class NicheRevenueEngine:
             published_urls=published_urls,
             seo_article_urls=seo_article_urls,
             revenue_potential_usd=niche_data["pricing_premium"],
-            elapsed_seconds=int(time.time()-start),
+            elapsed_seconds=int(time.time() - start),
             errors=errors,
             success=bool(published_urls or seo_article_urls),
         )
@@ -1549,16 +2276,18 @@ class NicheRevenueEngine:
         results: list[NicheRunResult] = await asyncio.gather(*tasks, return_exceptions=True)
 
         successful = []
-        failed     = []
+        failed = []
         total_urls = []
 
         for r in results:
             if isinstance(r, NicheRunResult) and r.success:
-                successful.append({
-                    "niche": r.niche_name,
-                    "urls": r.published_urls + r.seo_article_urls,
-                    "revenue_potential": r.revenue_potential_usd,
-                })
+                successful.append(
+                    {
+                        "niche": r.niche_name,
+                        "urls": r.published_urls + r.seo_article_urls,
+                        "revenue_potential": r.revenue_potential_usd,
+                    }
+                )
                 total_urls.extend(r.published_urls + r.seo_article_urls)
             elif isinstance(r, NicheRunResult):
                 failed.append({"niche": r.niche_name, "errors": r.errors})
@@ -1566,21 +2295,25 @@ class NicheRevenueEngine:
                 failed.append({"niche": "unknown", "errors": [str(r)]})
 
         return {
-            "cycle_timestamp": datetime.now(timezone.utc).isoformat(),
+            "cycle_timestamp": datetime.now(UTC).isoformat(),
             "niches_attempted": num_niches,
             "niches_succeeded": len(successful),
             "niches_failed": len(failed),
-            "total_listings_live": sum(1 for r in results if isinstance(r, NicheRunResult) and r.published_urls),
-            "total_content_published": sum(1 for r in results if isinstance(r, NicheRunResult) and r.seo_article_urls),
+            "total_listings_live": sum(
+                1 for r in results if isinstance(r, NicheRunResult) and r.published_urls
+            ),
+            "total_content_published": sum(
+                1 for r in results if isinstance(r, NicheRunResult) and r.seo_article_urls
+            ),
             "all_live_urls": total_urls,
             "successful_niches": successful,
             "failed_niches": failed,
             "elapsed_seconds": int(time.time() - start),
         }
 
-    def income_dashboard(self) -> str:
+    async def income_dashboard(self) -> str:
         """Returns a formatted income dashboard from Redis state."""
-        listings = self._load_listings()
+        listings = await self._load_listings()
 
         # Platform summary
         platform_counts: dict[str, int] = {}
@@ -1593,30 +2326,34 @@ class NicheRevenueEngine:
         for ls in listings:
             cat_counts[ls.category] = cat_counts.get(ls.category, 0) + 1
 
-        # Revenue from Redis
-        r = self._redis()
+        # Revenue from Redis — iterate known niches (no scan_iter needed)
         total_rev = 0.0
         niche_rev = {}
-        if r:
-            try:
-                for key in r.scan_iter("aria:income:revenue:*"):
-                    niche_name = key.decode().split(":")[-1] if isinstance(key, bytes) else key.split(":")[-1]
-                    val = float(r.get(key) or 0)
-                    niche_rev[niche_name] = val
-                    total_rev += val
-            except Exception:
-                pass
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if cache:
+                for niche_key in NICHE_CATALOG:
+                    val = await cache.get(f"aria:income:revenue:{niche_key}")
+                    if val:
+                        amount = float(val)
+                        if amount > 0:
+                            niche_rev[niche_key] = amount
+                            total_rev += amount
+        except Exception:
+            pass
 
         lines = [
             "📊 **ARIA Income Dashboard**",
-            f"━━━━━━━━━━━━━━━━━━━━━━━━",
+            "━━━━━━━━━━━━━━━━━━━━━━━━",
             f"Total listings created: {len(listings)}",
             f"Live (with URLs): {sum(1 for l in listings if l.listing_urls)}",
             f"Checklist passed: {sum(1 for l in listings if l.checklist_passed)}",
-            f"",
+            "",
             f"**Revenue tracked:** ${total_rev:.2f}",
-            f"",
-            f"**By platform:**",
+            "",
+            "**By platform:**",
         ]
         for platform, count in sorted(platform_counts.items(), key=lambda x: -x[1]):
             lines.append(f"  • {platform}: {count} listings")
@@ -1639,7 +2376,9 @@ class NicheRevenueEngine:
         lines.append(f"  {len(unlaunched)} niches ready to launch")
         for k in unlaunched[:5]:
             n = NICHE_CATALOG[k]
-            lines.append(f"  • {n['name']} (T{n['tier']}, ${n['pricing_basic']}-${n['pricing_premium']})")
+            lines.append(
+                f"  • {n['name']} (T{n['tier']}, ${n['pricing_basic']}-${n['pricing_premium']})"
+            )
         if len(unlaunched) > 5:
             lines.append(f"  ... and {len(unlaunched)-5} more")
 
@@ -1661,16 +2400,22 @@ class NicheRevenueEngine:
             t = v.get("tier", 1)
             by_tier.setdefault(t, []).append((k, v))
 
-        tier_names = {1: "Tier 1 — Quick Revenue", 2: "Tier 2 — Digital Products",
-                      3: "Tier 3 — Content Monetization", 4: "Tier 4 — Tech Services",
-                      5: "Tier 5 — Creative Services"}
+        tier_names = {
+            1: "Tier 1 — Quick Revenue",
+            2: "Tier 2 — Digital Products",
+            3: "Tier 3 — Content Monetization",
+            4: "Tier 4 — Tech Services",
+            5: "Tier 5 — Creative Services",
+        }
 
         for t in sorted(by_tier.keys()):
             if tier and t != tier:
                 continue
             lines.append(f"\n**{tier_names.get(t, f'Tier {t}')}**")
             for k, v in by_tier[t]:
-                comp_emoji = {"low": "🟢", "medium": "🟡", "high": "🟠", "very_high": "🔴"}.get(v.get("competition", "medium"), "🟡")
+                comp_emoji = {"low": "🟢", "medium": "🟡", "high": "🟠", "very_high": "🔴"}.get(
+                    v.get("competition", "medium"), "🟡"
+                )
                 lines.append(
                     f"  {comp_emoji} `{k}` — {v['name']}\n"
                     f"    💰 ${v['pricing_basic']}-${v['pricing_premium']} | ⏱ {v['time_to_revenue']} | "
@@ -1681,7 +2426,8 @@ class NicheRevenueEngine:
 
 # ── SINGLETON ──────────────────────────────────────────────────────────────
 
-_engine: Optional[NicheRevenueEngine] = None
+_engine: NicheRevenueEngine | None = None
+
 
 def get_niche_revenue_engine() -> NicheRevenueEngine:
     global _engine

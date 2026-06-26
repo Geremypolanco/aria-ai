@@ -4,20 +4,23 @@ BaseAgent — Clase base para todos los agentes de Aria AI.
 Principio fundamental: ARIA nunca simula. Si no puede realizar una acción
 porque le falta una API key o un servicio, lo declara explícitamente.
 """
+
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Coroutine, Optional
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from apps.core.config import settings
 from apps.core.tools.ai_client import AIModel, get_ai_client
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
 
 logger = logging.getLogger("aria.base_agent")
 TELEGRAM_API = "https://api.telegram.org/bot"
@@ -51,9 +54,7 @@ class BaseAgent(ABC):
     Si falta una API key o servicio, se retorna error explicito.
     """
 
-    APPROVAL_THRESHOLD_USD: float = float(
-        getattr(settings, "MAX_SPEND_WITHOUT_APPROVAL_USD", 0.0)
-    )
+    APPROVAL_THRESHOLD_USD: float = float(getattr(settings, "MAX_SPEND_WITHOUT_APPROVAL_USD", 0.0))
     REQUIRE_APPROVAL_FOR_PAYMENTS: bool = True
 
     # Mapa global: nombre_capacidad -> env_var requerida
@@ -146,7 +147,9 @@ class BaseAgent(ABC):
                 self.metrics.tasks_failed += 1
                 self._consecutive_failures += 1
                 self._check_circuit_breaker()
-                logger.warning("[%s] Tarea fallida: %s", self.name, result.get("error", "sin detalle"))
+                logger.warning(
+                    "[%s] Tarea fallida: %s", self.name, result.get("error", "sin detalle")
+                )
             result["agent_metrics"] = {
                 "tasks_attempted": self.metrics.tasks_attempted,
                 "success_rate": self.metrics.success_rate,
@@ -177,7 +180,7 @@ class BaseAgent(ABC):
 
         for cap in self.capabilities:
             cap_lower = cap.lower()
-            required_env: Optional[str] = None
+            required_env: str | None = None
             for keyword, env_var in self.CAPABILITY_ENV_MAP.items():
                 if keyword in cap_lower:
                     required_env = env_var
@@ -212,7 +215,7 @@ class BaseAgent(ABC):
         json_mode: bool = False,
         max_tokens: int = 2000,
         inject_business_intelligence: bool = True,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Llama a la IA y retorna texto.
         Enfuerza una personalidad relajada, directa y sin rodeos.
@@ -230,7 +233,11 @@ class BaseAgent(ABC):
 
         if inject_business_intelligence:
             try:
-                from apps.core.intelligence.sales_knowledge import SALES_TECHNIQUES, VOCABULARY_EXPANSION
+                from apps.core.intelligence.sales_knowledge import (
+                    SALES_TECHNIQUES,
+                    VOCABULARY_EXPANSION,
+                )
+
                 intelligence_context = (
                     f"\n\n[BUSINESS INTELLIGENCE]:\n"
                     f'Técnicas: {SALES_TECHNIQUES["copywriting"]}\n'
@@ -249,7 +256,9 @@ class BaseAgent(ABC):
                 max_tokens=max_tokens,
             )
             if response and response.success:
-                return response.content if isinstance(response.content, str) else str(response.content)
+                return (
+                    response.content if isinstance(response.content, str) else str(response.content)
+                )
             logger.warning("[%s] think() sin respuesta de IA — proveedor no disponible", self.name)
             return None
         except Exception as exc:
@@ -280,14 +289,16 @@ class BaseAgent(ABC):
         try:
             db = _get_db()
             approval_id = str(uuid.uuid4())[:8]
-            db.table("approvals").insert({
-                "id": approval_id,
-                "agent": self.name,
-                "action": action,
-                "details": details,
-                "amount_usd": amount_usd,
-                "status": "pending",
-            }).execute()
+            db.table("approvals").insert(
+                {
+                    "id": approval_id,
+                    "agent": self.name,
+                    "action": action,
+                    "details": details,
+                    "amount_usd": amount_usd,
+                    "status": "pending",
+                }
+            ).execute()
 
             msg = (
                 f"⚠️ <b>Aprobacion requerida</b>\n\n"
@@ -326,25 +337,29 @@ class BaseAgent(ABC):
     async def _register_in_supabase(self) -> None:
         try:
             db = _get_db()
-            db.table("agents").upsert({
-                "name": self.name,
-                "description": self.description,
-                "capabilities": self.capabilities,
-                "status": "active",
-                "agent_id": self.agent_id,
-            }).execute()
+            db.table("agents").upsert(
+                {
+                    "name": self.name,
+                    "description": self.description,
+                    "capabilities": self.capabilities,
+                    "status": "active",
+                    "agent_id": self.agent_id,
+                }
+            ).execute()
         except Exception as exc:
             logger.warning("[%s] No se pudo registrar en Supabase: %s", self.name, exc)
 
-    async def _log(self, event: str, message: str, metadata: Optional[dict] = None) -> None:
+    async def _log(self, event: str, message: str, metadata: dict | None = None) -> None:
         try:
             db = _get_db()
-            db.table("system_logs").insert({
-                "agent": self.name,
-                "event": event,
-                "message": message,
-                "metadata": metadata or {},
-            }).execute()
+            db.table("system_logs").insert(
+                {
+                    "agent": self.name,
+                    "event": event,
+                    "message": message,
+                    "metadata": metadata or {},
+                }
+            ).execute()
         except Exception as exc:
             logger.debug("[%s] _log error (no critico): %s", self.name, exc)
 
@@ -390,11 +405,14 @@ class BaseAgent(ABC):
             self._circuit_open_until = time.monotonic() + cooldown
             logger.error(
                 "[%s] Circuit breaker ABIERTO por %ds (%d fallos consecutivos)",
-                self.name, cooldown, self._consecutive_failures,
+                self.name,
+                cooldown,
+                self._consecutive_failures,
             )
 
 
 def _get_db():
     """Helper para obtener cliente Supabase."""
     from apps.core.memory.supabase_client import get_db
+
     return get_db()._client

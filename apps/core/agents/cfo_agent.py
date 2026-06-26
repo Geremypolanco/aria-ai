@@ -2,10 +2,11 @@
 CFOAgent — Chief Financial Officer Agent
 Crea y publica productos digitales, gestiona pagos y registra ingresos.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -25,7 +26,7 @@ class CFOAgent(BaseAgent):
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        task = context.get("task", "")
+        context.get("task", "")
         market_focus = context.get("market_focus", "digital products")
         language = context.get("primary_language", "en")
 
@@ -56,7 +57,7 @@ class CFOAgent(BaseAgent):
 
         return results
 
-    async def create_ebook(self, niche: str, language: str) -> Optional[dict[str, Any]]:
+    async def create_ebook(self, niche: str, language: str) -> dict[str, Any] | None:
         """Genera el contenido completo de un ebook usando IA."""
         meta = await self.think(
             system="Eres un experto en marketing de información y creación de productos digitales de alto valor.",
@@ -88,7 +89,9 @@ class CFOAgent(BaseAgent):
         meta["sample_content"] = content or ""
         meta["niche"] = niche
         meta["language"] = language
-        logger.info("[CFOAgent] Ebook creado: %s | $%.2f", meta.get("title"), meta.get("price_usd", 0))
+        logger.info(
+            "[CFOAgent] Ebook creado: %s | $%.2f", meta.get("title"), meta.get("price_usd", 0)
+        )
         return meta
 
     async def publish_to_gumroad(self, ebook: dict[str, Any]) -> dict[str, Any]:
@@ -102,7 +105,7 @@ class CFOAgent(BaseAgent):
                         "name": ebook["title"],
                         "description": ebook["description"],
                         "price": int(ebook.get("price_usd", 9.99) * 100),  # centavos
-                        "url": f"https://gumroad.com",
+                        "url": "https://gumroad.com",
                         "published": "true",
                     },
                 )
@@ -117,9 +120,8 @@ class CFOAgent(BaseAgent):
                         platform="gumroad",
                     )
                     return {"success": True, "url": url, "product_id": data.get("id")}
-                else:
-                    logger.warning("[CFOAgent] Gumroad error %d: %s", res.status_code, res.text[:200])
-                    return {"success": False, "error": f"HTTP {res.status_code}"}
+                logger.warning("[CFOAgent] Gumroad error %d: %s", res.status_code, res.text[:200])
+                return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
             logger.error("[CFOAgent] Error publicando en Gumroad: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -136,7 +138,10 @@ class CFOAgent(BaseAgent):
                     data={"name": name, "description": description},
                 )
                 if prod_res.status_code != 200:
-                    return {"success": False, "error": f"Stripe product HTTP {prod_res.status_code}"}
+                    return {
+                        "success": False,
+                        "error": f"Stripe product HTTP {prod_res.status_code}",
+                    }
                 product_id = prod_res.json()["id"]
 
                 price_res = await client.post(
@@ -170,7 +175,10 @@ class CFOAgent(BaseAgent):
                 res = await client.post(
                     "https://api.stripe.com/v1/payment_links",
                     auth=(settings.STRIPE_SECRET_KEY or "", ""),
-                    data={"line_items[0][price]": stripe_prod["price_id"], "line_items[0][quantity]": "1"},
+                    data={
+                        "line_items[0][price]": stripe_prod["price_id"],
+                        "line_items[0][quantity]": "1",
+                    },
                 )
                 if res.status_code == 200:
                     url = res.json().get("url", "")
@@ -186,8 +194,12 @@ class CFOAgent(BaseAgent):
     ) -> dict[str, Any]:
         """Crea un producto en Shopify."""
         shop_url = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
-        token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN or settings.SHOPIFY_ACCESS_TOKEN
-        
+        token = (
+            settings.SHOPIFY_ADMIN_TOKEN
+            or settings.SHOPIFY_AUTOMATION_TOKEN
+            or settings.SHOPIFY_ACCESS_TOKEN
+        )
+
         if not shop_url or not token:
             return {"success": False, "error": "Shopify no configurado en el servidor"}
         try:
@@ -213,7 +225,11 @@ class CFOAgent(BaseAgent):
                 if res.status_code in (200, 201):
                     product = res.json().get("product", {})
                     logger.info("[CFOAgent] Producto Shopify creado: %s", product.get("id"))
-                    return {"success": True, "product_id": product.get("id"), "handle": product.get("handle")}
+                    return {
+                        "success": True,
+                        "product_id": product.get("id"),
+                        "handle": product.get("handle"),
+                    }
                 return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
             logger.error("[CFOAgent] Error creando producto Shopify: %s", exc)
@@ -229,6 +245,7 @@ class CFOAgent(BaseAgent):
     ) -> None:
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             await db.save_revenue(
                 revenue_type=revenue_type,
@@ -238,6 +255,8 @@ class CFOAgent(BaseAgent):
                 platform=platform,
             )
             self.metrics.revenue_generated += amount
-            logger.info("[CFOAgent] Ingreso registrado: $%.2f %s via %s", amount, currency, platform)
+            logger.info(
+                "[CFOAgent] Ingreso registrado: $%.2f %s via %s", amount, currency, platform
+            )
         except Exception as exc:
             logger.warning("[CFOAgent] No se pudo registrar ingreso: %s", exc)

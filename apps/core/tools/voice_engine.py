@@ -12,17 +12,17 @@ Referencia:
   - Faster Whisper: https://github.com/SYSTRAN/faster-whisper
   - Piper TTS: https://github.com/rhasspy/piper
 """
+
 from __future__ import annotations
 
 import logging
-import os
-from typing import Any, Optional
 
 logger = logging.getLogger("aria.voice")
 
 # ── Faster Whisper Import con fallback ───────────────────────────────────────
 try:
     from faster_whisper import WhisperModel
+
     FASTER_WHISPER_AVAILABLE = True
     logger.info("[Faster Whisper] Librería cargada correctamente.")
 except ImportError:
@@ -49,7 +49,7 @@ class AriaVoiceEngine:
             if self._stt_model is None:
                 # Usar CPU por defecto para el sandbox, cambiar a 'cuda' en prod con GPU
                 self._stt_model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
-            
+
             segments, info = self._stt_model.transcribe(audio_path, beam_size=5)
             text = " ".join([segment.text for segment in segments])
             logger.info("[Voice] Transcripción completada (idioma: %s)", info.language)
@@ -67,6 +67,7 @@ class AriaVoiceEngine:
 
 # ── Singleton ────────────────────────────────────────────────────────────────
 _voice_instance: AriaVoiceEngine | None = None
+
 
 def get_voice_engine() -> AriaVoiceEngine:
     """Retorna el singleton del motor de voz."""

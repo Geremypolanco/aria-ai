@@ -18,6 +18,18 @@ prefect
 crewai
 pyautogen
 langgraph
+fastapi
+uvicorn
+pydantic
+aiohttp
+openai
+# Phase 8 — Cognitive Infrastructure
+qdrant-client
+networkx
+celery[redis]
+dspy
+arize-phoenix
+openinference-instrumentation-openai
 
 # Perception & Internet
 firecrawl-py
@@ -29,7 +41,6 @@ httpx
 neo4j
 graphiti-ai
 mem0ai
-qdrant-client
 
 # Governance & Self-Improvement
 aider-chat

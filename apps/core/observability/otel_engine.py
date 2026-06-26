@@ -16,25 +16,30 @@ Referencia:
   - Prometheus: https://github.com/prometheus/client_python
   - Grafana: https://grafana.com/docs/
 """
+
 from __future__ import annotations
 
 import logging
 import time
+from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, AsyncGenerator, Generator, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.otel_engine")
 
 # ── OpenTelemetry Import con fallback ────────────────────────────────────────
 try:
-    from opentelemetry import trace, metrics
+    from opentelemetry import metrics, trace
+    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+        OTLPMetricExporter,  # noqa: F401
+    )
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.metrics import MeterProvider  # noqa: F401
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader  # noqa: F401
+    from opentelemetry.sdk.resources import SERVICE_NAME, Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-    from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+
     OTEL_AVAILABLE = True
     logger.info("[OpenTelemetry] SDK cargado correctamente.")
 except ImportError:
@@ -50,17 +55,22 @@ except ImportError:
 # ── Prometheus Import con fallback ───────────────────────────────────────────
 try:
     from prometheus_client import (
-        Counter, Gauge, Histogram, Summary,
-        CollectorRegistry, generate_latest, CONTENT_TYPE_LATEST,
+        CONTENT_TYPE_LATEST,  # noqa: F401
+        CollectorRegistry,  # noqa: F401
+        Counter,
+        Gauge,
+        Histogram,
+        Summary,  # noqa: F401
+        generate_latest,  # noqa: F401
         start_http_server,
     )
+
     PROMETHEUS_AVAILABLE = True
     logger.info("[Prometheus] Client cargado correctamente.")
 except ImportError:
     PROMETHEUS_AVAILABLE = False
     logger.warning(
-        "[Prometheus] prometheus-client no instalado. "
-        "Instala con: pip install prometheus-client"
+        "[Prometheus] prometheus-client no instalado. " "Instala con: pip install prometheus-client"
     )
     Counter = None  # type: ignore[assignment,misc]
     Gauge = None  # type: ignore[assignment,misc]
@@ -70,6 +80,7 @@ except ImportError:
 # ── FastAPI Instrumentation ──────────────────────────────────────────────────
 try:
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
     FASTAPI_INSTRUMENTATION_AVAILABLE = True
 except ImportError:
     FASTAPI_INSTRUMENTATION_AVAILABLE = False
@@ -77,6 +88,7 @@ except ImportError:
 
 
 # ── Métricas de Prometheus para ARIA ────────────────────────────────────────
+
 
 class AriaPrometheusMetrics:
     """
@@ -198,9 +210,7 @@ class AriaPrometheusMetrics:
             self._metrics["revenue_total"].labels(
                 channel=channel, product=product, agent=agent
             ).inc(amount_usd)
-            self._metrics["sales_total"].labels(
-                product=product, channel=channel
-            ).inc()
+            self._metrics["sales_total"].labels(product=product, channel=channel).inc()
         except Exception as exc:
             logger.debug("[Prometheus] Error registrando revenue: %s", exc)
 
@@ -219,9 +229,7 @@ class AriaPrometheusMetrics:
                 agent_name=agent_name,
                 success=str(success).lower(),
             ).inc()
-            self._metrics["agent_duration"].labels(
-                agent_name=agent_name
-            ).observe(duration_seconds)
+            self._metrics["agent_duration"].labels(agent_name=agent_name).observe(duration_seconds)
             if roi != 0:
                 self._metrics["agent_roi"].labels(agent_name=agent_name).set(roi)
         except Exception as exc:
@@ -271,7 +279,8 @@ class AriaPrometheusMetrics:
         if not PROMETHEUS_AVAILABLE:
             return "# Prometheus no disponible\n"
         try:
-            from prometheus_client import generate_latest, REGISTRY
+            from prometheus_client import REGISTRY, generate_latest
+
             return generate_latest(REGISTRY).decode("utf-8")
         except Exception as exc:
             return f"# Error generando métricas: {exc}\n"
@@ -289,6 +298,7 @@ class AriaPrometheusMetrics:
 
 
 # ── OpenTelemetry Tracer ─────────────────────────────────────────────────────
+
 
 class AriaOtelTracer:
     """
@@ -326,7 +336,9 @@ class AriaOtelTracer:
 
             self._tracer = trace.get_tracer(self._service_name)
             self._initialized = True
-            logger.info("[OpenTelemetry] TracerProvider inicializado (endpoint=%s)", self._otlp_endpoint)
+            logger.info(
+                "[OpenTelemetry] TracerProvider inicializado (endpoint=%s)", self._otlp_endpoint
+            )
             return True
 
         except Exception as exc:
@@ -416,6 +428,7 @@ class AriaOtelTracer:
 
 
 # ── Motor Unificado de Observabilidad ────────────────────────────────────────
+
 
 class AriaObservabilityEngine:
     """
@@ -557,6 +570,7 @@ def get_observability_engine() -> AriaObservabilityEngine:
     global _observability_instance
     if _observability_instance is None:
         import os
+
         _observability_instance = AriaObservabilityEngine(
             service_name=os.getenv("OTEL_SERVICE_NAME", "aria-ai"),
             otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
