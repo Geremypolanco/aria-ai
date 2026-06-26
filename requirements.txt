@@ -1,9 +1,22 @@
-python-telegram-bot==21.4
-python-dotenv
-supabase
-ShopifyAPI
-requests
-langchain
+
+# ── ARIA OS: Arquitectura Final (Organización Autónoma Digital) ──────────────
+# Cognition & Optimization
+dspy-ai
+pymc
+graphrag
+
+# Economics & Analytics
+duckdb
+openbb
+stripe
+shopify-api-python
+posthog
+
+# Execution & Swarm
+temporalio
+prefect
+crewai
+pyautogen
 langgraph
 fastapi
 uvicorn
@@ -17,3 +30,20 @@ celery[redis]
 dspy
 arize-phoenix
 openinference-instrumentation-openai
+
+# Perception & Internet
+firecrawl-py
+crawl4ai
+playwright
+httpx
+
+# Memory & Graphs
+neo4j
+graphiti-ai
+mem0ai
+
+# Governance & Self-Improvement
+aider-chat
+sweagent
+agentops
+langfuse

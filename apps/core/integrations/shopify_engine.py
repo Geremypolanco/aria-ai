@@ -3,11 +3,9 @@ shopify_engine.py — Motor de ejecución real para Shopify Admin API v2.0
 Capacidades: Creación de productos, listings optimizados, inventario,
 imágenes, videos, metafields SEO, colecciones y reportes de ventas.
 """
-
-import logging
-from typing import Any
-
 import requests
+import logging
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger("aria.shopify_engine")
 
@@ -22,12 +20,18 @@ class ShopifyEngine:
     def __init__(self, shop_name: str, access_token: str):
         self.shop_name = shop_name
         self.access_token = access_token
-        self.base_url = f"https://{shop_name}.myshopify.com/admin/api/2024-01"
-        self.headers = {"X-Shopify-Access-Token": access_token, "Content-Type": "application/json"}
+        if ".myshopify.com" in shop_name:
+            self.base_url = f"https://{shop_name}/admin/api/2024-01"
+        else:
+            self.base_url = f"https://{shop_name}.myshopify.com/admin/api/2024-01"
+        self.headers = {
+            "X-Shopify-Access-Token": access_token,
+            "Content-Type": "application/json"
+        }
 
     # ── INVESTIGACIÓN Y ANÁLISIS ──────────────────────────────────
 
-    def get_all_products(self) -> list[dict[str, Any]]:
+    def get_all_products(self) -> List[Dict[str, Any]]:
         """Obtiene todos los productos de la tienda para análisis."""
         url = f"{self.base_url}/products.json?limit=250"
         response = requests.get(url, headers=self.headers)
@@ -36,7 +40,7 @@ class ShopifyEngine:
         logger.error(f"Error obteniendo productos: {response.text}")
         return []
 
-    def get_orders_report(self, limit: int = 100) -> dict[str, Any]:
+    def get_orders_report(self, limit: int = 100) -> Dict[str, Any]:
         """Genera un reporte de ventas para análisis de rendimiento."""
         url = f"{self.base_url}/orders.json?limit={limit}&status=any"
         response = requests.get(url, headers=self.headers)
@@ -46,13 +50,13 @@ class ShopifyEngine:
             return {
                 "total_orders": len(orders),
                 "total_revenue_usd": round(total_revenue, 2),
-                "orders": orders[:10],
+                "orders": orders[:10]
             }
         return {"total_orders": 0, "total_revenue_usd": 0.0, "orders": []}
 
     # ── CREACIÓN Y OPTIMIZACIÓN DE PRODUCTOS ─────────────────────
 
-    def create_optimized_product(self, product_data: dict[str, Any]) -> str | None:
+    def create_optimized_product(self, product_data: Dict[str, Any]) -> Optional[str]:
         """
         Crea un producto con listing completamente optimizado para SEO y conversión.
         Incluye: título SEO, descripción HTML persuasiva, imágenes, variantes,
@@ -63,40 +67,32 @@ class ShopifyEngine:
         # Construir variantes con control de inventario
         variants = []
         for variant in product_data.get("variants", []):
-            variants.append(
-                {
-                    "title": variant.get("title", "Default Title"),
-                    "price": str(variant.get("price", product_data.get("price", "0"))),
-                    "sku": variant.get("sku", product_data.get("sku", "")),
-                    "inventory_management": "shopify",
-                    "inventory_quantity": variant.get(
-                        "inventory", product_data.get("inventory", 10)
-                    ),
-                    "requires_shipping": product_data.get("requires_shipping", True),
-                    "taxable": True,
-                    "weight": product_data.get("weight", 0),
-                    "weight_unit": product_data.get("weight_unit", "kg"),
-                }
-            )
+            variants.append({
+                "title": variant.get("title", "Default Title"),
+                "price": str(variant.get("price", product_data.get("price", "0"))),
+                "sku": variant.get("sku", product_data.get("sku", "")),
+                "inventory_management": "shopify",
+                "inventory_quantity": variant.get("inventory", product_data.get("inventory", 10)),
+                "requires_shipping": product_data.get("requires_shipping", True),
+                "taxable": True,
+                "weight": product_data.get("weight", 0),
+                "weight_unit": product_data.get("weight_unit", "kg"),
+            })
 
         if not variants:
-            variants = [
-                {
-                    "price": str(product_data.get("price", "0")),
-                    "sku": product_data.get("sku", ""),
-                    "inventory_management": "shopify",
-                    "inventory_quantity": product_data.get("inventory", 10),
-                    "requires_shipping": product_data.get("requires_shipping", True),
-                    "taxable": True,
-                }
-            ]
+            variants = [{
+                "price": str(product_data.get("price", "0")),
+                "sku": product_data.get("sku", ""),
+                "inventory_management": "shopify",
+                "inventory_quantity": product_data.get("inventory", 10),
+                "requires_shipping": product_data.get("requires_shipping", True),
+                "taxable": True,
+            }]
 
         payload = {
             "product": {
                 "title": product_data["title"],
-                "body_html": product_data.get(
-                    "description_html", product_data.get("description", "")
-                ),
+                "body_html": product_data.get("description_html", product_data.get("description", "")),
                 "vendor": product_data.get("vendor", "Aria Premium"),
                 "product_type": product_data.get("category", "General"),
                 "status": product_data.get("status", "active"),
@@ -113,21 +109,20 @@ class ShopifyEngine:
         if response.status_code == 201:
             product = response.json().get("product", {})
             product_id = product.get("id")
-            logger.info(
-                f"[ShopifyEngine] Producto creado: {product_data['title']} (ID: {product_id})"
-            )
+            logger.info(f"[ShopifyEngine] Producto creado: {product_data['title']} (ID: {product_id})")
 
             # Añadir metafields SEO si se proporcionan
             if product_data.get("seo_title") or product_data.get("seo_description"):
                 self.update_product_seo(
                     str(product_id),
                     product_data.get("seo_title", product_data["title"]),
-                    product_data.get("seo_description", ""),
+                    product_data.get("seo_description", "")
                 )
 
             return str(product_id)
-        logger.error(f"[ShopifyEngine] Error creando producto: {response.text}")
-        return None
+        else:
+            logger.error(f"[ShopifyEngine] Error creando producto: {response.text}")
+            return None
 
     def update_product_seo(self, product_id: str, seo_title: str, seo_description: str):
         """Actualiza los metafields de SEO de un producto (título y descripción para Google)."""
@@ -145,7 +140,7 @@ class ShopifyEngine:
         else:
             logger.warning(f"[ShopifyEngine] No se pudo actualizar SEO: {response.text}")
 
-    def add_product_images(self, product_id: str, image_urls: list[str]) -> list[str]:
+    def add_product_images(self, product_id: str, image_urls: List[str]) -> List[str]:
         """Añade imágenes a un producto existente con alt text optimizado."""
         added_ids = []
         for img_url in image_urls:
@@ -171,7 +166,7 @@ class ShopifyEngine:
                 "namespace": "custom",
                 "key": "product_video_url",
                 "value": video_url,
-                "type": "url",
+                "type": "url"
             }
         }
         response = requests.post(url, json=payload, headers=self.headers)
@@ -189,7 +184,7 @@ class ShopifyEngine:
         payload = {
             "location_id": location_id,
             "inventory_item_id": inventory_item_id,
-            "available": quantity,
+            "available": quantity
         }
         response = requests.post(url, json=payload, headers=self.headers)
         if response.status_code == 200:
@@ -198,7 +193,7 @@ class ShopifyEngine:
         logger.error(f"[ShopifyEngine] Error actualizando inventario: {response.text}")
         return False
 
-    def get_inventory_levels(self) -> list[dict[str, Any]]:
+    def get_inventory_levels(self) -> List[Dict[str, Any]]:
         """Obtiene los niveles de inventario actuales de todos los productos."""
         url = f"{self.base_url}/inventory_levels.json"
         response = requests.get(url, headers=self.headers)
@@ -206,7 +201,7 @@ class ShopifyEngine:
             return response.json().get("inventory_levels", [])
         return []
 
-    def get_locations(self) -> list[dict[str, Any]]:
+    def get_locations(self) -> List[Dict[str, Any]]:
         """Obtiene las ubicaciones de inventario de la tienda."""
         url = f"{self.base_url}/locations.json"
         response = requests.get(url, headers=self.headers)
@@ -216,7 +211,7 @@ class ShopifyEngine:
 
     # ── COLECCIONES Y CATEGORÍAS ──────────────────────────────────
 
-    def create_collection(self, title: str, description: str, image_url: str = "") -> str | None:
+    def create_collection(self, title: str, description: str, image_url: str = "") -> Optional[str]:
         """Crea una colección (categoría) en la tienda para organizar productos."""
         url = f"{self.base_url}/custom_collections.json"
         payload = {
@@ -246,9 +241,7 @@ class ShopifyEngine:
 
     # ── PROMOCIONES Y DESCUENTOS ──────────────────────────────────
 
-    def create_discount_code(
-        self, title: str, code: str, percentage: float, usage_limit: int = 100
-    ) -> str | None:
+    def create_discount_code(self, title: str, code: str, percentage: float, usage_limit: int = 100) -> Optional[str]:
         """Crea un código de descuento para promociones."""
         url = f"{self.base_url}/price_rules.json"
         payload = {
@@ -279,7 +272,7 @@ class ShopifyEngine:
 
     # ── TEMA Y STOREFRONT ─────────────────────────────────────────
 
-    def update_storefront_theme(self, theme_id: str, assets: dict[str, str]):
+    def update_storefront_theme(self, theme_id: str, assets: Dict[str, str]):
         """Actualiza el diseño de la tienda modificando los assets del tema."""
         for asset_key, content in assets.items():
             url = f"{self.base_url}/themes/{theme_id}/assets.json"
