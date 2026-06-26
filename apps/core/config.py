@@ -80,8 +80,14 @@ class Settings(BaseSettings):
 
     # ── IA Adicional ──────────────────────────────────────
     ANTHROPIC_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = None
     GOOGLE_API_KEY: str | None = None
     COHERE_API_KEY: str | None = None
+
+    @property
+    def gemini_key(self) -> str | None:
+        """Devuelve la clave de Gemini (GEMINI_API_KEY o GOOGLE_API_KEY como respaldo)."""
+        return self.GEMINI_API_KEY or self.GOOGLE_API_KEY
 
     # ── CONTENIDO / SEO ───────────────────────────────────
     NEWS_API_KEY: str | None = None

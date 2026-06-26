@@ -42,6 +42,7 @@ class AIProvider(StrEnum):
     GROQ = "groq"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
 
 
 class AIModel(StrEnum):
@@ -116,30 +117,35 @@ MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
         AIProvider.GROQ: "llama-3.3-70b-versatile",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
         AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
+        AIProvider.GEMINI: "gemini-2.0-flash",
     },
     AIModel.CODE: {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-Coder-32B-Instruct",
         AIProvider.GROQ: "llama-3.3-70b-versatile",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
         AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
+        AIProvider.GEMINI: "gemini-2.0-flash",
     },
     AIModel.FAST: {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-7B-Instruct",
         AIProvider.GROQ: "llama-3.1-8b-instant",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
         AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
+        AIProvider.GEMINI: "gemini-2.0-flash-lite",
     },
     AIModel.CREATIVE: {
         AIProvider.HUGGINGFACE: "meta-llama/Llama-3.3-70B-Instruct",
         AIProvider.GROQ: "llama-3.3-70b-versatile",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
         AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
+        AIProvider.GEMINI: "gemini-1.5-pro",
     },
     AIModel.VISION: {
         AIProvider.HUGGINGFACE: "meta-llama/Llama-3.2-11B-Vision-Instruct",
         AIProvider.GROQ: "llava-v1.5-7b-4096-preview",
         AIProvider.OPENAI: "gpt-4o-mini",
         AIProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
+        AIProvider.GEMINI: "gemini-2.0-flash",
     },
 }
 
@@ -148,6 +154,7 @@ PROVIDER_TIMEOUTS: dict[AIProvider, float] = {
     AIProvider.GROQ: 12.0,
     AIProvider.OPENAI: 15.0,
     AIProvider.ANTHROPIC: 20.0,
+    AIProvider.GEMINI: 15.0,
 }
 
 
@@ -228,7 +235,13 @@ class AriaAIClient:
         self._total_fallbacks = 0
         hf_status = "HF_TOKEN configurado" if settings.hf_key else "SIN HF_TOKEN"
         groq_status = "GROQ configurado" if settings.GROQ_API_KEY else "SIN GROQ"
-        logger.info("AriaAIClient — Motor: HF(%s) → Groq(%s) → OpenAI", hf_status, groq_status)
+        gemini_status = "GEMINI configurado" if settings.gemini_key else "SIN GEMINI"
+        logger.info(
+            "AriaAIClient — Motor: HF(%s) → Groq(%s) → Anthropic → Gemini(%s) → OpenAI",
+            hf_status,
+            groq_status,
+            gemini_status,
+        )
 
     # ── API PÚBLICA ───────────────────────────────────────
 
@@ -548,6 +561,10 @@ class AriaAIClient:
             content, tokens = await self._call_anthropic(
                 model_id, system, user, max_tokens, temperature
             )
+        elif provider == AIProvider.GEMINI:
+            content, tokens = await self._call_gemini(
+                model_id, system, user, max_tokens, temperature
+            )
         else:
             content, tokens = await self._call_openai(
                 model_id, system, user, max_tokens, temperature
@@ -761,6 +778,41 @@ class AriaAIClient:
         content = data["content"][0]["text"].strip()
         usage = data.get("usage", {})
         tokens = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+        return content, tokens
+
+    async def _call_gemini(
+        self,
+        model_id: str,
+        system: str,
+        user: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> tuple[str, int]:
+        if not settings.gemini_key:
+            raise ValueError("GEMINI_API_KEY no configurado")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
+        payload = {
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [{"text": user}]}],
+            "generationConfig": {
+                "maxOutputTokens": min(max_tokens, 8192),
+                "temperature": temperature,
+            },
+        }
+        resp = await self._http.post(
+            url,
+            json=payload,
+            params={"key": settings.gemini_key},
+            headers={"Content-Type": "application/json"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise ValueError(f"Gemini sin candidatos: {str(data)[:100]}")
+        content = candidates[0]["content"]["parts"][0]["text"].strip()
+        usage = data.get("usageMetadata", {})
+        tokens = usage.get("totalTokenCount", len(content.split()) * 2)
         return content, tokens
 
     # ── STREAMING ─────────────────────────────────────────
@@ -996,6 +1048,7 @@ class AriaAIClient:
             AIProvider.HUGGINGFACE,
             AIProvider.GROQ,
             AIProvider.ANTHROPIC,
+            AIProvider.GEMINI,
             AIProvider.OPENAI,
         ]
 
@@ -1004,6 +1057,7 @@ class AriaAIClient:
             AIProvider.HUGGINGFACE: bool(settings.hf_key),
             AIProvider.GROQ: bool(settings.GROQ_API_KEY),
             AIProvider.ANTHROPIC: bool(settings.ANTHROPIC_API_KEY),
+            AIProvider.GEMINI: bool(settings.gemini_key),
             AIProvider.OPENAI: bool(settings.OPENAI_API_KEY),
         }
 
