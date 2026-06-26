@@ -22888,101 +22888,54 @@ JSON:
     async def _exec_aria_subscription_launch(self) -> dict:
         """
         Launch ARIA as a consumer SaaS subscription product.
-        Generates: landing page HTML + 3 pricing tiers ($29/$97/$497/mo) +
-        Stripe Checkout links per tier + unique differentiators vs ChatGPT/Claude.
-        Publishes to GitHub Pages. Revenue: $29-$497/mo per subscriber.
+        Creates 3 Stripe Checkout links ($29/$97/$497/mo) and injects them into
+        the existing docs/index.html landing page on GitHub Pages.
+        Revenue: $29-$497/mo per subscriber.
         """
         try:
-            from apps.core.tools.ai_client import AIModel, get_ai_client
+            import base64 as _b64
 
-            ai = get_ai_client()
-            if not ai:
-                return {
-                    "success": False,
-                    "summary": "aria_subscription_launch: AI unavailable",
-                }
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
 
-            # AI generates the full landing page + pricing strategy
-            landing_data = await ai.complete_json(
-                system=(
-                    "You are a SaaS growth expert and conversion copywriter. "
-                    "ARIA is an autonomous AI business assistant that works 24/7 "
-                    "without supervision — it creates products, does outreach, publishes content, "
-                    "and generates revenue while you sleep. It's NOT a chatbot. "
-                    "Position it against ChatGPT and Claude by emphasizing AUTONOMY and EXECUTION. "
-                    "Output JSON only."
-                ),
-                user="""Create a complete ARIA subscription product launch.
+            cache = get_cache()
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
-Tiers:
-- Starter ($29/mo): personal automation, content generation, basic income loop
-- Business ($97/mo): full income loop, B2B outreach, multi-channel distribution
-- Enterprise ($497/mo): white-label, API access, priority AI cascade, dedicated support
-
-JSON:
-{
-  "hero_headline": "punchy H1 (max 10 words, action-oriented)",
-  "hero_subheadline": "supporting line (max 25 words, concrete benefit)",
-  "vs_chatgpt": ["3 specific things ARIA does that ChatGPT can't (concrete, action-based)"],
-  "vs_claude": ["3 specific things ARIA does that Claude can't"],
-  "unique_features": ["5 features competitors don't have"],
-  "starter_bullets": ["3 compelling Starter tier benefits"],
-  "business_bullets": ["3 compelling Business tier benefits"],
-  "enterprise_bullets": ["3 compelling Enterprise tier benefits"],
-  "testimonial_1": {"name": "Sarah K., SaaS Founder", "quote": "compelling 25-word testimonial"},
-  "testimonial_2": {"name": "Marcus T., Agency Owner", "quote": "compelling 25-word testimonial"},
-  "cta_primary": "CTA button text for Business tier",
-  "cta_secondary": "CTA for Starter tier",
-  "faq": [{"q": "question", "a": "answer"}, {"q": "q2", "a": "a2"}, {"q": "q3", "a": "a3"}]
-}""",
-                model=AIModel.CREATIVE,
-                max_tokens=2000,
-            )
-
-            if not landing_data:
-                return {
-                    "success": False,
-                    "summary": "aria_subscription_launch: AI failed to generate landing page",
-                }
-
-            hero = landing_data.get("hero_headline", "Your AI That Works While You Sleep")
-            subhero = landing_data.get(
-                "hero_subheadline",
-                "ARIA generates revenue, builds products, and closes deals — autonomously, 24/7.",
-            )
-            vs_chatgpt = landing_data.get("vs_chatgpt", [])
-            unique_features = landing_data.get("unique_features", [])
-            starter_bullets = landing_data.get("starter_bullets", [])
-            business_bullets = landing_data.get("business_bullets", [])
-            enterprise_bullets = landing_data.get("enterprise_bullets", [])
-            faq = landing_data.get("faq", [])
-            cta_primary = landing_data.get("cta_primary", "Start Earning Now")
             urls_created = []
 
-            # Create Stripe prices for each tier
-            tier_links = {"starter": "#", "business": "#", "enterprise": "#"}
+            # Create Stripe payment links for all 3 tiers
+            tier_links = {
+                "starter": "https://aria-ai.fly.dev/subscribe/starter",
+                "pro": "https://aria-ai.fly.dev/subscribe/pro",
+                "agency": "https://aria-ai.fly.dev/subscribe/agency",
+            }
+            stripe_status = "⚠️ Stripe not configured — add STRIPE_SECRET_KEY"
             stripe_key = getattr(settings, "STRIPE_SECRET_KEY", None)
+
             if stripe_key:
                 try:
                     import httpx as _hx
 
-                    async with _hx.AsyncClient(timeout=20) as _hc:
-                        for tier_name, cents in [
-                            ("starter", 2900),
-                            ("business", 9700),
-                            ("enterprise", 49700),
+                    async with _hx.AsyncClient(timeout=25) as _hc:
+                        for tier_name, cents, label in [
+                            ("starter", 2900, "ARIA Starter — $29/mo"),
+                            ("pro", 9700, "ARIA Pro — $97/mo"),
+                            ("agency", 49700, "ARIA Agency — $497/mo"),
                         ]:
+                            # Create Stripe product
                             prod_r = await _hc.post(
                                 "https://api.stripe.com/v1/products",
                                 data={
-                                    "name": f"ARIA {tier_name.title()}",
-                                    "description": f"ARIA AI — {tier_name.title()} Plan",
+                                    "name": label,
+                                    "description": f"ARIA AI {tier_name.title()} Plan",
                                 },
                                 auth=(stripe_key, ""),
                             )
                             if prod_r.status_code != 200:
                                 continue
                             prod_id = prod_r.json()["id"]
+                            # Create recurring price
                             price_r = await _hc.post(
                                 "https://api.stripe.com/v1/prices",
                                 data={
@@ -22996,6 +22949,7 @@ JSON:
                             if price_r.status_code != 200:
                                 continue
                             price_id = price_r.json()["id"]
+                            # Create payment link
                             pl_r = await _hc.post(
                                 "https://api.stripe.com/v1/payment_links",
                                 data={
@@ -23005,196 +22959,91 @@ JSON:
                                 auth=(stripe_key, ""),
                             )
                             if pl_r.status_code == 200:
-                                link = pl_r.json().get("url", "#")
-                                tier_links[tier_name] = link
-                                urls_created.append(link)
-                                logger.info(
-                                    "[IncomeLoop] aria_subscription_launch Stripe %s: %s",
-                                    tier_name,
-                                    link,
-                                )
+                                link = pl_r.json().get("url", "")
+                                if link:
+                                    tier_links[tier_name] = link
+                                    urls_created.append(link)
+                                    logger.info(
+                                        "[IncomeLoop] aria_subscription_launch Stripe %s: %s",
+                                        tier_name,
+                                        link,
+                                    )
+                                    # Cache in Redis for 90 days
+                                    if cache:
+                                        import contextlib
+
+                                        async with contextlib.AsyncExitStack():
+                                            with contextlib.suppress(Exception):
+                                                await cache.set(
+                                                    f"aria:stripe:link:{tier_name}",
+                                                    link,
+                                                    ex=86400 * 90,
+                                                )
+                    stripe_status = (
+                        "✅ Stripe links created"
+                        if any(
+                            "stripe.com" in v or "buy.stripe.com" in v for v in tier_links.values()
+                        )
+                        else "⚠️ Stripe API call failed"
+                    )
                 except Exception as _se:
-                    logger.debug("[IncomeLoop] aria_subscription_launch Stripe: %s", _se)
+                    logger.warning("[IncomeLoop] aria_subscription_launch Stripe: %s", _se)
 
-            # Build HTML landing page
-            def _li(items: list) -> str:
-                return "\n".join([f"<li>{i}</li>" for i in items])
-
-            def _faq_html(items: list) -> str:
-                return "\n".join(
-                    [
-                        f"<details><summary><b>{f.get('q','')}</b></summary><p>{f.get('a','')}</p></details>"
-                        for f in items
-                    ]
-                )
-
-            html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARIA AI — {hero}</title>
-<meta name="description" content="{subhero}">
-<style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #f0f0f0; line-height: 1.6; }}
-.container {{ max-width: 1100px; margin: 0 auto; padding: 0 24px; }}
-.hero {{ background: linear-gradient(135deg, #0f0f1a 0%, #1a0a2e 50%, #0a1a0f 100%); padding: 100px 0 80px; text-align: center; }}
-.hero h1 {{ font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 800; background: linear-gradient(135deg, #7c3aed, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 24px; }}
-.hero p {{ font-size: 1.25rem; color: #9ca3af; max-width: 600px; margin: 0 auto 40px; }}
-.btn-primary {{ display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #7c3aed, #10b981); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 1.1rem; margin: 8px; }}
-.btn-secondary {{ display: inline-block; padding: 14px 32px; border: 2px solid #7c3aed; color: #7c3aed; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 8px; }}
-.vs-section {{ padding: 80px 0; background: #111; }}
-.vs-section h2 {{ text-align: center; font-size: 2rem; margin-bottom: 48px; }}
-.vs-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }}
-.vs-card {{ background: #1a1a2e; border: 1px solid #333; border-radius: 12px; padding: 32px; }}
-.vs-card h3 {{ color: #10b981; margin-bottom: 16px; }}
-.vs-card li {{ padding: 8px 0; border-bottom: 1px solid #222; color: #d1d5db; }}
-.pricing {{ padding: 80px 0; }}
-.pricing h2 {{ text-align: center; font-size: 2rem; margin-bottom: 48px; }}
-.pricing-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }}
-.plan {{ background: #111; border: 1px solid #333; border-radius: 16px; padding: 40px 32px; position: relative; }}
-.plan.featured {{ border-color: #7c3aed; box-shadow: 0 0 30px rgba(124,58,237,0.2); }}
-.plan .badge {{ position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #7c3aed; color: white; padding: 4px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; }}
-.plan .price {{ font-size: 3rem; font-weight: 800; color: #10b981; }}
-.plan .price span {{ font-size: 1rem; color: #9ca3af; }}
-.plan h3 {{ font-size: 1.25rem; margin-bottom: 8px; }}
-.plan ul {{ list-style: none; margin: 24px 0; }}
-.plan li {{ padding: 8px 0; border-bottom: 1px solid #1a1a1a; color: #d1d5db; }}
-.plan li::before {{ content: "✓ "; color: #10b981; }}
-.plan a {{ display: block; text-align: center; padding: 14px; border-radius: 8px; text-decoration: none; font-weight: 700; margin-top: 24px; }}
-.plan.featured a {{ background: linear-gradient(135deg, #7c3aed, #10b981); color: white; }}
-.plan:not(.featured) a {{ border: 2px solid #7c3aed; color: #7c3aed; }}
-.faq {{ padding: 80px 0; background: #111; }}
-.faq h2 {{ text-align: center; font-size: 2rem; margin-bottom: 48px; }}
-.faq details {{ background: #1a1a2e; border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; }}
-.faq summary {{ font-weight: 600; color: #e5e7eb; }}
-.faq p {{ margin-top: 12px; color: #9ca3af; }}
-footer {{ padding: 40px 0; text-align: center; color: #4b5563; border-top: 1px solid #1a1a1a; }}
-@media (max-width: 768px) {{ .vs-grid, .pricing-grid {{ grid-template-columns: 1fr; }} }}
-</style>
-</head>
-<body>
-<div class="hero">
-  <div class="container">
-    <h1>{hero}</h1>
-    <p>{subhero}</p>
-    <a href="{tier_links['business']}" class="btn-primary">{cta_primary}</a>
-    <a href="{tier_links['starter']}" class="btn-secondary">Start Free Trial</a>
-  </div>
-</div>
-
-<div class="vs-section">
-  <div class="container">
-    <h2>Why ARIA? Not just another chatbot.</h2>
-    <div class="vs-grid">
-      <div class="vs-card">
-        <h3>ARIA vs ChatGPT</h3>
-        <ul>{_li(vs_chatgpt[:3])}</ul>
-      </div>
-      <div class="vs-card">
-        <h3>What Makes ARIA Unique</h3>
-        <ul>{_li(unique_features[:5])}</ul>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="pricing">
-  <div class="container">
-    <h2>Simple, Transparent Pricing</h2>
-    <div class="pricing-grid">
-      <div class="plan">
-        <h3>Starter</h3>
-        <div class="price">$29<span>/mo</span></div>
-        <ul>{_li(starter_bullets)}</ul>
-        <a href="{tier_links['starter']}">Get Started</a>
-      </div>
-      <div class="plan featured">
-        <div class="badge">Most Popular</div>
-        <h3>Business</h3>
-        <div class="price">$97<span>/mo</span></div>
-        <ul>{_li(business_bullets)}</ul>
-        <a href="{tier_links['business']}">{cta_primary}</a>
-      </div>
-      <div class="plan">
-        <h3>Enterprise</h3>
-        <div class="price">$497<span>/mo</span></div>
-        <ul>{_li(enterprise_bullets)}</ul>
-        <a href="{tier_links['enterprise']}">Contact Sales</a>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="faq">
-  <div class="container">
-    <h2>Frequently Asked Questions</h2>
-    {_faq_html(faq)}
-  </div>
-</div>
-
-<footer>
-  <div class="container">
-    <p>© 2025 ARIA AI — Autonomous Business Intelligence · <a href="mailto:contact@aria-ai.fly.dev" style="color:#7c3aed">Contact</a></p>
-  </div>
-</footer>
-</body>
-</html>"""
-
-            # Publish landing page to GitHub
+            # Inject real Stripe links into the existing docs/index.html on GitHub
             try:
-                from apps.core.tools.github_tools import GitHubTools
+                existing = await gh._get(f"/repos/{owner}/aria-ai/contents/docs/index.html")
+                if existing and "content" in existing:
+                    import base64 as _b64_inner
 
-                gh = GitHubTools()
-                page_url = await gh.create_file(
-                    repo="aria-ai",
-                    path="docs/index.html",
-                    content=html,
-                    message="feat: ARIA subscription landing page with pricing tiers",
-                )
-                if page_url:
-                    urls_created.append(page_url)
-                    logger.info("[IncomeLoop] aria_subscription_launch page: %s", page_url)
-            except Exception as _e:
-                logger.debug("[IncomeLoop] aria_subscription_launch GitHub: %s", _e)
+                    current_html = _b64_inner.b64decode(
+                        existing["content"].replace("\n", "")
+                    ).decode("utf-8")
+                    # Replace placeholder CTA URLs with real Stripe links
+                    updated_html = current_html
+                    updated_html = updated_html.replace(
+                        "https://aria-ai.fly.dev/subscribe/starter", tier_links["starter"]
+                    )
+                    updated_html = updated_html.replace(
+                        "https://aria-ai.fly.dev/subscribe/pro", tier_links["pro"]
+                    )
+                    updated_html = updated_html.replace(
+                        "https://aria-ai.fly.dev/subscribe/agency", tier_links["agency"]
+                    )
+                    if updated_html != current_html:
+                        sha = existing.get("sha")
+                        body_put: dict = {
+                            "message": "feat: inject real Stripe payment links into landing page",
+                            "content": _b64.b64encode(updated_html.encode()).decode(),
+                        }
+                        if sha:
+                            body_put["sha"] = sha
+                        await gh._put(f"/repos/{owner}/aria-ai/contents/docs/index.html", body_put)
+                        page_url = f"https://{owner.lower()}.github.io/aria-ai/"
+                        urls_created.append(page_url)
+                        logger.info(
+                            "[IncomeLoop] aria_subscription_launch: landing page updated with Stripe links"
+                        )
+            except Exception as _gh_e:
+                logger.warning("[IncomeLoop] aria_subscription_launch GitHub update: %s", _gh_e)
 
             # Telegram notification
-            try:
-                from apps.core.tools.telegram_bot import get_bot
-
-                stripe_status = (
-                    "✅ Stripe links created"
-                    if any(v != "#" for v in tier_links.values())
-                    else "⚠️ Stripe not configured"
-                )
-                msg = (
-                    f"🚀 <b>ARIA SUBSCRIPTION LAUNCHED</b>\n\n"
-                    f"<b>Headline:</b> {hero}\n"
-                    f"<b>Sub:</b> {subhero[:120]}\n\n"
-                    f"<b>Tiers:</b>\n"
-                    f"  • Starter: $29/mo → {tier_links['starter'][:60]}\n"
-                    f"  • Business: $97/mo → {tier_links['business'][:60]}\n"
-                    f"  • Enterprise: $497/mo\n\n"
-                    f"{stripe_status}"
-                )
-                await get_bot().notify_owner(msg, already_html=True)
-            except Exception:
-                pass
-
-            mrr_potential = 29 * 10 + 97 * 5 + 497 * 1  # conservative 16 subscribers
-            logger.info(
-                "[IncomeLoop] aria_subscription_launch: hero='%s' mrr_potential=$%s",
-                hero[:50],
-                mrr_potential,
+            await self._send_telegram(
+                f"🚀 *ARIA Subscription Launch*\n\n"
+                f"Pricing: $29 / $97 / $497/mo\n"
+                f"{stripe_status}\n\n"
+                f"Starter: {tier_links['starter'][:60]}\n"
+                f"Pro: {tier_links['pro'][:60]}\n"
+                f"Agency: {tier_links['agency'][:60]}"
             )
+
+            mrr_potential = 29 * 10 + 97 * 5 + 497 * 1  # conservative: 16 subscribers
             return {
                 "success": True,
                 "summary": (
-                    f"ARIA SaaS landing page live | $29/$97/$497 tiers | "
-                    f"MRR potential: ${mrr_potential}/mo | Stripe: {stripe_status}"
+                    f"ARIA SaaS | $29/$97/$497/mo | {stripe_status} | "
+                    f"MRR potential: ${mrr_potential}/mo"
                 ),
-                "revenue_potential": mrr_potential,
+                "revenue_potential": float(mrr_potential),
                 "urls": urls_created[:4],
             }
 
