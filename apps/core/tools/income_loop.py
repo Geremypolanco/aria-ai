@@ -23977,24 +23977,24 @@ h1{{font-size:2em;font-weight:800;margin-bottom:.5em}}
             # Try publishing to Twitter via api_publisher
             twitter_content = platform_versions.get("twitter", full_content[:280])
             try:
-                from apps.core.tools.api_publisher import APIPublisher
+                from apps.distribution.publishers.api_publisher import get_api_publisher
 
-                pub = APIPublisher()
+                pub = get_api_publisher()
                 tweet_result = await pub.publish_to_twitter(twitter_content.split("---")[0][:280])
-                if tweet_result and tweet_result.get("url"):
-                    published_urls.append(tweet_result["url"])
+                if tweet_result and tweet_result.url:
+                    published_urls.append(tweet_result.url)
             except Exception as tw_exc:
                 logger.warning("[viral_content_engine] Twitter publish failed: %s", tw_exc)
 
             # Try LinkedIn
             linkedin_content = platform_versions.get("linkedin", full_content[:1300])
             try:
-                from apps.core.tools.api_publisher import APIPublisher
+                from apps.distribution.publishers.api_publisher import get_api_publisher
 
-                pub = APIPublisher()
+                pub = get_api_publisher()
                 li_result = await pub.publish_to_linkedin(linkedin_content)
-                if li_result and li_result.get("url"):
-                    published_urls.append(li_result["url"])
+                if li_result and li_result.url:
+                    published_urls.append(li_result.url)
             except Exception as li_exc:
                 logger.warning("[viral_content_engine] LinkedIn publish failed: %s", li_exc)
 
@@ -24215,9 +24215,9 @@ li{{font-size:1.05em;background:#2a2a3e;padding:16px 20px;border-radius:10px;bor
             if promo_tweet and published_url:
                 tweet_text = promo_tweet.replace("[URL]", published_url)[:280]
                 try:
-                    from apps.core.tools.api_publisher import APIPublisher
+                    from apps.distribution.publishers.api_publisher import get_api_publisher
 
-                    pub = APIPublisher()
+                    pub = get_api_publisher()
                     await pub.publish_to_twitter(tweet_text)
                 except Exception as tw_exc:
                     logger.warning("[email_capture_funnel] Twitter promo failed: %s", tw_exc)
