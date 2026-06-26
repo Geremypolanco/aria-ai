@@ -23482,16 +23482,17 @@ JSON:
             price_range = profile["price_range"]
 
             # Web search for real businesses
-            search_results = []
+            raw_search: dict = {}
             try:
-                search_results = await wt.search_web(profile["query"], num_results=8)
+                raw_search = await wt.search_web(profile["query"], num_results=8)
             except Exception as exc:
                 logger.warning("[proactive_client_finder] web search failed: %s", exc)
+            search_results = raw_search.get("results", []) if raw_search else []
 
             # AI generates targeted prospects based on search results + segment research
             context = "\n".join(
                 f"- {r.get('title', '')} | {r.get('url', '')} | {r.get('snippet', '')}"
-                for r in (search_results or [])[:6]
+                for r in search_results[:6]
             )
 
             prospect_data = await complete_json(
@@ -23869,8 +23870,8 @@ Corrective actions must be CONCRETE and EXECUTABLE by an AI agent (e.g. "run pro
             trend_signals = []
             for q in trend_queries[:2]:
                 try:
-                    results = await wt.search_web(q, num_results=5)
-                    for r in results or []:
+                    raw = await wt.search_web(q, num_results=5)
+                    for r in raw.get("results", []) if raw else []:
                         trend_signals.append(f"{r.get('title', '')} — {r.get('snippet', '')[:100]}")
                 except Exception:
                     pass
