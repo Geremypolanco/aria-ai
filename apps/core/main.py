@@ -12,6 +12,7 @@ Cambios vs v1:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -1338,6 +1339,49 @@ try:
     logger.info("API v1 montada en /api/v1")
 except Exception as _e:
     logger.error("Error montando API v1: %s", _e)
+
+# Mount inbound webhooks (lead capture, Stripe events) — used by the public
+# landing page form at docs/index.html which POSTs to /api/webhooks/lead.
+try:
+    from apps.api.webhooks import router as webhooks_router
+
+    app.include_router(webhooks_router)
+    logger.info("Webhooks montados en /api/webhooks")
+except Exception as _e:
+    logger.error("Error montando webhooks: %s", _e)
+
+
+@app.get("/subscribe/{tier}")
+async def subscribe_redirect(tier: str):
+    """
+    Redirect a pricing-CTA click to the live Stripe payment link for the tier.
+
+    Links are created + cached in Redis by the ``aria_subscription_launch``
+    income-loop strategy (key ``aria:stripe:link:{tier}``). If no link exists
+    yet (Stripe not configured, or strategy hasn't run), fall back to the lead
+    capture flow so the prospect is never dropped.
+    """
+    from fastapi.responses import RedirectResponse
+
+    tier = (tier or "").lower().strip()
+    if tier not in ("starter", "pro", "agency"):
+        return RedirectResponse(url="https://aria-ai.fly.dev", status_code=302)
+
+    with contextlib.suppress(Exception):
+        from apps.core.memory.redis_client import get_cache
+
+        cache = get_cache()
+        if cache:
+            link = await cache.get(f"aria:stripe:link:{tier}")
+            if link:
+                if isinstance(link, bytes):
+                    link = link.decode()
+                return RedirectResponse(url=str(link), status_code=302)
+
+    # No Stripe link yet → send them to the landing page (lead capture form)
+    return RedirectResponse(
+        url=f"https://geremypolanco.github.io/aria-ai/?plan={tier}", status_code=302
+    )
 
 
 @app.post("/telegram/webhook")
