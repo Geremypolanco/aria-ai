@@ -22996,17 +22996,15 @@ JSON:
                                         tier_name,
                                         link,
                                     )
-                                    # Cache in Redis for 90 days
+                                    # Cache in Redis for 90 days so /subscribe/{tier}
+                                    # can redirect straight to the live Stripe checkout.
                                     if cache:
-                                        import contextlib
-
-                                        async with contextlib.AsyncExitStack():
-                                            with contextlib.suppress(Exception):
-                                                await cache.set(
-                                                    f"aria:stripe:link:{tier_name}",
-                                                    link,
-                                                    ex=86400 * 90,
-                                                )
+                                        with contextlib.suppress(Exception):
+                                            await cache.set(
+                                                f"aria:stripe:link:{tier_name}",
+                                                link,
+                                                ttl_seconds=86400 * 90,
+                                            )
                     stripe_status = (
                         "✅ Stripe links created"
                         if any(
