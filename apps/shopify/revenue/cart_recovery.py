@@ -11,6 +11,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from apps.core.memory.redis_client import get_cache
+from apps.core.tools.ai_client import get_ai_client  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ from enum import StrEnum
 
 import httpx
 
-from apps.core.memory.redis_client import get_cache
+from apps.core.memory.redis_client import get_cache  # noqa: F401
 from apps.core.tools.ai_client import get_ai_client
 
 logger = logging.getLogger("aria.image_generator")
