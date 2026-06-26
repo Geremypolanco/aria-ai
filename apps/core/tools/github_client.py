@@ -299,7 +299,7 @@ async def github_dispatch(action: str, args: dict) -> str:
         if isinstance(data, dict) and "error" in data:
             return f"Error: {data['error']}"
         lines = [f"📁 {owner}/{repo}/{path or '(raíz)'}"]
-        for item in (data if isinstance(data, list) else []):
+        for item in data if isinstance(data, list) else []:
             icon = "📁" if item.get("type") == "dir" else "📄"
             size = f" ({item['size']}B)" if item.get("type") == "file" and item.get("size") else ""
             lines.append(f"  {icon} {item['name']}{size}")
