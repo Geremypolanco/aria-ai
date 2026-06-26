@@ -18,6 +18,8 @@ ignore = [
     "B005",   # .strip() with multi-char — intentional in prompt trimming
     "B007",   # loop variable unused — intentional in retry loops
     "UP031",  # % formatting — legacy string formatting
+    "UP038",  # isinstance with X | Y — Python 3.10+ only, not universally applied
+    "TCH003", # move stdlib import to TYPE_CHECKING block — optimization, not required
 ]
 
 [tool.ruff.per-file-ignores]
