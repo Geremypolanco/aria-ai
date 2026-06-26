@@ -8,11 +8,12 @@ Configures Sentry for:
   - Before-send filter: drops noisy/non-actionable errors
   - User context from session IDs
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.sentry")
 
@@ -20,7 +21,7 @@ _initialized = False
 
 
 def setup_sentry(
-    dsn: Optional[str] = None,
+    dsn: str | None = None,
     traces_sample_rate: float = 0.1,
     profiles_sample_rate: float = 0.05,
 ) -> None:
@@ -89,6 +90,7 @@ def set_user_context(session_id: str) -> None:
     """Attach a non-PII user context to the current scope."""
     try:
         import sentry_sdk
+
         sentry_sdk.set_user({"id": session_id})
     except Exception:
         pass
@@ -98,6 +100,7 @@ def capture_exception(exc: Exception, **context: Any) -> None:
     """Capture an exception with optional additional context."""
     try:
         import sentry_sdk
+
         with sentry_sdk.push_scope() as scope:
             for key, value in context.items():
                 scope.set_extra(key, value)
@@ -110,6 +113,7 @@ def capture_message(message: str, level: str = "info", **context: Any) -> None:
     """Capture a diagnostic message."""
     try:
         import sentry_sdk
+
         with sentry_sdk.push_scope() as scope:
             for key, value in context.items():
                 scope.set_extra(key, value)
@@ -120,14 +124,16 @@ def capture_message(message: str, level: str = "info", **context: Any) -> None:
 
 # ── Filters ────────────────────────────────────────────────────────────────
 
-_IGNORED_EXCEPTIONS = frozenset({
-    "asyncio.CancelledError",
-    "starlette.exceptions.HTTPException",  # 404s, 422s are expected
-    "websockets.exceptions.ConnectionClosedOK",
-})
+_IGNORED_EXCEPTIONS = frozenset(
+    {
+        "asyncio.CancelledError",
+        "starlette.exceptions.HTTPException",  # 404s, 422s are expected
+        "websockets.exceptions.ConnectionClosedOK",
+    }
+)
 
 
-def _before_send(event: dict, hint: dict) -> Optional[dict]:
+def _before_send(event: dict, hint: dict) -> dict | None:
     """
     Drop non-actionable events before they reach Sentry.
 
@@ -151,7 +157,7 @@ def _before_send(event: dict, hint: dict) -> Optional[dict]:
 def _is_client_error(event: dict) -> bool:
     """Check if the event is a client-side HTTP error (4xx)."""
     try:
-        request = event.get("request", {})
+        event.get("request", {})
         # Sentry attaches the response status code for web transactions
         for exc in event.get("exception", {}).get("values", []):
             if exc.get("type") == "HTTPException":

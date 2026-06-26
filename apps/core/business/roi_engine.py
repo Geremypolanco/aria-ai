@@ -1,10 +1,10 @@
 """ROI and economic opportunity scoring engine."""
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 _REDIS_KEY = "roi_engine:v1"
 
@@ -36,7 +36,7 @@ class OpportunityScore:
     roi_score: float
     priority_rank: int = 0
     reasoning: str = ""
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict:
         return {
@@ -55,7 +55,7 @@ class OpportunityScore:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "OpportunityScore":
+    def from_dict(cls, d: dict) -> OpportunityScore:
         return cls(
             opportunity_id=d["opportunity_id"],
             name=d["name"],
@@ -68,7 +68,7 @@ class OpportunityScore:
             roi_score=float(d.get("roi_score", 0)),
             priority_rank=int(d.get("priority_rank", 0)),
             reasoning=d.get("reasoning", ""),
-            created_at=d.get("created_at", datetime.now(timezone.utc).isoformat()),
+            created_at=d.get("created_at", datetime.now(UTC).isoformat()),
         )
 
 
@@ -82,6 +82,7 @@ class ROIEngine:
             return
         try:
             from apps.core.memory.redis_client import get_cache
+
             raw = await get_cache().get(_REDIS_KEY)
             if raw:
                 data = json.loads(raw)
@@ -95,7 +96,10 @@ class ROIEngine:
     async def _persist(self) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
-            payload = json.dumps({"opportunities": [o.to_dict() for o in self._opportunities.values()]})
+
+            payload = json.dumps(
+                {"opportunities": [o.to_dict() for o in self._opportunities.values()]}
+            )
             await get_cache().set(_REDIS_KEY, payload)
         except Exception:
             pass
@@ -110,14 +114,18 @@ class ROIEngine:
         time_to_revenue_days: int = 7,
         confidence: float = 0.7,
         reasoning: str = "",
-        opportunity_id: Optional[str] = None,
+        opportunity_id: str | None = None,
     ) -> OpportunityScore:
         await self._ensure_loaded()
         import uuid
+
         oid = opportunity_id or f"opp_{uuid.uuid4().hex[:8]}"
         roi = _compute_roi(
-            estimated_revenue_usd, estimated_effort_hours, risk_level,
-            time_to_revenue_days, confidence,
+            estimated_revenue_usd,
+            estimated_effort_hours,
+            risk_level,
+            time_to_revenue_days,
+            confidence,
         )
         opp = OpportunityScore(
             opportunity_id=oid,
@@ -138,21 +146,23 @@ class ROIEngine:
     async def rank_opportunities(
         self,
         top_k: int = 10,
-        category: Optional[str] = None,
+        category: str | None = None,
         min_confidence: float = 0.5,
     ) -> list[OpportunityScore]:
         await self._ensure_loaded()
         opps = [
-            o for o in self._opportunities.values()
-            if o.confidence >= min_confidence
-            and (category is None or o.category == category)
+            o
+            for o in self._opportunities.values()
+            if o.confidence >= min_confidence and (category is None or o.category == category)
         ]
         opps.sort(key=lambda o: o.roi_score, reverse=True)
         for rank, opp in enumerate(opps[:top_k], start=1):
             opp.priority_rank = rank
         return opps[:top_k]
 
-    async def record_outcome(self, opportunity_id: str, actual_revenue: float, success: bool) -> None:
+    async def record_outcome(
+        self, opportunity_id: str, actual_revenue: float, success: bool
+    ) -> None:
         await self._ensure_loaded()
         opp = self._opportunities.get(opportunity_id)
         if opp is None:
@@ -163,8 +173,11 @@ class ROIEngine:
         if success and actual_revenue > 0:
             opp.estimated_revenue_usd = (opp.estimated_revenue_usd + actual_revenue) / 2.0
         opp.roi_score = _compute_roi(
-            opp.estimated_revenue_usd, opp.estimated_effort_hours,
-            opp.risk_level, opp.time_to_revenue_days, opp.confidence,
+            opp.estimated_revenue_usd,
+            opp.estimated_effort_hours,
+            opp.risk_level,
+            opp.time_to_revenue_days,
+            opp.confidence,
         )
         await self._persist()
 
@@ -209,7 +222,7 @@ class ROIEngine:
             self._opportunities[opp.opportunity_id] = opp
 
 
-_engine: Optional[ROIEngine] = None
+_engine: ROIEngine | None = None
 
 
 def get_roi_engine() -> ROIEngine:

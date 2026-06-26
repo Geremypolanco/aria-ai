@@ -2,16 +2,16 @@
 ARIA AI — Operations Division
 Handles project planning, research, support, scheduling, CRM, and automation specs.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.workforce.operations")
 
@@ -23,14 +23,17 @@ _PRIORITY_WEIGHTS = {"low": 1, "medium": 2, "high": 3, "urgent": 4}
 
 # ── Domain object ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class OperationsTask:
     task_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    task_type: str = ""    # "project_plan", "research", "support_response", "schedule", "crm_update"
-    agent_type: str = ""   # "project_manager", "virtual_assistant", "customer_support", "operations_specialist"
+    task_type: str = ""  # "project_plan", "research", "support_response", "schedule", "crm_update"
+    agent_type: str = (
+        ""  # "project_manager", "virtual_assistant", "customer_support", "operations_specialist"
+    )
     title: str = ""
     output: str = ""
-    priority: str = "medium"   # "low"|"medium"|"high"|"urgent"
+    priority: str = "medium"  # "low"|"medium"|"high"|"urgent"
     estimated_minutes: int = 0
     status: str = "done"
     created_at: float = field(default_factory=time.time)
@@ -51,6 +54,7 @@ class OperationsTask:
 
 # ── Operations Division ────────────────────────────────────────────────────────
 
+
 class OperationsDivision:
     """AI-powered operations workforce division."""
 
@@ -69,7 +73,9 @@ class OperationsDivision:
     async def _save_tasks(self) -> None:
         await self._cache.set(_CACHE_KEY, self._tasks, ttl_seconds=_CACHE_TTL)
 
-    async def _run_ai(self, system: str, user: str, model: AIModel = AIModel.STRATEGY, max_tokens: int = 800) -> str:
+    async def _run_ai(
+        self, system: str, user: str, model: AIModel = AIModel.STRATEGY, max_tokens: int = 800
+    ) -> str:
         resp = await self._ai.complete(system=system, user=user, model=model, max_tokens=max_tokens)
         if resp.success:
             return resp.content.strip()
@@ -171,9 +177,11 @@ class OperationsDivision:
     async def draft_support_response(
         self,
         customer_issue: str,
-        context: dict = {},
+        context: dict = None,
     ) -> OperationsTask:
         """AI drafts professional customer support response."""
+        if context is None:
+            context = {}
         await self._load_tasks()
 
         context_text = ""
@@ -349,7 +357,7 @@ class OperationsDivision:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_instance: Optional[OperationsDivision] = None
+_instance: OperationsDivision | None = None
 
 
 def get_operations_division() -> OperationsDivision:

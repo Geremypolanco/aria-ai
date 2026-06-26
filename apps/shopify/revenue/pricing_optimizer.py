@@ -2,17 +2,13 @@
 Pricing experiments and optimization — runs A/B price tests with
 charm, anchor, premium, and competitive strategies.
 """
+
 from __future__ import annotations
 
 import logging
-import math
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
-
-from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +61,7 @@ class PricingExperiment:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "PricingExperiment":
+    def from_dict(cls, d: dict) -> PricingExperiment:
         return cls(**d)
 
     def is_winner(self) -> bool:
@@ -149,13 +145,11 @@ class PricingOptimizer:
         # Default heuristic
         charm = self._charm_price(current_price)
         strategy = "charm"
-        rationale = (
-            f"Charm pricing (${charm}) removes a full dollar from perceived cost vs ${current_price}."
-        )
+        rationale = f"Charm pricing (${charm}) removes a full dollar from perceived cost vs ${current_price}."
         expected_cvr_change = 0.05
 
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+            from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 
             ai = get_ai_client()
             if ai is not None:
@@ -187,7 +181,9 @@ class PricingOptimizer:
                                 strategy = "charm"
                             rationale = parsed.get("RATIONALE", rationale)
                             try:
-                                expected_cvr_change = float(parsed.get("EXPECTED_CVR_CHANGE", "0.05"))
+                                expected_cvr_change = float(
+                                    parsed.get("EXPECTED_CVR_CHANGE", "0.05")
+                                )
                             except ValueError:
                                 expected_cvr_change = 0.05
                             return {
@@ -314,9 +310,7 @@ class PricingOptimizer:
         concluded = [e for e in self._experiments if e.get("status") == "concluded"]
         winners = [e for e in concluded if e.get("winner") == "test"]
         win_rate = len(winners) / max(len(concluded), 1)
-        avg_uplift = (
-            sum(e.get("uplift_pct", 0.0) for e in winners) / max(len(winners), 1)
-        )
+        avg_uplift = sum(e.get("uplift_pct", 0.0) for e in winners) / max(len(winners), 1)
         return {
             "running_experiments": len(running),
             "concluded_experiments": len(concluded),
@@ -329,7 +323,7 @@ class PricingOptimizer:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_optimizer: Optional[PricingOptimizer] = None
+_optimizer: PricingOptimizer | None = None
 
 
 def get_pricing_optimizer() -> PricingOptimizer:

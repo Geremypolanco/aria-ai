@@ -14,66 +14,67 @@ All events are frozen dataclasses. Every event carries:
 
 No field may be mutated after construction (frozen=True).
 """
+
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     # Cognition domain
-    REASONING_STARTED   = "cognition.reasoning.started"
+    REASONING_STARTED = "cognition.reasoning.started"
     REASONING_COMPLETED = "cognition.reasoning.completed"
-    PLAN_CREATED        = "cognition.plan.created"
-    PLAN_STEP_DONE      = "cognition.plan.step_done"
-    PIPELINE_RUN        = "cognition.pipeline.run"
+    PLAN_CREATED = "cognition.plan.created"
+    PLAN_STEP_DONE = "cognition.plan.step_done"
+    PIPELINE_RUN = "cognition.pipeline.run"
 
     # Memory domain
-    FACT_STORED         = "memory.fact.stored"
-    FACT_RETRIEVED      = "memory.fact.retrieved"
-    MEMORY_CONFLICT     = "memory.conflict.detected"
-    MEMORY_PRUNED       = "memory.pruned"
+    FACT_STORED = "memory.fact.stored"
+    FACT_RETRIEVED = "memory.fact.retrieved"
+    MEMORY_CONFLICT = "memory.conflict.detected"
+    MEMORY_PRUNED = "memory.pruned"
 
     # Agent domain
-    AGENT_DELEGATED     = "agent.delegated"
-    AGENT_COMPLETED     = "agent.completed"
-    AGENT_FAILED        = "agent.failed"
-    BUDGET_EXCEEDED     = "agent.budget.exceeded"
+    AGENT_DELEGATED = "agent.delegated"
+    AGENT_COMPLETED = "agent.completed"
+    AGENT_FAILED = "agent.failed"
+    BUDGET_EXCEEDED = "agent.budget.exceeded"
 
     # Business domain
-    INCOME_CYCLE        = "business.income.cycle"
-    REVENUE_RECORDED    = "business.revenue.recorded"
-    OPPORTUNITY_SCORED  = "business.opportunity.scored"
+    INCOME_CYCLE = "business.income.cycle"
+    REVENUE_RECORDED = "business.revenue.recorded"
+    OPPORTUNITY_SCORED = "business.opportunity.scored"
 
     # Runtime domain
-    TASK_ENQUEUED       = "runtime.task.enqueued"
-    TASK_COMPLETED      = "runtime.task.completed"
-    TASK_FAILED         = "runtime.task.failed"
-    CHECKPOINT_SAVED    = "runtime.checkpoint.saved"
+    TASK_ENQUEUED = "runtime.task.enqueued"
+    TASK_COMPLETED = "runtime.task.completed"
+    TASK_FAILED = "runtime.task.failed"
+    CHECKPOINT_SAVED = "runtime.checkpoint.saved"
 
     # Security domain
-    ACCESS_DENIED       = "security.access.denied"
-    POLICY_OVERRIDE     = "security.policy.override"
+    ACCESS_DENIED = "security.access.denied"
+    POLICY_OVERRIDE = "security.policy.override"
 
     # Observability domain
-    HEALTH_CHECK        = "observability.health.check"
-    METRIC_RECORDED     = "observability.metric.recorded"
+    HEALTH_CHECK = "observability.health.check"
+    METRIC_RECORDED = "observability.metric.recorded"
 
     # System
-    SYSTEM_STARTUP      = "system.startup"
-    SYSTEM_SHUTDOWN     = "system.shutdown"
-    DEAD_LETTER         = "system.dead_letter"
+    SYSTEM_STARTUP = "system.startup"
+    SYSTEM_SHUTDOWN = "system.shutdown"
+    DEAD_LETTER = "system.dead_letter"
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _now_ts() -> float:
-    return datetime.now(timezone.utc).timestamp()
+    return datetime.now(UTC).timestamp()
 
 
 def _new_id() -> str:
@@ -86,7 +87,7 @@ class AriaEvent:
     payload: dict[str, Any]
     event_id: str = field(default_factory=_new_id)
     correlation_id: str = field(default_factory=_new_id)
-    causation_id: Optional[str] = None
+    causation_id: str | None = None
     sequence: int = 0
     ts: float = field(default_factory=_now_ts)
     ts_iso: str = field(default_factory=_now_iso)
@@ -99,7 +100,7 @@ class AriaEvent:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "AriaEvent":
+    def from_dict(cls, d: dict) -> AriaEvent:
         d = dict(d)
         d["event_type"] = EventType(d["event_type"])
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
@@ -109,7 +110,7 @@ class AriaEvent:
         event_type: EventType,
         payload: dict[str, Any],
         source: str = "aria",
-    ) -> "AriaEvent":
+    ) -> AriaEvent:
         """Create a causally-linked child event inheriting the correlation chain."""
         return AriaEvent(
             event_type=event_type,
@@ -123,8 +124,8 @@ class AriaEvent:
 def cognition_event(
     event_type: EventType,
     payload: dict,
-    correlation_id: Optional[str] = None,
-    causation_id: Optional[str] = None,
+    correlation_id: str | None = None,
+    causation_id: str | None = None,
 ) -> AriaEvent:
     return AriaEvent(
         event_type=event_type,
@@ -138,7 +139,7 @@ def cognition_event(
 def business_event(
     event_type: EventType,
     payload: dict,
-    correlation_id: Optional[str] = None,
+    correlation_id: str | None = None,
 ) -> AriaEvent:
     return AriaEvent(
         event_type=event_type,
@@ -151,8 +152,8 @@ def business_event(
 def runtime_event(
     event_type: EventType,
     payload: dict,
-    correlation_id: Optional[str] = None,
-    causation_id: Optional[str] = None,
+    correlation_id: str | None = None,
+    causation_id: str | None = None,
 ) -> AriaEvent:
     return AriaEvent(
         event_type=event_type,

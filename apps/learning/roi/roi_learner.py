@@ -2,15 +2,15 @@
 ROI Learner — Learns which actions, channels, and campaigns generate the best ROI.
 Tracks investment vs revenue and detects patterns to optimize future allocation.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _ROI_KEY = "learning:roi:v1"
 _ROI_TTL = 86400 * 90  # 90 days
@@ -20,13 +20,13 @@ _MAX_OBSERVATIONS = 500
 @dataclass
 class ROIObservation:
     obs_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    action_type: str = ""        # "content", "ad", "email", "quiz", "bundle", "flash_sale"
+    action_type: str = ""  # "content", "ad", "email", "quiz", "bundle", "flash_sale"
     channel: str = ""
     investment_usd: float = 0.0
     revenue_usd: float = 0.0
     roi_multiplier: float = 0.0  # revenue / investment
     time_to_return_days: int = 0
-    context: dict = field(default_factory=dict)   # niche, audience, season, etc.
+    context: dict = field(default_factory=dict)  # niche, audience, season, etc.
     ts: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
@@ -46,10 +46,10 @@ class ROIObservation:
 @dataclass
 class ROIPattern:
     pattern_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    pattern_type: str = ""       # "best_channel", "best_action", "worst_channel", "seasonal"
+    pattern_type: str = ""  # "best_channel", "best_action", "worst_channel", "seasonal"
     description: str = ""
-    confidence: float = 0.0      # 0-1
-    supporting_obs: int = 0      # number of observations
+    confidence: float = 0.0  # 0-1
+    supporting_obs: int = 0  # number of observations
     recommendation: str = ""
     estimated_uplift_pct: float = 0.0
     created_at: float = field(default_factory=time.time)
@@ -108,9 +108,11 @@ class ROILearner:
         investment_usd: float,
         revenue_usd: float,
         time_to_return_days: int = 30,
-        context: dict = {},
+        context: dict = None,
     ) -> ROIObservation:
         """Record a new ROI observation."""
+        if context is None:
+            context = {}
         await self._load()
 
         roi_multiplier = revenue_usd / max(investment_usd, 0.01)
@@ -162,9 +164,10 @@ class ROILearner:
             try:
                 import json
                 import re
+
                 content = resp.content.strip()
                 # Extract JSON array
-                match = re.search(r'\[.*\]', content, re.DOTALL)
+                match = re.search(r"\[.*\]", content, re.DOTALL)
                 if match:
                     raw_patterns = json.loads(match.group())
                     for p in raw_patterns[:5]:
@@ -198,14 +201,16 @@ class ROILearner:
             channel_roi = self.roi_by_channel()
             if channel_roi:
                 best_ch = max(channel_roi.items(), key=lambda x: x[1]["avg_roi"])
-                patterns.append(ROIPattern(
-                    pattern_type="best_channel",
-                    description=f"Best performing channel: {best_ch[0]}",
-                    confidence=0.6,
-                    supporting_obs=len(recent),
-                    recommendation=f"Prioritize {best_ch[0]}",
-                    estimated_uplift_pct=10.0,
-                ))
+                patterns.append(
+                    ROIPattern(
+                        pattern_type="best_channel",
+                        description=f"Best performing channel: {best_ch[0]}",
+                        confidence=0.6,
+                        supporting_obs=len(recent),
+                        recommendation=f"Prioritize {best_ch[0]}",
+                        estimated_uplift_pct=10.0,
+                    )
+                )
 
         self._patterns = [p.to_dict() for p in patterns]
         await self._save()
@@ -245,8 +250,9 @@ class ROILearner:
             try:
                 import json
                 import re
+
                 content = resp.content.strip()
-                match = re.search(r'\{.*\}', content, re.DOTALL)
+                match = re.search(r"\{.*\}", content, re.DOTALL)
                 if match:
                     result = json.loads(match.group())
                     if "allocations" in result:
@@ -267,7 +273,11 @@ class ROILearner:
         return {
             "allocations": allocations,
             "reasoning": "Based on observed ROI performance across channels.",
-            "expected_roi": sum(v["avg_roi"] for v in channel_roi.values()) / max(len(channel_roi), 1) if channel_roi else 2.0,
+            "expected_roi": (
+                sum(v["avg_roi"] for v in channel_roi.values()) / max(len(channel_roi), 1)
+                if channel_roi
+                else 2.0
+            ),
         }
 
     def best_actions(self, top_n: int = 5) -> list[dict]:
@@ -322,7 +332,9 @@ class ROILearner:
         """Comprehensive learning report."""
         channel_roi = self.roi_by_channel()
         best_actions = self.best_actions(top_n=1)
-        best_channel = max(channel_roi.items(), key=lambda x: x[1]["avg_roi"])[0] if channel_roi else "none"
+        best_channel = (
+            max(channel_roi.items(), key=lambda x: x[1]["avg_roi"])[0] if channel_roi else "none"
+        )
         all_rois = [o.get("roi_multiplier", 0.0) for o in self._observations]
         avg_roi = sum(all_rois) / len(all_rois) if all_rois else 0.0
         total_revenue = sum(o.get("revenue_usd", 0.0) for o in self._observations)
@@ -338,7 +350,7 @@ class ROILearner:
 
 
 # ── SINGLETON ─────────────────────────────────────────────
-_instance: Optional[ROILearner] = None
+_instance: ROILearner | None = None
 
 
 def get_roi_learner() -> ROILearner:

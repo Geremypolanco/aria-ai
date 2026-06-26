@@ -7,6 +7,7 @@ Inspired by Manus "persistent-computing":
   - Results delivered via Telegram + WebSocket when complete
   - Supports cancellation, retry, and priority queuing
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -14,18 +15,21 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Callable, Coroutine, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
 
 logger = logging.getLogger("aria.task_manager")
 
 
-class TaskStatus(str, Enum):
-    QUEUED    = "queued"
-    RUNNING   = "running"
-    DONE      = "done"
-    FAILED    = "failed"
+class TaskStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
     CANCELLED = "cancelled"
 
 
@@ -35,12 +39,12 @@ class TaskRecord:
     name: str
     description: str
     status: TaskStatus = TaskStatus.QUEUED
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    result: Optional[str] = None
-    error: Optional[str] = None
-    session_id: Optional[str] = None
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    started_at: str | None = None
+    completed_at: str | None = None
+    result: str | None = None
+    error: str | None = None
+    session_id: str | None = None
     priority: int = 5  # 1=highest, 10=lowest
     retries: int = 0
     max_retries: int = 2
@@ -92,7 +96,7 @@ class TaskManager:
         name: str,
         coro: Coroutine,
         description: str = "",
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
         priority: int = 5,
     ) -> str:
         """Submit a coroutine as a background task. Returns task_id."""
@@ -116,10 +120,10 @@ class TaskManager:
         await self._notify_progress(record, "queued", f"Tarea '{name}' en cola (ID: {task_id})")
         return task_id
 
-    def get_task(self, task_id: str) -> Optional[TaskRecord]:
+    def get_task(self, task_id: str) -> TaskRecord | None:
         return self._tasks.get(task_id)
 
-    def list_tasks(self, status: Optional[str] = None, limit: int = 20) -> list[dict]:
+    def list_tasks(self, status: str | None = None, limit: int = 20) -> list[dict]:
         tasks = sorted(self._tasks.values(), key=lambda t: t.created_at, reverse=True)
         if status:
             tasks = [t for t in tasks if t.status.value == status]
@@ -129,7 +133,7 @@ class TaskManager:
         record = self._tasks.get(task_id)
         if record and record.status == TaskStatus.QUEUED:
             record.status = TaskStatus.CANCELLED
-            record.completed_at = datetime.now(timezone.utc).isoformat()
+            record.completed_at = datetime.now(UTC).isoformat()
             return True
         return False
 
@@ -152,27 +156,32 @@ class TaskManager:
                     continue
 
                 record.status = TaskStatus.RUNNING
-                record.started_at = datetime.now(timezone.utc).isoformat()
+                record.started_at = datetime.now(UTC).isoformat()
                 await self._notify_progress(record, "running", f"▶️ Ejecutando: {record.name}")
 
                 try:
                     result = await coro
                     record.status = TaskStatus.DONE
                     record.result = str(result)[:2000] if result else "Completado"
-                    record.completed_at = datetime.now(timezone.utc).isoformat()
+                    record.completed_at = datetime.now(UTC).isoformat()
                     await self._notify_completion(record)
 
                 except Exception as exc:
                     record.retries += 1
                     if record.retries <= record.max_retries:
-                        logger.warning("[TaskManager] Task %s failed (retry %d): %s", task_id, record.retries, exc)
+                        logger.warning(
+                            "[TaskManager] Task %s failed (retry %d): %s",
+                            task_id,
+                            record.retries,
+                            exc,
+                        )
                         record.status = TaskStatus.QUEUED
-                        await asyncio.sleep(2 ** record.retries)
+                        await asyncio.sleep(2**record.retries)
                         await self._queue.put((priority, time.monotonic(), task_id, coro))
                     else:
                         record.status = TaskStatus.FAILED
                         record.error = str(exc)
-                        record.completed_at = datetime.now(timezone.utc).isoformat()
+                        record.completed_at = datetime.now(UTC).isoformat()
                         logger.error("[TaskManager] Task %s FAILED: %s", task_id, exc)
                         await self._notify_failure(record)
 
@@ -187,6 +196,7 @@ class TaskManager:
     async def _notify_progress(self, record: TaskRecord, status: str, message: str) -> None:
         try:
             from apps.core.routes.api import _log_activity
+
             _log_activity("INFO", message, category="task")
         except Exception:
             pass
@@ -202,7 +212,10 @@ class TaskManager:
     async def _deliver(self, record: TaskRecord, message: str) -> None:
         try:
             from apps.core.routes.api import _log_activity
-            _log_activity("INFO", f"[Task:{record.id}] {record.status.value} — {record.name}", category="task")
+
+            _log_activity(
+                "INFO", f"[Task:{record.id}] {record.status.value} — {record.name}", category="task"
+            )
         except Exception:
             pass
 
@@ -211,12 +224,13 @@ class TaskManager:
             if chat_id.isdigit():
                 try:
                     from apps.core.tools.telegram_bot import get_bot
+
                     await get_bot()._send_message(int(chat_id), message)
                 except Exception:
                     pass
 
 
-_manager: Optional[TaskManager] = None
+_manager: TaskManager | None = None
 
 
 def get_task_manager() -> TaskManager:

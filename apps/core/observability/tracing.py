@@ -8,12 +8,16 @@ Falls back gracefully when OTel packages are not installed —
 all public APIs return no-op implementations so instrumented code
 runs unchanged in all environments.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Generator, Optional
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 logger = logging.getLogger("aria.tracing")
 
@@ -22,10 +26,12 @@ _otel_available = False
 
 try:
     from opentelemetry import trace
-    from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
+    from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-    from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+    from opentelemetry.trace.propagation.tracecontext import (
+        TraceContextTextMapPropagator,  # noqa: F401
+    )
 
     _otel_available = True
 except ImportError:
@@ -35,7 +41,7 @@ except ImportError:
 def setup_tracing(
     service_name: str = "aria-ai",
     service_version: str = "2.0.0",
-    otlp_endpoint: Optional[str] = None,
+    otlp_endpoint: str | None = None,
 ) -> None:
     """
     Initialize the global TracerProvider.
@@ -54,18 +60,21 @@ def setup_tracing(
 
     endpoint = otlp_endpoint or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 
-    resource = Resource.create({
-        SERVICE_NAME: service_name,
-        SERVICE_VERSION: service_version,
-        "deployment.environment": os.getenv("ENVIRONMENT", "production"),
-        "aria.region": os.getenv("FLY_REGION", "unknown"),
-    })
+    resource = Resource.create(
+        {
+            SERVICE_NAME: service_name,
+            SERVICE_VERSION: service_version,
+            "deployment.environment": os.getenv("ENVIRONMENT", "production"),
+            "aria.region": os.getenv("FLY_REGION", "unknown"),
+        }
+    )
 
     provider = TracerProvider(resource=resource)
 
     if endpoint:
         try:
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
             otlp_exporter = OTLPSpanExporter(endpoint=endpoint)
             provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
             logger.info("[Tracing] OTLP exporter configured → %s", endpoint)
@@ -92,6 +101,7 @@ def get_tracer(name: str) -> Any:
         return _NoOpTracer()
 
     from opentelemetry import trace
+
     return trace.get_tracer(name)
 
 
@@ -101,6 +111,7 @@ def get_trace_id() -> str:
         return ""
     try:
         from opentelemetry import trace
+
         span = trace.get_current_span()
         ctx = span.get_span_context()
         if ctx and ctx.is_valid:
@@ -116,6 +127,7 @@ def get_span_id() -> str:
         return ""
     try:
         from opentelemetry import trace
+
         span = trace.get_current_span()
         ctx = span.get_span_context()
         if ctx and ctx.is_valid:
@@ -127,11 +139,14 @@ def get_span_id() -> str:
 
 # ── No-op implementations ──────────────────────────────────────────────────
 
+
 class _NoOpSpan:
     def set_attribute(self, key: str, value: Any) -> None: ...
     def set_status(self, *args: Any, **kwargs: Any) -> None: ...
     def record_exception(self, exc: Exception, **kwargs: Any) -> None: ...
-    def __enter__(self) -> "_NoOpSpan": return self
+    def __enter__(self) -> _NoOpSpan:
+        return self
+
     def __exit__(self, *args: Any) -> None: ...
 
 

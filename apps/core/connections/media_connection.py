@@ -2,10 +2,10 @@
 Media connection para ARIA AI.
 Soporta Spotify (OAuth), YouTube (Google OAuth), TikTok (OAuth), Twitch (OAuth).
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -38,20 +38,24 @@ TWITCH_AUTH_URL = "https://id.twitch.tv/oauth2/authorize"
 TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 TWITCH_API = "https://api.twitch.tv/helix"
 TWITCH_REDIRECT = "https://aria-ai.fly.dev/oauth/callback/twitch"
-TWITCH_SCOPES = "user:read:email channel:read:stream_key moderator:read:followers channel:read:subscriptions"
+TWITCH_SCOPES = (
+    "user:read:email channel:read:stream_key moderator:read:followers channel:read:subscriptions"
+)
 
 
 class SpotifyConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "SPOTIFY_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "SPOTIFY_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -64,19 +68,24 @@ class SpotifyConnection:
         }
         return f"{SPOTIFY_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET no configurados")
         import base64
+
         creds = base64.b64encode(f"{cid}:{sec}".encode()).decode()
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(SPOTIFY_TOKEN_URL, data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": SPOTIFY_REDIRECT,
-            }, headers={"Authorization": f"Basic {creds}"})
+            r = await http.post(
+                SPOTIFY_TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": SPOTIFY_REDIRECT,
+                },
+                headers={"Authorization": f"Basic {creds}"},
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -90,7 +99,9 @@ class SpotifyConnection:
 
     async def get_current_track(self, tokens: dict) -> dict:
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.get(f"{SPOTIFY_API}/me/player/currently-playing", headers=self._h(tokens))
+            r = await http.get(
+                f"{SPOTIFY_API}/me/player/currently-playing", headers=self._h(tokens)
+            )
             if r.status_code == 204:
                 return {"playing": False}
             r.raise_for_status()
@@ -104,7 +115,9 @@ class SpotifyConnection:
                 "duration_ms": item.get("duration_ms"),
             }
 
-    async def get_top_tracks(self, tokens: dict, time_range: str = "medium_term", limit: int = 10) -> list[dict]:
+    async def get_top_tracks(
+        self, tokens: dict, time_range: str = "medium_term", limit: int = 10
+    ) -> list[dict]:
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{SPOTIFY_API}/me/top/tracks",
@@ -131,7 +144,12 @@ class SpotifyConnection:
             )
             r.raise_for_status()
             return [
-                {"id": p.get("id"), "name": p.get("name"), "tracks": p.get("tracks", {}).get("total", 0), "public": p.get("public")}
+                {
+                    "id": p.get("id"),
+                    "name": p.get("name"),
+                    "tracks": p.get("tracks", {}).get("total", 0),
+                    "public": p.get("public"),
+                }
                 for p in r.json().get("items", [])
             ]
 
@@ -148,15 +166,17 @@ class SpotifyConnection:
 
 class YouTubeConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "GOOGLE_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "GOOGLE_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -170,19 +190,22 @@ class YouTubeConnection:
         }
         return f"{YOUTUBE_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(YOUTUBE_TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": YOUTUBE_REDIRECT,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                YOUTUBE_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": YOUTUBE_REDIRECT,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -237,7 +260,10 @@ class YouTubeConnection:
                     "id": item.get("id", {}).get("videoId"),
                     "title": item.get("snippet", {}).get("title"),
                     "published": item.get("snippet", {}).get("publishedAt"),
-                    "thumbnail": item.get("snippet", {}).get("thumbnails", {}).get("default", {}).get("url"),
+                    "thumbnail": item.get("snippet", {})
+                    .get("thumbnails", {})
+                    .get("default", {})
+                    .get("url"),
                 }
                 for item in r.json().get("items", [])
             ]
@@ -263,19 +289,22 @@ class YouTubeConnection:
 
 class TikTokConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "TIKTOK_CLIENT_KEY", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "TIKTOK_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
         import secrets
+
         state = f"{chat_id}_{secrets.token_hex(8)}"
         params = {
             "client_key": cid,
@@ -286,19 +315,23 @@ class TikTokConnection:
         }
         return f"{TIKTOK_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(TIKTOK_TOKEN_URL, data={
-                "client_key": cid,
-                "client_secret": sec,
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": TIKTOK_REDIRECT,
-            }, headers={"Content-Type": "application/x-www-form-urlencoded"})
+            r = await http.post(
+                TIKTOK_TOKEN_URL,
+                data={
+                    "client_key": cid,
+                    "client_secret": sec,
+                    "code": code,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": TIKTOK_REDIRECT,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
             r.raise_for_status()
             data = r.json().get("data", {})
             return {
@@ -316,7 +349,17 @@ class TikTokConnection:
             r = await http.post(
                 f"{TIKTOK_API}/user/info/",
                 headers={**self._h(tokens), "Content-Type": "application/json"},
-                json={"fields": ["open_id", "union_id", "avatar_url", "display_name", "follower_count", "following_count", "video_count"]},
+                json={
+                    "fields": [
+                        "open_id",
+                        "union_id",
+                        "avatar_url",
+                        "display_name",
+                        "follower_count",
+                        "following_count",
+                        "video_count",
+                    ]
+                },
             )
             r.raise_for_status()
             return r.json().get("data", {}).get("user", {})
@@ -326,7 +369,9 @@ class TikTokConnection:
             r = await http.post(
                 f"{TIKTOK_API}/video/list/",
                 headers={**self._h(tokens), "Content-Type": "application/json"},
-                params={"fields": "id,title,create_time,cover_image_url,share_url,view_count,like_count,comment_count"},
+                params={
+                    "fields": "id,title,create_time,cover_image_url,share_url,view_count,like_count,comment_count"
+                },
                 json={"max_count": max_count},
             )
             r.raise_for_status()
@@ -335,15 +380,17 @@ class TikTokConnection:
 
 class TwitchConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "TWITCH_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "TWITCH_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -356,19 +403,22 @@ class TwitchConnection:
         }
         return f"{TWITCH_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(TWITCH_TOKEN_URL, data={
-                "client_id": cid,
-                "client_secret": sec,
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": TWITCH_REDIRECT,
-            })
+            r = await http.post(
+                TWITCH_TOKEN_URL,
+                data={
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "code": code,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": TWITCH_REDIRECT,
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {

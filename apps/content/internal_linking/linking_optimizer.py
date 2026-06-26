@@ -2,15 +2,15 @@
 LinkingOptimizer — Internal link analysis, pillar page strategy, and
 SEO-optimized anchor text suggestions for ARIA AI.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "content:linking:v1"
 _TTL = 86400 * 30  # 30 days
@@ -24,9 +24,9 @@ class LinkSuggestion:
     target_url: str = ""
     target_title: str = ""
     anchor_text: str = ""
-    relevance_score: float = 0.0    # 0-1
-    seo_value: str = ""             # "high"|"medium"|"low"
-    context_snippet: str = ""       # where in source to insert link
+    relevance_score: float = 0.0  # 0-1
+    seo_value: str = ""  # "high"|"medium"|"low"
+    context_snippet: str = ""  # where in source to insert link
 
     def to_dict(self) -> dict:
         return {
@@ -47,9 +47,9 @@ class LinkingAudit:
     audit_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     site_niche: str = ""
     pages_analyzed: int = 0
-    orphan_pages: list = field(default_factory=list)      # pages with no inbound links
+    orphan_pages: list = field(default_factory=list)  # pages with no inbound links
     link_suggestions: list = field(default_factory=list)  # list of LinkSuggestion dicts
-    pillar_pages: list = field(default_factory=list)      # high-authority pages to link TO
+    pillar_pages: list = field(default_factory=list)  # high-authority pages to link TO
     seo_score_before: float = 0.5
     seo_score_after_estimate: float = 0.0
     created_at: float = field(default_factory=time.time)
@@ -102,8 +102,8 @@ class LinkingOptimizer:
         audit = LinkingAudit(site_niche=site_niche, pages_analyzed=len(pages))
 
         # Find orphan pages (pages not referenced as targets in other pages' keywords)
-        all_titles = {p.get("title", "") for p in pages}
-        page_urls = [p.get("url", "") for p in pages]
+        {p.get("title", "") for p in pages}
+        [p.get("url", "") for p in pages]
 
         # Simple heuristic: pages with low word count might be orphans
         orphan_pages = []
@@ -114,10 +114,12 @@ class LinkingOptimizer:
 
         # AI identifies pillar pages and generates suggestions
         ai = get_ai_client()
-        pages_summary = "\n".join([
-            f"- {p.get('title', '')} ({p.get('url', '')}) keywords: {', '.join(p.get('keywords', []))}"
-            for p in pages[:10]
-        ])
+        pages_summary = "\n".join(
+            [
+                f"- {p.get('title', '')} ({p.get('url', '')}) keywords: {', '.join(p.get('keywords', []))}"
+                for p in pages[:10]
+            ]
+        )
         try:
             resp = await ai.complete(
                 system="You are an SEO expert specializing in internal linking strategy.",
@@ -127,10 +129,11 @@ class LinkingOptimizer:
             )
             if resp.success:
                 # Extract pillar pages from AI response
-                content = resp.content
                 pillar_pages = []
                 for page in pages[:3]:  # First 3 highest word count pages as pillars
-                    sorted_by_words = sorted(pages, key=lambda x: x.get("word_count", 0), reverse=True)
+                    sorted_by_words = sorted(
+                        pages, key=lambda x: x.get("word_count", 0), reverse=True
+                    )
                     if sorted_by_words:
                         for pp in sorted_by_words[:3]:
                             pillar_entry = {"url": pp.get("url", ""), "title": pp.get("title", "")}
@@ -170,7 +173,11 @@ class LinkingOptimizer:
                             source_title=pages[i].get("title", ""),
                             target_url=pages[i + 1].get("url", ""),
                             target_title=pages[i + 1].get("title", ""),
-                            anchor_text=pages[i + 1].get("keywords", ["related content"])[0] if pages[i + 1].get("keywords") else "related content",
+                            anchor_text=(
+                                pages[i + 1].get("keywords", ["related content"])[0]
+                                if pages[i + 1].get("keywords")
+                                else "related content"
+                            ),
                             relevance_score=0.6,
                             seo_value="medium",
                             context_snippet=f"Consider linking to '{pages[i+1].get('title', '')}' here",
@@ -179,7 +186,9 @@ class LinkingOptimizer:
                         self._suggestions.append(s.to_dict())
 
                 audit.link_suggestions = suggestions
-                audit.seo_score_after_estimate = min(audit.seo_score_before + 0.1 * len(suggestions), 0.95)
+                audit.seo_score_after_estimate = min(
+                    audit.seo_score_before + 0.1 * len(suggestions), 0.95
+                )
         except Exception:
             audit.seo_score_after_estimate = audit.seo_score_before + 0.05
 
@@ -194,10 +203,12 @@ class LinkingOptimizer:
         suggestions = []
         ai = get_ai_client()
 
-        library_summary = "\n".join([
-            f"- {p.get('title', '')} ({p.get('url', '')}) keywords: {', '.join(p.get('keywords', []))}"
-            for p in content_library[:15]
-        ])
+        library_summary = "\n".join(
+            [
+                f"- {p.get('title', '')} ({p.get('url', '')}) keywords: {', '.join(p.get('keywords', []))}"
+                for p in content_library[:15]
+            ]
+        )
         try:
             resp = await ai.complete(
                 system="You are an SEO expert. Find the best internal link targets from a content library.",
@@ -236,7 +247,11 @@ class LinkingOptimizer:
                 source_title=source_page.get("title", ""),
                 target_url=content_library[0].get("url", ""),
                 target_title=content_library[0].get("title", ""),
-                anchor_text=content_library[0].get("keywords", ["learn more"])[0] if content_library[0].get("keywords") else "learn more",
+                anchor_text=(
+                    content_library[0].get("keywords", ["learn more"])[0]
+                    if content_library[0].get("keywords")
+                    else "learn more"
+                ),
                 relevance_score=0.5,
                 seo_value="medium",
                 context_snippet="Consider adding this internal link",
@@ -293,7 +308,8 @@ class LinkingOptimizer:
         high_value = sum(1 for s in self._suggestions if s.get("seo_value") == "high")
         avg_relevance = (
             sum(s.get("relevance_score", 0.0) for s in self._suggestions) / len(self._suggestions)
-            if self._suggestions else 0.0
+            if self._suggestions
+            else 0.0
         )
         return {
             "total_suggestions": len(self._suggestions),
@@ -307,7 +323,7 @@ class LinkingOptimizer:
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
-_instance: Optional[LinkingOptimizer] = None
+_instance: LinkingOptimizer | None = None
 
 
 def get_linking_optimizer() -> LinkingOptimizer:

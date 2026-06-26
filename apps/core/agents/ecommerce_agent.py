@@ -9,10 +9,11 @@ Sus responsabilidades son:
 4. Automatizar flujos de trabajo entre Shopify y otras apps vía Zapier (MCP).
 5. Aprender continuamente de las tendencias del mercado para optimizar la tienda.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from apps.core.agents.base_agent import BaseAgent
 from apps.core.config import settings
@@ -77,7 +78,7 @@ ECOMMERCE_KNOWLEDGE = {
         "User Generated Content (UGC): incentivar a clientes a compartir fotos/videos usando el producto.",
         "Guías de compra: crear contenido educativo que posicione a Aria como experta en el nicho.",
         "Comparativas: artículos 'Producto A vs Producto B' para capturar tráfico de búsqueda.",
-    ]
+    ],
 }
 
 
@@ -102,10 +103,10 @@ class EcommerceAgent(BaseAgent):
             ],
         )
         self.knowledge = ECOMMERCE_KNOWLEDGE
-        self._zapier = None # Zapier deshabilitado a petición del usuario
+        self._zapier = None  # Zapier deshabilitado a petición del usuario
         self._web = tool_registry.get_tool("web_scraping")
 
-    async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Ejecuta la misión de e-commerce según el contexto recibido."""
         task = context.get("task", "full_ecommerce_pipeline")
         topic = context.get("target_topic", "productos de alto valor")
@@ -114,20 +115,19 @@ class EcommerceAgent(BaseAgent):
 
         if task == "research_and_create_product":
             return await self._research_and_create_product(topic)
-        elif task == "optimize_store":
+        if task == "optimize_store":
             return await self._optimize_store()
-        elif task == "setup_zapier_automations":
+        if task == "setup_zapier_automations":
             return await self._setup_zapier_automations()
-        elif task == "high_ticket_funnel":
+        if task == "high_ticket_funnel":
             return await self._create_high_ticket_funnel(topic)
-        elif task == "full_ecommerce_pipeline":
+        if task == "full_ecommerce_pipeline":
             return await self._full_ecommerce_pipeline(topic)
-        else:
-            return await self._full_ecommerce_pipeline(topic)
+        return await self._full_ecommerce_pipeline(topic)
 
     # ── PIPELINE COMPLETO ─────────────────────────────────────────
 
-    async def _full_ecommerce_pipeline(self, topic: str) -> Dict[str, Any]:
+    async def _full_ecommerce_pipeline(self, topic: str) -> dict[str, Any]:
         """
         Pipeline completo de e-commerce:
         1. Investigar tendencias y oportunidades de mercado.
@@ -150,11 +150,12 @@ class EcommerceAgent(BaseAgent):
         if product_idea.get("title"):
             shopify_result = await self._create_shopify_listing(product_idea)
             results["shopify_listing"] = shopify_result
-            
+
             # Tomar screenshot del producto creado si tenemos la URL
             if shopify_result.get("success") and shopify_result.get("product_url"):
                 try:
                     from apps.core.tools.web_tools import WebTools
+
                     wt = WebTools()
                     ss_res = await wt.take_screenshot(shopify_result["product_url"])
                     if ss_res.get("success"):
@@ -163,7 +164,10 @@ class EcommerceAgent(BaseAgent):
                     logger.warning(f"[EcommerceAgent] Error tomando screenshot: {e}")
 
         # Paso 4: Configurar Zapier (Deshabilitado)
-        results["zapier_automations"] = {"success": True, "note": "Zapier deshabilitado temporalmente."}
+        results["zapier_automations"] = {
+            "success": True,
+            "note": "Zapier deshabilitado temporalmente.",
+        }
 
         # Paso 5: Estrategia High-Ticket
         highticket_strategy = await self._create_high_ticket_funnel(topic)
@@ -175,7 +179,7 @@ class EcommerceAgent(BaseAgent):
 
     # ── INVESTIGACIÓN DE MERCADO ──────────────────────────────────
 
-    async def _research_market(self, topic: str) -> Dict[str, Any]:
+    async def _research_market(self, topic: str) -> dict[str, Any]:
         """Investiga tendencias, competidores y oportunidades en la web con screenshots."""
         logger.info(f"[EcommerceAgent] Investigando mercado para: {topic}")
 
@@ -183,7 +187,7 @@ class EcommerceAgent(BaseAgent):
             "topic": topic,
             "best_practices": self.knowledge["shopify_listing_best_practices"],
             "product_research_framework": self.knowledge["product_research_framework"],
-            "screenshots": []
+            "screenshots": [],
         }
 
         # Intentar búsqueda web y screenshots si está disponible
@@ -192,26 +196,29 @@ class EcommerceAgent(BaseAgent):
                 search_query = f"best shopify products to sell {topic} 2025 high demand"
                 # Usamos el buscador expandido que implementamos antes
                 from apps.core.tools.web_tools import WebTools
+
                 wt = WebTools()
                 search_results = await wt.search_web(search_query, num_results=3)
-                
+
                 if search_results.get("success") and search_results.get("results"):
                     research_data["web_findings"] = str(search_results["results"])
-                    
+
                     # Tomar screenshot del primer resultado relevante (competencia)
                     top_url = search_results["results"][0].get("url")
                     if top_url:
                         ss_res = await wt.take_screenshot(top_url)
                         if ss_res.get("success"):
                             research_data["screenshots"].append(ss_res["screenshot_path"])
-                            logger.info(f"[EcommerceAgent] Screenshot de competencia guardado: {ss_res['screenshot_path']}")
-                            
+                            logger.info(
+                                f"[EcommerceAgent] Screenshot de competencia guardado: {ss_res['screenshot_path']}"
+                            )
+
             except Exception as e:
                 logger.warning(f"[EcommerceAgent] Error en investigacion con screenshots: {e}")
 
         return research_data
 
-    async def _research_and_create_product(self, topic: str) -> Dict[str, Any]:
+    async def _research_and_create_product(self, topic: str) -> dict[str, Any]:
         """Investiga y crea un producto completo en Shopify."""
         market_data = await self._research_market(topic)
         product_idea = await self._generate_product_idea(topic, market_data)
@@ -223,7 +230,9 @@ class EcommerceAgent(BaseAgent):
 
     # ── GENERACIÓN DE PRODUCTOS CON IA ────────────────────────────
 
-    async def _generate_product_idea(self, topic: str, market_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _generate_product_idea(
+        self, topic: str, market_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Usa IA para generar una idea de producto completa y optimizada para Shopify."""
         ai = get_ai_client()
         if not ai:
@@ -235,7 +244,9 @@ class EcommerceAgent(BaseAgent):
             "Responde SOLO con JSON válido sin markdown."
         )
 
-        best_practices = "\n".join(f"- {p}" for p in self.knowledge["shopify_listing_best_practices"][:5])
+        best_practices = "\n".join(
+            f"- {p}" for p in self.knowledge["shopify_listing_best_practices"][:5]
+        )
 
         user_prompt = f"""Crea un listing completo y optimizado para Shopify sobre: "{topic}"
 
@@ -280,7 +291,7 @@ Genera el JSON con este formato exacto:
 
         return self._fallback_product_idea(topic)
 
-    def _fallback_product_idea(self, topic: str) -> Dict[str, Any]:
+    def _fallback_product_idea(self, topic: str) -> dict[str, Any]:
         """Plan de emergencia cuando la IA no responde."""
         return {
             "title": f"Producto Premium de {topic}",
@@ -295,7 +306,11 @@ Genera el JSON con este formato exacto:
             "seo_title": f"Comprar {topic} Premium | Mejor Precio",
             "seo_description": f"Encuentra el mejor {topic} al mejor precio. Envío rápido y garantía incluida.",
             "requires_shipping": True,
-            "image_suggestions": ["foto de producto en fondo blanco", "foto lifestyle en uso", "detalle de calidad"],
+            "image_suggestions": [
+                "foto de producto en fondo blanco",
+                "foto lifestyle en uso",
+                "detalle de calidad",
+            ],
             "video_concept": f"Video de 45 segundos mostrando {topic} en uso con testimonios de clientes",
             "zapier_automations": ["New Order → Slack notification", "New Customer → Mailchimp"],
             "high_ticket_upsell": f"Consultoría personalizada de {topic} — $997/sesión",
@@ -303,16 +318,20 @@ Genera el JSON con este formato exacto:
 
     # ── CREACIÓN DE LISTING EN SHOPIFY ────────────────────────────
 
-    async def _create_shopify_listing(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _create_shopify_listing(self, product_data: dict[str, Any]) -> dict[str, Any]:
         """Crea un listing completo y optimizado en Shopify."""
         try:
             from apps.core.integrations.shopify_engine import ShopifyEngine
+
             # Usamos las variables de configuración correctas para producción
             shop_name = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
             access_token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_ACCESS_TOKEN
-            
+
             if not shop_name or not access_token:
-                return {"success": False, "error": "Credenciales de Shopify no configuradas en el servidor."}
+                return {
+                    "success": False,
+                    "error": "Credenciales de Shopify no configuradas en el servidor.",
+                }
 
             engine = ShopifyEngine(shop_name, access_token)
             product_id = engine.create_optimized_product(product_data)
@@ -332,10 +351,11 @@ Genera el JSON con este formato exacto:
             logger.error(f"[EcommerceAgent] Error creando listing en Shopify: {e}")
             return {"success": False, "error": str(e)}
 
-    async def _optimize_store(self) -> Dict[str, Any]:
+    async def _optimize_store(self) -> dict[str, Any]:
         """Analiza y optimiza la tienda Shopify existente."""
         try:
             from apps.core.integrations.shopify_engine import ShopifyEngine
+
             engine = ShopifyEngine(settings.SHOPIFY_SHOP_NAME, settings.SHOPIFY_ACCESS_TOKEN)
 
             products = engine.get_all_products()
@@ -365,17 +385,14 @@ Genera el JSON con este formato exacto:
 
     # ── AUTOMATIZACIONES ZAPIER ───────────────────────────────────
 
-    async def _setup_zapier_automations(self) -> Dict[str, Any]:
+    async def _setup_zapier_automations(self) -> dict[str, Any]:
         """Configura y documenta las automatizaciones de Zapier para Shopify."""
         automations = self.knowledge["zapier_shopify_automations"]
 
         if self._zapier:
             try:
                 # Intentar listar las acciones disponibles en Zapier vía MCP
-                result = await self._zapier.call_zapier_action(
-                    "list_actions",
-                    {"app": "shopify"}
-                )
+                result = await self._zapier.call_zapier_action("list_actions", {"app": "shopify"})
                 logger.info(f"[EcommerceAgent] Zapier acciones disponibles: {result}")
                 return {
                     "success": True,
@@ -394,7 +411,7 @@ Genera el JSON con este formato exacto:
 
     # ── EMBUDO HIGH-TICKET ────────────────────────────────────────
 
-    async def _create_high_ticket_funnel(self, topic: str) -> Dict[str, Any]:
+    async def _create_high_ticket_funnel(self, topic: str) -> dict[str, Any]:
         """Diseña un embudo de ventas para servicios de alto valor relacionados con el tema."""
         ai = get_ai_client()
         if not ai:
@@ -440,14 +457,16 @@ Genera el JSON con este formato:
                 agent_name="ecommerce",
             )
             if funnel and funnel.get("service_name"):
-                logger.info(f"[EcommerceAgent] Embudo High-Ticket creado: {funnel.get('service_name')}")
+                logger.info(
+                    f"[EcommerceAgent] Embudo High-Ticket creado: {funnel.get('service_name')}"
+                )
                 return {"success": True, "funnel": funnel}
         except Exception as e:
             logger.error(f"[EcommerceAgent] Error creando embudo High-Ticket: {e}")
 
         return self._fallback_high_ticket_funnel(topic)
 
-    def _fallback_high_ticket_funnel(self, topic: str) -> Dict[str, Any]:
+    def _fallback_high_ticket_funnel(self, topic: str) -> dict[str, Any]:
         """Embudo de emergencia cuando la IA no responde."""
         return {
             "success": True,
@@ -457,10 +476,19 @@ Genera el JSON con este formato:
                 "target_audience": f"Emprendedores y empresas que necesitan dominar {topic}",
                 "value_proposition": f"Transformamos tu negocio con {topic} en 90 días o te devolvemos el dinero.",
                 "funnel_stages": [
-                    {"stage": "Awareness", "action": "Publicar contenido educativo en LinkedIn y blog"},
+                    {
+                        "stage": "Awareness",
+                        "action": "Publicar contenido educativo en LinkedIn y blog",
+                    },
                     {"stage": "Interest", "action": "Ofrecer webinar gratuito de 60 minutos"},
-                    {"stage": "Qualification", "action": "Formulario de aplicación con 5 preguntas clave"},
-                    {"stage": "Proposal", "action": "Llamada de descubrimiento de 30 min + propuesta personalizada"},
+                    {
+                        "stage": "Qualification",
+                        "action": "Formulario de aplicación con 5 preguntas clave",
+                    },
+                    {
+                        "stage": "Proposal",
+                        "action": "Llamada de descubrimiento de 30 min + propuesta personalizada",
+                    },
                     {"stage": "Close", "action": "Assumptive Close con garantía de resultados"},
                 ],
                 "follow_up_sequence": [
@@ -470,5 +498,5 @@ Genera el JSON con este formato:
                 ],
                 "shopify_integration": "Crear página de servicio en Shopify con botón de aplicación",
                 "zapier_automation": "Form submission → Calendly → Gmail confirmation → HubSpot CRM",
-            }
+            },
         }

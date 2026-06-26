@@ -20,24 +20,25 @@ This builds a causal timeline that enables:
   - Longitudinal learning ("ARIA's response time is improving over weeks")
   - Replay (reconstruct what happened in any time window)
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import uuid
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone, timedelta
-from enum import Enum
-from typing import Any, Optional
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger("aria.memory.temporal")
 
-EVENT_TTL = 86400 * 30   # 30 days
-MAX_IN_MEMORY = 1000     # keep in process
+EVENT_TTL = 86400 * 30  # 30 days
+MAX_IN_MEMORY = 1000  # keep in process
 CAUSAL_WINDOW_SECONDS = 300  # events within 5 min are potentially causal
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     INCOME_CYCLE = "income_cycle"
     AI_CALL = "ai_call"
     TOOL_CALL = "tool_call"
@@ -55,17 +56,17 @@ class EventType(str, Enum):
 @dataclass
 class TemporalEvent:
     id: str
-    ts: float                        # UNIX timestamp (float for sub-second)
-    ts_iso: str                      # ISO format for readability
+    ts: float  # UNIX timestamp (float for sub-second)
+    ts_iso: str  # ISO format for readability
     event_type: EventType
-    entity_id: str                   # which entity this event concerns
+    entity_id: str  # which entity this event concerns
     entity_name: str
     payload: dict[str, Any]
-    caused_by: list[str]             # event IDs that caused this event
-    caused: list[str]                # event IDs this event caused (populated later)
+    caused_by: list[str]  # event IDs that caused this event
+    caused: list[str]  # event IDs this event caused (populated later)
     tags: list[str]
     success: bool = True
-    importance: float = 0.5         # 0.0–1.0; high-importance events are kept longer
+    importance: float = 0.5  # 0.0–1.0; high-importance events are kept longer
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -73,17 +74,17 @@ class TemporalEvent:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "TemporalEvent":
+    def from_dict(cls, d: dict) -> TemporalEvent:
         d = dict(d)
         d["event_type"] = EventType(d["event_type"])
         return cls(**d)
 
     @property
     def datetime(self) -> datetime:
-        return datetime.fromtimestamp(self.ts, tz=timezone.utc)
+        return datetime.fromtimestamp(self.ts, tz=UTC)
 
     def age_seconds(self) -> float:
-        return datetime.now(timezone.utc).timestamp() - self.ts
+        return datetime.now(UTC).timestamp() - self.ts
 
 
 class TemporalMemory:
@@ -127,7 +128,7 @@ class TemporalMemory:
         importance: float = 0.5,
         caused_by: list[str] | None = None,
     ) -> TemporalEvent:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         event_id = uuid.uuid4().hex[:10]
 
         # Auto-detect causal predecessors within the causal window
@@ -135,7 +136,8 @@ class TemporalMemory:
         if not auto_causes:
             cutoff = now.timestamp() - CAUSAL_WINDOW_SECONDS
             auto_causes = [
-                e.id for e in self._events[-20:]  # only check recent events
+                e.id
+                for e in self._events[-20:]  # only check recent events
                 if e.ts >= cutoff and e.entity_id == entity_id
             ]
 
@@ -189,7 +191,7 @@ class TemporalMemory:
         if total_seconds == 0:
             total_seconds = 3600  # default 1h
 
-        cutoff = datetime.now(timezone.utc).timestamp() - total_seconds
+        cutoff = datetime.now(UTC).timestamp() - total_seconds
         return self._filter(ts_from=cutoff, event_type=event_type)
 
     async def range(
@@ -198,24 +200,24 @@ class TemporalMemory:
         end: datetime | None = None,
         event_type: EventType | None = None,
     ) -> list[TemporalEvent]:
-        end = end or datetime.now(timezone.utc)
+        end = end or datetime.now(UTC)
         return self._filter(
             ts_from=start.timestamp(),
             ts_to=end.timestamp(),
             event_type=event_type,
         )
 
-    async def get_event(self, event_id: str) -> Optional[TemporalEvent]:
+    async def get_event(self, event_id: str) -> TemporalEvent | None:
         return self._index.get(event_id)
 
     async def recent(self, n: int = 20, event_type: EventType | None = None) -> list[TemporalEvent]:
-        events = self._events[-n * 3:]  # over-fetch then filter
+        events = self._events[-n * 3 :]  # over-fetch then filter
         if event_type:
             events = [e for e in events if e.event_type == event_type]
         return events[-n:]
 
     async def failures(self, hours: float = 24) -> list[TemporalEvent]:
-        cutoff = datetime.now(timezone.utc).timestamp() - hours * 3600
+        cutoff = datetime.now(UTC).timestamp() - hours * 3600
         return [e for e in self._events if e.ts >= cutoff and not e.success]
 
     # ── Causal Analysis ───────────────────────────────────────────────────
@@ -252,9 +254,7 @@ class TemporalMemory:
 
         return result
 
-    async def pattern_frequency(
-        self, event_type: EventType, window_hours: float = 168
-    ) -> dict:
+    async def pattern_frequency(self, event_type: EventType, window_hours: float = 168) -> dict:
         """Count event frequency by hour-of-day to detect patterns."""
         events = await self.since(hours=window_hours, event_type=event_type)
         by_hour: dict[int, int] = {}
@@ -268,9 +268,7 @@ class TemporalMemory:
             "total_events": len(events),
             "by_hour": by_hour,
             "peak_hour": peak_hour,
-            "success_rate": (
-                sum(1 for e in events if e.success) / len(events) if events else 0.0
-            ),
+            "success_rate": (sum(1 for e in events if e.success) / len(events) if events else 0.0),
         }
 
     def summary(self) -> dict:
@@ -279,8 +277,8 @@ class TemporalMemory:
         types: dict[str, int] = {}
         for ev in self._events:
             types[ev.event_type.value] = types.get(ev.event_type.value, 0) + 1
-        oldest = datetime.fromtimestamp(self._events[0].ts, tz=timezone.utc).isoformat()
-        newest = datetime.fromtimestamp(self._events[-1].ts, tz=timezone.utc).isoformat()
+        oldest = datetime.fromtimestamp(self._events[0].ts, tz=UTC).isoformat()
+        newest = datetime.fromtimestamp(self._events[-1].ts, tz=UTC).isoformat()
         return {
             "total_events": len(self._events),
             "by_type": types,
@@ -309,11 +307,11 @@ class TemporalMemory:
         ts_to: float | None = None,
         event_type: EventType | None = None,
     ) -> list[TemporalEvent]:
-        ts_to = ts_to or datetime.now(timezone.utc).timestamp() + 1
+        ts_to = ts_to or datetime.now(UTC).timestamp() + 1
         return [
-            e for e in self._events
-            if ts_from <= e.ts <= ts_to
-            and (event_type is None or e.event_type == event_type)
+            e
+            for e in self._events
+            if ts_from <= e.ts <= ts_to and (event_type is None or e.event_type == event_type)
         ]
 
     # ── Persistence ───────────────────────────────────────────────────────
@@ -321,6 +319,7 @@ class TemporalMemory:
     async def _persist(self, event: TemporalEvent) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 await cache.set(
@@ -333,7 +332,7 @@ class TemporalMemory:
             logger.debug("[TemporalMem] Persist failed: %s", exc)
 
 
-_memory: Optional[TemporalMemory] = None
+_memory: TemporalMemory | None = None
 
 
 def get_temporal_memory() -> TemporalMemory:

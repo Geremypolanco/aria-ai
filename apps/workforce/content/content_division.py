@@ -2,16 +2,16 @@
 ARIA AI — Content Division
 Handles blog posts, ad copy, video scripts, email sequences, translations, and landing pages.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.workforce.content")
 
@@ -21,19 +21,22 @@ _CACHE_TTL = 86400 * 90  # 90 days
 
 # ── Domain object ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ContentPiece:
     piece_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     content_type: str = ""  # "blog", "ad_copy", "script", "email", "landing_page", "translation"
-    agent_type: str = ""    # "copywriter", "seo_writer", "translator", "script_writer", "email_marketer"
+    agent_type: str = (
+        ""  # "copywriter", "seo_writer", "translator", "script_writer", "email_marketer"
+    )
     title: str = ""
     body: str = ""
     word_count: int = 0
     language: str = "en"
     target_audience: str = ""
     seo_keywords: list = field(default_factory=list)
-    readability_score: float = 0.0   # 0-1
-    conversion_score: float = 0.0    # 0-1 estimated
+    readability_score: float = 0.0  # 0-1
+    conversion_score: float = 0.0  # 0-1 estimated
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
@@ -55,6 +58,7 @@ class ContentPiece:
 
 # ── Content Division ───────────────────────────────────────────────────────────
 
+
 class ContentDivision:
     """AI-powered content workforce division."""
 
@@ -73,7 +77,9 @@ class ContentDivision:
     async def _save_pieces(self) -> None:
         await self._cache.set(_CACHE_KEY, self._pieces, ttl_seconds=_CACHE_TTL)
 
-    async def _run_ai(self, system: str, user: str, model: AIModel = AIModel.CREATIVE, max_tokens: int = 1000) -> str:
+    async def _run_ai(
+        self, system: str, user: str, model: AIModel = AIModel.CREATIVE, max_tokens: int = 1000
+    ) -> str:
         resp = await self._ai.complete(system=system, user=user, model=model, max_tokens=max_tokens)
         if resp.success:
             return resp.content.strip()
@@ -215,7 +221,13 @@ class ContentDivision:
 
         pieces: list[ContentPiece] = []
         email_types = {
-            "nurture": ["Welcome", "Value/Education", "Case Study", "Objection Handling", "Soft Pitch"],
+            "nurture": [
+                "Welcome",
+                "Value/Education",
+                "Case Study",
+                "Objection Handling",
+                "Soft Pitch",
+            ],
             "sales": ["Hook/Problem", "Agitation", "Solution", "Social Proof", "Hard Close"],
             "onboarding": ["Welcome", "Quick Win", "Feature Deep Dive", "Community", "Next Steps"],
         }
@@ -265,7 +277,8 @@ class ContentDivision:
         await self._load_pieces()
 
         tone_instruction = (
-            "Preserve the original tone, style, and persuasive elements." if preserve_tone
+            "Preserve the original tone, style, and persuasive elements."
+            if preserve_tone
             else "Adapt to standard formal register for the target language."
         )
 
@@ -313,8 +326,7 @@ class ContentDivision:
                 "Use proven direct-response copywriting frameworks."
             ),
             user=(
-                f"Product: {product}\nTarget Audience: {audience}\n"
-                f"Main Benefit: {main_benefit}"
+                f"Product: {product}\nTarget Audience: {audience}\n" f"Main Benefit: {main_benefit}"
             ),
             model=AIModel.CREATIVE,
             max_tokens=1200,
@@ -403,7 +415,7 @@ class ContentDivision:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_instance: Optional[ContentDivision] = None
+_instance: ContentDivision | None = None
 
 
 def get_content_division() -> ContentDivision:

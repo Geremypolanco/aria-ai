@@ -1,16 +1,18 @@
 """Async stage-based cognitive pipeline with resumable execution."""
+
 from __future__ import annotations
 
 import asyncio
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Callable, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 
-class StageStatus(str, Enum):
+class StageStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     DONE = "done"
@@ -18,7 +20,7 @@ class StageStatus(str, Enum):
     SKIPPED = "skipped"
 
 
-class PipelineStatus(str, Enum):
+class PipelineStatus(StrEnum):
     CREATED = "created"
     RUNNING = "running"
     DONE = "done"
@@ -31,16 +33,20 @@ class StageResult:
     stage_name: str
     status: StageStatus
     output: Any = None
-    error: Optional[str] = None
+    error: str | None = None
     duration_ms: float = 0.0
-    started_at: Optional[str] = None
-    finished_at: Optional[str] = None
+    started_at: str | None = None
+    finished_at: str | None = None
 
     def to_dict(self) -> dict:
         return {
             "stage_name": self.stage_name,
             "status": self.status.value,
-            "output": self.output if isinstance(self.output, (str, int, float, bool, dict, list, type(None))) else str(self.output),
+            "output": (
+                self.output
+                if isinstance(self.output, (str, int, float, bool, dict, list, type(None)))
+                else str(self.output)
+            ),
             "error": self.error,
             "duration_ms": self.duration_ms,
             "started_at": self.started_at,
@@ -56,9 +62,9 @@ class PipelineRun:
     stage_results: list[StageResult] = field(default_factory=list)
     status: PipelineStatus = PipelineStatus.CREATED
     final_output: Any = None
-    error: Optional[str] = None
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    finished_at: Optional[str] = None
+    error: str | None = None
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    finished_at: str | None = None
     total_duration_ms: float = 0.0
 
     @property
@@ -112,15 +118,19 @@ class CognitivePipeline:
         fn: StageFn,
         timeout_seconds: float = 30.0,
         skip_on_error: bool = False,
-    ) -> "CognitivePipeline":
-        self._stages.append(PipelineStage(name=name, fn=fn, timeout_seconds=timeout_seconds, skip_on_error=skip_on_error))
+    ) -> CognitivePipeline:
+        self._stages.append(
+            PipelineStage(
+                name=name, fn=fn, timeout_seconds=timeout_seconds, skip_on_error=skip_on_error
+            )
+        )
         return self
 
     async def run(
         self,
         input_text: str,
-        context: Optional[dict] = None,
-        run_id: Optional[str] = None,
+        context: dict | None = None,
+        run_id: str | None = None,
     ) -> PipelineRun:
         run = PipelineRun(
             id=run_id or f"pipe_{uuid.uuid4().hex[:12]}",
@@ -131,7 +141,7 @@ class CognitivePipeline:
         self._runs[run.id] = run
         return await self._execute(run, start_idx=0)
 
-    async def resume(self, run_id: str) -> Optional[PipelineRun]:
+    async def resume(self, run_id: str) -> PipelineRun | None:
         run = self._runs.get(run_id)
         if run is None:
             return None
@@ -154,7 +164,7 @@ class CognitivePipeline:
                 stage = self._stages[i]
                 result = run.stage_results[i]
                 result.status = StageStatus.RUNNING
-                result.started_at = datetime.now(timezone.utc).isoformat()
+                result.started_at = datetime.now(UTC).isoformat()
                 t0 = time.monotonic()
 
                 try:
@@ -165,7 +175,7 @@ class CognitivePipeline:
                     result.output = output
                     result.status = StageStatus.DONE
                     stage_input = output
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     result.error = f"Stage '{stage.name}' timed out after {stage.timeout_seconds}s"
                     if stage.skip_on_error:
                         result.status = StageStatus.SKIPPED
@@ -185,18 +195,18 @@ class CognitivePipeline:
                         break
                 finally:
                     result.duration_ms = (time.monotonic() - t0) * 1000
-                    result.finished_at = datetime.now(timezone.utc).isoformat()
+                    result.finished_at = datetime.now(UTC).isoformat()
             else:
                 # All stages completed
                 run.status = PipelineStatus.DONE
                 run.final_output = stage_input
         finally:
             run.total_duration_ms = (time.monotonic() - wall_start) * 1000
-            run.finished_at = datetime.now(timezone.utc).isoformat()
+            run.finished_at = datetime.now(UTC).isoformat()
 
         return run
 
-    def get_run(self, run_id: str) -> Optional[PipelineRun]:
+    def get_run(self, run_id: str) -> PipelineRun | None:
         return self._runs.get(run_id)
 
     def recent_runs(self, n: int = 10) -> list[PipelineRun]:
@@ -227,9 +237,14 @@ def build_aria_pipeline(ai_client: Any = None) -> CognitivePipeline:
 
     async def context_stage(run: PipelineRun, intent_data: Any) -> dict:
         """Retrieve relevant memory context for the request."""
-        result = dict(intent_data) if isinstance(intent_data, dict) else {"text": str(intent_data), "intent": "general"}
+        result = (
+            dict(intent_data)
+            if isinstance(intent_data, dict)
+            else {"text": str(intent_data), "intent": "general"}
+        )
         try:
             from apps.core.memory.orchestrator import get_memory_orchestrator
+
             ctx = await get_memory_orchestrator().retrieve(result.get("text", ""), top_k=5)
             result["memory_context"] = {
                 "fact_count": len(ctx.facts),
@@ -247,9 +262,12 @@ def build_aria_pipeline(ai_client: Any = None) -> CognitivePipeline:
         if ai_client is not None:
             try:
                 from apps.core.cognition.reasoning_engine import get_reasoning_engine
+
                 engine = get_reasoning_engine(ai_client)
                 question = result.get("text", "")
-                reasoning = await engine.reason(question, context=result.get("memory_context", {}), max_steps=3)
+                reasoning = await engine.reason(
+                    question, context=result.get("memory_context", {}), max_steps=3
+                )
                 result["reasoning"] = {
                     "conclusion": reasoning.conclusion,
                     "confidence": reasoning.confidence,
@@ -259,7 +277,10 @@ def build_aria_pipeline(ai_client: Any = None) -> CognitivePipeline:
             except Exception as exc:
                 result["reasoning"] = {"conclusion": "", "confidence": 0.0, "error": str(exc)}
         else:
-            result["reasoning"] = {"conclusion": "Reasoning unavailable (no AI client)", "confidence": 0.0}
+            result["reasoning"] = {
+                "conclusion": "Reasoning unavailable (no AI client)",
+                "confidence": 0.0,
+            }
         return result
 
     async def plan_stage(run: PipelineRun, reason_data: Any) -> dict:
@@ -269,6 +290,7 @@ def build_aria_pipeline(ai_client: Any = None) -> CognitivePipeline:
         if intent == "planning" and ai_client is not None:
             try:
                 from apps.core.cognition.planner import get_planner
+
                 planner = get_planner()
                 plan = await planner.create_plan(
                     goal=result.get("text", ""),
@@ -294,11 +316,10 @@ def build_aria_pipeline(ai_client: Any = None) -> CognitivePipeline:
         if plan and not plan.get("error"):
             task_count = len(plan.get("tasks", []))
             return f"[{intent.upper()}] Plan created with {task_count} tasks. {reasoning.get('conclusion', '')}"
-        elif reasoning.get("conclusion"):
+        if reasoning.get("conclusion"):
             conf = reasoning.get("confidence", 0)
             return f"[{intent.upper()}] {reasoning['conclusion']} (confidence: {conf:.0%})"
-        else:
-            return f"[{intent.upper()}] Processed: {plan_data.get('text', '')[:200]}"
+        return f"[{intent.upper()}] Processed: {plan_data.get('text', '')[:200]}"
 
     pipe.add_stage("intent", intent_stage, timeout_seconds=5.0, skip_on_error=True)
     pipe.add_stage("context", context_stage, timeout_seconds=10.0, skip_on_error=True)
@@ -309,7 +330,7 @@ def build_aria_pipeline(ai_client: Any = None) -> CognitivePipeline:
     return pipe
 
 
-_pipeline: Optional[CognitivePipeline] = None
+_pipeline: CognitivePipeline | None = None
 
 
 def get_cognitive_pipeline(ai_client: Any = None) -> CognitivePipeline:

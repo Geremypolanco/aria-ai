@@ -6,15 +6,14 @@ import shutil
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 logger = logging.getLogger("aria.video_editor")
 
 # ── Enums ────────────────────────────────────────────────────
 
 
-class EditOperation(str, Enum):
+class EditOperation(StrEnum):
     TRIM = "trim"
     CONCAT = "concat"
     ADD_TEXT = "add_text"
@@ -107,10 +106,14 @@ class VideoEditor:
                 cmd = [
                     "ffmpeg",
                     "-y",
-                    "-i", video_url,
-                    "-ss", str(start_sec),
-                    "-to", str(end_sec),
-                    "-c", "copy",
+                    "-i",
+                    video_url,
+                    "-ss",
+                    str(start_sec),
+                    "-to",
+                    str(end_sec),
+                    "-c",
+                    "copy",
                     output,
                 ]
                 proc = await asyncio.create_subprocess_exec(
@@ -176,10 +179,16 @@ class VideoEditor:
                     f.write(concat_list)
                 output = f"/tmp/compilation_{task.task_id}.mp4"
                 cmd = [
-                    "ffmpeg", "-y",
-                    "-f", "concat", "-safe", "0",
-                    "-i", concat_file,
-                    "-c", "copy",
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    concat_file,
+                    "-c",
+                    "copy",
                     output,
                 ]
                 proc = await asyncio.create_subprocess_exec(
@@ -207,13 +216,10 @@ class VideoEditor:
         result.update(args)
         if args.get("vf"):
             result["ffmpeg_cmd"] = (
-                f'ffmpeg -i "{video_url}" -vf "{args["vf"]}" '
-                f'-c:a copy output_{platform}.mp4'
+                f'ffmpeg -i "{video_url}" -vf "{args["vf"]}" ' f"-c:a copy output_{platform}.mp4"
             )
         else:
-            result["ffmpeg_cmd"] = (
-                f'ffmpeg -i "{video_url}" -c copy output_{platform}.mp4'
-            )
+            result["ffmpeg_cmd"] = f'ffmpeg -i "{video_url}" -c copy output_{platform}.mp4'
         return result
 
     @staticmethod
@@ -259,7 +265,7 @@ def _srt_time(seconds: float) -> str:
 
 # ── Singleton ────────────────────────────────────────────────
 
-_video_editor: Optional[VideoEditor] = None
+_video_editor: VideoEditor | None = None
 
 
 def get_video_editor() -> VideoEditor:

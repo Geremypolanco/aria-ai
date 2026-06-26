@@ -10,15 +10,19 @@ ARIA puede:
 
 Principio: Si no puede integrar una API, lo dice explicitamente.
 """
+
 from __future__ import annotations
+
 import ast
 import base64
 import json
 import logging
 import re
 import time
-from typing import Any, Optional
+from typing import Any
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.api_discovery")
@@ -28,45 +32,311 @@ REPO = getattr(settings, "GITHUB_REPO", None) or "Geremypolanco/aria-ai"
 
 # Catalogo curado de APIs relevantes para ARIA (todas gratuitas o con free tier)
 KNOWN_FREE_APIS: list[dict] = [
-    {"name": "CoinGecko API",      "category": "crypto",       "url": "https://coingecko.com/api",              "free_tier": True,  "requires_key": False,  "benefit": "Precios cripto en tiempo real — sin API key"},
-    {"name": "Hacker News API",    "category": "research",     "url": "https://hacker-news.firebaseio.com/v0/", "free_tier": True,  "requires_key": False,  "benefit": "Trending tech — sin auth"},
-    {"name": "ExchangeRate API",   "category": "finance",      "url": "https://exchangerate-api.com",           "free_tier": True,  "requires_key": False,  "benefit": "Tipos de cambio multimoneda — sin key"},
-    {"name": "Pexels API",         "category": "images",       "url": "https://www.pexels.com/api/",            "free_tier": True,  "requires_key": True,   "benefit": "Imagenes gratis para marketing"},
-    {"name": "NewsAPI",            "category": "news",         "url": "https://newsapi.org",                    "free_tier": True,  "requires_key": True,   "benefit": "Noticias de 30,000 fuentes"},
-    {"name": "OpenRouter AI",      "category": "ai",           "url": "https://openrouter.ai",                  "free_tier": True,  "requires_key": True,   "benefit": "200+ modelos IA con un solo token"},
-    {"name": "Product Hunt API",   "category": "research",     "url": "https://api.producthunt.com",            "free_tier": True,  "requires_key": True,   "benefit": "Productos digitales trending"},
-    {"name": "Reddit API",         "category": "research",     "url": "https://www.reddit.com/dev/api/",        "free_tier": True,  "requires_key": True,   "benefit": "Investigacion de nichos via subreddits"},
-    {"name": "Discord Webhooks",   "category": "messaging",    "url": "https://discord.com/developers",         "free_tier": True,  "requires_key": True,   "benefit": "Notificaciones sin bot"},
-    {"name": "Lemon Squeezy",      "category": "payments",     "url": "https://lemonsqueezy.com",               "free_tier": True,  "requires_key": True,   "benefit": "Venta productos digitales — alternativa a Gumroad"},
-    {"name": "Resend Email",       "category": "email",        "url": "https://resend.com",                     "free_tier": True,  "requires_key": True,   "benefit": "3000 emails/mes gratis"},
-    {"name": "Firecrawl",          "category": "scraping",     "url": "https://firecrawl.dev",                  "free_tier": True,  "requires_key": True,   "benefit": "Scraping con IA — extrae datos estructurados"},
-    {"name": "Exa AI Search",      "category": "search",       "url": "https://exa.ai",                         "free_tier": True,  "requires_key": True,   "benefit": "Busqueda semantica en internet"},
-    {"name": "Hunter.io",          "category": "leads",        "url": "https://hunter.io",                      "free_tier": True,  "requires_key": True,   "benefit": "Encontrar emails de empresas"},
-    {"name": "Cal.com API",        "category": "scheduling",   "url": "https://cal.com/docs/api",               "free_tier": True,  "requires_key": True,   "benefit": "Agendar llamadas automaticamente"},
-    {"name": "Bannerbear",         "category": "images",       "url": "https://www.bannerbear.com",             "free_tier": True,  "requires_key": True,   "benefit": "Generar imagenes marketing via API"},
-    {"name": "Unsplash API",       "category": "images",       "url": "https://unsplash.com/developers",        "free_tier": True,  "requires_key": True,   "benefit": "50 req/hora — imagenes alta calidad"},
-    {"name": "Replicate API",      "category": "ai",           "url": "https://replicate.com",                  "free_tier": True,  "requires_key": True,   "benefit": "Cualquier modelo IA — imagen, video, audio"},
-    {"name": "Stability AI",       "category": "images",       "url": "https://stability.ai",                   "free_tier": True,  "requires_key": True,   "benefit": "SDXL, SD3.5 — imagenes fotoreales"},
-    {"name": "Tally Forms",        "category": "forms",        "url": "https://tally.so",                       "free_tier": True,  "requires_key": True,   "benefit": "Formularios + webhooks para leads"},
+    {
+        "name": "CoinGecko API",
+        "category": "crypto",
+        "url": "https://coingecko.com/api",
+        "free_tier": True,
+        "requires_key": False,
+        "benefit": "Precios cripto en tiempo real — sin API key",
+    },
+    {
+        "name": "Hacker News API",
+        "category": "research",
+        "url": "https://hacker-news.firebaseio.com/v0/",
+        "free_tier": True,
+        "requires_key": False,
+        "benefit": "Trending tech — sin auth",
+    },
+    {
+        "name": "ExchangeRate API",
+        "category": "finance",
+        "url": "https://exchangerate-api.com",
+        "free_tier": True,
+        "requires_key": False,
+        "benefit": "Tipos de cambio multimoneda — sin key",
+    },
+    {
+        "name": "Pexels API",
+        "category": "images",
+        "url": "https://www.pexels.com/api/",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Imagenes gratis para marketing",
+    },
+    {
+        "name": "NewsAPI",
+        "category": "news",
+        "url": "https://newsapi.org",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Noticias de 30,000 fuentes",
+    },
+    {
+        "name": "OpenRouter AI",
+        "category": "ai",
+        "url": "https://openrouter.ai",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "200+ modelos IA con un solo token",
+    },
+    {
+        "name": "Product Hunt API",
+        "category": "research",
+        "url": "https://api.producthunt.com",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Productos digitales trending",
+    },
+    {
+        "name": "Reddit API",
+        "category": "research",
+        "url": "https://www.reddit.com/dev/api/",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Investigacion de nichos via subreddits",
+    },
+    {
+        "name": "Discord Webhooks",
+        "category": "messaging",
+        "url": "https://discord.com/developers",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Notificaciones sin bot",
+    },
+    {
+        "name": "Lemon Squeezy",
+        "category": "payments",
+        "url": "https://lemonsqueezy.com",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Venta productos digitales — alternativa a Gumroad",
+    },
+    {
+        "name": "Resend Email",
+        "category": "email",
+        "url": "https://resend.com",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "3000 emails/mes gratis",
+    },
+    {
+        "name": "Firecrawl",
+        "category": "scraping",
+        "url": "https://firecrawl.dev",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Scraping con IA — extrae datos estructurados",
+    },
+    {
+        "name": "Exa AI Search",
+        "category": "search",
+        "url": "https://exa.ai",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Busqueda semantica en internet",
+    },
+    {
+        "name": "Hunter.io",
+        "category": "leads",
+        "url": "https://hunter.io",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Encontrar emails de empresas",
+    },
+    {
+        "name": "Cal.com API",
+        "category": "scheduling",
+        "url": "https://cal.com/docs/api",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Agendar llamadas automaticamente",
+    },
+    {
+        "name": "Bannerbear",
+        "category": "images",
+        "url": "https://www.bannerbear.com",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Generar imagenes marketing via API",
+    },
+    {
+        "name": "Unsplash API",
+        "category": "images",
+        "url": "https://unsplash.com/developers",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "50 req/hora — imagenes alta calidad",
+    },
+    {
+        "name": "Replicate API",
+        "category": "ai",
+        "url": "https://replicate.com",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Cualquier modelo IA — imagen, video, audio",
+    },
+    {
+        "name": "Stability AI",
+        "category": "images",
+        "url": "https://stability.ai",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "SDXL, SD3.5 — imagenes fotoreales",
+    },
+    {
+        "name": "Tally Forms",
+        "category": "forms",
+        "url": "https://tally.so",
+        "free_tier": True,
+        "requires_key": True,
+        "benefit": "Formularios + webhooks para leads",
+    },
 ]
 
 # APIs de alto valor con posible costo mensual — evaluadas por ROI antes de incluirlas
 # Aquellas con monthly_cost_usd > MAX_SPEND_WITHOUT_APPROVAL_USD requieren aprobacion CFO
 KNOWN_PAID_APIS: list[dict] = [
-    {"name": "Stripe Payments",    "category": "payments",     "url": "https://stripe.com/docs/api",         "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 10.0, "benefit": "Pagos online — max conversion, 2.9%+0.30 por tx"},
-    {"name": "Apollo.io Leads",    "category": "leads",        "url": "https://apolloio.com",                "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 8.0,  "benefit": "50 leads/mes gratis — base de 260M contactos B2B"},
-    {"name": "Paddle Payments",    "category": "payments",     "url": "https://paddle.com",                  "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 9.0,  "benefit": "Pagos SaaS + gestion fiscal global automatica"},
-    {"name": "ElevenLabs TTS",     "category": "audio",        "url": "https://elevenlabs.io",               "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 5.0,  "benefit": "Text-to-speech premium para podcasts/videos"},
-    {"name": "Hotjar Analytics",   "category": "analytics",    "url": "https://hotjar.com",                  "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 4.0,  "benefit": "Heatmaps y grabacion — optimiza conversion"},
-    {"name": "Mixpanel",           "category": "analytics",    "url": "https://mixpanel.com",                "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 4.0,  "benefit": "Analytics de producto — 100k events/mes gratis"},
-    {"name": "Klaviyo Email",      "category": "email",        "url": "https://klaviyo.com",                 "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 7.0,  "benefit": "Email marketing avanzado — free hasta 500 contactos"},
-    {"name": "Phantombuster",      "category": "automation",   "url": "https://phantombuster.com",           "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 6.0,  "benefit": "Automatizacion LinkedIn/Twitter — scraping leads cualificados"},
-    {"name": "Make Automation",    "category": "automation",   "url": "https://make.com",                    "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 5.0,  "benefit": "1000 operaciones/mes — conecta cualquier herramienta"},
-    {"name": "Webflow CMS",        "category": "publishing",   "url": "https://webflow.com",                 "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 4.0,  "benefit": "CMS headless + hosting — landing pages sin deploy"},
-    {"name": "Twilio SMS",         "category": "messaging",    "url": "https://twilio.com",                  "free_tier": False, "monthly_cost_usd": 10,  "requires_key": True,  "roi_multiplier": 8.0,  "benefit": "SMS/WhatsApp recuperacion de carritos — ROI 800%+"},
-    {"name": "Semrush API",        "category": "seo",          "url": "https://www.semrush.com/api/",        "free_tier": False, "monthly_cost_usd": 120, "requires_key": True,  "roi_multiplier": 3.0,  "benefit": "SEO avanzado — keywords, backlinks, competidores"},
-    {"name": "Ahrefs API",         "category": "seo",          "url": "https://ahrefs.com/api",              "free_tier": False, "monthly_cost_usd": 99,  "requires_key": True,  "roi_multiplier": 3.0,  "benefit": "SEO research profundo — necesita aprobacion CFO"},
-    {"name": "Descript Video",     "category": "video",        "url": "https://descript.com",                "free_tier": True,  "monthly_cost_usd": 0,   "requires_key": True,  "roi_multiplier": 5.0,  "benefit": "Edicion video/podcasts con IA — contenido multimedia auto"},
+    {
+        "name": "Stripe Payments",
+        "category": "payments",
+        "url": "https://stripe.com/docs/api",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 10.0,
+        "benefit": "Pagos online — max conversion, 2.9%+0.30 por tx",
+    },
+    {
+        "name": "Apollo.io Leads",
+        "category": "leads",
+        "url": "https://apolloio.com",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 8.0,
+        "benefit": "50 leads/mes gratis — base de 260M contactos B2B",
+    },
+    {
+        "name": "Paddle Payments",
+        "category": "payments",
+        "url": "https://paddle.com",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 9.0,
+        "benefit": "Pagos SaaS + gestion fiscal global automatica",
+    },
+    {
+        "name": "ElevenLabs TTS",
+        "category": "audio",
+        "url": "https://elevenlabs.io",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 5.0,
+        "benefit": "Text-to-speech premium para podcasts/videos",
+    },
+    {
+        "name": "Hotjar Analytics",
+        "category": "analytics",
+        "url": "https://hotjar.com",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 4.0,
+        "benefit": "Heatmaps y grabacion — optimiza conversion",
+    },
+    {
+        "name": "Mixpanel",
+        "category": "analytics",
+        "url": "https://mixpanel.com",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 4.0,
+        "benefit": "Analytics de producto — 100k events/mes gratis",
+    },
+    {
+        "name": "Klaviyo Email",
+        "category": "email",
+        "url": "https://klaviyo.com",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 7.0,
+        "benefit": "Email marketing avanzado — free hasta 500 contactos",
+    },
+    {
+        "name": "Phantombuster",
+        "category": "automation",
+        "url": "https://phantombuster.com",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 6.0,
+        "benefit": "Automatizacion LinkedIn/Twitter — scraping leads cualificados",
+    },
+    {
+        "name": "Make Automation",
+        "category": "automation",
+        "url": "https://make.com",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 5.0,
+        "benefit": "1000 operaciones/mes — conecta cualquier herramienta",
+    },
+    {
+        "name": "Webflow CMS",
+        "category": "publishing",
+        "url": "https://webflow.com",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 4.0,
+        "benefit": "CMS headless + hosting — landing pages sin deploy",
+    },
+    {
+        "name": "Twilio SMS",
+        "category": "messaging",
+        "url": "https://twilio.com",
+        "free_tier": False,
+        "monthly_cost_usd": 10,
+        "requires_key": True,
+        "roi_multiplier": 8.0,
+        "benefit": "SMS/WhatsApp recuperacion de carritos — ROI 800%+",
+    },
+    {
+        "name": "Semrush API",
+        "category": "seo",
+        "url": "https://www.semrush.com/api/",
+        "free_tier": False,
+        "monthly_cost_usd": 120,
+        "requires_key": True,
+        "roi_multiplier": 3.0,
+        "benefit": "SEO avanzado — keywords, backlinks, competidores",
+    },
+    {
+        "name": "Ahrefs API",
+        "category": "seo",
+        "url": "https://ahrefs.com/api",
+        "free_tier": False,
+        "monthly_cost_usd": 99,
+        "requires_key": True,
+        "roi_multiplier": 3.0,
+        "benefit": "SEO research profundo — necesita aprobacion CFO",
+    },
+    {
+        "name": "Descript Video",
+        "category": "video",
+        "url": "https://descript.com",
+        "free_tier": True,
+        "monthly_cost_usd": 0,
+        "requires_key": True,
+        "roi_multiplier": 5.0,
+        "benefit": "Edicion video/podcasts con IA — contenido multimedia auto",
+    },
 ]
 
 
@@ -120,7 +390,11 @@ class APIDiscovery:
         # Incluir APIs de pago con ROI justificado
         if include_paid:
             paid_filtered = await self._filter_paid_apis_by_roi(
-                [a for a in KNOWN_PAID_APIS if a.get("monthly_cost_usd", 0) <= max_monthly_cost_usd],
+                [
+                    a
+                    for a in KNOWN_PAID_APIS
+                    if a.get("monthly_cost_usd", 0) <= max_monthly_cost_usd
+                ],
                 mission,
             )
             seen_names = {a["name"].lower() for a in local_apis}
@@ -164,7 +438,9 @@ class APIDiscovery:
                 if needs_approval:
                     logger.info(
                         "[APIDiscovery] '%s' requiere aprobacion CFO (costo: $%.0f/mes, ROI: %.1fx)",
-                        api["name"], cost, roi,
+                        api["name"],
+                        cost,
+                        roi,
                     )
         return qualified
 
@@ -172,12 +448,13 @@ class APIDiscovery:
         """Filtra el catalogo local con IA para la mision actual."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             catalog_text = "\n".join(f"- {a['name']}: {a['benefit']}" for a in KNOWN_FREE_APIS)
             resp = await ai.complete(
                 system="Selecciona las APIs mas relevantes para la mision. Responde JSON array de nombres exactos.",
                 user=f"Mision: {mission}\n\nAPIs disponibles:\n{catalog_text}\n\n"
-                     "Devuelve JSON array con los 8 nombres mas relevantes.",
+                "Devuelve JSON array con los 8 nombres mas relevantes.",
                 model=AIModel.FAST,
             )
             if resp and resp.success:
@@ -200,16 +477,20 @@ class APIDiscovery:
             )
             if res.status_code == 200:
                 entries = res.json().get("entries", [])[:limit]
-                return [{
-                    "name": e.get("API", ""),
-                    "description": e.get("Description", ""),
-                    "url": e.get("Link", ""),
-                    "category": e.get("Category", ""),
-                    "benefit": e.get("Description", ""),
-                    "free_tier": e.get("Auth", "") in ("", "No", None),
-                    "requires_key": e.get("Auth", "") not in ("", "No", None),
-                    "source": "publicapis.org",
-                } for e in entries if e.get("API")]
+                return [
+                    {
+                        "name": e.get("API", ""),
+                        "description": e.get("Description", ""),
+                        "url": e.get("Link", ""),
+                        "category": e.get("Category", ""),
+                        "benefit": e.get("Description", ""),
+                        "free_tier": e.get("Auth", "") in ("", "No", None),
+                        "requires_key": e.get("Auth", "") not in ("", "No", None),
+                        "source": "publicapis.org",
+                    }
+                    for e in entries
+                    if e.get("API")
+                ]
         except Exception as exc:
             logger.warning("[APIDiscovery] fetch_public_apis error: %s", exc)
         return []
@@ -220,13 +501,16 @@ class APIDiscovery:
             return []
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
-            apis_text = "\n".join(f"{i}. {a['name']}: {a.get('benefit', a.get('description', ''))}"
-                                  for i, a in enumerate(apis))
+            apis_text = "\n".join(
+                f"{i}. {a['name']}: {a.get('benefit', a.get('description', ''))}"
+                for i, a in enumerate(apis)
+            )
             resp = await ai.complete(
                 system="Ordena APIs por relevancia. Responde JSON array de numeros de indices.",
                 user=f"Mision: {mission}\n\nAPIs:\n{apis_text}\n\n"
-                     "Devuelve JSON array con los indices ordenados de mayor a menor relevancia (maximo 10).",
+                "Devuelve JSON array con los indices ordenados de mayor a menor relevancia (maximo 10).",
                 model=AIModel.FAST,
             )
             if resp and resp.success:
@@ -258,6 +542,7 @@ class APIDiscovery:
 
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
 
             env_var_name = re.sub(r"[^A-Z0-9]", "_", api_name.upper()) + "_API_KEY"
@@ -297,7 +582,7 @@ class APIDiscovery:
             code = resp.content.strip()
             for fence in ["```python\n", "```python", "```\n", "```"]:
                 if code.startswith(fence):
-                    code = code[len(fence):]
+                    code = code[len(fence) :]
             if code.endswith("```"):
                 code = code[:-3]
             code = code.strip()
@@ -334,7 +619,7 @@ class APIDiscovery:
         self,
         api_info: dict,
         code: str,
-        target_path: Optional[str] = None,
+        target_path: str | None = None,
     ) -> dict[str, Any]:
         """
         Agrega el modulo de integracion generado al codebase via GitHub API.
@@ -388,7 +673,9 @@ class APIDiscovery:
             if res.status_code in (200, 201):
                 APIDiscovery._last_integration_time = time.time()
                 commit_sha = res.json().get("commit", {}).get("sha", "")[:8]
-                logger.info("[APIDiscovery] Integracion agregada: %s → commit %s", target_path, commit_sha)
+                logger.info(
+                    "[APIDiscovery] Integracion agregada: %s → commit %s", target_path, commit_sha
+                )
                 return {
                     "success": True,
                     "api": api_name,
@@ -418,10 +705,12 @@ class APIDiscovery:
         Solo integra APIs gratuitas — reporta explicitamente si no puede integrar algo.
         """
         if not self.is_available():
-            return [{
-                "success": False,
-                "error": "GITHUB_TOKEN no configurado — no puedo integrar APIs autonomamente",
-            }]
+            return [
+                {
+                    "success": False,
+                    "error": "GITHUB_TOKEN no configurado — no puedo integrar APIs autonomamente",
+                }
+            ]
 
         candidates = await self.find_relevant_apis(mission, limit=max_integrations * 3)
         if not candidates:
@@ -431,24 +720,28 @@ class APIDiscovery:
         for api in candidates[:max_integrations]:
             gen_result = await self.generate_integration_code(api)
             if not gen_result["success"]:
-                results.append({
-                    "success": False,
-                    "api": api.get("name"),
-                    "error": gen_result["error"],
-                })
+                results.append(
+                    {
+                        "success": False,
+                        "api": api.get("name"),
+                        "error": gen_result["error"],
+                    }
+                )
                 continue
 
             push_result = await self.add_integration_to_codebase(
                 api, gen_result["code"], gen_result.get("target_path")
             )
-            results.append({
-                "success": push_result["success"],
-                "api": api.get("name"),
-                "benefit": api.get("benefit"),
-                "file": gen_result.get("target_path"),
-                "commit_sha": push_result.get("commit_sha"),
-                "error": push_result.get("error"),
-            })
+            results.append(
+                {
+                    "success": push_result["success"],
+                    "api": api.get("name"),
+                    "benefit": api.get("benefit"),
+                    "file": gen_result.get("target_path"),
+                    "commit_sha": push_result.get("commit_sha"),
+                    "error": push_result.get("error"),
+                }
+            )
 
         return results
 

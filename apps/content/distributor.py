@@ -2,19 +2,19 @@
 Cross-platform content distribution — queue management, multi-platform dispatch,
 retry logic, and distribution analytics.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
 
 logger = logging.getLogger("aria.content.distributor")
 
 _QUEUE_KEY = "distribution:queue:v1"
-_QUEUE_TTL = 86400 * 14   # 14 days
+_QUEUE_TTL = 86400 * 14  # 14 days
 _RESULTS_KEY = "distribution:results:v1"
 _RESULTS_TTL = 86400 * 30  # 30 days
 
@@ -51,7 +51,7 @@ class DistributionQueue:
         self,
         content_id: str,
         platforms: list[str],
-        scheduled_for: Optional[float] = None,
+        scheduled_for: float | None = None,
     ) -> None:
         """Add a distribution job to the queue."""
         self.items.append(
@@ -70,9 +70,9 @@ class DistributionQueue:
         """Return queue items whose scheduled_for is in the past."""
         now = time.time()
         return [
-            item for item in self.items
-            if item.get("scheduled_for", 0) <= now
-            and item.get("status") == "pending"
+            item
+            for item in self.items
+            if item.get("scheduled_for", 0) <= now and item.get("status") == "pending"
         ]
 
     def to_dict(self) -> dict:
@@ -130,6 +130,7 @@ class ContentDistributor:
         """Retrieve body text for a content piece from ContentOS."""
         try:
             from apps.content.content_os import get_content_os
+
             os_ = get_content_os()
             pieces = await os_.get_all_content()
             for p in pieces:
@@ -145,7 +146,7 @@ class ContentDistributor:
         self,
         content_id: str,
         platforms: list[str],
-        scheduled_for_ts: Optional[float] = None,
+        scheduled_for_ts: float | None = None,
     ) -> bool:
         """Add a content piece to the distribution queue."""
         try:
@@ -154,7 +155,9 @@ class ContentDistributor:
             await self._save_queue(queue)
             logger.info(
                 "ContentDistributor: queued %s → %s (scheduled=%s)",
-                content_id, platforms, scheduled_for_ts,
+                content_id,
+                platforms,
+                scheduled_for_ts,
             )
             return True
         except Exception as exc:
@@ -205,28 +208,26 @@ class ContentDistributor:
         try:
             if platform_lower == "linkedin":
                 return await self._distribute_linkedin(content_id, content_body)
-            elif platform_lower == "twitter":
+            if platform_lower == "twitter":
                 return await self._distribute_twitter(content_id, content_body)
-            elif platform_lower == "blog":
+            if platform_lower == "blog":
                 return await self._distribute_blog(content_id, content_body)
-            else:
-                # Log intent for unsupported platforms
-                logger.info(
-                    "ContentDistributor: intent logged for %s — content_id=%s",
-                    platform, content_id,
-                )
-                return DistributionResult(
-                    platform=platform,
-                    content_id=content_id,
-                    success=True,
-                    post_url="",
-                    error="",
-                )
+            # Log intent for unsupported platforms
+            logger.info(
+                "ContentDistributor: intent logged for %s — content_id=%s",
+                platform,
+                content_id,
+            )
+            return DistributionResult(
+                platform=platform,
+                content_id=content_id,
+                success=True,
+                post_url="",
+                error="",
+            )
 
         except Exception as exc:
-            logger.warning(
-                "ContentDistributor._distribute_to_platform[%s]: %s", platform, exc
-            )
+            logger.warning("ContentDistributor._distribute_to_platform[%s]: %s", platform, exc)
             return DistributionResult(
                 platform=platform,
                 content_id=content_id,
@@ -234,12 +235,11 @@ class ContentDistributor:
                 error=str(exc)[:200],
             )
 
-    async def _distribute_linkedin(
-        self, content_id: str, content_body: str
-    ) -> DistributionResult:
+    async def _distribute_linkedin(self, content_id: str, content_body: str) -> DistributionResult:
         """Distribute to LinkedIn via linkedin_engine if available."""
         try:
             from apps.core.integrations import linkedin_engine  # type: ignore[import]
+
             engine = linkedin_engine.get_linkedin_engine()
             result = await engine.post(content_body)
             return DistributionResult(
@@ -265,9 +265,7 @@ class ContentDistributor:
                 error=str(exc)[:200],
             )
 
-    async def _distribute_twitter(
-        self, content_id: str, content_body: str
-    ) -> DistributionResult:
+    async def _distribute_twitter(self, content_id: str, content_body: str) -> DistributionResult:
         """Distribute to Twitter using tweet-size chunking (280 chars per tweet)."""
         _TWEET_MAX = 280
         tweets: list[str] = []
@@ -286,7 +284,8 @@ class ContentDistributor:
 
         logger.info(
             "ContentDistributor: Twitter thread chunked into %d tweets for %s",
-            len(tweets), content_id,
+            len(tweets),
+            content_id,
         )
 
         # Log intent (no live Twitter API without credentials)
@@ -298,12 +297,11 @@ class ContentDistributor:
             error="",
         )
 
-    async def _distribute_blog(
-        self, content_id: str, content_body: str
-    ) -> DistributionResult:
+    async def _distribute_blog(self, content_id: str, content_body: str) -> DistributionResult:
         """Post to content pipeline / blog."""
         try:
             from apps.core.integrations import content_pipeline  # type: ignore[import]
+
             pipeline = content_pipeline.get_pipeline()
             post_url = await pipeline.publish(content_id, content_body)
             return DistributionResult(
@@ -337,7 +335,7 @@ class ContentDistributor:
         day_ago = now - 86400
 
         distributed_today = [r for r in results if r.get("processed_at", 0) >= day_ago]
-        successes_today = [r for r in distributed_today if r.get("success")]
+        [r for r in distributed_today if r.get("success")]
 
         by_platform: dict[str, dict] = {}
         for r in results:
@@ -368,10 +366,7 @@ class ContentDistributor:
         requeued = 0
 
         for item in queue.items:
-            if (
-                item.get("status") == "failed"
-                and item.get("queued_at", 0) >= cutoff
-            ):
+            if item.get("status") == "failed" and item.get("queued_at", 0) >= cutoff:
                 item["status"] = "pending"
                 item["attempts"] = 0
                 item["last_error"] = ""
@@ -386,7 +381,7 @@ class ContentDistributor:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_distributor_instance: Optional[ContentDistributor] = None
+_distributor_instance: ContentDistributor | None = None
 
 
 def get_content_distributor() -> ContentDistributor:

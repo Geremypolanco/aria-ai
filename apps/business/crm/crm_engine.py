@@ -3,8 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -14,7 +13,7 @@ _LEADS_TTL = 86400 * 180
 _CUSTOMERS_TTL = 86400 * 365
 
 
-class LeadStage(str, Enum):
+class LeadStage(StrEnum):
     SUBSCRIBER = "subscriber"
     PROSPECT = "prospect"
     QUALIFIED = "qualified"
@@ -33,7 +32,7 @@ _STAGE_ORDER = [
 ]
 
 
-class ChurnRisk(str, Enum):
+class ChurnRisk(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -166,7 +165,9 @@ class CRMEngine:
         self._leads = leads
         try:
             cache = get_cache()
-            await cache.set(_LEADS_KEY, {k: v.to_dict() for k, v in leads.items()}, ttl_seconds=_LEADS_TTL)
+            await cache.set(
+                _LEADS_KEY, {k: v.to_dict() for k, v in leads.items()}, ttl_seconds=_LEADS_TTL
+            )
         except Exception:
             pass
 
@@ -186,7 +187,11 @@ class CRMEngine:
         self._customers = customers
         try:
             cache = get_cache()
-            await cache.set(_CUSTOMERS_KEY, {k: v.to_dict() for k, v in customers.items()}, ttl_seconds=_CUSTOMERS_TTL)
+            await cache.set(
+                _CUSTOMERS_KEY,
+                {k: v.to_dict() for k, v in customers.items()},
+                ttl_seconds=_CUSTOMERS_TTL,
+            )
         except Exception:
             pass
 
@@ -194,7 +199,9 @@ class CRMEngine:
     # Lead management
     # ------------------------------------------------------------------
 
-    async def add_lead(self, email: str, name: str = "", source: str = "", initial_score: float = 40.0) -> Lead:
+    async def add_lead(
+        self, email: str, name: str = "", source: str = "", initial_score: float = 40.0
+    ) -> Lead:
         leads = await self._load_leads()
         # deduplicate by email
         for existing in leads.values():
@@ -205,7 +212,9 @@ class CRMEngine:
         await self._save_leads(leads)
         return lead
 
-    async def update_lead_stage(self, lead_id: str, new_stage: LeadStage, notes: str = "") -> Optional[Lead]:
+    async def update_lead_stage(
+        self, lead_id: str, new_stage: LeadStage, notes: str = ""
+    ) -> Lead | None:
         leads = await self._load_leads()
         lead = leads.get(lead_id)
         if not lead:
@@ -239,10 +248,12 @@ class CRMEngine:
     # Customer management
     # ------------------------------------------------------------------
 
-    async def add_customer(self, email: str, name: str, order_value: float, source: str = "shopify") -> Customer:
+    async def add_customer(
+        self, email: str, name: str, order_value: float, source: str = "shopify"
+    ) -> Customer:
         customers = await self._load_customers()
         # find by email
-        existing: Optional[Customer] = None
+        existing: Customer | None = None
         for c in customers.values():
             if c.email.lower() == email.lower():
                 existing = c
@@ -290,12 +301,15 @@ class CRMEngine:
 
     async def high_risk_customers(self) -> list[Customer]:
         customers = await self._load_customers()
-        return [c for c in customers.values() if c.churn_risk in (ChurnRisk.HIGH, ChurnRisk.CRITICAL)]
+        return [
+            c for c in customers.values() if c.churn_risk in (ChurnRisk.HIGH, ChurnRisk.CRITICAL)
+        ]
 
     async def retention_candidates(self) -> list[Customer]:
         customers = await self._load_customers()
         at_risk = [
-            c for c in customers.values()
+            c
+            for c in customers.values()
             if c.churn_risk in (ChurnRisk.MEDIUM, ChurnRisk.HIGH, ChurnRisk.CRITICAL)
         ]
         return sorted(at_risk, key=lambda c: c.total_spent_usd, reverse=True)[:20]
@@ -338,13 +352,10 @@ class CRMEngine:
         for i in range(len(stage_keys) - 1):
             current = stage_keys[i]
             next_s = stage_keys[i + 1]
-            conversion_rates[f"{current}->{next_s}"] = (
-                counts[next_s] / max(counts[current], 1)
-            )
+            conversion_rates[f"{current}->{next_s}"] = counts[next_s] / max(counts[current], 1)
 
         avg_score: dict[str, float] = {
-            s: round(total_score[s] / max(counts[s], 1), 2)
-            for s in stage_keys
+            s: round(total_score[s] / max(counts[s], 1), 2) for s in stage_keys
         }
 
         return {
@@ -365,7 +376,9 @@ class CRMEngine:
     async def async_summary(self) -> dict:
         leads = await self._load_leads()
         customers = await self._load_customers()
-        high_risk = sum(1 for c in customers.values() if c.churn_risk in (ChurnRisk.HIGH, ChurnRisk.CRITICAL))
+        high_risk = sum(
+            1 for c in customers.values() if c.churn_risk in (ChurnRisk.HIGH, ChurnRisk.CRITICAL)
+        )
         vip = sum(1 for c in customers.values() if c.total_spent_usd > 500)
         total_revenue = sum(c.total_spent_usd for c in customers.values())
         return {

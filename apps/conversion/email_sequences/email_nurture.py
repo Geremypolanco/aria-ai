@@ -3,15 +3,15 @@ ARIA AI — Email Nurture Engine
 Phase 13: Automated email sequences that convert leads into customers
 through value-first nurturing, segmentation, and behavioral triggers.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "conversion:email_nurture:v1"
 _TTL = 86400 * 60
@@ -21,11 +21,11 @@ _TTL = 86400 * 60
 class NurtureEmail:
     email_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     sequence_id: str = ""
-    day_offset: int = 0           # days after sequence start
+    day_offset: int = 0  # days after sequence start
     subject: str = ""
-    preview_text: str = ""        # ≤90 chars
+    preview_text: str = ""  # ≤90 chars
     body: str = ""
-    goal: str = ""               # "build_trust" | "educate" | "social_proof" | "offer" | "urgency"
+    goal: str = ""  # "build_trust" | "educate" | "social_proof" | "offer" | "urgency"
     cta: str = ""
     cta_url_placeholder: str = "{{cta_url}}"
     expected_open_rate_pct: float = 0.0
@@ -52,9 +52,9 @@ class NurtureSequence:
     sequence_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     name: str = ""
     niche: str = ""
-    goal: str = ""               # "convert_to_customer" | "upsell" | "reactivate" | "onboard"
+    goal: str = ""  # "convert_to_customer" | "upsell" | "reactivate" | "onboard"
     target_audience: str = ""
-    emails: list = field(default_factory=list)   # list of NurtureEmail.to_dict()
+    emails: list = field(default_factory=list)  # list of NurtureEmail.to_dict()
     total_emails: int = 0
     sequence_duration_days: int = 0
     expected_conversion_rate_pct: float = 0.0
@@ -77,13 +77,13 @@ class NurtureSequence:
 
 # Day offsets and goals for a standard 7-email nurture sequence
 _SEQUENCE_TEMPLATE = [
-    (0,  "build_trust",   "Welcome + immediate value", 45.0, 8.0),
-    (2,  "educate",       "Teach one powerful concept", 35.0, 6.0),
-    (4,  "social_proof",  "Case study or testimonial",  32.0, 5.5),
-    (6,  "educate",       "Address biggest objection",  30.0, 5.0),
-    (8,  "offer",         "Introduce paid offer",       28.0, 7.0),
-    (10, "urgency",       "Soft deadline reminder",     33.0, 9.0),
-    (12, "urgency",       "Final call — last chance",   38.0, 11.0),
+    (0, "build_trust", "Welcome + immediate value", 45.0, 8.0),
+    (2, "educate", "Teach one powerful concept", 35.0, 6.0),
+    (4, "social_proof", "Case study or testimonial", 32.0, 5.5),
+    (6, "educate", "Address biggest objection", 30.0, 5.0),
+    (8, "offer", "Introduce paid offer", 28.0, 7.0),
+    (10, "urgency", "Soft deadline reminder", 33.0, 9.0),
+    (12, "urgency", "Final call — last chance", 38.0, 11.0),
 ]
 
 
@@ -140,7 +140,7 @@ class EmailNurtureEngine:
             resp = await ai.complete(
                 system=(
                     "You are an email marketing expert. Write a complete email nurture sequence. "
-                    f"For each email provide: SUBJECT (curiosity/benefit), PREVIEW (≤90 chars), BODY (200-300 words), CTA (action phrase). "
+                    "For each email provide: SUBJECT (curiosity/benefit), PREVIEW (≤90 chars), BODY (200-300 words), CTA (action phrase). "
                     "Separate emails with ---."
                 ),
                 user=(
@@ -156,11 +156,23 @@ class EmailNurtureEngine:
                 for i, (day, email_goal, purpose, open_rate, click_rate) in enumerate(template):
                     body_text = email_blocks[i].strip() if i < len(email_blocks) else ""
                     lines = [l.strip() for l in body_text.split("\n") if l.strip()]
-                    subject = lines[0].replace("SUBJECT:", "").strip() if lines else f"Day {day}: {purpose}"
-                    preview = lines[1].replace("PREVIEW:", "").strip()[:90] if len(lines) > 1 else f"{niche} insight for {target_audience}"
+                    subject = (
+                        lines[0].replace("SUBJECT:", "").strip()
+                        if lines
+                        else f"Day {day}: {purpose}"
+                    )
+                    preview = (
+                        lines[1].replace("PREVIEW:", "").strip()[:90]
+                        if len(lines) > 1
+                        else f"{niche} insight for {target_audience}"
+                    )
                     body = body_text if body_text else f"Here's your day {day} value from ARIA."
                     cta_line = [l for l in lines if "CTA:" in l or "cta:" in l.lower()]
-                    cta = cta_line[0].replace("CTA:", "").strip() if cta_line else "Click here to learn more"
+                    cta = (
+                        cta_line[0].replace("CTA:", "").strip()
+                        if cta_line
+                        else "Click here to learn more"
+                    )
 
                     email = NurtureEmail(
                         sequence_id=sequence.sequence_id,
@@ -210,7 +222,9 @@ class EmailNurtureEngine:
         await self._save()
         return sequence
 
-    async def personalize_email(self, email: NurtureEmail, subscriber_name: str, subscriber_data: dict) -> NurtureEmail:
+    async def personalize_email(
+        self, email: NurtureEmail, subscriber_name: str, subscriber_data: dict
+    ) -> NurtureEmail:
         """AI personalizes a template email for a specific subscriber."""
         ai = get_ai_client()
         try:
@@ -230,10 +244,14 @@ class EmailNurtureEngine:
         except Exception:
             pass
 
-        email.body = email.body.replace("{{first_name}}", subscriber_name).replace("{{name}}", subscriber_name)
+        email.body = email.body.replace("{{first_name}}", subscriber_name).replace(
+            "{{name}}", subscriber_name
+        )
         return email
 
-    async def create_reactivation_sequence(self, niche: str, inactive_days: int = 30) -> NurtureSequence:
+    async def create_reactivation_sequence(
+        self, niche: str, inactive_days: int = 30
+    ) -> NurtureSequence:
         """3-email win-back sequence for inactive subscribers."""
         return await self.create_sequence(
             niche=niche,
@@ -246,7 +264,9 @@ class EmailNurtureEngine:
     def sequence_analytics(self) -> dict:
         total = len(self._sequences)
         avg_emails = sum(s.get("total_emails", 0) for s in self._sequences) / max(total, 1)
-        avg_cvr = sum(s.get("expected_conversion_rate_pct", 0.0) for s in self._sequences) / max(total, 1)
+        avg_cvr = sum(s.get("expected_conversion_rate_pct", 0.0) for s in self._sequences) / max(
+            total, 1
+        )
         by_goal: dict = {}
         for s in self._sequences:
             g = s.get("goal", "unknown")
@@ -263,7 +283,7 @@ class EmailNurtureEngine:
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_instance: Optional[EmailNurtureEngine] = None
+_instance: EmailNurtureEngine | None = None
 
 
 def get_email_nurture_engine() -> EmailNurtureEngine:

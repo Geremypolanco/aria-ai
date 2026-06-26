@@ -2,18 +2,18 @@
 Autonomous blog post generator.
 Generates SEO-optimized blog posts in markdown with AI or template fallback.
 """
+
 from __future__ import annotations
 
 import logging
 import re
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.content.blog")
 
@@ -39,6 +39,7 @@ _BUYER_INTENT_CTAS = {
 
 
 # ── Data models ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class BlogPost:
@@ -75,6 +76,7 @@ class BlogPost:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 def _slugify(title: str) -> str:
     slug = re.sub(r"[^\w\s-]", "", title.lower())
@@ -148,6 +150,7 @@ Many beginners make costly mistakes when starting with {keyword}. Avoid these pi
 
 
 # ── Main class ─────────────────────────────────────────────────────────────────
+
 
 class BlogGenerator:
     """Autonomous blog post generator with AI content creation and persistence."""
@@ -266,13 +269,15 @@ class BlogGenerator:
         interval_days = max(1, 7 // posts_per_week)
         for i, post in enumerate(posts):
             publish_date = start + timedelta(days=i * interval_days)
-            schedule.append({
-                "post_id": post.post_id,
-                "title": post.title,
-                "planned_date": publish_date.strftime("%Y-%m-%d"),
-                "keyword": post.target_keyword,
-                "status": post.status,
-            })
+            schedule.append(
+                {
+                    "post_id": post.post_id,
+                    "title": post.title,
+                    "planned_date": publish_date.strftime("%Y-%m-%d"),
+                    "keyword": post.target_keyword,
+                    "status": post.status,
+                }
+            )
         return schedule
 
     def draft_posts(self) -> list[dict]:
@@ -294,7 +299,7 @@ class BlogGenerator:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_blog_generator: Optional[BlogGenerator] = None
+_blog_generator: BlogGenerator | None = None
 
 
 def get_blog_generator() -> BlogGenerator:

@@ -16,8 +16,8 @@ import hashlib
 import hmac
 import json
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import jwt
@@ -36,7 +36,7 @@ class GitHubIntegration:
             "Accept": "application/vnd.github.v3+json",
         }
 
-    async def get_user_repos(self) -> Dict[str, Any]:
+    async def get_user_repos(self) -> dict[str, Any]:
         """Obtiene los repositorios del usuario."""
         try:
             async with httpx.AsyncClient() as client:
@@ -53,8 +53,7 @@ class GitHubIntegration:
                         "repositories": repos,
                         "count": len(repos),
                     }
-                else:
-                    return {"success": False, "error": f"HTTP {response.status_code}"}
+                return {"success": False, "error": f"HTTP {response.status_code}"}
 
         except Exception as exc:
             logger.error(f"[GitHub] Error obteniendo repositorios: {exc}")
@@ -66,7 +65,7 @@ class GitHubIntegration:
         description: str = "",
         private: bool = True,
         auto_init: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Crea un nuevo repositorio."""
         try:
             async with httpx.AsyncClient() as client:
@@ -88,8 +87,7 @@ class GitHubIntegration:
                         "repository": repo,
                         "url": repo.get("html_url"),
                     }
-                else:
-                    return {"success": False, "error": f"HTTP {response.status_code}"}
+                return {"success": False, "error": f"HTTP {response.status_code}"}
 
         except Exception as exc:
             logger.error(f"[GitHub] Error creando repositorio: {exc}")
@@ -99,10 +97,10 @@ class GitHubIntegration:
         self,
         owner: str,
         repo: str,
-        files: Dict[str, str],
+        files: dict[str, str],
         message: str,
         branch: str = "main",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Realiza un commit y push a un repositorio."""
         try:
             # Obtener la rama actual
@@ -195,8 +193,7 @@ class GitHubIntegration:
                         "commit_sha": new_commit_sha,
                         "message": message,
                     }
-                else:
-                    return {"success": False, "error": "Error actualizando referencia"}
+                return {"success": False, "error": "Error actualizando referencia"}
 
         except Exception as exc:
             logger.error(f"[GitHub] Error en commit/push: {exc}")
@@ -215,9 +212,9 @@ class DatabaseIntegration:
         try:
             if db_type == "postgresql":
                 import asyncpg
+
                 self.connection = await asyncpg.connect(self.connection_string)
             elif db_type == "mysql":
-                import aiomysql
                 # Parsear connection string
                 pass
             else:
@@ -231,7 +228,7 @@ class DatabaseIntegration:
             logger.error(f"[Database] Error conectando: {exc}")
             return False
 
-    async def execute_query(self, query: str, params: List[Any] = None) -> Dict[str, Any]:
+    async def execute_query(self, query: str, params: list[Any] = None) -> dict[str, Any]:
         """Ejecuta una consulta SQL."""
         try:
             if not self.connection:
@@ -249,7 +246,7 @@ class DatabaseIntegration:
             logger.error(f"[Database] Error ejecutando consulta: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def execute_mutation(self, query: str, params: List[Any] = None) -> Dict[str, Any]:
+    async def execute_mutation(self, query: str, params: list[Any] = None) -> dict[str, Any]:
         """Ejecuta una mutación (INSERT, UPDATE, DELETE)."""
         try:
             if not self.connection:
@@ -283,9 +280,9 @@ class OAuth2Integration:
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
-        self.tokens: Dict[str, Dict[str, Any]] = {}
+        self.tokens: dict[str, dict[str, Any]] = {}
 
-    def generate_auth_url(self, provider: str, scope: List[str]) -> str:
+    def generate_auth_url(self, provider: str, scope: list[str]) -> str:
         """Genera URL de autorización."""
         auth_urls = {
             "github": "https://github.com/login/oauth/authorize",
@@ -307,7 +304,7 @@ class OAuth2Integration:
         query_string = "&".join([f"{k}={v}" for k, v in params.items()])
         return f"{base_url}?{query_string}"
 
-    async def exchange_code(self, provider: str, code: str) -> Dict[str, Any]:
+    async def exchange_code(self, provider: str, code: str) -> dict[str, Any]:
         """Intercambia un código por un token."""
         token_urls = {
             "github": "https://github.com/login/oauth/access_token",
@@ -336,21 +333,20 @@ class OAuth2Integration:
                     token_data = response.json()
                     self.tokens[provider] = token_data
                     return {"success": True, "token": token_data}
-                else:
-                    return {"success": False, "error": f"HTTP {response.status_code}"}
+                return {"success": False, "error": f"HTTP {response.status_code}"}
 
         except Exception as exc:
             logger.error(f"[OAuth2] Error intercambiando código: {exc}")
             return {"success": False, "error": str(exc)}
 
-    def generate_jwt(self, payload: Dict[str, Any], secret: str, expires_in: int = 3600) -> str:
+    def generate_jwt(self, payload: dict[str, Any], secret: str, expires_in: int = 3600) -> str:
         """Genera un JWT."""
-        payload["exp"] = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
-        payload["iat"] = datetime.now(timezone.utc)
+        payload["exp"] = datetime.now(UTC) + timedelta(seconds=expires_in)
+        payload["iat"] = datetime.now(UTC)
 
         return jwt.encode(payload, secret, algorithm="HS256")
 
-    def verify_jwt(self, token: str, secret: str) -> Optional[Dict[str, Any]]:
+    def verify_jwt(self, token: str, secret: str) -> dict[str, Any] | None:
         """Verifica un JWT."""
         try:
             return jwt.decode(token, secret, algorithms=["HS256"])
@@ -362,8 +358,8 @@ class WebhookIntegration:
     """Integración de webhooks para eventos."""
 
     def __init__(self):
-        self.webhooks: Dict[str, List[str]] = {}
-        self.event_history: List[Dict[str, Any]] = []
+        self.webhooks: dict[str, list[str]] = {}
+        self.event_history: list[dict[str, Any]] = []
 
     def register_webhook(self, event_type: str, url: str) -> bool:
         """Registra un webhook para un tipo de evento."""
@@ -379,7 +375,7 @@ class WebhookIntegration:
             logger.error(f"[Webhooks] Error registrando webhook: {exc}")
             return False
 
-    async def trigger_event(self, event_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def trigger_event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Dispara un evento y notifica a los webhooks registrados."""
         try:
             urls = self.webhooks.get(event_type, [])
@@ -389,11 +385,13 @@ class WebhookIntegration:
                 return {"success": True, "webhooks_triggered": 0}
 
             # Registrar evento
-            self.event_history.append({
-                "event_type": event_type,
-                "payload": payload,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
+            self.event_history.append(
+                {
+                    "event_type": event_type,
+                    "payload": payload,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
 
             # Disparar webhooks
             tasks = [self._call_webhook(url, event_type, payload) for url in urls]
@@ -412,7 +410,9 @@ class WebhookIntegration:
             logger.error(f"[Webhooks] Error disparando evento: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _call_webhook(self, url: str, event_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def _call_webhook(
+        self, url: str, event_type: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         """Llama a un webhook."""
         try:
             # Generar firma HMAC

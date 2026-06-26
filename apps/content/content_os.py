@@ -2,17 +2,17 @@
 Content Operating System — unified content creation and distribution platform.
 Manages the full lifecycle: ideation → scripting → scheduling → publishing.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.content.os")
 
@@ -20,22 +20,48 @@ _REDIS_KEY = "content_os:v1"
 _TTL = 86400 * 30  # 30 days
 
 _EMOTIONAL_WORDS = {
-    "amazing", "incredible", "shocking", "secret", "proven", "powerful",
-    "ultimate", "explosive", "breakthrough", "revolutionary", "terrifying",
-    "surprising", "unbelievable", "stunning", "dramatic", "critical",
-    "urgent", "dangerous", "essential", "devastating", "inspiring",
+    "amazing",
+    "incredible",
+    "shocking",
+    "secret",
+    "proven",
+    "powerful",
+    "ultimate",
+    "explosive",
+    "breakthrough",
+    "revolutionary",
+    "terrifying",
+    "surprising",
+    "unbelievable",
+    "stunning",
+    "dramatic",
+    "critical",
+    "urgent",
+    "dangerous",
+    "essential",
+    "devastating",
+    "inspiring",
 }
 
 _TRENDING_MARKERS = {
-    "ai", "chatgpt", "viral", "trending", "2024", "2025", "hack",
-    "growth", "passive income", "side hustle", "automation",
+    "ai",
+    "chatgpt",
+    "viral",
+    "trending",
+    "2024",
+    "2025",
+    "hack",
+    "growth",
+    "passive income",
+    "side hustle",
+    "automation",
 }
 
 
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
 
-class ContentType(str, Enum):
+class ContentType(StrEnum):
     BLOG_POST = "blog_post"
     YOUTUBE_SCRIPT = "youtube_script"
     SHORT_FORM_VIDEO = "short_form_video"
@@ -47,7 +73,7 @@ class ContentType(str, Enum):
     PODCAST_OUTLINE = "podcast_outline"
 
 
-class ContentStatus(str, Enum):
+class ContentStatus(StrEnum):
     IDEATED = "ideated"
     SCRIPTED = "scripted"
     PRODUCED = "produced"
@@ -56,7 +82,7 @@ class ContentStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-class ContentPlatform(str, Enum):
+class ContentPlatform(StrEnum):
     YOUTUBE = "youtube"
     TIKTOK = "tiktok"
     INSTAGRAM = "instagram"
@@ -137,13 +163,13 @@ class ContentCalendarEntry:
 # ── Platform → ContentType mapping for calendar ───────────────────────────────
 
 _DAY_PLAN: dict[int, tuple[ContentPlatform, ContentType]] = {
-    0: (ContentPlatform.LINKEDIN, ContentType.LINKEDIN_POST),      # Monday
-    1: (ContentPlatform.BLOG, ContentType.BLOG_POST),              # Tuesday
-    2: (ContentPlatform.YOUTUBE, ContentType.YOUTUBE_SCRIPT),      # Wednesday
-    3: (ContentPlatform.EMAIL, ContentType.EMAIL_NEWSLETTER),      # Thursday
-    4: (ContentPlatform.TWITTER, ContentType.TWEET_THREAD),        # Friday
-    5: (ContentPlatform.TIKTOK, ContentType.SHORT_FORM_VIDEO),     # Saturday
-    6: (ContentPlatform.INSTAGRAM, ContentType.BLOG_POST),         # Sunday (ideation)
+    0: (ContentPlatform.LINKEDIN, ContentType.LINKEDIN_POST),  # Monday
+    1: (ContentPlatform.BLOG, ContentType.BLOG_POST),  # Tuesday
+    2: (ContentPlatform.YOUTUBE, ContentType.YOUTUBE_SCRIPT),  # Wednesday
+    3: (ContentPlatform.EMAIL, ContentType.EMAIL_NEWSLETTER),  # Thursday
+    4: (ContentPlatform.TWITTER, ContentType.TWEET_THREAD),  # Friday
+    5: (ContentPlatform.TIKTOK, ContentType.SHORT_FORM_VIDEO),  # Saturday
+    6: (ContentPlatform.INSTAGRAM, ContentType.BLOG_POST),  # Sunday (ideation)
 }
 
 
@@ -179,7 +205,7 @@ class ContentOS:
         except Exception as exc:
             logger.warning("ContentOS: save failed — %s", exc)
 
-    async def _get_piece(self, content_id: str) -> Optional[ContentPiece]:
+    async def _get_piece(self, content_id: str) -> ContentPiece | None:
         raw = await self._load()
         for d in raw:
             if d.get("content_id") == content_id:
@@ -229,7 +255,12 @@ class ContentOS:
                     )
                     if response.success and response.content:
                         import json as _json
-                        parsed = _json.loads(response.content) if isinstance(response.content, str) else response.content
+
+                        parsed = (
+                            _json.loads(response.content)
+                            if isinstance(response.content, str)
+                            else response.content
+                        )
                         if isinstance(parsed, list):
                             ai_ideas = parsed[:count]
             except Exception as exc:
@@ -238,7 +269,10 @@ class ContentOS:
             # Fallback if AI unavailable or returned bad data
             if not ai_ideas:
                 ai_ideas = [
-                    {"title": f"{topic}: A Complete Guide #{i+1}", "hook": f"Everything you need to know about {topic}"}
+                    {
+                        "title": f"{topic}: A Complete Guide #{i+1}",
+                        "hook": f"Everything you need to know about {topic}",
+                    }
                     for i in range(count)
                 ]
 
@@ -261,7 +295,7 @@ class ContentOS:
         await self._save(existing + results)
         return results
 
-    async def generate_script(self, content_id: str) -> Optional[ContentPiece]:
+    async def generate_script(self, content_id: str) -> ContentPiece | None:
         """Write a full script/body for a content piece and mark it SCRIPTED."""
         piece = await self._get_piece(content_id)
         if not piece:
@@ -298,7 +332,7 @@ class ContentOS:
         await self._upsert_piece(piece)
         return piece
 
-    async def score_virality(self, content_id: str) -> Optional[ContentPiece]:
+    async def score_virality(self, content_id: str) -> ContentPiece | None:
         """Score virality 0–1 based on title characteristics."""
         piece = await self._get_piece(content_id)
         if not piece:
@@ -381,8 +415,8 @@ class ContentOS:
 
     async def get_all_content(
         self,
-        status_filter: Optional[ContentStatus] = None,
-        platform_filter: Optional[ContentPlatform] = None,
+        status_filter: ContentStatus | None = None,
+        platform_filter: ContentPlatform | None = None,
     ) -> list[ContentPiece]:
         """Return all content pieces, optionally filtered."""
         raw = await self._load()
@@ -407,7 +441,9 @@ class ContentOS:
             if p.virality_score > 0:
                 virality_scores.append(p.virality_score)
 
-        avg_virality = round(sum(virality_scores) / len(virality_scores), 3) if virality_scores else 0.0
+        avg_virality = (
+            round(sum(virality_scores) / len(virality_scores), 3) if virality_scores else 0.0
+        )
         top_content = sorted(pieces, key=lambda p: p.virality_score, reverse=True)[:5]
 
         return {
@@ -455,7 +491,7 @@ _DAY_TITLE_SUFFIX: dict[int, str] = {
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_content_os_instance: Optional[ContentOS] = None
+_content_os_instance: ContentOS | None = None
 
 
 def get_content_os() -> ContentOS:

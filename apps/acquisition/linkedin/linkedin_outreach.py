@@ -8,15 +8,15 @@ Capabilities:
   - Multi-step outreach sequences
   - Pipeline analytics
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 # ── Redis configuration ────────────────────────────────────────────────────────
 _REDIS_KEY = "acquisition:linkedin:v1"
@@ -26,6 +26,7 @@ _TTL_90D = 60 * 60 * 24 * 90
 # ══════════════════════════════════════════════════════════════════════════════
 # Domain objects
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class LinkedInProspect:
@@ -87,6 +88,7 @@ class LinkedInMessage:
 # LinkedIn Outreach
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class LinkedInOutreach:
     """
     AI-powered LinkedIn outreach system.
@@ -114,7 +116,7 @@ class LinkedInOutreach:
             ttl_seconds=_TTL_90D,
         )
 
-    def _find_prospect(self, prospect_id: str) -> Optional[dict]:
+    def _find_prospect(self, prospect_id: str) -> dict | None:
         for p in self._prospects:
             if p.get("prospect_id") == prospect_id:
                 return p
@@ -143,9 +145,7 @@ class LinkedInOutreach:
         await self._save()
         return prospect
 
-    async def score_prospect(
-        self, prospect_id: str, service_offered: str
-    ) -> LinkedInProspect:
+    async def score_prospect(self, prospect_id: str, service_offered: str) -> LinkedInProspect:
         """AI scores prospect relevance 0-1."""
         await self._load()
         prospect_dict = self._find_prospect(prospect_id)
@@ -183,14 +183,20 @@ class LinkedInOutreach:
                     pass
 
         prospect_dict["relevance_score"] = round(score, 2)
-        prospect_dict["pain_point_hypothesis"] = resp.content[:200] if resp.success else f"Needs {service_offered}"
+        prospect_dict["pain_point_hypothesis"] = (
+            resp.content[:200] if resp.success else f"Needs {service_offered}"
+        )
         await self._save()
 
-        return LinkedInProspect(**{k: prospect_dict[k] for k in LinkedInProspect.__dataclass_fields__ if k in prospect_dict})
+        return LinkedInProspect(
+            **{
+                k: prospect_dict[k]
+                for k in LinkedInProspect.__dataclass_fields__
+                if k in prospect_dict
+            }
+        )
 
-    async def generate_connection_request(
-        self, prospect_id: str, service: str
-    ) -> LinkedInMessage:
+    async def generate_connection_request(self, prospect_id: str, service: str) -> LinkedInMessage:
         """AI generates personalized <300 char connection note."""
         await self._load()
         prospect_dict = self._find_prospect(prospect_id)
@@ -213,7 +219,11 @@ class LinkedInOutreach:
             model=AIModel.CREATIVE,
             max_tokens=100,
         )
-        body = resp.content.strip() if resp.success else f"Hi {name}, I help {title}s like you with {service}. Would love to connect!"
+        body = (
+            resp.content.strip()
+            if resp.success
+            else f"Hi {name}, I help {title}s like you with {service}. Would love to connect!"
+        )
         # Enforce 300 char limit
         if len(body) > 299:
             body = body[:296] + "..."
@@ -273,7 +283,7 @@ class LinkedInOutreach:
                     msg_bodies[i] = content[start:end].strip()
 
         messages = []
-        for i, (msg_type, subject) in enumerate(zip(message_types, subjects)):
+        for i, (msg_type, subject) in enumerate(zip(message_types, subjects, strict=False)):
             body = msg_bodies.get(i + 1, f"Message {i+1} for {name} about {service}")
             if msg_type == "connection_request" and len(body) > 299:
                 body = body[:296] + "..."
@@ -312,13 +322,18 @@ class LinkedInOutreach:
             scores.append(p.get("relevance_score", 0.0))
 
         total = len(self._prospects)
-        connected = by_status.get("connected", 0) + by_status.get("messaged", 0) + by_status.get("replied", 0) + by_status.get("qualified", 0)
+        connected = (
+            by_status.get("connected", 0)
+            + by_status.get("messaged", 0)
+            + by_status.get("replied", 0)
+            + by_status.get("qualified", 0)
+        )
         replied = by_status.get("replied", 0) + by_status.get("qualified", 0)
         connection_sent = by_status.get("connection_sent", 0)
 
         avg_score = sum(scores) / len(scores) if scores else 0.0
         connection_rate = (connected / connection_sent * 100) if connection_sent > 0 else 0.0
-        reply_rate = (replied / max(connected, 1) * 100)
+        reply_rate = replied / max(connected, 1) * 100
 
         return {
             "total_prospects": total,
@@ -330,7 +345,7 @@ class LinkedInOutreach:
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
-_instance: Optional[LinkedInOutreach] = None
+_instance: LinkedInOutreach | None = None
 
 
 def get_linkedin_outreach() -> LinkedInOutreach:

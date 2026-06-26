@@ -2,18 +2,17 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _TTL = 90 * 24 * 3600
 _CACHE_KEY = "autonomy:self_direction:v1"
 
 
-class DirectiveType(str, Enum):
+class DirectiveType(StrEnum):
     OPTIMIZE = "OPTIMIZE"
     EXPLORE = "EXPLORE"
     CONSOLIDATE = "CONSOLIDATE"
@@ -253,7 +252,7 @@ class SelfDirector:
             if not d.get("executed", False)
         ]
 
-    async def mark_executed(self, directive_id: str) -> Optional[AutonomousDirective]:
+    async def mark_executed(self, directive_id: str) -> AutonomousDirective | None:
         await self._load()
         for i, d in enumerate(self._directives):
             if d.get("directive_id") == directive_id:

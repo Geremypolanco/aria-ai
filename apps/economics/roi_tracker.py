@@ -2,15 +2,15 @@
 ARIA ROI Tracker — tracks return on investment per action, department, and campaign.
 Provides AI-powered recommendations on where to double down.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _ROI_KEY = "economics:roi:v1"
 _ROI_TTL = 86400 * 90  # 90 days
@@ -20,10 +20,10 @@ _ROI_TTL = 86400 * 90  # 90 days
 class ROIRecord:
     record_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     name: str = ""
-    category: str = ""       # "action", "campaign", "department", "experiment"
+    category: str = ""  # "action", "campaign", "department", "experiment"
     investment_usd: float = 0.0
     returns_usd: float = 0.0
-    roi_pct: float = 0.0     # (returns - investment) / investment * 100
+    roi_pct: float = 0.0  # (returns - investment) / investment * 100
     payback_days: float = 0.0
     status: str = "tracking"  # "tracking"|"concluded"|"failed"
     started_at: float = field(default_factory=time.time)
@@ -85,7 +85,7 @@ class ROITracker:
         await self._save()
         return record
 
-    async def update_returns(self, record_id: str, returns_usd: float) -> Optional[ROIRecord]:
+    async def update_returns(self, record_id: str, returns_usd: float) -> ROIRecord | None:
         """Update returns and recalculate ROI metrics."""
         await self._load()
         for i, r in enumerate(self._records):
@@ -117,14 +117,16 @@ class ROITracker:
                 return record
         return None
 
-    async def conclude(self, record_id: str, final_returns_usd: float) -> Optional[ROIRecord]:
+    async def conclude(self, record_id: str, final_returns_usd: float) -> ROIRecord | None:
         """Conclude an investment with final returns."""
         await self._load()
         for i, r in enumerate(self._records):
             if r.get("record_id") == record_id:
                 investment = r.get("investment_usd", 0.0)
                 roi_pct = (final_returns_usd - investment) / max(investment, 0.01) * 100
-                payback_days = (investment / (final_returns_usd / 30)) if final_returns_usd > 0 else 999.0
+                payback_days = (
+                    (investment / (final_returns_usd / 30)) if final_returns_usd > 0 else 999.0
+                )
                 concluded_at = time.time()
                 status = "concluded" if final_returns_usd >= investment else "failed"
 
@@ -232,7 +234,7 @@ class ROITracker:
         return "ROI analysis: Insufficient data for recommendations."
 
 
-_instance: Optional[ROITracker] = None
+_instance: ROITracker | None = None
 
 
 def get_roi_tracker() -> ROITracker:

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import time
-import uuid
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 
-class GenericityRisk(str, Enum):
+class GenericityRisk(StrEnum):
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
@@ -88,9 +86,7 @@ class DifferentiationEngine:
     async def analyze(self, content: str) -> DifferentiationReport:
         content_lower = content.lower()
         found_phrases = [p for p in self._GENERIC_PHRASES if p in content_lower]
-        genericity_score = min(
-            1.0, len(found_phrases) / max(len(self._GENERIC_PHRASES), 1)
-        )
+        genericity_score = min(1.0, len(found_phrases) / max(len(self._GENERIC_PHRASES), 1))
 
         if genericity_score < 0.1:
             risk_level = GenericityRisk.LOW
@@ -103,6 +99,7 @@ class DifferentiationEngine:
 
         # Detect unique elements: numbers, capitalised proper nouns, percentages
         import re
+
         numbers = re.findall(r"\b\d[\d,.]*%?\b", content)
         proper_nouns = re.findall(r"\b[A-Z][a-z]{2,}\b", content)
         unique_elements: list[str] = []
@@ -154,6 +151,7 @@ class DifferentiationEngine:
         for phrase, replacement in self._PHRASE_ALTERNATIVES.items():
             # Case-insensitive replacement preserving surrounding context
             import re
+
             pattern = re.compile(re.escape(phrase), re.IGNORECASE)
             purged = pattern.sub(replacement, purged)
         try:
@@ -213,6 +211,7 @@ class DifferentiationEngine:
         # Topic repetition check: find repeated first words across pieces
         first_words = [c.split()[0].lower() if c.split() else "" for c in content_history]
         from collections import Counter
+
         word_freq = Counter(first_words)
         for word, freq in word_freq.items():
             if freq >= 3 and len(word) > 3:
@@ -220,7 +219,9 @@ class DifferentiationEngine:
         fatigue_risk = min(1.0, len(overused) * 0.15)
         recommendations: list[str] = []
         if fatigue_risk > 0.5:
-            recommendations.append("Rotate content formats: add case studies, data reports, or Q&As")
+            recommendations.append(
+                "Rotate content formats: add case studies, data reports, or Q&As"
+            )
             recommendations.append("Introduce guest perspectives or external validation")
         if overused:
             recommendations.append("Audit and replace the identified overused patterns immediately")

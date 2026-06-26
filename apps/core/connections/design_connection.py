@@ -2,10 +2,10 @@
 Design connection para ARIA AI.
 Soporta Figma (OAuth + API) y Canva (OAuth).
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -27,19 +27,22 @@ CANVA_SCOPES = "design:content:read design:meta:read asset:read"
 
 class FigmaConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "FIGMA_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "FIGMA_CLIENT_SECRET", None)
 
-    def _api_token(self) -> Optional[str]:
+    def _api_token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "FIGMA_API_TOKEN", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -52,19 +55,22 @@ class FigmaConnection:
         }
         return f"{FIGMA_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("FIGMA_CLIENT_ID / FIGMA_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(FIGMA_TOKEN_URL, data={
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": FIGMA_REDIRECT,
-                "code": code,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                FIGMA_TOKEN_URL,
+                data={
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": FIGMA_REDIRECT,
+                    "code": code,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -73,13 +79,13 @@ class FigmaConnection:
                 "service_user": data.get("user_id", "figma_user"),
             }
 
-    def _h(self, tokens: Optional[dict] = None) -> dict:
+    def _h(self, tokens: dict | None = None) -> dict:
         if tokens:
             return {"X-Figma-Token": tokens.get("access_token", "")}
         key = self._api_token()
         return {"X-Figma-Token": key} if key else {}
 
-    async def list_files(self, tokens: Optional[dict] = None, project_id: str = "") -> list[dict]:
+    async def list_files(self, tokens: dict | None = None, project_id: str = "") -> list[dict]:
         headers = self._h(tokens)
         if not project_id:
             return [{"error": "project_id required to list files"}]
@@ -87,11 +93,15 @@ class FigmaConnection:
             r = await http.get(f"{FIGMA_API}/projects/{project_id}/files", headers=headers)
             r.raise_for_status()
             return [
-                {"key": f.get("key"), "name": f.get("name"), "thumbnail_url": f.get("thumbnail_url")}
+                {
+                    "key": f.get("key"),
+                    "name": f.get("name"),
+                    "thumbnail_url": f.get("thumbnail_url"),
+                }
                 for f in r.json().get("files", [])
             ]
 
-    async def get_file(self, tokens: Optional[dict], file_key: str) -> dict:
+    async def get_file(self, tokens: dict | None, file_key: str) -> dict:
         headers = self._h(tokens)
         async with httpx.AsyncClient(timeout=20.0) as http:
             r = await http.get(f"{FIGMA_API}/files/{file_key}", headers=headers)
@@ -105,7 +115,7 @@ class FigmaConnection:
                 "pages": [p.get("name") for p in data.get("document", {}).get("children", [])],
             }
 
-    async def get_comments(self, tokens: Optional[dict], file_key: str) -> list[dict]:
+    async def get_comments(self, tokens: dict | None, file_key: str) -> list[dict]:
         headers = self._h(tokens)
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(f"{FIGMA_API}/files/{file_key}/comments", headers=headers)
@@ -120,28 +130,29 @@ class FigmaConnection:
                 for c in r.json().get("comments", [])
             ]
 
-    async def list_projects(self, tokens: Optional[dict], team_id: str) -> list[dict]:
+    async def list_projects(self, tokens: dict | None, team_id: str) -> list[dict]:
         headers = self._h(tokens)
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(f"{FIGMA_API}/teams/{team_id}/projects", headers=headers)
             r.raise_for_status()
             return [
-                {"id": p.get("id"), "name": p.get("name")}
-                for p in r.json().get("projects", [])
+                {"id": p.get("id"), "name": p.get("name")} for p in r.json().get("projects", [])
             ]
 
 
 class CanvaConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "CANVA_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "CANVA_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -154,20 +165,25 @@ class CanvaConnection:
         }
         return f"{CANVA_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("CANVA_CLIENT_ID / CANVA_CLIENT_SECRET no configurados")
         import base64
+
         credentials = base64.b64encode(f"{cid}:{sec}".encode()).decode()
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(CANVA_TOKEN_URL, data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": CANVA_REDIRECT,
-                "code_verifier": "",
-            }, headers={"Authorization": f"Basic {credentials}"})
+            r = await http.post(
+                CANVA_TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": CANVA_REDIRECT,
+                    "code_verifier": "",
+                },
+                headers={"Authorization": f"Basic {credentials}"},
+            )
             r.raise_for_status()
             data = r.json()
             return {

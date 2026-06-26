@@ -11,20 +11,25 @@ Install in main.py:
     from apps.core.observability.middleware import AriaObservabilityMiddleware
     app.add_middleware(AriaObservabilityMiddleware)
 """
+
 from __future__ import annotations
 
 import time
 import uuid
-from typing import Callable
+from typing import TYPE_CHECKING
 
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
-from starlette.types import ASGIApp
 
 from apps.core.observability.logging import get_logger
 from apps.core.observability.metrics import get_metrics
 from apps.core.observability.tracing import get_tracer
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from starlette.requests import Request
+    from starlette.responses import Response
+    from starlette.types import ASGIApp
 
 logger = get_logger("aria.middleware")
 _tracer = get_tracer("aria.http")
@@ -68,7 +73,6 @@ class AriaObservabilityMiddleware(BaseHTTPMiddleware):
             span.set_attribute("aria.request_id", request_id)
 
             response: Response | None = None
-            exc_recorded = False
 
             try:
                 response = await call_next(request)
@@ -81,6 +85,7 @@ class AriaObservabilityMiddleware(BaseHTTPMiddleware):
                 if is_error:
                     try:
                         from opentelemetry.trace import StatusCode
+
                         span.set_status(StatusCode.ERROR, f"HTTP {response.status_code}")
                     except ImportError:
                         pass
@@ -88,12 +93,12 @@ class AriaObservabilityMiddleware(BaseHTTPMiddleware):
                 return response
 
             except Exception as exc:
-                exc_recorded = True
                 self._metrics.record_request(error=True)
 
                 try:
                     span.record_exception(exc, escaped=True)
                     from opentelemetry.trace import StatusCode
+
                     span.set_status(StatusCode.ERROR, str(exc))
                 except ImportError:
                     pass

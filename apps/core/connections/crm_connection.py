@@ -10,10 +10,11 @@ Requiere en Fly.io secrets:
   SALESFORCE_CLIENT_ID     → setup.salesforce.com → App Manager
   SALESFORCE_CLIENT_SECRET → mismo lugar
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -38,25 +39,29 @@ SALESFORCE_TOKEN_URL = "https://login.salesforce.com/services/oauth2/token"
 #  HubSpot
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class HubSpotConnection:
 
     REDIRECT_URI = HUBSPOT_REDIRECT_URI
     AUTH_URL = HUBSPOT_AUTH_URL
     TOKEN_URL = HUBSPOT_TOKEN_URL
 
-    def _api_key(self) -> Optional[str]:
+    def _api_key(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "HUBSPOT_API_KEY", None)
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "HUBSPOT_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "HUBSPOT_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -64,33 +69,38 @@ class HubSpotConnection:
             "client_id": cid,
             "redirect_uri": HUBSPOT_REDIRECT_URI,
             "scope": "crm.objects.contacts.read crm.objects.contacts.write "
-                     "crm.objects.deals.read crm.objects.deals.write "
-                     "crm.objects.companies.read",
+            "crm.objects.deals.read crm.objects.deals.write "
+            "crm.objects.companies.read",
             "response_type": "code",
             "state": chat_id,
         }
         return f"{HUBSPOT_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("HUBSPOT_CLIENT_ID / HUBSPOT_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(HUBSPOT_TOKEN_URL, data={
-                "grant_type": "authorization_code",
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": HUBSPOT_REDIRECT_URI,
-                "code": code,
-            })
+            r = await http.post(
+                HUBSPOT_TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": HUBSPOT_REDIRECT_URI,
+                    "code": code,
+                },
+            )
             r.raise_for_status()
             data = r.json()
             # Fetch account info for service_user
             info_r = await http.get(
                 f"{HUBSPOT_BASE}/oauth/v1/access-tokens/{data['access_token']}",
             )
-            hub_user = info_r.json().get("user", "unknown") if info_r.status_code == 200 else "unknown"
+            hub_user = (
+                info_r.json().get("user", "unknown") if info_r.status_code == 200 else "unknown"
+            )
             return {
                 "access_token": data["access_token"],
                 "refresh_token": data.get("refresh_token"),
@@ -103,12 +113,15 @@ class HubSpotConnection:
         cid = self._client_id()
         sec = self._client_secret()
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(HUBSPOT_TOKEN_URL, data={
-                "grant_type": "refresh_token",
-                "client_id": cid,
-                "client_secret": sec,
-                "refresh_token": tokens["refresh_token"],
-            })
+            r = await http.post(
+                HUBSPOT_TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "refresh_token": tokens["refresh_token"],
+                },
+            )
             r.raise_for_status()
             data = r.json()
             tokens["access_token"] = data["access_token"]
@@ -162,8 +175,15 @@ class HubSpotConnection:
                 for c in results
             ]
 
-    async def create_contact(self, tokens: Any, email: str, firstname: str = "",
-                              lastname: str = "", company: str = "", phone: str = "") -> dict:
+    async def create_contact(
+        self,
+        tokens: Any,
+        email: str,
+        firstname: str = "",
+        lastname: str = "",
+        company: str = "",
+        phone: str = "",
+    ) -> dict:
         """Create a new CRM contact."""
         auth = self._auth(tokens)
         payload = {
@@ -218,8 +238,9 @@ class HubSpotConnection:
                 for d in results
             ]
 
-    async def create_deal(self, tokens: Any, dealname: str, amount: float = 0,
-                          stage: str = "appointmentscheduled") -> dict:
+    async def create_deal(
+        self, tokens: Any, dealname: str, amount: float = 0, stage: str = "appointmentscheduled"
+    ) -> dict:
         """Create a new CRM deal."""
         auth = self._auth(tokens)
         payload = {
@@ -311,21 +332,24 @@ class HubSpotConnection:
 #  Salesforce
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class SalesforceConnection:
 
     REDIRECT_URI = SALESFORCE_REDIRECT_URI
     AUTH_URL = SALESFORCE_AUTH_URL
     TOKEN_URL = SALESFORCE_TOKEN_URL
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "SALESFORCE_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "SALESFORCE_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -337,19 +361,22 @@ class SalesforceConnection:
         }
         return f"{SALESFORCE_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("SALESFORCE_CLIENT_ID / SALESFORCE_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(SALESFORCE_TOKEN_URL, data={
-                "grant_type": "authorization_code",
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": SALESFORCE_REDIRECT_URI,
-                "code": code,
-            })
+            r = await http.post(
+                SALESFORCE_TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": SALESFORCE_REDIRECT_URI,
+                    "code": code,
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -365,12 +392,15 @@ class SalesforceConnection:
         cid = self._client_id()
         sec = self._client_secret()
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(SALESFORCE_TOKEN_URL, data={
-                "grant_type": "refresh_token",
-                "client_id": cid,
-                "client_secret": sec,
-                "refresh_token": tokens["refresh_token"],
-            })
+            r = await http.post(
+                SALESFORCE_TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "refresh_token": tokens["refresh_token"],
+                },
+            )
             r.raise_for_status()
             data = r.json()
             tokens["access_token"] = data["access_token"]
@@ -422,8 +452,9 @@ class SalesforceConnection:
             for r in records
         ]
 
-    async def create_lead(self, tokens: dict, lastname: str, email: str,
-                          company: str, phone: str = "") -> dict:
+    async def create_lead(
+        self, tokens: dict, lastname: str, email: str, company: str, phone: str = ""
+    ) -> dict:
         """Create a new lead."""
         payload = {
             "LastName": lastname,
@@ -468,8 +499,9 @@ class SalesforceConnection:
             for r in records
         ]
 
-    async def create_opportunity(self, tokens: dict, name: str, stage: str,
-                                  close_date: str, amount: float = 0) -> dict:
+    async def create_opportunity(
+        self, tokens: dict, name: str, stage: str, close_date: str, amount: float = 0
+    ) -> dict:
         """Create a new opportunity.
 
         close_date: 'YYYY-MM-DD' string.

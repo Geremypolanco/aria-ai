@@ -5,13 +5,14 @@ Mount this router in main.py:
     from apps.core.routes.api import router as api_router
     app.include_router(api_router)
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections import deque
 from datetime import datetime
-from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.security import APIKeyHeader
@@ -27,12 +28,14 @@ _activity_log: deque = deque(maxlen=200)
 
 
 def _log_activity(level: str, message: str, category: str = "info") -> None:
-    _activity_log.append({
-        "ts": datetime.utcnow().isoformat(),
-        "level": level,
-        "category": category,
-        "message": message,
-    })
+    _activity_log.append(
+        {
+            "ts": datetime.utcnow().isoformat(),
+            "level": level,
+            "category": category,
+            "message": message,
+        }
+    )
 
 
 # ── API KEY AUTH ──────────────────────────────────────────────────────────────
@@ -40,7 +43,7 @@ def _log_activity(level: str, message: str, category: str = "info") -> None:
 _api_key_header = APIKeyHeader(name="X-ARIA-Key", auto_error=False)
 
 
-async def verify_api_key(api_key: Optional[str] = Depends(_api_key_header)) -> None:
+async def verify_api_key(api_key: str | None = Depends(_api_key_header)) -> None:
     """
     If ARIA_API_KEY is configured, requests must supply it via X-ARIA-Key header.
     If ARIA_API_KEY is not set, all requests are allowed (open mode).
@@ -61,8 +64,8 @@ router = APIRouter(prefix="/api/v1", tags=["ARIA API"])
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: Optional[str] = None
-    image_base64: Optional[str] = None  # base64 image for vision analysis
+    session_id: str | None = None
+    image_base64: str | None = None  # base64 image for vision analysis
 
 
 class RunRequest(BaseModel):
@@ -84,18 +87,21 @@ async def api_status() -> dict:
     """Full system status: trainer, agents, scheduler."""
     try:
         from apps.core.training.continuous_trainer import get_trainer
+
         trainer_status = get_trainer().get_status()
     except Exception as exc:
         trainer_status = {"error": str(exc)}
 
     try:
         from apps.core.agents.business_hub import _AGENT_REGISTRY
+
         agent_count = len(set(_AGENT_REGISTRY.values()))  # unique classes
     except Exception:
         agent_count = 0
 
     try:
         from apps.core.main import scheduler
+
         scheduler_running = scheduler.running
         jobs = [{"id": j.id, "next_run": str(j.next_run_time)} for j in scheduler.get_jobs()]
     except Exception:
@@ -104,6 +110,7 @@ async def api_status() -> dict:
 
     try:
         from apps.core.tools.task_manager import get_task_manager
+
         task_stats = get_task_manager().stats()
     except Exception:
         task_stats = {}
@@ -127,6 +134,7 @@ async def api_chat(req: ChatRequest) -> dict:
         # Vision path: analyze image first, then pass description + user question to ARIA
         if req.image_base64:
             from apps.core.tools.ai_client import get_ai_client
+
             client = get_ai_client()
             description = await client.analyze_image(
                 image_base64=req.image_base64,
@@ -136,6 +144,7 @@ async def api_chat(req: ChatRequest) -> dict:
             return {"reply": description, "tool_used": "analyze_image"}
 
         from apps.core.cognition.aria_mind import get_aria_mind
+
         mind = get_aria_mind()
         response = await mind.handle(req.message, session_id)
         _log_activity("info", f"Chat [{session_id}]: {req.message[:60]}", "chat")
@@ -143,11 +152,17 @@ async def api_chat(req: ChatRequest) -> dict:
             "reply": response.text or "",
             "tool_used": response.tool_used,
             "media_type": (
-                "image" if response.image_bytes else
-                "video" if response.video_bytes else
-                "audio" if response.audio_bytes else
-                "document" if response.document_bytes else
-                None
+                "image"
+                if response.image_bytes
+                else (
+                    "video"
+                    if response.video_bytes
+                    else (
+                        "audio"
+                        if response.audio_bytes
+                        else "document" if response.document_bytes else None
+                    )
+                )
             ),
         }
     except Exception as exc:
@@ -163,20 +178,21 @@ async def api_run(req: RunRequest) -> dict:
     try:
         if req.use_pipeline:
             from apps.core.agents.execution_pipeline import get_pipeline
+
             pipeline = get_pipeline()
             run = await pipeline.run(req.mission, req.agent)
             return {
                 "run_id": run.id,
                 "result": run.summary(),
             }
-        else:
-            from apps.core.agents.business_hub import get_business_hub
-            hub = get_business_hub()
-            result = await hub.dispatch(req.agent, req.mission)
-            return {
-                "run_id": None,
-                "result": result,
-            }
+        from apps.core.agents.business_hub import get_business_hub
+
+        hub = get_business_hub()
+        result = await hub.dispatch(req.agent, req.mission)
+        return {
+            "run_id": None,
+            "result": result,
+        }
     except Exception as exc:
         logger.error("[API /run] %s", exc, exc_info=True)
         _log_activity("error", f"Run error: {exc}", "run")
@@ -188,26 +204,27 @@ async def api_agents() -> list:
     """List all registered agents with metadata."""
     try:
         from apps.core.agents.business_hub import _AGENT_REGISTRY
+
         business_agents = list(_AGENT_REGISTRY.keys())
     except Exception:
         business_agents = []
 
     descriptions: dict[str, str] = {
-        "ceo":        "Estrategia ejecutiva, decisiones y delegación",
-        "marketing":  "SEO, redes sociales, campañas y crecimiento",
-        "sales":      "Revenue: productos, pagos, conversión",
-        "developer":  "Código, deploy, debugging autónomo",
-        "dev":        "Código, deploy, debugging autónomo (alias)",
-        "research":   "Investigación profunda de mercado e internet",
-        "content":    "Artículos, newsletters, publicación multi-plataforma",
-        "finance":    "Revenue tracking, P&L y forecasting",
-        "cfo":        "Chief Financial Officer — finanzas y reporting",
-        "cmo":        "Chief Marketing Officer — marketing estratégico",
-        "cto":        "Chief Technology Officer — arquitectura y desarrollo",
+        "ceo": "Estrategia ejecutiva, decisiones y delegación",
+        "marketing": "SEO, redes sociales, campañas y crecimiento",
+        "sales": "Revenue: productos, pagos, conversión",
+        "developer": "Código, deploy, debugging autónomo",
+        "dev": "Código, deploy, debugging autónomo (alias)",
+        "research": "Investigación profunda de mercado e internet",
+        "content": "Artículos, newsletters, publicación multi-plataforma",
+        "finance": "Revenue tracking, P&L y forecasting",
+        "cfo": "Chief Financial Officer — finanzas y reporting",
+        "cmo": "Chief Marketing Officer — marketing estratégico",
+        "cto": "Chief Technology Officer — arquitectura y desarrollo",
         # system agents
-        "orchestrator":        "Coordina ciclos autónomos y agentes especializados",
-        "aria_mind":           "Motor cognitivo central de ARIA",
-        "continuous_trainer":  "Loop de auto-mejora y evaluación 24/7",
+        "orchestrator": "Coordina ciclos autónomos y agentes especializados",
+        "aria_mind": "Motor cognitivo central de ARIA",
+        "continuous_trainer": "Loop de auto-mejora y evaluación 24/7",
     }
 
     seen: set[str] = set()
@@ -217,23 +234,27 @@ async def api_agents() -> list:
         if name in seen:
             continue
         seen.add(name)
-        agents_list.append({
-            "name": name,
-            "description": descriptions.get(name, "Agente de negocio especializado"),
-            "type": "business",
-            "available": True,
-        })
+        agents_list.append(
+            {
+                "name": name,
+                "description": descriptions.get(name, "Agente de negocio especializado"),
+                "type": "business",
+                "available": True,
+            }
+        )
 
     for name in ("orchestrator", "aria_mind", "continuous_trainer"):
         if name in seen:
             continue
         seen.add(name)
-        agents_list.append({
-            "name": name,
-            "description": descriptions.get(name, "Agente del sistema"),
-            "type": "system",
-            "available": True,
-        })
+        agents_list.append(
+            {
+                "name": name,
+                "description": descriptions.get(name, "Agente del sistema"),
+                "type": "system",
+                "available": True,
+            }
+        )
 
     return agents_list
 
@@ -243,6 +264,7 @@ async def api_goals() -> dict:
     """Return ARIA's active goals."""
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
+
         mind = get_aria_mind()
         goals = await mind._load_goals()
         return {"goals": goals, "count": len(goals)}
@@ -263,6 +285,7 @@ async def api_pipeline_get(run_id: str) -> dict:
     """Get a pipeline run by ID."""
     try:
         from apps.core.agents.execution_pipeline import get_pipeline
+
         pipeline = get_pipeline()
         run = pipeline.get_run(run_id)
         if run is None:
@@ -280,6 +303,7 @@ async def api_pipeline_list() -> dict:
     """List recent pipeline runs."""
     try:
         from apps.core.agents.execution_pipeline import get_pipeline
+
         pipeline = get_pipeline()
         runs = pipeline.list_runs(limit=20)
         return {"runs": runs, "count": len(runs)}
@@ -293,6 +317,7 @@ async def api_tasks(status: str = "") -> dict:
     """List background tasks managed by TaskManager."""
     try:
         from apps.core.tools.task_manager import get_task_manager
+
         mgr = get_task_manager()
         tasks = mgr.list_tasks(status=status or None, limit=50)
         stats = mgr.stats()
@@ -307,6 +332,7 @@ async def api_cancel_task(task_id: str) -> dict:
     """Cancel a queued background task."""
     try:
         from apps.core.tools.task_manager import get_task_manager
+
         ok = get_task_manager().cancel_task(task_id)
         return {"cancelled": ok, "task_id": task_id}
     except Exception as exc:
@@ -326,6 +352,7 @@ async def api_workflows_list() -> dict:
     """List all saved workflows."""
     try:
         from apps.core.tools.workflow_engine import get_workflow_engine
+
         engine = get_workflow_engine()
         await engine._ensure_loaded()
         return {"workflows": engine.list()}
@@ -339,6 +366,7 @@ async def api_workflows_create(req: WorkflowCreateRequest) -> dict:
     """Create a new workflow from a natural-language description."""
     try:
         from apps.core.tools.workflow_engine import get_workflow_engine
+
         result = await get_workflow_engine().create(req.name, req.description)
         _log_activity("info", f"Workflow created: {req.name}", "workflow")
         return result
@@ -352,6 +380,7 @@ async def api_workflows_run(workflow_id: str) -> dict:
     """Execute a workflow by ID."""
     try:
         from apps.core.tools.workflow_engine import get_workflow_engine
+
         result = await get_workflow_engine().run(workflow_id)
         _log_activity("info", f"Workflow run: {workflow_id}", "workflow")
         return result
@@ -365,6 +394,7 @@ async def api_workflows_delete(workflow_id: str) -> dict:
     """Delete a workflow by ID."""
     try:
         from apps.core.tools.workflow_engine import get_workflow_engine
+
         ok = get_workflow_engine().delete(workflow_id)
         return {"deleted": ok, "workflow_id": workflow_id}
     except Exception as exc:
@@ -375,10 +405,10 @@ async def api_workflows_delete(workflow_id: str) -> dict:
 
 
 class KBIngestRequest(BaseModel):
-    source: str                         # URL or raw text
+    source: str  # URL or raw text
     is_url: bool = False
-    category: Optional[str] = None
-    title: Optional[str] = None         # optional display name for text blocks
+    category: str | None = None
+    title: str | None = None  # optional display name for text blocks
 
 
 @router.get("/knowledge/sources", dependencies=[Depends(verify_api_key)])
@@ -386,6 +416,7 @@ async def api_kb_sources() -> dict:
     """List all knowledge base sources."""
     try:
         from apps.core.tools.knowledge_base import get_knowledge_base
+
         kb = get_knowledge_base()
         await kb._ensure_loaded()
         sources = kb.list_sources()
@@ -401,6 +432,7 @@ async def api_kb_ingest(req: KBIngestRequest) -> dict:
     """Ingest a URL or text block into the knowledge base."""
     try:
         from apps.core.tools.knowledge_base import get_knowledge_base
+
         kb = get_knowledge_base()
         if req.is_url:
             result = await kb.ingest_url(req.source)
@@ -419,6 +451,7 @@ async def api_kb_search(q: str = "", top_k: int = 5) -> dict:
     """Semantic search over the knowledge base."""
     try:
         from apps.core.tools.knowledge_base import get_knowledge_base
+
         kb = get_knowledge_base()
         if not q:
             return {"results": [], "query": q}
@@ -447,6 +480,7 @@ async def api_kb_delete_source(source_id: str) -> dict:
     """Delete a knowledge base source by source identifier."""
     try:
         from apps.core.tools.knowledge_base import get_knowledge_base
+
         kb = get_knowledge_base()
         count = kb.delete_source(source_id)
         await kb._persist()
@@ -460,6 +494,7 @@ async def api_ai_health() -> dict:
     """Return AI provider health: circuit breakers, success rates, token counts."""
     try:
         from apps.core.tools.ai_client import get_ai_client
+
         client = get_ai_client()
         return client.get_health_summary()
     except Exception as exc:
@@ -470,9 +505,10 @@ async def api_ai_health() -> dict:
 async def api_schedule(req: ScheduleRequest) -> dict:
     """Schedule a recurring task."""
     try:
-        from apps.core.main import scheduler
-        from apps.core.agents.business_hub import get_business_hub
         from apscheduler.triggers.interval import IntervalTrigger
+
+        from apps.core.agents.business_hub import get_business_hub
+        from apps.core.main import scheduler
 
         job_id = f"user_task_{hash(req.task) & 0xFFFFFF}"
 
@@ -492,7 +528,9 @@ async def api_schedule(req: ScheduleRequest) -> dict:
             id=job_id,
             replace_existing=True,
         )
-        _log_activity("info", f"Scheduled '{req.task[:60]}' every {req.interval_minutes}m", "schedule")
+        _log_activity(
+            "info", f"Scheduled '{req.task[:60]}' every {req.interval_minutes}m", "schedule"
+        )
         return {
             "job_id": job_id,
             "task": req.task,
@@ -512,6 +550,7 @@ async def api_income_status() -> dict:
     """Return IncomeLoop status: running state, cycle stats, recent history."""
     try:
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         return await loop.get_status_dict()
     except Exception as exc:
@@ -520,7 +559,7 @@ async def api_income_status() -> dict:
 
 
 class IncomeCycleRequest(BaseModel):
-    strategy: Optional[str] = None
+    strategy: str | None = None
 
 
 @router.post("/income/cycle", dependencies=[Depends(verify_api_key)])
@@ -528,6 +567,7 @@ async def api_income_run_cycle(req: IncomeCycleRequest | None = None) -> dict:
     """Execute one income cycle immediately (optionally with a specific strategy)."""
     try:
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         strategy = req.strategy if req else None
         result = await loop._run_one_cycle(force_strategy=strategy)
@@ -551,6 +591,7 @@ async def api_income_start() -> dict:
     """Start the IncomeLoop if not already running."""
     try:
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         if not loop.is_running:
             await loop.start()
@@ -564,6 +605,7 @@ async def api_income_stop() -> dict:
     """Stop the IncomeLoop."""
     try:
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         loop.stop()
         return {"running": loop.is_running}
@@ -576,6 +618,7 @@ async def api_income_strategies() -> dict:
     """Return all income strategies with weights and channel requirements."""
     try:
         from apps.core.tools.income_loop import STRATEGIES, get_income_loop
+
         loop = get_income_loop()
         creds = loop.check_credentials()
         total_weight = sum(w for _, w in STRATEGIES)
@@ -600,18 +643,16 @@ async def api_income_credentials() -> dict:
     """Show which income channels are configured vs. missing."""
     try:
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         creds = loop.check_credentials()
-        active_count   = len(creds.get("active", {}))
+        active_count = len(creds.get("active", {}))
         inactive_count = len(creds.get("inactive", {}))
         return {
             "active_count": active_count,
             "inactive_count": inactive_count,
             "active": list(creds.get("active", {}).keys()),
-            "inactive": {
-                k: v.get("keys_needed", [])
-                for k, v in creds.get("inactive", {}).items()
-            },
+            "inactive": {k: v.get("keys_needed", []) for k, v in creds.get("inactive", {}).items()},
         }
     except Exception as exc:
         return {"error": str(exc)}
@@ -621,9 +662,10 @@ async def api_income_credentials() -> dict:
 async def api_income_catalog(limit: int = 50) -> dict:
     """Return the product catalog — all published products, articles, and resources."""
     try:
-        from apps.core.tools.income_loop import get_income_loop
-        from apps.core.memory.redis_client import get_cache
         import json as _json
+
+        from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             return {"items": [], "total": 0, "error": "Redis unavailable"}
@@ -649,12 +691,15 @@ async def api_income_catalog(limit: int = 50) -> dict:
 @router.post("/income/run/{strategy}", dependencies=[Depends(verify_api_key)])
 async def api_income_run_strategy(strategy: str) -> dict:
     """Immediately run a specific income strategy."""
-    from apps.core.tools.income_loop import get_income_loop, STRATEGIES
+    from apps.core.tools.income_loop import STRATEGIES, get_income_loop
+
     valid = [s[0] for s in STRATEGIES]
     if strategy not in valid:
-        raise HTTPException(status_code=400, detail=f"Unknown strategy '{strategy}'. Valid: {valid}")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown strategy '{strategy}'. Valid: {valid}"
+        )
     try:
-        loop   = get_income_loop()
+        loop = get_income_loop()
         result = await loop._run_one_cycle(force_strategy=strategy)
         return {
             "strategy": result.strategy,
@@ -672,34 +717,39 @@ async def api_income_run_strategy(strategy: str) -> dict:
 async def api_income_analytics() -> dict:
     """Per-strategy analytics: runs, success rate, revenue, URLs published."""
     try:
-        from apps.core.tools.income_loop import get_income_loop, STRATEGIES
         from apps.core.memory.redis_client import get_cache
+        from apps.core.tools.income_loop import STRATEGIES, get_income_loop
+
         cache = get_cache()
         if not cache:
             return {"error": "Redis unavailable"}
-        loop = get_income_loop()
-        total_cycles   = int(await cache.get("aria:income:total_cycles") or 0)
+        get_income_loop()
+        total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
         success_cycles = int(await cache.get("aria:income:successful_cycles") or 0)
-        total_urls     = int(await cache.get("aria:income:total_urls_published") or 0)
+        total_urls = int(await cache.get("aria:income:total_urls_published") or 0)
         per_strategy = []
         for name, weight in STRATEGIES:
-            runs  = int(await cache.get(f"aria:income:strategy:{name}:runs") or 0)
-            wins  = int(await cache.get(f"aria:income:strategy:{name}:successes") or 0)
+            runs = int(await cache.get(f"aria:income:strategy:{name}:runs") or 0)
+            wins = int(await cache.get(f"aria:income:strategy:{name}:successes") or 0)
             raw_r = await cache.get(f"aria:income:strategy:{name}:revenue")
-            rev   = float(raw_r) if raw_r else 0.0
-            per_strategy.append({
-                "strategy": name,
-                "weight": weight,
-                "runs": runs,
-                "successes": wins,
-                "win_rate": round(wins / runs * 100, 1) if runs else 0,
-                "revenue": round(rev, 2),
-            })
+            rev = float(raw_r) if raw_r else 0.0
+            per_strategy.append(
+                {
+                    "strategy": name,
+                    "weight": weight,
+                    "runs": runs,
+                    "successes": wins,
+                    "win_rate": round(wins / runs * 100, 1) if runs else 0,
+                    "revenue": round(rev, 2),
+                }
+            )
         per_strategy.sort(key=lambda x: (-x["revenue"], -x["runs"]))
         return {
             "total_cycles": total_cycles,
             "successful_cycles": success_cycles,
-            "overall_success_rate": round(success_cycles / total_cycles * 100, 1) if total_cycles else 0,
+            "overall_success_rate": (
+                round(success_cycles / total_cycles * 100, 1) if total_cycles else 0
+            ),
             "total_urls_published": total_urls,
             "per_strategy": per_strategy,
         }
@@ -711,23 +761,29 @@ async def api_income_analytics() -> dict:
 async def api_income_projection() -> dict:
     """Revenue projection based on actual cycle performance."""
     try:
-        from apps.core.tools.income_loop import INTERVAL_SECONDS
         from apps.core.memory.redis_client import get_cache
+        from apps.core.tools.income_loop import INTERVAL_SECONDS
+
         cache = get_cache()
         if not cache:
             return {"error": "Redis unavailable"}
-        total_cycles   = int(await cache.get("aria:income:total_cycles") or 0)
-        total_urls     = int(await cache.get("aria:income:total_urls_published") or 0)
+        total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
+        total_urls = int(await cache.get("aria:income:total_urls_published") or 0)
         from apps.core.tools.income_loop import STRATEGIES
+
         total_rev = 0.0
         for name, _ in STRATEGIES:
             raw_r = await cache.get(f"aria:income:strategy:{name}:revenue")
             if raw_r:
                 total_rev += float(raw_r)
         if total_cycles == 0:
-            return {"message": "No cycles yet — loop hasn't started", "projected_7d": 0, "projected_30d": 0}
+            return {
+                "message": "No cycles yet — loop hasn't started",
+                "projected_7d": 0,
+                "projected_30d": 0,
+            }
         cycles_per_day = (24 * 3600) / INTERVAL_SECONDS
-        rev_per_cycle  = total_rev / total_cycles
+        rev_per_cycle = total_rev / total_cycles
         return {
             "total_cycles": total_cycles,
             "total_revenue_potential": round(total_rev, 2),
@@ -746,15 +802,19 @@ async def api_income_projection() -> dict:
 async def api_github_traction() -> dict:
     """Monitor star/fork/watcher counts on ARIA's public repos."""
     try:
-        from apps.core.tools.github_client import AriaGitHubClient
         from apps.core.config_pkg import settings as _s
-        gh    = AriaGitHubClient()
+        from apps.core.tools.github_client import AriaGitHubClient
+
+        gh = AriaGitHubClient()
         owner = _s.GITHUB_USERNAME or "Geremypolanco"
 
         # Repos ARIA creates autonomously
         aria_repos = [
-            "aria-insights", "aria-portfolio", "aria-free-resources",
-            "aria-newsletter", "aria-ai",
+            "aria-insights",
+            "aria-portfolio",
+            "aria-free-resources",
+            "aria-newsletter",
+            "aria-ai",
         ]
         traction = []
         total_stars = 0
@@ -764,14 +824,16 @@ async def api_github_traction() -> dict:
                 stars = info.get("stargazers_count", 0)
                 forks = info.get("forks_count", 0)
                 total_stars += stars
-                traction.append({
-                    "repo": repo,
-                    "stars": stars,
-                    "forks": forks,
-                    "watchers": info.get("watchers_count", 0),
-                    "open_issues": info.get("open_issues_count", 0),
-                    "url": info.get("html_url", ""),
-                })
+                traction.append(
+                    {
+                        "repo": repo,
+                        "stars": stars,
+                        "forks": forks,
+                        "watchers": info.get("watchers_count", 0),
+                        "open_issues": info.get("open_issues_count", 0),
+                        "url": info.get("html_url", ""),
+                    }
+                )
         traction.sort(key=lambda x: -x["stars"])
         return {
             "owner": owner,
@@ -795,7 +857,9 @@ async def api_income_objectives() -> dict:
     """Returns the full list of autonomous strategic objectives with next-run times."""
     try:
         import time
+
         from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+
         scheduler = get_autonomous_scheduler()
         objs = await scheduler.get_objectives()
         summary = scheduler.summary()
@@ -835,6 +899,7 @@ async def api_income_run_objective(req: RunObjectiveRequest) -> dict:
     """Runs a named strategic objective right now (bypasses scheduler timer)."""
     try:
         from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+
         scheduler = get_autonomous_scheduler()
         objs = await scheduler.get_objectives()
         target = next((o for o in objs if o.obj_id == req.objective), None)
@@ -876,8 +941,8 @@ async def api_income_rapid_launch() -> dict:
     Returns all URLs created.
     """
     try:
-        import asyncio
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         steps = [
             "opportunity_scan",
@@ -889,17 +954,21 @@ async def api_income_rapid_launch() -> dict:
         all_urls: list[str] = []
         for step in steps:
             r = await loop._run_one_cycle(force_strategy=step)
-            results.append({
-                "step": step,
-                "success": r.success,
-                "summary": r.summary,
-                "revenue_potential": r.revenue_potential,
-                "urls": r.urls_created,
-            })
+            results.append(
+                {
+                    "step": step,
+                    "success": r.success,
+                    "summary": r.summary,
+                    "revenue_potential": r.revenue_potential,
+                    "urls": r.urls_created,
+                }
+            )
             all_urls.extend(r.urls_created)
         successes = sum(1 for r in results if r["success"])
         total_rev = sum(r["revenue_potential"] for r in results)
-        _log_activity("info", f"Rapid launch: {successes}/{len(steps)} steps, {len(all_urls)} URLs", "income")
+        _log_activity(
+            "info", f"Rapid launch: {successes}/{len(steps)} steps, {len(all_urls)} URLs", "income"
+        )
         return {
             "success": successes >= 2,
             "steps_completed": successes,
@@ -921,13 +990,18 @@ async def api_intel_competitor() -> dict:
     """Returns the latest competitor intel from the 12h automated scan."""
     try:
         import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
         raw = await cache.get("aria:intel:competitor_latest")
         if not raw:
-            return {"status": "no_data", "message": "Run competitor_intel objective to generate data"}
+            return {
+                "status": "no_data",
+                "message": "Run competitor_intel objective to generate data",
+            }
         return _json.loads(raw)
     except HTTPException:
         raise
@@ -944,13 +1018,18 @@ async def api_content_calendar() -> dict:
     """Returns the current 30-day content calendar metadata and GitHub URL."""
     try:
         import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
         raw = await cache.get("aria:schedule:content_calendar")
         if not raw:
-            return {"status": "no_data", "message": "Run content_calendar_builder objective to generate"}
+            return {
+                "status": "no_data",
+                "message": "Run content_calendar_builder objective to generate",
+            }
         return _json.loads(raw)
     except HTTPException:
         raise
@@ -975,9 +1054,10 @@ async def stripe_webhook(request: Request) -> dict:
     3. Triggers a thank-you email via email_funnel_handler
     """
     try:
-        import json as _json
         import hashlib as _hl
         import hmac as _hmac
+        import json as _json
+
         from apps.core.config import settings
         from apps.core.memory.redis_client import get_cache
 
@@ -1009,13 +1089,16 @@ async def stripe_webhook(request: Request) -> dict:
         if event_type in ("payment_intent.succeeded", "checkout.session.completed"):
             amount_received = data_obj.get("amount_received", data_obj.get("amount_total", 0))
             amount_usd = round(amount_received / 100, 2)
-            customer_email = data_obj.get("receipt_email") or data_obj.get("customer_details", {}).get("email", "")
+            customer_email = data_obj.get("receipt_email") or data_obj.get(
+                "customer_details", {}
+            ).get("email", "")
             payment_id = data_obj.get("id", "")
 
             # Log to Redis
             cache = get_cache()
             if cache:
                 import datetime as _dt
+
                 entry = {
                     "ts": _dt.datetime.utcnow().isoformat(),
                     "total_usd": amount_usd,
@@ -1030,7 +1113,9 @@ async def stripe_webhook(request: Request) -> dict:
 
                 # Update latest snapshot
                 latest_raw = await cache.get("aria:revenue:latest")
-                latest = _json.loads(latest_raw) if latest_raw else {"total_usd": 0.0, "channels": []}
+                latest = (
+                    _json.loads(latest_raw) if latest_raw else {"total_usd": 0.0, "channels": []}
+                )
                 latest["total_usd"] = round(latest.get("total_usd", 0) + amount_usd, 2)
                 latest["last_payment_usd"] = amount_usd
                 latest["last_payment_ts"] = entry["ts"]
@@ -1044,6 +1129,7 @@ async def stripe_webhook(request: Request) -> dict:
             # Telegram alert
             try:
                 import aiohttp as _aio
+
                 bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
                 chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
                 if bot_token and chat_id:
@@ -1077,7 +1163,9 @@ async def api_revenue_dashboard() -> dict:
     """Returns the latest aggregated revenue report from all active channels."""
     try:
         import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
@@ -1111,7 +1199,9 @@ async def api_revenue_history() -> dict:
     """Returns up to 120 revenue snapshots (6h intervals = 30 days)."""
     try:
         import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
@@ -1133,7 +1223,9 @@ async def api_revenue_notify() -> dict:
     """Triggers immediate revenue aggregation and sends Telegram alert if revenue > $0."""
     try:
         import json as _json
+
         from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+
         scheduler = get_autonomous_scheduler()
         objs = await scheduler.get_objectives()
         target = next((o for o in objs if o.obj_id == "revenue_aggregator"), None)
@@ -1144,13 +1236,17 @@ async def api_revenue_notify() -> dict:
         total = result.get("value_usd", 0.0) or 0.0
         if total > 0:
             try:
-                from apps.core.config import settings
                 import aiohttp as _aio
+
+                from apps.core.config import settings
+
                 bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
                 chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
                 if bot_token and chat_id:
                     channels = result.get("channels", [])
-                    ch_str = " | ".join(f"{c['channel']}: ${c.get('revenue_usd', 0):.2f}" for c in channels)
+                    ch_str = " | ".join(
+                        f"{c['channel']}: ${c.get('revenue_usd', 0):.2f}" for c in channels
+                    )
                     msg = f"💰 ARIA Revenue Alert\n\nTotal: ${total:.2f}\n{ch_str}\n\n#{_json.dumps({'ts': result.get('timestamp', '')})}"
                     async with _aio.ClientSession() as sess:
                         await sess.post(
@@ -1183,8 +1279,9 @@ async def gumroad_webhook(request: Request) -> dict:
     3. Queues buyer email for nurture sequence
     """
     try:
-        import json as _json
         import datetime as _dt
+        import json as _json
+
         from apps.core.config import settings
         from apps.core.memory.redis_client import get_cache
 
@@ -1223,12 +1320,15 @@ async def gumroad_webhook(request: Request) -> dict:
             await cache.set("aria:revenue:latest", _json.dumps(latest), ex=86400 * 7)
 
             if buyer_email:
-                sub = _json.dumps({"email": buyer_email, "name": buyer_name, "product": product_name})
+                sub = _json.dumps(
+                    {"email": buyer_email, "name": buyer_name, "product": product_name}
+                )
                 await cache.rpush("aria:waitlist:new", sub)
 
         # Telegram alert
         try:
             import aiohttp as _aio
+
             bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
             chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
             if bot_token and chat_id:
@@ -1259,9 +1359,11 @@ async def gumroad_webhook(request: Request) -> dict:
 async def api_intelligence_dashboard() -> dict:
     """One-stop intelligence endpoint combining all ARIA's active intelligence streams."""
     try:
-        import json as _json
         import datetime as _dt
+        import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
 
         result: dict = {"generated_at": _dt.datetime.utcnow().isoformat()}
@@ -1348,13 +1450,15 @@ class SetGoalRequest(BaseModel):
 async def api_set_revenue_goals(req: SetGoalRequest) -> dict:
     """Sets ARIA's income targets. daily_goal_tracker strategy will use these."""
     try:
-        import json as _json
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
         await cache.set("aria:goals:daily_revenue_usd", str(req.daily_revenue_usd), ex=86400 * 365)
-        await cache.set("aria:goals:weekly_revenue_usd", str(req.weekly_revenue_usd), ex=86400 * 365)
+        await cache.set(
+            "aria:goals:weekly_revenue_usd", str(req.weekly_revenue_usd), ex=86400 * 365
+        )
         return {
             "daily_goal_usd": req.daily_revenue_usd,
             "weekly_goal_usd": req.weekly_revenue_usd,
@@ -1374,9 +1478,11 @@ async def api_set_revenue_goals(req: SetGoalRequest) -> dict:
 async def api_get_revenue_goals() -> dict:
     """Returns current revenue goals and today's progress."""
     try:
-        import json as _json
         import datetime as _dt
+        import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
@@ -1416,7 +1522,9 @@ async def api_weekly_performance() -> dict:
     """Returns 14-day daily revenue vs goals for trend analysis."""
     try:
         import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
@@ -1448,7 +1556,9 @@ async def api_growth_metrics() -> dict:
     """Returns follower counts, deltas, and audience builder history."""
     try:
         import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
@@ -1462,7 +1572,7 @@ async def api_growth_metrics() -> dict:
         # Growth history (last 10 snapshots)
         raw_hist = await cache.lrange("aria:growth:history", -10, -1)
         history = []
-        for raw in (raw_hist or []):
+        for raw in raw_hist or []:
             try:
                 entry = _json.loads(raw) if isinstance(raw, str) else raw
                 history.append(entry)
@@ -1503,7 +1613,9 @@ async def api_reputation_metrics() -> dict:
     """Returns community engagement stats, HN comments queue, and reputation score."""
     try:
         import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
@@ -1513,7 +1625,7 @@ async def api_reputation_metrics() -> dict:
         # Recent reputation history
         raw_hist = await cache.lrange("aria:reputation:history", -10, -1)
         history = []
-        for raw in (raw_hist or []):
+        for raw in raw_hist or []:
             try:
                 entry = _json.loads(raw) if isinstance(raw, str) else raw
                 history.append(entry)
@@ -1523,11 +1635,9 @@ async def api_reputation_metrics() -> dict:
         # Queued HN comments
         raw_hn = await cache.lrange("aria:reputation:hn_comments_queued", 0, -1)
         hn_queue = []
-        for raw in (raw_hn or []):
-            try:
+        for raw in raw_hn or []:
+            with contextlib.suppress(Exception):
                 hn_queue.append(_json.loads(raw) if isinstance(raw, str) else raw)
-            except Exception:
-                pass
 
         # Podcast stats
         total_episodes = int(await cache.get("aria:podcast:episodes_produced") or 0)
@@ -1557,7 +1667,9 @@ async def api_pipeline() -> dict:
     """Returns all pipeline stages: investor deck, grant applications, freelance proposals, SaaS waitlists."""
     try:
         import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
@@ -1565,21 +1677,17 @@ async def api_pipeline() -> dict:
         # Grant pipeline
         raw_grants = await cache.lrange("aria:grants:applications", -5, -1)
         grants = []
-        for raw in (raw_grants or []):
-            try:
+        for raw in raw_grants or []:
+            with contextlib.suppress(Exception):
                 grants.append(_json.loads(raw) if isinstance(raw, str) else raw)
-            except Exception:
-                pass
         grant_potential = float(await cache.get("aria:grants:total_potential") or 0)
 
         # Freelance proposals
         raw_proposals = await cache.lrange("aria:freelance:proposals", -5, -1)
         proposals = []
-        for raw in (raw_proposals or []):
-            try:
+        for raw in raw_proposals or []:
+            with contextlib.suppress(Exception):
                 proposals.append(_json.loads(raw) if isinstance(raw, str) else raw)
-            except Exception:
-                pass
         total_proposals = int(await cache.get("aria:freelance:total_proposals") or 0)
 
         # Investor deck
@@ -1633,7 +1741,9 @@ async def api_finance() -> dict:
     """Returns latest P&L, cashflow projections, and rolling financial history."""
     try:
         import json as _json
+
         from apps.core.memory.redis_client import get_cache
+
         cache = get_cache()
         if not cache:
             raise HTTPException(status_code=503, detail="Redis unavailable")
@@ -1673,6 +1783,7 @@ async def api_run_due_objectives() -> dict:
     """Triggers an immediate check + execution of all due strategic objectives."""
     try:
         from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+
         scheduler = get_autonomous_scheduler()
         records = await scheduler.run_due_objectives()
         return {
@@ -1703,6 +1814,7 @@ async def api_run_income_cycle(body: dict) -> dict:
     """Run one income loop cycle with optional strategy override."""
     try:
         from apps.core.tools.income_loop import get_income_loop
+
         strategy = body.get("strategy") if body else None
         loop = get_income_loop()
         result = await loop._run_one_cycle(force_strategy=strategy)
@@ -1740,6 +1852,7 @@ async def websocket_aria(websocket: WebSocket) -> None:
 
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
+
         mind = get_aria_mind()
 
         while True:
@@ -1759,17 +1872,34 @@ async def websocket_aria(websocket: WebSocket) -> None:
 
             # Detect if the message likely needs tool execution (non-streamable)
             TOOL_TRIGGERS = [
-                "busca", "search", "investiga", "crea", "create", "genera", "generate",
-                "ejecuta", "run", "analiza", "analyze", "escribe", "write",
-                "código", "code", "imagen", "image", "workflow", "crew",
+                "busca",
+                "search",
+                "investiga",
+                "crea",
+                "create",
+                "genera",
+                "generate",
+                "ejecuta",
+                "run",
+                "analiza",
+                "analyze",
+                "escribe",
+                "write",
+                "código",
+                "code",
+                "imagen",
+                "image",
+                "workflow",
+                "crew",
             ]
             needs_tool = any(t in message.lower() for t in TOOL_TRIGGERS)
 
             try:
                 if want_stream and not needs_tool:
                     # Stream direct AI response for conversational messages
-                    from apps.core.tools.ai_client import get_ai_client
                     from apps.core.cognition.aria_mind import SYSTEM_TEMPLATE
+                    from apps.core.tools.ai_client import get_ai_client
+
                     client = get_ai_client()
                     full_text = ""
                     async for chunk in client.stream_complete(
@@ -1780,31 +1910,37 @@ async def websocket_aria(websocket: WebSocket) -> None:
                     ):
                         full_text += chunk
                         await websocket.send_json({"type": "chunk", "text": chunk})
-                    await websocket.send_json({
-                        "type": "reply",
-                        "text": full_text,
-                        "tool_used": None,
-                        "ts": datetime.utcnow().isoformat(),
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "reply",
+                            "text": full_text,
+                            "tool_used": None,
+                            "ts": datetime.utcnow().isoformat(),
+                        }
+                    )
                 else:
                     # Full mind: tool use, memory, agent dispatch
                     response = await mind.handle(message, session_id)
-                    await websocket.send_json({
-                        "type": "reply",
-                        "text": response.text or "",
-                        "tool_used": response.tool_used,
-                        "ts": datetime.utcnow().isoformat(),
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "reply",
+                            "text": response.text or "",
+                            "tool_used": response.tool_used,
+                            "ts": datetime.utcnow().isoformat(),
+                        }
+                    )
 
                 _log_activity("info", f"WS [{session_id}]: {message[:60]}", "ws")
 
             except Exception as exc:
                 logger.error("[WS] handle error: %s", exc)
-                await websocket.send_json({
-                    "type": "error",
-                    "text": f"Error: {exc}",
-                    "ts": datetime.utcnow().isoformat(),
-                })
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "text": f"Error: {exc}",
+                        "ts": datetime.utcnow().isoformat(),
+                    }
+                )
 
     except WebSocketDisconnect:
         _log_activity("info", f"WebSocket disconnected: {session_id}", "ws")

@@ -3,8 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -12,7 +11,7 @@ _CACHE_KEY = "psychology:behavior:v1"
 _CACHE_TTL = 86400 * 90  # 90 days
 
 
-class BehaviorSignal(str, Enum):
+class BehaviorSignal(StrEnum):
     HIGH_INTENT = "high_intent"
     BROWSING = "browsing"
     COMPARISON_SHOPPING = "comparison_shopping"
@@ -116,7 +115,11 @@ def _compute_intent_score(signals: list[BehaviorSignal]) -> float:
 def _compute_churn_probability(signals: list[BehaviorSignal]) -> float:
     churn_signals = {BehaviorSignal.CHURNING, BehaviorSignal.LOYALTY_RISK}
     churn_count = sum(1 for s in signals if s in churn_signals)
-    positive_signals = {BehaviorSignal.READY_TO_BUY, BehaviorSignal.ADVOCATE, BehaviorSignal.HIGH_INTENT}
+    positive_signals = {
+        BehaviorSignal.READY_TO_BUY,
+        BehaviorSignal.ADVOCATE,
+        BehaviorSignal.HIGH_INTENT,
+    }
     positive_count = sum(1 for s in signals if s in positive_signals)
     base = 0.1 + (churn_count * 0.3) - (positive_count * 0.1)
     return max(0.0, min(1.0, base))
@@ -225,7 +228,10 @@ class BehaviorAnalyzer:
                 "user_id": user_id,
                 "churn_probability": 0.5,
                 "reasons": ["No behavioral data available"],
-                "prevention_actions": ["Start tracking user interactions", "Send onboarding sequence"],
+                "prevention_actions": [
+                    "Start tracking user interactions",
+                    "Send onboarding sequence",
+                ],
             }
 
         profile = BehaviorProfile.from_dict(self._profiles[user_id])
@@ -275,7 +281,7 @@ class BehaviorAnalyzer:
         }
 
 
-_analyzer_instance: Optional[BehaviorAnalyzer] = None
+_analyzer_instance: BehaviorAnalyzer | None = None
 
 
 def get_behavior_analyzer() -> BehaviorAnalyzer:

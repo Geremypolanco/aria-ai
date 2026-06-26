@@ -2,17 +2,18 @@
 Keyword research with optional Google Trends integration via pytrends.
 Falls back to AI-generated suggestions when pytrends is unavailable.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.content.seo.keyword_research")
 
 try:
     from pytrends.request import TrendReq
+
     _PYTRENDS_AVAILABLE = True
 except ImportError:
     _PYTRENDS_AVAILABLE = False
@@ -73,7 +74,7 @@ class KeywordResearcher:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_keyword_researcher: Optional[KeywordResearcher] = None
+_keyword_researcher: KeywordResearcher | None = None
 
 
 def get_keyword_researcher() -> KeywordResearcher:

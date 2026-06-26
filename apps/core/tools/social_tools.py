@@ -2,9 +2,13 @@
 social_tools.py — Distribuye contenido en redes sociales via Buffer.
 ARIA publica automaticamente despues de crear cada articulo o producto.
 """
+
 from __future__ import annotations
+
 import logging
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.social")
@@ -81,8 +85,7 @@ class SocialTools:
                     "profiles_posted": len(profile_ids),
                     "preview": full_text[:80],
                 }
-            else:
-                return {"success": False, "error": str(result)[:100]}
+            return {"success": False, "error": str(result)[:100]}
 
         except Exception as exc:
             logger.error("[Social] Error posteando: %s", exc)

@@ -1,15 +1,15 @@
 """
 COO Agent — Operational metrics, workflow assessment, and department coordination.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "executive:coo:v1"
 _TTL = 90 * 24 * 3600  # 90 days
@@ -39,7 +39,7 @@ class OperationalMetric:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "OperationalMetric":
+    def from_dict(cls, data: dict) -> OperationalMetric:
         return cls(
             metric_id=data["metric_id"],
             name=data["name"],
@@ -74,7 +74,7 @@ class WorkflowStatus:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "WorkflowStatus":
+    def from_dict(cls, data: dict) -> WorkflowStatus:
         return cls(
             workflow_id=data["workflow_id"],
             name=data["name"],
@@ -121,7 +121,7 @@ class COOAgent:
         ratio = value / target
         if ratio >= 0.85:
             return "on_track"
-        elif ratio >= 0.60:
+        if ratio >= 0.60:
             return "at_risk"
         return "critical"
 
@@ -157,8 +157,7 @@ class COOAgent:
 
         ai = get_ai_client()
         tasks_text = "; ".join(
-            f"{t.get('name', 'task')}: {'done' if t.get('done') else 'pending'}"
-            for t in tasks[:10]
+            f"{t.get('name', 'task')}: {'done' if t.get('done') else 'pending'}" for t in tasks[:10]
         )
         resp = await ai.complete(
             system=(
@@ -199,7 +198,9 @@ class COOAgent:
             model=AIModel.STRATEGY,
             max_tokens=300,
         )
-        plan_text = resp.content if resp.success else "Coordinate departments sequentially by priority."
+        plan_text = (
+            resp.content if resp.success else "Coordinate departments sequentially by priority."
+        )
         return {
             "coordination_plan": plan_text,
             "departments_count": len(priorities),
@@ -219,20 +220,14 @@ class COOAgent:
         return health
 
     def at_risk_metrics(self) -> list[dict]:
-        return [
-            m for m in self._metrics
-            if m.get("status") in ("at_risk", "critical")
-        ]
+        return [m for m in self._metrics if m.get("status") in ("at_risk", "critical")]
 
     def operations_report(self) -> dict:
         metrics = [OperationalMetric.from_dict(m) for m in self._metrics]
         at_risk = sum(1 for m in metrics if m.status == "at_risk")
         critical = sum(1 for m in metrics if m.status == "critical")
         workflows = [WorkflowStatus.from_dict(w) for w in self._workflows]
-        avg_eff = (
-            sum(w.efficiency_score for w in workflows) / len(workflows)
-            if workflows else 0.0
-        )
+        avg_eff = sum(w.efficiency_score for w in workflows) / len(workflows) if workflows else 0.0
         return {
             "total_metrics": len(metrics),
             "at_risk": at_risk,
@@ -241,7 +236,7 @@ class COOAgent:
         }
 
 
-_instance: Optional[COOAgent] = None
+_instance: COOAgent | None = None
 
 
 def get_coo_agent() -> COOAgent:

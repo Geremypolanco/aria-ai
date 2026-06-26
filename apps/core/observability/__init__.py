@@ -16,9 +16,10 @@ Usage:
         span.set_attribute("aria.component", "income_loop")
         ...
 """
-from apps.core.observability.tracing import get_tracer, get_trace_id, setup_tracing
-from apps.core.observability.metrics import get_meter, AriaMetrics
+
 from apps.core.observability.logging import get_logger
+from apps.core.observability.metrics import AriaMetrics, get_meter
+from apps.core.observability.tracing import get_trace_id, get_tracer, setup_tracing
 
 __all__ = [
     "get_tracer",

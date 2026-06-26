@@ -2,16 +2,16 @@
 ARIA Economic Intelligence Layer — tracks all economic activity across departments.
 Monitors revenue, costs, ROI, and business metrics in real-time.
 """
+
 from __future__ import annotations
 
 import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _ECONOMICS_KEY = "economics:intelligence:v1"
 _ECONOMICS_TTL = 86400 * 90  # 90 days
@@ -20,11 +20,11 @@ _ECONOMICS_TTL = 86400 * 90  # 90 days
 @dataclass
 class EconomicEvent:
     event_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    event_type: str = ""   # "revenue", "cost", "investment", "conversion", "lead"
-    source: str = ""       # department or system that generated it
+    event_type: str = ""  # "revenue", "cost", "investment", "conversion", "lead"
+    source: str = ""  # department or system that generated it
     amount_usd: float = 0.0
     currency: str = "USD"
-    metric: str = ""       # "revenue", "cac", "ltv", "roas", "cvr", "aov"
+    metric: str = ""  # "revenue", "cac", "ltv", "roas", "cvr", "aov"
     value: float = 0.0
     context: dict = field(default_factory=dict)
     ts: float = field(default_factory=time.time)
@@ -56,8 +56,8 @@ class EconomicSnapshot:
     ltv_cac_ratio: float = 0.0
     avg_roas: float = 0.0
     avg_cvr: float = 0.0
-    computational_cost_usd: float = 0.0   # AI API costs
-    efficiency_score: float = 0.0         # revenue / total_cost ratio
+    computational_cost_usd: float = 0.0  # AI API costs
+    efficiency_score: float = 0.0  # revenue / total_cost ratio
     top_revenue_source: str = ""
     created_at: float = field(default_factory=time.time)
 
@@ -119,8 +119,10 @@ class EconomicIntelligence:
         amount_usd: float = 0.0,
         metric: str = "",
         value: float = 0.0,
-        context: dict = {},
+        context: dict = None,
     ) -> EconomicEvent:
+        if context is None:
+            context = {}
         await self._load()
         event = EconomicEvent(
             event_type=event_type,
@@ -135,8 +137,10 @@ class EconomicIntelligence:
         return event
 
     async def record_revenue(
-        self, source: str, amount_usd: float, context: dict = {}
+        self, source: str, amount_usd: float, context: dict = None
     ) -> EconomicEvent:
+        if context is None:
+            context = {}
         return await self.record_event(
             event_type="revenue",
             source=source,
@@ -158,9 +162,7 @@ class EconomicIntelligence:
             context={"cost_type": cost_type},
         )
 
-    async def record_conversion(
-        self, source: str, revenue: float, cost: float
-    ) -> EconomicEvent:
+    async def record_conversion(self, source: str, revenue: float, cost: float) -> EconomicEvent:
         roas = revenue / max(cost, 0.01)
         return await self.record_event(
             event_type="conversion",
@@ -324,13 +326,15 @@ class EconomicIntelligence:
         for src, cost in cost_by_src.items():
             rev = revenue_by_src.get(src, 0.0)
             if cost > 0 and rev < cost:
-                optimization_opportunities.append({
-                    "source": src,
-                    "issue": "negative_roi",
-                    "cost": round(cost, 4),
-                    "revenue": round(rev, 4),
-                    "deficit": round(cost - rev, 4),
-                })
+                optimization_opportunities.append(
+                    {
+                        "source": src,
+                        "issue": "negative_roi",
+                        "cost": round(cost, 4),
+                        "revenue": round(rev, 4),
+                        "deficit": round(cost - rev, 4),
+                    }
+                )
 
         return {
             "total_revenue": round(total_revenue, 4),
@@ -380,7 +384,7 @@ class EconomicIntelligence:
         return sorted(self._events, key=lambda e: e.get("ts", 0), reverse=True)[:limit]
 
 
-_instance: Optional[EconomicIntelligence] = None
+_instance: EconomicIntelligence | None = None
 
 
 def get_economic_intelligence() -> EconomicIntelligence:

@@ -4,12 +4,13 @@ Sales Agent — Revenue generation: productos, pagos, Shopify, Stripe, Gumroad.
 Maneja: creación de productos, pricing, checkout, upsells, afiliados,
         seguimiento de ventas y optimización de conversión.
 """
+
 from __future__ import annotations
-import asyncio
+
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
-from apps.core.tools.ai_client import AIModel
 
 logger = logging.getLogger("aria.business.sales")
 
@@ -26,17 +27,23 @@ class SalesAgent(BaseAgent):
             name="sales",
             description="Revenue: crear productos, procesar pagos, optimizar ventas en Shopify/Stripe/Gumroad",
             capabilities=[
-                "product_creation", "pricing", "shopify", "stripe", "gumroad",
-                "upselling", "conversion_optimization", "affiliate_marketing",
+                "product_creation",
+                "pricing",
+                "shopify",
+                "stripe",
+                "gumroad",
+                "upselling",
+                "conversion_optimization",
+                "affiliate_marketing",
             ],
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission      = context.get("mission", "Crear y publicar producto digital")
+        mission = context.get("mission", "Crear y publicar producto digital")
         product_name = context.get("product_name", "")
         product_type = context.get("product_type", "digital")  # digital, saas, course, ebook
-        price        = context.get("price", 0)
-        platform     = context.get("platform", "auto")
+        price = context.get("price", 0)
+        platform = context.get("platform", "auto")
         auto_publish = context.get("auto_publish", False)
 
         results: dict[str, Any] = {"success": True, "agent": "sales", "mission": mission}
@@ -59,7 +66,8 @@ class SalesAgent(BaseAgent):
         # 4. Publicar en plataforma si se solicita
         if auto_publish:
             pub = await self._publish_product(
-                name=product_name, price=price,
+                name=product_name,
+                price=price,
                 description=sales_copy.get("description", ""),
                 platform=platform,
             )
@@ -67,7 +75,11 @@ class SalesAgent(BaseAgent):
 
         results["summary"] = (
             f"Producto '{product_name}' configurado — precio sugerido ${price}. "
-            + ("Publicado en " + results.get("published", {}).get("platform", "") if auto_publish else "Listo para publicar.")
+            + (
+                "Publicado en " + results.get("published", {}).get("platform", "")
+                if auto_publish
+                else "Listo para publicar."
+            )
         )
         return results
 
@@ -83,8 +95,10 @@ class SalesAgent(BaseAgent):
             ),
         )
         try:
-            import json, re
-            m = re.search(r'\{.*\}', idea, re.DOTALL)
+            import json
+            import re
+
+            m = re.search(r"\{.*\}", idea, re.DOTALL)
             return json.loads(m.group()) if m else {"name": mission[:50], "price": 29}
         except Exception:
             return {"name": mission[:50], "price": 29}
@@ -119,6 +133,7 @@ class SalesAgent(BaseAgent):
         # Selección automática de plataforma
         if platform == "auto":
             from apps.core.config import settings
+
             if settings.GUMROAD_TOKEN:
                 platform = "gumroad"
             elif settings.SHOPIFY_URL and settings.SHOPIFY_ADMIN_TOKEN:
@@ -131,23 +146,36 @@ class SalesAgent(BaseAgent):
         try:
             if platform == "gumroad":
                 from apps.core.tools.gumroad_tools import GumroadTools
+
                 return await GumroadTools().create_product(
                     name=name, price_cents=int(price * 100), description=description
                 )
-            elif platform == "shopify":
-                from apps.core.integrations.shopify_engine import ShopifyEngine
+            if platform == "shopify":
                 from apps.core.config import settings as _s
+                from apps.core.integrations.shopify_engine import ShopifyEngine
+
                 shop_url = _s.SHOPIFY_URL.replace("https://", "").rstrip("/")
                 engine = ShopifyEngine(shop_name=shop_url, access_token=_s.SHOPIFY_ADMIN_TOKEN)
                 import asyncio as _asyncio
+
                 product_id = await _asyncio.get_event_loop().run_in_executor(
-                    None, lambda: engine.create_optimized_product(
-                        {"title": name, "body_html": description, "variants": [{"price": str(price)}]}
-                    )
+                    None,
+                    lambda: engine.create_optimized_product(
+                        {
+                            "title": name,
+                            "body_html": description,
+                            "variants": [{"price": str(price)}],
+                        }
+                    ),
                 )
-                return {"success": bool(product_id), "product_id": product_id, "platform": "shopify"}
-            elif platform == "stripe":
+                return {
+                    "success": bool(product_id),
+                    "product_id": product_id,
+                    "platform": "shopify",
+                }
+            if platform == "stripe":
                 from apps.core.tools.commerce_tools import CommerceTools
+
                 return await CommerceTools().stripe_create_product(
                     name=name, description=description, price_cents=int(price * 100)
                 )

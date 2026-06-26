@@ -2,16 +2,16 @@
 ARIA AI — Analytics Division
 Handles data analysis, forecasting, funnel analytics, attribution, KPI dashboards, and BI reports.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.workforce.analytics")
 
@@ -21,14 +21,17 @@ _CACHE_TTL = 86400 * 90  # 90 days
 
 # ── Domain object ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class AnalyticsReport:
     report_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    report_type: str = ""   # "dashboard", "forecast", "funnel", "attribution", "kpi_monitor"
-    agent_type: str = ""    # "data_analyst", "business_analyst", "forecasting_engine", "bi_engine"
+    report_type: str = ""  # "dashboard", "forecast", "funnel", "attribution", "kpi_monitor"
+    agent_type: str = ""  # "data_analyst", "business_analyst", "forecasting_engine", "bi_engine"
     title: str = ""
-    insights: list = field(default_factory=list)       # list of insight strings
-    charts_spec: list = field(default_factory=list)    # list of chart specs (dict with type, data, title)
+    insights: list = field(default_factory=list)  # list of insight strings
+    charts_spec: list = field(
+        default_factory=list
+    )  # list of chart specs (dict with type, data, title)
     recommendations: list = field(default_factory=list)
     confidence: float = 0.8
     created_at: float = field(default_factory=time.time)
@@ -49,6 +52,7 @@ class AnalyticsReport:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _linear_forecast(historical_values: list, periods_ahead: int) -> list:
     """Simple linear trend forecast without numpy."""
     n = len(historical_values)
@@ -57,7 +61,9 @@ def _linear_forecast(historical_values: list, periods_ahead: int) -> list:
         last = historical_values[-1]
         projections = [round(last + slope * (i + 1), 2) for i in range(periods_ahead)]
     else:
-        projections = [historical_values[-1]] * periods_ahead if historical_values else [0.0] * periods_ahead
+        projections = (
+            [historical_values[-1]] * periods_ahead if historical_values else [0.0] * periods_ahead
+        )
     return projections
 
 
@@ -67,7 +73,7 @@ def _parse_ai_insights(text: str) -> list:
     insights = []
     for line in lines:
         line = line.strip()
-        if line and (line.startswith("-") or line.startswith("•") or line.startswith("*") or (len(line) > 10 and line[0].isdigit())):
+        if line and (line.startswith(("-", "•", "*")) or len(line) > 10 and line[0].isdigit()):
             cleaned = line.lstrip("-•*0123456789. ").strip()
             if cleaned:
                 insights.append(cleaned)
@@ -79,6 +85,7 @@ def _parse_ai_insights(text: str) -> list:
 
 
 # ── Analytics Division ─────────────────────────────────────────────────────────
+
 
 class AnalyticsDivision:
     """AI-powered analytics workforce division."""
@@ -98,7 +105,9 @@ class AnalyticsDivision:
     async def _save_reports(self) -> None:
         await self._cache.set(_CACHE_KEY, self._reports, ttl_seconds=_CACHE_TTL)
 
-    async def _run_ai(self, system: str, user: str, model: AIModel = AIModel.STRATEGY, max_tokens: int = 800) -> str:
+    async def _run_ai(
+        self, system: str, user: str, model: AIModel = AIModel.STRATEGY, max_tokens: int = 800
+    ) -> str:
         resp = await self._ai.complete(system=system, user=user, model=model, max_tokens=max_tokens)
         if resp.success:
             return resp.content.strip()
@@ -114,9 +123,7 @@ class AnalyticsDivision:
         """AI analyzes structured data and answers a business question."""
         await self._load_reports()
 
-        data_summary = "\n".join(
-            f"  {k}: {v}" for k, v in list(data.items())[:20]
-        )
+        data_summary = "\n".join(f"  {k}: {v}" for k, v in list(data.items())[:20])
         ai_output = await self._run_ai(
             system=(
                 "You are an expert data analyst. Analyze the provided data and: "
@@ -167,7 +174,9 @@ class AnalyticsDivision:
         # Calculate trend direction
         if len(historical_values) >= 2:
             pct_change = (
-                (historical_values[-1] - historical_values[0]) / max(abs(historical_values[0]), 1) * 100
+                (historical_values[-1] - historical_values[0])
+                / max(abs(historical_values[0]), 1)
+                * 100
             )
             trend = "upward" if pct_change > 0 else "downward" if pct_change < 0 else "flat"
         else:
@@ -236,12 +245,14 @@ class AnalyticsDivision:
             prev = max(stage_values[i - 1], 1)
             curr = stage_values[i]
             cvr = round(curr / prev, 4)
-            stage_cvrs.append({
-                "from": stage_names[i - 1],
-                "to": stage_names[i],
-                "cvr": cvr,
-                "drop_off_pct": round((1 - cvr) * 100, 1),
-            })
+            stage_cvrs.append(
+                {
+                    "from": stage_names[i - 1],
+                    "to": stage_names[i],
+                    "cvr": cvr,
+                    "drop_off_pct": round((1 - cvr) * 100, 1),
+                }
+            )
 
         worst_drop = min(stage_cvrs, key=lambda x: x["cvr"]) if stage_cvrs else {}
         overall_cvr = round(stage_values[-1] / max(stage_values[0], 1), 4) if stage_values else 0.0
@@ -435,11 +446,13 @@ class AnalyticsDivision:
 
         insights = _parse_ai_insights(ai_output)
         if len(insights) < 3:
-            insights.extend([
-                "Revenue performance analyzed across all segments",
-                "Operational efficiency benchmarked against industry standards",
-                "Growth opportunities identified in top market segments",
-            ])
+            insights.extend(
+                [
+                    "Revenue performance analyzed across all segments",
+                    "Operational efficiency benchmarked against industry standards",
+                    "Growth opportunities identified in top market segments",
+                ]
+            )
 
         report = AnalyticsReport(
             report_type="dashboard",
@@ -448,7 +461,11 @@ class AnalyticsDivision:
             insights=insights,
             charts_spec=[
                 {"type": "bar", "title": "Revenue by Segment", "data": company_data},
-                {"type": "gauge", "title": "Overall Business Health Score", "data": {"score": 0.78}},
+                {
+                    "type": "gauge",
+                    "title": "Overall Business Health Score",
+                    "data": {"score": 0.78},
+                },
                 {"type": "heatmap", "title": "Performance Matrix", "data": {}},
             ],
             recommendations=[
@@ -488,9 +505,7 @@ class AnalyticsDivision:
 
     def recent_reports(self, limit: int = 10) -> list[dict]:
         """Return most recently created analytics reports."""
-        sorted_reports = sorted(
-            self._reports, key=lambda r: r.get("created_at", 0), reverse=True
-        )
+        sorted_reports = sorted(self._reports, key=lambda r: r.get("created_at", 0), reverse=True)
         return sorted_reports[:limit]
 
     async def quick_insight(self, metric: str, value: float, context: str = "") -> str:
@@ -512,7 +527,7 @@ class AnalyticsDivision:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_instance: Optional[AnalyticsDivision] = None
+_instance: AnalyticsDivision | None = None
 
 
 def get_analytics_division() -> AnalyticsDivision:

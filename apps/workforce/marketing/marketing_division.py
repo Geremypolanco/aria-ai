@@ -2,16 +2,16 @@
 ARIA AI — Marketing Division
 Handles SEO audits, media buying, social calendars, growth experiments, funnel analysis, and influencer briefs.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.workforce.marketing")
 
@@ -21,11 +21,16 @@ _CACHE_TTL = 86400 * 90  # 90 days
 
 # ── Domain object ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class MarketingTask:
     task_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    task_type: str = ""   # "seo_audit", "media_buy_plan", "social_post", "funnel_analysis", "growth_experiment"
-    agent_type: str = ""  # "seo_specialist", "media_buyer", "social_media_manager", "growth_operator", "funnel_optimizer"
+    task_type: str = (
+        ""  # "seo_audit", "media_buy_plan", "social_post", "funnel_analysis", "growth_experiment"
+    )
+    agent_type: str = (
+        ""  # "seo_specialist", "media_buyer", "social_media_manager", "growth_operator", "funnel_optimizer"
+    )
     title: str = ""
     output: str = ""
     metrics: dict = field(default_factory=dict)  # expected_reach, estimated_ctr, budget_usd, etc.
@@ -50,6 +55,7 @@ class MarketingTask:
 
 
 # ── Marketing Division ─────────────────────────────────────────────────────────
+
 
 class MarketingDivision:
     """AI-powered marketing workforce division."""
@@ -85,11 +91,17 @@ class MarketingDivision:
 
     # ── Core Marketing Methods ───────────────────────────────────────────────
 
-    async def seo_audit(self, url_or_topic: str, competitors: list = []) -> MarketingTask:
+    async def seo_audit(self, url_or_topic: str, competitors: list = None) -> MarketingTask:
         """AI produces SEO audit with keyword gaps, content opportunities, and technical recommendations."""
+        if competitors is None:
+            competitors = []
         await self._load_tasks()
 
-        competitor_text = f"Competitors: {', '.join(competitors)}" if competitors else "No specific competitors provided."
+        competitor_text = (
+            f"Competitors: {', '.join(competitors)}"
+            if competitors
+            else "No specific competitors provided."
+        )
         output = await self._run_ai(
             system=(
                 "You are an expert SEO specialist. Produce a detailed SEO audit with: "
@@ -123,9 +135,11 @@ class MarketingDivision:
         product: str,
         budget_usd: float,
         target_audience: str,
-        platforms: list = ["meta", "google"],
+        platforms: list = None,
     ) -> MarketingTask:
         """AI produces media buying plan with channel split, bidding strategy, and creative guidance."""
+        if platforms is None:
+            platforms = ["meta", "google"]
         await self._load_tasks()
 
         platform_str = ", ".join(platforms)
@@ -219,9 +233,7 @@ class MarketingDivision:
                 "3) Statistical significance requirements, 4) Timeline and budget allocation, "
                 "5) Expected outcomes and decision criteria. Be precise and scientific."
             ),
-            user=(
-                f"Hypothesis: {hypothesis}\nChannel: {channel}\nBudget: ${budget_usd:,.2f}"
-            ),
+            user=(f"Hypothesis: {hypothesis}\nChannel: {channel}\nBudget: ${budget_usd:,.2f}"),
             model=AIModel.STRATEGY,
         )
 
@@ -388,7 +400,7 @@ class MarketingDivision:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_instance: Optional[MarketingDivision] = None
+_instance: MarketingDivision | None = None
 
 
 def get_marketing_division() -> MarketingDivision:

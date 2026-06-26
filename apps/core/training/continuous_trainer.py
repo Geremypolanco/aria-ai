@@ -7,13 +7,14 @@ ARIA funcional y actualizada.
 
 Sin placeholders. Todo basado en llamadas reales.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.trainer")
 
@@ -24,16 +25,16 @@ class ContinuousTrainer:
     Detecta qué funciona, qué no, y actualiza el estado interno.
     """
 
-    CYCLE_INTERVAL = 1800       # 30 minutos entre ciclos
-    STATUS_KEY     = "aria:trainer:status"
-    SKILLS_KEY     = "aria:trainer:skills"
+    CYCLE_INTERVAL = 1800  # 30 minutos entre ciclos
+    STATUS_KEY = "aria:trainer:status"
+    SKILLS_KEY = "aria:trainer:skills"
 
     def __init__(self) -> None:
-        self._running    = False
-        self._cycle      = 0
+        self._running = False
+        self._cycle = 0
         self._last_cycle = 0.0
-        self._skills: dict[str, float] = {}   # skill → score 0-100
-        self._cache      = None
+        self._skills: dict[str, float] = {}  # skill → score 0-100
+        self._cache = None
 
     # ── LOOP PRINCIPAL ────────────────────────────────────────────────────
 
@@ -61,16 +62,19 @@ class ContinuousTrainer:
         )
 
         await self._persist_status()
-        logger.info("[Trainer] Ciclo #%d completo. Skills: %s",
-                    self._cycle,
-                    {k: f"{v:.0f}%" for k, v in self._skills.items()})
+        logger.info(
+            "[Trainer] Ciclo #%d completo. Skills: %s",
+            self._cycle,
+            {k: f"{v:.0f}%" for k, v in self._skills.items()},
+        )
 
     # ── EVALUACIONES ─────────────────────────────────────────────────────
 
     async def _eval_ai_client(self) -> None:
         """Verifica que el cliente de IA responda correctamente."""
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             resp = await ai.complete(
                 system="Responde solo con: OK",
@@ -90,7 +94,9 @@ class ContinuousTrainer:
         """Verifica acceso a HuggingFace Inference API."""
         try:
             import httpx
+
             from apps.core.config import settings
+
             token = getattr(settings, "hf_key", None)
             if not token:
                 self._skills["huggingface"] = 0.0
@@ -128,7 +134,7 @@ class ContinuousTrainer:
                 return
             status = {
                 "cycle": self._cycle,
-                "last_cycle_at": datetime.now(timezone.utc).isoformat(),
+                "last_cycle_at": datetime.now(UTC).isoformat(),
                 "skills": self._skills,
             }
             await cache.set(self.STATUS_KEY, status, ttl_seconds=7200)
@@ -140,8 +146,11 @@ class ContinuousTrainer:
         return {
             "running": self._running,
             "cycle": self._cycle,
-            "last_cycle_at": (datetime.fromtimestamp(self._last_cycle, tz=timezone.utc).isoformat()
-                               if self._last_cycle else None),
+            "last_cycle_at": (
+                datetime.fromtimestamp(self._last_cycle, tz=UTC).isoformat()
+                if self._last_cycle
+                else None
+            ),
             "skill_scores": self._skills,
         }
 
@@ -149,6 +158,7 @@ class ContinuousTrainer:
         if self._cache is None:
             try:
                 from apps.core.memory.redis_client import get_cache
+
                 self._cache = get_cache()
             except Exception:
                 pass
@@ -157,7 +167,8 @@ class ContinuousTrainer:
 
 # ─── SINGLETON ────────────────────────────────────────────────────────────
 
-_trainer: Optional[ContinuousTrainer] = None
+_trainer: ContinuousTrainer | None = None
+
 
 def get_trainer() -> ContinuousTrainer:
     global _trainer

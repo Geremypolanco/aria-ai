@@ -1,19 +1,20 @@
 """
 ARIA Memory Orchestrator — unified retrieval across all memory layers.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.memory.orchestrator")
 
 try:
-    from .semantic_memory import SemanticMemory, Fact, get_semantic_memory
+    from .semantic_memory import Fact, SemanticMemory, get_semantic_memory
+
     _SEMANTIC_AVAILABLE = True
 except ImportError:
     _SEMANTIC_AVAILABLE = False
@@ -23,6 +24,7 @@ except ImportError:
 
 try:
     from .procedural.procedural_memory import ProceduralMemory, Procedure, get_procedural_memory
+
     _PROCEDURAL_AVAILABLE = True
 except ImportError:
     _PROCEDURAL_AVAILABLE = False
@@ -31,7 +33,8 @@ except ImportError:
     get_procedural_memory = None  # type: ignore[assignment]
 
 try:
-    from .temporal.temporal_memory import TemporalMemory, TemporalEvent, get_temporal_memory
+    from .temporal.temporal_memory import TemporalEvent, TemporalMemory, get_temporal_memory
+
     _TEMPORAL_AVAILABLE = True
 except ImportError:
     _TEMPORAL_AVAILABLE = False
@@ -45,15 +48,41 @@ _EPISODIC_AVAILABLE = False
 _HOUR = 3600.0
 _DAY = 86400.0
 
-_CONTRADICTION_SIGNALS = frozenset({
-    "not", "no longer", "never", "failed", "failure", "false",
-    "incorrect", "wrong", "invalid", "broken", "removed", "deleted",
-    "disabled", "deprecated", "stopped", "cancelled",
-})
-_SUCCESS_SIGNALS = frozenset({
-    "success", "succeeded", "true", "correct", "valid", "working",
-    "enabled", "active", "completed", "done", "achieved",
-})
+_CONTRADICTION_SIGNALS = frozenset(
+    {
+        "not",
+        "no longer",
+        "never",
+        "failed",
+        "failure",
+        "false",
+        "incorrect",
+        "wrong",
+        "invalid",
+        "broken",
+        "removed",
+        "deleted",
+        "disabled",
+        "deprecated",
+        "stopped",
+        "cancelled",
+    }
+)
+_SUCCESS_SIGNALS = frozenset(
+    {
+        "success",
+        "succeeded",
+        "true",
+        "correct",
+        "valid",
+        "working",
+        "enabled",
+        "active",
+        "completed",
+        "done",
+        "achieved",
+    }
+)
 
 
 @dataclass
@@ -75,7 +104,7 @@ class MemoryContext:
 
 
 def _recency_weight(ts: float) -> float:
-    age = datetime.now(timezone.utc).timestamp() - ts
+    age = datetime.now(UTC).timestamp() - ts
     if age <= _HOUR:
         return 1.0
     if age <= _DAY:
@@ -149,7 +178,7 @@ def _fact_to_ranked(fact: Any, base_score: float) -> RankedMemoryItem:
     try:
         created_ts = datetime.fromisoformat(fact.created_at).timestamp()
     except Exception:
-        created_ts = datetime.now(timezone.utc).timestamp()
+        created_ts = datetime.now(UTC).timestamp()
 
     rw = _recency_weight(created_ts)
     score = base_score * getattr(fact, "confidence", 1.0) * rw
@@ -171,7 +200,7 @@ def _procedure_to_ranked(proc: Any) -> RankedMemoryItem:
     try:
         created_ts = datetime.fromisoformat(proc.created_at).timestamp()
     except Exception:
-        created_ts = datetime.now(timezone.utc).timestamp()
+        created_ts = datetime.now(UTC).timestamp()
 
     rw = _recency_weight(created_ts)
     score = proc.utility_score() * rw
@@ -196,9 +225,7 @@ def _event_to_ranked(event: Any) -> RankedMemoryItem:
     # doesn't exist here, so treat importance as the confidence proxy.
     score = getattr(event, "importance", 0.5) * rw
     content_parts = [f"[{event.event_type.value}] {event.entity_name}"]
-    payload_summary = " ".join(
-        f"{k}={v}" for k, v in list(event.payload.items())[:3]
-    )
+    payload_summary = " ".join(f"{k}={v}" for k, v in list(event.payload.items())[:3])
     if payload_summary:
         content_parts.append(payload_summary)
     content = " ".join(content_parts)
@@ -226,9 +253,9 @@ class MemoryOrchestrator:
     """
 
     def __init__(self) -> None:
-        self._semantic: Optional[Any] = get_semantic_memory() if _SEMANTIC_AVAILABLE else None
-        self._procedural: Optional[Any] = get_procedural_memory() if _PROCEDURAL_AVAILABLE else None
-        self._temporal: Optional[Any] = get_temporal_memory() if _TEMPORAL_AVAILABLE else None
+        self._semantic: Any | None = get_semantic_memory() if _SEMANTIC_AVAILABLE else None
+        self._procedural: Any | None = get_procedural_memory() if _PROCEDURAL_AVAILABLE else None
+        self._temporal: Any | None = get_temporal_memory() if _TEMPORAL_AVAILABLE else None
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -284,7 +311,7 @@ class MemoryOrchestrator:
         category: str = "world_fact",
         source: str = "aria",
         confidence: float = 0.8,
-    ) -> Optional[str]:
+    ) -> str | None:
         if not _SEMANTIC_AVAILABLE or self._semantic is None:
             logger.warning("[Orchestrator] Semantic memory unavailable; fact not stored")
             return None
@@ -343,7 +370,7 @@ class MemoryOrchestrator:
         return await self._temporal.recent(n)
 
 
-_orchestrator: Optional[MemoryOrchestrator] = None
+_orchestrator: MemoryOrchestrator | None = None
 
 
 def get_memory_orchestrator() -> MemoryOrchestrator:

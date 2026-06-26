@@ -1,22 +1,30 @@
 """
 Funnel Engine — Full funnel builder with stage tracking and conversion optimization.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _FUNNELS_KEY = "conversion:funnels:v1"
 _FUNNELS_TTL = 86400 * 90  # 90 days
 
 # Default stage templates per funnel type
 _FUNNEL_STAGES: dict[str, list[str]] = {
-    "ecommerce": ["awareness", "interest", "consideration", "cart", "checkout", "purchase", "retention"],
+    "ecommerce": [
+        "awareness",
+        "interest",
+        "consideration",
+        "cart",
+        "checkout",
+        "purchase",
+        "retention",
+    ],
     "lead_gen": ["awareness", "interest", "signup", "nurture", "qualified", "converted"],
     "saas": ["discovery", "trial", "activation", "expansion", "renewal"],
     "content": ["discover", "engage", "subscribe", "share", "purchase"],
@@ -28,11 +36,11 @@ _FUNNEL_STAGES: dict[str, list[str]] = {
 class FunnelStage:
     stage_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     funnel_id: str = ""
-    name: str = ""              # "awareness", "interest", "consideration", etc.
+    name: str = ""  # "awareness", "interest", "consideration", etc.
     order: int = 0
     entry_count: int = 0
     exit_count: int = 0
-    conversion_rate: float = 0.0    # exit_count / max(entry_count, 1)
+    conversion_rate: float = 0.0  # exit_count / max(entry_count, 1)
     avg_time_in_stage_hours: float = 0.0
     drop_off_reason: str = ""
     optimization_opportunity: str = ""
@@ -56,9 +64,9 @@ class FunnelStage:
 class Funnel:
     funnel_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     name: str = ""
-    funnel_type: str = ""        # "ecommerce", "lead_gen", "saas", "content", "quiz"
+    funnel_type: str = ""  # "ecommerce", "lead_gen", "saas", "content", "quiz"
     niche: str = ""
-    stages: list = field(default_factory=list)   # list of FunnelStage dicts
+    stages: list = field(default_factory=list)  # list of FunnelStage dicts
     total_entries: int = 0
     total_conversions: int = 0
     overall_cvr: float = 0.0
@@ -147,8 +155,9 @@ class FunnelEngine:
             try:
                 import json
                 import re
+
                 content = resp.content.strip()
-                match = re.search(r'\[.*\]', content, re.DOTALL)
+                match = re.search(r"\[.*\]", content, re.DOTALL)
                 if match:
                     ai_stages = json.loads(match.group())
                     for s in ai_stages:
@@ -166,7 +175,9 @@ class FunnelEngine:
                 name=stage_name,
                 order=i,
                 avg_time_in_stage_hours=float(ai_info.get("avg_time_hours", 24.0)),
-                optimization_opportunity=ai_info.get("optimization_opportunity", f"Optimize {stage_name} conversion"),
+                optimization_opportunity=ai_info.get(
+                    "optimization_opportunity", f"Optimize {stage_name} conversion"
+                ),
             )
             stages.append(stage.to_dict())
 
@@ -175,9 +186,7 @@ class FunnelEngine:
         await self._save()
         return funnel
 
-    async def record_stage_entry(
-        self, funnel_id: str, stage_name: str, count: int = 1
-    ) -> None:
+    async def record_stage_entry(self, funnel_id: str, stage_name: str, count: int = 1) -> None:
         """Increment entry_count for a stage."""
         await self._load()
 
@@ -194,9 +203,7 @@ class FunnelEngine:
 
         await self._save()
 
-    async def record_stage_exit(
-        self, funnel_id: str, stage_name: str, count: int = 1
-    ) -> None:
+    async def record_stage_exit(self, funnel_id: str, stage_name: str, count: int = 1) -> None:
         """Increment exit_count and recalculate CVR."""
         await self._load()
 
@@ -271,8 +278,9 @@ class FunnelEngine:
             try:
                 import json
                 import re
+
                 content = resp.content.strip()
-                match = re.search(r'\{.*\}', content, re.DOTALL)
+                match = re.search(r"\{.*\}", content, re.DOTALL)
                 if match:
                     result = json.loads(match.group())
                     result["top_drop_off_stage"] = top_drop_off
@@ -335,8 +343,9 @@ class FunnelEngine:
             try:
                 import json
                 import re
+
                 content = resp.content.strip()
-                match = re.search(r'\{.*\}', content, re.DOTALL)
+                match = re.search(r"\{.*\}", content, re.DOTALL)
                 if match:
                     result = json.loads(match.group())
                     # Ensure required fields
@@ -360,7 +369,7 @@ class FunnelEngine:
             "ab_test_idea": f"Test long-form vs short-form {stage_name} page",
         }
 
-    def get_funnel(self, funnel_id: str) -> Optional[dict]:
+    def get_funnel(self, funnel_id: str) -> dict | None:
         """Get a funnel by ID."""
         for funnel in self._funnels:
             if funnel.get("funnel_id") == funnel_id:
@@ -397,7 +406,7 @@ class FunnelEngine:
 
 
 # ── SINGLETON ─────────────────────────────────────────────
-_instance: Optional[FunnelEngine] = None
+_instance: FunnelEngine | None = None
 
 
 def get_funnel_engine() -> FunnelEngine:

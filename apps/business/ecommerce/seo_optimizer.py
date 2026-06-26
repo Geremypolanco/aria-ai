@@ -122,10 +122,14 @@ class ShopifySEOOptimizer:
             title_score += 10.0
             if char_count < 40:
                 issues.append("Title is too short (under 40 characters).")
-                recommendations.append("Expand the title to 40–70 characters with descriptive keywords.")
+                recommendations.append(
+                    "Expand the title to 40–70 characters with descriptive keywords."
+                )
             else:
                 issues.append("Title is too long (over 70 characters).")
-                recommendations.append("Shorten the title to under 70 characters for better SERP display.")
+                recommendations.append(
+                    "Shorten the title to under 70 characters for better SERP display."
+                )
 
         # Keyword-like terms: at least 2 words with 4+ chars each
         words = title.split()
@@ -155,7 +159,9 @@ class ShopifySEOOptimizer:
             recommendations.append("Write a 200+ character description with key product details.")
         else:
             issues.append("Product has no description.")
-            recommendations.append("Add a detailed description — listings without copy convert poorly.")
+            recommendations.append(
+                "Add a detailed description — listings without copy convert poorly."
+            )
 
         # HTML structure or bullet-point signals
         has_structure = bool(
@@ -178,7 +184,9 @@ class ShopifySEOOptimizer:
                 desc_score += 10.0
             else:
                 issues.append("Possible keyword stuffing detected in description.")
-                recommendations.append("Vary vocabulary — avoid repeating the same word excessively.")
+                recommendations.append(
+                    "Vary vocabulary — avoid repeating the same word excessively."
+                )
 
         # ---- Tags score (0–30) ------------------------------------------
         if isinstance(tags_raw, list):
@@ -214,7 +222,9 @@ class ShopifySEOOptimizer:
                 recommendations.append("Add descriptive alt text to all product images.")
         else:
             issues.append("No product images uploaded.")
-            recommendations.append("Upload high-quality product images — they are critical for conversion.")
+            recommendations.append(
+                "Upload high-quality product images — they are critical for conversion."
+            )
 
         # ---- URL / handle score (0–10) ----------------------------------
         url_score = 0.0
@@ -247,9 +257,7 @@ class ShopifySEOOptimizer:
 
     # -- Meta tags ---------------------------------------------------------
 
-    async def generate_meta_tags(
-        self, product_title: str, product_category: str
-    ) -> dict[str, str]:
+    async def generate_meta_tags(self, product_title: str, product_category: str) -> dict[str, str]:
         """
         Generate SEO meta tags via AI.  Falls back to deterministic values
         when AI is unavailable.
@@ -262,7 +270,7 @@ class ShopifySEOOptimizer:
         fallback_keyword = product_title.split()[0].lower() if product_title else product_category
 
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+            from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 
             ai = get_ai_client()
             prompt = (
@@ -290,9 +298,7 @@ class ShopifySEOOptimizer:
                     "focus_keyword": parsed.get("FOCUS_KEYWORD", fallback_keyword),
                 }
         except Exception:
-            logger.debug(
-                "ShopifySEOOptimizer.generate_meta_tags: AI unavailable, using fallback"
-            )
+            logger.debug("ShopifySEOOptimizer.generate_meta_tags: AI unavailable, using fallback")
 
         return {
             "meta_title": fallback_title,
@@ -350,17 +356,15 @@ class ShopifySEOOptimizer:
         - Truncated to 60 characters
         """
         handle = title.lower()
-        handle = re.sub(r"[^\w\s-]", "", handle)   # remove special chars
-        handle = re.sub(r"[\s_]+", "-", handle)     # spaces/underscores → hyphens
-        handle = re.sub(r"-{2,}", "-", handle)      # collapse multiple hyphens
+        handle = re.sub(r"[^\w\s-]", "", handle)  # remove special chars
+        handle = re.sub(r"[\s_]+", "-", handle)  # spaces/underscores → hyphens
+        handle = re.sub(r"-{2,}", "-", handle)  # collapse multiple hyphens
         handle = handle.strip("-")
         return handle[:60]
 
     # -- Batch audit -------------------------------------------------------
 
-    async def batch_audit(
-        self, products: list[dict]
-    ) -> dict[str, Any]:
+    async def batch_audit(self, products: list[dict]) -> dict[str, Any]:
         """
         Score all products and return them sorted by overall_score ascending
         (worst performers first), plus an audit summary.
@@ -380,14 +384,8 @@ class ShopifySEOOptimizer:
 
         scores.sort(key=lambda s: s.overall_score)  # worst first
 
-        avg_score = (
-            round(sum(s.overall_score for s in scores) / len(scores), 1)
-            if scores
-            else 0.0
-        )
-        critical_count = sum(
-            1 for s in scores if s.overall_score < critical_threshold
-        )
+        avg_score = round(sum(s.overall_score for s in scores) / len(scores), 1) if scores else 0.0
+        critical_count = sum(1 for s in scores if s.overall_score < critical_threshold)
 
         return {
             "scores": scores,

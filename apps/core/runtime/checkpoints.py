@@ -1,10 +1,11 @@
 """Durable execution checkpoints for crash-resilient workflow resumption."""
+
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 from apps.core.memory.redis_client import get_cache
 
@@ -34,7 +35,7 @@ class ExecutionCheckpoint:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ExecutionCheckpoint":
+    def from_dict(cls, d: dict) -> ExecutionCheckpoint:
         return cls(
             id=d["id"],
             workflow_id=d["workflow_id"],
@@ -61,7 +62,7 @@ class CheckpointManager:
             step_name=step_name,
             step_index=step_index,
             state=state,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
             ttl_hours=ttl_hours,
         )
         cache = get_cache()
@@ -71,14 +72,18 @@ class CheckpointManager:
         # Maintain ordered index for load_latest
         idx_key = f"{_INDEX_PREFIX}{workflow_id}"
         existing_raw = await cache.get(idx_key)
-        steps: list[str] = (existing_raw if isinstance(existing_raw, list) else json.loads(existing_raw)) if existing_raw else []
+        steps: list[str] = (
+            (existing_raw if isinstance(existing_raw, list) else json.loads(existing_raw))
+            if existing_raw
+            else []
+        )
         if step_name not in steps:
             steps.append(step_name)
         await cache.set(idx_key, steps, ttl_seconds=ttl_hours * 3600)
 
         return ckpt.id
 
-    async def load(self, workflow_id: str, step_name: str) -> Optional[ExecutionCheckpoint]:
+    async def load(self, workflow_id: str, step_name: str) -> ExecutionCheckpoint | None:
         cache = get_cache()
         raw = await cache.get(f"{_CKPT_PREFIX}{workflow_id}:{step_name}")
         if not raw:
@@ -89,7 +94,7 @@ class CheckpointManager:
         except Exception:
             return None
 
-    async def load_latest(self, workflow_id: str) -> Optional[ExecutionCheckpoint]:
+    async def load_latest(self, workflow_id: str) -> ExecutionCheckpoint | None:
         cache = get_cache()
         idx_raw = await cache.get(f"{_INDEX_PREFIX}{workflow_id}")
         if not idx_raw:
@@ -137,7 +142,7 @@ class CheckpointManager:
         return ckpt.step_index, ckpt.state
 
 
-_manager: Optional[CheckpointManager] = None
+_manager: CheckpointManager | None = None
 
 
 def get_checkpoint_manager() -> CheckpointManager:

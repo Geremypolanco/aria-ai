@@ -11,10 +11,8 @@ Combina las capacidades de:
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from apps.core.agents.base_agent import BaseAgent
 from apps.core.sandbox.universal_sandbox import SandboxManager
@@ -44,7 +42,7 @@ class EnhancedDevAgent(BaseAgent):
         )
         self.sandbox_manager = SandboxManager()
 
-    async def _execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Punto de entrada principal."""
         task = context.get("task", "")
         task_type = context.get("task_type", "general")
@@ -54,22 +52,23 @@ class EnhancedDevAgent(BaseAgent):
 
         if "generate" in task_type.lower():
             return await self._generate_code(task, language, context)
-        elif "execute" in task_type.lower():
+        if "execute" in task_type.lower():
             return await self._execute_code(task, language, context)
-        elif "test" in task_type.lower():
+        if "test" in task_type.lower():
             return await self._test_code(task, language, context)
-        elif "deploy" in task_type.lower():
+        if "deploy" in task_type.lower():
             return await self._deploy(task, context)
-        else:
-            return await self._general_task(task, language, context)
+        return await self._general_task(task, language, context)
 
-    async def _generate_code(self, task: str, language: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _generate_code(
+        self, task: str, language: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         """Genera código completo para una tarea."""
         ai = get_ai_client()
         if not ai:
             return {"success": False, "error": "AI client no disponible"}
 
-        system_prompt = f"""Eres un experto desarrollador de {language}. 
+        system_prompt = f"""Eres un experto desarrollador de {language}.
 Genera código limpio, bien documentado y production-ready.
 Incluye manejo de errores, logging y tests unitarios.
 Responde SOLO con código válido."""
@@ -107,7 +106,9 @@ REQUISITOS:
             logger.error(f"[DevAgent] Error generando código: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _execute_code(self, code: str, language: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_code(
+        self, code: str, language: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         """Ejecuta código en un sandbox aislado."""
         try:
             # Crear sesión de sandbox
@@ -138,7 +139,7 @@ REQUISITOS:
             logger.error(f"[DevAgent] Error ejecutando código: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _test_code(self, code: str, language: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _test_code(self, code: str, language: str, context: dict[str, Any]) -> dict[str, Any]:
         """Ejecuta tests sobre código."""
         try:
             session = await self.sandbox_manager.create_session(language=language)
@@ -175,7 +176,7 @@ REQUISITOS:
             logger.error(f"[DevAgent] Error ejecutando tests: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _deploy(self, project_path: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _deploy(self, project_path: str, context: dict[str, Any]) -> dict[str, Any]:
         """Despliega una aplicación."""
         deployment_target = context.get("deployment_target", "vercel")
         token = context.get("deployment_token", "")
@@ -191,7 +192,10 @@ REQUISITOS:
                 app_name = context.get("app_name", "aria-app")
                 result = await deployment_tool.deploy_to_fly(project_path, app_name)
             else:
-                return {"success": False, "error": f"Deployment target no soportado: {deployment_target}"}
+                return {
+                    "success": False,
+                    "error": f"Deployment target no soportado: {deployment_target}",
+                }
 
             return {
                 "success": result.get("success", False),
@@ -204,7 +208,9 @@ REQUISITOS:
             logger.error(f"[DevAgent] Error desplegando: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def _general_task(self, task: str, language: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _general_task(
+        self, task: str, language: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         """Maneja tareas generales de desarrollo."""
         # Generar código primero
         code_result = await self._generate_code(task, language, context)
@@ -226,6 +232,7 @@ REQUISITOS:
         """Extrae código de un response de IA."""
         # Buscar bloques de código markdown
         import re
+
         pattern = r"```(?:python|javascript|node|go|rust|java)?\n(.*?)```"
         matches = re.findall(pattern, response, re.DOTALL)
         if matches:
@@ -246,7 +253,7 @@ REQUISITOS:
         }
         return extensions.get(language, language)
 
-    def _parse_test_results(self, output: str) -> Dict[str, Any]:
+    def _parse_test_results(self, output: str) -> dict[str, Any]:
         """Parsea resultados de tests."""
         # Implementación simplificada
         return {

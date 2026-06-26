@@ -2,10 +2,11 @@
 market_tools.py — Herramientas de inteligencia de mercado.
 NewsAPI, SerpAPI, scoring de oportunidades, afiliados.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -85,9 +86,7 @@ class MarketTools:
 
     # ── BÚSQUEDA (SerpAPI) ────────────────────────────────
 
-    async def search_trends(
-        self, query: str, num_results: int = 10
-    ) -> list[dict[str, Any]]:
+    async def search_trends(self, query: str, num_results: int = 10) -> list[dict[str, Any]]:
         """Busca tendencias y resultados via SerpAPI."""
         if not settings.SERP_API_KEY:
             logger.warning("[MarketTools] SERP_API_KEY no configurado")
@@ -149,12 +148,14 @@ class MarketTools:
             results = await self.search_trends(query, num_results=5)
             programs = []
             for r in results:
-                programs.append({
-                    "name": r.get("title", ""),
-                    "url": r.get("link", ""),
-                    "description": r.get("snippet", ""),
-                    "estimated_commission": self._estimate_commission(r.get("snippet", "")),
-                })
+                programs.append(
+                    {
+                        "name": r.get("title", ""),
+                        "url": r.get("link", ""),
+                        "description": r.get("snippet", ""),
+                        "estimated_commission": self._estimate_commission(r.get("snippet", "")),
+                    }
+                )
             return programs
         except Exception as exc:
             logger.error("[MarketTools] Error en affiliate search: %s", exc)
@@ -178,8 +179,8 @@ class MarketTools:
         comp_score = competition_scores.get(competition_level, 20)
 
         # Score por posición de resultados (menos dominación = más oportunidad)
-        avg_position = (
-            sum(r.get("position", 5) for r in search_results[:5]) / max(len(search_results[:5]), 1)
+        avg_position = sum(r.get("position", 5) for r in search_results[:5]) / max(
+            len(search_results[:5]), 1
         )
         position_score = max(0, 30 - avg_position * 3)
 
@@ -198,15 +199,16 @@ class MarketTools:
     def _score_recommendation(self, score: int) -> str:
         if score >= 70:
             return "🔥 ALTA — Actuar inmediatamente"
-        elif score >= 50:
+        if score >= 50:
             return "✅ MEDIA — Buena oportunidad, explorar"
-        elif score >= 30:
+        if score >= 30:
             return "⚠️ BAJA — Considerar con cuidado"
         return "❌ MUY BAJA — Evitar por ahora"
 
     def _estimate_commission(self, text: str) -> str:
         """Estima comisión de un programa de afiliados desde texto."""
         import re
+
         matches = re.findall(r"(\d+)\s*%", text)
         if matches:
             max_pct = max(int(m) for m in matches)
@@ -247,7 +249,7 @@ class MarketTools:
 
 
 # ── SINGLETON ─────────────────────────────────────────────
-_instance: Optional[MarketTools] = None
+_instance: MarketTools | None = None
 
 
 def get_market_tools() -> MarketTools:

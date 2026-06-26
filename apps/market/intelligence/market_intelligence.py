@@ -2,15 +2,15 @@
 MarketIntelligence — Aggregated market signals for strategic positioning.
 Consolidates trend, competition, and demand data into actionable snapshots.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "market:intelligence:v1"
 _TTL = 86400 * 7
@@ -76,6 +76,7 @@ class MarketIntelligence:
 
         try:
             from apps.market.trends.trend_analyzer import get_trend_analyzer
+
             report = await get_trend_analyzer().analyze_niche(niche)
             trend_score = getattr(report, "trend_score", 0.5)
         except Exception:
@@ -88,6 +89,7 @@ class MarketIntelligence:
 
         try:
             from apps.market.competition.competitor_monitor import get_competitor_monitor
+
             landscape = await get_competitor_monitor().competitive_landscape(niche)
             comp = landscape.get("competition_intensity", 0.5)
             competition_level = "high" if comp > 0.65 else "low" if comp < 0.35 else "medium"
@@ -96,6 +98,7 @@ class MarketIntelligence:
 
         try:
             from apps.market.opportunities.opportunity_finder import get_opportunity_finder
+
             opps = await get_opportunity_finder().find_opportunities(niche, 1000.0)
             opportunity_count = len(opps)
             if opps:
@@ -133,19 +136,46 @@ class MarketIntelligence:
 
     async def identify_entry_points(self, niche: str) -> list[dict]:
         return [
-            {"strategy": "SEO content", "channel": "organic", "effort": "high",
-             "time_to_revenue_days": 90, "risk_level": "low"},
-            {"strategy": "Paid ads", "channel": "meta/google", "effort": "medium",
-             "time_to_revenue_days": 14, "risk_level": "medium"},
-            {"strategy": "Influencer partnership", "channel": "instagram/tiktok", "effort": "medium",
-             "time_to_revenue_days": 30, "risk_level": "medium"},
-            {"strategy": "Quiz funnel", "channel": "social", "effort": "medium",
-             "time_to_revenue_days": 21, "risk_level": "low"},
-            {"strategy": "Bundle flash offer", "channel": "email/sms", "effort": "low",
-             "time_to_revenue_days": 7, "risk_level": "low"},
+            {
+                "strategy": "SEO content",
+                "channel": "organic",
+                "effort": "high",
+                "time_to_revenue_days": 90,
+                "risk_level": "low",
+            },
+            {
+                "strategy": "Paid ads",
+                "channel": "meta/google",
+                "effort": "medium",
+                "time_to_revenue_days": 14,
+                "risk_level": "medium",
+            },
+            {
+                "strategy": "Influencer partnership",
+                "channel": "instagram/tiktok",
+                "effort": "medium",
+                "time_to_revenue_days": 30,
+                "risk_level": "medium",
+            },
+            {
+                "strategy": "Quiz funnel",
+                "channel": "social",
+                "effort": "medium",
+                "time_to_revenue_days": 21,
+                "risk_level": "low",
+            },
+            {
+                "strategy": "Bundle flash offer",
+                "channel": "email/sms",
+                "effort": "low",
+                "time_to_revenue_days": 7,
+                "risk_level": "low",
+            },
         ]
 
-    async def competitive_positioning(self, niche: str, strengths: list[str] = []) -> dict:
+    async def competitive_positioning(self, niche: str, strengths: list[str] = None) -> dict:
+        if strengths is None:
+            strengths = []
         try:
             ai = get_ai_client()
             strengths_text = ", ".join(strengths) if strengths else "AI-powered automation"
@@ -160,8 +190,10 @@ class MarketIntelligence:
                 max_tokens=200,
             )
             if resp.success and resp.content:
-                import json, re
-                match = re.search(r'\{.*\}', resp.content, re.DOTALL)
+                import json
+                import re
+
+                match = re.search(r"\{.*\}", resp.content, re.DOTALL)
                 if match:
                     return json.loads(match.group())
         except Exception:
@@ -174,7 +206,7 @@ class MarketIntelligence:
             "differentiation": "AI-driven personalization at scale",
         }
 
-    def latest_snapshot(self, niche: str) -> Optional[dict]:
+    def latest_snapshot(self, niche: str) -> dict | None:
         matching = [s for s in self._snapshots if s.get("niche") == niche]
         return matching[-1] if matching else None
 
@@ -198,7 +230,7 @@ class MarketIntelligence:
         }
 
 
-_instance: Optional[MarketIntelligence] = None
+_instance: MarketIntelligence | None = None
 
 
 def get_market_intelligence() -> MarketIntelligence:

@@ -14,16 +14,15 @@ Requiere en Fly.io secrets (segun plataforma):
   LinkedIn:          LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET
   URL base del servidor: ARIA_BASE_URL (ej: https://aria-ai.fly.dev)
 """
+
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import os
 import secrets
 import time
 import urllib.parse
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -34,36 +33,36 @@ logger = logging.getLogger("aria.social_media")
 
 PLATFORM_CONFIGS = {
     "facebook": {
-        "app_id_env":     "FACEBOOK_APP_ID",
+        "app_id_env": "FACEBOOK_APP_ID",
         "app_secret_env": "FACEBOOK_APP_SECRET",
-        "auth_url":       "https://www.facebook.com/v19.0/dialog/oauth",
-        "token_url":      "https://graph.facebook.com/v19.0/oauth/access_token",
-        "scopes":         "pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,publish_to_groups,email,public_profile",
-        "api_base":       "https://graph.facebook.com/v19.0",
+        "auth_url": "https://www.facebook.com/v19.0/dialog/oauth",
+        "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
+        "scopes": "pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,publish_to_groups,email,public_profile",
+        "api_base": "https://graph.facebook.com/v19.0",
     },
     "instagram": {
-        "app_id_env":     "FACEBOOK_APP_ID",     # Instagram usa el mismo app de Meta
+        "app_id_env": "FACEBOOK_APP_ID",  # Instagram usa el mismo app de Meta
         "app_secret_env": "FACEBOOK_APP_SECRET",
-        "auth_url":       "https://www.facebook.com/v19.0/dialog/oauth",
-        "token_url":      "https://graph.facebook.com/v19.0/oauth/access_token",
-        "scopes":         "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
-        "api_base":       "https://graph.facebook.com/v19.0",
+        "auth_url": "https://www.facebook.com/v19.0/dialog/oauth",
+        "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
+        "scopes": "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
+        "api_base": "https://graph.facebook.com/v19.0",
     },
     "tiktok": {
-        "app_id_env":     "TIKTOK_CLIENT_KEY",
+        "app_id_env": "TIKTOK_CLIENT_KEY",
         "app_secret_env": "TIKTOK_CLIENT_SECRET",
-        "auth_url":       "https://www.tiktok.com/v2/auth/authorize/",
-        "token_url":      "https://open.tiktokapis.com/v2/oauth/token/",
-        "scopes":         "user.info.basic,video.list,video.publish",
-        "api_base":       "https://open.tiktokapis.com/v2",
+        "auth_url": "https://www.tiktok.com/v2/auth/authorize/",
+        "token_url": "https://open.tiktokapis.com/v2/oauth/token/",
+        "scopes": "user.info.basic,video.list,video.publish",
+        "api_base": "https://open.tiktokapis.com/v2",
     },
     "linkedin": {
-        "app_id_env":     "LINKEDIN_CLIENT_ID",
+        "app_id_env": "LINKEDIN_CLIENT_ID",
         "app_secret_env": "LINKEDIN_CLIENT_SECRET",
-        "auth_url":       "https://www.linkedin.com/oauth/v2/authorization",
-        "token_url":      "https://www.linkedin.com/oauth/v2/accessToken",
-        "scopes":         "openid,profile,email,w_member_social",
-        "api_base":       "https://api.linkedin.com/v2",
+        "auth_url": "https://www.linkedin.com/oauth/v2/authorization",
+        "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
+        "scopes": "openid,profile,email,w_member_social",
+        "api_base": "https://api.linkedin.com/v2",
     },
 }
 
@@ -74,13 +73,13 @@ class SocialMediaManager:
         self._http = httpx.AsyncClient(timeout=30.0)
         self._base_url = os.getenv("ARIA_BASE_URL", "https://aria-ai.fly.dev")
 
-    def _get_creds(self, platform: str) -> tuple[Optional[str], Optional[str]]:
+    def _get_creds(self, platform: str) -> tuple[str | None, str | None]:
         cfg = PLATFORM_CONFIGS.get(platform, {})
         app_id = os.getenv(cfg.get("app_id_env", ""))
         app_secret = os.getenv(cfg.get("app_secret_env", ""))
         return app_id, app_secret
 
-    def get_auth_url(self, platform: str) -> Optional[str]:
+    def get_auth_url(self, platform: str) -> str | None:
         """Genera la URL de autorizacion OAuth para la plataforma indicada."""
         cfg = PLATFORM_CONFIGS.get(platform)
         if not cfg:
@@ -96,34 +95,34 @@ class SocialMediaManager:
 
         if platform in ("facebook", "instagram"):
             params = {
-                "client_id":     app_id,
-                "redirect_uri":  redirect_uri,
-                "scope":         cfg["scopes"],
+                "client_id": app_id,
+                "redirect_uri": redirect_uri,
+                "scope": cfg["scopes"],
                 "response_type": "code",
-                "state":         state,
+                "state": state,
             }
         elif platform == "tiktok":
             params = {
-                "client_key":    app_id,
-                "redirect_uri":  redirect_uri,
-                "scope":         cfg["scopes"],
+                "client_key": app_id,
+                "redirect_uri": redirect_uri,
+                "scope": cfg["scopes"],
                 "response_type": "code",
-                "state":         state,
+                "state": state,
             }
         elif platform == "linkedin":
             params = {
                 "response_type": "code",
-                "client_id":     app_id,
-                "redirect_uri":  redirect_uri,
-                "scope":         cfg["scopes"],
-                "state":         state,
+                "client_id": app_id,
+                "redirect_uri": redirect_uri,
+                "scope": cfg["scopes"],
+                "state": state,
             }
         else:
             return None
 
         return f"{cfg['auth_url']}?{urllib.parse.urlencode(params)}"
 
-    async def exchange_code_for_token(self, platform: str, code: str) -> Optional[dict]:
+    async def exchange_code_for_token(self, platform: str, code: str) -> dict | None:
         """Intercambia el codigo de autorizacion por un access token."""
         cfg = PLATFORM_CONFIGS.get(platform)
         if not cfg:
@@ -138,10 +137,10 @@ class SocialMediaManager:
         try:
             if platform in ("facebook", "instagram"):
                 params = {
-                    "client_id":     app_id,
+                    "client_id": app_id,
                     "client_secret": app_secret,
-                    "redirect_uri":  redirect_uri,
-                    "code":          code,
+                    "redirect_uri": redirect_uri,
+                    "code": code,
                 }
                 res = await self._http.get(cfg["token_url"], params=params)
 
@@ -150,11 +149,11 @@ class SocialMediaManager:
                     cfg["token_url"],
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                     data={
-                        "client_key":    app_id,
+                        "client_key": app_id,
                         "client_secret": app_secret,
-                        "code":          code,
-                        "grant_type":    "authorization_code",
-                        "redirect_uri":  redirect_uri,
+                        "code": code,
+                        "grant_type": "authorization_code",
+                        "redirect_uri": redirect_uri,
                     },
                 )
 
@@ -163,18 +162,20 @@ class SocialMediaManager:
                     cfg["token_url"],
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                     data={
-                        "grant_type":    "authorization_code",
-                        "code":          code,
-                        "client_id":     app_id,
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "client_id": app_id,
                         "client_secret": app_secret,
-                        "redirect_uri":  redirect_uri,
+                        "redirect_uri": redirect_uri,
                     },
                 )
             else:
                 return None
 
             if res.status_code != 200:
-                logger.error("[SocialMedia] Token exchange failed for %s: %s", platform, res.text[:200])
+                logger.error(
+                    "[SocialMedia] Token exchange failed for %s: %s", platform, res.text[:200]
+                )
                 return None
 
             return res.json()
@@ -183,7 +184,7 @@ class SocialMediaManager:
             logger.error("[SocialMedia] exchange_code error: %s", exc)
             return None
 
-    async def get_user_profile(self, platform: str, access_token: str) -> Optional[dict]:
+    async def get_user_profile(self, platform: str, access_token: str) -> dict | None:
         """Obtiene el perfil del usuario autenticado."""
         try:
             if platform in ("facebook", "instagram"):
@@ -193,7 +194,11 @@ class SocialMediaManager:
                 )
                 if res.status_code == 200:
                     data = res.json()
-                    return {"id": data.get("id"), "username": data.get("name", ""), "email": data.get("email", "")}
+                    return {
+                        "id": data.get("id"),
+                        "username": data.get("name", ""),
+                        "email": data.get("email", ""),
+                    }
 
             elif platform == "tiktok":
                 res = await self._http.get(
@@ -227,40 +232,39 @@ class SocialMediaManager:
         self,
         platform: str,
         access_token: str,
-        refresh_token: Optional[str],
-        expires_in: Optional[int],
+        refresh_token: str | None,
+        expires_in: int | None,
         profile: dict,
     ) -> bool:
         """Guarda la cuenta conectada en Supabase."""
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             expires_at = None
             if expires_in:
                 expires_at = time.strftime(
-                    "%Y-%m-%dT%H:%M:%SZ",
-                    time.gmtime(time.time() + expires_in)
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + expires_in)
                 )
             record = {
-                "platform":      platform,
-                "account_id":    str(profile.get("id", "")),
-                "username":      profile.get("username", ""),
-                "email":         profile.get("email", ""),
-                "access_token":  access_token,
+                "platform": platform,
+                "account_id": str(profile.get("id", "")),
+                "username": profile.get("username", ""),
+                "email": profile.get("email", ""),
+                "access_token": access_token,
                 "refresh_token": refresh_token,
-                "expires_at":    expires_at,
-                "is_active":     True,
-                "scopes":        PLATFORM_CONFIGS.get(platform, {}).get("scopes", ""),
+                "expires_at": expires_at,
+                "is_active": True,
+                "scopes": PLATFORM_CONFIGS.get(platform, {}).get("scopes", ""),
             }
             # Upsert por plataforma
             existing = (
-                db._client.table("social_accounts")
-                .select("id")
-                .eq("platform", platform)
-                .execute()
+                db._client.table("social_accounts").select("id").eq("platform", platform).execute()
             )
             if existing.data:
-                db._client.table("social_accounts").update(record).eq("platform", platform).execute()
+                db._client.table("social_accounts").update(record).eq(
+                    "platform", platform
+                ).execute()
             else:
                 db._client.table("social_accounts").insert(record).execute()
             logger.info("[SocialMedia] Cuenta %s guardada correctamente", platform)
@@ -273,6 +277,7 @@ class SocialMediaManager:
         """Lista todas las cuentas sociales conectadas."""
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             result = (
                 db._client.table("social_accounts")
@@ -284,10 +289,11 @@ class SocialMediaManager:
             logger.error("[SocialMedia] list_connected_accounts error: %s", exc)
             return []
 
-    async def get_account_token(self, platform: str) -> Optional[str]:
+    async def get_account_token(self, platform: str) -> str | None:
         """Obtiene el access token de una plataforma conectada."""
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             result = (
                 db._client.table("social_accounts")
@@ -309,6 +315,7 @@ class SocialMediaManager:
         """Desactiva una cuenta conectada."""
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             result = (
                 db._client.table("social_accounts")
@@ -321,28 +328,30 @@ class SocialMediaManager:
             logger.error("[SocialMedia] disconnect_account error: %s", exc)
             return False
 
-    async def post_content(self, platform: str, content: str, image_url: Optional[str] = None) -> dict:
+    async def post_content(self, platform: str, content: str, image_url: str | None = None) -> dict:
         """Publica contenido en la plataforma indicada."""
         token = await self.get_account_token(platform)
         if not token:
-            return {"success": False, "error": f"No hay cuenta de {platform} conectada. Usa /conectar {platform}"}
+            return {
+                "success": False,
+                "error": f"No hay cuenta de {platform} conectada. Usa /conectar {platform}",
+            }
 
         try:
             if platform == "facebook":
                 return await self._post_facebook(token, content, image_url)
-            elif platform == "instagram":
+            if platform == "instagram":
                 return await self._post_instagram(token, content, image_url)
-            elif platform == "tiktok":
+            if platform == "tiktok":
                 return await self._post_tiktok(token, content)
-            elif platform == "linkedin":
+            if platform == "linkedin":
                 return await self._post_linkedin(token, content, image_url)
-            else:
-                return {"success": False, "error": f"Plataforma {platform} no soportada"}
+            return {"success": False, "error": f"Plataforma {platform} no soportada"}
         except Exception as exc:
             logger.error("[SocialMedia] post_content error for %s: %s", platform, exc)
             return {"success": False, "error": str(exc)}
 
-    async def _post_facebook(self, token: str, content: str, image_url: Optional[str]) -> dict:
+    async def _post_facebook(self, token: str, content: str, image_url: str | None) -> dict:
         """Publica en Facebook Pages."""
         # Primero obtenemos las pages del usuario
         pages_res = await self._http.get(
@@ -372,15 +381,14 @@ class SocialMediaManager:
         if res.status_code == 200:
             post_id = res.json().get("id", "")
             return {"success": True, "post_id": post_id, "message": "Publicado en Facebook"}
-        else:
-            return {"success": False, "error": res.text[:200]}
+        return {"success": False, "error": res.text[:200]}
 
-    async def _post_instagram(self, token: str, content: str, image_url: Optional[str]) -> dict:
+    async def _post_instagram(self, token: str, content: str, image_url: str | None) -> dict:
         """Publica en Instagram (requiere imagen para posts normales, sin imagen usa Reels caption)."""
         if not image_url:
             return {
                 "success": False,
-                "error": "Instagram requiere una imagen para publicar. Usa /publicar instagram [url_imagen] [caption]"
+                "error": "Instagram requiere una imagen para publicar. Usa /publicar instagram [url_imagen] [caption]",
             }
 
         # Obtener Instagram Business Account ID
@@ -397,7 +405,10 @@ class SocialMediaManager:
                     break
 
         if not ig_account_id:
-            return {"success": False, "error": "No encontre cuenta de Instagram Business vinculada a tus Pages de Facebook"}
+            return {
+                "success": False,
+                "error": "No encontre cuenta de Instagram Business vinculada a tus Pages de Facebook",
+            }
 
         # Crear container de media
         container_res = await self._http.post(
@@ -417,19 +428,22 @@ class SocialMediaManager:
             json={"creation_id": container_id},
         )
         if publish_res.status_code == 200:
-            return {"success": True, "post_id": publish_res.json().get("id"), "message": "Publicado en Instagram"}
-        else:
-            return {"success": False, "error": publish_res.text[:200]}
+            return {
+                "success": True,
+                "post_id": publish_res.json().get("id"),
+                "message": "Publicado en Instagram",
+            }
+        return {"success": False, "error": publish_res.text[:200]}
 
     async def _post_tiktok(self, token: str, content: str) -> dict:
         """Publica en TikTok (solo texto/descripcion — video requiere archivo)."""
         # TikTok requiere video para publicar. Por ahora retornamos instrucciones.
         return {
             "success": False,
-            "error": "TikTok requiere un archivo de video para publicar. Esta funcion estara disponible pronto."
+            "error": "TikTok requiere un archivo de video para publicar. Esta funcion estara disponible pronto.",
         }
 
-    async def _post_linkedin(self, token: str, content: str, image_url: Optional[str]) -> dict:
+    async def _post_linkedin(self, token: str, content: str, image_url: str | None) -> dict:
         """Publica en LinkedIn."""
         # Obtener el ID del usuario
         me_res = await self._http.get(
@@ -455,11 +469,15 @@ class SocialMediaManager:
         }
 
         if image_url:
-            share_content["specificContent"]["com.linkedin.ugc.ShareContent"]["shareMediaCategory"] = "ARTICLE"
-            share_content["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [{
-                "status": "READY",
-                "originalUrl": image_url,
-            }]
+            share_content["specificContent"]["com.linkedin.ugc.ShareContent"][
+                "shareMediaCategory"
+            ] = "ARTICLE"
+            share_content["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [
+                {
+                    "status": "READY",
+                    "originalUrl": image_url,
+                }
+            ]
 
         res = await self._http.post(
             "https://api.linkedin.com/v2/ugcPosts",
@@ -474,5 +492,4 @@ class SocialMediaManager:
         if res.status_code in (200, 201):
             post_id = res.headers.get("x-restli-id", "")
             return {"success": True, "post_id": post_id, "message": "Publicado en LinkedIn"}
-        else:
-            return {"success": False, "error": res.text[:200]}
+        return {"success": False, "error": res.text[:200]}

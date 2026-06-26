@@ -2,10 +2,11 @@
 CMS connection para ARIA AI.
 Soporta WordPress (REST API), Webflow (API token), Contentful (API key), Sanity (API key).
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -17,6 +18,7 @@ class WordPressConnection:
 
     def _creds(self) -> tuple[str, str, str]:
         from apps.core.config import settings
+
         url = getattr(settings, "WORDPRESS_URL", "") or ""
         user = getattr(settings, "WORDPRESS_USERNAME", "") or ""
         password = getattr(settings, "WORDPRESS_APP_PASSWORD", "") or ""
@@ -24,13 +26,18 @@ class WordPressConnection:
 
     def _h(self, user: str, password: str) -> dict:
         import base64
+
         creds = base64.b64encode(f"{user}:{password}".encode()).decode()
         return {"Authorization": f"Basic {creds}", "Content-Type": "application/json"}
 
     async def list_posts(self, status: str = "publish", per_page: int = 10) -> list[dict]:
         url, user, password = self._creds()
         if not url or not user or not password:
-            return [{"error": "WORDPRESS_URL / WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD no configurados"}]
+            return [
+                {
+                    "error": "WORDPRESS_URL / WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD no configurados"
+                }
+            ]
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{url}/wp-json/wp/v2/posts",
@@ -50,12 +57,22 @@ class WordPressConnection:
             ]
 
     async def create_post(
-        self, title: str, content: str,
-        status: str = "draft", categories: list = [], tags: list = [],
+        self,
+        title: str,
+        content: str,
+        status: str = "draft",
+        categories: list = None,
+        tags: list = None,
     ) -> dict:
+        if tags is None:
+            tags = []
+        if categories is None:
+            categories = []
         url, user, password = self._creds()
         if not url or not user or not password:
-            return {"error": "WORDPRESS_URL / WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD no configurados"}
+            return {
+                "error": "WORDPRESS_URL / WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD no configurados"
+            }
         payload: dict[str, Any] = {"title": title, "content": content, "status": status}
         if categories:
             payload["categories"] = categories
@@ -69,13 +86,20 @@ class WordPressConnection:
             )
             if r.status_code in (200, 201):
                 data = r.json()
-                return {"success": True, "id": data.get("id"), "link": data.get("link"), "status": data.get("status")}
+                return {
+                    "success": True,
+                    "id": data.get("id"),
+                    "link": data.get("link"),
+                    "status": data.get("status"),
+                }
             return {"success": False, "status": r.status_code}
 
     async def update_post(self, post_id: int, updates: dict) -> dict:
         url, user, password = self._creds()
         if not url or not user or not password:
-            return {"error": "WORDPRESS_URL / WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD no configurados"}
+            return {
+                "error": "WORDPRESS_URL / WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD no configurados"
+            }
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.put(
                 f"{url}/wp-json/wp/v2/posts/{post_id}",
@@ -87,7 +111,11 @@ class WordPressConnection:
     async def list_pages(self, per_page: int = 10) -> list[dict]:
         url, user, password = self._creds()
         if not url or not user or not password:
-            return [{"error": "WORDPRESS_URL / WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD no configurados"}]
+            return [
+                {
+                    "error": "WORDPRESS_URL / WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD no configurados"
+                }
+            ]
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{url}/wp-json/wp/v2/pages",
@@ -95,7 +123,14 @@ class WordPressConnection:
                 params={"per_page": per_page},
             )
             r.raise_for_status()
-            return [{"id": p.get("id"), "title": p.get("title", {}).get("rendered", ""), "link": p.get("link")} for p in r.json()]
+            return [
+                {
+                    "id": p.get("id"),
+                    "title": p.get("title", {}).get("rendered", ""),
+                    "link": p.get("link"),
+                }
+                for p in r.json()
+            ]
 
 
 class WebflowConnection:
@@ -103,8 +138,9 @@ class WebflowConnection:
 
     API = "https://api.webflow.com/v2"
 
-    def _token(self) -> Optional[str]:
+    def _token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "WEBFLOW_API_TOKEN", None)
 
     def _h(self) -> dict:
@@ -122,7 +158,12 @@ class WebflowConnection:
             r = await http.get(f"{self.API}/sites", headers=self._h())
             r.raise_for_status()
             return [
-                {"id": s.get("id"), "displayName": s.get("displayName"), "shortName": s.get("shortName"), "lastPublished": s.get("lastPublished")}
+                {
+                    "id": s.get("id"),
+                    "displayName": s.get("displayName"),
+                    "shortName": s.get("shortName"),
+                    "lastPublished": s.get("lastPublished"),
+                }
                 for s in r.json().get("sites", [])
             ]
 
@@ -134,7 +175,11 @@ class WebflowConnection:
             r = await http.get(f"{self.API}/sites/{site_id}/collections", headers=self._h())
             r.raise_for_status()
             return [
-                {"id": c.get("id"), "displayName": c.get("displayName"), "singularName": c.get("singularName")}
+                {
+                    "id": c.get("id"),
+                    "displayName": c.get("displayName"),
+                    "singularName": c.get("singularName"),
+                }
                 for c in r.json().get("collections", [])
             ]
 
@@ -168,6 +213,7 @@ class ContentfulConnection:
 
     def _creds(self) -> tuple[str, str, str]:
         from apps.core.config import settings
+
         space = getattr(settings, "CONTENTFUL_SPACE_ID", "") or ""
         delivery_token = getattr(settings, "CONTENTFUL_DELIVERY_TOKEN", "") or ""
         mgmt_token = getattr(settings, "CONTENTFUL_MANAGEMENT_TOKEN", "") or ""
@@ -196,7 +242,11 @@ class ContentfulConnection:
             )
             r.raise_for_status()
             return [
-                {"id": ct.get("sys", {}).get("id"), "name": ct.get("name"), "description": ct.get("description", "")}
+                {
+                    "id": ct.get("sys", {}).get("id"),
+                    "name": ct.get("name"),
+                    "description": ct.get("description", ""),
+                }
                 for ct in r.json().get("items", [])
             ]
 
@@ -224,6 +274,7 @@ class SanityConnection:
 
     def _creds(self) -> tuple[str, str, str]:
         from apps.core.config import settings
+
         project_id = getattr(settings, "SANITY_PROJECT_ID", "") or ""
         dataset = getattr(settings, "SANITY_DATASET", "production") or "production"
         token = getattr(settings, "SANITY_API_TOKEN", "") or ""
@@ -235,7 +286,9 @@ class SanityConnection:
     def _h(self, token: str) -> dict:
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    async def query(self, groq_query: str, params: dict = {}) -> dict:
+    async def query(self, groq_query: str, params: dict = None) -> dict:
+        if params is None:
+            params = {}
         project_id, dataset, token = self._creds()
         if not project_id:
             return {"error": "SANITY_PROJECT_ID no configurado"}
@@ -257,11 +310,7 @@ class SanityConnection:
         project_id, dataset, token = self._creds()
         if not project_id or not token:
             return {"error": "SANITY_PROJECT_ID / SANITY_API_TOKEN no configurados"}
-        mutation = {
-            "mutations": [
-                {"create": {"_type": doc_type, **fields}}
-            ]
-        }
+        mutation = {"mutations": [{"create": {"_type": doc_type, **fields}}]}
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 f"{self._api(project_id, dataset)}/mutate/{dataset}",

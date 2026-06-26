@@ -2,15 +2,17 @@
 KnowledgeGraph — Relationship graph with Neo4j-compatible query interface.
 Backend: NetworkX (in-process) with optional Neo4j cloud connection.
 """
+
 from __future__ import annotations
+
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
 
 try:
     import networkx as nx
+
     _NX_AVAILABLE = True
 except ImportError:
     _NX_AVAILABLE = False
@@ -18,6 +20,7 @@ except ImportError:
 
 try:
     from neo4j import GraphDatabase
+
     _NEO4J_AVAILABLE = True
 except ImportError:
     _NEO4J_AVAILABLE = False
@@ -26,7 +29,7 @@ _KG_KEY = "memory:kg:v1"
 _KG_TTL = 86400 * 90
 
 
-class RelationType(str, Enum):
+class RelationType(StrEnum):
     IS_A = "IS_A"
     HAS = "HAS"
     USES = "USES"
@@ -83,6 +86,7 @@ class KnowledgeGraph:
         if not _NEO4J_AVAILABLE:
             return
         import os
+
         uri = os.environ.get("NEO4J_URI", "")
         user = os.environ.get("NEO4J_USER", "neo4j")
         password = os.environ.get("NEO4J_PASSWORD", "")
@@ -93,7 +97,11 @@ class KnowledgeGraph:
             except Exception:
                 self._neo4j_driver = None
 
-    def add_entity(self, name: str, entity_type: str = "concept", properties: dict = {}) -> Entity:
+    def add_entity(
+        self, name: str, entity_type: str = "concept", properties: dict = None
+    ) -> Entity:
+        if properties is None:
+            properties = {}
         entity = Entity(name=name, entity_type=entity_type, properties=properties)
         self._entities[entity.entity_id] = entity
         if self._graph is not None:
@@ -106,26 +114,29 @@ class KnowledgeGraph:
         target_id: str,
         relation_type: RelationType,
         weight: float = 1.0,
-        properties: dict = {},
+        properties: dict = None,
     ) -> bool:
+        if properties is None:
+            properties = {}
         if source_id not in self._entities or target_id not in self._entities:
             return False
         if self._graph is not None:
             self._graph.add_edge(
-                source_id, target_id,
+                source_id,
+                target_id,
                 relation=relation_type.value,
                 weight=weight,
                 **properties,
             )
         return True
 
-    def get_entity(self, entity_id: str) -> Optional[Entity]:
+    def get_entity(self, entity_id: str) -> Entity | None:
         return self._entities.get(entity_id)
 
     def find_by_name(self, name: str) -> list[Entity]:
         return [e for e in self._entities.values() if name.lower() in e.name.lower()]
 
-    def neighbors(self, entity_id: str, relation_type: Optional[RelationType] = None) -> list[Entity]:
+    def neighbors(self, entity_id: str, relation_type: RelationType | None = None) -> list[Entity]:
         if self._graph is None:
             return []
         neighbors = []
@@ -141,6 +152,7 @@ class KnowledgeGraph:
             return []
         try:
             import networkx as nx
+
             path_ids = nx.shortest_path(self._graph, source_id, target_id)
             return [self._entities[nid] for nid in path_ids if nid in self._entities]
         except Exception:
@@ -152,6 +164,7 @@ class KnowledgeGraph:
             return [(e, 1.0) for e in list(self._entities.values())[:top_k]]
         try:
             import networkx as nx
+
             scores = nx.pagerank(self._graph, weight="weight")
             ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
             return [(self._entities[nid], score) for nid, score in ranked if nid in self._entities]
@@ -163,7 +176,6 @@ class KnowledgeGraph:
         if self._graph is None:
             return []
         try:
-            import networkx as nx
             subgraph_nodes = set()
             frontier = {entity_id}
             for _ in range(depth):
@@ -202,7 +214,7 @@ class KnowledgeGraph:
         }
 
 
-_kg_instance: Optional[KnowledgeGraph] = None
+_kg_instance: KnowledgeGraph | None = None
 
 
 def get_knowledge_graph() -> KnowledgeGraph:

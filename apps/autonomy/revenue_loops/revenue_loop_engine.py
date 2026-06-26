@@ -3,9 +3,8 @@ from __future__ import annotations
 import random
 import time
 import uuid
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -13,7 +12,7 @@ _TTL = 365 * 24 * 3600
 _CACHE_KEY = "autonomy:revenue_loops:v1"
 
 
-class LoopPhase(str, Enum):
+class LoopPhase(StrEnum):
     OBSERVE = "OBSERVE"
     ANALYZE = "ANALYZE"
     DECIDE = "DECIDE"
@@ -164,9 +163,7 @@ class RevenueLoopEngine:
         except Exception:
             pass
 
-    async def create_loop(
-        self, name: str, channel: str, description: str = ""
-    ) -> RevenueLoop:
+    async def create_loop(self, name: str, channel: str, description: str = "") -> RevenueLoop:
         await self._load()
         loop = RevenueLoop(
             loop_id=str(uuid.uuid4()),
@@ -214,7 +211,9 @@ class RevenueLoopEngine:
         loop.next_run_ts = time.time() + 24 * 3600
         loop.current_phase = LoopPhase.OBSERVE
 
-        learning = f"Iteration {loop.iterations}: +${revenue_delta} revenue (×{multiplier:.2f} multiplier)"
+        learning = (
+            f"Iteration {loop.iterations}: +${revenue_delta} revenue (×{multiplier:.2f} multiplier)"
+        )
         loop.learnings.append(learning)
         if len(loop.learnings) > 50:
             loop.learnings = loop.learnings[-50:]
@@ -265,10 +264,22 @@ class RevenueLoopEngine:
         if self._loops:
             return [RevenueLoop.from_dict(v) for v in self._loops.values()]
         defaults = [
-            ("Shopify Optimisation", "shopify", "Optimise product listings, pricing, and ads for Shopify store"),
-            ("Content Monetisation", "content", "Convert content traffic to revenue through CTAs and offers"),
+            (
+                "Shopify Optimisation",
+                "shopify",
+                "Optimise product listings, pricing, and ads for Shopify store",
+            ),
+            (
+                "Content Monetisation",
+                "content",
+                "Convert content traffic to revenue through CTAs and offers",
+            ),
             ("Email Revenue", "email", "Drive purchases through email sequences and promotions"),
-            ("Affiliate Tracking", "affiliate", "Maximise affiliate commissions through content and link placement"),
+            (
+                "Affiliate Tracking",
+                "affiliate",
+                "Maximise affiliate commissions through content and link placement",
+            ),
         ]
         loops: list[RevenueLoop] = []
         for name, channel, desc in defaults:
@@ -301,9 +312,7 @@ class RevenueLoopEngine:
 
     def summary(self) -> dict:
         active = sum(1 for v in self._loops.values() if v.get("active", True))
-        total_revenue = sum(
-            v.get("revenue_generated_usd", 0.0) for v in self._loops.values()
-        )
+        total_revenue = sum(v.get("revenue_generated_usd", 0.0) for v in self._loops.values())
         return {
             "active_loops": active,
             "total_revenue_usd": round(total_revenue, 2),

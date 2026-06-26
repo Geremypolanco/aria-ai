@@ -2,16 +2,13 @@
 Dynamic product bundle creator — generates complementary, quantity,
 starter and premium bundles with AI-driven naming and descriptions.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
-
-from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +55,7 @@ class ProductBundle:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ProductBundle":
+    def from_dict(cls, d: dict) -> ProductBundle:
         return cls(**d)
 
 
@@ -118,7 +115,7 @@ class BundleGenerator:
         savings_pct = round((savings / individual_total) * 100) if individual_total > 0 else 0
 
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+            from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 
             ai = get_ai_client()
             if ai is None:
@@ -243,7 +240,7 @@ class BundleGenerator:
         # If we need more bundles, try AI-driven grouping with remaining catalog
         if len(bundles) < count and len(catalog) >= 2:
             try:
-                from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+                from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 
                 ai = get_ai_client()
                 if ai is not None:
@@ -266,7 +263,9 @@ class BundleGenerator:
                             ids = [x.strip() for x in line.split(",") if x.strip()]
                             group = [id_lookup[i] for i in ids if i in id_lookup]
                             if len(group) >= 2:
-                                bundle = await self.create_bundle(group, bundle_type="complementary")
+                                bundle = await self.create_bundle(
+                                    group, bundle_type="complementary"
+                                )
                                 bundles.append(bundle)
             except Exception:
                 logger.debug("AI smart bundle generation failed")
@@ -305,7 +304,9 @@ class BundleGenerator:
 
             if len(group) >= 2:
                 bundle_type = "starter" if i == 0 else "complementary" if i == 1 else "premium"
-                bundle = await self.create_bundle(group, bundle_type=bundle_type, discount_pct=0.10 + i * 0.05)
+                bundle = await self.create_bundle(
+                    group, bundle_type=bundle_type, discount_pct=0.10 + i * 0.05
+                )
                 bundles.append(bundle)
 
             # Shift catalog for next bundle variation
@@ -344,7 +345,7 @@ class BundleGenerator:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_generator: Optional[BundleGenerator] = None
+_generator: BundleGenerator | None = None
 
 
 def get_bundle_generator() -> BundleGenerator:

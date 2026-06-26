@@ -8,6 +8,7 @@ Twitter/X: API v2 — POST /2/tweets (requires TWITTER_BEARER_TOKEN + TWITTER_AP
 LinkedIn: API v2 — POST /v2/ugcPosts (requires LINKEDIN_ACCESS_TOKEN + LINKEDIN_PERSON_URN)
 TikTok: Content Posting API (requires TIKTOK_CLIENT_KEY + TIKTOK_ACCESS_TOKEN)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,12 +23,10 @@ import time
 import urllib.parse
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 import httpx
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
 
 logger = logging.getLogger("aria.api_publisher")
 
@@ -36,6 +35,7 @@ _REDIS_TTL = 86400 * 30  # 30 days
 
 
 # ── OAuth1 helper ──────────────────────────────────────────────────────────────
+
 
 def _build_oauth1_header(
     method: str,
@@ -80,6 +80,7 @@ def _build_oauth1_header(
 
 
 # ── Domain objects ─────────────────────────────────────────────────────────────
+
 
 @dataclass
 class PublishResult:
@@ -130,6 +131,7 @@ class PublishRequest:
 
 
 # ── Publisher ──────────────────────────────────────────────────────────────────
+
 
 class RealAPIPublisher:
     """Multi-platform API publisher that makes real HTTP calls to social APIs."""
@@ -234,9 +236,7 @@ class RealAPIPublisher:
 
     # ── Twitter/X ─────────────────────────────────────────────────────────────
 
-    async def publish_to_twitter(
-        self, content: str, reply_to_id: str = ""
-    ) -> PublishResult:
+    async def publish_to_twitter(self, content: str, reply_to_id: str = "") -> PublishResult:
         """Post a tweet via Twitter API v2 with OAuth1 authentication."""
         await self._load()
 
@@ -308,9 +308,7 @@ class RealAPIPublisher:
 
     # ── LinkedIn ───────────────────────────────────────────────────────────────
 
-    async def publish_to_linkedin(
-        self, content: str, visibility: str = "PUBLIC"
-    ) -> PublishResult:
+    async def publish_to_linkedin(self, content: str, visibility: str = "PUBLIC") -> PublishResult:
         """Post a UGC post via LinkedIn API v2."""
         await self._load()
 
@@ -343,9 +341,7 @@ class RealAPIPublisher:
                     "shareMediaCategory": "NONE",
                 }
             },
-            "visibility": {
-                "com.linkedin.ugc.MemberNetworkVisibility": visibility
-            },
+            "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": visibility},
         }
 
         try:
@@ -420,9 +416,8 @@ class RealAPIPublisher:
         try:
             response = await self._retry_request("POST", tiktok_url, headers, body)
             resp_json = response.json()
-            publish_id = (
-                resp_json.get("data", {}).get("publish_id", "")
-                or resp_json.get("publish_id", "")
+            publish_id = resp_json.get("data", {}).get("publish_id", "") or resp_json.get(
+                "publish_id", ""
             )
             result = PublishResult(
                 platform="tiktok",
@@ -449,9 +444,7 @@ class RealAPIPublisher:
 
     # ── Thread publishing ──────────────────────────────────────────────────────
 
-    async def publish_thread_to_twitter(
-        self, tweets: list[str]
-    ) -> list[PublishResult]:
+    async def publish_thread_to_twitter(self, tweets: list[str]) -> list[PublishResult]:
         """Post a Twitter thread — each tweet replies to the previous one."""
         results: list[PublishResult] = []
         reply_to_id = ""
@@ -478,25 +471,18 @@ class RealAPIPublisher:
         """Publish content to all requested platforms in parallel."""
         await self._load()
 
-        tasks: list[asyncio.Task] = []
-        loop = asyncio.get_event_loop()
+        asyncio.get_event_loop()
 
         platform_coros = []
         for platform in request.platforms:
             platform_lower = platform.lower()
             if platform_lower == "twitter":
-                platform_coros.append(
-                    self.publish_to_twitter(request.content)
-                )
+                platform_coros.append(self.publish_to_twitter(request.content))
             elif platform_lower == "linkedin":
-                platform_coros.append(
-                    self.publish_to_linkedin(request.content)
-                )
+                platform_coros.append(self.publish_to_linkedin(request.content))
             elif platform_lower == "tiktok":
                 video_url = request.media_urls[0] if request.media_urls else ""
-                platform_coros.append(
-                    self.publish_to_tiktok(video_url, request.content)
-                )
+                platform_coros.append(self.publish_to_tiktok(video_url, request.content))
             else:
                 logger.warning("Unknown platform '%s' in batch request — skipping", platform)
 

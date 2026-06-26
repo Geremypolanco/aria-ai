@@ -1,13 +1,13 @@
 """WorkflowMemory — Stores successful and failed workflow patterns for self-improvement."""
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "memory:workflow:v1"
 _TTL = 86400 * 180
@@ -28,7 +28,7 @@ class WorkflowRecord:
     ts: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items()}
+        return dict(self.__dict__.items())
 
 
 class WorkflowMemory:
@@ -54,9 +54,17 @@ class WorkflowMemory:
         except Exception:
             pass
 
-    async def record(self, workflow_name: str, workflow_type: str, inputs: dict, outputs: dict,
-                     success: bool = True, success_score: float = 0.8,
-                     duration_seconds: float = 0.0, error: str = "") -> WorkflowRecord:
+    async def record(
+        self,
+        workflow_name: str,
+        workflow_type: str,
+        inputs: dict,
+        outputs: dict,
+        success: bool = True,
+        success_score: float = 0.8,
+        duration_seconds: float = 0.0,
+        error: str = "",
+    ) -> WorkflowRecord:
         await self._load()
         lessons = []
         try:
@@ -65,36 +73,56 @@ class WorkflowMemory:
             resp = await ai.complete(
                 system="Workflow analyst. Extract 2 concise lessons.",
                 user=f"Workflow '{workflow_name}' ({workflow_type}) {status}. Score: {success_score}. Extract key lessons.",
-                model=AIModel.FAST, max_tokens=150,
+                model=AIModel.FAST,
+                max_tokens=150,
             )
             if resp.success and resp.content:
                 lessons = [l.strip() for l in resp.content.strip().split("\n") if l.strip()][:3]
         except Exception:
             pass
         if not lessons:
-            lessons = ["Track input quality for better outputs"] if success else [f"Fix error: {error[:100]}"]
+            lessons = (
+                ["Track input quality for better outputs"]
+                if success
+                else [f"Fix error: {error[:100]}"]
+            )
 
-        rec = WorkflowRecord(workflow_name=workflow_name, workflow_type=workflow_type,
-                             inputs=inputs, outputs=outputs, success=success,
-                             success_score=success_score, duration_seconds=duration_seconds,
-                             error=error, lessons=lessons)
+        rec = WorkflowRecord(
+            workflow_name=workflow_name,
+            workflow_type=workflow_type,
+            inputs=inputs,
+            outputs=outputs,
+            success=success,
+            success_score=success_score,
+            duration_seconds=duration_seconds,
+            error=error,
+            lessons=lessons,
+        )
         self._records.append(rec.to_dict())
         await self._save()
         return rec
 
-    async def recall_similar(self, workflow_name: str, workflow_type: str = "") -> list[WorkflowRecord]:
+    async def recall_similar(
+        self, workflow_name: str, workflow_type: str = ""
+    ) -> list[WorkflowRecord]:
         await self._load()
         results = []
         for r in self._records:
             if workflow_type and r.get("workflow_type") != workflow_type:
                 continue
             if workflow_name.lower() in r.get("workflow_name", "").lower():
-                results.append(WorkflowRecord(**{k: v for k, v in r.items() if k in WorkflowRecord.__dataclass_fields__}))
+                results.append(
+                    WorkflowRecord(
+                        **{k: v for k, v in r.items() if k in WorkflowRecord.__dataclass_fields__}
+                    )
+                )
         return results[:10]
 
     async def get_best_practices(self, workflow_type: str) -> list[str]:
         await self._load()
-        successful = [r for r in self._records if r.get("workflow_type") == workflow_type and r.get("success")]
+        successful = [
+            r for r in self._records if r.get("workflow_type") == workflow_type and r.get("success")
+        ]
         if not successful:
             return [f"No recorded best practices for {workflow_type} yet."]
         try:
@@ -103,7 +131,8 @@ class WorkflowMemory:
             resp = await ai.complete(
                 system="Best practices synthesizer.",
                 user=f"Synthesize top 3 best practices from these lessons for {workflow_type}: {lessons_text[:500]}",
-                model=AIModel.STRATEGY, max_tokens=200,
+                model=AIModel.STRATEGY,
+                max_tokens=200,
             )
             if resp.success and resp.content:
                 return [l.strip() for l in resp.content.strip().split("\n") if l.strip()][:5]
@@ -113,14 +142,20 @@ class WorkflowMemory:
         return list(set(all_lessons))[:5]
 
     def success_rate(self, workflow_type: str = "") -> float:
-        records = [r for r in self._records if not workflow_type or r.get("workflow_type") == workflow_type]
+        records = [
+            r for r in self._records if not workflow_type or r.get("workflow_type") == workflow_type
+        ]
         if not records:
             return 0.0
         return round(sum(1 for r in records if r.get("success")) / len(records), 2)
 
     def failed_workflows(self, workflow_type: str = "") -> list[dict]:
-        return [r for r in self._records if not r.get("success") and
-                (not workflow_type or r.get("workflow_type") == workflow_type)]
+        return [
+            r
+            for r in self._records
+            if not r.get("success")
+            and (not workflow_type or r.get("workflow_type") == workflow_type)
+        ]
 
     def workflow_analytics(self) -> dict:
         by_type: dict = {}
@@ -138,7 +173,7 @@ class WorkflowMemory:
         }
 
 
-_instance: Optional[WorkflowMemory] = None
+_instance: WorkflowMemory | None = None
 
 
 def get_workflow_memory() -> WorkflowMemory:

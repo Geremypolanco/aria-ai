@@ -9,21 +9,21 @@ Ejemplos:
   "Investiga competidores de [empresa], analiza fortalezas, genera pitch deck"
   "Monitorea el precio de BTC, si baja 5% envíame alerta por email"
 """
+
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.workflow")
 
-REDIS_KEY    = "aria:workflows"
-REDIS_TTL    = 86400 * 90  # 90 days
+REDIS_KEY = "aria:workflows"
+REDIS_TTL = 86400 * 90  # 90 days
 
 
 @dataclass
@@ -31,7 +31,7 @@ class WorkflowStep:
     tool: str
     args: dict
     description: str = ""
-    result: Optional[str] = None
+    result: str | None = None
 
 
 @dataclass
@@ -40,8 +40,8 @@ class Workflow:
     name: str
     description: str
     steps: list[WorkflowStep]
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    last_run: Optional[str] = None
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    last_run: str | None = None
     run_count: int = 0
 
     def to_dict(self) -> dict:
@@ -49,7 +49,9 @@ class Workflow:
             "id": self.id,
             "name": self.name,
             "description": self.description,
-            "steps": [{"tool": s.tool, "args": s.args, "description": s.description} for s in self.steps],
+            "steps": [
+                {"tool": s.tool, "args": s.args, "description": s.description} for s in self.steps
+            ],
             "created_at": self.created_at,
             "last_run": self.last_run,
             "run_count": self.run_count,
@@ -73,7 +75,8 @@ class WorkflowEngine:
         """
         await self._ensure_loaded()
 
-        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+
         client = get_ai_client()
 
         resp = await client.complete(
@@ -106,15 +109,17 @@ class WorkflowEngine:
         )
 
         content = resp.content if hasattr(resp, "content") else str(resp)
-        steps   = self._parse_steps(content)
+        steps = self._parse_steps(content)
 
         if not steps:
             # Fallback: single agent step
-            steps = [WorkflowStep(
-                tool="run_business_agent",
-                args={"agent": "ceo", "mission": description},
-                description=description,
-            )]
+            steps = [
+                WorkflowStep(
+                    tool="run_business_agent",
+                    args={"agent": "ceo", "mission": description},
+                    description=description,
+                )
+            ]
 
         wf = Workflow(id=str(uuid.uuid4())[:8], name=name, description=description, steps=steps)
         self._workflows[wf.id] = wf
@@ -139,27 +144,46 @@ class WorkflowEngine:
         prev_output = ""
 
         for i, step in enumerate(wf.steps):
-            logger.info("[Workflow:%s] Step %d/%d: %s", workflow_id, i + 1, len(wf.steps), step.tool)
+            logger.info(
+                "[Workflow:%s] Step %d/%d: %s", workflow_id, i + 1, len(wf.steps), step.tool
+            )
 
             # Inject {prev_output} placeholder
             enriched_args = {}
             for k, v in step.args.items():
-                enriched_args[k] = v.replace("{prev_output}", prev_output[:800]) if isinstance(v, str) else v
+                enriched_args[k] = (
+                    v.replace("{prev_output}", prev_output[:800]) if isinstance(v, str) else v
+                )
 
             try:
                 from apps.core.cognition.aria_mind import get_aria_mind
+
                 obs, _ = await get_aria_mind()._execute_tool(step.tool, enriched_args)
                 step.result = obs[:1500]
                 prev_output = step.result
-                results.append({"step": i + 1, "tool": step.tool, "desc": step.description,
-                                 "success": True, "output": step.result})
+                results.append(
+                    {
+                        "step": i + 1,
+                        "tool": step.tool,
+                        "desc": step.description,
+                        "success": True,
+                        "output": step.result,
+                    }
+                )
             except Exception as exc:
                 step.result = f"Error: {exc}"
-                results.append({"step": i + 1, "tool": step.tool, "desc": step.description,
-                                 "success": False, "error": str(exc)})
+                results.append(
+                    {
+                        "step": i + 1,
+                        "tool": step.tool,
+                        "desc": step.description,
+                        "success": False,
+                        "error": str(exc),
+                    }
+                )
                 logger.warning("[Workflow:%s] Step %d error: %s", workflow_id, i + 1, exc)
 
-        wf.last_run   = datetime.now(timezone.utc).isoformat()
+        wf.last_run = datetime.now(UTC).isoformat()
         wf.run_count += 1
         await self._persist()
 
@@ -173,10 +197,13 @@ class WorkflowEngine:
         }
 
     def list(self) -> list[dict]:
-        return sorted([w.to_dict() for w in self._workflows.values()],
-                      key=lambda w: w["created_at"], reverse=True)
+        return sorted(
+            [w.to_dict() for w in self._workflows.values()],
+            key=lambda w: w["created_at"],
+            reverse=True,
+        )
 
-    def get(self, workflow_id: str) -> Optional[dict]:
+    def get(self, workflow_id: str) -> dict | None:
         wf = self._workflows.get(workflow_id)
         return wf.to_dict() if wf else None
 
@@ -192,7 +219,7 @@ class WorkflowEngine:
         try:
             text = re.sub(r"^```[a-z]*\n?", "", text.strip(), flags=re.M)
             text = re.sub(r"\n?```$", "", text.strip())
-            m    = re.search(r"\[.*\]", text, re.DOTALL)
+            m = re.search(r"\[.*\]", text, re.DOTALL)
             if m:
                 data = json.loads(m.group())
                 return [
@@ -201,7 +228,8 @@ class WorkflowEngine:
                         args=s.get("args", {}),
                         description=s.get("description", ""),
                     )
-                    for s in data if isinstance(s, dict)
+                    for s in data
+                    if isinstance(s, dict)
                 ]
         except Exception:
             pass
@@ -210,6 +238,7 @@ class WorkflowEngine:
     async def _persist(self) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             payload = json.dumps({k: v.to_dict() for k, v in self._workflows.items()})
             await get_cache().set(REDIS_KEY, payload, ttl_seconds=REDIS_TTL)
         except Exception:
@@ -221,24 +250,34 @@ class WorkflowEngine:
         self._loaded = True
         try:
             from apps.core.memory.redis_client import get_cache
+
             raw = await get_cache().get(REDIS_KEY)
             if raw:
                 data = json.loads(raw) if isinstance(raw, str) else raw
                 for wid, wd in data.items():
-                    steps = [WorkflowStep(tool=s["tool"], args=s.get("args", {}),
-                                          description=s.get("description", ""))
-                             for s in wd.get("steps", [])]
+                    steps = [
+                        WorkflowStep(
+                            tool=s["tool"],
+                            args=s.get("args", {}),
+                            description=s.get("description", ""),
+                        )
+                        for s in wd.get("steps", [])
+                    ]
                     self._workflows[wid] = Workflow(
-                        id=wid, name=wd["name"], description=wd["description"],
-                        steps=steps, created_at=wd.get("created_at", ""),
-                        last_run=wd.get("last_run"), run_count=wd.get("run_count", 0),
+                        id=wid,
+                        name=wd["name"],
+                        description=wd["description"],
+                        steps=steps,
+                        created_at=wd.get("created_at", ""),
+                        last_run=wd.get("last_run"),
+                        run_count=wd.get("run_count", 0),
                     )
                 logger.info("[WorkflowEngine] Loaded %d workflows from Redis", len(self._workflows))
         except Exception:
             pass
 
 
-_engine: Optional[WorkflowEngine] = None
+_engine: WorkflowEngine | None = None
 
 
 def get_workflow_engine() -> WorkflowEngine:

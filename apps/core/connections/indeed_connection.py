@@ -3,10 +3,12 @@ Indeed connection para ARIA AI.
 Búsqueda de empleo via SerpAPI (usa el SERP_API_KEY existente — sin OAuth).
 También soporta búsqueda directa via Indeed RSS cuando SerpAPI no está disponible.
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Any
+
 import httpx
 
 logger = logging.getLogger("aria.connections.indeed")
@@ -24,6 +26,7 @@ class IndeedConnection:
 
     def _serp_key(self) -> str:
         from apps.core.config import settings
+
         return getattr(settings, "SERP_API_KEY", None) or ""
 
     async def search_jobs(
@@ -42,12 +45,18 @@ class IndeedConnection:
         """
         serp_key = self._serp_key()
         if serp_key:
-            return await self._search_via_serpapi(query, location, max_results, employment_type, serp_key)
+            return await self._search_via_serpapi(
+                query, location, max_results, employment_type, serp_key
+            )
         return await self._search_via_rss(query, location, max_results)
 
     async def _search_via_serpapi(
-        self, query: str, location: str, max_results: int,
-        employment_type: str, api_key: str,
+        self,
+        query: str,
+        location: str,
+        max_results: int,
+        employment_type: str,
+        api_key: str,
     ) -> list[dict]:
         params: dict[str, Any] = {
             "engine": "indeed",
@@ -86,22 +95,24 @@ class IndeedConnection:
                 if r.status_code != 200:
                     return []
                 import xml.etree.ElementTree as ET
+
                 root = ET.fromstring(r.text)
-                ns = {"": ""}
                 items = root.findall(".//item")
                 results = []
                 for item in items[:max_results]:
                     title = item.findtext("title", "")
                     link = item.findtext("link", "")
                     desc = item.findtext("description", "")
-                    results.append({
-                        "title": title,
-                        "company": "",
-                        "location": location,
-                        "link": link,
-                        "description": desc[:400],
-                        "source": "indeed_rss",
-                    })
+                    results.append(
+                        {
+                            "title": title,
+                            "company": "",
+                            "location": location,
+                            "link": link,
+                            "description": desc[:400],
+                            "source": "indeed_rss",
+                        }
+                    )
                 return results
             except Exception as exc:
                 logger.warning("[Indeed] RSS fallback error: %s", exc)
@@ -110,18 +121,28 @@ class IndeedConnection:
     async def get_job_details(self, job_url: str) -> dict:
         """Obtiene detalles completos de un job via scraping básico."""
         try:
-            async with httpx.AsyncClient(timeout=20.0, headers={"User-Agent": "Mozilla/5.0"}) as http:
+            async with httpx.AsyncClient(
+                timeout=20.0, headers={"User-Agent": "Mozilla/5.0"}
+            ) as http:
                 r = await http.get(job_url)
                 if r.status_code == 200:
                     # Extract title from basic HTML parsing
                     import re
+
                     title_m = re.search(r"<title>(.*?)</title>", r.text, re.IGNORECASE)
                     title = title_m.group(1) if title_m else "Job Posting"
                     # Extract description snippet
-                    desc_m = re.search(r'<div[^>]*id="jobDescriptionText"[^>]*>(.*?)</div>', r.text, re.DOTALL)
+                    desc_m = re.search(
+                        r'<div[^>]*id="jobDescriptionText"[^>]*>(.*?)</div>', r.text, re.DOTALL
+                    )
                     desc_raw = desc_m.group(1) if desc_m else ""
                     desc_clean = re.sub(r"<[^>]+>", " ", desc_raw)[:1000].strip()
-                    return {"title": title, "description": desc_clean, "url": job_url, "source": "indeed"}
+                    return {
+                        "title": title,
+                        "description": desc_clean,
+                        "url": job_url,
+                        "source": "indeed",
+                    }
         except Exception as exc:
             logger.warning("[Indeed] get_job_details error: %s", exc)
         return {"url": job_url, "description": "No disponible", "source": "indeed"}

@@ -3,10 +3,11 @@ DevOps connection para ARIA AI.
 Soporta Netlify, Cloudflare, Firebase (Google), AWS S3.
 Todos usan API tokens/keys.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -18,8 +19,9 @@ class NetlifyConnection:
 
     API = "https://api.netlify.com/api/v1"
 
-    def _token(self) -> Optional[str]:
+    def _token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "NETLIFY_TOKEN", None)
 
     def _h(self) -> dict:
@@ -90,12 +92,14 @@ class CloudflareConnection:
 
     API = "https://api.cloudflare.com/client/v4"
 
-    def _token(self) -> Optional[str]:
+    def _token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "CLOUDFLARE_API_TOKEN", None)
 
-    def _account_id(self) -> Optional[str]:
+    def _account_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "CLOUDFLARE_ACCOUNT_ID", None)
 
     def _h(self) -> dict:
@@ -141,11 +145,18 @@ class CloudflareConnection:
             r = await http.get(f"{self.API}/zones/{zone_id}/dns_records", headers=self._h())
             r.raise_for_status()
             return [
-                {"id": rec.get("id"), "type": rec.get("type"), "name": rec.get("name"), "content": rec.get("content")}
+                {
+                    "id": rec.get("id"),
+                    "type": rec.get("type"),
+                    "name": rec.get("name"),
+                    "content": rec.get("content"),
+                }
                 for rec in r.json().get("result", [])
             ]
 
-    async def purge_cache(self, zone_id: str, files: list[str] = []) -> dict:
+    async def purge_cache(self, zone_id: str, files: list[str] = None) -> dict:
+        if files is None:
+            files = []
         token = self._token()
         if not token:
             return {"error": "CLOUDFLARE_API_TOKEN no configurado"}
@@ -162,12 +173,14 @@ class CloudflareConnection:
 class FirebaseConnection:
     """Firebase via Google Service Account / OAuth token."""
 
-    def _project_id(self) -> Optional[str]:
+    def _project_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "FIREBASE_PROJECT_ID", None)
 
-    def _token(self) -> Optional[str]:
+    def _token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "FIREBASE_SERVICE_ACCOUNT_TOKEN", None)
 
     def _h(self) -> dict:
@@ -180,7 +193,11 @@ class FirebaseConnection:
         if not project_id or not token:
             return ["FIREBASE_PROJECT_ID / FIREBASE_SERVICE_ACCOUNT_TOKEN no configurados"]
         base = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents"
-        path = f"{base}/{document_path}:listCollectionIds" if document_path else f"{base}:listCollectionIds"
+        path = (
+            f"{base}/{document_path}:listCollectionIds"
+            if document_path
+            else f"{base}:listCollectionIds"
+        )
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(path, headers=self._h(), json={})
             r.raise_for_status()
@@ -201,7 +218,9 @@ class FirebaseConnection:
         project_id = self._project_id()
         token = self._token()
         if not project_id or not token:
-            return [{"error": "FIREBASE_PROJECT_ID / FIREBASE_SERVICE_ACCOUNT_TOKEN no configurados"}]
+            return [
+                {"error": "FIREBASE_PROJECT_ID / FIREBASE_SERVICE_ACCOUNT_TOKEN no configurados"}
+            ]
         url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{collection}"
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(url, headers=self._h(), params={"pageSize": limit})
@@ -214,6 +233,7 @@ class AWSS3Connection:
 
     def _creds(self) -> tuple[str, str, str]:
         from apps.core.config import settings
+
         key = getattr(settings, "AWS_ACCESS_KEY_ID", "") or ""
         secret = getattr(settings, "AWS_SECRET_ACCESS_KEY", "") or ""
         region = getattr(settings, "AWS_REGION", "us-east-1") or "us-east-1"
@@ -224,9 +244,10 @@ class AWSS3Connection:
         key, secret, region = self._creds()
         if not key or not secret:
             return [{"error": "AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY no configurados"}]
-        import hmac
-        import hashlib
         import datetime
+        import hashlib
+        import hmac
+
         now = datetime.datetime.utcnow()
         date_str = now.strftime("%Y%m%d")
         time_str = now.strftime("%Y%m%dT%H%M%SZ")
@@ -235,9 +256,13 @@ class AWSS3Connection:
         signed_headers = "host;x-amz-date"
         canonical = f"GET\n/\n\n{headers_str}\n{signed_headers}\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         str_to_sign = f"AWS4-HMAC-SHA256\n{time_str}\n{date_str}/{region}/s3/aws4_request\n{hashlib.sha256(canonical.encode()).hexdigest()}"
+
         def sign(key_bytes: bytes, msg: str) -> bytes:
             return hmac.new(key_bytes, msg.encode(), hashlib.sha256).digest()
-        signing_key = sign(sign(sign(sign(f"AWS4{secret}".encode(), date_str), region), "s3"), "aws4_request")
+
+        signing_key = sign(
+            sign(sign(sign(f"AWS4{secret}".encode(), date_str), region), "s3"), "aws4_request"
+        )
         signature = hmac.new(signing_key, str_to_sign.encode(), hashlib.sha256).hexdigest()
         auth = f"AWS4-HMAC-SHA256 Credential={key}/{date_str}/{region}/s3/aws4_request, SignedHeaders={signed_headers}, Signature={signature}"
         try:
@@ -248,10 +273,14 @@ class AWSS3Connection:
                 )
                 r.raise_for_status()
                 import xml.etree.ElementTree as ET
+
                 root = ET.fromstring(r.text)
                 ns = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
                 return [
-                    {"name": b.findtext("s3:Name", namespaces=ns), "created": b.findtext("s3:CreationDate", namespaces=ns)}
+                    {
+                        "name": b.findtext("s3:Name", namespaces=ns),
+                        "created": b.findtext("s3:CreationDate", namespaces=ns),
+                    }
                     for b in root.findall("s3:Buckets/s3:Bucket", namespaces=ns)
                 ]
         except Exception as exc:
@@ -264,7 +293,10 @@ class AWSS3Connection:
             return [{"error": "AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY no configurados"}]
         try:
             import boto3
-            s3 = boto3.client("s3", aws_access_key_id=key, aws_secret_access_key=secret, region_name=region)
+
+            s3 = boto3.client(
+                "s3", aws_access_key_id=key, aws_secret_access_key=secret, region_name=region
+            )
             params: dict[str, Any] = {"Bucket": bucket, "MaxKeys": max_keys}
             if prefix:
                 params["Prefix"] = prefix

@@ -3,15 +3,15 @@ ARIA AI — Shopify Product SEO Optimizer
 Phase 12: Drives organic traffic through keyword-optimized product titles,
 descriptions, and meta tags.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "shopify:seo:v1"
 _TTL = 86400 * 30
@@ -132,16 +132,22 @@ class ProductSEOOptimizer:
             )
             if resp.success:
                 lines = [l.strip() for l in resp.content.strip().split("\n") if l.strip()]
-                seo.optimized_title = lines[0].replace("Title:", "").replace("SEO Title:", "").strip()
+                seo.optimized_title = (
+                    lines[0].replace("Title:", "").replace("SEO Title:", "").strip()
+                )
                 if len(seo.optimized_title) > 70:
                     seo.optimized_title = seo.optimized_title[:70]
                 seo.optimized_description = resp.content
-                seo.meta_description = f"Shop {product_name}. Best {category} prices. Fast shipping. Order now!"[:155]
+                seo.meta_description = (
+                    f"Shop {product_name}. Best {category} prices. Fast shipping. Order now!"[:155]
+                )
         except Exception:
             pass
 
         if not seo.optimized_title:
-            seo.optimized_title = f"Buy {product_name} — Premium {category.title()} | Best Price"[:70]
+            seo.optimized_title = f"Buy {product_name} — Premium {category.title()} | Best Price"[
+                :70
+            ]
         if not seo.optimized_description:
             seo.optimized_description = (
                 f"Discover {product_name} — the premium {category} solution designed for results. "
@@ -149,7 +155,9 @@ class ProductSEOOptimizer:
                 f"Fast shipping, easy returns, and unbeatable prices on all {category} products."
             )
         if not seo.meta_description:
-            seo.meta_description = f"Shop {product_name}. Best {category} prices. Fast shipping. Order now!"[:155]
+            seo.meta_description = (
+                f"Shop {product_name}. Best {category} prices. Fast shipping. Order now!"[:155]
+            )
 
         seo.meta_title = seo.optimized_title
         seo.target_keywords = [
@@ -171,7 +179,9 @@ class ProductSEOOptimizer:
             f"buy {category}",
             f"{product_name} discount",
         ]
-        seo.seo_score = self._seo_score(seo.optimized_title, seo.optimized_description, seo.target_keywords)
+        seo.seo_score = self._seo_score(
+            seo.optimized_title, seo.optimized_description, seo.target_keywords
+        )
         seo.estimated_traffic_boost_pct = round(max(0.0, (seo.seo_score - 0.3) * 150), 1)
 
         self._optimizations.append(seo.to_dict())
@@ -214,12 +224,17 @@ class ProductSEOOptimizer:
         return {
             "niche": niche,
             "commercial_keywords": [
-                f"buy {niche}", f"best {niche}", f"{niche} for sale",
-                f"cheap {niche}", f"{niche} online",
+                f"buy {niche}",
+                f"best {niche}",
+                f"{niche} for sale",
+                f"cheap {niche}",
+                f"{niche} online",
             ],
             "comparison_keywords": [
-                f"{niche} review", f"best {niche} 2024",
-                f"{niche} vs", f"top {niche} brands",
+                f"{niche} review",
+                f"best {niche} 2024",
+                f"{niche} vs",
+                f"top {niche} brands",
             ],
             "long_tail": [
                 f"where to buy {niche}",
@@ -241,11 +256,13 @@ class ProductSEOOptimizer:
         }
 
     def recent_optimizations(self, limit: int = 10) -> list[dict]:
-        return sorted(self._optimizations, key=lambda x: x.get("created_at", 0), reverse=True)[:limit]
+        return sorted(self._optimizations, key=lambda x: x.get("created_at", 0), reverse=True)[
+            :limit
+        ]
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_instance: Optional[ProductSEOOptimizer] = None
+_instance: ProductSEOOptimizer | None = None
 
 
 def get_product_seo_optimizer() -> ProductSEOOptimizer:

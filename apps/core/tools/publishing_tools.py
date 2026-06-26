@@ -9,12 +9,11 @@ Plataformas soportadas:
 
 Todas tienen tier gratuito y se activan con un API key simple.
 """
+
 from __future__ import annotations
 
-import json
 import logging
 import re
-from typing import Any, Optional
 
 import httpx
 
@@ -56,7 +55,10 @@ class PublishingTools:
 
             post_res = await self._http.post(
                 f"https://api.medium.com/v1/users/{user_id}/posts",
-                headers={"Authorization": f"Bearer {settings.MEDIUM_TOKEN}", "Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {settings.MEDIUM_TOKEN}",
+                    "Content-Type": "application/json",
+                },
                 json={
                     "title": title,
                     "contentFormat": "html",
@@ -72,8 +74,7 @@ class PublishingTools:
                 url = data.get("url", "")
                 logger.info("[Publishing] Medium: %s", url)
                 return {"success": True, "platform": "medium", "url": url, "id": data.get("id")}
-            else:
-                return {"success": False, "error": post_res.text[:200]}
+            return {"success": False, "error": post_res.text[:200]}
 
         except Exception as exc:
             logger.error("[Publishing] Medium error: %s", exc)
@@ -93,7 +94,10 @@ class PublishingTools:
         try:
             title = article.get("title", "Artículo")
             body = article.get("body", "")
-            tags = [t.lower().replace(" ", "").replace("-", "")[:20] for t in article.get("tags", [])[:4]]
+            tags = [
+                t.lower().replace(" ", "").replace("-", "")[:20]
+                for t in article.get("tags", [])[:4]
+            ]
             meta = article.get("meta_description", "")
 
             res = await self._http.post(
@@ -115,8 +119,7 @@ class PublishingTools:
                 url = data.get("url", f"https://dev.to/{data.get('id', '')}")
                 logger.info("[Publishing] Dev.to: %s", url)
                 return {"success": True, "platform": "devto", "url": url, "id": data.get("id")}
-            else:
-                return {"success": False, "error": res.text[:200]}
+            return {"success": False, "error": res.text[:200]}
 
         except Exception as exc:
             logger.error("[Publishing] Dev.to error: %s", exc)
@@ -132,12 +135,19 @@ class PublishingTools:
         Obtener publication ID: desde el dashboard de tu blog
         """
         if not settings.HASHNODE_TOKEN or not settings.HASHNODE_PUBLICATION_ID:
-            return {"success": False, "skipped": True, "reason": "HASHNODE_TOKEN o HASHNODE_PUBLICATION_ID no configurados"}
+            return {
+                "success": False,
+                "skipped": True,
+                "reason": "HASHNODE_TOKEN o HASHNODE_PUBLICATION_ID no configurados",
+            }
 
         try:
             title = article.get("title", "Artículo")
             body = article.get("body", "")
-            tags = [{"name": t, "slug": t.lower().replace(" ", "-")} for t in article.get("tags", [])[:5]]
+            tags = [
+                {"name": t, "slug": t.lower().replace(" ", "-")}
+                for t in article.get("tags", [])[:5]
+            ]
             meta = article.get("meta_description", "")
 
             mutation = """
@@ -168,7 +178,10 @@ class PublishingTools:
 
             res = await self._http.post(
                 "https://gql.hashnode.com",
-                headers={"Authorization": settings.HASHNODE_TOKEN, "Content-Type": "application/json"},
+                headers={
+                    "Authorization": settings.HASHNODE_TOKEN,
+                    "Content-Type": "application/json",
+                },
                 json={"query": mutation, "variables": variables},
             )
 
@@ -180,8 +193,7 @@ class PublishingTools:
                 url = post.get("url", "")
                 logger.info("[Publishing] Hashnode: %s", url)
                 return {"success": True, "platform": "hashnode", "url": url, "id": post.get("id")}
-            else:
-                return {"success": False, "error": res.text[:200]}
+            return {"success": False, "error": res.text[:200]}
 
         except Exception as exc:
             logger.error("[Publishing] Hashnode error: %s", exc)
@@ -194,7 +206,7 @@ class PublishingTools:
         subject: str,
         html_content: str,
         plain_text: str = "",
-        to_override: Optional[str] = None,
+        to_override: str | None = None,
     ) -> dict:
         """
         Envía newsletter usando el mejor proveedor disponible.
@@ -219,16 +231,23 @@ class PublishingTools:
                 logger.warning("[Publishing] %s newsletter error: %s", name, exc)
         return {"success": False, "error": "Todos los proveedores de email fallaron"}
 
-    async def _send_via_resend(self, subject: str, html: str, text: str, to: Optional[str] = None) -> dict:
+    async def _send_via_resend(
+        self, subject: str, html: str, text: str, to: str | None = None
+    ) -> dict:
         """Resend: 3,000 emails/mes gratis."""
         if not settings.RESEND_API_KEY:
             return {"success": False, "skipped": True}
-        to_email = to or settings.NEWSLETTER_LIST_EMAIL or getattr(settings, "OWNER_EMAIL", None) or ""
+        to_email = (
+            to or settings.NEWSLETTER_LIST_EMAIL or getattr(settings, "OWNER_EMAIL", None) or ""
+        )
         if not to_email:
             return {"success": False, "skipped": True}
         res = await self._http.post(
             "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
             json={
                 "from": settings.EMAIL_FROM or "ARIA <newsletter@aria-ai.dev>",
                 "to": [to_email],
@@ -241,17 +260,24 @@ class PublishingTools:
             return {"success": True, "id": res.json().get("id")}
         return {"success": False, "error": res.text[:200]}
 
-    async def _send_via_sendgrid(self, subject: str, html: str, text: str, to: Optional[str] = None) -> dict:
+    async def _send_via_sendgrid(
+        self, subject: str, html: str, text: str, to: str | None = None
+    ) -> dict:
         """SendGrid: 100 emails/día gratis."""
         if not settings.SENDGRID_API_KEY:
             return {"success": False, "skipped": True}
         from_email = settings.EMAIL_FROM or "noreply@aria-ai.dev"
-        to_email = to or settings.NEWSLETTER_LIST_EMAIL or getattr(settings, "OWNER_EMAIL", None) or ""
+        to_email = (
+            to or settings.NEWSLETTER_LIST_EMAIL or getattr(settings, "OWNER_EMAIL", None) or ""
+        )
         if not to_email:
             return {"success": False, "skipped": True}
         res = await self._http.post(
             "https://api.sendgrid.com/v3/mail/send",
-            headers={"Authorization": f"Bearer {settings.SENDGRID_API_KEY}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
+                "Content-Type": "application/json",
+            },
             json={
                 "personalizations": [{"to": [{"email": to_email}]}],
                 "from": {"email": from_email},
@@ -266,11 +292,15 @@ class PublishingTools:
             return {"success": True}
         return {"success": False, "error": res.text[:200]}
 
-    async def _send_via_mailgun(self, subject: str, html: str, text: str, to: Optional[str] = None) -> dict:
+    async def _send_via_mailgun(
+        self, subject: str, html: str, text: str, to: str | None = None
+    ) -> dict:
         """Mailgun: 5,000 emails/mes gratis (3 meses trial)."""
         if not settings.MAILGUN_API_KEY or not settings.MAILGUN_DOMAIN:
             return {"success": False, "skipped": True}
-        to_email = to or settings.NEWSLETTER_LIST_EMAIL or getattr(settings, "OWNER_EMAIL", None) or ""
+        to_email = (
+            to or settings.NEWSLETTER_LIST_EMAIL or getattr(settings, "OWNER_EMAIL", None) or ""
+        )
         if not to_email:
             return {"success": False, "skipped": True}
         res = await self._http.post(

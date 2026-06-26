@@ -2,17 +2,17 @@
 Deep content quality evaluation engine.
 Scores content across 8 dimensions and produces actionable improvement roadmaps.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.content.intelligence")
 
@@ -22,7 +22,8 @@ _CACHE_TTL = 86400 * 30  # 30 days
 
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
-class QualityDimension(str, Enum):
+
+class QualityDimension(StrEnum):
     HOOK_STRENGTH = "hook_strength"
     EMOTIONAL_RESONANCE = "emotional_resonance"
     CLARITY = "clarity"
@@ -34,6 +35,7 @@ class QualityDimension(str, Enum):
 
 
 # ── Data models ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class QualityScore:
@@ -81,6 +83,7 @@ class ContentQualityReport:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _grade(score: float) -> str:
     if score >= 8:
         return "A"
@@ -97,7 +100,7 @@ def _heuristic_scores(content: str, platform: str) -> dict[QualityDimension, flo
     """Score content heuristically across all 8 dimensions."""
     words = content.split()
     word_count = len(words)
-    char_count = len(content)
+    len(content)
 
     # HOOK_STRENGTH: questions at start, exclamation, short punchy opening
     first_50 = content[:50]
@@ -110,8 +113,18 @@ def _heuristic_scores(content: str, platform: str) -> dict[QualityDimension, flo
         hook += 1.0
 
     # EMOTIONAL_RESONANCE: exclamation marks, emotional words
-    emotion_words = {"amazing", "shocking", "heartbreaking", "inspiring", "incredible",
-                     "powerful", "life-changing", "devastating", "beautiful", "terrifying"}
+    emotion_words = {
+        "amazing",
+        "shocking",
+        "heartbreaking",
+        "inspiring",
+        "incredible",
+        "powerful",
+        "life-changing",
+        "devastating",
+        "beautiful",
+        "terrifying",
+    }
     emotion = 4.0 + min(4.0, content.lower().count("!") * 0.5)
     emotion_hits = sum(1 for w in emotion_words if w in content.lower())
     emotion += min(2.0, emotion_hits * 0.7)
@@ -130,30 +143,78 @@ def _heuristic_scores(content: str, platform: str) -> dict[QualityDimension, flo
 
     # SPECIFICITY: numbers, percentages, named examples
     import re
-    number_count = len(re.findall(r'\b\d+\b', content))
+
+    number_count = len(re.findall(r"\b\d+\b", content))
     specificity = min(10.0, 4.0 + number_count * 0.8)
 
     # CTA_EFFECTIVENESS: call-to-action words
-    cta_words = {"click", "subscribe", "follow", "buy", "sign up", "download", "learn more",
-                 "comment", "share", "like", "join", "try", "get started"}
+    cta_words = {
+        "click",
+        "subscribe",
+        "follow",
+        "buy",
+        "sign up",
+        "download",
+        "learn more",
+        "comment",
+        "share",
+        "like",
+        "join",
+        "try",
+        "get started",
+    }
     cta_hits = sum(1 for w in cta_words if w in content.lower())
     cta = min(10.0, 3.0 + cta_hits * 1.5)
 
     # STORYTELLING: narrative markers
-    story_words = {"once", "then", "finally", "first", "next", "last", "i was", "we were",
-                   "imagine", "story", "journey", "discovered", "realized"}
+    story_words = {
+        "once",
+        "then",
+        "finally",
+        "first",
+        "next",
+        "last",
+        "i was",
+        "we were",
+        "imagine",
+        "story",
+        "journey",
+        "discovered",
+        "realized",
+    }
     story_hits = sum(1 for w in story_words if w in content.lower())
     storytelling = min(10.0, 4.0 + story_hits * 1.0)
 
     # RETENTION_POWER: cliffhangers, suspense words, paragraph breaks
-    retention_words = {"but", "however", "wait", "plot twist", "here's the thing", "the truth is",
-                       "you won't believe", "little did", "that's when"}
+    retention_words = {
+        "but",
+        "however",
+        "wait",
+        "plot twist",
+        "here's the thing",
+        "the truth is",
+        "you won't believe",
+        "little did",
+        "that's when",
+    }
     retention_hits = sum(1 for w in retention_words if w in content.lower())
     retention = min(10.0, 4.0 + retention_hits * 0.8 + content.count("\n") * 0.2)
 
     # VALUE_DELIVERY: tips, steps, lists, "how to", actionable content
-    value_words = {"tip", "step", "strategy", "technique", "method", "hack", "trick",
-                   "guide", "secret", "formula", "blueprint", "framework"}
+    value_words = {
+        "tip",
+        "step",
+        "strategy",
+        "technique",
+        "method",
+        "hack",
+        "trick",
+        "guide",
+        "secret",
+        "formula",
+        "blueprint",
+        "framework",
+    }
     value_hits = sum(1 for w in value_words if w in content.lower())
     value = min(10.0, 4.0 + value_hits * 0.8 + (content.count("•") + content.count("-")) * 0.3)
 
@@ -212,16 +273,19 @@ def _build_quality_scores(
     for dim, score in scores_dict.items():
         good_feedback, improvement = _DIMENSION_FEEDBACK[dim]
         feedback = good_feedback if score >= 6 else f"Score {score}/10 — needs improvement."
-        result.append(QualityScore(
-            dimension=dim,
-            score=score,
-            feedback=feedback,
-            improvement=improvement,
-        ))
+        result.append(
+            QualityScore(
+                dimension=dim,
+                score=score,
+                feedback=feedback,
+                improvement=improvement,
+            )
+        )
     return result
 
 
 # ── Main class ─────────────────────────────────────────────────────────────────
+
 
 class ContentQualityEngine:
     """Evaluates content quality across 8 dimensions with AI or heuristic fallback."""
@@ -349,7 +413,8 @@ class ContentQualityEngine:
 
         score = round(min(10.0, score), 2)
         improvement = (
-            "Add a number (e.g., '5 ways to...')" if score < 6
+            "Add a number (e.g., '5 ways to...')"
+            if score < 6
             else "Hook is solid — consider A/B testing a question variant"
         )
 
@@ -385,10 +450,7 @@ class ContentQualityEngine:
 
     def summary(self) -> dict:
         total = len(self._reports)
-        avg_score = (
-            sum(r.get("overall_score", 0) for r in self._reports) / total
-            if total else 0.0
-        )
+        avg_score = sum(r.get("overall_score", 0) for r in self._reports) / total if total else 0.0
         grades = [r.get("grade", "F") for r in self._reports]
         grade_dist = {g: grades.count(g) for g in ("A", "B", "C", "D", "F")}
         return {
@@ -400,7 +462,7 @@ class ContentQualityEngine:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_content_quality_engine_instance: Optional[ContentQualityEngine] = None
+_content_quality_engine_instance: ContentQualityEngine | None = None
 
 
 def get_content_quality_engine() -> ContentQualityEngine:

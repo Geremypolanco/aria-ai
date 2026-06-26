@@ -7,10 +7,12 @@ Requiere en Fly.io secrets:
   MICROSOFT_CLIENT_ID     → desde portal.azure.com → App registrations
   MICROSOFT_CLIENT_SECRET → mismo lugar
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from datetime import UTC
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -27,15 +29,17 @@ GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 class MicrosoftConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "MICROSOFT_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "MICROSOFT_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -49,20 +53,23 @@ class MicrosoftConnection:
         }
         return f"{AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": REDIRECT_URI,
-                "grant_type": "authorization_code",
-                "scope": SCOPES,
-            })
+            r = await http.post(
+                TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                    "scope": SCOPES,
+                },
+            )
             r.raise_for_status()
             data = r.json()
             # Fetch user email from /me
@@ -70,8 +77,11 @@ class MicrosoftConnection:
                 f"{GRAPH_BASE}/me",
                 headers={"Authorization": f"Bearer {data['access_token']}"},
             )
-            email = me_r.json().get("mail") or me_r.json().get("userPrincipalName", "unknown") \
-                if me_r.status_code == 200 else "unknown"
+            email = (
+                me_r.json().get("mail") or me_r.json().get("userPrincipalName", "unknown")
+                if me_r.status_code == 200
+                else "unknown"
+            )
             return {
                 "access_token": data["access_token"],
                 "refresh_token": data.get("refresh_token"),
@@ -84,13 +94,16 @@ class MicrosoftConnection:
         cid = self._client_id()
         sec = self._client_secret()
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(TOKEN_URL, data={
-                "refresh_token": tokens["refresh_token"],
-                "client_id": cid,
-                "client_secret": sec,
-                "grant_type": "refresh_token",
-                "scope": SCOPES,
-            })
+            r = await http.post(
+                TOKEN_URL,
+                data={
+                    "refresh_token": tokens["refresh_token"],
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "grant_type": "refresh_token",
+                    "scope": SCOPES,
+                },
+            )
             r.raise_for_status()
             data = r.json()
             tokens["access_token"] = data["access_token"]
@@ -103,7 +116,9 @@ class MicrosoftConnection:
 
     # ── OUTLOOK MAIL ──────────────────────────────────────────────────────
 
-    async def outlook_list(self, tokens: dict, max_results: int = 10, query: str = "") -> list[dict]:
+    async def outlook_list(
+        self, tokens: dict, max_results: int = 10, query: str = ""
+    ) -> list[dict]:
         """List recent Outlook messages."""
         params: dict[str, Any] = {
             "$top": max_results,
@@ -156,8 +171,9 @@ class MicrosoftConnection:
 
     async def calendar_list(self, tokens: dict, max_results: int = 10) -> list[dict]:
         """List upcoming calendar events."""
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        from datetime import datetime
+
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         params = {
             "$top": max_results,
             "$select": "id,subject,start,end,location,bodyPreview,organizer",
@@ -187,8 +203,15 @@ class MicrosoftConnection:
                 for e in events
             ]
 
-    async def calendar_create(self, tokens: dict, title: str, start: str, end: str,
-                               description: str = "", location: str = "") -> dict:
+    async def calendar_create(
+        self,
+        tokens: dict,
+        title: str,
+        start: str,
+        end: str,
+        description: str = "",
+        location: str = "",
+    ) -> dict:
         """Create a calendar event."""
         event = {
             "subject": title,
@@ -231,7 +254,9 @@ class MicrosoftConnection:
                 {
                     "id": f.get("id"),
                     "name": f.get("name"),
-                    "type": "folder" if "folder" in f else f.get("file", {}).get("mimeType", "file"),
+                    "type": (
+                        "folder" if "folder" in f else f.get("file", {}).get("mimeType", "file")
+                    ),
                     "modified": f.get("lastModifiedDateTime", ""),
                     "link": f.get("webUrl", ""),
                     "size_bytes": f.get("size", 0),
@@ -260,24 +285,29 @@ class MicrosoftConnection:
                     headers=self._headers(tokens),
                     params={"$select": "id,displayName,description"},
                 )
-                channels = channels_r.json().get("value", []) if channels_r.status_code == 200 else []
-                results.append({
-                    "team_id": team.get("id"),
-                    "team_name": team.get("displayName"),
-                    "description": team.get("description", ""),
-                    "channels": [
-                        {
-                            "channel_id": c.get("id"),
-                            "channel_name": c.get("displayName"),
-                            "description": c.get("description", ""),
-                        }
-                        for c in channels
-                    ],
-                })
+                channels = (
+                    channels_r.json().get("value", []) if channels_r.status_code == 200 else []
+                )
+                results.append(
+                    {
+                        "team_id": team.get("id"),
+                        "team_name": team.get("displayName"),
+                        "description": team.get("description", ""),
+                        "channels": [
+                            {
+                                "channel_id": c.get("id"),
+                                "channel_name": c.get("displayName"),
+                                "description": c.get("description", ""),
+                            }
+                            for c in channels
+                        ],
+                    }
+                )
             return results
 
-    async def teams_send_message(self, tokens: dict, team_id: str, channel_id: str,
-                                  message: str) -> dict:
+    async def teams_send_message(
+        self, tokens: dict, team_id: str, channel_id: str, message: str
+    ) -> dict:
         """Send a message to a Teams channel."""
         payload = {
             "body": {"content": message, "contentType": "text"},

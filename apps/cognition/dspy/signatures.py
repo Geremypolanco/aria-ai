@@ -5,6 +5,7 @@ Defines typed DSPy Signatures for marketing-focused tasks.
 All classes are only created when dspy is importable; the module
 exports safe sentinel names (None) when the package is absent.
 """
+
 from __future__ import annotations
 
 import logging
@@ -13,6 +14,7 @@ logger = logging.getLogger("aria.cognition.dspy.signatures")
 
 try:
     import dspy
+
     _DSPY_AVAILABLE = True
 except ImportError:
     _DSPY_AVAILABLE = False
@@ -21,6 +23,7 @@ except ImportError:
 # ── Signature definitions ─────────────────────────────────────────────────────
 
 if _DSPY_AVAILABLE:
+
     class ContentQuality(dspy.Signature):  # type: ignore[misc]
         """Assess the quality and engagement potential of marketing content."""
 
@@ -50,9 +53,9 @@ if _DSPY_AVAILABLE:
 
 else:
     # Stubs so import always succeeds
-    ContentQuality = None     # type: ignore[assignment,misc]
-    CampaignStrategy = None   # type: ignore[assignment,misc]
-    AdCopywriter = None       # type: ignore[assignment,misc]
+    ContentQuality = None  # type: ignore[assignment,misc]
+    CampaignStrategy = None  # type: ignore[assignment,misc]
+    AdCopywriter = None  # type: ignore[assignment,misc]
 
     logger.debug("[dspy.signatures] dspy not installed — signatures unavailable")
 

@@ -9,15 +9,16 @@ Principios:
   - La auto-reflexión periódica genera reglas que afectan futuro comportamiento.
   - ARIA no dice "lo haré" sin hacerlo. Ejecuta o reporta honestamente.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 logger = logging.getLogger("aria.mind")
 
@@ -40,25 +41,26 @@ def get_image_context(chat_id: str) -> str:
 # TIPOS
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class MindResponse:
-    text: Optional[str] = None
-    image_bytes: Optional[bytes] = None
-    video_bytes: Optional[bytes] = None
-    audio_bytes: Optional[bytes] = None
-    document_bytes: Optional[bytes] = None
-    document_filename: Optional[str] = None
-    caption: Optional[str] = None
-    tool_used: Optional[str] = None
+    text: str | None = None
+    image_bytes: bytes | None = None
+    video_bytes: bytes | None = None
+    audio_bytes: bytes | None = None
+    document_bytes: bytes | None = None
+    document_filename: str | None = None
+    caption: str | None = None
+    tool_used: str | None = None
     silent: bool = False
 
 
 @dataclass
 class Goal:
     text: str
-    priority: int = 5          # 1 (más alto) – 10 (más bajo)
-    status: str = "active"     # active | paused | done
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    priority: int = 5  # 1 (más alto) – 10 (más bajo)
+    status: str = "active"  # active | paused | done
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     progress: str = ""
 
     def to_prompt(self) -> str:
@@ -68,6 +70,7 @@ class Goal:
 @dataclass
 class ExecRecord:
     """Registro de ejecución de una herramienta."""
+
     ts: str
     tool: str
     success: bool
@@ -407,16 +410,43 @@ Responde SOLO con JSON válido:
 
 # ── COMPLEX REQUEST PATTERNS ─────────────────────────────────────────────────
 _COMPLEX_PATTERNS = [
-    "crea y", "crea productos", "agrega productos", "lanza", "implementa",
-    "diseña y publica", "haz todo", "encárgate de", "ejecuta todo",
-    "de principio a fin", "completo", "completamente", "todo el proceso",
-    "busca y", "analiza y", "investiga y publica", "investiga y crea",
-    "automatiza", "ciclo completo", "full pipeline", "de forma autónoma",
-    "haz algo útil", "actúa por tu cuenta", "tú decides", "haz lo que",
-    "sin hacerme preguntas", "sin preguntarme", "sin preguntas",
-    "en paralelo", "al mismo tiempo", "todo junto",
-    "crear y vender", "crear y publicar", "crear y lanzar",
-    "estrategia completa", "plan completo", "todo lo necesario",
+    "crea y",
+    "crea productos",
+    "agrega productos",
+    "lanza",
+    "implementa",
+    "diseña y publica",
+    "haz todo",
+    "encárgate de",
+    "ejecuta todo",
+    "de principio a fin",
+    "completo",
+    "completamente",
+    "todo el proceso",
+    "busca y",
+    "analiza y",
+    "investiga y publica",
+    "investiga y crea",
+    "automatiza",
+    "ciclo completo",
+    "full pipeline",
+    "de forma autónoma",
+    "haz algo útil",
+    "actúa por tu cuenta",
+    "tú decides",
+    "haz lo que",
+    "sin hacerme preguntas",
+    "sin preguntarme",
+    "sin preguntas",
+    "en paralelo",
+    "al mismo tiempo",
+    "todo junto",
+    "crear y vender",
+    "crear y publicar",
+    "crear y lanzar",
+    "estrategia completa",
+    "plan completo",
+    "todo lo necesario",
 ]
 
 
@@ -470,22 +500,23 @@ Escribe cualquier pregunta o instrucción en lenguaje natural — ARIA entiende 
 # ARIA MIND
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class AriaMind:
 
     # Redis keys
-    K_HISTORY  = "aria:mind:history:{cid}"   # list[dict], 7d
-    K_STATE    = "aria:mind:state:{cid}"      # CogState dict, 30d
-    K_GOALS    = "aria:mind:goals"            # list[dict], 365d — SOBREVIVE REINICIOS
-    K_LEARNED  = "aria:mind:learned"          # list[str], 365d
-    K_EXECS    = "aria:mind:execs"            # list[dict], 30d
-    K_ICOUNT   = "aria:mind:icount:{cid}"    # int, 30d
+    K_HISTORY = "aria:mind:history:{cid}"  # list[dict], 7d
+    K_STATE = "aria:mind:state:{cid}"  # CogState dict, 30d
+    K_GOALS = "aria:mind:goals"  # list[dict], 365d — SOBREVIVE REINICIOS
+    K_LEARNED = "aria:mind:learned"  # list[str], 365d
+    K_EXECS = "aria:mind:execs"  # list[dict], 30d
+    K_ICOUNT = "aria:mind:icount:{cid}"  # int, 30d
 
-    REFLECT_EVERY = 8         # reflexión cada N interacciones
-    MAX_HISTORY   = 20        # mensajes en contexto
-    MAX_EXECS     = 50        # registros de ejecución guardados
+    REFLECT_EVERY = 8  # reflexión cada N interacciones
+    MAX_HISTORY = 20  # mensajes en contexto
+    MAX_EXECS = 50  # registros de ejecución guardados
 
     def __init__(self) -> None:
-        self._ai    = None
+        self._ai = None
         self._cache = None
 
     # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
@@ -510,7 +541,12 @@ class AriaMind:
                 service = parts[1].strip().lower() if len(parts) > 1 else ""
                 return await self._handle_connect_command(service, chat_id)
 
-            if text.strip().lower() in ("/connections", "/conexiones", "mis conexiones", "que tienes conectado"):
+            if text.strip().lower() in (
+                "/connections",
+                "/conexiones",
+                "mis conexiones",
+                "que tienes conectado",
+            ):
                 obs, media = await self._execute_with_retry("list_connections", {}, chat_id=chat_id)
                 return MindResponse(text=obs, tool_used="list_connections")
 
@@ -527,9 +563,9 @@ class AriaMind:
             if not plan:
                 return MindResponse(text="No pude procesar eso. Inténtalo de nuevo.")
 
-            tool     = plan.get("tool")
+            tool = plan.get("tool")
             tool_args = plan.get("tool_args") or {}
-            reply    = (plan.get("reply") or "").strip()
+            reply = (plan.get("reply") or "").strip()
 
             # Actualizar metas si el plan lo indica
             goal_action = plan.get("goal_action")
@@ -560,10 +596,14 @@ class AriaMind:
             # GUARDIA ANTI-PREGUNTAS: Si el LLM generó una pregunta cuando debía ejecutar,
             # interceptar y forzar ejecución con la herramienta más relevante.
             if reply and self._is_unnecessary_question(text, reply):
-                logger.warning("[AriaMind] LLM generó pregunta innecesaria — forzando ejecución autónoma")
+                logger.warning(
+                    "[AriaMind] LLM generó pregunta innecesaria — forzando ejecución autónoma"
+                )
                 forced_tool, forced_args = self._infer_tool_from_intent(text)
                 if forced_tool:
-                    obs, media = await self._execute_with_retry(forced_tool, forced_args, chat_id=chat_id)
+                    obs, media = await self._execute_with_retry(
+                        forced_tool, forced_args, chat_id=chat_id
+                    )
                     final_text = await self._synthesize(text, forced_tool, obs)
                     await self._record_exec(forced_tool, forced_args, obs, True)
                     await self._store_interaction(chat_id, text, final_text, forced_tool)
@@ -588,8 +628,9 @@ class AriaMind:
 
     # ── RAZONAMIENTO ───────────────────────────────────────────────────────
 
-    async def _reason(self, text: str, history: list, state: dict,
-                       goals: list[dict], learned: list[str]) -> Optional[dict]:
+    async def _reason(
+        self, text: str, history: list, state: dict, goals: list[dict], learned: list[str]
+    ) -> dict | None:
         ai = self._ai_client()
         if not ai:
             return {"tool": None, "reply": "Motor de IA no disponible ahora."}
@@ -597,15 +638,18 @@ class AriaMind:
         from apps.core.config import settings
         from apps.core.tools.ai_client import AIModel
 
-        goals_text = "\n".join(
-            f"  {i+1}. {Goal(**g).to_prompt()}"
-            for i, g in enumerate(goals[:8])
-        ) or "  (ninguna definida)"
+        goals_text = (
+            "\n".join(f"  {i+1}. {Goal(**g).to_prompt()}" for i, g in enumerate(goals[:8]))
+            or "  (ninguna definida)"
+        )
 
-        history_text = "\n".join(
-            ("Tú: " if m.get("role") == "user" else "ARIA: ") + m.get("content", "")[:200]
-            for m in history[-self.MAX_HISTORY:]
-        ) or "(primera conversación)"
+        history_text = (
+            "\n".join(
+                ("Tú: " if m.get("role") == "user" else "ARIA: ") + m.get("content", "")[:200]
+                for m in history[-self.MAX_HISTORY :]
+            )
+            or "(primera conversación)"
+        )
 
         learned_text = "\n".join(f"  • {l}" for l in learned[-10:]) or "  (sin reglas aún)"
 
@@ -616,6 +660,7 @@ class AriaMind:
         kb_context = ""
         try:
             from apps.core.tools.knowledge_base import get_knowledge_base
+
             kb_context = await get_knowledge_base().search_formatted(text, top_k=3)
         except Exception:
             pass
@@ -624,6 +669,7 @@ class AriaMind:
         semantic_context = ""
         try:
             from apps.core.memory.semantic_memory import get_semantic_memory
+
             sem_mem = get_semantic_memory()
             facts = await sem_mem.search(text, top_k=3, min_confidence=0.5)
             if facts:
@@ -675,8 +721,9 @@ class AriaMind:
 
     # ── EJECUCIÓN CON RETRY + FALLBACK ────────────────────────────────────
 
-    async def _execute_with_retry(self, tool: str, args: dict,
-                                   max_retries: int = 3, chat_id: str = "") -> tuple[str, dict]:
+    async def _execute_with_retry(
+        self, tool: str, args: dict, max_retries: int = 3, chat_id: str = ""
+    ) -> tuple[str, dict]:
         """
         Ejecuta la herramienta con hasta max_retries intentos.
         Cada intento puede usar parámetros adaptados.
@@ -685,16 +732,20 @@ class AriaMind:
         last_error = ""
         for attempt in range(max_retries):
             if attempt > 0:
-                await asyncio.sleep(2 ** attempt)  # backoff: 2s, 4s
+                await asyncio.sleep(2**attempt)  # backoff: 2s, 4s
 
             obs, media = await self._execute_tool(tool, args, attempt, chat_id=chat_id)
 
             # Si hay media o la obs no indica error → éxito
-            if media or (obs and not obs.lower().startswith(("error", "no se pudo", "falló", "fail"))):
+            if media or (
+                obs and not obs.lower().startswith(("error", "no se pudo", "falló", "fail"))
+            ):
                 return obs, media
 
             last_error = obs
-            logger.warning("[AriaMind] tool=%s attempt=%d/%d: %s", tool, attempt+1, max_retries, obs[:80])
+            logger.warning(
+                "[AriaMind] tool=%s attempt=%d/%d: %s", tool, attempt + 1, max_retries, obs[:80]
+            )
 
             # Adaptar args para el próximo intento
             args = self._adapt_args(tool, args, obs, attempt)
@@ -715,7 +766,9 @@ class AriaMind:
             args = {"query": " ".join(words[:4])}  # query más corta
         return args
 
-    async def _execute_tool(self, tool: str, args: dict, attempt: int = 0, chat_id: str = "") -> tuple[str, dict]:
+    async def _execute_tool(
+        self, tool: str, args: dict, attempt: int = 0, chat_id: str = ""
+    ) -> tuple[str, dict]:
         """
         Ejecuta la herramienta. Devuelve (obs_text, media_dict).
         media_dict: {image_bytes, video_bytes, audio_bytes} — solo el que aplica.
@@ -728,9 +781,14 @@ class AriaMind:
                 steps = 4 if "schnell" in model_id else 25
 
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().generate_image(
-                    prompt=prompt, model=model_id,
-                    width=1024, height=1024, num_inference_steps=steps)
+                    prompt=prompt,
+                    model=model_id,
+                    width=1024,
+                    height=1024,
+                    num_inference_steps=steps,
+                )
 
                 if r.get("success") and r.get("image_bytes"):
                     model_short = model_id.split("/")[-1]
@@ -738,35 +796,41 @@ class AriaMind:
                 return r.get("error", "HuggingFace no respondió"), {}
 
             # ── VIDEO ─────────────────────────────────────────────────────
-            elif tool == "generate_video":
+            if tool == "generate_video":
                 prompt = args.get("prompt", "")
                 from apps.core.tools.creative_engine import CreativeEngine
+
                 r = await CreativeEngine().generate_video(prompt)
                 if r.get("success"):
                     import base64 as _b64
+
                     raw = r.get("video_bytes") or (
-                        _b64.b64decode(r["video_b64"]) if r.get("video_b64") else None)
+                        _b64.b64decode(r["video_b64"]) if r.get("video_b64") else None
+                    )
                     if raw:
                         return f"Video generado ({len(raw)//1024}KB)", {"video_bytes": raw}
                 return r.get("error", "Video no disponible"), {}
 
             # ── MÚSICA ────────────────────────────────────────────────────
-            elif tool == "generate_music":
+            if tool == "generate_music":
                 prompt = args.get("prompt", "")
                 dur = int(args.get("duration", 30))
                 from apps.core.tools.creative_engine import CreativeEngine
+
                 r = await CreativeEngine().generate_music(prompt, duration=dur)
                 if r.get("success"):
                     import base64 as _b64
+
                     ab64 = r.get("audio_base64") or r.get("audio_b64")
                     if ab64:
                         return f"Música generada ({dur}s)", {"audio_bytes": _b64.b64decode(ab64)}
                 return r.get("error", "MusicGen no respondió"), {}
 
             # ── BÚSQUEDA WEB ──────────────────────────────────────────────
-            elif tool == "web_search":
+            if tool == "web_search":
                 query = args.get("query", "")
                 from apps.core.tools.web_tools import WebTools
+
                 r = await WebTools().search_web(query, num_results=10)
                 if r.get("success") and r.get("results"):
                     source = r.get("source", "web")
@@ -780,10 +844,11 @@ class AriaMind:
                 return "Sin resultados de búsqueda. Intenta reformular la query.", {}
 
             # ── BÚSQUEDA PROFUNDA ─────────────────────────────────────────
-            elif tool == "deep_search":
+            if tool == "deep_search":
                 query = args.get("query", "")
                 num_pages = min(int(args.get("num_pages", 3)), 5)
                 from apps.core.tools.web_tools import WebTools
+
                 wt = WebTools()
                 r = await wt.search_web(query, num_results=num_pages + 2)
                 if not r.get("success") or not r.get("results"):
@@ -793,7 +858,7 @@ class AriaMind:
                 fetch_tasks = [wt.fetch_page(url, max_chars=2000) for url in urls]
                 pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
                 parts = [f"[Deep Search: {query}]"]
-                for i, (res, page) in enumerate(zip(r["results"], pages)):
+                for i, (res, page) in enumerate(zip(r["results"], pages, strict=False)):
                     title = res.get("title", f"Resultado {i+1}")
                     url = res.get("url", "")
                     if isinstance(page, dict) and page.get("success") and page.get("text"):
@@ -804,60 +869,71 @@ class AriaMind:
                 return "\n\n---\n\n".join(parts), {}
 
             # ── FETCH DE URL ──────────────────────────────────────────────
-            elif tool == "fetch_url":
+            if tool == "fetch_url":
                 url = args.get("url", "")
                 if not url:
                     return "Necesito una URL para leer.", {}
                 from apps.core.tools.web_tools import WebTools
+
                 r = await WebTools().fetch_page(url, max_chars=4000)
                 if r.get("success") and r.get("text"):
                     return f"[Contenido de {url}]\n\n{r['text']}", {}
                 return f"No se pudo leer la URL: {r.get('error', 'Sin respuesta')}", {}
 
             # ── TENDENCIAS ────────────────────────────────────────────────
-            elif tool == "get_trends":
+            if tool == "get_trends":
                 from apps.core.tools.web_tools import WebTools
+
                 wt = WebTools()
                 hn, rd = await asyncio.gather(
                     wt.get_hacker_news_trending(limit=5),
                     wt.get_reddit_trending(limit=5),
-                    return_exceptions=True)
+                    return_exceptions=True,
+                )
                 parts = []
                 if isinstance(hn, dict) and hn.get("success"):
-                    hn_titles = [s.get("title","")[:70] for s in hn.get("stories",[])[:4]]
+                    hn_titles = [s.get("title", "")[:70] for s in hn.get("stories", [])[:4]]
                     parts.append("HN: " + " | ".join(hn_titles))
                 if isinstance(rd, dict) and rd.get("success"):
-                    rd_titles = [p.get("title","")[:70] for p in rd.get("posts",[])[:4]]
+                    rd_titles = [p.get("title", "")[:70] for p in rd.get("posts", [])[:4]]
                     parts.append("Reddit: " + " | ".join(rd_titles))
                 return "\n".join(parts) if parts else "Sin tendencias disponibles", {}
 
             # ── ESTADO DEL SISTEMA ────────────────────────────────────────
-            elif tool == "get_status":
+            if tool == "get_status":
                 try:
                     from apps.core.training.continuous_trainer import get_trainer
+
                     s = get_trainer().get_status()
                     skills = s.get("skill_scores", {})
-                    skills_str = ", ".join(f"{k}:{v:.0f}%" for k, v in skills.items()) or "evaluando"
-                    return (f"Ciclo #{s.get('cycle', 0)} | Skills: {skills_str} | "
-                            f"Running: {s.get('running', False)}"), {}
+                    skills_str = (
+                        ", ".join(f"{k}:{v:.0f}%" for k, v in skills.items()) or "evaluando"
+                    )
+                    return (
+                        f"Ciclo #{s.get('cycle', 0)} | Skills: {skills_str} | "
+                        f"Running: {s.get('running', False)}"
+                    ), {}
                 except Exception as e:
                     return f"Sistema activo (error obteniendo detalle: {e})", {}
 
             # ── CICLO DE INGRESOS ─────────────────────────────────────────
             elif tool == "run_income":
                 from apps.core.agents.orchestrator import Orchestrator
+
                 r = await Orchestrator().run_cycle()
                 rev = r.get("revenue_summary", {}).get("total_revenue_usd", 0)
                 pub = r.get("revenue_summary", {}).get("items_published", 0)
-                t   = r.get("cycle_time_s", 0)
-                return (f"Ciclo completado en {t:.0f}s — "
-                        f"Revenue: ${rev:.2f} — Publicaciones: {pub}"), {}
+                t = r.get("cycle_time_s", 0)
+                return (
+                    f"Ciclo completado en {t:.0f}s — " f"Revenue: ${rev:.2f} — Publicaciones: {pub}"
+                ), {}
 
             # ── TEXT-TO-SPEECH (BARK) ─────────────────────────────────────────
             elif tool == "speak":
                 text_input = args.get("text", "")
                 voice = args.get("voice", "v2/es_speaker_1")
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().text_to_speech_bark(text_input, voice_preset=voice)
                 if r.get("success") and r.get("audio_bytes"):
                     ab = r["audio_bytes"]
@@ -870,6 +946,7 @@ class AriaMind:
                 source = args.get("source", "es")
                 target = args.get("target", "en")
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().translate(text_input, source=source, target=target)
                 if r.get("success"):
                     return f"[{source}→{target}] {r.get('translated', '')}", {}
@@ -881,17 +958,21 @@ class AriaMind:
                 content = args.get("content", "")
                 sections = args.get("sections") or []
                 from apps.core.tools.pdf_generator import generate_pdf as _gen_pdf
+
                 r = await _gen_pdf(title=title, content=content, sections=sections)
                 if r.get("success") and r.get("pdf_bytes"):
                     fname = r.get("filename", "documento.pdf")
-                    size  = r.get("size_kb", 0)
-                    return (f"PDF generado: {fname} ({size}KB)",
-                            {"document_bytes": r["pdf_bytes"], "document_filename": fname})
+                    size = r.get("size_kb", 0)
+                    return (
+                        f"PDF generado: {fname} ({size}KB)",
+                        {"document_bytes": r["pdf_bytes"], "document_filename": fname},
+                    )
                 return r.get("error", "No se pudo generar el PDF"), {}
 
             # ── SITIO WEB ─────────────────────────────────────────────────────
             elif tool == "create_website":
                 from apps.core.tools.website_engine import WebsiteEngine
+
                 r = await WebsiteEngine().generate_website(
                     name=args.get("name", "My Website"),
                     description=args.get("description", ""),
@@ -900,17 +981,20 @@ class AriaMind:
                 )
                 if r.get("success") and r.get("html_bytes"):
                     fname = r.get("filename", "website.html")
-                    size  = len(r["html_bytes"]) // 1024
-                    return (f"Sitio web generado: {fname} ({size}KB)",
-                            {"document_bytes": r["html_bytes"], "document_filename": fname})
+                    size = len(r["html_bytes"]) // 1024
+                    return (
+                        f"Sitio web generado: {fname} ({size}KB)",
+                        {"document_bytes": r["html_bytes"], "document_filename": fname},
+                    )
                 return r.get("error", "Website generation failed"), {}
 
             # ── CONTENIDO SOCIAL ──────────────────────────────────────────────
             elif tool == "create_social_content":
-                topic     = args.get("topic", "")
+                topic = args.get("topic", "")
                 platforms = args.get("platforms", ["instagram", "linkedin", "twitter"])
-                tone      = args.get("tone", "professional")
+                tone = args.get("tone", "professional")
                 from apps.core.tools.social_engine import SocialContentEngine
+
                 r = await SocialContentEngine().create_content_pack(topic, platforms, tone)
                 if r.get("success"):
                     lines = [f"Contenido generado para {r.get('generated', 0)} plataformas:\n"]
@@ -923,6 +1007,7 @@ class AriaMind:
             # ── SOFTWARE / APP ────────────────────────────────────────────────
             elif tool == "build_software":
                 from apps.core.tools.software_builder import SoftwareBuilder
+
                 r = await SoftwareBuilder().build_project(
                     name=args.get("name", "MyApp"),
                     description=args.get("description", ""),
@@ -931,15 +1016,16 @@ class AriaMind:
                 )
                 if r.get("success") and r.get("zip_bytes"):
                     fname = r.get("filename", "project.zip")
-                    size  = r.get("size_kb", 0)
+                    size = r.get("size_kb", 0)
                     files = r.get("files", [])
-                    obs   = f"Proyecto generado: {fname} ({size}KB) — {len(files)} archivos: {', '.join(files[:6])}"
+                    obs = f"Proyecto generado: {fname} ({size}KB) — {len(files)} archivos: {', '.join(files[:6])}"
                     return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
                 return r.get("error", "Software build failed"), {}
 
             # ── VIDEOJUEGO ────────────────────────────────────────────────────
             elif tool == "build_game":
                 from apps.core.tools.game_builder import GameBuilder
+
                 r = await GameBuilder().create_game(
                     name=args.get("name", "MyGame"),
                     genre=args.get("genre", "arcade"),
@@ -948,21 +1034,28 @@ class AriaMind:
                 )
                 if r.get("success") and r.get("zip_bytes"):
                     fname = r.get("filename", "game.zip")
-                    size  = r.get("size_kb", 0)
+                    size = r.get("size_kb", 0)
                     files = r.get("files", [])
-                    obs   = f"Juego generado ({r.get('engine', '')}): {fname} ({size}KB) — {len(files)} archivos"
+                    obs = f"Juego generado ({r.get('engine', '')}): {fname} ({size}KB) — {len(files)} archivos"
                     return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
                 return r.get("error", "Game build failed"), {}
 
             # ── PUBLICAR ARTÍCULO ─────────────────────────────────────────
             elif tool == "publish_article":
-                title   = args.get("title", "")
+                title = args.get("title", "")
                 content = args.get("content", "")
-                tags    = args.get("tags", [])
+                tags = args.get("tags", [])
                 platforms = args.get("platforms", ["devto"])
                 from apps.core.tools.publishing_tools import PublishingTools
+
                 pt = PublishingTools()
-                article = {"title": title, "body": content, "body_html": content, "tags": tags, "meta_description": ""}
+                article = {
+                    "title": title,
+                    "body": content,
+                    "body_html": content,
+                    "tags": tags,
+                    "meta_description": "",
+                }
                 results = {}
                 for plat in platforms:
                     if plat == "devto":
@@ -980,9 +1073,10 @@ class AriaMind:
             # ── ENVIAR EMAIL / NEWSLETTER ─────────────────────────────────
             elif tool == "send_email":
                 subject = args.get("subject", "")
-                body    = args.get("body", "")
-                to      = args.get("to", "")
+                body = args.get("body", "")
+                to = args.get("to", "")
                 from apps.core.tools.publishing_tools import PublishingTools
+
                 r = await PublishingTools().send_newsletter(subject, body, to_override=to)
                 if r.get("success"):
                     return f"Email enviado vía {r.get('provider', 'email')}", {}
@@ -990,10 +1084,11 @@ class AriaMind:
 
             # ── DESCRIBIR IMAGEN ──────────────────────────────────────────
             elif tool == "describe_image":
-                url   = args.get("url", "")
+                url = args.get("url", "")
                 if not url:
                     return "Necesito una URL de imagen.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().describe_image(image_url=url)
                 if r.get("success"):
                     return f"Descripción: {r.get('description', '')}", {}
@@ -1001,9 +1096,10 @@ class AriaMind:
 
             # ── EJECUTAR CÓDIGO (SANDBOX) ─────────────────────────────────
             elif tool == "execute_code":
-                code     = args.get("code", "")
+                code = args.get("code", "")
                 language = args.get("language", "python")
                 from apps.core.tools.code_runner import CodeRunner
+
                 r = await CodeRunner().run(code=code, language=language)
                 output = r.get("stdout", "") or r.get("stderr", "") or "(sin salida)"
                 status = "OK" if r.get("success") else "ERROR"
@@ -1011,12 +1107,13 @@ class AriaMind:
 
             # ── NAVEGADOR SANDBOX ─────────────────────────────────────────
             elif tool == "browse_page":
-                url        = args.get("url", "")
-                take_shot  = args.get("screenshot", False)
+                url = args.get("url", "")
+                take_shot = args.get("screenshot", False)
                 from apps.core.tools.browser_sandbox import get_sandbox
+
                 r = await get_sandbox().browse(url, extract=True, screenshot=take_shot)
                 content = r.get("content", "")[:3000]
-                title   = r.get("title", url)
+                title = r.get("title", url)
                 obs = f"[PÁGINA: {title}]\n{content}"
                 media: dict = {}
                 if take_shot and r.get("screenshot_bytes"):
@@ -1024,8 +1121,9 @@ class AriaMind:
                 return obs, media
 
             elif tool == "interact_browser":
-                steps  = args.get("steps", [])
+                steps = args.get("steps", [])
                 from apps.core.tools.browser_sandbox import get_sandbox
+
                 session = get_sandbox()._get_session()
                 r = await session.interact_with_page(steps)
                 summary = f"Pasos ejecutados: {r.get('steps_executed',0)}, exitosos: {r.get('steps_succeeded',0)}"
@@ -1035,14 +1133,13 @@ class AriaMind:
                 )
                 return f"[BROWSER] {summary}\n{details}", {}
 
-
-
             # ── AGENTE DE NEGOCIO ─────────────────────────────────────────
             elif tool == "run_business_agent":
                 agent_name = args.get("agent", "ceo")
-                mission    = args.get("mission", "")
-                context    = args.get("context", {})
+                mission = args.get("mission", "")
+                context = args.get("context", {})
                 from apps.core.agents.business_hub import BusinessHub
+
                 r = await BusinessHub().dispatch(agent_name, mission, context)
                 summary = r.get("summary", r.get("result", str(r))[:400])
                 return f"[{agent_name.upper()}] {summary}", {}
@@ -1068,29 +1165,34 @@ class AriaMind:
             # ── RAZONAMIENTO EXTENDIDO ────────────────────────────────────
             elif tool == "deep_think":
                 question = args.get("question", "")
-                depth    = args.get("depth", "auto")
-                context  = args.get("context", "")
+                depth = args.get("depth", "auto")
+                context = args.get("context", "")
                 from apps.core.tools.deep_think import get_deep_think
+
                 result = await get_deep_think().think(question, context=context, depth=depth)
                 obs = f"[DEEP THINK — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
                 return obs, {}
 
             elif tool == "analyze_decision":
                 question = args.get("question", "")
-                options  = args.get("options", [])
+                options = args.get("options", [])
                 criteria = args.get("criteria", [])
                 from apps.core.tools.deep_think import get_deep_think
+
                 result = await get_deep_think().analyze_decision(question, options, criteria)
                 return f"[DECISIÓN]\n{result['recommendation']}", {}
 
             # ── PRESENTACIONES ────────────────────────────────────────────
             elif tool == "create_presentation":
-                title       = args.get("title", "Presentación")
-                topic       = args.get("topic", title)
+                title = args.get("title", "Presentación")
+                topic = args.get("topic", title)
                 slide_count = int(args.get("slide_count", 10))
-                template    = args.get("template", "dark")
+                template = args.get("template", "dark")
                 from apps.core.tools.presentation_builder import PresentationBuilder
-                r = await PresentationBuilder().create_presentation(title, topic, slide_count, template)
+
+                r = await PresentationBuilder().create_presentation(
+                    title, topic, slide_count, template
+                )
                 if r.get("success") and r.get("html_bytes"):
                     fname = r.get("filename", "presentation.html")
                     obs = f"Presentación '{title}' generada: {r['slide_count']} slides"
@@ -1098,13 +1200,16 @@ class AriaMind:
                 return "No se pudo generar la presentación", {}
 
             elif tool == "create_pitch_deck":
-                company  = args.get("company", "")
-                problem  = args.get("problem", "")
+                company = args.get("company", "")
+                problem = args.get("problem", "")
                 solution = args.get("solution", "")
-                market   = args.get("market", "")
+                market = args.get("market", "")
                 traction = args.get("traction", "")
                 from apps.core.tools.presentation_builder import PresentationBuilder
-                r = await PresentationBuilder().create_pitch_deck(company, problem, solution, market, traction)
+
+                r = await PresentationBuilder().create_pitch_deck(
+                    company, problem, solution, market, traction
+                )
                 if r.get("success") and r.get("html_bytes"):
                     fname = r.get("filename", "pitch_deck.html")
                     obs = f"Pitch deck '{company}' generado: {r['slide_count']} slides"
@@ -1113,9 +1218,10 @@ class AriaMind:
 
             # ── MULTIMODAL ────────────────────────────────────────────────
             elif tool == "analyze_image":
-                url      = args.get("url", "")
+                url = args.get("url", "")
                 question = args.get("question", "Describe esta imagen en detalle.")
                 from apps.core.tools.multimodal import get_multimodal
+
                 r = await get_multimodal().analyze_image(image_url=url, question=question)
                 if r.get("success"):
                     return f"[ANÁLISIS DE IMAGEN]\n{r['analysis']}", {}
@@ -1124,24 +1230,27 @@ class AriaMind:
             elif tool == "extract_text":
                 url = args.get("url", "")
                 from apps.core.tools.multimodal import get_multimodal
+
                 r = await get_multimodal().extract_text(image_url=url)
                 if r.get("success"):
                     return f"[OCR]\n{r['analysis']}", {}
                 return f"No pude extraer texto: {r.get('error', 'error desconocido')}", {}
 
             elif tool == "edit_image":
-                url         = args.get("url", "")
+                url = args.get("url", "")
                 instruction = args.get("instruction", "")
                 from apps.core.tools.multimodal import get_multimodal
+
                 r = await get_multimodal().edit_image(image_url=url, instruction=instruction)
                 if r.get("success") and r.get("image_bytes"):
                     return f"Imagen editada: '{instruction}'", {"image_bytes": r["image_bytes"]}
                 return f"No pude editar la imagen: {r.get('error', 'error desconocido')}", {}
 
             elif tool == "analyze_video":
-                url      = args.get("url", "")
+                url = args.get("url", "")
                 question = args.get("question", "Describe este video en detalle.")
                 from apps.core.tools.multimodal import get_multimodal
+
                 r = await get_multimodal().analyze_video_url(url, question)
                 if r.get("success"):
                     frames = r.get("frames_analyzed", 0)
@@ -1150,31 +1259,38 @@ class AriaMind:
 
             # ── BACKGROUND TASKS ─────────────────────────────────────────
             elif tool == "run_background":
-                task_name  = args.get("task", "")
+                task_name = args.get("task", "")
                 agent_name = args.get("agent", "ceo")
-                from apps.core.tools.task_manager import get_task_manager
                 from apps.core.agents.business_hub import BusinessHub
+                from apps.core.tools.task_manager import get_task_manager
 
                 async def _bg():
                     return await BusinessHub().dispatch(agent_name, task_name, {})
 
-                mgr     = get_task_manager()
+                mgr = get_task_manager()
                 task_id = await mgr.submit(
                     name=task_name,
                     coro=_bg(),
                     description=f"{agent_name}: {task_name}",
                     session_id=None,
                 )
-                return f"Tarea '{task_name}' iniciada en segundo plano (ID: {task_id}). Te avisaré cuando termine.", {}
+                return (
+                    f"Tarea '{task_name}' iniciada en segundo plano (ID: {task_id}). Te avisaré cuando termine.",
+                    {},
+                )
 
             elif tool == "task_status":
                 task_id = args.get("task_id", "")
                 from apps.core.tools.task_manager import get_task_manager
+
                 mgr = get_task_manager()
                 if task_id:
                     record = mgr.get_task(task_id)
                     if record:
-                        return f"[Tarea {task_id}] {record.status.value}: {record.result or record.error or 'en progreso'}", {}
+                        return (
+                            f"[Tarea {task_id}] {record.status.value}: {record.result or record.error or 'en progreso'}",
+                            {},
+                        )
                     return f"Tarea {task_id} no encontrada.", {}
                 tasks = mgr.list_tasks(limit=10)
                 if not tasks:
@@ -1184,39 +1300,50 @@ class AriaMind:
 
             # ── KNOWLEDGE BASE (RAG) ──────────────────────────────────────
             elif tool == "learn":
-                source   = args.get("source", "")
+                source = args.get("source", "")
                 category = args.get("category", "general")
-                is_url   = args.get("is_url", source.startswith("http"))
+                is_url = args.get("is_url", source.startswith("http"))
                 from apps.core.tools.knowledge_base import get_knowledge_base
+
                 kb = get_knowledge_base()
                 if is_url:
                     r = await kb.ingest_url(source, category=category)
                 else:
                     r = await kb.ingest_text(source, source=category, category=category)
                 if r.get("success"):
-                    return (f"✅ Aprendido: {r['chunks_added']} fragmentos de '{source[:60]}' "
-                            f"(total en KB: {r['total_chunks']})"), {}
+                    return (
+                        f"✅ Aprendido: {r['chunks_added']} fragmentos de '{source[:60]}' "
+                        f"(total en KB: {r['total_chunks']})"
+                    ), {}
                 return f"No pude aprender esa fuente: {r.get('error', 'error')}", {}
 
             elif tool == "search_knowledge":
                 query = args.get("query", "")
                 top_k = int(args.get("top_k", 5))
                 from apps.core.tools.knowledge_base import get_knowledge_base
+
                 formatted = await get_knowledge_base().search_formatted(query, top_k=top_k)
                 if formatted:
                     return formatted, {}
-                return "No encontré información relevante en la base de conocimiento. Prueba a usar 'learn' primero.", {}
+                return (
+                    "No encontré información relevante en la base de conocimiento. Prueba a usar 'learn' primero.",
+                    {},
+                )
 
             elif tool == "forget_source":
                 source = args.get("source", "")
                 from apps.core.tools.knowledge_base import get_knowledge_base
+
                 deleted = get_knowledge_base().delete_source(source)
-                return f"Eliminados {deleted} fragmentos de '{source}' de la base de conocimiento.", {}
+                return (
+                    f"Eliminados {deleted} fragmentos de '{source}' de la base de conocimiento.",
+                    {},
+                )
 
             # ── MULTI-AGENT CREW ──────────────────────────────────────────
             elif tool == "run_crew":
-                mission    = args.get("mission", "")
-                crew_name  = args.get("crew", "research_crew")
+                mission = args.get("mission", "")
+                crew_name = args.get("crew", "research_crew")
                 from apps.core.tools.crew_engine import get_crew_engine
                 from apps.core.tools.deep_think import ProgressStream
 
@@ -1237,61 +1364,83 @@ class AriaMind:
 
             # ── WORKFLOW ENGINE ───────────────────────────────────────────
             elif tool == "create_workflow":
-                name        = args.get("name", "Workflow")
+                name = args.get("name", "Workflow")
                 description = args.get("description", "")
                 from apps.core.tools.workflow_engine import get_workflow_engine
+
                 r = await get_workflow_engine().create(name, description)
                 if r.get("success"):
-                    steps_str = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(r.get("steps_preview", [])))
-                    return (f"✅ Workflow '{name}' creado (ID: {r['workflow_id']}, {r['steps']} pasos):\n"
-                            f"{steps_str}\n\nUsa run_workflow con id='{r['workflow_id']}' para ejecutarlo."), {}
+                    steps_str = "\n".join(
+                        f"  {i+1}. {s}" for i, s in enumerate(r.get("steps_preview", []))
+                    )
+                    return (
+                        f"✅ Workflow '{name}' creado (ID: {r['workflow_id']}, {r['steps']} pasos):\n"
+                        f"{steps_str}\n\nUsa run_workflow con id='{r['workflow_id']}' para ejecutarlo."
+                    ), {}
                 return f"No pude crear el workflow: {r.get('error', 'error')}", {}
 
             elif tool == "run_workflow":
                 wid = args.get("workflow_id", "")
                 from apps.core.tools.workflow_engine import get_workflow_engine
+
                 r = await get_workflow_engine().run(wid)
                 if r.get("success"):
                     steps_summary = "; ".join(
                         f"paso{s['step']}={'OK' if s['success'] else 'FAIL'}"
                         for s in r.get("results", [])
                     )
-                    return (f"[WORKFLOW '{r.get('name', wid)}' — {r['steps_run']} pasos]\n"
-                            f"{steps_summary}\n\n{r.get('final_output', '')}"), {}
+                    return (
+                        f"[WORKFLOW '{r.get('name', wid)}' — {r['steps_run']} pasos]\n"
+                        f"{steps_summary}\n\n{r.get('final_output', '')}"
+                    ), {}
                 return f"Error ejecutando workflow: {r.get('error', 'error')}", {}
 
             elif tool == "list_workflows":
                 from apps.core.tools.workflow_engine import get_workflow_engine
+
                 wfs = get_workflow_engine().list()
                 if not wfs:
                     return "No hay workflows guardados. Usa create_workflow para crear uno.", {}
-                lines = [f"• [{w['id']}] **{w['name']}** — {w['description'][:60]} (runs: {w['run_count']})" for w in wfs]
+                lines = [
+                    f"• [{w['id']}] **{w['name']}** — {w['description'][:60]} (runs: {w['run_count']})"
+                    for w in wfs
+                ]
                 return "[WORKFLOWS]\n" + "\n".join(lines), {}
 
             # ── THINK VERIFIED (Test-Time Compute) ────────────────────────
             elif tool == "think_verified":
                 question = args.get("question", "")
-                context  = args.get("context", "")
+                context = args.get("context", "")
                 from apps.core.tools.deep_think import get_deep_think
+
                 result = await get_deep_think().think_verified(question, context=context, paths=2)
                 obs = f"[RAZONAMIENTO VERIFICADO — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
                 return obs, {}
 
             # ── NICHE REVENUE ENGINE ─────────────────────────────────────
             elif tool == "launch_niche":
-                niche   = args.get("niche", "")
+                niche = args.get("niche", "")
                 context = args.get("context", "")
                 if not niche:
                     from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
                     top5 = get_niche_revenue_engine().get_top_niches_by_potential(n=3)
                     names = [n["key"] for n in top5]
-                    return (f"Especifica un nicho. Top 3 recomendados ahora mismo: {', '.join(names)}\n"
-                            f"Usa list_niches para ver todos los 45 disponibles."), {}
-                from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine, NICHE_CATALOG
+                    return (
+                        f"Especifica un nicho. Top 3 recomendados ahora mismo: {', '.join(names)}\n"
+                        f"Usa list_niches para ver todos los 45 disponibles."
+                    ), {}
+                from apps.core.tools.niche_revenue_engine import (
+                    NICHE_CATALOG,
+                    get_niche_revenue_engine,
+                )
+
                 if niche not in NICHE_CATALOG:
                     close = [k for k in NICHE_CATALOG if niche.lower() in k.lower()]
-                    return (f"Nicho '{niche}' no encontrado."
-                            + (f" ¿Quisiste decir: {', '.join(close[:3])}?" if close else "")), {}
+                    return (
+                        f"Nicho '{niche}' no encontrado."
+                        + (f" ¿Quisiste decir: {', '.join(close[:3])}?" if close else "")
+                    ), {}
                 result = await get_niche_revenue_engine().launch_niche(niche, context=context)
                 lines = [
                     f"[LAUNCH: {result.niche_name}]",
@@ -1310,25 +1459,32 @@ class AriaMind:
                     lines.append(f"Advertencias: {'; '.join(result.errors[:3])}")
                 if result.listing:
                     lines.append(f"\n**Listing:** {result.listing.title}")
-                    lines.append(f"Precio: ${result.listing.pricing_tiers['basic']['price']} – ${result.listing.pricing_tiers['premium']['price']}")
+                    lines.append(
+                        f"Precio: ${result.listing.pricing_tiers['basic']['price']} – ${result.listing.pricing_tiers['premium']['price']}"
+                    )
                 return "\n".join(lines), {}
 
             elif tool == "income_dashboard":
                 from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
                 return await get_niche_revenue_engine().income_dashboard(), {}
 
             elif tool == "list_niches":
-                category = args.get("category", None)
-                tier     = args.get("tier", None)
+                category = args.get("category")
+                tier = args.get("tier")
                 from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
                 return get_niche_revenue_engine().list_all_niches(category=category, tier=tier), {}
 
             elif tool == "auto_income":
                 num_niches = int(args.get("num_niches", 3))
                 from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
-                result = await get_niche_revenue_engine().autonomous_income_cycle(num_niches=num_niches)
+
+                result = await get_niche_revenue_engine().autonomous_income_cycle(
+                    num_niches=num_niches
+                )
                 lines = [
-                    f"[AUTO INCOME CYCLE]",
+                    "[AUTO INCOME CYCLE]",
                     f"Nichos intentados: {result['niches_attempted']}",
                     f"Nichos exitosos: {result['niches_succeeded']}",
                     f"Listings en vivo: {result['total_listings_live']}",
@@ -1342,7 +1498,9 @@ class AriaMind:
                 if result.get("successful_niches"):
                     lines.append("\n**Nichos lanzados:**")
                     for n in result["successful_niches"]:
-                        lines.append(f"  ✅ {n['niche']} — potencial ${n.get('revenue_potential',0)}/sale")
+                        lines.append(
+                            f"  ✅ {n['niche']} — potencial ${n.get('revenue_potential',0)}/sale"
+                        )
                 if result.get("failed_niches"):
                     lines.append("\n**Nichos con errores:**")
                     for n in result["failed_niches"]:
@@ -1352,36 +1510,42 @@ class AriaMind:
             # ── INVESTOR PIPELINE ─────────────────────────────────────────
             elif tool == "investor_pipeline":
                 import json as _json
+
                 from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
                 lines = ["📊 <b>PIPELINE DE INVERSIÓN — ARIA</b>\n"]
                 if cache:
                     # Investor deck
                     investor_raw = await cache.get("aria:investor:latest_deck")
                     if investor_raw:
-                        deck = _json.loads(investor_raw) if isinstance(investor_raw, str) else investor_raw
+                        deck = (
+                            _json.loads(investor_raw)
+                            if isinstance(investor_raw, str)
+                            else investor_raw
+                        )
                         ask = deck.get("ask", 0)
                         url = deck.get("url", "")
-                        ts  = deck.get("ts", "")
-                        lines.append(f"<b>🚀 Último Pitch Deck</b>")
+                        ts = deck.get("ts", "")
+                        lines.append("<b>🚀 Último Pitch Deck</b>")
                         lines.append(f"  Ask: ${ask:,.0f}  |  {ts}")
                         if url:
-                            lines.append(f"  <a href=\"{url}\">Ver deck →</a>")
+                            lines.append(f'  <a href="{url}">Ver deck →</a>')
                     else:
                         lines.append("<i>No se ha generado un pitch deck aún.</i>")
-                        lines.append("Ejecuta: <code>run_income_cycle strategy=vc_pitch_deck</code>")
+                        lines.append(
+                            "Ejecuta: <code>run_income_cycle strategy=vc_pitch_deck</code>"
+                        )
                     lines.append("")
                     # Grants
                     grant_potential = float(await cache.get("aria:grants:total_potential") or 0)
                     raw_grants = await cache.lrange("aria:grants:applications", -3, -1)
                     grants = []
-                    for r in (raw_grants or []):
-                        try:
+                    for r in raw_grants or []:
+                        with contextlib.suppress(Exception):
                             grants.append(_json.loads(r) if isinstance(r, str) else r)
-                        except Exception:
-                            pass
                     if grants:
-                        lines.append(f"<b>💰 Grants Identificados</b>")
+                        lines.append("<b>💰 Grants Identificados</b>")
                         lines.append(f"  Potencial total: ${grant_potential:,.0f}")
                         for g in grants[-2:]:
                             best = g.get("best", "—")
@@ -1389,9 +1553,13 @@ class AriaMind:
                             lines.append(f"  • {best} ({count} aplicaciones)")
                     else:
                         lines.append("<i>No se han preparado aplicaciones de grants aún.</i>")
-                        lines.append("Ejecuta: <code>run_income_cycle strategy=micro_grant_hunter</code>")
+                        lines.append(
+                            "Ejecuta: <code>run_income_cycle strategy=micro_grant_hunter</code>"
+                        )
                     lines.append("")
-                    lines.append("<i>ARIA ejecuta vc_pitch_deck y micro_grant_hunter automáticamente cada ciclo.</i>")
+                    lines.append(
+                        "<i>ARIA ejecuta vc_pitch_deck y micro_grant_hunter automáticamente cada ciclo.</i>"
+                    )
                 else:
                     lines.append("⚠️ Redis no disponible — sin datos de pipeline")
                 return "\n".join(lines), {}
@@ -1399,27 +1567,38 @@ class AriaMind:
             # ── INCOME LOOP 24/7 ──────────────────────────────────────────
             elif tool == "income_loop_status":
                 from apps.core.tools.income_loop import get_income_loop
+
                 return await get_income_loop().get_status(), {}
 
             elif tool == "start_income_loop":
                 from apps.core.tools.income_loop import get_income_loop
+
                 loop = get_income_loop()
                 if loop.is_running:
-                    return "El income loop 24/7 ya está corriendo. Usa income_loop_status para ver su estado.", {}
+                    return (
+                        "El income loop 24/7 ya está corriendo. Usa income_loop_status para ver su estado.",
+                        {},
+                    )
                 await loop.start()
-                return "✅ Income loop 24/7 iniciado. Ejecutará estrategias de ingresos cada 30 minutos de forma autónoma.", {}
+                return (
+                    "✅ Income loop 24/7 iniciado. Ejecutará estrategias de ingresos cada 30 minutos de forma autónoma.",
+                    {},
+                )
 
             elif tool == "run_income_cycle":
-                from apps.core.tools.income_loop import get_income_loop, STRATEGIES
-                loop      = get_income_loop()
-                strategy  = args.get("strategy", "")
-                valid     = [s[0] for s in STRATEGIES]
+                from apps.core.tools.income_loop import STRATEGIES, get_income_loop
+
+                loop = get_income_loop()
+                strategy = args.get("strategy", "")
+                valid = [s[0] for s in STRATEGIES]
                 if strategy and strategy not in valid:
                     return f"Estrategia inválida. Opciones: {', '.join(valid)}", {}
                 import random as _rnd
+
                 if not strategy:
-                    strategy = _rnd.choices([s[0] for s in STRATEGIES],
-                                            weights=[s[1] for s in STRATEGIES], k=1)[0]
+                    strategy = _rnd.choices(
+                        [s[0] for s in STRATEGIES], weights=[s[1] for s in STRATEGIES], k=1
+                    )[0]
                 obs = await loop._execute(strategy)
                 lines = [
                     f"[INCOME CYCLE — {strategy}]",
@@ -1434,16 +1613,23 @@ class AriaMind:
                 return "\n".join(lines), {}
 
             # ── GITHUB ───────────────────────────────────────────────────
-            elif tool in ("github_view", "github_write", "github_pr",
-                          "github_issues", "github_search", "github_self"):
+            elif tool in (
+                "github_view",
+                "github_write",
+                "github_pr",
+                "github_issues",
+                "github_search",
+                "github_self",
+            ):
                 from apps.core.tools.github_client import github_dispatch
+
                 action_map = {
-                    "github_view":   args.get("action", "view"),
-                    "github_write":  "write",
-                    "github_pr":     args.get("action", "create_pr"),
+                    "github_view": args.get("action", "view"),
+                    "github_write": "write",
+                    "github_pr": args.get("action", "create_pr"),
                     "github_issues": args.get("action", "issues"),
                     "github_search": "search",
-                    "github_self":   "self",
+                    "github_self": "self",
                 }
                 gh_action = action_map[tool]
                 obs = await github_dispatch(gh_action, args)
@@ -1452,6 +1638,7 @@ class AriaMind:
             # ── DAILY BUSINESS CYCLE ──────────────────────────────────────
             elif tool == "run_daily_cycle":
                 from apps.runtime.daily_business_loop import get_daily_business_loop
+
                 loop = get_daily_business_loop()
                 report = await loop.run()
                 lines = [
@@ -1472,15 +1659,18 @@ class AriaMind:
 
             elif tool == "daily_report":
                 from apps.runtime.daily_business_loop import get_daily_business_loop
+
                 loop = get_daily_business_loop()
                 await loop._load()
                 reports = loop.recent_reports(limit=1)
                 if not reports:
                     status = await loop.generate_status_report()
-                    return (f"[ESTADO HOY — {status['date']}]\n"
-                            f"Ops completadas: {status['ops_done']}/{status['ops_today']}\n"
-                            f"Score: {status['execution_score']:.0%}\n"
-                            f"Total reportes históricos: {status['total_reports']}"), {}
+                    return (
+                        f"[ESTADO HOY — {status['date']}]\n"
+                        f"Ops completadas: {status['ops_done']}/{status['ops_today']}\n"
+                        f"Score: {status['execution_score']:.0%}\n"
+                        f"Total reportes históricos: {status['total_reports']}"
+                    ), {}
                 r = reports[0]
                 lines = [
                     f"[REPORTE — {r.get('date', 'hoy')}]",
@@ -1500,6 +1690,7 @@ class AriaMind:
                 count = int(args.get("count", 10))
                 from apps.acquisition.leads.lead_engine import get_lead_engine
                 from apps.acquisition.outreach.outreach_sequencer import get_outreach_sequencer
+
                 eng = get_lead_engine()
                 leads = await eng.discover_leads(niche, count=count)
                 sequencer = get_outreach_sequencer()
@@ -1511,14 +1702,17 @@ class AriaMind:
                         advanced += 1
                 if advanced > 0:
                     await sequencer._save()
-                return (f"[ADQUISICIÓN]\n"
-                        f"Leads descubiertos en '{niche}': {len(leads)}\n"
-                        f"Contactos avanzados en CRM: {advanced}/{len(due)}"), {}
+                return (
+                    f"[ADQUISICIÓN]\n"
+                    f"Leads descubiertos en '{niche}': {len(leads)}\n"
+                    f"Contactos avanzados en CRM: {advanced}/{len(due)}"
+                ), {}
 
             # ── RETENTION ────────────────────────────────────────────────
             elif tool == "run_retention":
-                from apps.business.crm.retention import get_retention_engine
                 from apps.business.crm.crm_engine import get_crm_engine
+                from apps.business.crm.retention import get_retention_engine
+
                 engine = get_retention_engine()
                 crm = get_crm_engine()
                 at_risk = await crm.high_risk_customers()
@@ -1531,37 +1725,48 @@ class AriaMind:
                         "segment": (c.segments[0] if c.segments else ""),
                         "total_spent_usd": c.total_spent_usd,
                         "last_purchase_ts": c.last_purchase_ts,
-                        "churn_risk": c.churn_risk.value if hasattr(c.churn_risk, "value") else str(c.churn_risk),
+                        "churn_risk": (
+                            c.churn_risk.value
+                            if hasattr(c.churn_risk, "value")
+                            else str(c.churn_risk)
+                        ),
                     }
                     for c in all_customers[:100]
                 ]
                 win_back = await engine.run_win_back(customer_dicts)
                 loyalty = await engine.run_loyalty_rewards(customer_dicts)
                 summary = await engine.campaign_summary()
-                return (f"[RETENCIÓN]\n"
-                        f"Clientes en riesgo analizados: {len(at_risk)}\n"
-                        f"Win-back targets: {win_back.get('targeted', 0)}\n"
-                        f"Loyalty reward targets: {loyalty.get('targeted', 0)}\n"
-                        f"Campañas activas totales: {summary.get('active_campaigns', 0)}\n"
-                        f"Revenue recuperado total: ${summary.get('total_recovered_revenue', 0):.2f}"), {}
+                return (
+                    f"[RETENCIÓN]\n"
+                    f"Clientes en riesgo analizados: {len(at_risk)}\n"
+                    f"Win-back targets: {win_back.get('targeted', 0)}\n"
+                    f"Loyalty reward targets: {loyalty.get('targeted', 0)}\n"
+                    f"Campañas activas totales: {summary.get('active_campaigns', 0)}\n"
+                    f"Revenue recuperado total: ${summary.get('total_recovered_revenue', 0):.2f}"
+                ), {}
 
             # ── SHOPIFY OPTIMIZE ──────────────────────────────────────────
             elif tool == "shopify_optimize":
                 operation = args.get("operation", "seo")
                 if operation == "seo":
                     from apps.shopify.seo.product_seo import get_product_seo_optimizer
+
                     eng = get_product_seo_optimizer()
                     await eng._load()
                     stats = eng.seo_stats()
                     return f"[SHOPIFY SEO]\n{stats}", {}
-                elif operation == "bundles":
+                if operation == "bundles":
                     from apps.shopify.bundles.bundle_generator import get_bundle_generator
+
                     eng = get_bundle_generator()
                     await eng._load()
-                    stats = eng.bundle_stats() if hasattr(eng, "bundle_stats") else {"status": "loaded"}
+                    stats = (
+                        eng.bundle_stats() if hasattr(eng, "bundle_stats") else {"status": "loaded"}
+                    )
                     return f"[SHOPIFY BUNDLES]\n{stats}", {}
-                elif operation == "flash_sale":
+                if operation == "flash_sale":
                     from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
+
                     eng = get_flash_sale_engine()
                     await eng._load()
                     stats = eng.sale_stats() if hasattr(eng, "sale_stats") else {"status": "loaded"}
@@ -1570,20 +1775,24 @@ class AriaMind:
 
             # ── CONVERSION FUNNELS ────────────────────────────────────────
             elif tool == "run_funnel":
-                from apps.conversion.funnels.funnel_engine import get_funnel_engine
                 from apps.conversion.email_sequences.email_nurture import get_email_nurture_engine
+                from apps.conversion.funnels.funnel_engine import get_funnel_engine
+
                 funnel_eng = get_funnel_engine()
                 await funnel_eng._load()
                 analytics = funnel_eng.funnel_analytics()
                 email_eng = get_email_nurture_engine()
                 await email_eng._load()
                 email_analytics = email_eng.sequence_analytics()
-                return (f"[FUNNELS DE CONVERSIÓN]\n{analytics}\n\n"
-                        f"[SECUENCIAS EMAIL]\n{email_analytics}"), {}
+                return (
+                    f"[FUNNELS DE CONVERSIÓN]\n{analytics}\n\n"
+                    f"[SECUENCIAS EMAIL]\n{email_analytics}"
+                ), {}
 
             # ── AUTONOMOUS OBJECTIVES ─────────────────────────────────────
             elif tool == "check_objectives":
                 from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+
                 scheduler = get_autonomous_scheduler()
                 objs = await scheduler.get_objectives()
                 summary = scheduler.summary()
@@ -1594,6 +1803,7 @@ class AriaMind:
                     "",
                 ]
                 import time as _time
+
                 for obj in sorted(objs, key=lambda o: o.priority):
                     due_in = max(0, obj.next_run_ts - _time.time())
                     due_str = f"vence en {due_in/3600:.1f}h" if due_in > 0 else "VENCE AHORA"
@@ -1607,34 +1817,45 @@ class AriaMind:
             # ── HUMAN BROWSER (STEALTH) ───────────────────────────────────
             elif tool == "human_login":
                 from apps.core.config import settings
+
                 platform = args.get("platform", "")
-                email    = args.get("email") or getattr(settings, "ARIA_EMAIL", "")
+                email = args.get("email") or getattr(settings, "ARIA_EMAIL", "")
                 password = args.get("password") or getattr(settings, "ARIA_PASSWORD", "")
                 username = args.get("username", "")
                 if not email or not password:
-                    return "Necesito email y password. Agrega ARIA_EMAIL y ARIA_PASSWORD como secrets.", {}
+                    return (
+                        "Necesito email y password. Agrega ARIA_EMAIL y ARIA_PASSWORD como secrets.",
+                        {},
+                    )
                 from apps.core.tools.human_browser import get_platform_login
+
                 pl = await get_platform_login()
                 login_map = {
-                    "gumroad":  pl.gumroad,
-                    "devto":    pl.devto,
+                    "gumroad": pl.gumroad,
+                    "devto": pl.devto,
                     "linkedin": pl.linkedin,
-                    "twitter":  lambda e, p: pl.twitter(e, p, username),
+                    "twitter": lambda e, p: pl.twitter(e, p, username),
                     "hashnode": pl.hashnode,
-                    "medium":   pl.medium,
+                    "medium": pl.medium,
                 }
                 fn = login_map.get(platform.lower())
                 if not fn:
-                    return f"Plataforma desconocida: {platform}. Opciones: gumroad, devto, linkedin, twitter, hashnode, medium", {}
+                    return (
+                        f"Plataforma desconocida: {platform}. Opciones: gumroad, devto, linkedin, twitter, hashnode, medium",
+                        {},
+                    )
                 page = await fn(email, password)
-                return (f"[STEALTH LOGIN — {platform.upper()}]\n"
-                        f"URL actual: {page.url}\n"
-                        f"Sesión guardada para uso futuro."), {}
+                return (
+                    f"[STEALTH LOGIN — {platform.upper()}]\n"
+                    f"URL actual: {page.url}\n"
+                    f"Sesión guardada para uso futuro."
+                ), {}
 
             elif tool == "human_browse":
-                url     = args.get("url", "")
+                url = args.get("url", "")
                 session = args.get("session", "default")
                 from apps.core.tools.human_browser import get_human_browser
+
                 browser = await get_human_browser()
                 page = await browser.new_page(session)
                 await page.load_session()
@@ -1645,17 +1866,18 @@ class AriaMind:
 
             elif tool == "human_action":
                 session = args.get("session", "default")
-                steps   = args.get("steps", [])
+                steps = args.get("steps", [])
                 from apps.core.tools.human_browser import get_human_browser
+
                 browser = await get_human_browser()
                 page = await browser.new_page(session)
                 await page.load_session()
                 results = []
                 for step in steps:
-                    action   = step.get("action", "")
+                    action = step.get("action", "")
                     selector = step.get("selector", "")
-                    value    = step.get("value", "")
-                    pixels   = int(step.get("pixels", 300))
+                    value = step.get("value", "")
+                    pixels = int(step.get("pixels", 300))
                     try:
                         if action == "click":
                             await page.click(selector)
@@ -1670,7 +1892,11 @@ class AriaMind:
                             await asyncio.sleep(float(value or 1))
                             results.append(f"wait({value}s): OK")
                         elif action == "get_text":
-                            text = await page.get_text(selector) if selector else await page.get_page_text()
+                            text = (
+                                await page.get_text(selector)
+                                if selector
+                                else await page.get_page_text()
+                            )
                             results.append(f"text: {text[:300]}")
                         elif action == "screenshot":
                             await page.screenshot()
@@ -1689,9 +1915,10 @@ class AriaMind:
 
             elif tool == "diagnose_income":
                 from apps.core.tools.income_loop import get_income_loop
+
                 loop = get_income_loop()
                 creds = loop.check_credentials()
-                active   = creds.get("active", {})
+                active = creds.get("active", {})
                 inactive = creds.get("inactive", {})
                 lines = [
                     "**DIAGNÓSTICO DE CANALES DE INGRESOS**",
@@ -1706,7 +1933,9 @@ class AriaMind:
                     keys = ", ".join(info.get("keys_needed", []))
                     channels = ", ".join(info.get("revenue_channels", [])[:2])
                     lines.append(f"  • {ch} ({channels})")
-                    lines.append(f"    → Añade en Fly.io: fly secrets set {keys.replace(', ', '=... ')}=...")
+                    lines.append(
+                        f"    → Añade en Fly.io: fly secrets set {keys.replace(', ', '=... ')}=..."
+                    )
                 lines += [
                     "",
                     "**🥇 Canal más rentable — Gumroad (venta digital):**",
@@ -1805,25 +2034,31 @@ class AriaMind:
 
             elif tool == "get_income_analytics":
                 from apps.core.tools.income_loop import get_income_loop
-                loop   = get_income_loop()
+
+                loop = get_income_loop()
                 report = await loop.get_analytics_report()
                 return report, {}
 
             elif tool == "get_product_catalog":
                 from apps.core.tools.income_loop import get_income_loop
-                loop    = get_income_loop()
-                limit   = int(args.get("limit", 20))
+
+                loop = get_income_loop()
+                limit = int(args.get("limit", 20))
                 catalog = await loop.get_product_catalog(limit=limit)
                 return catalog, {}
 
             elif tool == "get_github_traction":
-                from apps.core.tools.github_client import AriaGitHubClient
                 from apps.core.config import settings as _s
-                gh    = AriaGitHubClient()
+                from apps.core.tools.github_client import AriaGitHubClient
+
+                gh = AriaGitHubClient()
                 owner = _s.GITHUB_USERNAME or "Geremypolanco"
                 aria_repos = [
-                    "aria-insights", "aria-portfolio", "aria-free-resources",
-                    "aria-newsletter", "aria-ai",
+                    "aria-insights",
+                    "aria-portfolio",
+                    "aria-free-resources",
+                    "aria-newsletter",
+                    "aria-ai",
                 ]
                 traction_lines = [
                     "⭐ <b>GitHub Traction — ARIA Market Presence</b>",
@@ -1840,48 +2075,56 @@ class AriaMind:
                         total_stars += s
                         total_forks += f
                         url = info.get("html_url", "")
-                        traction_lines.append(
-                            f"<code>{repo:<28}</code>  ⭐{s}  🍴{f}  👁{w}"
-                        )
+                        traction_lines.append(f"<code>{repo:<28}</code>  ⭐{s}  🍴{f}  👁{w}")
                         traction_lines.append(f"  <a href='{url}'>{url}</a>")
                     else:
                         traction_lines.append(f"  {repo}: not found yet")
                 traction_lines += [
                     "",
                     f"<b>Total stars: {total_stars}  |  Total forks: {total_forks}</b>",
-                    f"<i>Tip: share the repos in communities to grow stars → brand authority → sales</i>",
+                    "<i>Tip: share the repos in communities to grow stars → brand authority → sales</i>",
                 ]
                 return "\n".join(traction_lines), {}
 
             elif tool == "setup_portfolio":
+                import base64 as _b64
+
                 from apps.core.config import settings as _s
                 from apps.core.tools.github_client import AriaGitHubClient
-                import base64 as _b64
-                gh    = AriaGitHubClient()
+
+                gh = AriaGitHubClient()
                 owner = _s.GITHUB_USERNAME or "Geremypolanco"
-                repo  = "aria-portfolio"
+                repo = "aria-portfolio"
                 assoc = getattr(_s, "AMAZON_ASSOCIATE_TAG", None) or ""
                 if not _s.GITHUB_TOKEN:
-                    return "GITHUB_TOKEN no configurado. Añádelo en Fly.io secrets para crear el portfolio.", {}
+                    return (
+                        "GITHUB_TOKEN no configurado. Añádelo en Fly.io secrets para crear el portfolio.",
+                        {},
+                    )
                 # Ensure repo exists
                 existing = await gh._get(f"/repos/{owner}/{repo}")
                 if "error" in existing:
-                    await gh._post("/user/repos", {
-                        "name": repo,
-                        "description": "ARIA AI — Autonomous AI Business Platform",
-                        "private": False,
-                        "auto_init": True,
-                        "has_issues": False,
-                        "has_wiki": False,
-                    })
+                    await gh._post(
+                        "/user/repos",
+                        {
+                            "name": repo,
+                            "description": "ARIA AI — Autonomous AI Business Platform",
+                            "private": False,
+                            "auto_init": True,
+                            "has_issues": False,
+                            "has_wiki": False,
+                        },
+                    )
                     import asyncio as _asyncio
+
                     await _asyncio.sleep(2)
-                    try:
-                        await gh._post(f"/repos/{owner}/{repo}/pages", {
-                            "source": {"branch": "main", "path": "/"},
-                        })
-                    except Exception:
-                        pass
+                    with contextlib.suppress(Exception):
+                        await gh._post(
+                            f"/repos/{owner}/{repo}/pages",
+                            {
+                                "source": {"branch": "main", "path": "/"},
+                            },
+                        )
                 aff_section = ""
                 if assoc:
                     aff_section = f"""
@@ -1955,29 +2198,45 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if "error" not in file_r:
                     url = f"https://github.com/{owner}/{repo}"
                     pages_url = f"https://{owner.lower()}.github.io/{repo}/"
-                    return (f"✅ Portfolio creado/actualizado: {url}\n"
-                            f"🌐 GitHub Pages (activo en ~2 min): {pages_url}\n"
-                            f"📚 Blog de contenido: https://github.com/{owner}/aria-insights"), {}
+                    return (
+                        f"✅ Portfolio creado/actualizado: {url}\n"
+                        f"🌐 GitHub Pages (activo en ~2 min): {pages_url}\n"
+                        f"📚 Blog de contenido: https://github.com/{owner}/aria-insights"
+                    ), {}
                 return "Error al actualizar el portfolio. Verifica GITHUB_TOKEN en secrets.", {}
 
             elif tool == "run_objective":
                 obj_key = args.get("objective", "content_generation")
                 valid_keys = [
-                    "growth_loops_cycle", "shopify_optimization", "content_generation",
-                    "market_intelligence", "crm_nurture", "economic_rebalancing",
-                    "morning_briefing", "product_launch_blitz",
-                    "daily_revenue_digest", "bundle_and_waitlist",
-                    "challenge_day_sequencer", "partner_outreach_cycle",
-                    "proactive_analysis", "social_organic",
-                    "strategy_optimizer", "self_improve",
-                    "youtube_cycle", "product_hunt_cycle",
-                    "trend_detector", "weekly_review",
-                    "content_calendar_builder", "competitor_intel",
+                    "growth_loops_cycle",
+                    "shopify_optimization",
+                    "content_generation",
+                    "market_intelligence",
+                    "crm_nurture",
+                    "economic_rebalancing",
+                    "morning_briefing",
+                    "product_launch_blitz",
+                    "daily_revenue_digest",
+                    "bundle_and_waitlist",
+                    "challenge_day_sequencer",
+                    "partner_outreach_cycle",
+                    "proactive_analysis",
+                    "social_organic",
+                    "strategy_optimizer",
+                    "self_improve",
+                    "youtube_cycle",
+                    "product_hunt_cycle",
+                    "trend_detector",
+                    "weekly_review",
+                    "content_calendar_builder",
+                    "competitor_intel",
                 ]
                 if obj_key not in valid_keys:
-                    return (f"Objetivo inválido: '{obj_key}'. "
-                            f"Opciones: {', '.join(valid_keys)}"), {}
+                    return (
+                        f"Objetivo inválido: '{obj_key}'. " f"Opciones: {', '.join(valid_keys)}"
+                    ), {}
                 from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+
                 scheduler = get_autonomous_scheduler()
                 objs = await scheduler.get_objectives()
                 target = next((o for o in objs if o.obj_id == obj_key), None)
@@ -1988,10 +2247,12 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 all_objs[target.obj_id] = target
                 await scheduler._save_objectives(all_objs)
                 status = "✅" if record.success else "❌"
-                return (f"[OBJETIVO: {target.name}] {status}\n"
-                        f"Output: {record.output}\n"
-                        f"Valor: ${record.value_generated_usd:.2f}\n"
-                        f"Error: {record.error or 'ninguno'}"), {}
+                return (
+                    f"[OBJETIVO: {target.name}] {status}\n"
+                    f"Output: {record.output}\n"
+                    f"Valor: ${record.value_generated_usd:.2f}\n"
+                    f"Error: {record.error or 'ninguno'}"
+                ), {}
 
             # ── ANÁLISIS PROACTIVO AUTÓNOMO ───────────────────────────────
             elif tool == "run_proactive_analysis":
@@ -2004,6 +2265,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if focus in ("income", "all"):
                     try:
                         from apps.core.tools.income_loop import get_income_loop
+
                         loop = get_income_loop()
                         status_str = await loop.get_status()
                         findings.append("**INCOME LOOP:**")
@@ -2022,6 +2284,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if focus in ("shopify", "all"):
                     try:
                         from apps.shopify.seo.product_seo import get_product_seo_optimizer
+
                         seo_eng = get_product_seo_optimizer()
                         await seo_eng._load()
                         seo_stats = seo_eng.seo_stats()
@@ -2034,19 +2297,29 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 # 3. Strategic objectives status
                 if focus in ("all",):
                     try:
-                        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
                         import time as _time
+
+                        from apps.runtime.autonomy.autonomous_scheduler import (
+                            get_autonomous_scheduler,
+                        )
+
                         scheduler = get_autonomous_scheduler()
                         objs = await scheduler.get_objectives()
                         overdue = [o for o in objs if o.next_run_ts <= _time.time()]
-                        upcoming_1h = [o for o in objs if 0 < (o.next_run_ts - _time.time()) <= 3600]
+                        upcoming_1h = [
+                            o for o in objs if 0 < (o.next_run_ts - _time.time()) <= 3600
+                        ]
                         if overdue:
-                            findings.append(f"**OBJETIVOS VENCIDOS ({len(overdue)}):** " +
-                                          ", ".join(o.obj_id for o in overdue[:5]))
+                            findings.append(
+                                f"**OBJETIVOS VENCIDOS ({len(overdue)}):** "
+                                + ", ".join(o.obj_id for o in overdue[:5])
+                            )
                             findings.append("")
                         if upcoming_1h:
-                            findings.append(f"**VENCEN EN <1H ({len(upcoming_1h)}):** " +
-                                          ", ".join(o.obj_id for o in upcoming_1h[:3]))
+                            findings.append(
+                                f"**VENCEN EN <1H ({len(upcoming_1h)}):** "
+                                + ", ".join(o.obj_id for o in upcoming_1h[:3])
+                            )
                             findings.append("")
                     except Exception as _e:
                         findings.append(f"Objectives: {_e}")
@@ -2055,14 +2328,17 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 # 4. GitHub traction check
                 if focus in ("github", "all"):
                     try:
-                        from apps.core.tools.github_client import AriaGitHubClient
                         from apps.core.config import settings as _s
+                        from apps.core.tools.github_client import AriaGitHubClient
+
                         gh = AriaGitHubClient()
                         owner = _s.GITHUB_USERNAME or "Geremypolanco"
                         repo_check = await gh._get(f"/repos/{owner}/aria-insights")
                         stars = repo_check.get("stargazers_count", 0)
                         open_issues = repo_check.get("open_issues_count", 0)
-                        findings.append(f"**GITHUB aria-insights:** ⭐{stars} | issues:{open_issues}")
+                        findings.append(
+                            f"**GITHUB aria-insights:** ⭐{stars} | issues:{open_issues}"
+                        )
                         findings.append("")
                     except Exception as _e:
                         findings.append(f"GitHub: {_e}")
@@ -2072,17 +2348,22 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 findings.append("**ACCIÓN EJECUTADA:**")
                 try:
                     # Priority: run overdue objective > income cycle > shopify SEO
-                    if focus in ("all",) and 'overdue' in dir() and overdue:
+                    if focus in ("all",) and "overdue" in dir() and overdue:
                         # Pick highest priority overdue objective
                         best_obj = min(overdue, key=lambda o: o.priority)
-                        from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler
+                        from apps.runtime.autonomy.autonomous_scheduler import (
+                            get_autonomous_scheduler,
+                        )
+
                         scheduler = get_autonomous_scheduler()
                         record = await scheduler._run_objective(best_obj)
                         all_objs_map = {o.obj_id: o for o in objs}
                         all_objs_map[best_obj.obj_id] = best_obj
                         await scheduler._save_objectives(all_objs_map)
                         status_icon = "✅" if record.success else "❌"
-                        action_taken = f"Ejecuté objetivo vencido: **{best_obj.name}** {status_icon}"
+                        action_taken = (
+                            f"Ejecuté objetivo vencido: **{best_obj.name}** {status_icon}"
+                        )
                         action_value = record.value_generated_usd
                         findings.append(action_taken)
                         findings.append(f"Output: {record.output[:300]}")
@@ -2090,6 +2371,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     elif focus in ("shopify",) or focus == "all":
                         # Run a shopify SEO optimization
                         from apps.core.tools.income_loop import get_income_loop
+
                         loop = get_income_loop()
                         cycle_result = await loop._execute("shopify_listing")
                         action_taken = f"Ejecuté ciclo de ingresos: **shopify_listing** {'✅' if cycle_result.get('success') else '❌'}"
@@ -2101,6 +2383,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     else:
                         # Default: run content pipeline
                         from apps.core.tools.income_loop import get_income_loop
+
                         loop = get_income_loop()
                         cycle_result = await loop._execute("content_pipeline")
                         action_taken = f"Ejecuté ciclo: **content_pipeline** {'✅' if cycle_result.get('success') else '❌'}"
@@ -2119,30 +2402,40 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             # ── VISUAL QUESTION ANSWERING ─────────────────────────────
             elif tool == "visual_qa":
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
-                question  = args.get("question", "¿Qué hay en esta imagen?")
+                question = args.get("question", "¿Qué hay en esta imagen?")
                 if not image_b64:
-                    return "Envíame primero una imagen para que pueda responder preguntas sobre ella.", {}
+                    return (
+                        "Envíame primero una imagen para que pueda responder preguntas sobre ella.",
+                        {},
+                    )
                 import base64 as _b64
+
                 image_bytes = _b64.b64decode(image_b64)
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().visual_question_answering(image_bytes, question)
                 if r.get("success"):
                     conf = r.get("confidence", 0)
                     ans = r.get("answer", "")
-                    return f"[VQA] Pregunta: {question}\nRespuesta: {ans} (confianza: {conf:.0%})", {}
+                    return (
+                        f"[VQA] Pregunta: {question}\nRespuesta: {ans} (confianza: {conf:.0%})",
+                        {},
+                    )
                 return r.get("error", "VQA no disponible"), {}
 
             # ── IMAGE-TO-IMAGE (Diffusion) ────────────────────────────
             elif tool == "image_to_image":
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
-                prompt    = args.get("prompt", "")
+                prompt = args.get("prompt", "")
                 if not image_b64:
                     return "Envíame primero una imagen para poder transformarla.", {}
                 if not prompt:
                     return "Necesito una instrucción de transformación (prompt).", {}
                 import base64 as _b64
+
                 image_bytes = _b64.b64decode(image_b64)
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().image_to_image(image_bytes, prompt)
                 if r.get("success") and r.get("image_bytes"):
                     return f"Imagen transformada: '{prompt}'", {"image_bytes": r["image_bytes"]}
@@ -2151,41 +2444,54 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             # ── ZERO-SHOT IMAGE CLASSIFICATION (CLIP) ────────────────
             elif tool == "classify_image_zero_shot":
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
-                labels    = args.get("labels", ["cat", "dog", "person", "car", "nature"])
+                labels = args.get("labels", ["cat", "dog", "person", "car", "nature"])
                 if not image_b64:
                     return "Envíame primero una imagen para clasificarla.", {}
                 import base64 as _b64
+
                 image_bytes = _b64.b64decode(image_b64)
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().zero_shot_classify_image(image_bytes, labels)
                 if r.get("success"):
                     top = r.get("top_label", "")
                     score = r.get("top_score", 0)
-                    all_scores = ", ".join(f"{x['label']}: {x['score']:.0%}" for x in r.get("all", [])[:5])
-                    return f"[CLIP] Categoría más probable: {top} ({score:.0%})\nTodas: {all_scores}", {}
+                    all_scores = ", ".join(
+                        f"{x['label']}: {x['score']:.0%}" for x in r.get("all", [])[:5]
+                    )
+                    return (
+                        f"[CLIP] Categoría más probable: {top} ({score:.0%})\nTodas: {all_scores}",
+                        {},
+                    )
                 return r.get("error", "Clasificación CLIP no disponible"), {}
 
             # ── DOCUMENT QA (LayoutLM) ────────────────────────────────
             elif tool == "document_qa":
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
-                question  = args.get("question", "")
+                question = args.get("question", "")
                 if not image_b64:
                     return "Envíame primero el documento o factura como imagen.", {}
                 if not question:
                     return "¿Qué quieres saber sobre el documento?", {}
                 import base64 as _b64
+
                 image_bytes = _b64.b64decode(image_b64)
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().document_qa(image_bytes, question)
                 if r.get("success"):
-                    return f"[Document QA] {question}\nRespuesta: {r.get('answer','')} ({r.get('confidence',0):.0%})", {}
+                    return (
+                        f"[Document QA] {question}\nRespuesta: {r.get('answer','')} ({r.get('confidence',0):.0%})",
+                        {},
+                    )
                 return r.get("error", "Document QA no disponible"), {}
 
             # ── GENERATE MUSIC (MusicGen) ─────────────────────────────
             elif tool == "generate_music_hf":
-                prompt   = args.get("prompt", "relaxing ambient music")
+                prompt = args.get("prompt", "relaxing ambient music")
                 duration = int(args.get("duration", 15))
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().generate_music(prompt, duration=duration)
                 if r.get("success") and r.get("audio_bytes"):
                     ab = r["audio_bytes"]
@@ -2198,6 +2504,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not text:
                     return "Necesito texto para detectar el idioma.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().detect_language(text)
                 if r.get("success"):
                     lang = r.get("language", "?")
@@ -2211,6 +2518,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not text:
                     return "Necesito texto para analizar el sentimiento.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().analyze_sentiment(text)
                 if r.get("success"):
                     sent = r.get("sentiment", "?")
@@ -2226,6 +2534,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not text:
                     return "Necesito texto para extraer entidades.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().extract_entities(text)
                 if r.get("success") and r.get("entities"):
                     ents = r["entities"]
@@ -2240,22 +2549,33 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not text1 or not text2:
                     return "Necesito text1 y text2 para calcular similaridad.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().compute_similarity(text1, text2)
                 if r.get("success"):
                     sim = r.get("similarity", 0)
-                    level = "muy similares" if sim > 0.8 else "similares" if sim > 0.6 else "poco similares" if sim > 0.4 else "muy diferentes"
+                    level = (
+                        "muy similares"
+                        if sim > 0.8
+                        else (
+                            "similares"
+                            if sim > 0.6
+                            else "poco similares" if sim > 0.4 else "muy diferentes"
+                        )
+                    )
                     return f"Similaridad semántica: {sim:.2%} ({level})", {}
                 return r.get("error", "Cálculo de similaridad no disponible"), {}
 
             # ── VISION LANGUAGE MODEL (Image-Text-to-Text) ───────────
             elif tool == "vision_llm":
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
-                question  = args.get("question", "Describe esta imagen en detalle.")
+                question = args.get("question", "Describe esta imagen en detalle.")
                 if not image_b64:
                     return "Envíame primero una imagen para analizar.", {}
                 import base64 as _b64
+
                 image_bytes = _b64.b64decode(image_b64)
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().vision_language(image_bytes, question)
                 if r.get("success"):
                     return f"[Vision LLM]\n{r.get('answer','')}", {}
@@ -2267,24 +2587,31 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not image_b64:
                     return "Envíame primero una imagen para segmentar.", {}
                 import base64 as _b64
+
                 image_bytes = _b64.b64decode(image_b64)
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().segment_image(image_bytes)
                 if r.get("success"):
                     labels = r.get("unique_labels", [])
                     count = r.get("count", 0)
-                    return f"[Segmentación] {count} segmentos detectados\nObjetos: {', '.join(labels)}", {}
+                    return (
+                        f"[Segmentación] {count} segmentos detectados\nObjetos: {', '.join(labels)}",
+                        {},
+                    )
                 return r.get("error", "Segmentación no disponible"), {}
 
             # ── ZERO-SHOT OBJECT DETECTION ────────────────────────────
             elif tool == "zero_shot_detect":
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
-                labels    = args.get("labels", ["person", "car", "dog", "cat", "building"])
+                labels = args.get("labels", ["person", "car", "dog", "cat", "building"])
                 if not image_b64:
                     return "Envíame primero una imagen para detectar objetos.", {}
                 import base64 as _b64
+
                 image_bytes = _b64.b64decode(image_b64)
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().zero_shot_detect_objects(image_bytes, labels)
                 if r.get("success"):
                     dets = r.get("detections", [])
@@ -2300,8 +2627,10 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not audio_b64:
                     return "Necesito audio_bytes_b64 para mejorar el audio.", {}
                 import base64 as _b64
+
                 audio_bytes = _b64.b64decode(audio_b64)
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().enhance_audio(audio_bytes)
                 if r.get("success") and r.get("audio_bytes"):
                     ab = r["audio_bytes"]
@@ -2310,25 +2639,29 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             # ── TEXT RANKING (Reranking para RAG) ────────────────────
             elif tool == "rank_texts":
-                query    = args.get("query", "")
+                query = args.get("query", "")
                 passages = args.get("passages", [])
                 if not query or not passages:
                     return "Necesito query y passages para hacer reranking.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().rank_texts(query, passages)
                 if r.get("success"):
                     ranked = r.get("ranked", [])[:5]
-                    lines = [f"{i+1}. [{s['score']:.3f}] {s['text'][:150]}" for i, s in enumerate(ranked)]
+                    lines = [
+                        f"{i+1}. [{s['score']:.3f}] {s['text'][:150]}" for i, s in enumerate(ranked)
+                    ]
                     return f"[Reranking para: '{query}']\n" + "\n".join(lines), {}
                 return r.get("error", "Text ranking no disponible"), {}
 
             # ── TABLE QUESTION ANSWERING (TAPAS) ─────────────────────
             elif tool == "table_qa":
-                table    = args.get("table", {})
+                table = args.get("table", {})
                 question = args.get("question", "")
                 if not table or not question:
                     return "Necesito table (dict de columnas→listas) y question.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().table_question_answering(table, question)
                 if r.get("success"):
                     return f"[TAPAS] {question}\nRespuesta: {r.get('answer','')}", {}
@@ -2340,8 +2673,10 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not image_b64:
                     return "Envíame primero una imagen para generar máscaras.", {}
                 import base64 as _b64
+
                 image_bytes = _b64.b64decode(image_b64)
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().generate_masks(image_bytes)
                 if r.get("success"):
                     count = r.get("count", 0)
@@ -2354,6 +2689,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not task:
                     return "Necesito una tarea para el agente de investigación.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().run_search_agent(task)
                 if r.get("success"):
                     steps = r.get("steps_count", 0)
@@ -2365,10 +2701,12 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "remove_background":
                 import base64 as _b64
+
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
                 if not image_b64:
                     return "Envíame primero una imagen para eliminar el fondo.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().remove_background(_b64.b64decode(image_b64))
                 if r.get("success"):
                     return "[Fondo eliminado con BiRefNet]", {"image_bytes": r["image_bytes"]}
@@ -2381,6 +2719,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 voice = args.get("voice", "af_heart")
                 speed = float(args.get("speed", 1.0))
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().kokoro_tts(text[:500], voice, speed)
                 if r.get("success"):
                     ab = r["audio_bytes"]
@@ -2389,13 +2728,20 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "clone_voice":
                 import base64 as _b64
+
                 ref_b64 = args.get("ref_audio_b64", "")
                 gen_text = args.get("gen_text", "")
                 ref_text = args.get("ref_text", "")
                 if not ref_b64 or not gen_text:
-                    return "Necesito el audio de referencia (ref_audio_b64) y el texto a generar (gen_text).", {}
+                    return (
+                        "Necesito el audio de referencia (ref_audio_b64) y el texto a generar (gen_text).",
+                        {},
+                    )
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
-                r = await HuggingFaceSuite().clone_voice(_b64.b64decode(ref_b64), ref_text, gen_text)
+
+                r = await HuggingFaceSuite().clone_voice(
+                    _b64.b64decode(ref_b64), ref_text, gen_text
+                )
                 if r.get("success"):
                     ab = r["audio_bytes"]
                     return f"Voz clonada ({len(ab)//1024}KB)", {"audio_bytes": ab}
@@ -2403,11 +2749,13 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "upscale_image":
                 import base64 as _b64
+
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
                 if not image_b64:
                     return "Envíame primero una imagen para mejorar.", {}
                 scale = int(args.get("scale", 2))
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().upscale_image(_b64.b64decode(image_b64), scale)
                 if r.get("success"):
                     return f"[Imagen mejorada {scale}x con IA]", {"image_bytes": r["image_bytes"]}
@@ -2415,11 +2763,13 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "ocr_space":
                 import base64 as _b64
+
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
                 if not image_b64:
                     return "Envíame la imagen con el texto a extraer.", {}
                 task = args.get("task", "Text")
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().ocr_document_space(_b64.b64decode(image_b64), task)
                 if r.get("success"):
                     return r["text"], {}
@@ -2427,10 +2777,12 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "estimate_pose":
                 import base64 as _b64
+
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
                 if not image_b64:
                     return "Envíame una imagen con personas para detectar la pose.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().estimate_pose(_b64.b64decode(image_b64))
                 if r.get("success"):
                     kp = r.get("keypoints", {})
@@ -2444,10 +2796,12 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "generate_3d":
                 import base64 as _b64
+
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
                 prompt = args.get("prompt", "")
                 img_bytes = _b64.b64decode(image_b64) if image_b64 else None
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().generate_3d_model(img_bytes, prompt)
                 if r.get("success"):
                     if r.get("model_bytes"):
@@ -2460,6 +2814,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "edit_image_flux":
                 import base64 as _b64
+
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
                 prompt = args.get("prompt", "")
                 if not image_b64:
@@ -2467,6 +2822,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not prompt:
                     return "Necesito las instrucciones de edición (prompt).", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().edit_image_kontext(_b64.b64decode(image_b64), prompt)
                 if r.get("success"):
                     return f"[Imagen editada con FLUX Kontext: '{prompt[:80]}']", {
@@ -2476,6 +2832,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "outpaint_image":
                 import base64 as _b64
+
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
                 if not image_b64:
                     return "Envíame la imagen a ampliar.", {}
@@ -2483,6 +2840,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 h = int(args.get("height", 1080))
                 prompt = args.get("prompt", "")
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().outpaint_image(_b64.b64decode(image_b64), w, h, prompt)
                 if r.get("success"):
                     return f"[Imagen expandida a {w}x{h}]", {"image_bytes": r["image_bytes"]}
@@ -2490,11 +2848,13 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "colorize_image":
                 import base64 as _b64
+
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
                 if not image_b64:
                     return "Envíame la imagen en blanco y negro a colorizar.", {}
                 description = args.get("description", "")
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().colorize_image(_b64.b64decode(image_b64), description)
                 if r.get("success"):
                     return "[Imagen coloreada con IA]", {"image_bytes": r["image_bytes"]}
@@ -2502,12 +2862,14 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "generate_video_space":
                 import base64 as _b64
+
                 prompt = args.get("prompt", "")
                 image_b64 = args.get("image_bytes_b64", "") or get_image_context(chat_id)
                 img_bytes = _b64.b64decode(image_b64) if image_b64 else None
                 if not prompt and not img_bytes:
                     return "Necesito un prompt o imagen para generar el video.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
                 r = await HuggingFaceSuite().generate_video_space(prompt or "", img_bytes)
                 if r.get("success"):
                     if r.get("video_bytes"):
@@ -2519,25 +2881,31 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             # ── CONNECTIONS — Google, Indeed, Slack (equivalente MCP de Claude) ──
 
             elif tool == "gmail_list":
-                from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.google_connection import GoogleConnection
+                from apps.core.connections.manager import get_connection_manager
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "google")
                 if not tokens:
-                    return ("Google no conectado. Usa /connect google para conectar tu cuenta "
-                            "y acceder a Gmail, Calendar y Drive."), {}
+                    return (
+                        "Google no conectado. Usa /connect google para conectar tu cuenta "
+                        "y acceder a Gmail, Calendar y Drive."
+                    ), {}
                 query = args.get("query", "is:unread")
                 max_r = int(args.get("max_results", 10))
                 msgs = await GoogleConnection().gmail_list(tokens, max_r, query)
                 if not msgs:
                     return "No se encontraron mensajes con ese criterio.", {}
-                lines = [f"📧 **{m['subject'][:60]}**\nDe: {m['from'][:50]}\n{m['snippet'][:120]}"
-                         for m in msgs]
+                lines = [
+                    f"📧 **{m['subject'][:60]}**\nDe: {m['from'][:50]}\n{m['snippet'][:120]}"
+                    for m in msgs
+                ]
                 return f"📬 {len(msgs)} emails encontrados:\n\n" + "\n\n".join(lines), {}
 
             elif tool == "gmail_send":
-                from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.google_connection import GoogleConnection
+                from apps.core.connections.manager import get_connection_manager
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "google")
                 if not tokens:
@@ -2548,12 +2916,16 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if not to or not body:
                     return "Se requiere: to (email), subject, body.", {}
                 r = await GoogleConnection().gmail_send(tokens, to, subject, body)
-                return (f"✅ Email enviado a {to}\nAsunto: {subject}" if r.get("success")
-                        else f"Error al enviar: {r}"), {}
+                return (
+                    f"✅ Email enviado a {to}\nAsunto: {subject}"
+                    if r.get("success")
+                    else f"Error al enviar: {r}"
+                ), {}
 
             elif tool == "google_calendar":
-                from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.google_connection import GoogleConnection
+                from apps.core.connections.manager import get_connection_manager
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "google")
                 if not tokens:
@@ -2568,25 +2940,34 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                         description=args.get("description", ""),
                         location=args.get("location", ""),
                     )
-                    return (f"✅ Evento creado: {args.get('title')}\n🔗 {r.get('link', '')}"
-                            if r.get("success") else f"Error: {r}"), {}
-                else:
-                    events = await GoogleConnection().calendar_list(tokens, int(args.get("max_results", 10)))
-                    if not events:
-                        return "No hay eventos próximos en tu calendario.", {}
-                    lines = [f"📅 **{e['title']}**\n🕐 {e['start']}\n📍 {e.get('location','')}"
-                             for e in events[:5]]
-                    return f"📆 Próximos {len(events)} eventos:\n\n" + "\n\n".join(lines), {}
+                    return (
+                        f"✅ Evento creado: {args.get('title')}\n🔗 {r.get('link', '')}"
+                        if r.get("success")
+                        else f"Error: {r}"
+                    ), {}
+                events = await GoogleConnection().calendar_list(
+                    tokens, int(args.get("max_results", 10))
+                )
+                if not events:
+                    return "No hay eventos próximos en tu calendario.", {}
+                lines = [
+                    f"📅 **{e['title']}**\n🕐 {e['start']}\n📍 {e.get('location','')}"
+                    for e in events[:5]
+                ]
+                return f"📆 Próximos {len(events)} eventos:\n\n" + "\n\n".join(lines), {}
 
             elif tool == "google_drive":
-                from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.google_connection import GoogleConnection
+                from apps.core.connections.manager import get_connection_manager
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "google")
                 if not tokens:
                     return "Google no conectado. Usa /connect google primero.", {}
                 query = args.get("query", "")
-                files = await GoogleConnection().drive_search(tokens, query, int(args.get("max_results", 10)))
+                files = await GoogleConnection().drive_search(
+                    tokens, query, int(args.get("max_results", 10))
+                )
                 if not files:
                     return f"No se encontraron archivos con '{query}' en Drive.", {}
                 lines = [f"📄 **{f['name']}** ({f['type']})\n🔗 {f['link']}" for f in files[:5]]
@@ -2594,6 +2975,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "indeed_jobs":
                 from apps.core.connections.indeed_connection import IndeedConnection
+
                 query = args.get("query", "")
                 location = args.get("location", "Remote")
                 max_r = int(args.get("max_results", 10))
@@ -2603,13 +2985,16 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 jobs = await IndeedConnection().search_jobs(query, location, max_r, emp_type)
                 if not jobs:
                     return f"No se encontraron empleos para '{query}' en {location}.", {}
-                lines = [f"💼 **{j['title']}** @ {j['company']}\n📍 {j['location']} {j.get('salary','')}\n🔗 {j.get('link','')} "
-                         for j in jobs[:5]]
+                lines = [
+                    f"💼 **{j['title']}** @ {j['company']}\n📍 {j['location']} {j.get('salary','')}\n🔗 {j.get('link','')} "
+                    for j in jobs[:5]
+                ]
                 return f"🔍 {len(jobs)} empleos encontrados en Indeed:\n\n" + "\n\n".join(lines), {}
 
             elif tool == "slack_send":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.slack_connection import SlackConnection
+
                 mgr = get_connection_manager()
                 text_msg = args.get("message", args.get("text", ""))
                 channel = args.get("channel", "")
@@ -2617,15 +3002,21 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 tokens = await mgr.get(chat_id, "slack")
                 if tokens and channel:
                     r = await SlackConnection().send_message(tokens, channel, text_msg)
-                    return (f"✅ Mensaje enviado a #{channel} en Slack"
-                            if r.get("success") else f"Error Slack: {r.get('error')}"), {}
-                else:
-                    r = await SlackConnection().send_webhook(text_msg)
-                    return ("✅ Mensaje enviado a Slack via webhook"
-                            if r.get("success") else "Error: configura SLACK_WEBHOOK_URL o usa /connect slack"), {}
+                    return (
+                        f"✅ Mensaje enviado a #{channel} en Slack"
+                        if r.get("success")
+                        else f"Error Slack: {r.get('error')}"
+                    ), {}
+                r = await SlackConnection().send_webhook(text_msg)
+                return (
+                    "✅ Mensaje enviado a Slack via webhook"
+                    if r.get("success")
+                    else "Error: configura SLACK_WEBHOOK_URL o usa /connect slack"
+                ), {}
 
             elif tool == "list_connections":
                 from apps.core.connections.manager import get_connection_manager
+
                 mgr = get_connection_manager()
                 connected = await mgr.list_connected(chat_id)
                 available = list(mgr.AVAILABLE.keys())
@@ -2634,14 +3025,20 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     name = mgr.AVAILABLE[s]
                     status = "✅" if s in connected else "❌"
                     lines.append(f"{status} **{s}** — {name}")
-                return ("🔌 **Conexiones de ARIA**\n\n" + "\n".join(lines) +
-                        "\n\nUsa `/connect <servicio>` para conectar una cuenta."), {}
+                return (
+                    "🔌 **Conexiones de ARIA**\n\n"
+                    + "\n".join(lines)
+                    + "\n\nUsa `/connect <servicio>` para conectar una cuenta."
+                ), {}
 
             elif tool == "analyze_image_vision":
                 image_b64 = get_image_context(chat_id)
                 if not image_b64:
                     return "No hay imagen en el contexto. Envíame una imagen primero.", {}
-                question = args.get("question", "Describe esta imagen en detalle y extrae toda la información relevante.")
+                question = args.get(
+                    "question",
+                    "Describe esta imagen en detalle y extrae toda la información relevante.",
+                )
                 ai = self._ai_client()
                 if not ai:
                     return "Motor de IA no disponible.", {}
@@ -2651,13 +3048,16 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     image_b64=image_b64,
                     agent_name="aria_vision_tool",
                 )
-                return (resp.content if resp.success else "Análisis visual no disponible temporalmente."), {}
+                return (
+                    resp.content if resp.success else "Análisis visual no disponible temporalmente."
+                ), {}
 
             # ── MICROSOFT ──────────────────────────────────────────────────────
 
             elif tool == "ms_mail":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.microsoft_connection import MicrosoftConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "microsoft")
                 if not tokens:
@@ -2665,15 +3065,27 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 action = args.get("action", "list")
                 ms = MicrosoftConnection()
                 if action == "send":
-                    r = await ms.send_mail(tokens, args.get("to", ""), args.get("subject", ""), args.get("body", ""))
-                    return ("✅ Email enviado via Outlook" if r.get("success") else f"Error: {r}"), {}
+                    r = await ms.send_mail(
+                        tokens, args.get("to", ""), args.get("subject", ""), args.get("body", "")
+                    )
+                    return (
+                        "✅ Email enviado via Outlook" if r.get("success") else f"Error: {r}"
+                    ), {}
                 msgs = await ms.list_mail(tokens, int(args.get("limit", 10)))
-                lines = [f"📧 **{m['subject'][:60]}**\nDe: {m['from'][:50]}\n{m['preview'][:100]}" for m in msgs]
-                return ("📬 **Outlook — últimos mensajes:**\n\n" + "\n\n".join(lines)) if lines else "Bandeja vacía.", {}
+                lines = [
+                    f"📧 **{m['subject'][:60]}**\nDe: {m['from'][:50]}\n{m['preview'][:100]}"
+                    for m in msgs
+                ]
+                return (
+                    ("📬 **Outlook — últimos mensajes:**\n\n" + "\n\n".join(lines))
+                    if lines
+                    else "Bandeja vacía."
+                ), {}
 
             elif tool == "ms_calendar":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.microsoft_connection import MicrosoftConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "microsoft")
                 if not tokens:
@@ -2681,17 +3093,32 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 ms = MicrosoftConnection()
                 action = args.get("action", "list")
                 if action == "create":
-                    r = await ms.create_event(tokens, args.get("subject", "Evento"), args.get("start", ""), args.get("end", ""), args.get("location", ""))
-                    return (f"✅ Evento creado: {r.get('webLink', '')}" if r.get("success") else f"Error: {r}"), {}
+                    r = await ms.create_event(
+                        tokens,
+                        args.get("subject", "Evento"),
+                        args.get("start", ""),
+                        args.get("end", ""),
+                        args.get("location", ""),
+                    )
+                    return (
+                        f"✅ Evento creado: {r.get('webLink', '')}"
+                        if r.get("success")
+                        else f"Error: {r}"
+                    ), {}
                 events = await ms.list_events(tokens, int(args.get("limit", 10)))
                 lines = [f"📅 **{e['subject']}**\n🕐 {e['start']} → {e['end']}" for e in events]
-                return ("📅 **Calendar Microsoft:**\n\n" + "\n\n".join(lines)) if lines else "No hay eventos próximos.", {}
+                return (
+                    ("📅 **Calendar Microsoft:**\n\n" + "\n\n".join(lines))
+                    if lines
+                    else "No hay eventos próximos."
+                ), {}
 
             # ── ZOOM ───────────────────────────────────────────────────────────
 
             elif tool == "zoom_meetings":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.zoom_connection import ZoomConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "zoom")
                 if not tokens:
@@ -2699,22 +3126,43 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 zoom = ZoomConnection()
                 action = args.get("action", "list")
                 if action == "create":
-                    r = await zoom.create_meeting(tokens, args.get("topic", "Reunión"), int(args.get("duration", 60)), args.get("start_time", ""))
-                    return (f"✅ Reunión creada:\n🔗 {r.get('join_url', '')}\n📋 ID: {r.get('id', '')}" if r.get("success") else f"Error: {r}"), {}
+                    r = await zoom.create_meeting(
+                        tokens,
+                        args.get("topic", "Reunión"),
+                        int(args.get("duration", 60)),
+                        args.get("start_time", ""),
+                    )
+                    return (
+                        f"✅ Reunión creada:\n🔗 {r.get('join_url', '')}\n📋 ID: {r.get('id', '')}"
+                        if r.get("success")
+                        else f"Error: {r}"
+                    ), {}
                 meetings = await zoom.list_meetings(tokens)
-                lines = [f"📹 **{m['topic']}**\n🕐 {m['start_time']} ({m['duration']}min)\n🔗 {m.get('join_url','')}" for m in meetings]
-                return ("📹 **Zoom Meetings:**\n\n" + "\n\n".join(lines)) if lines else "No hay reuniones.", {}
+                lines = [
+                    f"📹 **{m['topic']}**\n🕐 {m['start_time']} ({m['duration']}min)\n🔗 {m.get('join_url','')}"
+                    for m in meetings
+                ]
+                return (
+                    ("📹 **Zoom Meetings:**\n\n" + "\n\n".join(lines))
+                    if lines
+                    else "No hay reuniones."
+                ), {}
 
             # ── CRM ────────────────────────────────────────────────────────────
 
             elif tool == "crm_contacts":
+                from apps.core.connections.crm_connection import (
+                    HubSpotConnection,
+                    SalesforceConnection,
+                )
                 from apps.core.connections.manager import get_connection_manager
-                from apps.core.connections.crm_connection import HubSpotConnection, SalesforceConnection
+
                 mgr = get_connection_manager()
                 platform = args.get("platform", "hubspot")
                 tokens = await mgr.get(chat_id, platform)
                 if not tokens and platform == "hubspot":
                     from apps.core.config import settings as _s
+
                     if getattr(_s, "HUBSPOT_PRIVATE_APP_TOKEN", None):
                         tokens = {"access_token": _s.HUBSPOT_PRIVATE_APP_TOKEN}
                 if not tokens:
@@ -2723,25 +3171,56 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if platform == "hubspot":
                     hs = HubSpotConnection()
                     if action == "create":
-                        r = await hs.create_contact(tokens, args.get("email", ""), args.get("firstname", ""), args.get("lastname", ""))
-                        return (f"✅ Contacto creado en HubSpot: ID {r.get('id')}" if r.get("success") else f"Error: {r}"), {}
+                        r = await hs.create_contact(
+                            tokens,
+                            args.get("email", ""),
+                            args.get("firstname", ""),
+                            args.get("lastname", ""),
+                        )
+                        return (
+                            f"✅ Contacto creado en HubSpot: ID {r.get('id')}"
+                            if r.get("success")
+                            else f"Error: {r}"
+                        ), {}
                     contacts = await hs.list_contacts(tokens, int(args.get("limit", 10)))
-                    lines = [f"👤 **{c.get('firstname','')} {c.get('lastname','')}** — {c.get('email','')}" for c in contacts]
-                    return ("👥 **HubSpot Contactos:**\n\n" + "\n".join(lines)) if lines else "Sin contactos.", {}
-                else:
-                    sf = SalesforceConnection()
-                    if action == "create":
-                        r = await sf.create_contact(tokens, args.get("lastname", ""), args.get("email", ""), args.get("firstname", ""))
-                        return (f"✅ Contacto creado en Salesforce: ID {r.get('id')}" if r.get("success") else f"Error: {r}"), {}
-                    contacts = await sf.query(tokens, f"SELECT Id, Name, Email FROM Contact LIMIT {args.get('limit', 10)}")
-                    lines = [f"👤 **{c.get('Name','')}** — {c.get('Email','')}" for c in contacts]
-                    return ("👥 **Salesforce Contactos:**\n\n" + "\n".join(lines)) if lines else "Sin contactos.", {}
+                    lines = [
+                        f"👤 **{c.get('firstname','')} {c.get('lastname','')}** — {c.get('email','')}"
+                        for c in contacts
+                    ]
+                    return (
+                        ("👥 **HubSpot Contactos:**\n\n" + "\n".join(lines))
+                        if lines
+                        else "Sin contactos."
+                    ), {}
+                sf = SalesforceConnection()
+                if action == "create":
+                    r = await sf.create_contact(
+                        tokens,
+                        args.get("lastname", ""),
+                        args.get("email", ""),
+                        args.get("firstname", ""),
+                    )
+                    return (
+                        f"✅ Contacto creado en Salesforce: ID {r.get('id')}"
+                        if r.get("success")
+                        else f"Error: {r}"
+                    ), {}
+                contacts = await sf.query(
+                    tokens, f"SELECT Id, Name, Email FROM Contact LIMIT {args.get('limit', 10)}"
+                )
+                lines = [f"👤 **{c.get('Name','')}** — {c.get('Email','')}" for c in contacts]
+                return (
+                    ("👥 **Salesforce Contactos:**\n\n" + "\n".join(lines))
+                    if lines
+                    else "Sin contactos."
+                ), {}
 
             # ── STORAGE ────────────────────────────────────────────────────────
 
             elif tool == "dropbox_files":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.storage_connection import DropboxConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "dropbox")
                 if not tokens:
@@ -2749,15 +3228,20 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 action = args.get("action", "list")
                 dbx = DropboxConnection()
                 if action == "search":
-                    files = await dbx.search(tokens, args.get("query", ""), int(args.get("limit", 10)))
+                    files = await dbx.search(
+                        tokens, args.get("query", ""), int(args.get("limit", 10))
+                    )
                 else:
                     files = await dbx.list_folder(tokens, args.get("path", ""))
-                lines = [f"📄 **{f['name']}** ({f['type']}) {f.get('size','')}B" for f in files[:10]]
+                lines = [
+                    f"📄 **{f['name']}** ({f['type']}) {f.get('size','')}B" for f in files[:10]
+                ]
                 return ("📦 **Dropbox:**\n\n" + "\n".join(lines)) if lines else "Carpeta vacía.", {}
 
             elif tool == "box_files":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.storage_connection import BoxConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "box")
                 if not tokens:
@@ -2765,7 +3249,9 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 action = args.get("action", "list")
                 box = BoxConnection()
                 if action == "search":
-                    files = await box.search(tokens, args.get("query", ""), int(args.get("limit", 10)))
+                    files = await box.search(
+                        tokens, args.get("query", ""), int(args.get("limit", 10))
+                    )
                 else:
                     files = await box.list_folder(tokens, args.get("folder_id", "0"))
                 lines = [f"📄 **{f['name']}** ({f['type']})" for f in files[:10]]
@@ -2776,6 +3262,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             elif tool == "calendly_events":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.scheduling_connection import CalendlyConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "calendly")
                 if not tokens:
@@ -2784,17 +3271,31 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 cal = CalendlyConnection()
                 if action == "list_types":
                     types = await cal.list_event_types(tokens)
-                    lines = [f"📅 **{t['name']}** ({t['duration']}min)\n🔗 {t['scheduling_url']}" for t in types]
-                    return ("📋 **Tipos de reunión en Calendly:**\n\n" + "\n\n".join(lines)) if lines else "Sin tipos de evento.", {}
+                    lines = [
+                        f"📅 **{t['name']}** ({t['duration']}min)\n🔗 {t['scheduling_url']}"
+                        for t in types
+                    ]
+                    return (
+                        ("📋 **Tipos de reunión en Calendly:**\n\n" + "\n\n".join(lines))
+                        if lines
+                        else "Sin tipos de evento."
+                    ), {}
                 events = await cal.list_scheduled_events(tokens, int(args.get("limit", 10)))
-                lines = [f"📅 **{e['name']}** — {e['status']}\n🕐 {e['start_time']}" for e in events]
-                return ("📅 **Calendly — próximas reuniones:**\n\n" + "\n\n".join(lines)) if lines else "Sin reuniones.", {}
+                lines = [
+                    f"📅 **{e['name']}** — {e['status']}\n🕐 {e['start_time']}" for e in events
+                ]
+                return (
+                    ("📅 **Calendly — próximas reuniones:**\n\n" + "\n\n".join(lines))
+                    if lines
+                    else "Sin reuniones."
+                ), {}
 
             # ── DISEÑO ─────────────────────────────────────────────────────────
 
             elif tool == "figma_files":
-                from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.design_connection import FigmaConnection
+                from apps.core.connections.manager import get_connection_manager
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "figma")
                 fig = FigmaConnection()
@@ -2803,17 +3304,24 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if action == "list":
                     files = await fig.list_files(tokens, project_id=args.get("project_id", ""))
                     lines = [f"🎨 **{f['name']}** — key: `{f['key']}`" for f in files]
-                    return ("🎨 **Figma archivos:**\n\n" + "\n".join(lines)) if lines else "Sin archivos.", {}
+                    return (
+                        ("🎨 **Figma archivos:**\n\n" + "\n".join(lines))
+                        if lines
+                        else "Sin archivos."
+                    ), {}
                 if not file_key:
                     return "Proporciona file_key para obtener detalles del archivo.", {}
                 info = await fig.get_file(tokens, file_key)
-                return (f"🎨 **{info.get('name')}**\n📄 Páginas: {', '.join(info.get('pages', []))}\n📅 Modificado: {info.get('lastModified', '')}"), {}
+                return (
+                    f"🎨 **{info.get('name')}**\n📄 Páginas: {', '.join(info.get('pages', []))}\n📅 Modificado: {info.get('lastModified', '')}"
+                ), {}
 
             # ── E-COMMERCE ─────────────────────────────────────────────────────
 
             elif tool == "etsy_listings":
-                from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.ecommerce_connection import EtsyConnection
+                from apps.core.connections.manager import get_connection_manager
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "etsy")
                 if not tokens:
@@ -2826,29 +3334,57 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     shop_id = shop.get("shop_id", 0)
                 if action == "transactions":
                     txns = await etsy.list_transactions(tokens, shop_id, int(args.get("limit", 10)))
-                    lines = [f"💰 **{t['title'][:50]}** — ${t.get('price',0):.2f} x{t.get('quantity',1)}" for t in txns]
-                    return ("💰 **Etsy Transacciones:**\n\n" + "\n".join(lines)) if lines else "Sin transacciones.", {}
+                    lines = [
+                        f"💰 **{t['title'][:50]}** — ${t.get('price',0):.2f} x{t.get('quantity',1)}"
+                        for t in txns
+                    ]
+                    return (
+                        ("💰 **Etsy Transacciones:**\n\n" + "\n".join(lines))
+                        if lines
+                        else "Sin transacciones."
+                    ), {}
                 listings = await etsy.list_listings(tokens, shop_id, int(args.get("limit", 20)))
-                lines = [f"🛍️ **{l['title'][:60]}** — ${l['price']:.2f} | {l['quantity']} en stock" for l in listings]
-                return ("🛍️ **Etsy Listings:**\n\n" + "\n".join(lines)) if lines else "Sin listings.", {}
+                lines = [
+                    f"🛍️ **{l['title'][:60]}** — ${l['price']:.2f} | {l['quantity']} en stock"
+                    for l in listings
+                ]
+                return (
+                    ("🛍️ **Etsy Listings:**\n\n" + "\n".join(lines)) if lines else "Sin listings."
+                ), {}
 
             elif tool == "woo_products":
                 from apps.core.connections.ecommerce_connection import WooCommerceConnection
+
                 woo = WooCommerceConnection()
                 action = args.get("action", "list")
                 if action == "orders":
                     orders = await woo.list_orders(int(args.get("limit", 10)))
-                    lines = [f"📦 **Orden #{o['id']}** — {o['status']} | {o['currency']} {o['total']}" for o in orders]
-                    return ("📦 **WooCommerce Órdenes:**\n\n" + "\n".join(lines)) if lines else "Sin órdenes.", {}
+                    lines = [
+                        f"📦 **Orden #{o['id']}** — {o['status']} | {o['currency']} {o['total']}"
+                        for o in orders
+                    ]
+                    return (
+                        ("📦 **WooCommerce Órdenes:**\n\n" + "\n".join(lines))
+                        if lines
+                        else "Sin órdenes."
+                    ), {}
                 products = await woo.list_products(int(args.get("limit", 20)))
-                lines = [f"🛒 **{p['name']}** — ${p['price']} | Stock: {p.get('stock','?')}" for p in products]
-                return ("🛒 **WooCommerce Productos:**\n\n" + "\n".join(lines)) if lines else "Sin productos.", {}
+                lines = [
+                    f"🛒 **{p['name']}** — ${p['price']} | Stock: {p.get('stock','?')}"
+                    for p in products
+                ]
+                return (
+                    ("🛒 **WooCommerce Productos:**\n\n" + "\n".join(lines))
+                    if lines
+                    else "Sin productos."
+                ), {}
 
             # ── ANALYTICS ──────────────────────────────────────────────────────
 
             elif tool == "ga_report":
-                from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.analytics_connection import GoogleAnalyticsConnection
+                from apps.core.connections.manager import get_connection_manager
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "google_analytics")
                 if not tokens:
@@ -2858,67 +3394,104 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     return "Proporciona property_id (formato: 123456789).", {}
                 metrics = args.get("metrics", ["activeUsers", "sessions", "screenPageViews"])
                 dimensions = args.get("dimensions", ["date"])
-                report = await GoogleAnalyticsConnection().run_report(tokens, property_id, metrics, dimensions)
+                report = await GoogleAnalyticsConnection().run_report(
+                    tokens, property_id, metrics, dimensions
+                )
                 rows = report.get("rows", [])
                 lines = []
                 for row in rows[:10]:
                     dims = [d.get("value") for d in row.get("dimensionValues", [])]
                     mets = [m.get("value") for m in row.get("metricValues", [])]
                     lines.append(f"{' | '.join(dims)} → {' | '.join(mets)}")
-                return (f"📊 **Google Analytics ({property_id}):**\n" + "\n".join(lines)) if lines else "Sin datos.", {}
+                return (
+                    (f"📊 **Google Analytics ({property_id}):**\n" + "\n".join(lines))
+                    if lines
+                    else "Sin datos."
+                ), {}
 
             elif tool == "mixpanel_events":
                 from apps.core.connections.analytics_connection import MixpanelConnection
+
                 mp = MixpanelConnection()
                 import datetime
+
                 to_date = datetime.date.today().isoformat()
                 from_date = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
                 data = await mp.get_events(args.get("events", []), from_date, to_date)
                 return f"📊 **Mixpanel eventos:**\n{str(data)[:500]}", {}
 
             elif tool == "datadog_metrics":
+
                 from apps.core.connections.analytics_connection import DataDogConnection
-                import time as _t
+
                 dd = DataDogConnection()
                 monitors = await dd.get_monitors()
-                lines = [f"{'🟢' if m['status']=='OK' else '🔴'} **{m['name']}** — {m['status']}" for m in monitors[:10]]
-                return ("🐶 **DataDog Monitors:**\n\n" + "\n".join(lines)) if lines else "Sin monitores.", {}
+                lines = [
+                    f"{'🟢' if m['status']=='OK' else '🔴'} **{m['name']}** — {m['status']}"
+                    for m in monitors[:10]
+                ]
+                return (
+                    ("🐶 **DataDog Monitors:**\n\n" + "\n".join(lines))
+                    if lines
+                    else "Sin monitores."
+                ), {}
 
             # ── EMAIL MARKETING ────────────────────────────────────────────────
 
             elif tool == "klaviyo_lists":
                 from apps.core.connections.email_marketing_connection import KlaviyoConnection
+
                 kl = KlaviyoConnection()
                 lists = await kl.get_lists()
                 if isinstance(lists, list) and lists and "error" in lists[0]:
                     return f"❌ {lists[0]['error']}", {}
                 lines = [f"📧 **{l['name']}** — ID: {l['id']}" for l in lists]
-                return ("📧 **Klaviyo Listas:**\n\n" + "\n".join(lines)) if lines else "Sin listas.", {}
+                return (
+                    ("📧 **Klaviyo Listas:**\n\n" + "\n".join(lines)) if lines else "Sin listas."
+                ), {}
 
             elif tool == "klaviyo_campaign":
                 from apps.core.connections.email_marketing_connection import KlaviyoConnection
+
                 kl = KlaviyoConnection()
                 campaigns = await kl.get_campaigns()
                 if isinstance(campaigns, list) and campaigns and "error" in campaigns[0]:
                     return f"❌ {campaigns[0]['error']}", {}
-                lines = [f"📨 **{c['name']}** — {c['status']} | Envío: {c.get('send_time','N/A')}" for c in campaigns]
-                return ("📨 **Klaviyo Campañas:**\n\n" + "\n".join(lines)) if lines else "Sin campañas.", {}
+                lines = [
+                    f"📨 **{c['name']}** — {c['status']} | Envío: {c.get('send_time','N/A')}"
+                    for c in campaigns
+                ]
+                return (
+                    ("📨 **Klaviyo Campañas:**\n\n" + "\n".join(lines))
+                    if lines
+                    else "Sin campañas."
+                ), {}
 
             elif tool == "brevo_contacts":
                 from apps.core.connections.email_marketing_connection import BrevoConnection
+
                 brevo = BrevoConnection()
                 action = args.get("action", "list")
                 if action == "create":
-                    r = await brevo.create_contact(args.get("email", ""), args.get("attributes", {}))
-                    return ("✅ Contacto creado en Brevo." if r.get("success") else f"Error: {r}"), {}
+                    r = await brevo.create_contact(
+                        args.get("email", ""), args.get("attributes", {})
+                    )
+                    return (
+                        "✅ Contacto creado en Brevo." if r.get("success") else f"Error: {r}"
+                    ), {}
                 contacts = await brevo.get_contacts(int(args.get("limit", 20)))
                 if isinstance(contacts, list) and contacts and "error" in contacts[0]:
                     return f"❌ {contacts[0]['error']}", {}
                 lines = [f"👤 **{c['email']}**" for c in contacts[:10]]
-                return ("👥 **Brevo Contactos:**\n\n" + "\n".join(lines)) if lines else "Sin contactos.", {}
+                return (
+                    ("👥 **Brevo Contactos:**\n\n" + "\n".join(lines))
+                    if lines
+                    else "Sin contactos."
+                ), {}
 
             elif tool == "brevo_email":
                 from apps.core.connections.email_marketing_connection import BrevoConnection
+
                 brevo = BrevoConnection()
                 r = await brevo.send_transactional_email(
                     to_email=args.get("to", ""),
@@ -2932,6 +3505,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
             elif tool == "netlify_sites":
                 from apps.core.connections.devops_connection import NetlifyConnection
+
                 net = NetlifyConnection()
                 action = args.get("action", "list")
                 if action == "trigger":
@@ -2939,20 +3513,32 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     if not site_id:
                         return "Proporciona site_id para triggear deploy.", {}
                     r = await net.trigger_deploy(site_id)
-                    return ("✅ Deploy triggered en Netlify." if r.get("success") else f"Error: {r}"), {}
+                    return (
+                        "✅ Deploy triggered en Netlify." if r.get("success") else f"Error: {r}"
+                    ), {}
                 if action == "deploys":
                     site_id = args.get("site_id", "")
                     deploys = await net.get_deploys(site_id, int(args.get("limit", 5)))
-                    lines = [f"🚀 **{d['state']}** | {d['branch']} | {d['created_at'][:10]}\n{d.get('error_message','')}" for d in deploys]
-                    return ("🚀 **Netlify Deploys:**\n\n" + "\n\n".join(lines)) if lines else "Sin deploys.", {}
+                    lines = [
+                        f"🚀 **{d['state']}** | {d['branch']} | {d['created_at'][:10]}\n{d.get('error_message','')}"
+                        for d in deploys
+                    ]
+                    return (
+                        ("🚀 **Netlify Deploys:**\n\n" + "\n\n".join(lines))
+                        if lines
+                        else "Sin deploys."
+                    ), {}
                 sites = await net.list_sites()
                 if isinstance(sites, list) and sites and "error" in sites[0]:
                     return f"❌ {sites[0]['error']}", {}
                 lines = [f"🌐 **{s['name']}** — {s['url']} | {s['state']}" for s in sites]
-                return ("🌐 **Netlify Sites:**\n\n" + "\n".join(lines)) if lines else "Sin sites.", {}
+                return (
+                    ("🌐 **Netlify Sites:**\n\n" + "\n".join(lines)) if lines else "Sin sites."
+                ), {}
 
             elif tool == "cloudflare_zones":
                 from apps.core.connections.devops_connection import CloudflareConnection
+
                 cf = CloudflareConnection()
                 action = args.get("action", "list")
                 if action == "analytics":
@@ -2960,7 +3546,10 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     if not zone_id:
                         return "Proporciona zone_id.", {}
                     data = await cf.get_analytics(zone_id)
-                    return f"📊 **Cloudflare Analytics:**\nRequests: {data.get('requests', {}).get('all',0):,}\nUniques: {data.get('uniques', {}).get('all',0):,}\nBandwidth: {data.get('bandwidth', {}).get('all',0):,} bytes", {}
+                    return (
+                        f"📊 **Cloudflare Analytics:**\nRequests: {data.get('requests', {}).get('all',0):,}\nUniques: {data.get('uniques', {}).get('all',0):,}\nBandwidth: {data.get('bandwidth', {}).get('all',0):,} bytes",
+                        {},
+                    )
                 if action == "purge":
                     zone_id = args.get("zone_id", "")
                     r = await cf.purge_cache(zone_id, args.get("files", []))
@@ -2969,40 +3558,63 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 if isinstance(zones, list) and zones and "error" in zones[0]:
                     return f"❌ {zones[0]['error']}", {}
                 lines = [f"🌐 **{z['name']}** — {z['status']}" for z in zones]
-                return ("🌐 **Cloudflare Zones:**\n\n" + "\n".join(lines)) if lines else "Sin zonas.", {}
+                return (
+                    ("🌐 **Cloudflare Zones:**\n\n" + "\n".join(lines)) if lines else "Sin zonas."
+                ), {}
 
             # ── CMS ────────────────────────────────────────────────────────────
 
             elif tool == "wordpress_posts":
                 from apps.core.connections.cms_connection import WordPressConnection
+
                 wp = WordPressConnection()
                 action = args.get("action", "list")
                 if action == "create":
                     r = await wp.create_post(
-                        args.get("title", ""), args.get("content", ""),
+                        args.get("title", ""),
+                        args.get("content", ""),
                         args.get("status", "draft"),
                     )
-                    return (f"✅ Post creado: {r.get('link','')}" if r.get("success") else f"Error: {r}"), {}
-                posts = await wp.list_posts(args.get("status", "publish"), int(args.get("limit", 10)))
+                    return (
+                        f"✅ Post creado: {r.get('link','')}" if r.get("success") else f"Error: {r}"
+                    ), {}
+                posts = await wp.list_posts(
+                    args.get("status", "publish"), int(args.get("limit", 10))
+                )
                 if isinstance(posts, list) and posts and "error" in posts[0]:
                     return f"❌ {posts[0]['error']}", {}
                 lines = [f"📝 **{p['title'][:60]}** — {p['status']}\n🔗 {p['link']}" for p in posts]
-                return ("📝 **WordPress Posts:**\n\n" + "\n\n".join(lines)) if lines else "Sin posts.", {}
+                return (
+                    ("📝 **WordPress Posts:**\n\n" + "\n\n".join(lines)) if lines else "Sin posts."
+                ), {}
 
             elif tool == "webflow_sites":
                 from apps.core.connections.cms_connection import WebflowConnection
+
                 wf = WebflowConnection()
                 sites = await wf.list_sites()
                 if isinstance(sites, list) and sites and "error" in sites[0]:
                     return f"❌ {sites[0]['error']}", {}
-                lines = [f"🌐 **{s['displayName']}** — {s['shortName']}\n📅 Publicado: {s.get('lastPublished','')}" for s in sites]
-                return ("🌐 **Webflow Sites:**\n\n" + "\n\n".join(lines)) if lines else "Sin sites.", {}
+                lines = [
+                    f"🌐 **{s['displayName']}** — {s['shortName']}\n📅 Publicado: {s.get('lastPublished','')}"
+                    for s in sites
+                ]
+                return (
+                    ("🌐 **Webflow Sites:**\n\n" + "\n\n".join(lines)) if lines else "Sin sites."
+                ), {}
 
             elif tool == "contentful_entries":
                 from apps.core.connections.cms_connection import ContentfulConnection
+
                 cf = ContentfulConnection()
-                entries = await cf.get_entries(args.get("content_type", ""), int(args.get("limit", 10)))
-                if isinstance(entries, list) and entries and "error" in (entries[0] if entries else {}):
+                entries = await cf.get_entries(
+                    args.get("content_type", ""), int(args.get("limit", 10))
+                )
+                if (
+                    isinstance(entries, list)
+                    and entries
+                    and "error" in (entries[0] if entries else {})
+                ):
                     return f"❌ {entries[0].get('error','')}", {}
                 return f"📄 **Contentful:** {len(entries)} entradas encontradas.", {}
 
@@ -3011,6 +3623,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             elif tool == "spotify_track":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.media_connection import SpotifyConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "spotify")
                 if not tokens:
@@ -3023,29 +3636,47 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             elif tool == "spotify_playlists":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.media_connection import SpotifyConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "spotify")
                 if not tokens:
                     return "❌ Spotify no conectado. Usa `/connect spotify`.", {}
-                playlists = await SpotifyConnection().list_playlists(tokens, int(args.get("limit", 10)))
+                playlists = await SpotifyConnection().list_playlists(
+                    tokens, int(args.get("limit", 10))
+                )
                 lines = [f"🎵 **{p['name']}** — {p['tracks']} canciones" for p in playlists]
-                return ("🎵 **Spotify Playlists:**\n\n" + "\n".join(lines)) if lines else "Sin playlists.", {}
+                return (
+                    ("🎵 **Spotify Playlists:**\n\n" + "\n".join(lines))
+                    if lines
+                    else "Sin playlists."
+                ), {}
 
             elif tool == "spotify_search":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.media_connection import SpotifyConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "spotify")
                 if not tokens:
                     return "❌ Spotify no conectado. Usa `/connect spotify`.", {}
-                results = await SpotifyConnection().search(tokens, args.get("query", ""), args.get("type", "track"))
+                results = await SpotifyConnection().search(
+                    tokens, args.get("query", ""), args.get("type", "track")
+                )
                 tracks = results.get("tracks", {}).get("items", [])
-                lines = [f"🎵 **{t['name']}** — {', '.join(a['name'] for a in t.get('artists',[]))}" for t in tracks[:10]]
-                return ("🔍 **Spotify Search:**\n\n" + "\n".join(lines)) if lines else "Sin resultados.", {}
+                lines = [
+                    f"🎵 **{t['name']}** — {', '.join(a['name'] for a in t.get('artists',[]))}"
+                    for t in tracks[:10]
+                ]
+                return (
+                    ("🔍 **Spotify Search:**\n\n" + "\n".join(lines))
+                    if lines
+                    else "Sin resultados."
+                ), {}
 
             elif tool == "youtube_channel":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.media_connection import YouTubeConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "youtube")
                 if not tokens:
@@ -3053,29 +3684,40 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 ch = await YouTubeConnection().get_channel(tokens)
                 if not ch:
                     return "No se pudo obtener info del canal.", {}
-                return (f"📺 **{ch['title']}**\n👥 Suscriptores: {int(ch.get('subscribers','0')):,}\n👁️ Vistas: {int(ch.get('views','0')):,}\n🎬 Videos: {ch.get('videos','?')}"), {}
+                return (
+                    f"📺 **{ch['title']}**\n👥 Suscriptores: {int(ch.get('subscribers','0')):,}\n👁️ Vistas: {int(ch.get('views','0')):,}\n🎬 Videos: {ch.get('videos','?')}"
+                ), {}
 
             elif tool == "youtube_videos":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.media_connection import YouTubeConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "youtube")
                 if not tokens:
                     return "❌ YouTube no conectado. Usa `/connect youtube`.", {}
                 videos = await YouTubeConnection().list_videos(tokens, int(args.get("limit", 10)))
                 lines = [f"🎬 **{v['title'][:60]}**\n📅 {v['published'][:10]}" for v in videos]
-                return ("🎬 **YouTube Videos:**\n\n" + "\n\n".join(lines)) if lines else "Sin videos.", {}
+                return (
+                    ("🎬 **YouTube Videos:**\n\n" + "\n\n".join(lines)) if lines else "Sin videos."
+                ), {}
 
             elif tool == "tiktok_videos":
                 from apps.core.connections.manager import get_connection_manager
                 from apps.core.connections.media_connection import TikTokConnection
+
                 mgr = get_connection_manager()
                 tokens = await mgr.get(chat_id, "tiktok")
                 if not tokens:
                     return "❌ TikTok no conectado. Usa `/connect tiktok`.", {}
                 videos = await TikTokConnection().list_videos(tokens, int(args.get("limit", 20)))
-                lines = [f"🎵 **{v.get('title','Video')}** — {v.get('view_count',0):,} vistas | {v.get('like_count',0):,} likes" for v in videos[:10]]
-                return ("🎵 **TikTok Videos:**\n\n" + "\n".join(lines)) if lines else "Sin videos.", {}
+                lines = [
+                    f"🎵 **{v.get('title','Video')}** — {v.get('view_count',0):,} vistas | {v.get('like_count',0):,} likes"
+                    for v in videos[:10]
+                ]
+                return (
+                    ("🎵 **TikTok Videos:**\n\n" + "\n".join(lines)) if lines else "Sin videos."
+                ), {}
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
@@ -3099,6 +3741,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         lines = []
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if not cache:
                 return "Redis no disponible — operando sin contexto de negocio"
@@ -3107,7 +3750,9 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
             total_urls = int(await cache.get("aria:income:total_urls_published") or 0)
             last_strategy = await cache.get("aria:income:last_strategy") or "ninguna"
-            lines.append(f"• Income Loop: {total_cycles} ciclos, {total_urls} URLs publicadas, última: {last_strategy}")
+            lines.append(
+                f"• Income Loop: {total_cycles} ciclos, {total_urls} URLs publicadas, última: {last_strategy}"
+            )
 
             # Product catalog
             raw_catalog = await cache.lrange("aria:products:catalog", 0, 4)
@@ -3115,6 +3760,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             lines.append(f"• Catálogo: {n_products} productos publicados")
             if raw_catalog:
                 import json as _j
+
                 for raw in raw_catalog[:3]:
                     try:
                         p = _j.loads(raw) if isinstance(raw, str) else raw
@@ -3126,15 +3772,21 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             investor_raw = await cache.get("aria:investor:latest_deck")
             if investor_raw:
                 import json as _j
+
                 deck = _j.loads(investor_raw) if isinstance(investor_raw, str) else investor_raw
-                lines.append(f"• Último pitch deck: ${deck.get('ask', 0):,.0f} ask | {deck.get('ts','')}")
+                lines.append(
+                    f"• Último pitch deck: ${deck.get('ask', 0):,.0f} ask | {deck.get('ts','')}"
+                )
 
             # Grants
             grants_raw = await cache.lrange("aria:grants:applications", -1, -1)
             if grants_raw:
                 import json as _j
+
                 g = _j.loads(grants_raw[0]) if isinstance(grants_raw[0], str) else grants_raw[0]
-                lines.append(f"• Grants preparados: {g.get('count', 0)} apps | ${g.get('total_potential', 0):,.0f} potencial")
+                lines.append(
+                    f"• Grants preparados: {g.get('count', 0)} apps | ${g.get('total_potential', 0):,.0f} potencial"
+                )
 
             # Revenue summary
             revenue_raw = await cache.get("aria:revenue:total_usd")
@@ -3145,6 +3797,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             raw_goals = await cache.lrange(self.K_GOALS, 0, 2)
             if raw_goals:
                 import json as _j
+
                 for rg in raw_goals:
                     try:
                         goal = _j.loads(rg) if isinstance(rg, str) else rg
@@ -3171,20 +3824,57 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
         # Conversación simple — NO necesita loop
         simple_patterns = [
-            "hola", "buenos días", "buenas", "gracias", "ok", "entendido",
-            "¿cuánto", "cuánto es", "qué hora", "quién eres", "cómo te llamas",
-            "qué puedes hacer", "ayuda", "help", "/status", "/goals", "/clear",
+            "hola",
+            "buenos días",
+            "buenas",
+            "gracias",
+            "ok",
+            "entendido",
+            "¿cuánto",
+            "cuánto es",
+            "qué hora",
+            "quién eres",
+            "cómo te llamas",
+            "qué puedes hacer",
+            "ayuda",
+            "help",
+            "/status",
+            "/goals",
+            "/clear",
         ]
         if any(p in text_lower for p in simple_patterns) and len(text) < 50:
             return False
 
         # Verbo de acción → usar loop
         action_verbs = [
-            "crea", "agrega", "lanza", "genera", "ejecuta", "haz", "sube",
-            "publica", "busca", "implementa", "automatiza", "configura",
-            "diseña", "construye", "añade", "activa", "inicia", "corre",
-            "mejora", "optimiza", "analiza", "investiga", "encuentra",
-            "escribe", "produce", "desarrolla", "prepara", "arma",
+            "crea",
+            "agrega",
+            "lanza",
+            "genera",
+            "ejecuta",
+            "haz",
+            "sube",
+            "publica",
+            "busca",
+            "implementa",
+            "automatiza",
+            "configura",
+            "diseña",
+            "construye",
+            "añade",
+            "activa",
+            "inicia",
+            "corre",
+            "mejora",
+            "optimiza",
+            "analiza",
+            "investiga",
+            "encuentra",
+            "escribe",
+            "produce",
+            "desarrolla",
+            "prepara",
+            "arma",
         ]
         if any(v in text_lower for v in action_verbs):
             return True
@@ -3194,16 +3884,15 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             return True
 
         # Requests de longitud media/larga son probablemente acciones
-        if len(text) > 60:
-            return True
-
-        return False
+        return len(text) > 60
 
     def _needs_planning(self, text: str) -> bool:
         """Alias para compatibilidad — delega a _needs_agent_loop."""
         return self._needs_agent_loop(text)
 
-    async def _run_agent_loop(self, text: str, chat_id: str, state: dict, goals: list) -> MindResponse:
+    async def _run_agent_loop(
+        self, text: str, chat_id: str, state: dict, goals: list
+    ) -> MindResponse:
         """
         El VERDADERO patrón ReAct — cómo funciona Claude Code.
 
@@ -3245,15 +3934,22 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                     # First step failed: use intent-based fallback so Aria does SOMETHING useful
                     fallback_tool, fallback_args = self._infer_tool_from_intent(text)
                     if fallback_tool:
-                        logger.info("[AgentLoop] Fallback intent→tool: %s %s", fallback_tool, fallback_args)
-                        obs, media = await self._execute_with_retry(fallback_tool, fallback_args, chat_id=chat_id)
-                        observations.append({
-                            "step": 1, "tool": fallback_tool,
-                            "reasoning": f"[fallback intent] {text[:100]}",
-                            "result": obs[:800],
-                            "success": bool(obs),
-                            "type": "media" if media else "text",
-                        })
+                        logger.info(
+                            "[AgentLoop] Fallback intent→tool: %s %s", fallback_tool, fallback_args
+                        )
+                        obs, media = await self._execute_with_retry(
+                            fallback_tool, fallback_args, chat_id=chat_id
+                        )
+                        observations.append(
+                            {
+                                "step": 1,
+                                "tool": fallback_tool,
+                                "reasoning": f"[fallback intent] {text[:100]}",
+                                "result": obs[:800],
+                                "success": bool(obs),
+                                "type": "media" if media else "text",
+                            }
+                        )
                         if media and not media_result:
                             media_result = media
                         await self._record_exec(fallback_tool, fallback_args, obs, bool(obs))
@@ -3280,22 +3976,28 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 valid = [pt for pt in parallel if isinstance(pt, dict) and pt.get("tool")]
                 logger.info("[AgentLoop] Paso %d: %d tools en paralelo", step, len(valid))
                 results = await asyncio.gather(
-                    *[self._execute_with_retry(pt["tool"], pt.get("args") or {}, chat_id=chat_id)
-                      for pt in valid],
+                    *[
+                        self._execute_with_retry(pt["tool"], pt.get("args") or {}, chat_id=chat_id)
+                        for pt in valid
+                    ],
                     return_exceptions=True,
                 )
-                for pt, res in zip(valid, results):
+                for pt, res in zip(valid, results, strict=False):
                     if isinstance(res, Exception):
                         p_obs, p_media = f"Error: {res}", {}
                     else:
                         p_obs, p_media = res
                     p_ok = bool(p_obs) and "error" not in p_obs.lower()[:120]
-                    observations.append({
-                        "step": step, "tool": pt["tool"],
-                        "reasoning": f"{reasoning} [paralelo]",
-                        "result": p_obs[:800], "success": p_ok,
-                        "type": "media" if p_media else "text",
-                    })
+                    observations.append(
+                        {
+                            "step": step,
+                            "tool": pt["tool"],
+                            "reasoning": f"{reasoning} [paralelo]",
+                            "result": p_obs[:800],
+                            "success": p_ok,
+                            "type": "media" if p_media else "text",
+                        }
+                    )
                     if p_media and not media_result:
                         media_result = p_media
                     await self._record_exec(pt["tool"], pt.get("args") or {}, p_obs, p_ok)
@@ -3308,25 +4010,31 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 # Direct reply without tool
                 reply = decision.get("direct_reply") or ""
                 if reply:
-                    observations.append({"step": step, "tool": "reply", "reasoning": reasoning, "result": reply})
+                    observations.append(
+                        {"step": step, "tool": "reply", "reasoning": reasoning, "result": reply}
+                    )
                     break
                 continue
 
-            logger.info("[AgentLoop] Paso %d/%d: %s — %s", step, MAX_AGENT_STEPS, tool, reasoning[:100])
+            logger.info(
+                "[AgentLoop] Paso %d/%d: %s — %s", step, MAX_AGENT_STEPS, tool, reasoning[:100]
+            )
 
             # ACT: ejecutar la herramienta elegida
             obs, media = await self._execute_with_retry(tool, args, chat_id=chat_id)
 
             # OBSERVE: guardar el resultado real para que el siguiente paso lo use
             step_success = bool(obs) and "error" not in obs.lower()[:120]
-            observations.append({
-                "step": step,
-                "tool": tool,
-                "reasoning": reasoning,
-                "result": obs[:800],
-                "success": step_success,
-                "type": "media" if media else "text",
-            })
+            observations.append(
+                {
+                    "step": step,
+                    "tool": tool,
+                    "reasoning": reasoning,
+                    "result": obs[:800],
+                    "success": step_success,
+                    "type": "media" if media else "text",
+                }
+            )
             if media and not media_result:
                 media_result = media
 
@@ -3335,6 +4043,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             # Adaptive exit: quick done-check after a successful step
             if step_success and step < MAX_AGENT_STEPS - 1:
                 from apps.core.tools.ai_client import AIModel as _AIModel
+
                 _ai2 = self._ai_client()
                 if _ai2:
                     _check = await _ai2.complete_json(
@@ -3353,14 +4062,14 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             return MindResponse(text="Procesado.", tool_used="agent_loop")
 
         combined = "\n\n".join(
-            f"**Paso {o['step']}: {o['tool']}**\n{o['result']}"
-            for o in observations
+            f"**Paso {o['step']}: {o['tool']}**\n{o['result']}" for o in observations
         )
 
         ai = self._ai_client()
         final_text = combined[:2000]
         if ai:
             from apps.core.tools.ai_client import AIModel
+
             synth = await ai.complete(
                 system=(
                     f"Eres ARIA. Ejecutaste {len(observations)} acciones autónomamente "
@@ -3395,7 +4104,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         max_steps: int,
         observations: str,
         business_context: str,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Un único paso de razonamiento en el loop ReAct.
         El LLM ve lo que ocurrió en pasos anteriores y decide qué hacer AHORA.
@@ -3414,7 +4123,9 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             business_context=business_context,
         )
 
-        user_msg = f"Ejecuta el paso {current_step}. Basa tu decisión en las observaciones anteriores."
+        user_msg = (
+            f"Ejecuta el paso {current_step}. Basa tu decisión en las observaciones anteriores."
+        )
 
         import re as _re
 
@@ -3429,9 +4140,13 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if raw and raw.success and raw.content:
             content = raw.content.strip()
             # Log chain-of-thought reasoning
-            pens_match = _re.search(r"PENSAMIENTO:\s*(.+?)(?=ACCIÓN:|$)", content, _re.DOTALL | _re.IGNORECASE)
+            pens_match = _re.search(
+                r"PENSAMIENTO:\s*(.+?)(?=ACCIÓN:|$)", content, _re.DOTALL | _re.IGNORECASE
+            )
             if pens_match:
-                logger.debug("[AgentStep %d] CoT: %s", current_step, pens_match.group(1).strip()[:300])
+                logger.debug(
+                    "[AgentStep %d] CoT: %s", current_step, pens_match.group(1).strip()[:300]
+                )
             # Extract JSON from ACCIÓN: section
             accion_match = _re.search(r"ACCIÓN:\s*(.+)", content, _re.DOTALL | _re.IGNORECASE)
             json_src = accion_match.group(1).strip() if accion_match else content
@@ -3440,7 +4155,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             end = json_src.rfind("}")
             if idx != -1 and end > idx:
                 try:
-                    return json.loads(json_src[idx:end + 1])
+                    return json.loads(json_src[idx : end + 1])
                 except Exception:
                     pass
             # Fallback: any JSON object in full content
@@ -3448,14 +4163,15 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             end = content.rfind("}")
             if idx != -1 and end > idx:
                 try:
-                    return json.loads(content[idx:end + 1])
+                    return json.loads(content[idx : end + 1])
                 except Exception:
                     pass
 
         # Last resort: complete_json() with explicit JSON-only instruction
         return await ai.complete_json(
             system=prompt,
-            user=user_msg + "\n\nResponde SOLO con la sección ACCIÓN como JSON válido. Sin texto previo.",
+            user=user_msg
+            + "\n\nResponde SOLO con la sección ACCIÓN como JSON válido. Sin texto previo.",
             model=AIModel.FAST,
             max_tokens=600,
             agent_name=f"agent_step_{current_step}_json",
@@ -3470,6 +4186,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if not ai or len(draft.strip()) < 25:
             return draft
         from apps.core.tools.ai_client import AIModel
+
         check = await ai.complete_json(
             system=(
                 "Evalúa esta respuesta de IA en 3 dimensiones:\n"
@@ -3503,6 +4220,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if not ai:
             return keep_recent
         from apps.core.tools.ai_client import AIModel
+
         text_block = "\n".join(
             f"{m['role'].upper()}: {m.get('content', '')[:200]}" for m in to_compress
         )
@@ -3518,13 +4236,18 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             agent_name="history_compress",
         )
         if resp and resp.success and resp.content:
-            summary = [{"role": "system", "content": f"[HISTORIAL COMPRIMIDO] {resp.content.strip()}"}]
+            summary = [
+                {"role": "system", "content": f"[HISTORIAL COMPRIMIDO] {resp.content.strip()}"}
+            ]
             compressed = summary + keep_recent
             cache = self._cache_client()
             if cache:
-                await cache.set(self.K_HISTORY.format(cid=chat_id), compressed,
-                                ttl_seconds=86400 * 7)
-            logger.info("[AriaMind] Historial comprimido: %d → %d mensajes", len(history), len(compressed))
+                await cache.set(
+                    self.K_HISTORY.format(cid=chat_id), compressed, ttl_seconds=86400 * 7
+                )
+            logger.info(
+                "[AriaMind] Historial comprimido: %d → %d mensajes", len(history), len(compressed)
+            )
             return compressed
         return keep_recent
 
@@ -3537,9 +4260,26 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             return False
 
         # Si el usuario dio una instrucción de acción (no una pregunta)
-        action_verbs = ["crea", "agrega", "lanza", "genera", "ejecuta", "haz", "sube",
-                        "publica", "busca", "implementa", "automatiza", "configura",
-                        "diseña", "construye", "añade", "activa", "inicia", "corre"]
+        action_verbs = [
+            "crea",
+            "agrega",
+            "lanza",
+            "genera",
+            "ejecuta",
+            "haz",
+            "sube",
+            "publica",
+            "busca",
+            "implementa",
+            "automatiza",
+            "configura",
+            "diseña",
+            "construye",
+            "añade",
+            "activa",
+            "inicia",
+            "corre",
+        ]
         user_lower = user_text.lower()
         is_action_request = any(v in user_lower for v in action_verbs)
 
@@ -3548,10 +4288,21 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
         # Preguntas típicas que ARIA jamás debe hacer sobre acciones
         unnecessary_question_patterns = [
-            "qué tipo", "qué clase", "cuántos", "qué plataforma", "cuál",
-            "me puedes decir", "podrías indicarme", "me especificas",
-            "qué nombre", "qué precio", "para qué", "qué descripción",
-            "qué categoría", "físico o digital", "producto o servicio",
+            "qué tipo",
+            "qué clase",
+            "cuántos",
+            "qué plataforma",
+            "cuál",
+            "me puedes decir",
+            "podrías indicarme",
+            "me especificas",
+            "qué nombre",
+            "qué precio",
+            "para qué",
+            "qué descripción",
+            "qué categoría",
+            "físico o digital",
+            "producto o servicio",
         ]
         reply_lower = reply.lower()
         return any(pat in reply_lower for pat in unnecessary_question_patterns)
@@ -3590,7 +4341,11 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
         # Social / contenido
         if any(k in t for k in ["linkedin", "twitter", "redes", "post", "contenido"]):
-            return "create_social_content", {"topic": "AI autonomous income platform", "platforms": ["linkedin", "twitter"], "tone": "professional"}
+            return "create_social_content", {
+                "topic": "AI autonomous income platform",
+                "platforms": ["linkedin", "twitter"],
+                "tone": "professional",
+            }
 
         # Default: análisis proactivo
         return "run_proactive_analysis", {"focus": "all"}
@@ -3601,6 +4356,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if not ai:
             return []
         from apps.core.tools.ai_client import AIModel
+
         result = await ai.complete_json(
             system=PLANNER_SYSTEM,
             user=f"CONTEXTO ACTUAL:\n{business_context}\n\nOBJETIVO DEL USUARIO:\n{text}",
@@ -3611,13 +4367,24 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if not result:
             return []
         if result.get("ask_first") and result.get("question_if_needed"):
-            return [{"step": 0, "tool": "__ask__", "args": {"question": result["question_if_needed"]}, "description": "Pregunta mínima necesaria"}]
+            return [
+                {
+                    "step": 0,
+                    "tool": "__ask__",
+                    "args": {"question": result["question_if_needed"]},
+                    "description": "Pregunta mínima necesaria",
+                }
+            ]
         return result.get("steps", [])
 
-    async def _execute_plan(self, steps: list[dict], original_request: str, chat_id: str) -> MindResponse:
+    async def _execute_plan(
+        self, steps: list[dict], original_request: str, chat_id: str
+    ) -> MindResponse:
         """Ejecuta un plan de pasos secuenciales, acumulando y sintetizando resultados."""
         if not steps:
-            return MindResponse(text="No pude generar un plan. Intenta describir tu objetivo con más detalle.")
+            return MindResponse(
+                text="No pude generar un plan. Intenta describir tu objetivo con más detalle."
+            )
 
         if steps[0].get("tool") == "__ask__":
             q = steps[0]["args"].get("question", "¿Puedes darme más detalles?")
@@ -3646,6 +4413,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         final_text = combined_obs
         if ai:
             from apps.core.tools.ai_client import AIModel
+
             synth = await ai.complete(
                 system=(
                     f"Eres ARIA. Ejecutaste {total} pasos autónomamente para: '{original_request[:120]}'. "
@@ -3681,10 +4449,13 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             return observation[:400]
 
         from apps.core.tools.ai_client import AIModel
+
         resp = await ai.complete(
             system=SYNTHESIS_SYSTEM,
-            user=(f"El usuario pidió: {user_input[:400]}\n"
-                  f"Usé la herramienta '{tool}' y obtuve:\n{observation[:2000]}"),
+            user=(
+                f"El usuario pidió: {user_input[:400]}\n"
+                f"Usé la herramienta '{tool}' y obtuve:\n{observation[:2000]}"
+            ),
             model=AIModel.STRATEGY,
             max_tokens=800,
             temperature=0.35,
@@ -3700,6 +4471,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if not ai:
             return "Entendido."
         from apps.core.tools.ai_client import AIModel
+
         resp = await ai.complete(
             system=(
                 "Eres ARIA, asistente inteligente. Responde en español de forma directa y completa. "
@@ -3723,8 +4495,9 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 return s
         return {"focus": "", "confidence": 0.7, "interaction_count": 0}
 
-    async def _evolve_state(self, chat_id: str, current: dict,
-                             text: str, goals: list[dict]) -> None:
+    async def _evolve_state(
+        self, chat_id: str, current: dict, text: str, goals: list[dict]
+    ) -> None:
         """Actualiza el estado cognitivo después de cada interacción."""
         cache = self._cache_client()
         if not cache:
@@ -3756,10 +4529,12 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
     async def _apply_goal_action(self, action: dict, goals: list[dict]) -> list[dict]:
         if action.get("action") == "add":
-            goals.append(Goal(
-                text=action.get("text", ""),
-                priority=int(action.get("priority", 5)),
-            ).__dict__)
+            goals.append(
+                Goal(
+                    text=action.get("text", ""),
+                    priority=int(action.get("priority", 5)),
+                ).__dict__
+            )
             await self._save_goals(goals)
         elif action.get("action") == "update":
             idx = action.get("index", 0)
@@ -3792,8 +4567,9 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if cache:
             await cache.delete(self.K_HISTORY.format(cid=chat_id))
 
-    async def _store_interaction(self, chat_id: str, user_text: str,
-                                  aria_text: Optional[str], tool: Optional[str]) -> None:
+    async def _store_interaction(
+        self, chat_id: str, user_text: str, aria_text: str | None, tool: str | None
+    ) -> None:
         cache = self._cache_client()
         if not cache:
             return
@@ -3803,9 +4579,14 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             history = []
         history.append({"role": "user", "content": user_text[:300]})
         if aria_text:
-            history.append({"role": "assistant", "content": aria_text[:300],
-                             **({"tool": tool} if tool else {})})
-        history = history[-(self.MAX_HISTORY * 2):]
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": aria_text[:300],
+                    **({"tool": tool} if tool else {}),
+                }
+            )
+        history = history[-(self.MAX_HISTORY * 2) :]
         await cache.set(key, history, ttl_seconds=86400 * 7)
 
     async def _record_exec(self, tool: str, args: dict, obs: str, success: bool) -> None:
@@ -3816,14 +4597,16 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         execs = await cache.get(self.K_EXECS) or []
         if not isinstance(execs, list):
             execs = []
-        execs.append({
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "tool": tool,
-            "success": success,
-            "in": str(args)[:100],
-            "out": obs[:150],
-        })
-        execs = execs[-self.MAX_EXECS:]
+        execs.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "tool": tool,
+                "success": success,
+                "in": str(args)[:100],
+                "out": obs[:150],
+            }
+        )
+        execs = execs[-self.MAX_EXECS :]
         await cache.set(self.K_EXECS, execs, ttl_seconds=86400 * 30)
 
     # ── AUTO-REFLEXIÓN ─────────────────────────────────────────────────────
@@ -3865,6 +4648,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 return
 
             from apps.core.tools.ai_client import AIModel
+
             resp = await ai.complete(
                 system=(
                     "Eres el módulo de auto-mejora de ARIA. "
@@ -3907,12 +4691,15 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         Equivalente al sistema MCP de Claude pero para Aria.
         """
         from apps.core.connections.manager import get_connection_manager
+
         mgr = get_connection_manager()
 
         if not service:
             available = "\n".join(f"• `/connect {k}` — {v}" for k, v in mgr.AVAILABLE.items())
             connected = await mgr.list_connected(chat_id)
-            conn_text = f"Ya conectados: {', '.join(connected)}" if connected else "Ninguno conectado aún"
+            conn_text = (
+                f"Ya conectados: {', '.join(connected)}" if connected else "Ninguno conectado aún"
+            )
             return MindResponse(
                 text=f"🔌 **Conectar una cuenta a ARIA**\n\n{available}\n\n{conn_text}",
                 tool_used="connect",
@@ -3922,24 +4709,32 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             auth_url = mgr.get_auth_url(service, chat_id)
             if not auth_url:
                 return MindResponse(
-                    text=(f"⚙️ Para conectar Google, necesito que agregues estas 2 credenciales en Fly.io:\n\n"
-                          "1. Obtén en **console.cloud.google.com** → APIs & Services → Credentials → OAuth 2.0 Client IDs\n"
-                          "2. Agrega en Fly.io:\n"
-                          "   `flyctl secrets set GOOGLE_CLIENT_ID='...' GOOGLE_CLIENT_SECRET='...' --app aria-ai`\n\n"
-                          "Con Google conectado, ARIA puede leer tu Gmail, Calendar y Drive directamente."),
+                    text=(
+                        "⚙️ Para conectar Google, necesito que agregues estas 2 credenciales en Fly.io:\n\n"
+                        "1. Obtén en **console.cloud.google.com** → APIs & Services → Credentials → OAuth 2.0 Client IDs\n"
+                        "2. Agrega en Fly.io:\n"
+                        "   `flyctl secrets set GOOGLE_CLIENT_ID='...' GOOGLE_CLIENT_SECRET='...' --app aria-ai`\n\n"
+                        "Con Google conectado, ARIA puede leer tu Gmail, Calendar y Drive directamente."
+                    ),
                     tool_used="connect",
                 )
             return MindResponse(
-                text=(f"🔗 **Conectar Google a ARIA**\n\n"
-                      f"Haz clic aquí para autorizar:\n{auth_url}\n\n"
-                      "Esto dará a ARIA acceso a:\n• 📧 Gmail (leer + enviar)\n"
-                      "• 📅 Google Calendar\n• 🗂️ Google Drive\n\n"
-                      "Tus credenciales se guardan encriptadas y solo ARIA las usa."),
+                text=(
+                    f"🔗 **Conectar Google a ARIA**\n\n"
+                    f"Haz clic aquí para autorizar:\n{auth_url}\n\n"
+                    "Esto dará a ARIA acceso a:\n• 📧 Gmail (leer + enviar)\n"
+                    "• 📅 Google Calendar\n• 🗂️ Google Drive\n\n"
+                    "Tus credenciales se guardan encriptadas y solo ARIA las usa."
+                ),
                 tool_used="connect",
             )
 
         if service == "slack":
-            webhook = getattr(__import__("apps.core.config", fromlist=["settings"]).settings, "SLACK_WEBHOOK_URL", None)
+            webhook = getattr(
+                __import__("apps.core.config", fromlist=["settings"]).settings,
+                "SLACK_WEBHOOK_URL",
+                None,
+            )
             if webhook:
                 return MindResponse(
                     text="✅ **Slack ya configurado** via webhook. ARIA puede enviar mensajes.\nPara acceso completo (leer canales), configura SLACK_CLIENT_ID + SLACK_CLIENT_SECRET.",
@@ -3948,13 +4743,15 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             auth_url = mgr.get_auth_url(service, chat_id)
             if not auth_url:
                 return MindResponse(
-                    text=("⚙️ Para conectar Slack:\n\n"
-                          "**Modo simple (webhook):**\n"
-                          "1. Ve a api.slack.com/apps → Create App → Incoming Webhooks\n"
-                          "2. `flyctl secrets set SLACK_WEBHOOK_URL='https://hooks.slack.com/...' --app aria-ai`\n\n"
-                          "**Modo completo (OAuth):**\n"
-                          "1. Ve a api.slack.com/apps → OAuth & Permissions\n"
-                          "2. `flyctl secrets set SLACK_CLIENT_ID='...' SLACK_CLIENT_SECRET='...' --app aria-ai`"),
+                    text=(
+                        "⚙️ Para conectar Slack:\n\n"
+                        "**Modo simple (webhook):**\n"
+                        "1. Ve a api.slack.com/apps → Create App → Incoming Webhooks\n"
+                        "2. `flyctl secrets set SLACK_WEBHOOK_URL='https://hooks.slack.com/...' --app aria-ai`\n\n"
+                        "**Modo completo (OAuth):**\n"
+                        "1. Ve a api.slack.com/apps → OAuth & Permissions\n"
+                        "2. `flyctl secrets set SLACK_CLIENT_ID='...' SLACK_CLIENT_SECRET='...' --app aria-ai`"
+                    ),
                     tool_used="connect",
                 )
             return MindResponse(
@@ -3964,127 +4761,213 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 
         if service == "indeed":
             from apps.core.config import settings as _s
+
             if getattr(_s, "SERP_API_KEY", None):
                 return MindResponse(
                     text="✅ **Indeed ya conectado** via SerpAPI. ARIA puede buscar empleos con `indeed_jobs`.",
                     tool_used="connect",
                 )
             return MindResponse(
-                text=("⚙️ Para conectar Indeed:\n\n"
-                      "1. Obtén API key en **serpapi.com** (plan gratuito: 100 búsquedas/mes)\n"
-                      "2. `flyctl secrets set SERP_API_KEY='...' --app aria-ai`\n\n"
-                      "Con esto ARIA puede buscar empleos en Indeed, Google Jobs y más."),
+                text=(
+                    "⚙️ Para conectar Indeed:\n\n"
+                    "1. Obtén API key en **serpapi.com** (plan gratuito: 100 búsquedas/mes)\n"
+                    "2. `flyctl secrets set SERP_API_KEY='...' --app aria-ai`\n\n"
+                    "Con esto ARIA puede buscar empleos en Indeed, Google Jobs y más."
+                ),
                 tool_used="connect",
             )
 
         # ── Servicios con OAuth web flow ──────────────────────────────────────
         _OAUTH_SERVICES = {
-            "microsoft": ("MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET",
-                          "portal.azure.com → App registrations → New registration",
-                          "Outlook mail, Teams, OneDrive, Calendar"),
-            "zoom": ("ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET",
-                     "marketplace.zoom.us → Develop → Build App → OAuth",
-                     "meetings, grabaciones, participantes"),
-            "hubspot": ("HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET",
-                        "app.hubspot.com → Settings → Account Setup → Integrations → Private Apps",
-                        "contactos, deals, pipeline CRM"),
-            "salesforce": ("SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET",
-                           "setup.salesforce.com → Apps → App Manager → New Connected App",
-                           "CRM enterprise, oportunidades, cuentas"),
-            "dropbox": ("DROPBOX_APP_KEY", "DROPBOX_APP_SECRET",
-                        "www.dropbox.com/developers → App Console → Create app",
-                        "archivos, carpetas, compartir"),
-            "box": ("BOX_CLIENT_ID", "BOX_CLIENT_SECRET",
-                    "developer.box.com → My Apps → Create New App",
-                    "almacenamiento empresarial, colaboración"),
-            "calendly": ("CALENDLY_CLIENT_ID", "CALENDLY_CLIENT_SECRET",
-                         "developer.calendly.com → My Apps → Create new application",
-                         "agenda, tipos de reunión, programación"),
-            "figma": ("FIGMA_CLIENT_ID", "FIGMA_CLIENT_SECRET",
-                      "figma.com/developers → Your apps → Create new app",
-                      "archivos de diseño, comentarios, prototipos"),
-            "canva": ("CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET",
-                      "developers.canva.com → Apps → Create app",
-                      "diseños, assets, templates"),
-            "etsy": ("ETSY_CLIENT_ID", "ETSY_CLIENT_SECRET",
-                     "developers.etsy.com → Register as a developer → Create new app",
-                     "listings, transacciones, tienda"),
-            "google_analytics": ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
-                                 "console.cloud.google.com → APIs & Services → Credentials (mismo que Google)",
-                                 "reportes GA4, usuarios activos, conversiones"),
-            "spotify": ("SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET",
-                        "developer.spotify.com → Dashboard → Create app",
-                        "reproducción actual, top tracks, playlists"),
-            "youtube": ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
-                        "console.cloud.google.com → APIs → YouTube Data API v3 (mismo que Google)",
-                        "canal, videos, analytics"),
-            "tiktok": ("TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET",
-                       "developers.tiktok.com → Manage Apps → Create app",
-                       "videos, info de usuario, cuenta"),
-            "twitch": ("TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET",
-                       "dev.twitch.tv → Your Console → Applications → Register Your Application",
-                       "streams, canal, seguidores, subscriptores"),
+            "microsoft": (
+                "MICROSOFT_CLIENT_ID",
+                "MICROSOFT_CLIENT_SECRET",
+                "portal.azure.com → App registrations → New registration",
+                "Outlook mail, Teams, OneDrive, Calendar",
+            ),
+            "zoom": (
+                "ZOOM_CLIENT_ID",
+                "ZOOM_CLIENT_SECRET",
+                "marketplace.zoom.us → Develop → Build App → OAuth",
+                "meetings, grabaciones, participantes",
+            ),
+            "hubspot": (
+                "HUBSPOT_CLIENT_ID",
+                "HUBSPOT_CLIENT_SECRET",
+                "app.hubspot.com → Settings → Account Setup → Integrations → Private Apps",
+                "contactos, deals, pipeline CRM",
+            ),
+            "salesforce": (
+                "SALESFORCE_CLIENT_ID",
+                "SALESFORCE_CLIENT_SECRET",
+                "setup.salesforce.com → Apps → App Manager → New Connected App",
+                "CRM enterprise, oportunidades, cuentas",
+            ),
+            "dropbox": (
+                "DROPBOX_APP_KEY",
+                "DROPBOX_APP_SECRET",
+                "www.dropbox.com/developers → App Console → Create app",
+                "archivos, carpetas, compartir",
+            ),
+            "box": (
+                "BOX_CLIENT_ID",
+                "BOX_CLIENT_SECRET",
+                "developer.box.com → My Apps → Create New App",
+                "almacenamiento empresarial, colaboración",
+            ),
+            "calendly": (
+                "CALENDLY_CLIENT_ID",
+                "CALENDLY_CLIENT_SECRET",
+                "developer.calendly.com → My Apps → Create new application",
+                "agenda, tipos de reunión, programación",
+            ),
+            "figma": (
+                "FIGMA_CLIENT_ID",
+                "FIGMA_CLIENT_SECRET",
+                "figma.com/developers → Your apps → Create new app",
+                "archivos de diseño, comentarios, prototipos",
+            ),
+            "canva": (
+                "CANVA_CLIENT_ID",
+                "CANVA_CLIENT_SECRET",
+                "developers.canva.com → Apps → Create app",
+                "diseños, assets, templates",
+            ),
+            "etsy": (
+                "ETSY_CLIENT_ID",
+                "ETSY_CLIENT_SECRET",
+                "developers.etsy.com → Register as a developer → Create new app",
+                "listings, transacciones, tienda",
+            ),
+            "google_analytics": (
+                "GOOGLE_CLIENT_ID",
+                "GOOGLE_CLIENT_SECRET",
+                "console.cloud.google.com → APIs & Services → Credentials (mismo que Google)",
+                "reportes GA4, usuarios activos, conversiones",
+            ),
+            "spotify": (
+                "SPOTIFY_CLIENT_ID",
+                "SPOTIFY_CLIENT_SECRET",
+                "developer.spotify.com → Dashboard → Create app",
+                "reproducción actual, top tracks, playlists",
+            ),
+            "youtube": (
+                "GOOGLE_CLIENT_ID",
+                "GOOGLE_CLIENT_SECRET",
+                "console.cloud.google.com → APIs → YouTube Data API v3 (mismo que Google)",
+                "canal, videos, analytics",
+            ),
+            "tiktok": (
+                "TIKTOK_CLIENT_KEY",
+                "TIKTOK_CLIENT_SECRET",
+                "developers.tiktok.com → Manage Apps → Create app",
+                "videos, info de usuario, cuenta",
+            ),
+            "twitch": (
+                "TWITCH_CLIENT_ID",
+                "TWITCH_CLIENT_SECRET",
+                "dev.twitch.tv → Your Console → Applications → Register Your Application",
+                "streams, canal, seguidores, subscriptores",
+            ),
         }
 
         # ── Servicios solo-API-key (no OAuth web) ─────────────────────────────
         _API_KEY_SERVICES = {
-            "hubspot": ("HUBSPOT_PRIVATE_APP_TOKEN",
-                        "app.hubspot.com → Settings → Integrations → Private Apps → Create private app",
-                        "También funciona con Private App Token (más simple que OAuth)"),
-            "calcom": ("CALCOM_API_KEY",
-                       "app.cal.com → Settings → Developer → API Keys → Create key",
-                       "Cal.com no usa OAuth — solo API key"),
-            "mixpanel": ("MIXPANEL_API_SECRET",
-                         "mixpanel.com → Project Settings → Access Keys → API Secret",
-                         "Product analytics, funnels, retención"),
-            "amplitude": ("AMPLITUDE_API_KEY",
-                          "app.amplitude.com → Settings → Projects → [tu proyecto] → General → API Key",
-                          "Analytics de producto, cohortes, journeys"),
-            "datadog": ("DATADOG_API_KEY",
-                        "app.datadoghq.com → Organization Settings → API Keys → New Key",
-                        "Infraestructura, logs, APM, monitors"),
-            "klaviyo": ("KLAVIYO_API_KEY",
-                        "klaviyo.com → Settings → API keys → Create Private API Key",
-                        "Email marketing, SMS, listas, campañas"),
-            "activecampaign": ("ACTIVECAMPAIGN_API_KEY",
-                               "account.activecampaign.com → Settings → Developer → API Access",
-                               "También necesitas ACTIVECAMPAIGN_URL (tu URL de cuenta)"),
-            "convertkit": ("CONVERTKIT_API_SECRET",
-                           "app.convertkit.com → Settings → Advanced → API Secret",
-                           "Newsletter, suscriptores, forms"),
-            "brevo": ("BREVO_API_KEY",
-                      "app.brevo.com → Transactional → Settings → SMTP & API → API Keys → Generate a new API key",
-                      "Email transaccional, campañas, contactos"),
-            "postmark": ("POSTMARK_SERVER_TOKEN",
-                         "account.postmarkapp.com → [Server] → API Tokens → Server API Token",
-                         "Email transaccional de alta entregabilidad"),
-            "netlify": ("NETLIFY_TOKEN",
-                        "app.netlify.com → User Settings → Applications → Personal access tokens",
-                        "Sites, deploys, functions"),
-            "cloudflare": ("CLOUDFLARE_API_TOKEN",
-                           "dash.cloudflare.com → My Profile → API Tokens → Create Token",
-                           "DNS, CDN, analytics, cache"),
-            "firebase": ("FIREBASE_PROJECT_ID",
-                         "console.firebase.google.com → Project Settings → Service accounts → Generate new private key",
-                         "También necesitas FIREBASE_SERVICE_ACCOUNT_TOKEN"),
-            "aws_s3": ("AWS_ACCESS_KEY_ID",
-                       "console.aws.amazon.com → IAM → Users → Security credentials → Create access key",
-                       "También necesitas AWS_SECRET_ACCESS_KEY"),
-            "wordpress": ("WORDPRESS_URL",
-                          "Tu sitio WordPress → Users → Profile → Application Passwords → Add New",
-                          "También necesitas WORDPRESS_USERNAME y WORDPRESS_APP_PASSWORD"),
-            "webflow": ("WEBFLOW_API_TOKEN",
-                        "webflow.com → Account → Integrations → API Access → Generate API token",
-                        "Sites, collections, items"),
-            "contentful": ("CONTENTFUL_SPACE_ID",
-                           "app.contentful.com → Settings → API keys → Add API key",
-                           "También necesitas CONTENTFUL_DELIVERY_TOKEN y CONTENTFUL_MANAGEMENT_TOKEN"),
-            "sanity": ("SANITY_PROJECT_ID",
-                       "sanity.io/manage → [tu proyecto] → API → Tokens → Add API token",
-                       "También necesitas SANITY_API_TOKEN y SANITY_PROJECT_ID"),
-            "woocommerce": ("WOOCOMMERCE_URL",
-                            "Tu tienda WooCommerce → WooCommerce → Settings → Advanced → REST API → Add key",
-                            "También necesitas WOOCOMMERCE_CONSUMER_KEY y WOOCOMMERCE_CONSUMER_SECRET"),
+            "hubspot": (
+                "HUBSPOT_PRIVATE_APP_TOKEN",
+                "app.hubspot.com → Settings → Integrations → Private Apps → Create private app",
+                "También funciona con Private App Token (más simple que OAuth)",
+            ),
+            "calcom": (
+                "CALCOM_API_KEY",
+                "app.cal.com → Settings → Developer → API Keys → Create key",
+                "Cal.com no usa OAuth — solo API key",
+            ),
+            "mixpanel": (
+                "MIXPANEL_API_SECRET",
+                "mixpanel.com → Project Settings → Access Keys → API Secret",
+                "Product analytics, funnels, retención",
+            ),
+            "amplitude": (
+                "AMPLITUDE_API_KEY",
+                "app.amplitude.com → Settings → Projects → [tu proyecto] → General → API Key",
+                "Analytics de producto, cohortes, journeys",
+            ),
+            "datadog": (
+                "DATADOG_API_KEY",
+                "app.datadoghq.com → Organization Settings → API Keys → New Key",
+                "Infraestructura, logs, APM, monitors",
+            ),
+            "klaviyo": (
+                "KLAVIYO_API_KEY",
+                "klaviyo.com → Settings → API keys → Create Private API Key",
+                "Email marketing, SMS, listas, campañas",
+            ),
+            "activecampaign": (
+                "ACTIVECAMPAIGN_API_KEY",
+                "account.activecampaign.com → Settings → Developer → API Access",
+                "También necesitas ACTIVECAMPAIGN_URL (tu URL de cuenta)",
+            ),
+            "convertkit": (
+                "CONVERTKIT_API_SECRET",
+                "app.convertkit.com → Settings → Advanced → API Secret",
+                "Newsletter, suscriptores, forms",
+            ),
+            "brevo": (
+                "BREVO_API_KEY",
+                "app.brevo.com → Transactional → Settings → SMTP & API → API Keys → Generate a new API key",
+                "Email transaccional, campañas, contactos",
+            ),
+            "postmark": (
+                "POSTMARK_SERVER_TOKEN",
+                "account.postmarkapp.com → [Server] → API Tokens → Server API Token",
+                "Email transaccional de alta entregabilidad",
+            ),
+            "netlify": (
+                "NETLIFY_TOKEN",
+                "app.netlify.com → User Settings → Applications → Personal access tokens",
+                "Sites, deploys, functions",
+            ),
+            "cloudflare": (
+                "CLOUDFLARE_API_TOKEN",
+                "dash.cloudflare.com → My Profile → API Tokens → Create Token",
+                "DNS, CDN, analytics, cache",
+            ),
+            "firebase": (
+                "FIREBASE_PROJECT_ID",
+                "console.firebase.google.com → Project Settings → Service accounts → Generate new private key",
+                "También necesitas FIREBASE_SERVICE_ACCOUNT_TOKEN",
+            ),
+            "aws_s3": (
+                "AWS_ACCESS_KEY_ID",
+                "console.aws.amazon.com → IAM → Users → Security credentials → Create access key",
+                "También necesitas AWS_SECRET_ACCESS_KEY",
+            ),
+            "wordpress": (
+                "WORDPRESS_URL",
+                "Tu sitio WordPress → Users → Profile → Application Passwords → Add New",
+                "También necesitas WORDPRESS_USERNAME y WORDPRESS_APP_PASSWORD",
+            ),
+            "webflow": (
+                "WEBFLOW_API_TOKEN",
+                "webflow.com → Account → Integrations → API Access → Generate API token",
+                "Sites, collections, items",
+            ),
+            "contentful": (
+                "CONTENTFUL_SPACE_ID",
+                "app.contentful.com → Settings → API keys → Add API key",
+                "También necesitas CONTENTFUL_DELIVERY_TOKEN y CONTENTFUL_MANAGEMENT_TOKEN",
+            ),
+            "sanity": (
+                "SANITY_PROJECT_ID",
+                "sanity.io/manage → [tu proyecto] → API → Tokens → Add API token",
+                "También necesitas SANITY_API_TOKEN y SANITY_PROJECT_ID",
+            ),
+            "woocommerce": (
+                "WOOCOMMERCE_URL",
+                "Tu tienda WooCommerce → WooCommerce → Settings → Advanced → REST API → Add key",
+                "También necesitas WOOCOMMERCE_CONSUMER_KEY y WOOCOMMERCE_CONSUMER_SECRET",
+            ),
         }
 
         # Check if it's an OAuth service
@@ -4092,20 +4975,25 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
             env1, env2, instructions, capabilities = _OAUTH_SERVICES[service]
             auth_url = mgr.get_auth_url(service, chat_id)
             from apps.core.config import settings as _s
+
             has_creds = bool(getattr(_s, env1, None) and (not env2 or getattr(_s, env2, None)))
             if not has_creds:
                 return MindResponse(
-                    text=(f"⚙️ Para conectar **{service.capitalize()}**, agrega estas credenciales en Fly.io:\n\n"
-                          f"1. Obtén en: **{instructions}**\n"
-                          f"2. `flyctl secrets set {env1}='...' {env2}='...' --app aria-ai`\n\n"
-                          f"Con {service.capitalize()} conectado, ARIA puede: {capabilities}"),
+                    text=(
+                        f"⚙️ Para conectar **{service.capitalize()}**, agrega estas credenciales en Fly.io:\n\n"
+                        f"1. Obtén en: **{instructions}**\n"
+                        f"2. `flyctl secrets set {env1}='...' {env2}='...' --app aria-ai`\n\n"
+                        f"Con {service.capitalize()} conectado, ARIA puede: {capabilities}"
+                    ),
                     tool_used="connect",
                 )
             if auth_url:
                 return MindResponse(
-                    text=(f"🔗 **Conectar {service.capitalize()} a ARIA**\n\n"
-                          f"Haz clic aquí para autorizar:\n{auth_url}\n\n"
-                          f"ARIA tendrá acceso a: {capabilities}"),
+                    text=(
+                        f"🔗 **Conectar {service.capitalize()} a ARIA**\n\n"
+                        f"Haz clic aquí para autorizar:\n{auth_url}\n\n"
+                        f"ARIA tendrá acceso a: {capabilities}"
+                    ),
                     tool_used="connect",
                 )
 
@@ -4113,16 +5001,19 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if service in _API_KEY_SERVICES:
             env_var, instructions, description = _API_KEY_SERVICES[service]
             from apps.core.config import settings as _s
+
             if getattr(_s, env_var, None):
                 return MindResponse(
                     text=f"✅ **{service.capitalize()} ya configurado**. ARIA puede usar sus herramientas.",
                     tool_used="connect",
                 )
             return MindResponse(
-                text=(f"⚙️ Para conectar **{service.capitalize()}**:\n\n"
-                      f"1. Obtén en: **{instructions}**\n"
-                      f"2. `flyctl secrets set {env_var}='...' --app aria-ai`\n\n"
-                      f"ℹ️ {description}"),
+                text=(
+                    f"⚙️ Para conectar **{service.capitalize()}**:\n\n"
+                    f"1. Obtén en: **{instructions}**\n"
+                    f"2. `flyctl secrets set {env_var}='...' --app aria-ai`\n\n"
+                    f"ℹ️ {description}"
+                ),
                 tool_used="connect",
             )
 
@@ -4144,6 +5035,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         """
         try:
             from apps.core.cognition.planner import get_planner
+
             planner = get_planner()
             ai = self._ai_client()
             plan = await planner.create_plan(goal, context={}, ai_client=ai)
@@ -4173,6 +5065,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         """
         try:
             from apps.core.cognition.reasoning_engine import get_reasoning_engine
+
             ai = self._ai_client()
             engine = get_reasoning_engine(ai_client=ai)
             result = await engine.reason(question, context={})
@@ -4182,10 +5075,10 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 f" (incertidumbre: {s.uncertainty:.0%})"
                 for s in result.steps
             )
-            issues = "\n".join(
-                f"  • {issue}"
-                for c in result.critiques for issue in c.issues[:2]
-            ) or "  (ninguno)"
+            issues = (
+                "\n".join(f"  • {issue}" for c in result.critiques for issue in c.issues[:2])
+                or "  (ninguno)"
+            )
 
             response = (
                 f"Razonamiento completado ({result.reasoning_time_ms}ms)\n"
@@ -4206,6 +5099,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if self._ai is None:
             try:
                 from apps.core.tools.ai_client import get_ai_client
+
                 self._ai = get_ai_client()
             except Exception as e:
                 logger.error("[AriaMind] No se pudo cargar ai_client: %s", e)
@@ -4215,6 +5109,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         if self._cache is None:
             try:
                 from apps.core.memory.redis_client import get_cache
+
                 self._cache = get_cache()
             except Exception as e:
                 logger.warning("[AriaMind] No se pudo cargar cache: %s", e)
@@ -4227,6 +5122,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         try:
             from apps.core.config import settings
             from apps.core.tools.telegram_bot import get_bot
+
             chat_id = str(getattr(settings, "TELEGRAM_CHAT_ID", "") or "")
             if chat_id:
                 await get_bot().notify_owner(message)
@@ -4240,6 +5136,7 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         # AI providers
         try:
             from apps.core.tools.ai_client import get_ai_client
+
             health = get_ai_client().get_health_summary()
             providers = {k: v for k, v in health.items() if k != "_totals"}
             totals = health.get("_totals", {})
@@ -4250,14 +5147,18 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
                 calls = info.get("total_calls", 0)
                 lines.append(f"  {icon} **{name}** — {rate:.0f}% éxito · {calls} llamadas")
             if totals:
-                lines.append(f"\n  Tokens totales: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`")
+                lines.append(
+                    f"\n  Tokens totales: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`"
+                )
         except Exception:
             lines.append("  Sin datos de proveedores")
 
         # Goals
         try:
             goals = await self._load_goals()
-            active = [g for g in goals if isinstance(g, dict) and g.get("status", "active") == "active"]
+            active = [
+                g for g in goals if isinstance(g, dict) and g.get("status", "active") == "active"
+            ]
             lines.append(f"\n**Metas activas:** {len(active)}")
             for g in active[:5]:
                 p = g.get("priority", "")
@@ -4270,24 +5171,30 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
         # Background tasks
         try:
             from apps.core.tools.task_manager import get_task_manager
+
             stats = get_task_manager().stats()
             running = stats.get("running", 0)
             queued = stats.get("queued", 0)
             completed = stats.get("completed", 0)
-            lines.append(f"\n**Tareas en segundo plano:** {running} activas · {queued} en cola · {completed} completadas")
+            lines.append(
+                f"\n**Tareas en segundo plano:** {running} activas · {queued} en cola · {completed} completadas"
+            )
         except Exception:
             pass
 
         # Knowledge base
         try:
             from apps.core.tools.knowledge_base import get_knowledge_base
+
             kb = get_knowledge_base()
             kstats = kb.stats()
-            lines.append(f"\n**Base de conocimiento:** {kstats.get('total_chunks', 0)} fragmentos en {len(kstats.get('by_category', {}))} categorías")
+            lines.append(
+                f"\n**Base de conocimiento:** {kstats.get('total_chunks', 0)} fragmentos en {len(kstats.get('by_category', {}))} categorías"
+            )
         except Exception:
             pass
 
-        lines.append(f"\n**Timestamp:** `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}`")
+        lines.append(f"\n**Timestamp:** `{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}`")
         lines.append("\nUsa `/help` para ver todas las capacidades disponibles.")
         return MindResponse(text="\n".join(lines))
 
@@ -4296,7 +5203,8 @@ Built by ARIA AI. Reach out via [Telegram](https://t.me/) or open an issue.
 # SINGLETON
 # ═══════════════════════════════════════════════════════════════════════════
 
-_mind: Optional[AriaMind] = None
+_mind: AriaMind | None = None
+
 
 def get_aria_mind() -> AriaMind:
     global _mind

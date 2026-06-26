@@ -9,6 +9,7 @@ Constructs the cognitive workflow DAG:
 If langgraph is not installed, build_cognitive_workflow() returns None and the
 CognitiveAgent falls back to a direct AI call.
 """
+
 from __future__ import annotations
 
 import logging
@@ -17,6 +18,7 @@ logger = logging.getLogger("aria.cognition.workflow")
 
 try:
     from langgraph.graph import END, StateGraph
+
     _LANGGRAPH_AVAILABLE = True
 except ImportError:
     _LANGGRAPH_AVAILABLE = False
@@ -84,7 +86,7 @@ def build_cognitive_workflow():
             "reflect",
             _route_after_reflect,
             {
-                "thinking": "analyze",   # low confidence → retry
+                "thinking": "analyze",  # low confidence → retry
                 "done": END,
                 "failed": "failure",
             },

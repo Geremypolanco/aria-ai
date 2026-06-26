@@ -3,20 +3,28 @@ ARIA AI — CRM Engine
 Phase 13: Pipeline tracking, interaction logging, and revenue attribution
 for all acquisition channels.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "acquisition:crm:v1"
 _TTL = 86400 * 90
 
-_PIPELINE_STAGES = ["new", "contacted", "qualified", "proposal", "negotiation", "closed_won", "closed_lost"]
+_PIPELINE_STAGES = [
+    "new",
+    "contacted",
+    "qualified",
+    "proposal",
+    "negotiation",
+    "closed_won",
+    "closed_lost",
+]
 
 
 @dataclass
@@ -128,7 +136,7 @@ class CRMEngine:
         await self._save()
         return contact
 
-    async def advance_stage(self, contact_id: str) -> Optional[dict]:
+    async def advance_stage(self, contact_id: str) -> dict | None:
         """Move contact to next pipeline stage, update probability."""
         await self._load()
         for contact in self._contacts:
@@ -221,7 +229,9 @@ class CRMEngine:
     def pipeline_value(self) -> dict:
         total_weighted = sum(c.get("weighted_value_usd", 0.0) for c in self._contacts)
         total_potential = sum(c.get("deal_value_usd", 0.0) for c in self._contacts)
-        won = sum(c.get("deal_value_usd", 0.0) for c in self._contacts if c.get("stage") == "closed_won")
+        won = sum(
+            c.get("deal_value_usd", 0.0) for c in self._contacts if c.get("stage") == "closed_won"
+        )
         return {
             "total_potential_usd": round(total_potential, 2),
             "weighted_pipeline_usd": round(total_weighted, 2),
@@ -248,7 +258,7 @@ class CRMEngine:
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_instance: Optional[CRMEngine] = None
+_instance: CRMEngine | None = None
 
 
 def get_crm_engine() -> CRMEngine:

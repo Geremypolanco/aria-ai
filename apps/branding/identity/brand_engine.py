@@ -2,14 +2,14 @@
 Persistent brand identity management system.
 Stores BrandProfile objects in Redis with in-memory caching layer.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -21,7 +21,8 @@ _REDIS_TTL = 86400 * 365  # 1 year
 
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
-class BrandTone(str, Enum):
+
+class BrandTone(StrEnum):
     PROFESSIONAL = "professional"
     FRIENDLY = "friendly"
     BOLD = "bold"
@@ -32,6 +33,7 @@ class BrandTone(str, Enum):
 
 
 # ── Dataclasses ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class ColorPalette:
@@ -122,12 +124,8 @@ class BrandProfile:
     palette: ColorPalette = field(
         default_factory=lambda: ColorPalette("#000000", "#FFFFFF", "#888888", "#FFFFFF", "#000000")
     )
-    typography: Typography = field(
-        default_factory=lambda: Typography("Inter", "Inter")
-    )
-    voice: BrandVoice = field(
-        default_factory=lambda: BrandVoice(tone=BrandTone.PROFESSIONAL)
-    )
+    typography: Typography = field(default_factory=lambda: Typography("Inter", "Inter"))
+    voice: BrandVoice = field(default_factory=lambda: BrandVoice(tone=BrandTone.PROFESSIONAL))
     logo_url: str = ""
     tagline: str = ""
     created_at: float = field(default_factory=time.time)
@@ -165,33 +163,49 @@ class BrandProfile:
 
 # ── Niche defaults ─────────────────────────────────────────────────────────────
 
+
 def _palette_for_niche(niche: str) -> ColorPalette:
     """Return a niche-appropriate default color palette."""
     n = niche.lower()
     if "ecommerce" in n or "shop" in n or "retail" in n:
         return ColorPalette(
-            primary="#0066CC", secondary="#FFFFFF", accent="#D4A017",
-            background="#F8F9FA", text="#1A1A1A",
+            primary="#0066CC",
+            secondary="#FFFFFF",
+            accent="#D4A017",
+            background="#F8F9FA",
+            text="#1A1A1A",
         )
     if "fitness" in n or "gym" in n or "sport" in n:
         return ColorPalette(
-            primary="#CC0000", secondary="#1A1A1A", accent="#FFFFFF",
-            background="#0A0A0A", text="#FFFFFF",
+            primary="#CC0000",
+            secondary="#1A1A1A",
+            accent="#FFFFFF",
+            background="#0A0A0A",
+            text="#FFFFFF",
         )
     if "tech" in n or "software" in n or "saas" in n or "ai" in n:
         return ColorPalette(
-            primary="#6C3FC5", secondary="#1E1E2E", accent="#00E5FF",
-            background="#0F0F1A", text="#E8E8F0",
+            primary="#6C3FC5",
+            secondary="#1E1E2E",
+            accent="#00E5FF",
+            background="#0F0F1A",
+            text="#E8E8F0",
         )
     if "beauty" in n or "fashion" in n or "cosmetic" in n:
         return ColorPalette(
-            primary="#E91E8C", secondary="#D4AF37", accent="#FFF0F5",
-            background="#FFFAFA", text="#2C1A1A",
+            primary="#E91E8C",
+            secondary="#D4AF37",
+            accent="#FFF0F5",
+            background="#FFFAFA",
+            text="#2C1A1A",
         )
     # general / default
     return ColorPalette(
-        primary="#2563EB", secondary="#64748B", accent="#F59E0B",
-        background="#FFFFFF", text="#1E293B",
+        primary="#2563EB",
+        secondary="#64748B",
+        accent="#F59E0B",
+        background="#FFFFFF",
+        text="#1E293B",
     )
 
 
@@ -274,6 +288,7 @@ def _voice_for_tone(tone: BrandTone) -> BrandVoice:
 
 # ── BrandEngine ────────────────────────────────────────────────────────────────
 
+
 class BrandEngine:
     """Persistent brand identity manager with Redis + in-memory caching."""
 
@@ -290,9 +305,7 @@ class BrandEngine:
             cache = get_cache()
             data = await cache.get(_REDIS_KEY)
             if data and isinstance(data, dict):
-                self._profiles = {
-                    bid: BrandProfile.from_dict(bd) for bid, bd in data.items()
-                }
+                self._profiles = {bid: BrandProfile.from_dict(bd) for bid, bd in data.items()}
         except Exception as exc:
             logger.warning("Could not load brand profiles from Redis: %s", exc)
         self._loaded = True
@@ -335,7 +348,7 @@ class BrandEngine:
         logger.info("Created brand '%s' (id=%s, niche=%s)", name, profile.brand_id, niche)
         return profile
 
-    async def get_brand(self, brand_id: str) -> Optional[BrandProfile]:
+    async def get_brand(self, brand_id: str) -> BrandProfile | None:
         """Return a BrandProfile by ID, or None if not found."""
         await self._load()
         return self._profiles.get(brand_id)
@@ -345,7 +358,7 @@ class BrandEngine:
         await self._load()
         return list(self._profiles.values())
 
-    async def update_palette(self, brand_id: str, palette: ColorPalette) -> Optional[BrandProfile]:
+    async def update_palette(self, brand_id: str, palette: ColorPalette) -> BrandProfile | None:
         """Update only the color palette for a brand."""
         await self._load()
         profile = self._profiles.get(brand_id)
@@ -356,7 +369,7 @@ class BrandEngine:
         await self._persist()
         return profile
 
-    async def update_voice(self, brand_id: str, voice: BrandVoice) -> Optional[BrandProfile]:
+    async def update_voice(self, brand_id: str, voice: BrandVoice) -> BrandProfile | None:
         """Update only the brand voice for a brand."""
         await self._load()
         profile = self._profiles.get(brand_id)
@@ -421,9 +434,7 @@ class BrandEngine:
                 score -= 15
 
         # Check for keyword presence (reward, not penalise absence)
-        keyword_hits = sum(
-            1 for kw in profile.voice.keywords if kw.lower() in content_lower
-        )
+        keyword_hits = sum(1 for kw in profile.voice.keywords if kw.lower() in content_lower)
         keyword_total = len(profile.voice.keywords) or 1
         keyword_ratio = keyword_hits / keyword_total
         if keyword_ratio < 0.25:
@@ -436,8 +447,8 @@ class BrandEngine:
 
         # Tone check (simple length heuristic for minimalist)
         if profile.voice.tone == BrandTone.MINIMALIST:
-            avg_sentence_len = (
-                len(content.split()) / max(content.count(".") + content.count("!") + content.count("?"), 1)
+            avg_sentence_len = len(content.split()) / max(
+                content.count(".") + content.count("!") + content.count("?"), 1
             )
             if avg_sentence_len > 20:
                 violations.append("Sentences are too long for a minimalist brand voice.")
@@ -454,7 +465,7 @@ class BrandEngine:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_engine_instance: Optional[BrandEngine] = None
+_engine_instance: BrandEngine | None = None
 
 
 def get_brand_engine() -> BrandEngine:

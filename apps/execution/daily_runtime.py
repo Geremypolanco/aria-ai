@@ -11,16 +11,16 @@ ARIA operates like a business every day:
 
 No manual intervention required.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "execution:daily:v1"
 _TTL = 86400 * 90  # 90 days of history
@@ -28,14 +28,15 @@ _TTL = 86400 * 90  # 90 days of history
 
 # ── Domain objects ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class DailyTask:
     task_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     name: str = ""
-    system: str = ""        # content | acquisition | shopify | conversion | market | memory
-    action: str = ""        # specific operation description
-    priority: int = 5       # 1 = highest
-    status: str = "pending" # pending | running | done | failed
+    system: str = ""  # content | acquisition | shopify | conversion | market | memory
+    action: str = ""  # specific operation description
+    priority: int = 5  # 1 = highest
+    status: str = "pending"  # pending | running | done | failed
     result: dict = field(default_factory=dict)
     started_at: float = 0.0
     completed_at: float = 0.0
@@ -96,36 +97,113 @@ class DailyReport:
 
 _DAILY_PLAN: list[dict] = [
     # Priority 1 — Direct revenue actions
-    {"name": "Generate YouTube content metadata", "system": "content", "action": "youtube_metadata", "priority": 1},
-    {"name": "Publish LinkedIn authority post", "system": "content", "action": "linkedin_post", "priority": 1},
-    {"name": "Schedule 3 Shorts/Reels scripts", "system": "content", "action": "shorts_scripts", "priority": 1},
-    {"name": "Send outreach to 10 prospects", "system": "acquisition", "action": "outreach_batch", "priority": 1},
-
+    {
+        "name": "Generate YouTube content metadata",
+        "system": "content",
+        "action": "youtube_metadata",
+        "priority": 1,
+    },
+    {
+        "name": "Publish LinkedIn authority post",
+        "system": "content",
+        "action": "linkedin_post",
+        "priority": 1,
+    },
+    {
+        "name": "Schedule 3 Shorts/Reels scripts",
+        "system": "content",
+        "action": "shorts_scripts",
+        "priority": 1,
+    },
+    {
+        "name": "Send outreach to 10 prospects",
+        "system": "acquisition",
+        "action": "outreach_batch",
+        "priority": 1,
+    },
     # Priority 2 — Lead generation
-    {"name": "Run SEO blog post generation", "system": "content", "action": "blog_post", "priority": 2},
-    {"name": "Score and qualify new leads", "system": "acquisition", "action": "lead_scoring", "priority": 2},
-    {"name": "Advance outreach sequences", "system": "acquisition", "action": "sequence_advance", "priority": 2},
-    {"name": "Optimize top Shopify products", "system": "shopify", "action": "product_seo_batch", "priority": 2},
-
+    {
+        "name": "Run SEO blog post generation",
+        "system": "content",
+        "action": "blog_post",
+        "priority": 2,
+    },
+    {
+        "name": "Score and qualify new leads",
+        "system": "acquisition",
+        "action": "lead_scoring",
+        "priority": 2,
+    },
+    {
+        "name": "Advance outreach sequences",
+        "system": "acquisition",
+        "action": "sequence_advance",
+        "priority": 2,
+    },
+    {
+        "name": "Optimize top Shopify products",
+        "system": "shopify",
+        "action": "product_seo_batch",
+        "priority": 2,
+    },
     # Priority 3 — Conversion optimization
-    {"name": "Analyze funnel drop-offs", "system": "conversion", "action": "funnel_analysis", "priority": 3},
-    {"name": "Generate upsell offers", "system": "shopify", "action": "upsell_generation", "priority": 3},
-    {"name": "Run abandoned cart recovery", "system": "shopify", "action": "cart_recovery", "priority": 3},
-    {"name": "SMS campaign to tagged subscribers", "system": "conversion", "action": "sms_campaign", "priority": 3},
-
+    {
+        "name": "Analyze funnel drop-offs",
+        "system": "conversion",
+        "action": "funnel_analysis",
+        "priority": 3,
+    },
+    {
+        "name": "Generate upsell offers",
+        "system": "shopify",
+        "action": "upsell_generation",
+        "priority": 3,
+    },
+    {
+        "name": "Run abandoned cart recovery",
+        "system": "shopify",
+        "action": "cart_recovery",
+        "priority": 3,
+    },
+    {
+        "name": "SMS campaign to tagged subscribers",
+        "system": "conversion",
+        "action": "sms_campaign",
+        "priority": 3,
+    },
     # Priority 4 — Market intelligence
-    {"name": "Competitor pricing audit", "system": "market", "action": "pricing_audit", "priority": 4},
-    {"name": "Dynamic price adjustments", "system": "market", "action": "dynamic_pricing", "priority": 4},
+    {
+        "name": "Competitor pricing audit",
+        "system": "market",
+        "action": "pricing_audit",
+        "priority": 4,
+    },
+    {
+        "name": "Dynamic price adjustments",
+        "system": "market",
+        "action": "dynamic_pricing",
+        "priority": 4,
+    },
     {"name": "Trend opportunity scan", "system": "market", "action": "trend_scan", "priority": 4},
-
     # Priority 5 — Learning and memory
     {"name": "Extract ROI patterns", "system": "memory", "action": "roi_patterns", "priority": 5},
-    {"name": "Update economic memory", "system": "memory", "action": "economic_memory", "priority": 5},
-    {"name": "Generate daily insights", "system": "memory", "action": "insight_extraction", "priority": 5},
+    {
+        "name": "Update economic memory",
+        "system": "memory",
+        "action": "economic_memory",
+        "priority": 5,
+    },
+    {
+        "name": "Generate daily insights",
+        "system": "memory",
+        "action": "insight_extraction",
+        "priority": 5,
+    },
 ]
 
 
 # ── Daily Runtime ─────────────────────────────────────────────────────────────
+
 
 class DailyRuntime:
     """
@@ -204,31 +282,34 @@ class DailyRuntime:
 
         if system == "content":
             return await self._run_content_task(action)
-        elif system == "acquisition":
+        if system == "acquisition":
             return await self._run_acquisition_task(action)
-        elif system == "shopify":
+        if system == "shopify":
             return await self._run_shopify_task(action)
-        elif system == "conversion":
+        if system == "conversion":
             return await self._run_conversion_task(action)
-        elif system == "market":
+        if system == "market":
             return await self._run_market_task(action)
-        elif system == "memory":
+        if system == "memory":
             return await self._run_memory_task(action)
         return {"status": "no_handler", "system": system, "action": action}
 
     async def _run_content_task(self, action: str) -> dict:
         if action == "youtube_metadata":
             from apps.video.youtube.youtube_engine import get_youtube_engine
+
             eng = get_youtube_engine()
             await eng._load()
             return {"status": "queued", "analytics": eng.channel_analytics()}
         if action == "shorts_scripts":
             from apps.video.shorts.shorts_engine import get_shorts_engine
+
             eng = get_shorts_engine()
             await eng._load()
             return {"status": "queued", "analytics": eng.shorts_analytics()}
         if action in ("linkedin_post", "blog_post"):
             from apps.content.distribution.distribution_engine import get_distribution_engine
+
             eng = get_distribution_engine()
             await eng._load()
             return {"status": "queued", "stats": eng.distribution_stats()}
@@ -237,18 +318,21 @@ class DailyRuntime:
     async def _run_acquisition_task(self, action: str) -> dict:
         if action == "outreach_batch":
             from apps.acquisition.outreach.outreach_sequencer import get_outreach_sequencer
+
             eng = get_outreach_sequencer()
             await eng._load()
             due = eng.contacts_due_today()
             return {"status": "done", "contacts_due": len(due)}
         if action == "lead_scoring":
             from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
             eng = get_linkedin_outreach()
             await eng._load()
             hot = eng.hot_prospects(min_score=0.7)
             return {"status": "done", "hot_prospects": len(hot)}
         if action == "sequence_advance":
             from apps.acquisition.outreach.outreach_sequencer import get_outreach_sequencer
+
             eng = get_outreach_sequencer()
             await eng._load()
             return {"status": "done", "analytics": eng.sequence_analytics()}
@@ -257,16 +341,19 @@ class DailyRuntime:
     async def _run_shopify_task(self, action: str) -> dict:
         if action == "product_seo_batch":
             from apps.shopify.seo.product_seo import get_product_seo_optimizer
+
             eng = get_product_seo_optimizer()
             await eng._load()
             return {"status": "done", "seo_stats": eng.seo_stats()}
         if action == "upsell_generation":
             from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+
             eng = get_shopify_funnel_engine()
             await eng._load()
             return {"status": "done", "funnel_stats": eng.funnel_stats()}
         if action == "cart_recovery":
             from apps.shopify.revenue.cart_recovery import get_cart_recovery
+
             try:
                 eng = get_cart_recovery()
                 return {"status": "done", "system": "cart_recovery"}
@@ -277,11 +364,13 @@ class DailyRuntime:
     async def _run_conversion_task(self, action: str) -> dict:
         if action == "funnel_analysis":
             from apps.conversion.funnels.funnel_engine import get_funnel_engine
+
             eng = get_funnel_engine()
             await eng._load()
             return {"status": "done", "analytics": eng.funnel_analytics()}
         if action == "sms_campaign":
             from apps.conversion.sms.sms_capture import get_sms_capture_engine
+
             eng = get_sms_capture_engine()
             await eng._load()
             return {"status": "done", "stats": eng.capture_stats()}
@@ -290,6 +379,7 @@ class DailyRuntime:
     async def _run_market_task(self, action: str) -> dict:
         if action in ("pricing_audit", "dynamic_pricing"):
             from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+
             eng = get_pricing_intelligence()
             await eng._load()
             return {"status": "done", "dashboard": eng.pricing_dashboard()}
@@ -298,11 +388,13 @@ class DailyRuntime:
     async def _run_memory_task(self, action: str) -> dict:
         if action == "roi_patterns":
             from apps.learning.roi.roi_learner import get_roi_learner
+
             eng = get_roi_learner()
             await eng._load()
             return {"status": "done", "report": eng.learning_report()}
         if action in ("economic_memory", "insight_extraction"):
             from apps.memory.economic.economic_memory import get_economic_memory
+
             eng = get_economic_memory()
             await eng._load()
             return {"status": "done", "summary": eng.memory_summary()}
@@ -370,8 +462,16 @@ class DailyRuntime:
             )
             if resp.success:
                 lines = [l.strip() for l in resp.content.strip().split("\n") if l.strip()]
-                report.insights = lines[:3] if lines else ["Maintain execution consistency", "Focus on highest-ROI channels"]
-                report.next_priorities = lines[3:6] if len(lines) > 3 else ["Double outreach volume", "Optimize top-converting content"]
+                report.insights = (
+                    lines[:3]
+                    if lines
+                    else ["Maintain execution consistency", "Focus on highest-ROI channels"]
+                )
+                report.next_priorities = (
+                    lines[3:6]
+                    if len(lines) > 3
+                    else ["Double outreach volume", "Optimize top-converting content"]
+                )
         except Exception:
             pass
 
@@ -406,10 +506,20 @@ class DailyRuntime:
             tasks_planned=len(today_tasks),
             tasks_completed=completed,
             tasks_failed=failed,
-            content_pieces=sum(1 for t in today_tasks if t.get("system") == "content" and t.get("status") == "done"),
+            content_pieces=sum(
+                1 for t in today_tasks if t.get("system") == "content" and t.get("status") == "done"
+            ),
             leads_contacted=sum(t.get("result", {}).get("contacts_due", 0) for t in today_tasks),
-            optimizations_run=sum(1 for t in today_tasks if t.get("system") in ("shopify", "market") and t.get("status") == "done"),
-            revenue_actions=[t["name"] for t in today_tasks if t.get("priority", 9) <= 2 and t.get("status") == "done"],
+            optimizations_run=sum(
+                1
+                for t in today_tasks
+                if t.get("system") in ("shopify", "market") and t.get("status") == "done"
+            ),
+            revenue_actions=[
+                t["name"]
+                for t in today_tasks
+                if t.get("priority", 9) <= 2 and t.get("status") == "done"
+            ],
             execution_score=round(completed / max(len(today_tasks), 1), 3),
         )
 
@@ -429,9 +539,17 @@ class DailyRuntime:
             pass
 
         if not report.insights:
-            report.insights = ["Focus on consistent daily execution", "Track which content drives traffic", "Double down on what converts"]
+            report.insights = [
+                "Focus on consistent daily execution",
+                "Track which content drives traffic",
+                "Double down on what converts",
+            ]
         if not report.next_priorities:
-            report.next_priorities = ["Increase outreach volume", "Publish more Shorts", "Optimize highest-traffic landing page"]
+            report.next_priorities = [
+                "Increase outreach volume",
+                "Publish more Shorts",
+                "Optimize highest-traffic landing page",
+            ]
 
         self._reports.append(report.to_dict())
         await self._save()
@@ -459,7 +577,7 @@ class DailyRuntime:
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_instance: Optional[DailyRuntime] = None
+_instance: DailyRuntime | None = None
 
 
 def get_daily_runtime() -> DailyRuntime:

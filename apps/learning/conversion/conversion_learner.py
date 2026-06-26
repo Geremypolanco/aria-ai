@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
 
@@ -115,7 +114,7 @@ class ConversionLearner:
         for e in events:
             by_stage.setdefault(e.stage, []).append(e)
 
-        total_revenue = sum(e.value_usd for e in events if e.converted)
+        sum(e.value_usd for e in events if e.converted)
         insights: list[FunnelInsight] = []
 
         for stage, stage_events in by_stage.items():
@@ -125,7 +124,8 @@ class ConversionLearner:
             drop_rate = 1.0 - cvr
             avg_time = (
                 sum(e.time_to_convert_seconds for e in converted) / len(converted)
-                if converted else 0.0
+                if converted
+                else 0.0
             )
             stage_revenue = sum(e.value_usd for e in converted)
 
@@ -139,21 +139,23 @@ class ConversionLearner:
             else:
                 tip = f"{stage} performing well ({cvr:.1%} CVR). Scale traffic to this stage."
 
-            insights.append(FunnelInsight(
-                stage=stage,
-                conversion_rate=round(cvr, 4),
-                avg_time_seconds=round(avg_time, 2),
-                drop_rate=round(drop_rate, 4),
-                optimization_tip=tip,
-                revenue_impact_usd=round(stage_revenue, 2),
-            ))
+            insights.append(
+                FunnelInsight(
+                    stage=stage,
+                    conversion_rate=round(cvr, 4),
+                    avg_time_seconds=round(avg_time, 2),
+                    drop_rate=round(drop_rate, 4),
+                    optimization_tip=tip,
+                    revenue_impact_usd=round(stage_revenue, 2),
+                )
+            )
 
         return sorted(insights, key=lambda i: i.conversion_rate, reverse=True)
 
     async def identify_friction_points(self) -> list[dict]:
         insights = await self.funnel_analysis()
         friction = []
-        for i, insight in enumerate(insights):
+        for _i, insight in enumerate(insights):
             if insight.conversion_rate < 0.1 or insight.drop_rate > 0.5:
                 if insight.conversion_rate < 0.05:
                     priority = "critical"
@@ -165,13 +167,15 @@ class ConversionLearner:
                     priority = "medium"
                     fix = "A/B test copy changes, improve mobile UX, add progress indicators"
 
-                friction.append({
-                    "stage": insight.stage,
-                    "conversion_rate": insight.conversion_rate,
-                    "drop_rate": insight.drop_rate,
-                    "priority": priority,
-                    "recommended_fix": fix,
-                })
+                friction.append(
+                    {
+                        "stage": insight.stage,
+                        "conversion_rate": insight.conversion_rate,
+                        "drop_rate": insight.drop_rate,
+                        "priority": priority,
+                        "recommended_fix": fix,
+                    }
+                )
 
         return sorted(friction, key=lambda f: f["drop_rate"], reverse=True)
 
@@ -180,9 +184,7 @@ class ConversionLearner:
         # Sorted by CVR desc already — fastest path to conversion
         return [i.stage for i in insights]
 
-    async def conversion_forecast(
-        self, target_conversions: int, current_cvr: float = 0.02
-    ) -> dict:
+    async def conversion_forecast(self, target_conversions: int, current_cvr: float = 0.02) -> dict:
         await self._load()
 
         # Use actual CVR if we have data
@@ -237,7 +239,7 @@ class ConversionLearner:
         }
 
 
-_learner_instance: Optional[ConversionLearner] = None
+_learner_instance: ConversionLearner | None = None
 
 
 def get_conversion_learner() -> ConversionLearner:

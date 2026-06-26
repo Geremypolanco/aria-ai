@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import IntEnum, Enum
-from typing import Callable
+from datetime import UTC, datetime
+from enum import IntEnum, StrEnum
+from typing import TYPE_CHECKING
 
 from apps.core.memory.redis_client import get_cache
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _OBJECTIVES_KEY = "autonomy:objectives:v1"
 _HISTORY_KEY = "autonomy:history:v1"
@@ -22,7 +27,7 @@ class ObjectivePriority(IntEnum):
     LOW = 4
 
 
-class ObjectiveStatus(str, Enum):
+class ObjectiveStatus(StrEnum):
     ACTIVE = "active"
     PAUSED = "paused"
     COMPLETED = "completed"
@@ -165,7 +170,11 @@ class AutonomousScheduler:
     async def _save_objectives(self, objectives: dict[str, StrategicObjective]) -> None:
         try:
             cache = get_cache()
-            await cache.set(_OBJECTIVES_KEY, {k: v.to_dict() for k, v in objectives.items()}, ttl_seconds=_OBJECTIVES_TTL)
+            await cache.set(
+                _OBJECTIVES_KEY,
+                {k: v.to_dict() for k, v in objectives.items()},
+                ttl_seconds=_OBJECTIVES_TTL,
+            )
         except Exception:
             pass
 
@@ -182,7 +191,9 @@ class AutonomousScheduler:
     async def _save_history(self, records: list[ExecutionRecord]) -> None:
         try:
             cache = get_cache()
-            await cache.set(_HISTORY_KEY, [r.to_dict() for r in records[-500:]], ttl_seconds=_HISTORY_TTL)
+            await cache.set(
+                _HISTORY_KEY, [r.to_dict() for r in records[-500:]], ttl_seconds=_HISTORY_TTL
+            )
         except Exception:
             pass
 
@@ -198,7 +209,9 @@ class AutonomousScheduler:
 
     async def run_due_objectives(self) -> list[ExecutionRecord]:
         objectives = await self.get_objectives()
-        due = [o for o in objectives if o.enabled and o.status == ObjectiveStatus.ACTIVE and o.is_due()]
+        due = [
+            o for o in objectives if o.enabled and o.status == ObjectiveStatus.ACTIVE and o.is_due()
+        ]
         if not due:
             return []
 
@@ -226,7 +239,10 @@ class AutonomousScheduler:
             if handler is not None:
                 output = await handler(obj)
             else:
-                output = {"skipped": True, "reason": f"No handler registered for '{obj.handler_key}'"}
+                output = {
+                    "skipped": True,
+                    "reason": f"No handler registered for '{obj.handler_key}'",
+                }
 
             record.success = True
             record.output = output if isinstance(output, dict) else {"result": str(output)}
@@ -247,10 +263,8 @@ class AutonomousScheduler:
 
     async def continuous_loop(self, interval_seconds: int = 300) -> None:
         while True:
-            try:
+            with contextlib.suppress(Exception):
                 await self.run_due_objectives()
-            except Exception:
-                pass
             await asyncio.sleep(interval_seconds)
 
     async def reprioritize(self) -> None:
@@ -261,7 +275,11 @@ class AutonomousScheduler:
             if value_per_run > 10 and obj.priority > ObjectivePriority.HIGH:
                 obj.priority = ObjectivePriority(int(obj.priority) - 1)
                 changed = True
-            if obj.total_runs >= 5 and obj.success_rate < 0.2 and obj.status == ObjectiveStatus.ACTIVE:
+            if (
+                obj.total_runs >= 5
+                and obj.success_rate < 0.2
+                and obj.status == ObjectiveStatus.ACTIVE
+            ):
                 obj.status = ObjectiveStatus.PAUSED
                 changed = True
         if changed:
@@ -470,7 +488,8 @@ class AutonomousScheduler:
                 priority=ObjectivePriority.HIGH,
                 frequency_hours=168.0,  # 7 days
                 handler_key="weekly_review",
-                next_run_ts=now + 3600 * 120,  # first review after 5 days (allows data to accumulate)
+                next_run_ts=now
+                + 3600 * 120,  # first review after 5 days (allows data to accumulate)
             ),
             StrategicObjective(
                 obj_id="content_calendar_builder",
@@ -699,7 +718,9 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
 
     async def _growth_loops_cycle(obj: StrategicObjective) -> dict:
         import random as _rnd
+
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         results = []
         total_value = 0.0
@@ -715,30 +736,38 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             except Exception:
                 pass
         success = any(r["success"] for r in results)
-        return {"success": success, "summary": f"Growth loops: {len(results)} strategies | ${total_value:.1f}", "value_usd": total_value}
+        return {
+            "success": success,
+            "summary": f"Growth loops: {len(results)} strategies | ${total_value:.1f}",
+            "value_usd": total_value,
+        }
 
     async def _shopify_optimization(obj: StrategicObjective) -> dict:
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         r = await loop._run_one_cycle(force_strategy="shopify_listing")
         return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
 
     async def _content_generation(obj: StrategicObjective) -> dict:
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         r = await loop._run_one_cycle(force_strategy="content_pipeline")
         return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
 
     async def _market_intelligence(obj: StrategicObjective) -> dict:
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         r = await loop._run_one_cycle(force_strategy="opportunity_scan")
         return {"success": r.success, "summary": r.summary, "value_usd": 0.0}
 
     async def _crm_nurture(obj: StrategicObjective) -> dict:
-        from apps.core.tools.income_loop import get_income_loop
-        from apps.business.crm.retention import get_retention_engine
         from apps.business.crm.crm_engine import get_crm_engine
+        from apps.business.crm.retention import get_retention_engine
+        from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         r = await loop._run_one_cycle(force_strategy="email_campaign")
         # Also run retention campaigns against high-risk CRM customers
@@ -761,18 +790,25 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
 
     async def _economic_rebalancing(obj: StrategicObjective) -> dict:
         await scheduler.reprioritize()
-        return {"success": True, "summary": "Strategic objectives reprioritized by ROI", "value_usd": 0.0}
+        return {
+            "success": True,
+            "summary": "Strategic objectives reprioritized by ROI",
+            "value_usd": 0.0,
+        }
 
     async def _morning_briefing(obj: StrategicObjective) -> dict:
-        import datetime as _dt, json as _json
-        from apps.core.tools.income_loop import get_income_loop, STRATEGIES
+        import datetime as _dt
+        import json as _json
+
+        from apps.core.tools.income_loop import STRATEGIES, get_income_loop
+
         loop = get_income_loop()
         creds = loop.check_credentials()
-        active_channels  = list(creds.get("active", {}).keys())
+        active_channels = list(creds.get("active", {}).keys())
         inactive_channels = list(creds.get("inactive", {}).keys())
-        history_records  = await scheduler.history(limit=24)
+        history_records = await scheduler.history(limit=24)
         recent_successes = sum(1 for r in history_records if r.success)
-        recent_value     = sum(r.value_generated_usd for r in history_records)
+        recent_value = sum(r.value_generated_usd for r in history_records)
 
         # Income loop stats + best strategy + pending opportunities
         income_total_cycles = 0
@@ -785,12 +821,17 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
 
         try:
             from apps.core.memory.redis_client import get_cache
+
             _cache = get_cache()
             if _cache:
-                income_total_cycles  = int(await _cache.get("aria:income:total_cycles") or 0)
-                income_success       = int(await _cache.get("aria:income:successful_cycles") or 0)
-                income_success_rate  = (income_success / income_total_cycles * 100) if income_total_cycles else 0
-                total_urls_published = int(await _cache.get("aria:income:total_urls_published") or 0)
+                income_total_cycles = int(await _cache.get("aria:income:total_cycles") or 0)
+                income_success = int(await _cache.get("aria:income:successful_cycles") or 0)
+                income_success_rate = (
+                    (income_success / income_total_cycles * 100) if income_total_cycles else 0
+                )
+                total_urls_published = int(
+                    await _cache.get("aria:income:total_urls_published") or 0
+                )
                 # Best strategy by revenue
                 for sname, _ in STRATEGIES:
                     raw_rev = await _cache.get(f"aria:income:strategy:{sname}:revenue")
@@ -800,7 +841,7 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                         best_strategy = sname
                 # Pending opportunities from trend detector
                 raw_opps = await _cache.lrange("aria:income:opportunity_queue", -5, -1)
-                for raw in (raw_opps or []):
+                for raw in raw_opps or []:
                     try:
                         opp = _json.loads(raw) if isinstance(raw, str) else raw
                         pending_opps.append(opp.get("name", "")[:50])
@@ -810,7 +851,9 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                 raw_links = await _cache.get("aria:blog:links")
                 if raw_links:
                     link_data = _json.loads(raw_links) if isinstance(raw_links, str) else raw_links
-                    income_recent_urls = [item.get("url", "") for item in (link_data or [])[:3] if item.get("url")]
+                    income_recent_urls = [
+                        item.get("url", "") for item in (link_data or [])[:3] if item.get("url")
+                    ]
                 # Also check product catalog for today's additions
                 raw_prods = await _cache.lrange("aria:products:catalog", -3, -1)
                 for raw_p in reversed(raw_prods or []):
@@ -835,7 +878,9 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             f"• Valor estratégico generado: <b>${recent_value:.2f}</b>",
         ]
         if best_strategy:
-            lines.append(f"• 🏆 Mejor estrategia: <b>{best_strategy}</b> (${best_strategy_rev:.2f} acumulado)")
+            lines.append(
+                f"• 🏆 Mejor estrategia: <b>{best_strategy}</b> (${best_strategy_rev:.2f} acumulado)"
+            )
 
         if income_recent_urls:
             lines += ["", "<b>📝 Publicaciones recientes:</b>"]
@@ -849,7 +894,7 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
 
         lines += [
             "",
-            f"<b>📡 Objetivos estratégicos hoy:</b>",
+            "<b>📡 Objetivos estratégicos hoy:</b>",
             f"• {recent_successes}/{len(history_records)} completados exitosamente",
             "",
             f"<b>✅ Canales activos ({len(active_channels)}):</b> {', '.join(active_channels[:6]) or 'ninguno'}",
@@ -866,6 +911,7 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         content_theme = ""
         try:
             from apps.core.memory.redis_client import get_cache as _gc2
+
             _cache2 = _gc2()
             if _cache2:
                 raw_intel = await _cache2.get("aria:intel:competitor_latest")
@@ -880,26 +926,31 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             pass
 
         if competitor_insight:
-            lines += ["", f"<b>🔍 Inteligencia de mercado:</b>", f"  💡 {competitor_insight}"]
+            lines += ["", "<b>🔍 Inteligencia de mercado:</b>", f"  💡 {competitor_insight}"]
         if content_theme:
             lines += [f"  📅 Tema del mes: <i>{content_theme}</i>"]
 
         lines += [
             "",
             "<b>🤖 Agenda autónoma de hoy:</b>",
-            f"• 🔥 Trend scan c/4h | Competitor intel c/12h | Social organic c/8h",
-            f"• 📹 YouTube c/12h | Pinterest + Landing pages automático",
+            "• 🔥 Trend scan c/4h | Competitor intel c/12h | Social organic c/8h",
+            "• 📹 YouTube c/12h | Pinterest + Landing pages automático",
             f"• 🚀 {strategy_count} estrategias rotando c/30min (smart_pricing + voice_of_aria incluidos)",
-            f"• 🧠 Self-improvement c/48h | Strategy optimizer c/24h",
-            f"• 📊 Weekly review c/7d | Content calendar c/7d | Daily digest c/24h",
+            "• 🧠 Self-improvement c/48h | Strategy optimizer c/24h",
+            "• 📊 Weekly review c/7d | Content calendar c/7d | Daily digest c/24h",
         ]
 
         message = "\n".join(lines)
         try:
             from apps.core.tools.telegram_bot import get_bot
+
             bot = get_bot()
             await bot.notify_owner(message)
-            return {"success": True, "summary": "Morning briefing v3 sent via Telegram", "value_usd": 0.0}
+            return {
+                "success": True,
+                "summary": "Morning briefing v3 sent via Telegram",
+                "value_usd": 0.0,
+            }
         except Exception as e:
             return {"success": False, "summary": f"Failed to send briefing: {e}", "value_usd": 0.0}
 
@@ -909,6 +960,7 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         More powerful than the original blitz: landing page + 8-platform amplification.
         """
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         results = []
         total_value = 0.0
@@ -939,10 +991,12 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         Evening digest: full revenue breakdown + published URLs + 7d projection.
         Sent proactively at ~8pm. Also archived to GitHub aria-insights/reports/.
         """
-        import json as _json
         import datetime as _dt
-        from apps.core.tools.income_loop import get_income_loop, STRATEGIES, INTERVAL_SECONDS
-        loop = get_income_loop()
+        import json as _json
+
+        from apps.core.tools.income_loop import INTERVAL_SECONDS, STRATEGIES, get_income_loop
+
+        get_income_loop()
         today_str = _dt.datetime.now().strftime("%Y-%m-%d")
 
         total_cycles = 0
@@ -952,30 +1006,30 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         strategy_rows: list[dict] = []
         recent_urls: list[str] = []
         waitlist_count = 0
-        bundle_count = 0
         catalog_count = 0
 
         try:
             from apps.core.memory.redis_client import get_cache
+
             _cache = get_cache()
             if _cache:
-                total_cycles  = int(await _cache.get("aria:income:total_cycles") or 0)
+                total_cycles = int(await _cache.get("aria:income:total_cycles") or 0)
                 success_count = int(await _cache.get("aria:income:successful_cycles") or 0)
-                total_urls    = int(await _cache.get("aria:income:total_urls_published") or 0)
+                total_urls = int(await _cache.get("aria:income:total_urls_published") or 0)
 
                 # Per-strategy revenue
-                for name, weight in STRATEGIES:
-                    runs  = int(await _cache.get(f"aria:income:strategy:{name}:runs") or 0)
-                    wins  = int(await _cache.get(f"aria:income:strategy:{name}:successes") or 0)
+                for name, _weight in STRATEGIES:
+                    runs = int(await _cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                    wins = int(await _cache.get(f"aria:income:strategy:{name}:successes") or 0)
                     raw_r = await _cache.get(f"aria:income:strategy:{name}:revenue")
-                    rev   = float(raw_r) if raw_r else 0.0
+                    rev = float(raw_r) if raw_r else 0.0
                     total_rev += rev
                     if runs > 0:
                         strategy_rows.append({"name": name, "runs": runs, "wins": wins, "rev": rev})
 
                 # Recent URLs
                 history_raw = await _cache.lrange("aria:income:loop_history", -48, -1)
-                for raw in (history_raw or []):
+                for raw in history_raw or []:
                     try:
                         c = _json.loads(raw) if isinstance(raw, str) else raw
                         recent_urls.extend(c.get("urls_created", []))
@@ -998,8 +1052,8 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
 
         # Revenue projection
         cycles_per_day = (24 * 3600) / INTERVAL_SECONDS
-        rev_per_cycle  = total_rev / max(total_cycles, 1)
-        proj_7d  = rev_per_cycle * cycles_per_day * 7
+        rev_per_cycle = total_rev / max(total_cycles, 1)
+        proj_7d = rev_per_cycle * cycles_per_day * 7
         proj_30d = rev_per_cycle * cycles_per_day * 30
 
         lines = [
@@ -1036,18 +1090,20 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             "",
             "<i>ARIA sigue trabajando durante la noche. Mañana más. 🚀</i>",
             "",
-            f"<i>Usa /reporte para analíticas completas | /catalogo para ver productos</i>",
+            "<i>Usa /reporte para analíticas completas | /catalogo para ver productos</i>",
         ]
 
         message = "\n".join(lines)
 
         # Archive to GitHub
         try:
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.config import settings
             import base64 as _b64
+
+            from apps.core.config import settings
+            from apps.core.tools.github_client import AriaGitHubClient
+
             if settings.GITHUB_TOKEN:
-                gh    = AriaGitHubClient()
+                gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
                 report_md = (
                     f"# ARIA Daily Revenue Digest — {today_str}\n\n"
@@ -1066,24 +1122,33 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                     f"\n*Generated by ARIA AI — {today_str}*\n"
                 )
                 encoded = _b64.b64encode(report_md.encode()).decode()
-                await gh._put(f"/repos/{owner}/aria-insights/contents/reports/{today_str}-digest.md", {
-                    "message": f"digest: daily revenue report {today_str}",
-                    "content": encoded,
-                })
+                await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/reports/{today_str}-digest.md",
+                    {
+                        "message": f"digest: daily revenue report {today_str}",
+                        "content": encoded,
+                    },
+                )
         except Exception:
             pass
 
         try:
             from apps.core.tools.telegram_bot import get_bot
+
             bot = get_bot()
             await bot.notify_owner(message)
-            return {"success": True, "summary": f"Daily digest sent — ${total_rev:.2f} revenue, {total_urls} URLs", "value_usd": 0.0}
+            return {
+                "success": True,
+                "summary": f"Daily digest sent — ${total_rev:.2f} revenue, {total_urls} URLs",
+                "value_usd": 0.0,
+            }
         except Exception as e:
             return {"success": False, "summary": f"Daily digest failed: {e}", "value_usd": 0.0}
 
     async def _bundle_and_waitlist(obj: StrategicObjective) -> dict:
         """Run both product_bundle and waitlist_builder in one shot for maximum pipeline."""
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         total_value = 0.0
         results = []
@@ -1093,7 +1158,9 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         total_value += bundle_r.revenue_potential
 
         waitlist_r = await loop._run_one_cycle(force_strategy="waitlist_builder")
-        results.append({"step": "waitlist", "success": waitlist_r.success, "summary": waitlist_r.summary})
+        results.append(
+            {"step": "waitlist", "success": waitlist_r.success, "summary": waitlist_r.summary}
+        )
         total_value += waitlist_r.revenue_potential
 
         successes = sum(1 for r in results if r.get("success"))
@@ -1121,45 +1188,57 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         content to GitHub, removes completed challenges.
         """
         import json as _json
+
         from apps.core.config import settings
+
         total_published = 0
         completed_challenges = 0
 
         try:
             from apps.core.memory.redis_client import get_cache
+
             _cache = get_cache()
             if not _cache or not settings.GITHUB_TOKEN:
-                return {"success": False, "summary": "challenge_sequencer: need Redis + GITHUB_TOKEN", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "challenge_sequencer: need Redis + GITHUB_TOKEN",
+                    "value_usd": 0.0,
+                }
+
+            import base64 as _b64
+            from datetime import datetime
 
             from apps.core.tools.github_client import AriaGitHubClient
-            import base64 as _b64
-            from datetime import datetime, timezone
 
-            gh    = AriaGitHubClient()
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
-            repo  = "aria-insights"
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            repo = "aria-insights"
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             # Load active challenges
             raw_challenges = await _cache.lrange("aria:income:challenges_active", 0, -1)
-            updated_list   = []
+            updated_list = []
 
-            for raw in (raw_challenges or []):
+            for raw in raw_challenges or []:
                 try:
                     ch = _json.loads(raw) if isinstance(raw, str) else raw
-                    remaining_raw   = ch.get("remaining_days", "[]")
-                    remaining_days  = _json.loads(remaining_raw) if isinstance(remaining_raw, str) else remaining_raw
+                    remaining_raw = ch.get("remaining_days", "[]")
+                    remaining_days = (
+                        _json.loads(remaining_raw)
+                        if isinstance(remaining_raw, str)
+                        else remaining_raw
+                    )
 
                     if not remaining_days:
                         completed_challenges += 1
                         continue  # challenge complete — don't keep
 
-                    day_data    = remaining_days[0]
-                    still_left  = remaining_days[1:]
-                    day_num     = ch.get("days_published", 1) + 1
-                    ch_name     = ch.get("name", "7-Day Challenge")
-                    ch_slug     = ch.get("slug", "challenge")
-                    ch_url      = ch.get("url", "")
+                    day_data = remaining_days[0]
+                    still_left = remaining_days[1:]
+                    day_num = ch.get("days_published", 1) + 1
+                    ch_name = ch.get("name", "7-Day Challenge")
+                    ch_slug = ch.get("slug", "challenge")
+                    ch_url = ch.get("url", "")
                     upsell_prod = ch.get("upsell_product", "Full Course")
                     upsell_price = ch.get("upsell_price", 47)
 
@@ -1178,11 +1257,14 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
 *[ARIA AI](https://github.com/{owner}/aria-portfolio)*
 """
                     filename = f"challenges/{today}-{ch_slug}-day{day_num}.md"
-                    encoded  = _b64.b64encode(day_content.encode()).decode()
-                    file_r   = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
-                        "message": f"challenge day {day_num}: {ch_name[:50]}",
-                        "content": encoded,
-                    })
+                    encoded = _b64.b64encode(day_content.encode()).decode()
+                    file_r = await gh._put(
+                        f"/repos/{owner}/{repo}/contents/{filename}",
+                        {
+                            "message": f"challenge day {day_num}: {ch_name[:50]}",
+                            "content": encoded,
+                        },
+                    )
 
                     if "error" not in file_r:
                         total_published += 1
@@ -1203,14 +1285,23 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                     await _cache.rpush("aria:income:challenges_active", ch_raw)
 
         except Exception as exc:
-            return {"success": False, "summary": f"challenge_sequencer error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"challenge_sequencer error: {exc}",
+                "value_usd": 0.0,
+            }
 
         summary = f"Challenge sequencer: {total_published} days published, {completed_challenges} challenges completed"
-        return {"success": total_published > 0 or completed_challenges > 0, "summary": summary, "value_usd": float(total_published) * 2}
+        return {
+            "success": total_published > 0 or completed_challenges > 0,
+            "summary": summary,
+            "value_usd": float(total_published) * 2,
+        }
 
     async def _partner_outreach_cycle(obj: StrategicObjective) -> dict:
         """Run partner_outreach strategy to cover a new B2B niche."""
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         r = await loop._run_one_cycle(force_strategy="partner_outreach")
         return {"success": r.success, "summary": r.summary, "value_usd": r.revenue_potential}
@@ -1220,9 +1311,9 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         Every 6h: scan income loop + Shopify + objectives, find what's lagging,
         execute the most valuable action, and send a brief Telegram status ping.
         """
-        import json as _json
         import random as _rnd
-        from apps.core.tools.income_loop import get_income_loop, STRATEGIES
+
+        from apps.core.tools.income_loop import STRATEGIES, get_income_loop
 
         loop = get_income_loop()
         action_taken = ""
@@ -1231,6 +1322,7 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         try:
             # 1. Check which strategies haven't run recently (underweight)
             from apps.core.memory.redis_client import get_cache
+
             _cache = get_cache()
             strategy_runs: dict[str, int] = {}
             if _cache:
@@ -1241,12 +1333,11 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
             # Find least-run strategies (excluding viral_thread/social_blitz — too spammy)
             exclude = {"viral_thread", "social_blitz", "github_sponsors_setup"}
             sorted_strats = sorted(
-                [(n, r) for n, r in strategy_runs.items() if n not in exclude],
-                key=lambda x: x[1]
+                [(n, r) for n, r in strategy_runs.items() if n not in exclude], key=lambda x: x[1]
             )
 
             # Pick least-run strategy with decent weight
-            weight_map = {name: w for name, w in STRATEGIES}
+            weight_map = dict(STRATEGIES)
             best_strategy = None
             for name, _runs in sorted_strats[:5]:
                 if weight_map.get(name, 0) >= 3:
@@ -1256,7 +1347,7 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                 best_strategy = _rnd.choices(
                     [n for n, _ in STRATEGIES if n not in exclude],
                     weights=[w for n, w in STRATEGIES if n not in exclude],
-                    k=1
+                    k=1,
                 )[0]
 
             # 2. Execute best strategy
@@ -1276,13 +1367,16 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                     total_value += shopify_r.revenue_potential
                     shopify_ran = True
                     if _cache:
-                        await _cache.set("aria:shopify:last_seo_run", str(time.time()), ttl_seconds=86400)
+                        await _cache.set(
+                            "aria:shopify:last_seo_run", str(time.time()), ttl_seconds=86400
+                        )
                 except Exception:
                     pass
 
             # 4. Send brief Telegram ping (non-blocking — don't fail if no bot)
             try:
                 from apps.core.tools.telegram_bot import get_bot
+
                 bot = get_bot()
                 msg_parts = [
                     "🤖 <b>ARIA — Análisis Proactivo</b>",
@@ -1302,7 +1396,11 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                 pass
 
         except Exception as exc:
-            return {"success": False, "summary": f"proactive_analysis error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"proactive_analysis error: {exc}",
+                "value_usd": 0.0,
+            }
 
         return {
             "success": True,
@@ -1316,6 +1414,7 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         to build organic traffic from all three platforms simultaneously.
         """
         from apps.core.tools.income_loop import get_income_loop
+
         loop = get_income_loop()
         total_value = 0.0
         results = []
@@ -1344,11 +1443,17 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         to use on next pick. TRUE self-learning — ARIA optimizes what it does.
         """
         from apps.core.tools.income_loop import STRATEGIES
+
         try:
             from apps.core.memory.redis_client import get_cache
+
             _cache = get_cache()
             if not _cache:
-                return {"success": False, "summary": "strategy_optimizer: no Redis", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "strategy_optimizer: no Redis",
+                    "value_usd": 0.0,
+                }
 
             strategy_stats: list[dict] = []
             for name, default_weight in STRATEGIES:
@@ -1357,26 +1462,32 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                 raw_rev = await _cache.get(f"aria:income:strategy:{name}:revenue")
                 revenue = float(raw_rev) if raw_rev else 0.0
                 success_rate = wins / max(runs, 1)
-                rev_per_run  = revenue / max(runs, 1)
+                rev_per_run = revenue / max(runs, 1)
                 # ROI score: 40% success rate + 60% revenue per run (normalized to $10)
                 roi_score = (success_rate * 0.4) + min(rev_per_run / 10.0, 1.0) * 0.6
-                strategy_stats.append({
-                    "name": name,
-                    "runs": runs,
-                    "roi_score": roi_score,
-                    "default_weight": default_weight,
-                    "revenue": revenue,
-                })
+                strategy_stats.append(
+                    {
+                        "name": name,
+                        "runs": runs,
+                        "roi_score": roi_score,
+                        "default_weight": default_weight,
+                        "revenue": revenue,
+                    }
+                )
 
             # Only optimize strategies that have enough data (min 3 runs)
-            with_data    = [s for s in strategy_stats if s["runs"] >= 3]
+            with_data = [s for s in strategy_stats if s["runs"] >= 3]
             without_data = [s for s in strategy_stats if s["runs"] < 3]
 
             if not with_data:
-                return {"success": False, "summary": "strategy_optimizer: not enough data yet (need 3+ runs per strategy)", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "strategy_optimizer: not enough data yet (need 3+ runs per strategy)",
+                    "value_usd": 0.0,
+                }
 
             # Compute adaptive weights: scale ROI scores to sum=100
-            total_default_weight = sum(s["default_weight"] for s in strategy_stats)
+            sum(s["default_weight"] for s in strategy_stats)
             # For strategies WITH data: use ROI score × default_weight
             # For strategies WITHOUT data: use default weight (exploration)
             raw_weights: dict[str, float] = {}
@@ -1397,12 +1508,18 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
 
             # Log top performers
             top = sorted(with_data, key=lambda s: -s["roi_score"])[:5]
-            summary = "Optimizer: top=" + ", ".join(f"{s['name']}({s['roi_score']:.2f})" for s in top[:3])
+            summary = "Optimizer: top=" + ", ".join(
+                f"{s['name']}({s['roi_score']:.2f})" for s in top[:3]
+            )
 
             return {"success": True, "summary": summary, "value_usd": 0.0}
 
         except Exception as exc:
-            return {"success": False, "summary": f"strategy_optimizer error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"strategy_optimizer error: {exc}",
+                "value_usd": 0.0,
+            }
 
     async def _self_improve(obj: StrategicObjective) -> dict:
         """
@@ -1411,14 +1528,19 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
         This makes ARIA progressively smarter and more effective over time.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.income_loop import get_income_loop, STRATEGIES
-            from apps.core.memory.redis_client import get_cache
             import json as _json
+
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.income_loop import STRATEGIES
 
             ai = get_ai_client()
             if not ai:
-                return {"success": False, "summary": "self_improve: AI unavailable", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "self_improve: AI unavailable",
+                    "value_usd": 0.0,
+                }
 
             cache = get_cache()
 
@@ -1428,17 +1550,20 @@ def _register_default_handlers(scheduler: AutonomousScheduler) -> None:
                 for name, _ in STRATEGIES:
                     runs = int(await cache.get(f"aria:income:strategy:{name}:runs") or 0)
                     wins = int(await cache.get(f"aria:income:strategy:{name}:successes") or 0)
-                    rev  = float(await cache.get(f"aria:income:strategy:{name}:revenue") or 0)
+                    rev = float(await cache.get(f"aria:income:strategy:{name}:revenue") or 0)
                     if runs > 0:
-                        strategy_data.append(f"{name}: {runs} runs, {wins/runs:.0%} success, ${rev:.1f} revenue")
+                        strategy_data.append(
+                            f"{name}: {runs} runs, {wins/runs:.0%} success, ${rev:.1f} revenue"
+                        )
 
             total_cycles = int(await cache.get("aria:income:total_cycles") or 0) if cache else 0
-            total_urls   = int(await cache.get("aria:income:total_urls_published") or 0) if cache else 0
+            total_urls = (
+                int(await cache.get("aria:income:total_urls_published") or 0) if cache else 0
+            )
 
             perf_summary = "\n".join(strategy_data[:15]) or "No data yet"
 
             # Ask AI to generate learned rules from performance data
-            from apps.core.tools.ai_client import AIResponse
             resp = await ai.complete(
                 system=(
                     "You are analyzing ARIA's autonomous business performance. "
@@ -1459,14 +1584,26 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
             )
 
             if not resp.success or not resp.content:
-                return {"success": False, "summary": "self_improve: AI didn't generate rules", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "self_improve: AI didn't generate rules",
+                    "value_usd": 0.0,
+                }
 
-            new_rules = [line.strip() for line in resp.content.strip().split("\n") if line.strip() and len(line.strip()) > 20][:5]
+            new_rules = [
+                line.strip()
+                for line in resp.content.strip().split("\n")
+                if line.strip() and len(line.strip()) > 20
+            ][:5]
 
             # Store new learned rules in Redis (appended to existing)
             if cache and new_rules:
                 existing_raw = await cache.get("aria:mind:learned") or []
-                existing: list = _json.loads(existing_raw) if isinstance(existing_raw, str) else (existing_raw if isinstance(existing_raw, list) else [])
+                existing: list = (
+                    _json.loads(existing_raw)
+                    if isinstance(existing_raw, str)
+                    else (existing_raw if isinstance(existing_raw, list) else [])
+                )
                 # Append new rules (max 30 total)
                 updated = (existing + new_rules)[-30:]
                 await cache.set("aria:mind:learned", updated, ttl_seconds=86400 * 365)
@@ -1485,7 +1622,8 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
         """Generate a YouTube content strategy and archive it every 12 hours."""
         try:
             from apps.core.tools.income_loop import get_income_loop
-            loop   = get_income_loop()
+
+            loop = get_income_loop()
             result = await loop._exec_youtube_strategy()
             return {
                 "success": result.get("success", False),
@@ -1500,12 +1638,14 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
         """Create a complete Product Hunt launch kit every 72 hours."""
         try:
             from apps.core.tools.income_loop import get_income_loop
-            loop   = get_income_loop()
+
+            loop = get_income_loop()
             result = await loop._exec_product_hunt_launch()
             # Telegram ping on success (major event)
             if result.get("success"):
                 try:
                     from apps.core.tools.telegram_bot import get_bot
+
                     bot = get_bot()
                     urls = result.get("urls", [])
                     url_line = f"\n🔗 {urls[0]}" if urls else ""
@@ -1523,7 +1663,11 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
                 "urls": result.get("urls", []),
             }
         except Exception as exc:
-            return {"success": False, "summary": f"product_hunt_cycle error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"product_hunt_cycle error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("daily_revenue_digest", _daily_revenue_digest)
     scheduler.register_handler("bundle_and_waitlist", _bundle_and_waitlist)
@@ -1533,6 +1677,7 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
     scheduler.register_handler("social_organic", _social_organic)
     scheduler.register_handler("strategy_optimizer", _strategy_optimizer)
     scheduler.register_handler("self_improve", _self_improve)
+
     async def _trend_detector(obj: StrategicObjective) -> dict:
         """
         Scan trending topics every 4h and queue them for income loop strategies.
@@ -1540,12 +1685,13 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
         Queued topics go into aria:income:opportunity_queue for content_pipeline / product_factory.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.memory.redis_client import get_cache
             import json as _json
 
-            wt    = WebTools()
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.web_tools import WebTools
+
+            wt = WebTools()
             cache = get_cache()
             trends_found: list[str] = []
 
@@ -1602,7 +1748,11 @@ Format: one rule per line, starting with a verb (Execute, Prioritize, Avoid, Alw
                         pass
 
             if not trends_found:
-                return {"success": False, "summary": "trend_detector: no trends found", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "trend_detector: no trends found",
+                    "value_usd": 0.0,
+                }
 
             # 2. Ask AI to extract top 5 monetizable opportunities from trends
             opportunities = await complete_json(
@@ -1636,14 +1786,16 @@ Return JSON array:
                         try:
                             await cache.rpush(
                                 "aria:income:opportunity_queue",
-                                _json.dumps({
-                                    "name": opp["name"],
-                                    "strategy": opp.get("strategy", "content_pipeline"),
-                                    "why": opp.get("why", ""),
-                                    "urgency": opp.get("urgency", "medium"),
-                                    "source": "trend_detector",
-                                    "ts": time.time(),
-                                }),
+                                _json.dumps(
+                                    {
+                                        "name": opp["name"],
+                                        "strategy": opp.get("strategy", "content_pipeline"),
+                                        "why": opp.get("why", ""),
+                                        "urgency": opp.get("urgency", "medium"),
+                                        "source": "trend_detector",
+                                        "ts": time.time(),
+                                    }
+                                ),
                             )
                             await cache.ltrim("aria:income:opportunity_queue", -50, -1)
                             queued += 1
@@ -1665,8 +1817,10 @@ Return JSON array:
         4. Next-week action plan (AI-generated based on data)
         5. Archive report to aria-insights/reports/ + Telegram notification
         """
-        import datetime as _dt, json as _json
-        from apps.core.tools.income_loop import get_income_loop, STRATEGIES, INTERVAL_SECONDS
+        import datetime as _dt
+
+        from apps.core.tools.income_loop import INTERVAL_SECONDS, STRATEGIES, get_income_loop
+
         loop = get_income_loop()
 
         total_cycles = 0
@@ -1678,19 +1832,20 @@ Return JSON array:
 
         try:
             from apps.core.memory.redis_client import get_cache
+
             _cache = get_cache()
             if _cache:
-                total_cycles  = int(await _cache.get("aria:income:total_cycles") or 0)
+                total_cycles = int(await _cache.get("aria:income:total_cycles") or 0)
                 success_count = int(await _cache.get("aria:income:successful_cycles") or 0)
-                total_urls    = int(await _cache.get("aria:income:total_urls_published") or 0)
-                catalog_raw   = await _cache.lrange("aria:products:catalog", -50, -1)
+                total_urls = int(await _cache.get("aria:income:total_urls_published") or 0)
+                catalog_raw = await _cache.lrange("aria:products:catalog", -50, -1)
                 catalog_count = len(catalog_raw or [])
 
-                for name, weight in STRATEGIES:
-                    runs  = int(await _cache.get(f"aria:income:strategy:{name}:runs") or 0)
-                    wins  = int(await _cache.get(f"aria:income:strategy:{name}:successes") or 0)
+                for name, _weight in STRATEGIES:
+                    runs = int(await _cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                    wins = int(await _cache.get(f"aria:income:strategy:{name}:successes") or 0)
                     raw_r = await _cache.get(f"aria:income:strategy:{name}:revenue")
-                    rev   = float(raw_r) if raw_r else 0.0
+                    rev = float(raw_r) if raw_r else 0.0
                     total_rev += rev
                     if runs > 0:
                         strategy_rows.append({"name": name, "runs": runs, "wins": wins, "rev": rev})
@@ -1708,8 +1863,12 @@ Return JSON array:
         action_plan = ""
         try:
             from apps.core.llm.llm_client import complete_json
-            top_5 = [f"{r['name']}: ${r['rev']:.1f} ({r['wins']}/{r['runs']} wins)" for r in strategy_rows[:5]]
-            bottom_5 = [r['name'] for r in strategy_rows[-5:] if r['runs'] > 0]
+
+            top_5 = [
+                f"{r['name']}: ${r['rev']:.1f} ({r['wins']}/{r['runs']} wins)"
+                for r in strategy_rows[:5]
+            ]
+            bottom_5 = [r["name"] for r in strategy_rows[-5:] if r["runs"] > 0]
             plan_data = await complete_json(
                 f"""ARIA is an autonomous AI income system. Here's the weekly performance summary:
 
@@ -1731,27 +1890,31 @@ Return JSON: {{"plan": ["Action 1", "Action 2", "Action 3"], "key_insight": "one
                 if key_insight:
                     action_plan = f"💡 {key_insight}\n\n" + action_plan
         except Exception:
-            action_plan = "• Keep running top-performing strategies\n• Activate new channels for more reach"
+            action_plan = (
+                "• Keep running top-performing strategies\n• Activate new channels for more reach"
+            )
 
         week_str = _dt.datetime.now().strftime("%Y-W%U")
         report_lines = [
             f"📊 <b>ARIA Weekly Review — {week_str}</b>",
             "",
-            f"<b>🔢 Overall:</b>",
+            "<b>🔢 Overall:</b>",
             f"• Income cycles: <b>{total_cycles}</b> ({success_rate:.0f}% success)",
             f"• URLs published: <b>{total_urls}</b>",
             f"• Products in catalog: <b>{catalog_count}</b>",
             f"• Revenue potential: <b>${total_rev:.2f}</b>",
             "",
-            f"<b>📈 Projections (cumulative potential):</b>",
+            "<b>📈 Projections (cumulative potential):</b>",
             f"• Next 7 days: <b>${proj_7d:.2f}</b>",
             f"• Next 30 days: <b>${proj_30d:.2f}</b>",
             "",
-            f"<b>🏆 Top 5 Strategies:</b>",
+            "<b>🏆 Top 5 Strategies:</b>",
         ]
         for row in strategy_rows[:5]:
             win_rate = (row["wins"] / row["runs"] * 100) if row["runs"] else 0
-            report_lines.append(f"  {row['name']}: ${row['rev']:.1f} ({win_rate:.0f}% win rate, {row['runs']} runs)")
+            report_lines.append(
+                f"  {row['name']}: ${row['rev']:.1f} ({win_rate:.0f}% win rate, {row['runs']} runs)"
+            )
 
         creds = loop.check_credentials()
         active_ch = list(creds.get("active", {}).keys())
@@ -1769,16 +1932,26 @@ Return JSON: {{"plan": ["Action 1", "Action 2", "Action 3"], "key_insight": "one
 
         # Archive to GitHub
         try:
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
+
             from apps.core.config import settings
-            gh    = AriaGitHubClient()
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
-            path  = f"reports/weekly/{week_str}.md"
-            await gh._post("/user/repos", {"name": "aria-insights", "private": False, "auto_init": False})
+            path = f"reports/weekly/{week_str}.md"
+            await gh._post(
+                "/user/repos", {"name": "aria-insights", "private": False, "auto_init": False}
+            )
             body_put: dict = {
                 "message": f"feat: weekly review {week_str}",
-                "content": _b64.b64encode(message.replace("<b>", "**").replace("</b>", "**").replace("<i>", "_").replace("</i>", "_").encode()).decode(),
+                "content": _b64.b64encode(
+                    message.replace("<b>", "**")
+                    .replace("</b>", "**")
+                    .replace("<i>", "_")
+                    .replace("</i>", "_")
+                    .encode()
+                ).decode(),
             }
             await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
         except Exception:
@@ -1786,9 +1959,14 @@ Return JSON: {{"plan": ["Action 1", "Action 2", "Action 3"], "key_insight": "one
 
         try:
             from apps.core.tools.telegram_bot import get_bot
+
             bot = get_bot()
             await bot.notify_owner(message)
-            return {"success": True, "summary": f"Weekly review sent: {total_cycles} cycles, ${total_rev:.2f} potential", "value_usd": 0.0}
+            return {
+                "success": True,
+                "summary": f"Weekly review sent: {total_cycles} cycles, ${total_rev:.2f} potential",
+                "value_usd": 0.0,
+            }
         except Exception as e:
             return {"success": False, "summary": f"Weekly review: {e}", "value_usd": 0.0}
 
@@ -1799,13 +1977,13 @@ Return JSON: {{"plan": ["Action 1", "Action 2", "Action 3"], "key_insight": "one
         trending topics and existing product catalog for maximum relevance.
         Archives to aria-insights/calendars/ and stores in Redis.
         """
-        import json as _json
         import base64 as _b64
         import datetime as _dt
-        from apps.core.tools.ai_client import get_ai_client, AIModel
-        from apps.core.tools.web_tools import WebTools
-        from apps.core.memory.redis_client import get_cache
+
         from apps.core.config import settings
+        from apps.core.memory.redis_client import get_cache
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+        from apps.core.tools.web_tools import WebTools
 
         ai = get_ai_client()
         if not ai:
@@ -1814,12 +1992,15 @@ Return JSON: {{"plan": ["Action 1", "Action 2", "Action 3"], "key_insight": "one
         wt = WebTools()
         trends_r = await wt.get_hacker_news_trending(limit=5)
         trending = [s.get("title", "")[:80] for s in (trends_r.get("stories") or [])[:5]]
-        trending_str = " | ".join(trending) or "AI productivity, autonomous AI, passive income, SaaS tools"
+        trending_str = (
+            " | ".join(trending) or "AI productivity, autonomous AI, passive income, SaaS tools"
+        )
 
         # Get catalog for product cross-promotion
         catalog_preview = ""
         try:
             from apps.core.tools.income_loop import get_income_loop
+
             catalog_preview = await get_income_loop().get_product_catalog(limit=5)
             catalog_preview = catalog_preview[:400]
         except Exception:
@@ -1874,6 +2055,7 @@ JSON:
         urls_created = []
         if settings.GITHUB_TOKEN:
             from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             week_str = _dt.datetime.now().strftime("%Y-W%U")
@@ -1912,7 +2094,7 @@ JSON:
             encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/calendars/{week_str}-30day.md",
-                {"message": f"calendar: 30-day content plan {week_str}", "content": encoded}
+                {"message": f"calendar: 30-day content plan {week_str}", "content": encoded},
             )
             if "error" not in file_r:
                 urls_created.append(
@@ -1923,15 +2105,18 @@ JSON:
         cache = get_cache()
         if cache:
             import json as _json2
+
             await cache.set(
                 "aria:schedule:content_calendar",
-                _json2.dumps({
-                    "theme": theme,
-                    "pillars": pillars,
-                    "days": len(entries),
-                    "url": urls_created[0] if urls_created else "",
-                    "generated_at": _dt.datetime.now().isoformat(),
-                }),
+                _json2.dumps(
+                    {
+                        "theme": theme,
+                        "pillars": pillars,
+                        "days": len(entries),
+                        "url": urls_created[0] if urls_created else "",
+                        "generated_at": _dt.datetime.now().isoformat(),
+                    }
+                ),
                 ttl_seconds=86400 * 8,  # 8 days
             )
 
@@ -1950,12 +2135,13 @@ JSON:
         can exploit. Queues the best opportunity to aria:income:opportunity_queue.
         Stores intel in Redis for morning briefing and strategy_optimizer.
         """
-        import json as _json
-        from apps.core.tools.ai_client import get_ai_client, AIModel
-        from apps.core.tools.web_tools import WebTools
-        from apps.core.memory.redis_client import get_cache
-        from apps.core.config import settings
         import datetime as _dt
+        import json as _json
+
+        from apps.core.config import settings
+        from apps.core.memory.redis_client import get_cache
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+        from apps.core.tools.web_tools import WebTools
 
         ai = get_ai_client()
         if not ai:
@@ -1977,11 +2163,13 @@ JSON:
             r = await wt.search_web(q, num_results=5)
             if r.get("success") and r.get("results"):
                 for item in r["results"][:3]:
-                    search_results.append({
-                        "title": item.get("title", "")[:100],
-                        "snippet": item.get("snippet", "")[:200],
-                        "url": item.get("url", ""),
-                    })
+                    search_results.append(
+                        {
+                            "title": item.get("title", "")[:100],
+                            "snippet": item.get("snippet", "")[:200],
+                            "url": item.get("url", ""),
+                        }
+                    )
 
         if not search_results:
             return {"success": False, "summary": "competitor_intel: no search results"}
@@ -2035,6 +2223,7 @@ JSON:
             # Validate strategy
             try:
                 from apps.core.tools.income_loop import STRATEGIES
+
                 valid = {s[0] for s in STRATEGIES}
                 if strategy not in valid:
                     strategy = "content_pipeline"
@@ -2070,7 +2259,9 @@ JSON:
         urls_created = []
         if settings.GITHUB_TOKEN:
             import base64 as _b64
+
             from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -2097,7 +2288,7 @@ JSON:
             encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/intel/{today}-competitor-scan.md",
-                {"message": f"intel: competitor scan {today}", "content": encoded}
+                {"message": f"intel: competitor scan {today}", "content": encoded},
             )
             if "error" not in file_r:
                 urls_created.append(
@@ -2120,15 +2311,22 @@ JSON:
 
     # ── AUTO SOCIAL PUBLISHER ──────────────────────────────────────────────────
     async def _auto_social_publisher(obj: StrategicObjective) -> dict:
-        import json as _json
         import datetime as _dt
+        import json as _json
+
         from apps.core.memory.redis_client import get_cache as _gc
+
         cache = _gc()
         if not cache:
-            return {"success": False, "summary": "auto_social_publisher: no Redis", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": "auto_social_publisher: no Redis",
+                "value_usd": 0.0,
+            }
 
         try:
             from apps.core.tools.income_loop import get_income_loop
+
             loop = get_income_loop()
 
             # Load content calendar
@@ -2145,7 +2343,11 @@ JSON:
             cal_obj = _json.loads(raw_cal)
             entries = cal_obj.get("entries", [])
             if not entries:
-                return {"success": False, "summary": "auto_social_publisher: calendar has no entries", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "auto_social_publisher: calendar has no entries",
+                    "value_usd": 0.0,
+                }
 
             # Load published set to avoid duplicates
             published_key = "aria:social:published_ids"
@@ -2162,14 +2364,17 @@ JSON:
                 range(18, 22): "evening",
             }
             current_window = next(
-                (label for rng, label in time_windows.items() if now_hour in rng),
-                "morning"
+                (label for rng, label in time_windows.items() if now_hour in rng), "morning"
             )
 
             # Score entries: unposted + right window > unposted > any
             candidates = [e for e in entries if str(e.get("id", "")) not in published_ids]
             if not candidates:
-                return {"success": True, "summary": "auto_social_publisher: all calendar entries already published", "value_usd": 0.0}
+                return {
+                    "success": True,
+                    "summary": "auto_social_publisher: all calendar entries already published",
+                    "value_usd": 0.0,
+                }
 
             # Pick entry matching time window if available
             windowed = [e for e in candidates if e.get("time_slot", "").lower() == current_window]
@@ -2180,7 +2385,11 @@ JSON:
             topic = entry.get("topic", "")
 
             if not content:
-                return {"success": False, "summary": "auto_social_publisher: selected entry has no content", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "auto_social_publisher: selected entry has no content",
+                    "value_usd": 0.0,
+                }
 
             # Map platform to income strategy
             strategy_map = {
@@ -2205,19 +2414,26 @@ JSON:
                 "topic": topic,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"auto_social_publisher error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"auto_social_publisher error: {exc}",
+                "value_usd": 0.0,
+            }
 
     # ── REVENUE AGGREGATOR ─────────────────────────────────────────────────────
     async def _revenue_aggregator(obj: StrategicObjective) -> dict:
-        import json as _json
         import datetime as _dt
+        import json as _json
+
         from apps.core.memory.redis_client import get_cache as _gc
+
         cache = _gc()
         if not cache:
             return {"success": False, "summary": "revenue_aggregator: no Redis", "value_usd": 0.0}
 
         try:
             from apps.core.config import settings
+
             channels: list[dict] = []
             total_usd = 0.0
 
@@ -2225,6 +2441,7 @@ JSON:
             stripe_key = getattr(settings, "STRIPE_SECRET_KEY", "") or ""
             if stripe_key and stripe_key.startswith("sk_"):
                 import aiohttp as _aio
+
                 async with _aio.ClientSession() as sess:
                     async with sess.get(
                         "https://api.stripe.com/v1/balance_transactions",
@@ -2235,14 +2452,28 @@ JSON:
                         if resp.status == 200:
                             data = await resp.json()
                             charges = data.get("data", [])
-                            stripe_total = sum(c.get("amount", 0) for c in charges if c.get("status") == "available") / 100
-                            channels.append({"channel": "stripe", "revenue_usd": stripe_total, "transactions": len(charges)})
+                            stripe_total = (
+                                sum(
+                                    c.get("amount", 0)
+                                    for c in charges
+                                    if c.get("status") == "available"
+                                )
+                                / 100
+                            )
+                            channels.append(
+                                {
+                                    "channel": "stripe",
+                                    "revenue_usd": stripe_total,
+                                    "transactions": len(charges),
+                                }
+                            )
                             total_usd += stripe_total
 
             # ── Gumroad ───────────────────────────────────────────────────────
             gumroad_token = settings.GUMROAD_TOKEN or ""
             if gumroad_token:
                 import aiohttp as _aio
+
                 async with _aio.ClientSession() as sess:
                     async with sess.get(
                         "https://api.gumroad.com/v2/sales",
@@ -2256,29 +2487,51 @@ JSON:
                                 float(s.get("price", "0").replace("$", "").replace(",", "")) / 100
                                 for s in sales
                             )
-                            channels.append({"channel": "gumroad", "revenue_usd": gumroad_total, "transactions": len(sales)})
+                            channels.append(
+                                {
+                                    "channel": "gumroad",
+                                    "revenue_usd": gumroad_total,
+                                    "transactions": len(sales),
+                                }
+                            )
                             total_usd += gumroad_total
 
             # ── GitHub Sponsors ───────────────────────────────────────────────
             gh_token = getattr(settings, "GITHUB_TOKEN", "") or ""
             if gh_token:
                 import aiohttp as _aio
+
                 query = """query { viewer { sponsorshipsAsMaintainer(first: 20) {
                     nodes { tier { monthlyPriceInDollars } isActive } } } }"""
                 async with _aio.ClientSession() as sess:
                     async with sess.post(
                         "https://api.github.com/graphql",
                         json={"query": query},
-                        headers={"Authorization": f"bearer {gh_token}", "Content-Type": "application/json"},
+                        headers={
+                            "Authorization": f"bearer {gh_token}",
+                            "Content-Type": "application/json",
+                        },
                         timeout=_aio.ClientTimeout(total=15),
                     ) as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            nodes = (data.get("data", {}).get("viewer", {})
-                                        .get("sponsorshipsAsMaintainer", {}).get("nodes", []))
+                            nodes = (
+                                data.get("data", {})
+                                .get("viewer", {})
+                                .get("sponsorshipsAsMaintainer", {})
+                                .get("nodes", [])
+                            )
                             active = [n for n in nodes if n.get("isActive")]
-                            monthly = sum(n.get("tier", {}).get("monthlyPriceInDollars", 0) for n in active)
-                            channels.append({"channel": "github_sponsors", "revenue_usd": monthly, "sponsors": len(active)})
+                            monthly = sum(
+                                n.get("tier", {}).get("monthlyPriceInDollars", 0) for n in active
+                            )
+                            channels.append(
+                                {
+                                    "channel": "github_sponsors",
+                                    "revenue_usd": monthly,
+                                    "sponsors": len(active),
+                                }
+                            )
                             total_usd += monthly
 
             # ── Persist aggregated report ─────────────────────────────────────
@@ -2305,13 +2558,19 @@ JSON:
                 "channels": channels,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"revenue_aggregator error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"revenue_aggregator error: {exc}",
+                "value_usd": 0.0,
+            }
 
     # ── EMAIL FUNNEL HANDLER ───────────────────────────────────────────────────
     async def _email_funnel_handler(obj: StrategicObjective) -> dict:
-        import json as _json
         import datetime as _dt
+        import json as _json
+
         from apps.core.memory.redis_client import get_cache as _gc
+
         cache = _gc()
         if not cache:
             return {"success": False, "summary": "email_funnel_handler: no Redis", "value_usd": 0.0}
@@ -2349,19 +2608,25 @@ JSON:
                 if welcome and welcome.get("subject"):
                     try:
                         import aiohttp as _aio
+
                         sg_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
                         if sg_key:
                             payload = {
                                 "personalizations": [{"to": [{"email": email, "name": name}]}],
                                 "from": {"email": "aria@aria.ai", "name": "ARIA AI"},
                                 "subject": welcome["subject"],
-                                "content": [{"type": "text/plain", "value": welcome.get("body_text", "")}],
+                                "content": [
+                                    {"type": "text/plain", "value": welcome.get("body_text", "")}
+                                ],
                             }
                             async with _aio.ClientSession() as sess:
                                 async with sess.post(
                                     "https://api.sendgrid.com/v3/mail/send",
                                     json=payload,
-                                    headers={"Authorization": f"Bearer {sg_key}", "Content-Type": "application/json"},
+                                    headers={
+                                        "Authorization": f"Bearer {sg_key}",
+                                        "Content-Type": "application/json",
+                                    },
                                     timeout=_aio.ClientTimeout(total=15),
                                 ) as resp:
                                     if resp.status in (200, 202):
@@ -2392,7 +2657,7 @@ JSON:
                 next_day = contact.get("next_email_day", 3)
                 if days_since >= next_day and next_day in nurture_templates:
                     subject_tmpl, purpose = nurture_templates[next_day]
-                    subject = subject_tmpl.format(product=contact.get("product", "your product"))
+                    subject_tmpl.format(product=contact.get("product", "your product"))
                     # Generate email body
                     body = await complete_json(
                         system="You are ARIA. Write a short nurture email. Return JSON: {body_text}",
@@ -2412,7 +2677,9 @@ JSON:
                     nurture_queue[email] = contact
 
             # ── Persist updated nurture queue ─────────────────────────────────
-            await cache.set("aria:email:nurture_queue", _json.dumps(nurture_queue), ttl_seconds=86400 * 60)
+            await cache.set(
+                "aria:email:nurture_queue", _json.dumps(nurture_queue), ttl_seconds=86400 * 60
+            )
             # Clear processed new subs
             if new_subs:
                 await cache.delete("aria:waitlist:new")
@@ -2425,7 +2692,11 @@ JSON:
                 "nurture_contacts": len(nurture_queue),
             }
         except Exception as exc:
-            return {"success": False, "summary": f"email_funnel_handler error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"email_funnel_handler error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("auto_social_publisher", _auto_social_publisher)
     scheduler.register_handler("revenue_aggregator", _revenue_aggregator)
@@ -2433,16 +2704,18 @@ JSON:
 
     # ── PRODUCT AUTO-UPDATER ───────────────────────────────────────────────────
     async def _product_auto_updater(obj: StrategicObjective) -> dict:
-        import json as _json
         import base64 as _b64
         import datetime as _dt
-        from apps.core.memory.redis_client import get_cache as _gc
+        import json as _json
+
         from apps.core.llm.llm_client import complete_json
+        from apps.core.memory.redis_client import get_cache as _gc
 
         cache = _gc()
         try:
             from apps.core.config import settings
             from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             owner = getattr(settings, "GITHUB_USERNAME", "") or "Geremypolanco"
 
@@ -2451,6 +2724,7 @@ JSON:
             if "error" in catalog_r or not isinstance(catalog_r, list):
                 # Try to run product_factory to generate initial product
                 from apps.core.tools.income_loop import get_income_loop
+
                 loop = get_income_loop()
                 result = await loop._run_one_cycle(force_strategy="product_factory")
                 return {
@@ -2462,7 +2736,11 @@ JSON:
             # ── Pick the most recently modified product ───────────────────────
             files = [f for f in catalog_r if isinstance(f, dict) and f.get("type") == "file"]
             if not files:
-                return {"success": False, "summary": "product_auto_updater: no product files found", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "product_auto_updater: no product files found",
+                    "value_usd": 0.0,
+                }
 
             # Sort by name (newest = largest timestamp prefix)
             files.sort(key=lambda f: f.get("name", ""), reverse=True)
@@ -2473,17 +2751,27 @@ JSON:
             # ── Read the product content ──────────────────────────────────────
             content_r = await gh._get(f"/repos/{owner}/aria-insights/contents/{file_path}")
             if "error" in content_r:
-                return {"success": False, "summary": f"product_auto_updater: couldn't read {file_name}", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": f"product_auto_updater: couldn't read {file_name}",
+                    "value_usd": 0.0,
+                }
 
             raw_content = content_r.get("content", "")
             current_sha = content_r.get("sha", "")
             try:
-                decoded = _b64.b64decode(raw_content.replace("\n", "")).decode("utf-8", errors="replace")
+                decoded = _b64.b64decode(raw_content.replace("\n", "")).decode(
+                    "utf-8", errors="replace"
+                )
             except Exception:
                 decoded = ""
 
             if not decoded:
-                return {"success": False, "summary": "product_auto_updater: couldn't decode product content", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "product_auto_updater: couldn't decode product content",
+                    "value_usd": 0.0,
+                }
 
             # ── Generate enhanced v2 ──────────────────────────────────────────
             enhancement = await complete_json(
@@ -2504,7 +2792,11 @@ Keep the same general topic but make it significantly more valuable.""",
             )
 
             if not enhancement or not enhancement.get("enhanced_content"):
-                return {"success": False, "summary": "product_auto_updater: AI failed to generate enhancement", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "product_auto_updater: AI failed to generate enhancement",
+                    "value_usd": 0.0,
+                }
 
             enhanced_md = enhancement["enhanced_content"]
             version_note = enhancement.get("version_note", "v2 with improved value proposition")
@@ -2513,19 +2805,21 @@ Keep the same general topic but make it significantly more valuable.""",
 
             # ── Write enhanced version to GitHub ─────────────────────────────
             encoded = _b64.b64encode(enhanced_md.encode()).decode()
-            today = _dt.datetime.now().strftime("%Y-%m-%d")
+            _dt.datetime.now().strftime("%Y-%m-%d")
             update_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/{file_path}",
                 {
                     "message": f"product: auto-enhance {file_name} — {version_note[:60]}",
                     "content": encoded,
                     "sha": current_sha,
-                }
+                },
             )
 
             urls_updated = []
             if "error" not in update_r:
-                urls_updated.append(f"https://github.com/{owner}/aria-insights/blob/main/{file_path}")
+                urls_updated.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/{file_path}"
+                )
 
             # ── Archive update log ────────────────────────────────────────────
             log_entry = {
@@ -2540,7 +2834,9 @@ Keep the same general topic but make it significantly more valuable.""",
                 update_log = _json.loads(update_log_raw) if update_log_raw else []
                 update_log.append(log_entry)
                 update_log = update_log[-50:]
-                await cache.set("aria:products:update_log", _json.dumps(update_log), ttl_seconds=86400 * 90)
+                await cache.set(
+                    "aria:products:update_log", _json.dumps(update_log), ttl_seconds=86400 * 90
+                )
 
             improvements_str = " | ".join(improvements[:3])
             return {
@@ -2550,33 +2846,42 @@ Keep the same general topic but make it significantly more valuable.""",
                 "urls": urls_updated,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"product_auto_updater error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"product_auto_updater error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("product_auto_updater", _product_auto_updater)
 
     # ── ACCOUNT MANAGER ────────────────────────────────────────────────────────
     async def _account_manager(obj: StrategicObjective) -> dict:
-        import json as _json
         import datetime as _dt
-        from apps.core.memory.redis_client import get_cache as _gc
+        import json as _json
+
         from apps.core.llm.llm_client import complete_json
+        from apps.core.memory.redis_client import get_cache as _gc
 
         cache = _gc()
         actions_taken: list[str] = []
-        total_value = 0.0
 
         try:
             from apps.core.config import settings
+
             account_health: list[dict] = []
 
             # ── GitHub account audit ──────────────────────────────────────────
             gh_token = getattr(settings, "GITHUB_TOKEN", "") or ""
             if gh_token:
                 import aiohttp as _aio
+
                 async with _aio.ClientSession() as sess:
                     async with sess.get(
                         "https://api.github.com/user",
-                        headers={"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"},
+                        headers={
+                            "Authorization": f"token {gh_token}",
+                            "Accept": "application/vnd.github.v3+json",
+                        },
                         timeout=_aio.ClientTimeout(total=10),
                     ) as resp:
                         if resp.status == 200:
@@ -2584,20 +2889,27 @@ Keep the same general topic but make it significantly more valuable.""",
                             followers = gh_user.get("followers", 0)
                             public_repos = gh_user.get("public_repos", 0)
                             bio = gh_user.get("bio", "") or ""
-                            account_health.append({
-                                "platform": "github",
-                                "followers": followers,
-                                "public_repos": public_repos,
-                                "bio_complete": bool(bio and len(bio) > 20),
-                                "status": "active",
-                            })
+                            account_health.append(
+                                {
+                                    "platform": "github",
+                                    "followers": followers,
+                                    "public_repos": public_repos,
+                                    "bio_complete": bool(bio and len(bio) > 20),
+                                    "status": "active",
+                                }
+                            )
                             if cache:
-                                await cache.set("aria:accounts:github_followers", str(followers), ttl_seconds=86400)
+                                await cache.set(
+                                    "aria:accounts:github_followers",
+                                    str(followers),
+                                    ttl_seconds=86400,
+                                )
 
             # ── Dev.to account audit ──────────────────────────────────────────
             devto_key = getattr(settings, "DEVTO_API_KEY", "") or ""
             if devto_key:
                 import aiohttp as _aio
+
                 async with _aio.ClientSession() as sess:
                     async with sess.get(
                         "https://dev.to/api/users/me",
@@ -2608,32 +2920,43 @@ Keep the same general topic but make it significantly more valuable.""",
                             devto_user = await resp.json()
                             followers = devto_user.get("followers_count", 0)
                             articles = devto_user.get("articles_count", 0)
-                            account_health.append({
-                                "platform": "devto",
-                                "followers": followers,
-                                "articles": articles,
-                                "status": "active",
-                            })
+                            account_health.append(
+                                {
+                                    "platform": "devto",
+                                    "followers": followers,
+                                    "articles": articles,
+                                    "status": "active",
+                                }
+                            )
                             if cache:
-                                await cache.set("aria:accounts:devto_followers", str(followers), ttl_seconds=86400)
+                                await cache.set(
+                                    "aria:accounts:devto_followers",
+                                    str(followers),
+                                    ttl_seconds=86400,
+                                )
 
             # ── HuggingFace account audit ─────────────────────────────────────
             hf_token = getattr(settings, "HF_TOKEN", "") or ""
             if hf_token:
                 import aiohttp as _aio
-                async with _aio.ClientSession() as sess:
-                    async with sess.get(
+
+                async with (
+                    _aio.ClientSession() as sess,
+                    sess.get(
                         "https://huggingface.co/api/whoami-v2",
                         headers={"Authorization": f"Bearer {hf_token}"},
                         timeout=_aio.ClientTimeout(total=10),
-                    ) as resp:
-                        if resp.status == 200:
-                            hf_user = await resp.json()
-                            account_health.append({
+                    ) as resp,
+                ):
+                    if resp.status == 200:
+                        hf_user = await resp.json()
+                        account_health.append(
+                            {
                                 "platform": "huggingface",
                                 "username": hf_user.get("name", ""),
                                 "status": "active",
-                            })
+                            }
+                        )
 
             # ── Generate account health report via AI ─────────────────────────
             if account_health:
@@ -2658,12 +2981,17 @@ Keep the same general topic but make it significantly more valuable.""",
                             "accounts": account_health,
                             "tips": tips,
                         }
-                        await cache.set("aria:accounts:health_report", _json.dumps(report_data), ttl_seconds=86400 * 7)
+                        await cache.set(
+                            "aria:accounts:health_report",
+                            _json.dumps(report_data),
+                            ttl_seconds=86400 * 7,
+                        )
 
                     # Telegram alert
                     if telegram_summary:
                         try:
                             import aiohttp as _aio
+
                             bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
                             chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
                             if bot_token and chat_id:
@@ -2696,17 +3024,19 @@ Keep the same general topic but make it significantly more valuable.""",
 
     # ── CROSS-SELL CAMPAIGN ENGINE ─────────────────────────────────────────────
     async def _cross_sell_campaign(obj: StrategicObjective) -> dict:
-        import json as _json
         import base64 as _b64
         import datetime as _dt
-        from apps.core.memory.redis_client import get_cache as _gc
+        import json as _json
+
         from apps.core.llm.llm_client import complete_json
+        from apps.core.memory.redis_client import get_cache as _gc
 
         cache = _gc()
         try:
             from apps.core.config import settings
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.income_loop import get_income_loop
+
             gh = AriaGitHubClient()
             loop = get_income_loop()
             owner = getattr(settings, "GITHUB_USERNAME", "") or "Geremypolanco"
@@ -2738,16 +3068,21 @@ Keep the same general topic but make it significantly more valuable.""",
             )
 
             if not campaign:
-                return {"success": False, "summary": "cross_sell_campaign: AI failed to generate campaign", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "cross_sell_campaign: AI failed to generate campaign",
+                    "value_usd": 0.0,
+                }
 
             # ── Publish LinkedIn post ─────────────────────────────────────────
             linkedin_post = campaign.get("linkedin_post", "")
-            _aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            _aria_email = getattr(settings, "ARIA_EMAIL", None)
             _aria_password = getattr(settings, "ARIA_PASSWORD", None)
             if linkedin_post:
                 _li_posted = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     result = await pub.publish_to_linkedin(linkedin_post)
                     if result.success and result.url:
@@ -2758,6 +3093,7 @@ Keep the same general topic but make it significantly more valuable.""",
                 if not _li_posted and _aria_email and _aria_password:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _li_page = await _plat.linkedin(_aria_email, _aria_password)
                         _li_url = await _plat.linkedin_create_post(_li_page, linkedin_post[:3000])
@@ -2772,8 +3108,11 @@ Keep the same general topic but make it significantly more valuable.""",
                 _tw_posted = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
-                    thread_text = "\n\n".join(tweets[:3]) if isinstance(tweets, list) else str(tweets)
+                    thread_text = (
+                        "\n\n".join(tweets[:3]) if isinstance(tweets, list) else str(tweets)
+                    )
                     result = await pub.publish_to_twitter(thread_text[:280])
                     if result.success and result.url:
                         urls_created.append(result.url)
@@ -2783,6 +3122,7 @@ Keep the same general topic but make it significantly more valuable.""",
                 if not _tw_posted and _aria_email and _aria_password:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_aria_email, _aria_password)
                         tweet_list = tweets if isinstance(tweets, list) else [str(tweets)]
@@ -2821,10 +3161,15 @@ Keep the same general topic but make it significantly more valuable.""",
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/campaigns/{today}-cross-sell.md",
-                {"message": f"campaign: cross-sell bundle '{bundle_name[:40]}'", "content": encoded}
+                {
+                    "message": f"campaign: cross-sell bundle '{bundle_name[:40]}'",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/campaigns/{today}-cross-sell.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/campaigns/{today}-cross-sell.md"
+                )
 
             # Store in Redis for email funnel pickup
             if cache:
@@ -2835,7 +3180,11 @@ Keep the same general topic but make it significantly more valuable.""",
                     "email_subject": campaign.get("email_subject", ""),
                     "email_body": campaign.get("email_body", ""),
                 }
-                await cache.set("aria:campaigns:latest_cross_sell", _json.dumps(campaign_data), ttl_seconds=86400 * 7)
+                await cache.set(
+                    "aria:campaigns:latest_cross_sell",
+                    _json.dumps(campaign_data),
+                    ttl_seconds=86400 * 7,
+                )
 
             return {
                 "success": True,
@@ -2844,7 +3193,11 @@ Keep the same general topic but make it significantly more valuable.""",
                 "urls": urls_created[:3],
             }
         except Exception as exc:
-            return {"success": False, "summary": f"cross_sell_campaign error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"cross_sell_campaign error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("account_manager", _account_manager)
     scheduler.register_handler("cross_sell_campaign", _cross_sell_campaign)
@@ -2856,12 +3209,14 @@ Keep the same general topic but make it significantly more valuable.""",
         Tracks follower counts before/after, stores deltas in Redis.
         Engages with trending posts, follows relevant creators, DMs warm leads.
         """
-        import json as _json
         import datetime as _dt
+        import json as _json
+
         import aiohttp as _aio
-        from apps.core.memory.redis_client import get_cache as _gc
-        from apps.core.llm.llm_client import complete_json
+
         from apps.core.config import settings
+        from apps.core.llm.llm_client import complete_json
+        from apps.core.memory.redis_client import get_cache as _gc
 
         cache = _gc()
         actions_taken: list[str] = []
@@ -2875,8 +3230,15 @@ Keep the same general topic but make it significantly more valuable.""",
                     # Search for users with Python + AI repos
                     async with sess.get(
                         "https://api.github.com/search/users",
-                        params={"q": "language:python topic:ai followers:>100 type:user", "per_page": "10", "sort": "followers"},
-                        headers={"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"},
+                        params={
+                            "q": "language:python topic:ai followers:>100 type:user",
+                            "per_page": "10",
+                            "sort": "followers",
+                        },
+                        headers={
+                            "Authorization": f"token {gh_token}",
+                            "Accept": "application/vnd.github.v3+json",
+                        },
                         timeout=_aio.ClientTimeout(total=10),
                     ) as resp:
                         if resp.status == 200:
@@ -2885,7 +3247,11 @@ Keep the same general topic but make it significantly more valuable.""",
                             followed = 0
                             for user in users[:5]:
                                 username = user.get("login", "")
-                                if username and username.lower() != (getattr(settings, "GITHUB_USERNAME", "") or "").lower():
+                                if (
+                                    username
+                                    and username.lower()
+                                    != (getattr(settings, "GITHUB_USERNAME", "") or "").lower()
+                                ):
                                     # Check if already following
                                     async with sess.get(
                                         f"https://api.github.com/user/following/{username}",
@@ -2906,8 +3272,15 @@ Keep the same general topic but make it significantly more valuable.""",
                     # Star trending AI repos (earns reciprocal stars and attention)
                     async with sess.get(
                         "https://api.github.com/search/repositories",
-                        params={"q": "topic:ai-tools stars:>50 pushed:>2025-01-01", "per_page": "5", "sort": "stars"},
-                        headers={"Authorization": f"token {gh_token}", "Accept": "application/vnd.github.v3+json"},
+                        params={
+                            "q": "topic:ai-tools stars:>50 pushed:>2025-01-01",
+                            "per_page": "5",
+                            "sort": "stars",
+                        },
+                        headers={
+                            "Authorization": f"token {gh_token}",
+                            "Accept": "application/vnd.github.v3+json",
+                        },
                         timeout=_aio.ClientTimeout(total=10),
                     ) as resp:
                         if resp.status == 200:
@@ -2919,7 +3292,10 @@ Keep the same general topic but make it significantly more valuable.""",
                                 if full_name:
                                     async with sess.put(
                                         f"https://api.github.com/user/starred/{full_name}",
-                                        headers={"Authorization": f"token {gh_token}", "Content-Length": "0"},
+                                        headers={
+                                            "Authorization": f"token {gh_token}",
+                                            "Content-Length": "0",
+                                        },
                                         timeout=_aio.ClientTimeout(total=5),
                                     ) as star_resp:
                                         if star_resp.status == 204:
@@ -2941,9 +3317,15 @@ Keep the same general topic but make it significantly more valuable.""",
                                 prev = int(prev_raw) if prev_raw else current_followers
                                 delta = current_followers - prev
                                 total_new_followers += max(delta, 0)
-                                await cache.set("aria:growth:github_followers_prev", str(current_followers), ttl_seconds=86400 * 90)
+                                await cache.set(
+                                    "aria:growth:github_followers_prev",
+                                    str(current_followers),
+                                    ttl_seconds=86400 * 90,
+                                )
                                 if delta > 0:
-                                    actions_taken.append(f"github:+{delta} followers ({current_followers} total)")
+                                    actions_taken.append(
+                                        f"github:+{delta} followers ({current_followers} total)"
+                                    )
 
             # ── 2. Dev.to: react to and comment on trending articles ───────────
             devto_key = getattr(settings, "DEVTO_API_KEY", "") or ""
@@ -2978,8 +3360,17 @@ Return JSON: {{"comment": "text"}}""",
                                 if comment_data and comment_data.get("comment"):
                                     async with sess.post(
                                         "https://dev.to/api/comments",
-                                        json={"comment": {"body_markdown": comment_data["comment"], "commentable_id": art_id, "commentable_type": "Article"}},
-                                        headers={"api-key": devto_key, "Content-Type": "application/json"},
+                                        json={
+                                            "comment": {
+                                                "body_markdown": comment_data["comment"],
+                                                "commentable_id": art_id,
+                                                "commentable_type": "Article",
+                                            }
+                                        },
+                                        headers={
+                                            "api-key": devto_key,
+                                            "Content-Type": "application/json",
+                                        },
                                         timeout=_aio.ClientTimeout(total=10),
                                     ) as post_resp:
                                         if post_resp.status in (200, 201):
@@ -3001,47 +3392,56 @@ Return JSON: {{"comment": "text"}}""",
                                 prev = int(prev_raw) if prev_raw else devto_followers
                                 delta = devto_followers - prev
                                 total_new_followers += max(delta, 0)
-                                await cache.set("aria:growth:devto_followers_prev", str(devto_followers), ttl_seconds=86400 * 90)
+                                await cache.set(
+                                    "aria:growth:devto_followers_prev",
+                                    str(devto_followers),
+                                    ttl_seconds=86400 * 90,
+                                )
                                 if delta > 0:
-                                    actions_taken.append(f"devto:+{delta} followers ({devto_followers} total)")
+                                    actions_taken.append(
+                                        f"devto:+{delta} followers ({devto_followers} total)"
+                                    )
 
             # ── 3. Twitter growth via content engagement ────────────────────────
             # Twitter API v2 doesn't allow bulk follow, but we can post strategic content
             # that earns replies and followers — delegate to income loop
             try:
                 from apps.core.tools.income_loop import get_income_loop
+
                 loop = get_income_loop()
                 tw_result = await loop._run_one_cycle(force_strategy="twitter_thread")
                 if tw_result.success:
-                    actions_taken.append(f"twitter:posted thread for growth")
+                    actions_taken.append("twitter:posted thread for growth")
             except Exception:
                 pass
 
             # ── 4. HuggingFace: like trending models / follow researchers ──────
             hf_token = getattr(settings, "HF_TOKEN", "") or ""
             if hf_token:
-                async with _aio.ClientSession() as sess:
-                    async with sess.get(
+                async with (
+                    _aio.ClientSession() as sess,
+                    sess.get(
                         "https://huggingface.co/api/models",
                         params={"limit": "10", "sort": "likes", "direction": "-1", "full": "False"},
                         timeout=_aio.ClientTimeout(total=10),
-                    ) as resp:
-                        if resp.status == 200:
-                            models = await resp.json()
-                            for model in (models or [])[:3]:
-                                model_id = model.get("modelId") or model.get("id", "")
-                                if model_id:
-                                    try:
-                                        async with sess.post(
-                                            f"https://huggingface.co/api/models/{model_id}/like",
-                                            headers={"Authorization": f"Bearer {hf_token}"},
-                                            timeout=_aio.ClientTimeout(total=5),
-                                        ) as like_resp:
-                                            if like_resp.status in (200, 204):
-                                                pass
-                                    except Exception:
-                                        pass
-                            actions_taken.append("huggingface:liked top models")
+                    ) as resp,
+                ):
+                    if resp.status == 200:
+                        models = await resp.json()
+                        for model in (models or [])[:3]:
+                            model_id = model.get("modelId") or model.get("id", "")
+                            if model_id:
+                                try:
+                                    async with sess.post(
+                                        f"https://huggingface.co/api/models/{model_id}/like",
+                                        headers={"Authorization": f"Bearer {hf_token}"},
+                                        timeout=_aio.ClientTimeout(total=5),
+                                    ) as like_resp:
+                                        if like_resp.status in (200, 204):
+                                            pass
+                                except Exception:
+                                    pass
+                        actions_taken.append("huggingface:liked top models")
 
             # ── 5. Persist growth snapshot ────────────────────────────────────
             if cache:
@@ -3052,7 +3452,9 @@ Return JSON: {{"comment": "text"}}""",
                 }
                 await cache.rpush("aria:growth:history", _json.dumps(snapshot))
                 await cache.ltrim("aria:growth:history", -90, -1)  # keep last 90 snapshots
-                await cache.set("aria:growth:last_run", _dt.datetime.utcnow().isoformat(), ttl_seconds=86400 * 7)
+                await cache.set(
+                    "aria:growth:last_run", _dt.datetime.utcnow().isoformat(), ttl_seconds=86400 * 7
+                )
 
             return {
                 "success": True,
@@ -3073,12 +3475,14 @@ Return JSON: {{"comment": "text"}}""",
         Posts insightful comments on HN, Reddit, Dev.to — never spammy, always value-first.
         Tracks engagement and mentions. Drives organic traffic back to ARIA's products.
         """
-        import json as _json
         import datetime as _dt
+        import json as _json
+
         import aiohttp as _aio
-        from apps.core.memory.redis_client import get_cache as _gc
-        from apps.core.llm.llm_client import complete_json
+
         from apps.core.config import settings
+        from apps.core.llm.llm_client import complete_json
+        from apps.core.memory.redis_client import get_cache as _gc
 
         cache = _gc()
         actions_taken: list[str] = []
@@ -3086,6 +3490,7 @@ Return JSON: {{"comment": "text"}}""",
 
         try:
             from apps.core.tools.web_tools import WebTools
+
             wt = WebTools()
 
             # ── 1. Hacker News — Comment on top AI/startup stories ────────────
@@ -3125,6 +3530,7 @@ Return JSON: {{"comment": "your comment text"}}""",
                         if _hn_ae and _hn_ap:
                             try:
                                 from apps.core.tools.human_browser import get_platform_login
+
                                 _hn_plat = await get_platform_login()
                                 _hn_posted = await _hn_plat.hackernews_comment(
                                     _hn_ae, _hn_ap, str(hn_id), _hn_comment_text
@@ -3133,13 +3539,18 @@ Return JSON: {{"comment": "your comment text"}}""",
                                 pass
                         # Always queue for record regardless
                         if cache:
-                            await cache.rpush("aria:reputation:hn_comments_queued", _json.dumps({
-                                "ts": _dt.datetime.utcnow().isoformat(),
-                                "story": title[:100],
-                                "hn_id": hn_id,
-                                "comment": _hn_comment_text,
-                                "posted": _hn_posted,
-                            }))
+                            await cache.rpush(
+                                "aria:reputation:hn_comments_queued",
+                                _json.dumps(
+                                    {
+                                        "ts": _dt.datetime.utcnow().isoformat(),
+                                        "story": title[:100],
+                                        "hn_id": hn_id,
+                                        "comment": _hn_comment_text,
+                                        "posted": _hn_posted,
+                                    }
+                                ),
+                            )
                             await cache.ltrim("aria:reputation:hn_comments_queued", -30, -1)
                         engagements += 1
                         _status = "posted" if _hn_posted else "queued"
@@ -3162,7 +3573,7 @@ Return JSON: {{"comment": "your comment text"}}""",
                             "Authorization": f"bearer {reddit_token}",
                             "User-Agent": "ARIA-AI/1.0 (autonomous business platform)",
                         }
-                        for sub, topic in subreddits_topics[:2]:
+                        for sub, _topic in subreddits_topics[:2]:
                             try:
                                 async with sess.get(
                                     f"https://oauth.reddit.com/r/{sub}/hot",
@@ -3194,13 +3605,18 @@ Return JSON: {{"reply": "text"}}""",
                                             if reply_data and reply_data.get("reply"):
                                                 async with sess.post(
                                                     "https://oauth.reddit.com/api/comment",
-                                                    data={"thing_id": f"t3_{post_id}", "text": reply_data["reply"]},
+                                                    data={
+                                                        "thing_id": f"t3_{post_id}",
+                                                        "text": reply_data["reply"],
+                                                    },
                                                     headers=headers,
                                                     timeout=_aio.ClientTimeout(total=10),
                                                 ) as reply_resp:
                                                     if reply_resp.status == 200:
                                                         engagements += 1
-                                                        actions_taken.append(f"reddit:r/{sub} replied")
+                                                        actions_taken.append(
+                                                            f"reddit:r/{sub} replied"
+                                                        )
                             except Exception:
                                 pass
                 except Exception:
@@ -3221,6 +3637,7 @@ Return JSON: {"title": "post title (under 300 chars)", "body": "post body (200-4
                         )
                         if _rd_post_data and _rd_post_data.get("title"):
                             from apps.core.tools.human_browser import get_platform_login
+
                             _rd_plat = await get_platform_login()
                             _rd_page = await _rd_plat.reddit(_rd_ae, _rd_ap)
                             _rd_url = await _rd_plat.reddit_post(
@@ -3231,7 +3648,7 @@ Return JSON: {"title": "post title (under 300 chars)", "body": "post body (200-4
                             )
                             if _rd_url:
                                 engagements += 1
-                                actions_taken.append(f"reddit:r/SideProject posted (browser)")
+                                actions_taken.append("reddit:r/SideProject posted (browser)")
                     except Exception:
                         pass
 
@@ -3266,13 +3683,24 @@ Return JSON: {{"comment": "text"}}""",
                                     if comment_d and comment_d.get("comment"):
                                         async with sess.post(
                                             "https://dev.to/api/comments",
-                                            json={"comment": {"body_markdown": comment_d["comment"], "commentable_id": art_id, "commentable_type": "Article"}},
-                                            headers={"api-key": devto_key, "Content-Type": "application/json"},
+                                            json={
+                                                "comment": {
+                                                    "body_markdown": comment_d["comment"],
+                                                    "commentable_id": art_id,
+                                                    "commentable_type": "Article",
+                                                }
+                                            },
+                                            headers={
+                                                "api-key": devto_key,
+                                                "Content-Type": "application/json",
+                                            },
                                             timeout=_aio.ClientTimeout(total=10),
                                         ) as post_resp:
                                             if post_resp.status in (200, 201):
                                                 engagements += 1
-                                                actions_taken.append(f"devto:commented '{title[:40]}'")
+                                                actions_taken.append(
+                                                    f"devto:commented '{title[:40]}'"
+                                                )
                 except Exception:
                     pass
 
@@ -3280,7 +3708,10 @@ Return JSON: {{"comment": "text"}}""",
             if cache:
                 # Search for ARIA mentions
                 try:
-                    mentions_result = await wt.search_web("ARIA AI autonomous platform site:reddit.com OR site:dev.to OR site:hackernews.com", num_results=5)
+                    mentions_result = await wt.search_web(
+                        "ARIA AI autonomous platform site:reddit.com OR site:dev.to OR site:hackernews.com",
+                        num_results=5,
+                    )
                     mention_count = len(mentions_result.get("results", []))
                 except Exception:
                     mention_count = 0
@@ -3303,7 +3734,11 @@ Return JSON: {{"comment": "text"}}""",
             }
 
         except Exception as exc:
-            return {"success": False, "summary": f"reputation_builder error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"reputation_builder error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("reputation_builder", _reputation_builder)
 
@@ -3316,11 +3751,12 @@ Return JSON: {{"comment": "text"}}""",
         3. Auto-adjusts strategy weights for best ROI channels
         4. Generates P&L snapshot and sends financial report via Telegram
         """
-        import json as _json
         import datetime as _dt
-        from apps.core.memory.redis_client import get_cache as _gc
-        from apps.core.llm.llm_client import complete_json
+        import json as _json
+
         from apps.core.config import settings
+        from apps.core.llm.llm_client import complete_json
+        from apps.core.memory.redis_client import get_cache as _gc
         from apps.core.tools.income_loop import STRATEGIES
 
         cache = _gc()
@@ -3360,7 +3796,11 @@ Return JSON: {{"comment": "text"}}""",
             history_raw = await cache.get("aria:revenue:history")
             history: list[dict] = _json.loads(history_raw) if history_raw else []
             recent_snapshots = history[-14:] if history else []  # last 14 snapshots
-            daily_avg = (sum(s.get("total_usd", 0) for s in recent_snapshots) / len(recent_snapshots)) if recent_snapshots else 0
+            daily_avg = (
+                (sum(s.get("total_usd", 0) for s in recent_snapshots) / len(recent_snapshots))
+                if recent_snapshots
+                else 0
+            )
 
             # Income loop cycle stats
             total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
@@ -3375,7 +3815,11 @@ Return JSON: {{"comment": "text"}}""",
             # ── 3. Identify top 5 and bottom 5 strategies by revenue ──────────
             sorted_strats = sorted(revenue_sources.items(), key=lambda x: -x[1])
             top_5 = sorted_strats[:5]
-            bottom_5 = [(s, revenue_sources.get(s, 0.0)) for s, _ in STRATEGIES if revenue_sources.get(s, 0.0) == 0.0][:5]
+            [
+                (s, revenue_sources.get(s, 0.0))
+                for s, _ in STRATEGIES
+                if revenue_sources.get(s, 0.0) == 0.0
+            ][:5]
 
             # ── 4. Auto-adjust adaptive weights for next income loop cycle ─────
             raw_weights = await cache.get("aria:income:adaptive_weights")
@@ -3398,7 +3842,11 @@ Return JSON: {{"comment": "text"}}""",
                 total_adj = sum(adjusted.values())
                 if total_adj > 0:
                     normalized = {k: round(v / total_adj * 100, 2) for k, v in adjusted.items()}
-                    await cache.set("aria:income:adaptive_weights", _json.dumps(normalized), ttl_seconds=86400 * 7)
+                    await cache.set(
+                        "aria:income:adaptive_weights",
+                        _json.dumps(normalized),
+                        ttl_seconds=86400 * 7,
+                    )
 
             # ── 5. Build P&L snapshot ─────────────────────────────────────────
             now_str = _dt.datetime.utcnow().isoformat()
@@ -3423,9 +3871,17 @@ Return JSON: {{"comment": "text"}}""",
             # Rolling P&L history
             pnl_hist_raw = await cache.get("aria:finance:pnl_history")
             pnl_hist: list = _json.loads(pnl_hist_raw) if pnl_hist_raw else []
-            pnl_hist.append({"ts": now_str, "total_usd": round(total_revenue_usd, 2), "daily_avg": round(daily_avg, 2)})
+            pnl_hist.append(
+                {
+                    "ts": now_str,
+                    "total_usd": round(total_revenue_usd, 2),
+                    "daily_avg": round(daily_avg, 2),
+                }
+            )
             pnl_hist = pnl_hist[-90:]  # keep 90 days
-            await cache.set("aria:finance:pnl_history", _json.dumps(pnl_hist), ttl_seconds=86400 * 95)
+            await cache.set(
+                "aria:finance:pnl_history", _json.dumps(pnl_hist), ttl_seconds=86400 * 95
+            )
 
             # ── 6. Generate AI financial insight ──────────────────────────────
             top_text = ", ".join(f"{n}(${r:.1f})" for n, r in top_5[:3])
@@ -3446,6 +3902,7 @@ Return JSON: {{"insight": "one specific actionable recommendation (under 100 cha
 
             # ── 7. Telegram financial report ──────────────────────────────────
             import aiohttp as _aio
+
             bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
             chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
             if bot_token and chat_id:
@@ -3468,7 +3925,11 @@ Return JSON: {{"insight": "one specific actionable recommendation (under 100 cha
                     async with _aio.ClientSession() as sess:
                         await sess.post(
                             f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                            json={"chat_id": chat_id, "text": report_msg[:4000], "parse_mode": "HTML"},
+                            json={
+                                "chat_id": chat_id,
+                                "text": report_msg[:4000],
+                                "parse_mode": "HTML",
+                            },
                             timeout=_aio.ClientTimeout(total=10),
                         )
                 except Exception:
@@ -3482,7 +3943,11 @@ Return JSON: {{"insight": "one specific actionable recommendation (under 100 cha
             }
 
         except Exception as exc:
-            return {"success": False, "summary": f"financial_controller error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"financial_controller error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("financial_controller", _financial_controller)
 
@@ -3493,17 +3958,20 @@ Return JSON: {{"insight": "one specific actionable recommendation (under 100 cha
         Uses web search + AI scoring to find high-intent prospects.
         Adds qualified leads to aria:crm:pipeline for b2b_saas_pitch to pick up.
         """
-        import json as _json
         import datetime as _dt
-        import aiohttp as _aio
-        from apps.core.memory.redis_client import get_cache as _gc
+        import json as _json
+
         from apps.core.llm.llm_client import complete_json
-        from apps.core.config import settings
+        from apps.core.memory.redis_client import get_cache as _gc
         from apps.core.tools.web_tools import WebTools
 
         cache = _gc()
         if not cache:
-            return {"success": False, "summary": "lead_generation_engine: no Redis", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": "lead_generation_engine: no Redis",
+                "value_usd": 0.0,
+            }
 
         wt = WebTools()
         leads_added = 0
@@ -3528,13 +3996,19 @@ Return JSON: {{"insight": "one specific actionable recommendation (under 100 cha
                             snippet = r.get("snippet", "")
                             url = r.get("url", "")
                             if title and len(title) > 10:
-                                raw_signals.append(f"Source: {url}\nTitle: {title}\nSignal: {snippet[:200]}")
+                                raw_signals.append(
+                                    f"Source: {url}\nTitle: {title}\nSignal: {snippet[:200]}"
+                                )
                                 total_signals += 1
                 except Exception:
                     pass
 
             if not raw_signals:
-                return {"success": False, "summary": "lead_generation_engine: no lead signals found", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "lead_generation_engine: no lead signals found",
+                    "value_usd": 0.0,
+                }
 
             # ── 2. Score and qualify leads via AI ─────────────────────────────
             signals_text = "\n\n---\n".join(raw_signals[:8])
@@ -3569,7 +4043,11 @@ Return JSON:
             )
 
             if not qualified or not qualified.get("leads"):
-                return {"success": False, "summary": f"lead_generation_engine: no qualified leads from {total_signals} signals", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": f"lead_generation_engine: no qualified leads from {total_signals} signals",
+                    "value_usd": 0.0,
+                }
 
             leads = qualified["leads"]
 
@@ -3615,36 +4093,48 @@ Return JSON:
             }
 
         except Exception as exc:
-            return {"success": False, "summary": f"lead_generation_engine error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"lead_generation_engine error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("lead_generation_engine", _lead_generation_engine)
 
     async def _customer_success_manager(obj: StrategicObjective) -> dict:
         """Review buyers, send check-ins, identify at-risk customers, trigger win-backs, surface upsells."""
         import json as _json
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
             import httpx
 
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             if not cache:
-                return {"success": False, "summary": "customer_success_manager: no Redis", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "customer_success_manager: no Redis",
+                    "value_usd": 0.0,
+                }
 
             buyers_raw = await cache.lrange("aria:customers:buyers", -50, -1)
             buyers: list[dict] = []
             for b in buyers_raw:
-                try:
+                with contextlib.suppress(Exception):
                     buyers.append(_json.loads(b))
-                except Exception:
-                    pass
 
             if not buyers:
-                return {"success": False, "summary": "customer_success_manager: no buyers in CRM yet", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "customer_success_manager: no buyers in CRM yet",
+                    "value_usd": 0.0,
+                }
 
-            now_ts = datetime.now(timezone.utc).timestamp()
+            now_ts = datetime.now(UTC).timestamp()
             at_risk = [b for b in buyers if (now_ts - b.get("last_seen_ts", now_ts)) > 86400 * 14]
             engaged = [b for b in buyers if b not in at_risk]
 
@@ -3655,6 +4145,7 @@ Return JSON:
             sendgrid_key = None
             try:
                 from apps.core.config import settings as _s
+
                 sendgrid_key = getattr(_s, "SENDGRID_API_KEY", None)
             except Exception:
                 pass
@@ -3670,12 +4161,17 @@ Return JSON:
                         async with httpx.AsyncClient(timeout=10) as client:
                             await client.post(
                                 "https://api.sendgrid.com/v3/mail/send",
-                                headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+                                headers={
+                                    "Authorization": f"Bearer {sendgrid_key}",
+                                    "Content-Type": "application/json",
+                                },
                                 json={
                                     "personalizations": [{"to": [{"email": buyer["email"]}]}],
                                     "from": {"email": "aria@aria-ai.dev", "name": "ARIA"},
                                     "subject": msg.get("subject", "Checking in ✨"),
-                                    "content": [{"type": "text/html", "value": msg.get("body_html", "")}],
+                                    "content": [
+                                        {"type": "text/html", "value": msg.get("body_html", "")}
+                                    ],
                                 },
                             )
                             checkins_sent += 1
@@ -3693,12 +4189,17 @@ Return JSON:
                         async with httpx.AsyncClient(timeout=10) as client:
                             await client.post(
                                 "https://api.sendgrid.com/v3/mail/send",
-                                headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+                                headers={
+                                    "Authorization": f"Bearer {sendgrid_key}",
+                                    "Content-Type": "application/json",
+                                },
                                 json={
                                     "personalizations": [{"to": [{"email": buyer["email"]}]}],
                                     "from": {"email": "aria@aria-ai.dev", "name": "ARIA"},
                                     "subject": winback.get("subject", "We miss you! Here's a gift"),
-                                    "content": [{"type": "text/html", "value": winback.get("body_html", "")}],
+                                    "content": [
+                                        {"type": "text/html", "value": winback.get("body_html", "")}
+                                    ],
                                 },
                             )
                             winbacks_sent += 1
@@ -3713,10 +4214,17 @@ Return JSON:
                         max_tokens=300,
                     )
                     if upsell_data and "upsell_product" in upsell_data:
-                        await cache.rpush("aria:upsell:queue", _json.dumps({
-                            "buyer_email": buyer.get("email", ""), "product": upsell_data["upsell_product"],
-                            "pitch": upsell_data.get("upsell_pitch", ""), "ts": today,
-                        }))
+                        await cache.rpush(
+                            "aria:upsell:queue",
+                            _json.dumps(
+                                {
+                                    "buyer_email": buyer.get("email", ""),
+                                    "product": upsell_data["upsell_product"],
+                                    "pitch": upsell_data.get("upsell_pitch", ""),
+                                    "ts": today,
+                                }
+                            ),
+                        )
                         upsells_queued += 1
                 except Exception:
                     pass
@@ -3730,33 +4238,44 @@ Return JSON:
                 "value_usd": total_value,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"customer_success_manager error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"customer_success_manager error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("customer_success_manager", _customer_success_manager)
 
     async def _ab_testing_engine(obj: StrategicObjective) -> dict:
         """Pick highest-traffic product, generate 2 variant headlines/prices, update listing with better version, track results."""
         import json as _json
+
         try:
-            from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             if not cache:
-                return {"success": False, "summary": "ab_testing_engine: no Redis", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "ab_testing_engine: no Redis",
+                    "value_usd": 0.0,
+                }
 
             products_raw = await cache.lrange("aria:products:created", -20, -1)
             products: list[dict] = []
             for p in products_raw:
-                try:
+                with contextlib.suppress(Exception):
                     products.append(_json.loads(p))
-                except Exception:
-                    pass
 
             if not products:
-                return {"success": False, "summary": "ab_testing_engine: no products to test yet", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "ab_testing_engine: no products to test yet",
+                    "value_usd": 0.0,
+                }
 
             target = products[-1]
             product_name = target.get("name", "ARIA product")
@@ -3769,7 +4288,11 @@ Return JSON:
                 max_tokens=800,
             )
             if not variants or "variant_a" not in variants:
-                return {"success": False, "summary": "ab_testing_engine: AI failed to generate variants", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "ab_testing_engine: AI failed to generate variants",
+                    "value_usd": 0.0,
+                }
 
             winner_key = variants.get("predicted_winner", "a")
             winner = variants.get(f"variant_{winner_key}", {})
@@ -3789,7 +4312,11 @@ Return JSON:
             await cache.ltrim("aria:ab_tests:history", -30, -1)
             await cache.increment("aria:ab_tests:total")
 
-            await cache.set(f"aria:ab_tests:active:{product_name}", _json.dumps(test_record), ttl_seconds=86400 * 7)
+            await cache.set(
+                f"aria:ab_tests:active:{product_name}",
+                _json.dumps(test_record),
+                ttl_seconds=86400 * 7,
+            )
 
             total_tests = int(await cache.get("aria:ab_tests:total") or 0)
             incremental_revenue = expected_lift / 100.0 * float(current_price) * 10
@@ -3800,28 +4327,37 @@ Return JSON:
                 "value_usd": incremental_revenue,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"ab_testing_engine error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"ab_testing_engine error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("ab_testing_engine", _ab_testing_engine)
 
     async def _seo_cluster_publisher(obj: StrategicObjective) -> dict:
         """Build and publish a full SEO topic cluster: 1 pillar + 5 supporting posts → organic traffic compounding."""
         import json as _json
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
             web = WebTools()
             github = AriaGitHubClient()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             _hn = await web.get_hacker_news_trending(limit=5)
             trends = [s.get("title", "") for s in (_hn.get("stories") or [])[:5] if s.get("title")]
-            topics = trends[:3] if trends else ["AI automation", "passive income online", "build AI products"]
+            topics = (
+                trends[:3]
+                if trends
+                else ["AI automation", "passive income online", "build AI products"]
+            )
 
             cluster = await complete_json(
                 system="You are an SEO content strategist. Build a complete topic cluster targeting commercial-intent keywords.",
@@ -3829,7 +4365,11 @@ Return JSON:
                 max_tokens=3500,
             )
             if not cluster or "pillar_title" not in cluster:
-                return {"success": False, "summary": "seo_cluster_publisher: AI failed", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "seo_cluster_publisher: AI failed",
+                    "value_usd": 0.0,
+                }
 
             pillar_title = cluster["pillar_title"]
             pillar_slug = pillar_title.lower().replace(" ", "-").replace("/", "")[:40]
@@ -3843,10 +4383,14 @@ Return JSON:
                     f"/repos/{_s.GITHUB_USERNAME}/{repo}/contents/seo/{pillar_slug}/index.md",
                     {
                         "message": f"[aria] seo_cluster_publisher pillar: {pillar_title[:50]}",
-                        "content": __import__("base64").b64encode(cluster.get("pillar_content", "").encode()).decode(),
+                        "content": __import__("base64")
+                        .b64encode(cluster.get("pillar_content", "").encode())
+                        .decode(),
                     },
                 )
-                urls_created.append(f"https://{_s.GITHUB_USERNAME}.github.io/{repo}/seo/{pillar_slug}/")
+                urls_created.append(
+                    f"https://{_s.GITHUB_USERNAME}.github.io/{repo}/seo/{pillar_slug}/"
+                )
             except Exception:
                 pass
 
@@ -3857,10 +4401,14 @@ Return JSON:
                         f"/repos/{_s.GITHUB_USERNAME}/{repo}/contents/seo/{pillar_slug}/{slug}.md",
                         {
                             "message": f"[aria] seo cluster: {art.get('title','')[:50]}",
-                            "content": __import__("base64").b64encode(art.get("content", "").encode()).decode(),
+                            "content": __import__("base64")
+                            .b64encode(art.get("content", "").encode())
+                            .decode(),
                         },
                     )
-                    urls_created.append(f"https://{_s.GITHUB_USERNAME}.github.io/{repo}/seo/{pillar_slug}/{slug}")
+                    urls_created.append(
+                        f"https://{_s.GITHUB_USERNAME}.github.io/{repo}/seo/{pillar_slug}/{slug}"
+                    )
                     total_volume += art.get("monthly_volume", 0)
                     posts_published += 1
                 except Exception:
@@ -3876,37 +4424,47 @@ Return JSON:
                 if _devto_key:
                     try:
                         import aiohttp as _aio
+
                         _dt_payload = {
                             "article": {
                                 "title": pillar_title,
                                 "body_markdown": _pillar_body,
                                 "published": True,
-                                "tags": [cluster.get("pillar_keyword", "ai").split()[0].lower(), "seo", "guide"],
+                                "tags": [
+                                    cluster.get("pillar_keyword", "ai").split()[0].lower(),
+                                    "seo",
+                                    "guide",
+                                ],
                                 "canonical_url": urls_created[0] if urls_created else None,
                             }
                         }
-                        async with _aio.ClientSession() as _ses:
-                            async with _ses.post(
+                        async with (
+                            _aio.ClientSession() as _ses,
+                            _ses.post(
                                 "https://dev.to/api/articles",
                                 json=_dt_payload,
                                 headers={"api-key": _devto_key},
                                 timeout=_aio.ClientTimeout(total=30),
-                            ) as _rr:
-                                if _rr.status in (200, 201):
-                                    _dt_d = await _rr.json()
-                                    if _dt_d.get("url"):
-                                        urls_created.append(_dt_d["url"])
-                                        _dt_posted = True
+                            ) as _rr,
+                        ):
+                            if _rr.status in (200, 201):
+                                _dt_d = await _rr.json()
+                                if _dt_d.get("url"):
+                                    urls_created.append(_dt_d["url"])
+                                    _dt_posted = True
                     except Exception:
                         pass
                 if not _dt_posted and _seo_ae and _seo_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _dt_pg = await _plat.devto(_seo_ae, _seo_ap)
                         _kw = cluster.get("pillar_keyword", "ai")
                         _dt_url = await _plat.devto_publish_article(
-                            _dt_pg, pillar_title, _pillar_body,
+                            _dt_pg,
+                            pillar_title,
+                            _pillar_body,
                             [_kw.split()[0].lower()[:20], "seo", "guide"],
                         )
                         if _dt_url:
@@ -3915,11 +4473,19 @@ Return JSON:
                         pass
 
             if cache:
-                await cache.rpush("aria:seo:clusters_published", _json.dumps({
-                    "ts": today, "pillar": pillar_title, "keyword": cluster.get("pillar_keyword", ""),
-                    "posts": posts_published, "monthly_volume": total_volume,
-                    "revenue_angle": cluster.get("cluster_revenue_angle", ""),
-                }))
+                await cache.rpush(
+                    "aria:seo:clusters_published",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "pillar": pillar_title,
+                            "keyword": cluster.get("pillar_keyword", ""),
+                            "posts": posts_published,
+                            "monthly_volume": total_volume,
+                            "revenue_angle": cluster.get("cluster_revenue_angle", ""),
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:seo:clusters_published", -20, -1)
                 await cache.increment("aria:seo:total_clusters")
 
@@ -3929,36 +4495,44 @@ Return JSON:
                 "value_usd": float(total_volume) * 0.002,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"seo_cluster_publisher error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"seo_cluster_publisher error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("seo_cluster_publisher", _seo_cluster_publisher)
 
     async def _partnership_pipeline(obj: StrategicObjective) -> dict:
         """Identify 5 partnership opportunities, craft proposals, send outreach, follow up pending deals."""
         import json as _json
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
+
             from apps.core.config import settings as _s
-            import httpx
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
-            web = WebTools()
-            github = AriaGitHubClient()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            now_ts = datetime.now(timezone.utc).timestamp()
+            WebTools()
+            AriaGitHubClient()
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            now_ts = datetime.now(UTC).timestamp()
 
             pending_raw = await cache.lrange("aria:partnerships:pipeline", -20, -1) if cache else []
             pending: list[dict] = []
             for p in pending_raw:
-                try:
+                with contextlib.suppress(Exception):
                     pending.append(_json.loads(p))
-                except Exception:
-                    pass
 
-            followups = [p for p in pending if p.get("status") == "outreach_sent" and (now_ts - p.get("sent_ts", now_ts)) > 86400 * 7]
+            followups = [
+                p
+                for p in pending
+                if p.get("status") == "outreach_sent"
+                and (now_ts - p.get("sent_ts", now_ts)) > 86400 * 7
+            ]
 
             opportunities = await complete_json(
                 system="You are ARIA's partnership director. Identify high-leverage partnership opportunities with newsletters, SaaS tools, and communities in the AI/automation space.",
@@ -3966,18 +4540,25 @@ Return JSON:
                 max_tokens=2000,
             )
             if not opportunities or "opportunities" not in opportunities:
-                return {"success": False, "summary": "partnership_pipeline: AI failed", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "partnership_pipeline: AI failed",
+                    "value_usd": 0.0,
+                }
 
             new_outreach = 0
             total_expected_value = 0.0
-            sendgrid_key = getattr(_s, "SENDGRID_API_KEY", None)
+            getattr(_s, "SENDGRID_API_KEY", None)
 
             for opp in opportunities.get("opportunities", [])[:5]:
                 try:
                     partner_record = {
-                        "ts": today, "sent_ts": now_ts,
-                        "partner": opp.get("partner_name", ""), "type": opp.get("partner_type", ""),
-                        "deal": opp.get("deal_type", ""), "value": opp.get("expected_value_usd", 0),
+                        "ts": today,
+                        "sent_ts": now_ts,
+                        "partner": opp.get("partner_name", ""),
+                        "type": opp.get("partner_type", ""),
+                        "deal": opp.get("deal_type", ""),
+                        "value": opp.get("expected_value_usd", 0),
                         "status": "outreach_sent",
                     }
                     if cache:
@@ -3997,10 +4578,17 @@ Return JSON:
                     )
                     if followup:
                         if cache:
-                            await cache.rpush("aria:partnerships:followup_queue", _json.dumps({
-                                "partner": deal.get("partner", ""), "ts": today,
-                                "subject": followup.get("subject", ""), "body": followup.get("body", ""),
-                            }))
+                            await cache.rpush(
+                                "aria:partnerships:followup_queue",
+                                _json.dumps(
+                                    {
+                                        "partner": deal.get("partner", ""),
+                                        "ts": today,
+                                        "subject": followup.get("subject", ""),
+                                        "body": followup.get("body", ""),
+                                    }
+                                ),
+                            )
                         followup_count += 1
                 except Exception:
                     pass
@@ -4014,33 +4602,50 @@ Return JSON:
                 "value_usd": total_expected_value,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"partnership_pipeline error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"partnership_pipeline error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("partnership_pipeline", _partnership_pipeline)
 
     async def _brand_monitor(obj: StrategicObjective) -> dict:
         """Search Twitter/Reddit/HN/Dev.to for ARIA mentions, respond to discussions, track brand sentiment."""
         import json as _json
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
             web = WebTools()
-            github = AriaGitHubClient()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            AriaGitHubClient()
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
-            search_queries = ["ARIA AI autonomous", "aria-ai github", "autonomous income AI", "AI that makes money"]
+            search_queries = [
+                "ARIA AI autonomous",
+                "aria-ai github",
+                "autonomous income AI",
+                "AI that makes money",
+            ]
             mentions_found: list[dict] = []
             for query in search_queries[:3]:
                 try:
                     _sr = await web.search_web(query, num_results=5)
                     for r in _sr.get("results", []):
-                        mentions_found.append({"query": query, "title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("snippet", "")})
+                        mentions_found.append(
+                            {
+                                "query": query,
+                                "title": r.get("title", ""),
+                                "url": r.get("url", ""),
+                                "snippet": r.get("snippet", ""),
+                            }
+                        )
                 except Exception:
                     pass
 
@@ -4049,7 +4654,10 @@ Return JSON:
                 _hn_top = await web.get_hacker_news_trending(limit=30)
                 for story in _hn_top.get("stories", []):
                     title_lower = story.get("title", "").lower()
-                    if any(kw in title_lower for kw in ["autonomous ai", "ai agent", "make money ai", "ai income"]):
+                    if any(
+                        kw in title_lower
+                        for kw in ["autonomous ai", "ai agent", "make money ai", "ai income"]
+                    ):
                         hn_mentions.append(story)
             except Exception:
                 pass
@@ -4081,7 +4689,8 @@ Return JSON:
                             hn_item_id = ""
                             for story in hn_mentions:
                                 if story.get("url") and (
-                                    story.get("title", "")[:30] in opp_url or str(story.get("id", "")) in opp_url
+                                    story.get("title", "")[:30] in opp_url
+                                    or str(story.get("id", "")) in opp_url
                                 ):
                                     hn_item_id = str(story.get("id", ""))
                                     break
@@ -4090,6 +4699,7 @@ Return JSON:
                             if hn_item_id and _bm_ae and _bm_ap:
                                 try:
                                     from apps.core.tools.human_browser import get_platform_login
+
                                     _bm_plat = await get_platform_login()
                                     _posted = await _bm_plat.hackernews_comment(
                                         _bm_ae, _bm_ap, hn_item_id, response_text[:2000]
@@ -4101,7 +4711,10 @@ Return JSON:
                                     pass
                         elif "twitter" in platform and _bm_ae and _bm_ap:
                             try:
-                                from apps.distribution.publishers.api_publisher import get_api_publisher
+                                from apps.distribution.publishers.api_publisher import (
+                                    get_api_publisher,
+                                )
+
                                 pub = get_api_publisher()
                                 tw_r = await pub.publish_to_twitter(response_text[:280])
                                 if tw_r and tw_r.success:
@@ -4111,21 +4724,42 @@ Return JSON:
                                 pass
 
                         if cache:
-                            await cache.rpush("aria:brand:response_queue", _json.dumps({
-                                "url": opp_url, "text": response_text,
-                                "platform": platform, "ts": today, "sent": _responded,
-                            }))
+                            await cache.rpush(
+                                "aria:brand:response_queue",
+                                _json.dumps(
+                                    {
+                                        "url": opp_url,
+                                        "text": response_text,
+                                        "platform": platform,
+                                        "ts": today,
+                                        "sent": _responded,
+                                    }
+                                ),
+                            )
                             responses_queued += 1
                     except Exception:
                         pass
 
-            sentiment_score = float(sentiment_analysis.get("sentiment_score", 5.0) if sentiment_analysis else 5.0)
+            sentiment_score = float(
+                sentiment_analysis.get("sentiment_score", 5.0) if sentiment_analysis else 5.0
+            )
 
             if cache:
-                await cache.rpush("aria:brand:sentiment_history", _json.dumps({
-                    "ts": today, "score": sentiment_score, "mentions": total_mentions,
-                    "summary": sentiment_analysis.get("brand_health_summary", "") if sentiment_analysis else "",
-                }))
+                await cache.rpush(
+                    "aria:brand:sentiment_history",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "score": sentiment_score,
+                            "mentions": total_mentions,
+                            "summary": (
+                                sentiment_analysis.get("brand_health_summary", "")
+                                if sentiment_analysis
+                                else ""
+                            ),
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:brand:sentiment_history", -30, -1)
                 await cache.set("aria:brand:current_sentiment", sentiment_score)
                 await cache.set("aria:brand:last_monitor", today)
@@ -4143,20 +4777,26 @@ Return JSON:
     async def _automated_reporting(obj: StrategicObjective) -> dict:
         """Compile comprehensive 24h performance report: revenue, content, SEO, pipeline, publish to GitHub + Telegram."""
         import json as _json
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.config import settings as _s
             import httpx
+
+            from apps.core.config import settings as _s
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
             github = AriaGitHubClient()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             if not cache:
-                return {"success": False, "summary": "automated_reporting: no Redis", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "automated_reporting: no Redis",
+                    "value_usd": 0.0,
+                }
 
             async def _safe_int(key: str) -> int:
                 try:
@@ -4270,7 +4910,9 @@ Return JSON:
                         "content": __import__("base64").b64encode(report_md.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{_s.GITHUB_USERNAME}/{repo}/blob/main/reports/performance-{today}.md")
+                urls_created.append(
+                    f"https://github.com/{_s.GITHUB_USERNAME}/{repo}/blob/main/reports/performance-{today}.md"
+                )
             except Exception:
                 pass
 
@@ -4287,7 +4929,17 @@ Return JSON:
                 except Exception:
                     pass
 
-            await cache.rpush("aria:reports:history", _json.dumps({"ts": today, "health": health_score, "revenue": total_revenue, "forecast": forecast_7d}))
+            await cache.rpush(
+                "aria:reports:history",
+                _json.dumps(
+                    {
+                        "ts": today,
+                        "health": health_score,
+                        "revenue": total_revenue,
+                        "forecast": forecast_7d,
+                    }
+                ),
+            )
             await cache.ltrim("aria:reports:history", -30, -1)
 
             return {
@@ -4296,23 +4948,29 @@ Return JSON:
                 "value_usd": total_revenue,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"automated_reporting error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"automated_reporting error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("automated_reporting", _automated_reporting)
 
     async def _deal_closer_bot(obj: StrategicObjective) -> dict:
         """Review warm leads, score by intent, send personalized closing emails, update deal stages in CRM."""
         import json as _json
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.config import settings as _s
             import httpx
 
+            from apps.core.config import settings as _s
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            now_ts = datetime.now(timezone.utc).timestamp()
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            now_ts = datetime.now(UTC).timestamp()
 
             if not cache:
                 return {"success": False, "summary": "deal_closer_bot: no Redis", "value_usd": 0.0}
@@ -4320,15 +4978,22 @@ Return JSON:
             leads_raw = await cache.lrange("aria:crm:pipeline", -50, -1)
             leads: list[dict] = []
             for lr in leads_raw:
-                try:
+                with contextlib.suppress(Exception):
                     leads.append(_json.loads(lr))
-                except Exception:
-                    pass
 
             if not leads:
-                return {"success": False, "summary": "deal_closer_bot: pipeline empty", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "deal_closer_bot: pipeline empty",
+                    "value_usd": 0.0,
+                }
 
-            warm_leads = [l for l in leads if l.get("score", 0) >= 60 and l.get("stage", "new") not in ("closed_won", "closed_lost")]
+            warm_leads = [
+                l
+                for l in leads
+                if l.get("score", 0) >= 60
+                and l.get("stage", "new") not in ("closed_won", "closed_lost")
+            ]
             hot_leads = [l for l in warm_leads if l.get("score", 0) >= 80]
 
             sendgrid_key = getattr(_s, "SENDGRID_API_KEY", None)
@@ -4356,12 +5021,24 @@ Return JSON:
                                 async with httpx.AsyncClient(timeout=10) as client:
                                     sg_r = await client.post(
                                         "https://api.sendgrid.com/v3/mail/send",
-                                        headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+                                        headers={
+                                            "Authorization": f"Bearer {sendgrid_key}",
+                                            "Content-Type": "application/json",
+                                        },
                                         json={
-                                            "personalizations": [{"to": [{"email": lead["email"]}]}],
+                                            "personalizations": [
+                                                {"to": [{"email": lead["email"]}]}
+                                            ],
                                             "from": {"email": "aria@aria-ai.dev", "name": "ARIA"},
-                                            "subject": close_msg.get("subject", "Quick question about your goals"),
-                                            "content": [{"type": "text/html", "value": close_msg.get("body_html", "")}],
+                                            "subject": close_msg.get(
+                                                "subject", "Quick question about your goals"
+                                            ),
+                                            "content": [
+                                                {
+                                                    "type": "text/html",
+                                                    "value": close_msg.get("body_html", ""),
+                                                }
+                                            ],
                                         },
                                     )
                                     if sg_r.status_code in (200, 202):
@@ -4378,6 +5055,7 @@ Return JSON:
                                 try:
                                     import smtplib
                                     from email.mime.text import MIMEText
+
                                     smtp_port = int(getattr(_s, "SMTP_PORT", 587))
                                     msg = MIMEText(close_msg.get("body_html", ""), "html")
                                     msg["Subject"] = close_msg.get("subject", "Quick question")
@@ -4386,7 +5064,9 @@ Return JSON:
                                     with smtplib.SMTP(smtp_host, smtp_port) as srv:
                                         srv.starttls()
                                         srv.login(smtp_user, smtp_pass)
-                                        srv.sendmail(smtp_from or smtp_user, [lead["email"]], msg.as_string())
+                                        srv.sendmail(
+                                            smtp_from or smtp_user, [lead["email"]], msg.as_string()
+                                        )
                                     _dc_sent = True
                                 except Exception:
                                     pass
@@ -4423,30 +5103,36 @@ Return JSON:
     async def _content_performance_optimizer(obj: StrategicObjective) -> dict:
         """Audit published content, rewrite weak headlines, update CTAs, add internal links → better conversions."""
         import json as _json
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
-            from apps.core.memory.redis_client import get_cache
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.config import settings as _s
 
             cache = get_cache()
-            github = AriaGitHubClient()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            AriaGitHubClient()
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             if not cache:
-                return {"success": False, "summary": "content_performance_optimizer: no Redis", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "content_performance_optimizer: no Redis",
+                    "value_usd": 0.0,
+                }
 
             content_items_raw = await cache.lrange("aria:content:published", -20, -1)
             content_items: list[dict] = []
             for c in content_items_raw:
-                try:
+                with contextlib.suppress(Exception):
                     content_items.append(_json.loads(c))
-                except Exception:
-                    pass
 
             if not content_items:
-                return {"success": False, "summary": "content_performance_optimizer: no published content yet", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "content_performance_optimizer: no published content yet",
+                    "value_usd": 0.0,
+                }
 
             items_optimized = 0
             improvements: list[str] = []
@@ -4463,17 +5149,27 @@ Return JSON:
                         max_tokens=500,
                     )
                     if optimization and "improved_headline" in optimization:
-                        improvements.append(f"'{title[:30]}' → '{optimization['improved_headline'][:30]}' (+{optimization.get('estimated_ctr_lift_pct',5):.0f}% CTR)")
+                        improvements.append(
+                            f"'{title[:30]}' → '{optimization['improved_headline'][:30]}' (+{optimization.get('estimated_ctr_lift_pct',5):.0f}% CTR)"
+                        )
                         items_optimized += 1
 
                         if cache:
-                            item["optimized_headline"] = optimization.get("improved_headline", title)
+                            item["optimized_headline"] = optimization.get(
+                                "improved_headline", title
+                            )
                             item["last_optimized"] = today
-                            await cache.rpush("aria:content:optimizations", _json.dumps({
-                                "ts": today, "original_title": title,
-                                "new_headline": optimization.get("improved_headline", ""),
-                                "ctr_lift": optimization.get("estimated_ctr_lift_pct", 5),
-                            }))
+                            await cache.rpush(
+                                "aria:content:optimizations",
+                                _json.dumps(
+                                    {
+                                        "ts": today,
+                                        "original_title": title,
+                                        "new_headline": optimization.get("improved_headline", ""),
+                                        "ctr_lift": optimization.get("estimated_ctr_lift_pct", 5),
+                                    }
+                                ),
+                            )
                 except Exception:
                     pass
 
@@ -4482,30 +5178,40 @@ Return JSON:
 
             return {
                 "success": True,
-                "summary": f"content_performance_optimizer: {items_optimized}/{len(content_items[-5:])} items optimized | " + " | ".join(improvements[:2]),
+                "summary": f"content_performance_optimizer: {items_optimized}/{len(content_items[-5:])} items optimized | "
+                + " | ".join(improvements[:2]),
                 "value_usd": float(items_optimized) * 25.0,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"content_performance_optimizer error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"content_performance_optimizer error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("content_performance_optimizer", _content_performance_optimizer)
 
     async def _revenue_diversifier(obj: StrategicObjective) -> dict:
         """Analyze income mix, identify concentration risk, initiate 2 new revenue streams."""
         import json as _json
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
             github = AriaGitHubClient()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             if not cache:
-                return {"success": False, "summary": "revenue_diversifier: no Redis", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "revenue_diversifier: no Redis",
+                    "value_usd": 0.0,
+                }
 
             async def _safe_float(key: str) -> float:
                 try:
@@ -4534,14 +5240,18 @@ Return JSON:
                 max_tokens=800,
             )
             if not diversification or "new_streams" not in diversification:
-                return {"success": False, "summary": "revenue_diversifier: AI failed", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "revenue_diversifier: AI failed",
+                    "value_usd": 0.0,
+                }
 
             repo = getattr(_s, "GITHUB_REPO", "aria-portfolio")
             report_md = f"# Revenue Diversification Report — {today}\n\n**Diversification Score:** {diversification.get('diversification_score',50)}/100\n**Concentration Risk:** {diversification.get('concentration_risk','medium')}\n**Highest Dependency:** {diversification.get('highest_dependency','')}\n\n## Current Mix\n\n{_json.dumps(income_mix, indent=2)}\n\n## New Streams Initiated\n\n"
             for stream in diversification.get("new_streams", []):
                 report_md += f"### {stream.get('stream_name','')}\n\n{stream.get('description','')}\n\n1. {stream.get('implementation_step_1','')}\n2. {stream.get('implementation_step_2','')}\n\n**Monthly potential:** ${stream.get('monthly_potential_usd',0)}\n\n"
 
-            try:
+            with contextlib.suppress(Exception):
                 await github._put(
                     f"/repos/{_s.GITHUB_USERNAME}/{repo}/contents/financial/diversification-{today}.md",
                     {
@@ -4549,16 +5259,25 @@ Return JSON:
                         "content": __import__("base64").b64encode(report_md.encode()).decode(),
                     },
                 )
-            except Exception:
-                pass
 
-            new_stream_value = sum(float(s.get("monthly_potential_usd", 0)) for s in diversification.get("new_streams", []))
+            new_stream_value = sum(
+                float(s.get("monthly_potential_usd", 0))
+                for s in diversification.get("new_streams", [])
+            )
 
-            await cache.rpush("aria:revenue:diversification_log", _json.dumps({
-                "ts": today, "score": diversification.get("diversification_score", 50),
-                "risk": diversification.get("concentration_risk", "medium"),
-                "new_streams": [s.get("stream_name", "") for s in diversification.get("new_streams", [])],
-            }))
+            await cache.rpush(
+                "aria:revenue:diversification_log",
+                _json.dumps(
+                    {
+                        "ts": today,
+                        "score": diversification.get("diversification_score", 50),
+                        "risk": diversification.get("concentration_risk", "medium"),
+                        "new_streams": [
+                            s.get("stream_name", "") for s in diversification.get("new_streams", [])
+                        ],
+                    }
+                ),
+            )
             await cache.ltrim("aria:revenue:diversification_log", -12, -1)
 
             return {
@@ -4567,32 +5286,44 @@ Return JSON:
                 "value_usd": new_stream_value,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"revenue_diversifier error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"revenue_diversifier error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("revenue_diversifier", _revenue_diversifier)
 
     async def _skill_upgrader(obj: StrategicObjective) -> dict:
         """Read HuggingFace trending models + AI papers, identify new capabilities for ARIA, generate implementation plans."""
         import json as _json
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
             web = WebTools()
             github = AriaGitHubClient()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             ai_trends: list[str] = []
             try:
-                _sr2 = await web.search_web("new AI models tools 2025 2026 released", num_results=10)
+                _sr2 = await web.search_web(
+                    "new AI models tools 2025 2026 released", num_results=10
+                )
                 ai_trends = [r.get("title", "") for r in _sr2.get("results", []) if r.get("title")]
             except Exception:
-                ai_trends = ["multimodal AI agents", "reasoning models", "autonomous coding", "AI voice generation"]
+                ai_trends = [
+                    "multimodal AI agents",
+                    "reasoning models",
+                    "autonomous coding",
+                    "AI voice generation",
+                ]
 
             skills_plan = await complete_json(
                 system="You are ARIA's self-improvement AI. Analyze new AI capabilities and design a skill upgrade plan.",
@@ -4606,7 +5337,9 @@ Return JSON:
             repo = getattr(_s, "GITHUB_REPO", "aria-portfolio")
             urls_created: list[str] = []
 
-            roadmap_md = skills_plan.get("skill_roadmap_md", f"# ARIA Skill Upgrade: {top_skill}\n\n")
+            roadmap_md = skills_plan.get(
+                "skill_roadmap_md", f"# ARIA Skill Upgrade: {top_skill}\n\n"
+            )
             tools = skills_plan.get("new_tools_to_integrate", [])
 
             try:
@@ -4617,16 +5350,25 @@ Return JSON:
                         "content": __import__("base64").b64encode(roadmap_md.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{_s.GITHUB_USERNAME}/{repo}/blob/main/skill-roadmaps/{today}-{top_skill.lower().replace(' ','-')[:30]}.md")
+                urls_created.append(
+                    f"https://github.com/{_s.GITHUB_USERNAME}/{repo}/blob/main/skill-roadmaps/{today}-{top_skill.lower().replace(' ','-')[:30]}.md"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.rpush("aria:skills:roadmap_history", _json.dumps({
-                    "ts": today, "skill": top_skill, "why": skills_plan.get("why_valuable", ""),
-                    "tools": [t.get("tool_name", "") for t in tools],
-                    "revenue_impact": skills_plan.get("estimated_revenue_impact", ""),
-                }))
+                await cache.rpush(
+                    "aria:skills:roadmap_history",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "skill": top_skill,
+                            "why": skills_plan.get("why_valuable", ""),
+                            "tools": [t.get("tool_name", "") for t in tools],
+                            "revenue_impact": skills_plan.get("estimated_revenue_impact", ""),
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:skills:roadmap_history", -20, -1)
                 await cache.set("aria:skills:current_focus", top_skill)
                 await cache.increment("aria:skills:total_upgrades")
@@ -4644,29 +5386,32 @@ Return JSON:
     async def _viral_growth_agent(obj: StrategicObjective) -> dict:
         """Find what's gaining traction, create variants, amplify top performers across all channels."""
         import json as _json
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
             web = WebTools()
-            github = AriaGitHubClient()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            AriaGitHubClient()
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             if not cache:
-                return {"success": False, "summary": "viral_growth_agent: no Redis", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "viral_growth_agent: no Redis",
+                    "value_usd": 0.0,
+                }
 
             content_raw = await cache.lrange("aria:content:published", -20, -1)
             content_items: list[dict] = []
             for c in content_raw:
-                try:
+                with contextlib.suppress(Exception):
                     content_items.append(_json.loads(c))
-                except Exception:
-                    pass
 
             _hn2 = await web.get_hacker_news_trending(limit=5)
             trends = [s.get("title", "") for s in (_hn2.get("stories") or [])[:5] if s.get("title")]
@@ -4677,7 +5422,11 @@ Return JSON:
                 max_tokens=1500,
             )
             if not viral_plan or "amplification_tactics" not in viral_plan:
-                return {"success": False, "summary": "viral_growth_agent: AI failed", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "viral_growth_agent: AI failed",
+                    "value_usd": 0.0,
+                }
 
             tactics = viral_plan.get("amplification_tactics", [])
             total_reach = int(viral_plan.get("total_expected_reach", 1000))
@@ -4686,10 +5435,17 @@ Return JSON:
             for tactic in tactics[:5]:
                 try:
                     if cache and tactic.get("content"):
-                        await cache.rpush("aria:viral:amplification_queue", _json.dumps({
-                            "platform": tactic.get("platform", ""), "action": tactic.get("action", ""),
-                            "content": tactic.get("content", ""), "ts": today,
-                        }))
+                        await cache.rpush(
+                            "aria:viral:amplification_queue",
+                            _json.dumps(
+                                {
+                                    "platform": tactic.get("platform", ""),
+                                    "action": tactic.get("action", ""),
+                                    "content": tactic.get("content", ""),
+                                    "ts": today,
+                                }
+                            ),
+                        )
                         actions_taken += 1
                 except Exception:
                     pass
@@ -4698,13 +5454,14 @@ Return JSON:
             _vg_ae = getattr(_s, "ARIA_EMAIL", None)
             _vg_ap = getattr(_s, "ARIA_PASSWORD", None)
             twitter_blast = viral_plan.get("twitter_blast", "")
-            reddit_blast  = viral_plan.get("reddit_blast", "")
+            reddit_blast = viral_plan.get("reddit_blast", "")
             live_posts: list[str] = []
 
             if twitter_blast:
                 _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     tw_r = await pub.publish_to_twitter(twitter_blast[:280])
                     _tw_ok = bool(tw_r and tw_r.success)
@@ -4715,6 +5472,7 @@ Return JSON:
                 if not _tw_ok and _vg_ae and _vg_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _vg_plat = await get_platform_login()
                         _tw_pg = await _vg_plat.twitter(_vg_ae, _vg_ap)
                         await _vg_plat.twitter_thread_post(_tw_pg, [twitter_blast[:280]])
@@ -4725,11 +5483,17 @@ Return JSON:
             if reddit_blast and _vg_ae and _vg_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _vg_plat2 = await get_platform_login()
                     _rd_pg = await _vg_plat2.reddit(_vg_ae, _vg_ap)
-                    top_piece_title = str(viral_plan.get("top_piece_to_amplify", {}).get("title", "Viral content"))
+                    top_piece_title = str(
+                        viral_plan.get("top_piece_to_amplify", {}).get("title", "Viral content")
+                    )
                     _rd_url = await _vg_plat2.reddit_post(
-                        _rd_pg, "SideProject", top_piece_title[:300], reddit_blast[:5000],
+                        _rd_pg,
+                        "SideProject",
+                        top_piece_title[:300],
+                        reddit_blast[:5000],
                     )
                     if _rd_url:
                         live_posts.append("Reddit")
@@ -4738,12 +5502,23 @@ Return JSON:
 
             for post_key, text in [("twitter", twitter_blast), ("reddit", reddit_blast)]:
                 if text and cache:
-                    await cache.rpush("aria:social:proof_posts", _json.dumps({"text": text, "platform": post_key, "ts": today}))
+                    await cache.rpush(
+                        "aria:social:proof_posts",
+                        _json.dumps({"text": text, "platform": post_key, "ts": today}),
+                    )
 
-            await cache.rpush("aria:viral:sessions", _json.dumps({
-                "ts": today, "tactics": len(tactics), "reach": total_reach, "actions": actions_taken,
-                "live_posts": live_posts,
-            }))
+            await cache.rpush(
+                "aria:viral:sessions",
+                _json.dumps(
+                    {
+                        "ts": today,
+                        "tactics": len(tactics),
+                        "reach": total_reach,
+                        "actions": actions_taken,
+                        "live_posts": live_posts,
+                    }
+                ),
+            )
             await cache.ltrim("aria:viral:sessions", -20, -1)
 
             top_piece = viral_plan.get("top_piece_to_amplify", {})
@@ -4754,23 +5529,28 @@ Return JSON:
                 "value_usd": float(total_reach) * 0.005,
             }
         except Exception as exc:
-            return {"success": False, "summary": f"viral_growth_agent error: {exc}", "value_usd": 0.0}
+            return {
+                "success": False,
+                "summary": f"viral_growth_agent error: {exc}",
+                "value_usd": 0.0,
+            }
 
     scheduler.register_handler("viral_growth_agent", _viral_growth_agent)
 
     async def _market_expansion(obj: StrategicObjective) -> dict:
         """Identify new markets (geo/language/vertical), create localized content and listings, establish beachhead."""
         import json as _json
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.config import settings as _s
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
             github = AriaGitHubClient()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             if not cache:
                 return {"success": False, "summary": "market_expansion: no Redis", "value_usd": 0.0}
@@ -4778,10 +5558,8 @@ Return JSON:
             existing_markets_raw = await cache.lrange("aria:markets:expanded", -10, -1)
             existing_markets: list[str] = []
             for m in existing_markets_raw:
-                try:
+                with contextlib.suppress(Exception):
                     existing_markets.append(_json.loads(m).get("market", ""))
-                except Exception:
-                    pass
 
             expansion = await complete_json(
                 system="You are ARIA's market expansion strategist. Identify the highest-opportunity new market to enter.",
@@ -4789,7 +5567,11 @@ Return JSON:
                 max_tokens=1500,
             )
             if not expansion or "new_market" not in expansion:
-                return {"success": False, "summary": "market_expansion: AI failed", "value_usd": 0.0}
+                return {
+                    "success": False,
+                    "summary": "market_expansion: AI failed",
+                    "value_usd": 0.0,
+                }
 
             new_market = expansion["new_market"]
             monthly_potential = float(expansion.get("monthly_potential_usd", 300.0))
@@ -4806,20 +5588,33 @@ Return JSON:
                         "content": __import__("base64").b64encode(content_md.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{_s.GITHUB_USERNAME}/{repo}/blob/main/markets/{slug}/{today}.md")
+                urls_created.append(
+                    f"https://github.com/{_s.GITHUB_USERNAME}/{repo}/blob/main/markets/{slug}/{today}.md"
+                )
             except Exception:
                 pass
 
-            await cache.rpush("aria:markets:expanded", _json.dumps({
-                "ts": today, "market": new_market, "platform": expansion.get("platform_to_use", ""),
-                "monthly_potential": monthly_potential,
-            }))
+            await cache.rpush(
+                "aria:markets:expanded",
+                _json.dumps(
+                    {
+                        "ts": today,
+                        "market": new_market,
+                        "platform": expansion.get("platform_to_use", ""),
+                        "monthly_potential": monthly_potential,
+                    }
+                ),
+            )
             await cache.ltrim("aria:markets:expanded", -20, -1)
 
             # Announce market entry on Twitter + LinkedIn (API → browser fallback)
             _me_ae = getattr(_s, "ARIA_EMAIL", None)
             _me_ap = getattr(_s, "ARIA_PASSWORD", None)
-            entry_url = urls_created[0] if urls_created else f"https://github.com/{_s.GITHUB_USERNAME}/{repo}"
+            entry_url = (
+                urls_created[0]
+                if urls_created
+                else f"https://github.com/{_s.GITHUB_USERNAME}/{repo}"
+            )
             tw_entry = (
                 f"🌍 Expanding to {new_market[:60]}\n\n"
                 f"{expansion.get('localized_headline', '')[:120]}\n\n"
@@ -4828,6 +5623,7 @@ Return JSON:
             _me_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tw_r = await pub.publish_to_twitter(tw_entry)
                 _me_tw_ok = bool(tw_r and tw_r.success)
@@ -4836,6 +5632,7 @@ Return JSON:
             if not _me_tw_ok and _me_ae and _me_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _me_plat = await get_platform_login()
                     _tw_pg = await _me_plat.twitter(_me_ae, _me_ap)
                     await _me_plat.twitter_thread_post(_tw_pg, [tw_entry])

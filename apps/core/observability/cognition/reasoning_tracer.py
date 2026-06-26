@@ -1,11 +1,10 @@
 """Cognitive observability: reasoning traces, confidence tracking, hallucination signals."""
+
 from __future__ import annotations
 
-import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -13,7 +12,7 @@ class ReasoningTrace:
     trace_id: str
     question: str
     started_at: str
-    finished_at: Optional[str] = None
+    finished_at: str | None = None
     duration_ms: float = 0.0
     steps: list[dict] = field(default_factory=list)
     conclusion: str = ""
@@ -22,17 +21,19 @@ class ReasoningTrace:
     hallucination_risk: float = 0.0
 
     def add_step(self, step_num: int, thought: str, uncertainty: float) -> None:
-        self.steps.append({
-            "step": step_num,
-            "thought": thought,
-            "uncertainty": uncertainty,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        })
+        self.steps.append(
+            {
+                "step": step_num,
+                "thought": thought,
+                "uncertainty": uncertainty,
+                "ts": datetime.now(UTC).isoformat(),
+            }
+        )
 
     def finish(self, conclusion: str, confidence: float) -> None:
         self.conclusion = conclusion
         self.confidence = confidence
-        self.finished_at = datetime.now(timezone.utc).isoformat()
+        self.finished_at = datetime.now(UTC).isoformat()
         self.hallucination_signals = _detect_hallucination_signals(conclusion, self.steps)
         self.hallucination_risk = _compute_hallucination_risk(
             confidence, self.hallucination_signals, self.steps
@@ -55,7 +56,10 @@ class ReasoningTrace:
 
 
 _HALLUCINATION_PATTERNS = [
-    ("certainty_overstatement", ["definitely", "certainly", "always", "never", "guaranteed", "100%"]),
+    (
+        "certainty_overstatement",
+        ["definitely", "certainly", "always", "never", "guaranteed", "100%"],
+    ),
     ("unsupported_specifics", ["$", "exactly", "precisely", "according to", "the study shows"]),
     ("temporal_confusion", ["yesterday", "last year", "in 2023", "recently", "currently"]),
     ("entity_fabrication", ["the company", "the user said", "as mentioned"]),
@@ -91,7 +95,7 @@ class ReasoningTracer:
         trace = ReasoningTrace(
             trace_id=f"rt_{uuid.uuid4().hex[:10]}",
             question=question,
-            started_at=datetime.now(timezone.utc).isoformat(),
+            started_at=datetime.now(UTC).isoformat(),
         )
         if len(self._traces) >= self._max_traces:
             oldest = min(self._traces.keys(), key=lambda k: self._traces[k].started_at)
@@ -99,7 +103,7 @@ class ReasoningTracer:
         self._traces[trace.trace_id] = trace
         return trace
 
-    def get_trace(self, trace_id: str) -> Optional[ReasoningTrace]:
+    def get_trace(self, trace_id: str) -> ReasoningTrace | None:
         return self._traces.get(trace_id)
 
     def high_risk_traces(self, threshold: float = 0.6) -> list[ReasoningTrace]:
@@ -129,7 +133,7 @@ class ReasoningTracer:
         return [t.to_dict() for t in traces[:n]]
 
 
-_tracer: Optional[ReasoningTracer] = None
+_tracer: ReasoningTracer | None = None
 
 
 def get_reasoning_tracer() -> ReasoningTracer:

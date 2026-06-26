@@ -2,16 +2,16 @@
 ARIA Client Acquisition — autonomous client acquisition and lead management system.
 Scores leads, generates outreach, and manages the sales pipeline.
 """
+
 from __future__ import annotations
 
 import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _CLIENTS_KEY = "marketplace:clients:v1"
 _CLIENTS_TTL = 86400 * 90  # 90 days
@@ -23,12 +23,12 @@ class Lead:
     name: str = ""
     company: str = ""
     email: str = ""
-    platform: str = ""       # "fiverr", "upwork", "linkedin", "email", "referral"
+    platform: str = ""  # "fiverr", "upwork", "linkedin", "email", "referral"
     niche: str = ""
     pain_points: list = field(default_factory=list)
     budget_estimate_usd: float = 0.0
     lead_score: float = 0.0  # 0-1
-    status: str = "new"      # "new"|"contacted"|"qualified"|"proposal_sent"|"closed_won"|"closed_lost"
+    status: str = "new"  # "new"|"contacted"|"qualified"|"proposal_sent"|"closed_won"|"closed_lost"
     source_url: str = ""
     notes: str = ""
     created_at: float = field(default_factory=time.time)
@@ -60,7 +60,7 @@ class OutreachMessage:
     platform: str = ""
     subject: str = ""
     body: str = ""
-    follow_up_day: int = 0   # 0=initial, 3=first follow-up, 7=second follow-up
+    follow_up_day: int = 0  # 0=initial, 3=first follow-up, 7=second follow-up
     sent: bool = False
     created_at: float = field(default_factory=time.time)
 
@@ -115,10 +115,12 @@ class ClientAcquisition:
         email: str,
         platform: str,
         niche: str,
-        pain_points: list = [],
+        pain_points: list = None,
         budget: float = 0.0,
     ) -> Lead:
         """Add a new lead to the system."""
+        if pain_points is None:
+            pain_points = []
         await self._load()
         lead = Lead(
             name=name,
@@ -168,6 +170,7 @@ class ClientAcquisition:
                 content = resp.content.strip()
                 # Extract first number from response
                 import re
+
                 match = re.search(r"0?\.\d+|1\.0|0|1", content)
                 if match:
                     score = min(max(float(match.group()), 0.0), 1.0)
@@ -191,10 +194,7 @@ class ClientAcquisition:
 
         await self._save()
 
-        lead = Lead(**{
-            k: v for k, v in lead_data.items()
-            if k in Lead.__dataclass_fields__
-        })
+        lead = Lead(**{k: v for k, v in lead_data.items() if k in Lead.__dataclass_fields__})
         lead.lead_score = score
         return lead
 
@@ -235,7 +235,7 @@ class ClientAcquisition:
                     f"Niche: {niche}\n"
                     f"Pain points: {', '.join(pain_points)}\n"
                     f"Service offered: {service_offered}\n\n"
-                    f"Return JSON: {{\"subject\": \"...\", \"body\": \"...\"}}"
+                    f'Return JSON: {{"subject": "...", "body": "..."}}'
                 ),
                 model=AIModel.CREATIVE,
                 max_tokens=400,
@@ -263,7 +263,9 @@ class ClientAcquisition:
         await self._save()
         return message
 
-    async def generate_follow_up_sequence(self, lead_id: str, service: str) -> list[OutreachMessage]:
+    async def generate_follow_up_sequence(
+        self, lead_id: str, service: str
+    ) -> list[OutreachMessage]:
         """Generates 3-message follow-up sequence (day 0, 3, 7)."""
         await self._load()
 
@@ -299,7 +301,7 @@ class ClientAcquisition:
                     user=(
                         f"Write a {msg_type} message (day {day} of sequence) for:\n"
                         f"Name: {name}, Service: {service}, Niche: {niche}, Platform: {platform}\n"
-                        f"Return JSON: {{\"subject\": \"...\", \"body\": \"...\"}}"
+                        f'Return JSON: {{"subject": "...", "body": "..."}}'
                     ),
                     model=AIModel.FAST,
                     max_tokens=300,
@@ -357,8 +359,8 @@ class ClientAcquisition:
                     f"Niche: {niche}\n"
                     f"Budget: ${budget}\n"
                     f"Discovery notes: {discovery_notes}\n\n"
-                    f"Return JSON: {{\"qualified\": bool, \"reason\": str, "
-                    f"\"recommended_service\": str, \"estimated_value_usd\": float}}"
+                    f'Return JSON: {{"qualified": bool, "reason": str, '
+                    f'"recommended_service": str, "estimated_value_usd": float}}'
                 ),
                 model=AIModel.STRATEGY,
                 max_tokens=300,
@@ -372,24 +374,32 @@ class ClientAcquisition:
                     data = json.loads(content[start:end])
                     result["qualified"] = bool(data.get("qualified", False))
                     result["reason"] = str(data.get("reason", result["reason"]))
-                    result["recommended_service"] = str(data.get("recommended_service", "consultation"))
+                    result["recommended_service"] = str(
+                        data.get("recommended_service", "consultation")
+                    )
                     result["estimated_value_usd"] = float(data.get("estimated_value_usd", 0.0))
                     ai_succeeded = True
         except Exception:
             pass
 
         # Heuristic fallback when AI fails or returns no valid data
-        if not ai_succeeded:
-            if budget >= 500 and len(discovery_notes) > 20:
-                result["qualified"] = True
-                result["reason"] = "Budget and requirements meet threshold"
-                result["estimated_value_usd"] = budget * 0.8
+        if not ai_succeeded and budget >= 500 and len(discovery_notes) > 20:
+            result["qualified"] = True
+            result["reason"] = "Budget and requirements meet threshold"
+            result["estimated_value_usd"] = budget * 0.8
 
         return result
 
     def update_lead_status(self, lead_id: str, status: str) -> bool:
         """Update lead status."""
-        valid_statuses = {"new", "contacted", "qualified", "proposal_sent", "closed_won", "closed_lost"}
+        valid_statuses = {
+            "new",
+            "contacted",
+            "qualified",
+            "proposal_sent",
+            "closed_won",
+            "closed_lost",
+        }
         if status not in valid_statuses:
             return False
 
@@ -421,9 +431,7 @@ class ClientAcquisition:
             by_platform[platform] = by_platform.get(platform, 0) + 1
             pipeline_value += budget * score
 
-        avg_score = (
-            sum(l.get("lead_score", 0.0) for l in self._leads) / max(len(self._leads), 1)
-        )
+        avg_score = sum(l.get("lead_score", 0.0) for l in self._leads) / max(len(self._leads), 1)
 
         return {
             "total_leads": len(self._leads),
@@ -444,7 +452,7 @@ class ClientAcquisition:
         return result
 
 
-_instance: Optional[ClientAcquisition] = None
+_instance: ClientAcquisition | None = None
 
 
 def get_client_acquisition() -> ClientAcquisition:

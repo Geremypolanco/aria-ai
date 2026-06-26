@@ -17,21 +17,21 @@ Design:
 This is OPA (Open Policy Agent) concepts implemented in pure Python.
 The interface is designed to swap in real OPA when the system requires it.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import time
 import uuid
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger("aria.security")
 
 
-class Capability(str, Enum):
+class Capability(StrEnum):
     # Read-only operations
     WEB_SEARCH = "web_search"
     READ_MEMORY = "read_memory"
@@ -68,13 +68,13 @@ class Capability(str, Enum):
     DEPLOY = "deploy"
 
 
-class Role(str, Enum):
-    OWNER = "owner"           # full access — the human principal
-    OPERATOR = "operator"     # trusted human with limited permissions
-    ARIA_AGENT = "aria_agent" # ARIA's own execution role
-    READER = "reader"         # read-only access
-    WEBHOOK = "webhook"       # external webhook callbacks
-    ANONYMOUS = "anonymous"   # unauthenticated — nearly no access
+class Role(StrEnum):
+    OWNER = "owner"  # full access — the human principal
+    OPERATOR = "operator"  # trusted human with limited permissions
+    ARIA_AGENT = "aria_agent"  # ARIA's own execution role
+    READER = "reader"  # read-only access
+    WEBHOOK = "webhook"  # external webhook callbacks
+    ANONYMOUS = "anonymous"  # unauthenticated — nearly no access
 
 
 # ── Policy Definitions ────────────────────────────────────────────────────
@@ -84,38 +84,55 @@ class Role(str, Enum):
 
 _POLICY: dict[Role, frozenset[Capability]] = {
     Role.OWNER: frozenset(Capability),  # all capabilities
-
-    Role.OPERATOR: frozenset({
-        Capability.WEB_SEARCH,
-        Capability.READ_MEMORY, Capability.READ_DB,
-        Capability.WRITE_MEMORY,
-        Capability.API_CALL_AI, Capability.API_CALL_SOCIAL,
-        Capability.INCOME_CYCLE, Capability.PUBLISH_CONTENT,
-        Capability.SEND_NOTIFICATION, Capability.CHECK_STATUS,
-    }),
-
-    Role.ARIA_AGENT: frozenset({
-        Capability.WEB_SEARCH,
-        Capability.READ_MEMORY, Capability.READ_DB,
-        Capability.WRITE_MEMORY, Capability.WRITE_DB,
-        Capability.API_CALL_AI, Capability.API_CALL_SOCIAL,
-        Capability.API_CALL_COMMERCE, Capability.API_CALL_EMAIL,
-        Capability.INCOME_CYCLE, Capability.PUBLISH_CONTENT,
-        Capability.CREATE_PRODUCT, Capability.SEND_NOTIFICATION,
-        Capability.FILE_READ, Capability.MODIFY_GOALS, Capability.CHECK_STATUS,
-    }),
-
-    Role.READER: frozenset({
-        Capability.WEB_SEARCH,
-        Capability.READ_MEMORY, Capability.READ_DB,
-        Capability.CHECK_STATUS,
-    }),
-
-    Role.WEBHOOK: frozenset({
-        Capability.WRITE_MEMORY, Capability.CHECK_STATUS,
-        Capability.SEND_NOTIFICATION,
-    }),
-
+    Role.OPERATOR: frozenset(
+        {
+            Capability.WEB_SEARCH,
+            Capability.READ_MEMORY,
+            Capability.READ_DB,
+            Capability.WRITE_MEMORY,
+            Capability.API_CALL_AI,
+            Capability.API_CALL_SOCIAL,
+            Capability.INCOME_CYCLE,
+            Capability.PUBLISH_CONTENT,
+            Capability.SEND_NOTIFICATION,
+            Capability.CHECK_STATUS,
+        }
+    ),
+    Role.ARIA_AGENT: frozenset(
+        {
+            Capability.WEB_SEARCH,
+            Capability.READ_MEMORY,
+            Capability.READ_DB,
+            Capability.WRITE_MEMORY,
+            Capability.WRITE_DB,
+            Capability.API_CALL_AI,
+            Capability.API_CALL_SOCIAL,
+            Capability.API_CALL_COMMERCE,
+            Capability.API_CALL_EMAIL,
+            Capability.INCOME_CYCLE,
+            Capability.PUBLISH_CONTENT,
+            Capability.CREATE_PRODUCT,
+            Capability.SEND_NOTIFICATION,
+            Capability.FILE_READ,
+            Capability.MODIFY_GOALS,
+            Capability.CHECK_STATUS,
+        }
+    ),
+    Role.READER: frozenset(
+        {
+            Capability.WEB_SEARCH,
+            Capability.READ_MEMORY,
+            Capability.READ_DB,
+            Capability.CHECK_STATUS,
+        }
+    ),
+    Role.WEBHOOK: frozenset(
+        {
+            Capability.WRITE_MEMORY,
+            Capability.CHECK_STATUS,
+            Capability.SEND_NOTIFICATION,
+        }
+    ),
     Role.ANONYMOUS: frozenset({Capability.CHECK_STATUS}),
 }
 
@@ -195,13 +212,10 @@ class PolicyEngine:
 
     # ── Audit ─────────────────────────────────────────────────────────────
 
-    def _record(
-        self, role: Role, capability: Capability,
-        allowed: bool, context: dict
-    ) -> None:
+    def _record(self, role: Role, capability: Capability, allowed: bool, context: dict) -> None:
         entry = AuditEntry(
             id=uuid.uuid4().hex[:8],
-            ts=datetime.now(timezone.utc).isoformat(),
+            ts=datetime.now(UTC).isoformat(),
             role=role.value,
             capability=capability.value,
             allowed=allowed,
@@ -212,7 +226,8 @@ class PolicyEngine:
         if not allowed:
             logger.warning(
                 "[Security] DENIED: %s attempted %s — not in policy",
-                role.value, capability.value,
+                role.value,
+                capability.value,
             )
 
     def get_audit_log(self, limit: int = 50) -> list[dict]:
@@ -225,6 +240,7 @@ class PolicyEngine:
         """Persist recent audit log to Redis for cross-restart analysis."""
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 recent = self.get_audit_log(limit=100)
@@ -248,7 +264,7 @@ class PolicyEngine:
         }
 
 
-_engine: Optional[PolicyEngine] = None
+_engine: PolicyEngine | None = None
 
 
 def get_policy_engine() -> PolicyEngine:
@@ -267,6 +283,7 @@ def guard(capability: Capability, role: Role = Role.ARIA_AGENT):
         async def run_income():
             ...
     """
+
     def decorator(fn):
         import functools
 
@@ -278,5 +295,7 @@ def guard(capability: Capability, role: Role = Role.ARIA_AGENT):
                     f"Capability '{capability.value}' denied for role '{role.value}'"
                 )
             return await fn(*args, **kwargs)
+
         return wrapper
+
     return decorator

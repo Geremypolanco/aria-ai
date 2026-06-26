@@ -3,9 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections import Counter
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
 
@@ -110,12 +108,14 @@ class BusinessAnalytics:
                 prev = step_counts[i - 1]
                 cvr = round(count / max(prev, 1), 4)
                 drop_rate = round(1.0 - cvr, 4)
-            result.append({
-                "step": step,
-                "count": count,
-                "cvr": cvr,
-                "drop_rate": drop_rate,
-            })
+            result.append(
+                {
+                    "step": step,
+                    "count": count,
+                    "cvr": cvr,
+                    "drop_rate": drop_rate,
+                }
+            )
         return result
 
     async def cohort_retention(self, cohort_start_ts: float, periods: int = 4) -> dict:
@@ -143,10 +143,12 @@ class BusinessAnalytics:
                     if uid in cohort_users:
                         active_in_period.add(uid)
             retention_rate = round(len(active_in_period) / len(cohort_users), 4)
-            retention_periods.append({
-                "period": period_i,
-                "retention_rate": retention_rate,
-            })
+            retention_periods.append(
+                {
+                    "period": period_i,
+                    "retention_rate": retention_rate,
+                }
+            )
         return {
             "cohort_size": len(cohort_users),
             "periods": retention_periods,
@@ -160,16 +162,16 @@ class BusinessAnalytics:
         total = len(self._events)
         result: list[dict] = []
         for event_type, count in counter.most_common(limit):
-            result.append({
-                "event_type": event_type,
-                "count": count,
-                "percentage": round(count / total * 100, 2),
-            })
+            result.append(
+                {
+                    "event_type": event_type,
+                    "count": count,
+                    "percentage": round(count / total * 100, 2),
+                }
+            )
         return result
 
-    async def revenue_attribution_by_event(
-        self, revenue_event: str = "purchase"
-    ) -> dict:
+    async def revenue_attribution_by_event(self, revenue_event: str = "purchase") -> dict:
         await self._load()
         by_source: dict[str, float] = {}
         for e in self._events:

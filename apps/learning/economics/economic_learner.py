@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
 
@@ -159,20 +158,26 @@ class EconomicLearner:
             if trend == "improving":
                 recommendation = f"Scale spend on {channel} — ROI trending up ({avg_roi:.2f}x avg)."
             elif trend == "declining":
-                recommendation = f"Reduce spend on {channel} — ROI declining. Test new creatives or pause."
+                recommendation = (
+                    f"Reduce spend on {channel} — ROI declining. Test new creatives or pause."
+                )
             else:
-                recommendation = f"{channel} is stable at {avg_roi:.2f}x ROI. Optimize targeting to improve."
+                recommendation = (
+                    f"{channel} is stable at {avg_roi:.2f}x ROI. Optimize targeting to improve."
+                )
 
-            insights.append(ChannelInsight(
-                channel=channel,
-                avg_roi=round(avg_roi, 4),
-                avg_ctr=round(avg_ctr, 4),
-                avg_conversion_rate=round(avg_cvr, 4),
-                total_campaigns=n,
-                total_revenue_usd=round(total_revenue, 2),
-                trend=trend,
-                recommendation=recommendation,
-            ))
+            insights.append(
+                ChannelInsight(
+                    channel=channel,
+                    avg_roi=round(avg_roi, 4),
+                    avg_ctr=round(avg_ctr, 4),
+                    avg_conversion_rate=round(avg_cvr, 4),
+                    total_campaigns=n,
+                    total_revenue_usd=round(total_revenue, 2),
+                    trend=trend,
+                    recommendation=recommendation,
+                )
+            )
 
         return sorted(insights, key=lambda i: i.avg_roi, reverse=True)
 
@@ -183,9 +188,7 @@ class EconomicLearner:
     async def predict_roi(self, channel: str, spend_usd: float) -> dict:
         await self._load()
         channel_outcomes = [
-            CampaignOutcome.from_dict(d)
-            for d in self._outcomes
-            if d.get("channel") == channel
+            CampaignOutcome.from_dict(d) for d in self._outcomes if d.get("channel") == channel
         ]
 
         if not channel_outcomes:
@@ -253,7 +256,7 @@ class EconomicLearner:
         }
 
 
-_learner_instance: Optional[EconomicLearner] = None
+_learner_instance: EconomicLearner | None = None
 
 
 def get_economic_learner() -> EconomicLearner:

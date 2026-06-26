@@ -13,10 +13,11 @@ The interface deliberately models the minimal contract:
 Richer features (streaming, tool-use) are added as optional methods that
 callers can detect via hasattr() — no breaking changes to existing callers.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.platform.ai")
 
@@ -38,8 +39,10 @@ class AIProvider:
             return ""
         try:
             result = await self._client.complete(
-                prompt=prompt, system=system,
-                max_tokens=max_tokens, temperature=temperature,
+                prompt=prompt,
+                system=system,
+                max_tokens=max_tokens,
+                temperature=temperature,
             )
             if hasattr(result, "content"):
                 return result.content or ""
@@ -52,14 +55,19 @@ class AIProvider:
         self,
         prompt: str,
         system: str = "",
-        schema: Optional[dict] = None,
+        schema: dict | None = None,
     ) -> dict:
         if self._client is None:
             return {}
         try:
-            return await self._client.complete_json(
-                prompt=prompt, system=system, schema=schema or {},
-            ) or {}
+            return (
+                await self._client.complete_json(
+                    prompt=prompt,
+                    system=system,
+                    schema=schema or {},
+                )
+                or {}
+            )
         except Exception as exc:
             logger.error("[Platform.AI] complete_json failed: %s", exc)
             return {}
@@ -86,7 +94,7 @@ class AIProvider:
         return getattr(self._client, "provider", type(self._client).__name__)
 
 
-_provider: Optional[AIProvider] = None
+_provider: AIProvider | None = None
 
 
 def get_ai_provider(client: Any = None) -> AIProvider:
@@ -95,6 +103,7 @@ def get_ai_provider(client: Any = None) -> AIProvider:
         if client is None:
             try:
                 from apps.core.tools.ai_client import get_ai_client
+
                 client = get_ai_client()
             except Exception:
                 client = None

@@ -8,26 +8,27 @@ Two classes:
 
 Business metrics exposed at GET /metrics (Prometheus text format).
 """
+
 from __future__ import annotations
 
 import logging
-import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import Lock
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger("aria.metrics")
 
 _otel_available = False
 try:
-    from opentelemetry import metrics as otel_metrics
-    from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.metrics.export import (
+    from opentelemetry import metrics as otel_metrics  # noqa: F401
+    from opentelemetry.sdk.metrics import MeterProvider  # noqa: F401
+    from opentelemetry.sdk.metrics.export import (  # noqa: F401
         ConsoleMetricExporter,
         PeriodicExportingMetricReader,
     )
+
     _otel_available = True
 except ImportError:
     pass
@@ -39,6 +40,7 @@ def get_meter(name: str) -> Any:
         return _NoOpMeter()
     try:
         from opentelemetry import metrics
+
         return metrics.get_meter(name)
     except Exception:
         return _NoOpMeter()
@@ -50,6 +52,7 @@ def get_meter(name: str) -> Any:
 @dataclass
 class _CounterBucket:
     """In-memory counter with timestamp of last increment."""
+
     value: float = 0.0
     last_updated: float = field(default_factory=time.time)
 
@@ -71,10 +74,10 @@ class AriaMetrics:
       - Error rates per component
     """
 
-    _instance: Optional["AriaMetrics"] = None
+    _instance: AriaMetrics | None = None
     _lock: Lock = Lock()
 
-    def __new__(cls) -> "AriaMetrics":
+    def __new__(cls) -> AriaMetrics:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
@@ -88,10 +91,10 @@ class AriaMetrics:
         self._lock_data = Lock()
 
         # AI metrics
-        self._ai_calls: Dict[str, _CounterBucket] = {}
-        self._ai_errors: Dict[str, _CounterBucket] = {}
-        self._ai_tokens: Dict[str, _CounterBucket] = {}
-        self._ai_latency_ms: Dict[str, _CounterBucket] = {}
+        self._ai_calls: dict[str, _CounterBucket] = {}
+        self._ai_errors: dict[str, _CounterBucket] = {}
+        self._ai_tokens: dict[str, _CounterBucket] = {}
+        self._ai_latency_ms: dict[str, _CounterBucket] = {}
 
         # Income metrics
         self._income_cycles_total = _CounterBucket()
@@ -99,11 +102,11 @@ class AriaMetrics:
         self._income_revenue_usd = _CounterBucket()
 
         # Agent metrics
-        self._agent_runs: Dict[str, _CounterBucket] = {}
-        self._agent_errors: Dict[str, _CounterBucket] = {}
+        self._agent_runs: dict[str, _CounterBucket] = {}
+        self._agent_errors: dict[str, _CounterBucket] = {}
 
         # Cognition metrics
-        self._cognition_ops: Dict[str, _CounterBucket] = {}
+        self._cognition_ops: dict[str, _CounterBucket] = {}
 
         # Memory metrics
         self._memory_reads = _CounterBucket()
@@ -217,9 +220,7 @@ class AriaMetrics:
         ]
 
         total_reads = self._memory_reads.value
-        hit_ratio = (
-            self._memory_cache_hits.value / total_reads if total_reads > 0 else 0.0
-        )
+        hit_ratio = self._memory_cache_hits.value / total_reads if total_reads > 0 else 0.0
         lines.append(f"aria_memory_cache_hit_ratio {hit_ratio:.4f}")
         lines.append("")
 
@@ -314,12 +315,12 @@ class AriaMetrics:
                     "cache_hits": self._memory_cache_hits.value,
                     "cache_misses": self._memory_cache_misses.value,
                 },
-                "ts": datetime.now(timezone.utc).isoformat(),
+                "ts": datetime.now(UTC).isoformat(),
             }
 
 
 # Module-level singleton
-_metrics: Optional[AriaMetrics] = None
+_metrics: AriaMetrics | None = None
 
 
 def get_metrics() -> AriaMetrics:
@@ -331,14 +332,15 @@ def get_metrics() -> AriaMetrics:
 
 # ── No-op implementations ──────────────────────────────────────────────────
 
+
 class _NoOpMeter:
-    def create_counter(self, *args: Any, **kwargs: Any) -> "_NoOpCounter":
+    def create_counter(self, *args: Any, **kwargs: Any) -> _NoOpCounter:
         return _NoOpCounter()
 
-    def create_histogram(self, *args: Any, **kwargs: Any) -> "_NoOpHistogram":
+    def create_histogram(self, *args: Any, **kwargs: Any) -> _NoOpHistogram:
         return _NoOpHistogram()
 
-    def create_gauge(self, *args: Any, **kwargs: Any) -> "_NoOpGauge":
+    def create_gauge(self, *args: Any, **kwargs: Any) -> _NoOpGauge:
         return _NoOpGauge()
 
     def create_observable_counter(self, *args: Any, **kwargs: Any) -> None: ...

@@ -11,25 +11,24 @@ Endpoints:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from apps.core.agents.orchestrator import Orchestrator as AriaOrchestrator
-from apps.core.agents.enhanced_dev_agent import EnhancedDevAgent
-from apps.core.agents.research_agent import ResearchAgent
-from apps.core.agents.interaction_agent import InteractionAgent
-from apps.core.sandbox.universal_sandbox import SandboxManager
-from apps.core.integrations.mcp_client import mcp_manager
-from apps.core.config_pkg.secrets_manager import secrets_manager, env_manager, config_manager
-from apps.core.deployment.deployment_orchestrator import deployment_orchestrator, DeploymentPlatform
 from apps.api.webhooks import router as webhooks_router
+from apps.core.agents.enhanced_dev_agent import EnhancedDevAgent
+from apps.core.agents.interaction_agent import InteractionAgent
+from apps.core.agents.orchestrator import Orchestrator as AriaOrchestrator
+from apps.core.agents.research_agent import ResearchAgent
+from apps.core.config_pkg.secrets_manager import env_manager, secrets_manager
+from apps.core.deployment.deployment_orchestrator import DeploymentPlatform, deployment_orchestrator
 from apps.core.integrations.hf_connector import hf_connector
+from apps.core.integrations.mcp_client import mcp_manager
+from apps.core.sandbox.universal_sandbox import SandboxManager
 
 logger = logging.getLogger("aria.api")
 
@@ -58,14 +57,14 @@ dev_agent = EnhancedDevAgent()
 research_agent = ResearchAgent()
 interaction_agent = InteractionAgent()
 sandbox_manager = SandboxManager()
-mcp_manager = mcp_manager # Usar la instancia global del mcp_manager
-hf_connector = hf_connector # Usar la instancia global del hf_connector
+mcp_manager = mcp_manager  # Usar la instancia global del mcp_manager
+hf_connector = hf_connector  # Usar la instancia global del hf_connector
 
 
 # Request models
 class ChatRequest(BaseModel):
     message: str
-    context: Dict[str, Any] = {}
+    context: dict[str, Any] = {}
 
 
 class ExecuteRequest(BaseModel):
@@ -93,18 +92,21 @@ class TaskRequest(BaseModel):
 # Chat endpoint
 # ==================== Endpoints de Conectores MCP ====================
 
+
 @app.get("/api/aria/connectors")
 async def list_connectors():
     """Lista todos los conectores MCP conectados."""
     connectors = []
     for name, client in mcp_manager.clients.items():
-        connectors.append({
-            "id": name,
-            "name": name,
-            "type": "mcp",
-            "status": "connected",
-            "tools": list(client.tools.keys()),
-        })
+        connectors.append(
+            {
+                "id": name,
+                "name": name,
+                "type": "mcp",
+                "status": "connected",
+                "tools": list(client.tools.keys()),
+            }
+        )
     return {"success": True, "connectors": connectors}
 
 
@@ -155,6 +157,7 @@ async def test_connector(connector_id: str):
 
 # ==================== Endpoints de Secretos ====================
 
+
 @app.get("/api/aria/secrets")
 async def list_secrets():
     """Lista todos los secretos (sin mostrar valores)."""
@@ -189,6 +192,7 @@ async def get_secrets_audit_log():
 
 # ==================== Endpoints de Entornos ====================
 
+
 @app.get("/api/aria/environments")
 async def list_environments():
     """Lista todos los entornos."""
@@ -196,11 +200,13 @@ async def list_environments():
     environments = []
     for env_name in envs:
         variables = env_manager.get_environment_variables(env_name)
-        environments.append({
-            "name": env_name,
-            "variables": variables,
-            "isActive": env_name == env_manager.current_environment,
-        })
+        environments.append(
+            {
+                "name": env_name,
+                "variables": variables,
+                "isActive": env_name == env_manager.current_environment,
+            }
+        )
     return {"success": True, "environments": environments}
 
 
@@ -220,6 +226,7 @@ async def activate_environment(name: str):
 
 
 # ==================== Endpoints de Despliegues ====================
+
 
 @app.get("/api/aria/deployments")
 async def list_deployments():
@@ -267,17 +274,20 @@ async def rollback_deployment(deployment_id: str):
 
 # ==================== Endpoints de Hugging Face ====================
 
+
 @app.get("/api/aria/hf/models")
 async def search_hf_models(query: str, limit: int = 10):
     """Busca modelos en Hugging Face Hub."""
     models = await hf_connector.search_models(query, limit)
     return {"success": True, "models": models}
 
+
 @app.get("/api/aria/hf/datasets")
 async def search_hf_datasets(query: str, limit: int = 10):
     """Busca datasets en Hugging Face Hub."""
     datasets = await hf_connector.search_datasets(query, limit)
     return {"success": True, "datasets": datasets}
+
 
 @app.post("/api/aria/hf/models/download")
 async def download_hf_model(model_id: str, local_path: str):
@@ -286,6 +296,7 @@ async def download_hf_model(model_id: str, local_path: str):
     if downloaded_path:
         return {"success": True, "path": downloaded_path}
     return {"success": False, "error": "No se pudo descargar el modelo"}
+
 
 @app.post("/api/aria/hf/datasets/download")
 async def download_hf_dataset(dataset_id: str, local_path: str):
@@ -298,8 +309,9 @@ async def download_hf_dataset(dataset_id: str, local_path: str):
 
 # ==================== Endpoint de Chat Original ====================
 
+
 @app.post("/api/aria/chat")
-async def chat(request: ChatRequest) -> Dict[str, Any]:
+async def chat(request: ChatRequest) -> dict[str, Any]:
     """Procesa un mensaje de chat."""
     try:
         logger.info(f"[API] Chat: {request.message[:80]}")
@@ -324,7 +336,7 @@ async def chat(request: ChatRequest) -> Dict[str, Any]:
 
 # Code execution endpoint
 @app.post("/api/aria/execute")
-async def execute_code(request: ExecuteRequest) -> Dict[str, Any]:
+async def execute_code(request: ExecuteRequest) -> dict[str, Any]:
     """Ejecuta código en un sandbox."""
     try:
         logger.info(f"[API] Ejecutando código ({request.language})")
@@ -352,7 +364,7 @@ async def execute_code(request: ExecuteRequest) -> Dict[str, Any]:
 
 # Shell execution endpoint
 @app.post("/api/aria/shell")
-async def execute_shell(request: ShellRequest) -> Dict[str, Any]:
+async def execute_shell(request: ShellRequest) -> dict[str, Any]:
     """Ejecuta un comando shell."""
     try:
         logger.info(f"[API] Shell: {request.command[:80]}")
@@ -378,7 +390,7 @@ async def execute_shell(request: ShellRequest) -> Dict[str, Any]:
 
 # File operations endpoint
 @app.post("/api/aria/files")
-async def file_operations(request: FileRequest) -> Dict[str, Any]:
+async def file_operations(request: FileRequest) -> dict[str, Any]:
     """Realiza operaciones con archivos."""
     try:
         logger.info(f"[API] Archivo: {request.action} {request.path}")
@@ -416,7 +428,7 @@ async def file_operations(request: FileRequest) -> Dict[str, Any]:
 
 # Get files endpoint
 @app.get("/api/aria/files")
-async def get_files(directory: str = ".") -> Dict[str, Any]:
+async def get_files(directory: str = ".") -> dict[str, Any]:
     """Lista archivos en un directorio."""
     try:
         result = await interaction_agent.execute(
@@ -435,7 +447,7 @@ async def get_files(directory: str = ".") -> Dict[str, Any]:
 
 # Task management endpoint
 @app.post("/api/aria/tasks")
-async def create_task(request: TaskRequest) -> Dict[str, Any]:
+async def create_task(request: TaskRequest) -> dict[str, Any]:
     """Crea una nueva tarea."""
     try:
         logger.info(f"[API] Nueva tarea: {request.task[:80]}")
@@ -477,10 +489,12 @@ async def websocket_chat(websocket: WebSocket):
             )
 
             # Enviar respuesta
-            await websocket.send_json({
-                "response": result.get("result", {}).get("summary", ""),
-                "success": result.get("success", False),
-            })
+            await websocket.send_json(
+                {
+                    "response": result.get("result", {}).get("summary", ""),
+                    "success": result.get("success", False),
+                }
+            )
 
     except Exception as exc:
         logger.error(f"[API] Error en WebSocket: {exc}")
@@ -490,7 +504,7 @@ async def websocket_chat(websocket: WebSocket):
 
 # Health check endpoint
 @app.get("/api/aria/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check() -> dict[str, Any]:
     """Verifica el estado de la API."""
     return {
         "status": "online",

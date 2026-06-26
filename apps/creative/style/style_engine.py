@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -93,7 +92,7 @@ _TRENDY_SHIFTS: dict[str, str] = {
 }
 
 
-class StyleDimension(str, Enum):
+class StyleDimension(StrEnum):
     TONE = "TONE"
     COLOR_PALETTE = "COLOR_PALETTE"
     TYPOGRAPHY = "TYPOGRAPHY"
@@ -195,9 +194,7 @@ class StyleEngine:
         await self._save()
         return profile
 
-    async def evolve_style(
-        self, profile_id: str, direction: str = "bolder"
-    ) -> StyleProfile:
+    async def evolve_style(self, profile_id: str, direction: str = "bolder") -> StyleProfile:
         await self._load()
         raw = self._profiles.get(profile_id)
         if not raw:
@@ -258,9 +255,7 @@ class StyleEngine:
             "freshness_tips": tips,
         }
 
-    async def style_consistency_audit(
-        self, profile_id: str, contents: list[str]
-    ) -> dict:
+    async def style_consistency_audit(self, profile_id: str, contents: list[str]) -> dict:
         await self._load()
         if not contents:
             return {
@@ -280,12 +275,8 @@ class StyleEngine:
         inconsistencies: list[str] = []
         formal_markers = ["however", "therefore", "furthermore", "henceforth"]
         casual_markers = ["lol", "omg", "tbh", "ngl", "gonna", "wanna"]
-        formal_counts = [
-            sum(1 for m in formal_markers if m in c.lower()) for c in contents
-        ]
-        casual_counts = [
-            sum(1 for m in casual_markers if m in c.lower()) for c in contents
-        ]
+        formal_counts = [sum(1 for m in formal_markers if m in c.lower()) for c in contents]
+        casual_counts = [sum(1 for m in casual_markers if m in c.lower()) for c in contents]
         if any(f > 0 for f in formal_counts) and any(c > 0 for c in casual_counts):
             inconsistencies.append(
                 "Mixed formal and casual register detected across content pieces"
@@ -296,9 +287,7 @@ class StyleEngine:
                 "Significant length variation suggests inconsistent content depth"
             )
         if "professional" in tone and any(c > 0 for c in casual_counts):
-            inconsistencies.append(
-                "Casual language found but profile tone is professional"
-            )
+            inconsistencies.append("Casual language found but profile tone is professional")
         consistency_score = max(0.0, 1.0 - len(inconsistencies) * 0.2)
         rec = (
             "Content is well-aligned with style profile."

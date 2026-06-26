@@ -2,16 +2,16 @@
 Competitor analysis and monitoring.
 Tracks competitor profiles, identifies market gaps, and surfaces competitive insights.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.market.competition")
 
@@ -20,6 +20,7 @@ _CACHE_TTL = 86400 * 14  # 14 days
 
 
 # ── Data models ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class CompetitorProfile:
@@ -97,6 +98,7 @@ class CompetitiveInsight:
 
 # ── Default fallback data ──────────────────────────────────────────────────────
 
+
 def _fallback_strengths(name: str, niche: str) -> list[str]:
     seed = sum(ord(c) for c in name + niche)
     options = [
@@ -128,6 +130,7 @@ def _fallback_weaknesses(name: str, niche: str) -> list[str]:
 
 
 # ── Main class ─────────────────────────────────────────────────────────────────
+
 
 class CompetitorMonitor:
     """Tracks and analyzes competitors in a given market niche."""
@@ -177,7 +180,9 @@ class CompetitorMonitor:
             domain=domain,
             niche=niche,
             estimated_traffic=((seed % 90) + 10) * 1000,
-            content_frequency="weekly" if seed % 3 == 0 else ("daily" if seed % 3 == 1 else "monthly"),
+            content_frequency=(
+                "weekly" if seed % 3 == 0 else ("daily" if seed % 3 == 1 else "monthly")
+            ),
             pricing_tier="freemium" if seed % 3 == 0 else ("premium" if seed % 3 == 1 else "free"),
             strengths=_fallback_strengths(name, niche),
             weaknesses=_fallback_weaknesses(name, niche),
@@ -209,7 +214,7 @@ class CompetitorMonitor:
                 prompt = (
                     f"Analyze competitor '{profile.name}' (domain: {profile.domain}) in the '{profile.niche}' niche. "
                     "Identify the biggest threat they pose. "
-                    "Return JSON: {\"type\": \"threat\", \"description\": \"...\", \"priority\": 3}"
+                    'Return JSON: {"type": "threat", "description": "...", "priority": 3}'
                 )
                 result = await ai.generate(prompt, model=AIModel.FAST, json_mode=True)
                 if result and isinstance(result, dict):
@@ -267,7 +272,7 @@ class CompetitorMonitor:
                 prompt = (
                     f"Given these competitors in '{niche}': {niche_competitors or ['unknown']}. "
                     "Identify 3 market gaps. "
-                    "Return JSON: {\"gaps\": [\"gap1\", \"gap2\", \"gap3\"]}"
+                    'Return JSON: {"gaps": ["gap1", "gap2", "gap3"]}'
                 )
                 result = await ai.generate(prompt, model=AIModel.FAST, json_mode=True)
                 if result and isinstance(result, dict):
@@ -300,19 +305,13 @@ class CompetitorMonitor:
         ]
 
         total = len(niche_profiles)
-        avg_traffic = (
-            sum(p.estimated_traffic for p in niche_profiles) / total if total else 0.0
-        )
+        avg_traffic = sum(p.estimated_traffic for p in niche_profiles) / total if total else 0.0
 
         gap_insights = [
-            CompetitiveInsight.from_dict(i)
-            for i in self._insights
-            if i.get("type") == "gap"
+            CompetitiveInsight.from_dict(i) for i in self._insights if i.get("type") == "gap"
         ]
         threat_insights = [
-            CompetitiveInsight.from_dict(i)
-            for i in self._insights
-            if i.get("type") == "threat"
+            CompetitiveInsight.from_dict(i) for i in self._insights if i.get("type") == "threat"
         ]
 
         return {
@@ -331,7 +330,7 @@ class CompetitorMonitor:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_competitor_monitor_instance: Optional[CompetitorMonitor] = None
+_competitor_monitor_instance: CompetitorMonitor | None = None
 
 
 def get_competitor_monitor() -> CompetitorMonitor:

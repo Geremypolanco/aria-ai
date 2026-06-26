@@ -2,17 +2,17 @@
 Flash sale management system — creates, activates and tracks time-limited sales
 with AI-generated urgency copy and smart product selection.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 try:
     from apps.core.memory.redis_client import get_cache  # type: ignore
-    from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+    from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 except ImportError:
     get_cache = None  # type: ignore
     get_ai_client = None  # type: ignore
@@ -62,7 +62,7 @@ class FlashSale:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "FlashSale":
+    def from_dict(cls, d: dict) -> FlashSale:
         return cls(**d)
 
     def is_active(self) -> bool:
@@ -166,9 +166,7 @@ class FlashSaleEngine:
                 return True
         return False
 
-    async def end_sale(
-        self, sale_id: str, revenue: float = 0.0, units: int = 0
-    ) -> bool:
+    async def end_sale(self, sale_id: str, revenue: float = 0.0, units: int = 0) -> bool:
         """Mark a sale as ended and record final revenue/units."""
         await self._load()
         for s in self._sales:
@@ -184,9 +182,9 @@ class FlashSaleEngine:
         """Return all currently active sales (without triggering a _load)."""
         now = time.time()
         return [
-            s for s in self._sales
-            if s.get("status") == "active"
-            and s.get("start_ts", 0) <= now <= s.get("end_ts", 0)
+            s
+            for s in self._sales
+            if s.get("status") == "active" and s.get("start_ts", 0) <= now <= s.get("end_ts", 0)
         ]
 
     # ------------------------------------------------------------------
@@ -200,7 +198,7 @@ class FlashSaleEngine:
         urgency = sale.urgency_level()
 
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+            from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 
             ai = get_ai_client()
             if ai is None:
@@ -224,9 +222,7 @@ class FlashSaleEngine:
         # Fallback
         return f"Only {hours}h left! Save {discount}% on {sale.name} — grab yours before it's gone!"
 
-    async def plan_optimal_sale(
-        self, product_performance: list[dict]
-    ) -> dict:
+    async def plan_optimal_sale(self, product_performance: list[dict]) -> dict:
         """
         Given product performance data, recommend which products to put on sale
         and at what discount.
@@ -257,7 +253,7 @@ class FlashSaleEngine:
         discount_pct = 0.30 if avg_cvr < 0.01 else 0.20 if avg_cvr < 0.03 else 0.15
 
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+            from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 
             ai = get_ai_client()
             if ai is not None:
@@ -272,7 +268,8 @@ class FlashSaleEngine:
                 )
                 resp = await ai.complete(system, user, AIModel.FAST, 100)
                 rationale = (
-                    resp.content.strip() if resp and resp.success and resp.content
+                    resp.content.strip()
+                    if resp and resp.success and resp.content
                     else "High-view, low-conversion products selected for sale."
                 )
             else:
@@ -285,7 +282,11 @@ class FlashSaleEngine:
             "discount_pct": discount_pct,
             "rationale": rationale,
             "candidates": [
-                {"product_id": c["product_id"], "title": c.get("title", ""), "cvr": round(c["_cvr"], 4)}
+                {
+                    "product_id": c["product_id"],
+                    "title": c.get("title", ""),
+                    "cvr": round(c["_cvr"], 4),
+                }
                 for c in top
             ],
         }
@@ -312,7 +313,7 @@ class FlashSaleEngine:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_engine: Optional[FlashSaleEngine] = None
+_engine: FlashSaleEngine | None = None
 
 
 def get_flash_sale_engine() -> FlashSaleEngine:

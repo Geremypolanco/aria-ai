@@ -4,23 +4,28 @@ GrowthOrchestrator — ARIA's central economic brain.
 Aggregates signals from all subsystems, prioritizes highest-ROI actions,
 allocates resources, and drives autonomous revenue growth cycles.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "orchestration:growth:v1"
 _TTL = 86400 * 90
 
 _ACTION_TYPES = [
-    "create_content", "run_ad", "optimize_product",
-    "send_email", "run_sale", "build_quiz",
-    "optimize_bundle", "retarget_campaign",
+    "create_content",
+    "run_ad",
+    "optimize_product",
+    "send_email",
+    "run_sale",
+    "build_quiz",
+    "optimize_bundle",
+    "retarget_campaign",
 ]
 
 
@@ -124,10 +129,14 @@ class GrowthOrchestrator:
     async def _save(self) -> None:
         try:
             cache = get_cache()
-            await cache.set(_KEY, {
-                "actions": self._actions[-500:],
-                "plans": self._plans[-50:],
-            }, ttl_seconds=_TTL)
+            await cache.set(
+                _KEY,
+                {
+                    "actions": self._actions[-500:],
+                    "plans": self._plans[-50:],
+                },
+                ttl_seconds=_TTL,
+            )
         except Exception:
             pass
 
@@ -135,6 +144,7 @@ class GrowthOrchestrator:
         signals = EconomicSignals()
         try:
             from apps.business.finance.cashflow_engine import get_cashflow_engine
+
             cf = get_cashflow_engine()
             signals.cash_runway_months = await cf.runway_months()
             monthly_list = await cf.monthly_summary()
@@ -147,6 +157,7 @@ class GrowthOrchestrator:
             pass
         try:
             from apps.learning.economics.economic_learner import get_economic_learner
+
             report = await get_economic_learner().learning_report()
             best = report.get("best_channels", [])
             if best:
@@ -155,12 +166,14 @@ class GrowthOrchestrator:
             pass
         try:
             from apps.learning.conversion.conversion_learner import get_conversion_learner
+
             forecast = await get_conversion_learner().conversion_forecast()
             signals.conversion_rate = forecast.get("predicted_cvr", 0.02)
         except Exception:
             pass
         try:
             from apps.autonomy.revenue_loops.revenue_loop_engine import get_revenue_loop_engine
+
             analytics = await get_revenue_loop_engine().loop_analytics()
             signals.active_campaigns = analytics.get("active_loops", 0)
         except Exception:
@@ -173,65 +186,79 @@ class GrowthOrchestrator:
         actions: list[GrowthAction] = []
 
         # Content actions (always needed)
-        actions.append(GrowthAction(
-            action_type="create_content",
-            title=f"Write 3 SEO blog posts for '{niche}'",
-            description="Target buyer-intent keywords with 800+ word posts",
-            estimated_revenue_impact=500.0,
-            estimated_effort_hours=6.0,
-        ))
-        actions.append(GrowthAction(
-            action_type="optimize_product",
-            title="Rewrite top 5 product descriptions",
-            description="AI-optimize for conversion using benefit-led copy",
-            estimated_revenue_impact=300.0,
-            estimated_effort_hours=2.0,
-        ))
+        actions.append(
+            GrowthAction(
+                action_type="create_content",
+                title=f"Write 3 SEO blog posts for '{niche}'",
+                description="Target buyer-intent keywords with 800+ word posts",
+                estimated_revenue_impact=500.0,
+                estimated_effort_hours=6.0,
+            )
+        )
+        actions.append(
+            GrowthAction(
+                action_type="optimize_product",
+                title="Rewrite top 5 product descriptions",
+                description="AI-optimize for conversion using benefit-led copy",
+                estimated_revenue_impact=300.0,
+                estimated_effort_hours=2.0,
+            )
+        )
 
         # Lead capture if low
         if signals.leads_captured < 10:
-            actions.append(GrowthAction(
-                action_type="build_quiz",
-                title=f"Launch product recommendation quiz for {niche}",
-                description="5-question quiz for audience segmentation and email capture",
-                estimated_revenue_impact=800.0,
-                estimated_effort_hours=3.0,
-            ))
+            actions.append(
+                GrowthAction(
+                    action_type="build_quiz",
+                    title=f"Launch product recommendation quiz for {niche}",
+                    description="5-question quiz for audience segmentation and email capture",
+                    estimated_revenue_impact=800.0,
+                    estimated_effort_hours=3.0,
+                )
+            )
 
         # Email action
-        actions.append(GrowthAction(
-            action_type="send_email",
-            title="Send weekly value email to list",
-            description="Nurture leads with educational content + soft CTA",
-            estimated_revenue_impact=200.0,
-            estimated_effort_hours=1.0,
-        ))
+        actions.append(
+            GrowthAction(
+                action_type="send_email",
+                title="Send weekly value email to list",
+                description="Nurture leads with educational content + soft CTA",
+                estimated_revenue_impact=200.0,
+                estimated_effort_hours=1.0,
+            )
+        )
 
         # Sales/revenue actions
         if signals.revenue_7d < 500 or signals.conversion_rate < 0.02:
-            actions.append(GrowthAction(
-                action_type="run_sale",
-                title="24h flash sale — 20% off bestsellers",
-                description="Drive urgency with time-limited discount",
-                estimated_revenue_impact=1200.0,
-                estimated_effort_hours=1.0,
-            ))
+            actions.append(
+                GrowthAction(
+                    action_type="run_sale",
+                    title="24h flash sale — 20% off bestsellers",
+                    description="Drive urgency with time-limited discount",
+                    estimated_revenue_impact=1200.0,
+                    estimated_effort_hours=1.0,
+                )
+            )
 
         # Ad action
-        actions.append(GrowthAction(
-            action_type="run_ad",
-            title="Launch cart abandonment retargeting campaign",
-            description="Target visitors who viewed products but didn't buy",
-            estimated_revenue_impact=600.0,
-            estimated_effort_hours=2.0,
-        ))
-        actions.append(GrowthAction(
-            action_type="optimize_bundle",
-            title="Create 3 product bundles with 15% savings",
-            description="Increase AOV with complementary product combinations",
-            estimated_revenue_impact=400.0,
-            estimated_effort_hours=1.5,
-        ))
+        actions.append(
+            GrowthAction(
+                action_type="run_ad",
+                title="Launch cart abandonment retargeting campaign",
+                description="Target visitors who viewed products but didn't buy",
+                estimated_revenue_impact=600.0,
+                estimated_effort_hours=2.0,
+            )
+        )
+        actions.append(
+            GrowthAction(
+                action_type="optimize_bundle",
+                title="Create 3 product bundles with 15% savings",
+                description="Increase AOV with complementary product combinations",
+                estimated_revenue_impact=400.0,
+                estimated_effort_hours=1.5,
+            )
+        )
 
         # Use AI to generate strategic action if available
         try:
@@ -254,7 +281,13 @@ class GrowthOrchestrator:
                     atype = parts[0].replace("ACTION_TYPE:", "").strip().lower().replace(" ", "_")
                     title = parts[1].replace("TITLE:", "").strip()
                     try:
-                        impact = float(parts[2].replace("IMPACT:", "").replace("$", "").replace("USD", "").strip())
+                        impact = float(
+                            parts[2]
+                            .replace("IMPACT:", "")
+                            .replace("$", "")
+                            .replace("USD", "")
+                            .strip()
+                        )
                     except ValueError:
                         impact = 300.0
                     try:
@@ -262,20 +295,24 @@ class GrowthOrchestrator:
                     except ValueError:
                         hours = 2.0
                     if title:
-                        actions.append(GrowthAction(
-                            action_type=atype or "create_content",
-                            title=title,
-                            description="AI-recommended strategic action",
-                            estimated_revenue_impact=impact,
-                            estimated_effort_hours=hours,
-                        ))
+                        actions.append(
+                            GrowthAction(
+                                action_type=atype or "create_content",
+                                title=title,
+                                description="AI-recommended strategic action",
+                                estimated_revenue_impact=impact,
+                                estimated_effort_hours=hours,
+                            )
+                        )
         except Exception:
             pass
 
         # Recalculate ROI scores and rank
         for a in actions:
             if a.roi_score == 0.0:
-                a.roi_score = round(a.estimated_revenue_impact / max(a.estimated_effort_hours, 0.1), 2)
+                a.roi_score = round(
+                    a.estimated_revenue_impact / max(a.estimated_effort_hours, 0.1), 2
+                )
         actions.sort(key=lambda a: a.roi_score, reverse=True)
         for i, a in enumerate(actions):
             a.priority_rank = i + 1
@@ -284,6 +321,7 @@ class GrowthOrchestrator:
     async def create_weekly_plan(self, niche: str = "general") -> WeeklyGrowthPlan:
         await self._load()
         import datetime
+
         signals = await self.collect_economic_signals()
         actions = await self.generate_growth_actions(signals, niche)
 
@@ -327,14 +365,16 @@ class GrowthOrchestrator:
         await self._save()
         return plan
 
-    async def execute_next_action(self) -> Optional[GrowthAction]:
+    async def execute_next_action(self) -> GrowthAction | None:
         await self._load()
         for i, a in enumerate(self._actions):
             if a.get("status") == "queued":
                 self._actions[i]["status"] = "running"
                 self._actions[i]["triggered_at"] = time.time()
                 await self._save()
-                return GrowthAction(**{k: v for k, v in a.items() if k in GrowthAction.__dataclass_fields__})
+                return GrowthAction(
+                    **{k: v for k, v in a.items() if k in GrowthAction.__dataclass_fields__}
+                )
         return None
 
     async def mark_action_complete(self, action_id: str, revenue_generated: float = 0.0) -> bool:
@@ -391,7 +431,9 @@ class GrowthOrchestrator:
             "period": period,
             "revenue_trend": "up" if signals.revenue_7d > 0 else "flat",
             "top_opportunity": "Launch quiz funnel for email capture + segmentation",
-            "recommended_focus": "Content + conversion" if signals.conversion_rate < 0.02 else "Scale paid ads",
+            "recommended_focus": (
+                "Content + conversion" if signals.conversion_rate < 0.02 else "Scale paid ads"
+            ),
             "risk_factors": risk_factors or ["None identified"],
             "next_steps": [
                 "Create weekly content calendar",
@@ -402,7 +444,7 @@ class GrowthOrchestrator:
         }
 
 
-_instance: Optional[GrowthOrchestrator] = None
+_instance: GrowthOrchestrator | None = None
 
 
 def get_growth_orchestrator() -> GrowthOrchestrator:

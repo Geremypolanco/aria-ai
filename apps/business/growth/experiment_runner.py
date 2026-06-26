@@ -2,13 +2,14 @@
 A/B Testing and Growth Experimentation Framework — Phase 5
 Manages experiment lifecycle: creation, tracking, statistical analysis, and learnings.
 """
+
 from __future__ import annotations
 
+import logging
 import time
 import uuid
-import logging
-from dataclasses import dataclass, field, asdict
-from enum import Enum
+from dataclasses import asdict, dataclass
+from enum import StrEnum
 from typing import Any
 
 from apps.core.memory.redis_client import get_cache
@@ -19,7 +20,7 @@ _REDIS_KEY = "experiments:v1"
 _REDIS_TTL = 86400 * 90  # 90 days
 
 
-class ExperimentStatus(str, Enum):
+class ExperimentStatus(StrEnum):
     DRAFT = "draft"
     RUNNING = "running"
     PAUSED = "paused"
@@ -177,18 +178,14 @@ class ExperimentRunner:
             logger.warning("start_experiment: unknown id %s", experiment_id)
             return False
         if exp.status != ExperimentStatus.DRAFT:
-            logger.warning(
-                "start_experiment: %s is already %s", experiment_id, exp.status
-            )
+            logger.warning("start_experiment: %s is already %s", experiment_id, exp.status)
             return False
         exp.status = ExperimentStatus.RUNNING
         exp.started_at = time.time()
         await self._save()
         return True
 
-    async def record_impression(
-        self, experiment_id: str, variant_id: str
-    ) -> bool:
+    async def record_impression(self, experiment_id: str, variant_id: str) -> bool:
         """Increment impression count for a variant."""
         await self._load()
         exp = self._experiments.get(experiment_id)
@@ -201,9 +198,7 @@ class ExperimentRunner:
                 return True
         return False
 
-    async def record_conversion(
-        self, experiment_id: str, variant_id: str
-    ) -> bool:
+    async def record_conversion(self, experiment_id: str, variant_id: str) -> bool:
         """Increment conversion count for a variant."""
         await self._load()
         exp = self._experiments.get(experiment_id)
@@ -238,9 +233,7 @@ class ExperimentRunner:
 
         if both_adequate and relative_diff > 0.05:
             exp.confidence = 0.95
-            exp.winner_id = (
-                v_a.variant_id if rate_a >= rate_b else v_b.variant_id
-            )
+            exp.winner_id = v_a.variant_id if rate_a >= rate_b else v_b.variant_id
         else:
             exp.confidence = min(relative_diff / 0.05, 0.94) if both_adequate else 0.0
             exp.winner_id = ""
@@ -267,9 +260,7 @@ class ExperimentRunner:
             },
         }
 
-    async def complete_experiment(
-        self, experiment_id: str, learned: str
-    ) -> bool:
+    async def complete_experiment(self, experiment_id: str, learned: str) -> bool:
         """Mark experiment as COMPLETED and store learning."""
         await self._load()
         exp = self._experiments.get(experiment_id)

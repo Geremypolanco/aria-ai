@@ -1,22 +1,22 @@
 """
 Ad creative factory — generates multi-platform ad campaigns.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _AD_FACTORY_KEY = "factory:ads:v1"
 _AD_FACTORY_TTL = 86400 * 60
 
 
-class AdPlatform(str, Enum):
+class AdPlatform(StrEnum):
     FACEBOOK = "facebook"
     INSTAGRAM = "instagram"
     GOOGLE = "google"
@@ -26,7 +26,7 @@ class AdPlatform(str, Enum):
     TWITTER = "twitter"
 
 
-class AdObjective(str, Enum):
+class AdObjective(StrEnum):
     AWARENESS = "awareness"
     TRAFFIC = "traffic"
     CONVERSIONS = "conversions"
@@ -215,7 +215,7 @@ class AdFactory:
         }
 
 
-_ad_factory_instance: Optional[AdFactory] = None
+_ad_factory_instance: AdFactory | None = None
 
 
 def get_ad_factory() -> AdFactory:

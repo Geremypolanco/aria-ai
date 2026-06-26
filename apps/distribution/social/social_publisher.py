@@ -1,13 +1,13 @@
 """
 Social media scheduling and publishing platform.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -24,7 +24,7 @@ _OPTIMAL_HOURS: dict[str, list[int]] = {
 }
 
 
-class PublishStatus(str, Enum):
+class PublishStatus(StrEnum):
     SCHEDULED = "scheduled"
     PUBLISHED = "published"
     FAILED = "failed"
@@ -115,9 +115,9 @@ class SocialPublisher:
         self,
         platform: str,
         content: str,
-        scheduled_at: Optional[float] = None,
-        media_urls: Optional[list[str]] = None,
-        hashtags: Optional[list[str]] = None,
+        scheduled_at: float | None = None,
+        media_urls: list[str] | None = None,
+        hashtags: list[str] | None = None,
         campaign_id: str = "",
     ) -> ScheduledPost:
         await self._load()
@@ -141,6 +141,7 @@ class SocialPublisher:
         hours = _OPTIMAL_HOURS.get(platform.lower(), [12, 18])
         now = time.time()
         import datetime
+
         dt = datetime.datetime.utcfromtimestamp(now)
         for hour in sorted(hours):
             candidate = dt.replace(hour=hour, minute=0, second=0, microsecond=0)
@@ -183,6 +184,7 @@ class SocialPublisher:
     def optimal_schedule_times(self, platform: str, days_ahead: int = 7) -> list[float]:
         hours = _OPTIMAL_HOURS.get(platform.lower(), [12, 18])
         import datetime
+
         now = datetime.datetime.utcnow()
         times: list[float] = []
         for day in range(days_ahead):
@@ -198,6 +200,7 @@ class SocialPublisher:
         week_start: str = "",
     ) -> PublishingCalendar:
         import datetime
+
         if not week_start:
             week_start = datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -227,7 +230,7 @@ class SocialPublisher:
         }
 
 
-_publisher_instance: Optional[SocialPublisher] = None
+_publisher_instance: SocialPublisher | None = None
 
 
 def get_social_publisher() -> SocialPublisher:

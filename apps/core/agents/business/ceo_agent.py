@@ -4,11 +4,13 @@ CEO Agent — Estrategia, decisiones de alto nivel y delegación a agentes espec
 El CEO Agent orquesta los demás agentes, prioriza iniciativas de negocio,
 analiza métricas globales, y toma decisiones ejecutivas autónomas.
 """
+
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
-from apps.core.tools.ai_client import AIModel
 
 logger = logging.getLogger("aria.business.ceo")
 
@@ -28,8 +30,8 @@ class CEOAgent(BaseAgent):
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission   = context.get("mission", "Analizar estado del negocio y proponer plan de acción")
-        data      = context.get("data", {})
+        mission = context.get("mission", "Analizar estado del negocio y proponer plan de acción")
+        data = context.get("data", {})
         timeframe = context.get("timeframe", "próximas 2 semanas")
 
         # Recopilar métricas actuales
@@ -67,6 +69,7 @@ class CEOAgent(BaseAgent):
         metrics: dict = {}
         try:
             from apps.core.training.continuous_trainer import get_trainer
+
             status = get_trainer().get_status()
             metrics["system_cycle"] = status.get("cycle", 0)
             metrics["skills"] = status.get("skill_scores", {})

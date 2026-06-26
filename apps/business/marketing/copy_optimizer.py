@@ -1,26 +1,43 @@
 """
 Copy and CTA optimization — scoring, variant generation, and power word analysis.
 """
+
 from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.marketing.copy")
 
 # ── Power word dictionaries ────────────────────────────────────────────────────
 
 _POWER_WORDS: dict[str, list[str]] = {
-    "urgency": ["now", "today", "instantly", "immediately", "hurry", "limited", "deadline", "expire"],
+    "urgency": [
+        "now",
+        "today",
+        "instantly",
+        "immediately",
+        "hurry",
+        "limited",
+        "deadline",
+        "expire",
+    ],
     "value": ["free", "save", "bonus", "discount", "exclusive", "premium", "best", "top"],
     "trust": ["proven", "guaranteed", "certified", "trusted", "secure", "official", "verified"],
     "curiosity": ["secret", "discover", "hidden", "revealed", "surprising", "unknown", "insider"],
-    "fear_of_missing_out": ["limited", "last chance", "only", "sold out", "rare", "don't miss", "before it's gone"],
+    "fear_of_missing_out": [
+        "limited",
+        "last chance",
+        "only",
+        "sold out",
+        "rare",
+        "don't miss",
+        "before it's gone",
+    ],
 }
 
 _ALL_POWER_WORDS: set[str] = {w for words in _POWER_WORDS.values() for w in words}
@@ -28,9 +45,28 @@ _ALL_POWER_WORDS: set[str] = {w for words in _POWER_WORDS.values() for w in word
 _SPAM_WORDS = {"free", "click", "winner", "congratulations", "guarantee", "cash", "prize"}
 
 _ACTION_VERBS = {
-    "get", "start", "try", "join", "discover", "learn", "grab", "claim",
-    "download", "sign", "buy", "shop", "save", "unlock", "access",
-    "watch", "read", "explore", "boost", "transform", "build", "create",
+    "get",
+    "start",
+    "try",
+    "join",
+    "discover",
+    "learn",
+    "grab",
+    "claim",
+    "download",
+    "sign",
+    "buy",
+    "shop",
+    "save",
+    "unlock",
+    "access",
+    "watch",
+    "read",
+    "explore",
+    "boost",
+    "transform",
+    "build",
+    "create",
 }
 
 _URGENCY_WORDS = {"now", "today", "instantly", "immediately", "limited", "fast", "quick"}
@@ -40,7 +76,7 @@ _CURIOSITY_PATTERNS = [
     r"\bsecret\b",
     r"\bhidden\b",
     r"\bmost people\b",
-    r"\.\.\.(?!\s*$)",    # trailing ellipsis
+    r"\.\.\.(?!\s*$)",  # trailing ellipsis
     r"you didn't know",
     r"nobody tells",
 ]
@@ -49,7 +85,7 @@ _CURIOSITY_PATTERNS = [
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
 
-class CopyElement(str, Enum):
+class CopyElement(StrEnum):
     HEADLINE = "headline"
     SUBHEADLINE = "subheadline"
     BODY = "body"
@@ -176,7 +212,7 @@ class CopyOptimizer:
         # Length: 2–5 words optimal
         if 2 <= word_count <= 5:
             score += 20
-        elif 1 == word_count or (5 < word_count <= 8):
+        elif word_count == 1 or (5 < word_count <= 8):
             score += 10
             issues.append(f"CTA is {word_count} words — optimal is 2–5")
         else:
@@ -219,7 +255,16 @@ class CopyOptimizer:
             suggestions.append("Add personalization: '{name},' at the start boosts opens ~26%")
 
         # Urgency or scarcity
-        urgency_signals = {"limited", "today", "now", "expires", "last", "hurry", "deadline", "final"}
+        urgency_signals = {
+            "limited",
+            "today",
+            "now",
+            "expires",
+            "last",
+            "hurry",
+            "deadline",
+            "final",
+        }
         if any(w in s_lower for w in urgency_signals):
             score += 20
         else:
@@ -269,7 +314,7 @@ class CopyOptimizer:
                     f"Original: {original}\n\n"
                     f"Write {count} improved variants. "
                     f"Each should be more compelling, clear, and conversion-focused. "
-                    f"Return as JSON array: [\"variant1\", \"variant2\", ...]"
+                    f'Return as JSON array: ["variant1", "variant2", ...]'
                 ),
                 model=AIModel.CREATIVE,
                 max_tokens=600,
@@ -278,7 +323,12 @@ class CopyOptimizer:
             )
             if response.success and response.content:
                 import json as _json
-                parsed = _json.loads(response.content) if isinstance(response.content, str) else response.content
+
+                parsed = (
+                    _json.loads(response.content)
+                    if isinstance(response.content, str)
+                    else response.content
+                )
                 if isinstance(parsed, list):
                     return [str(v) for v in parsed[:count]]
         except Exception as exc:
@@ -337,7 +387,7 @@ class CopyOptimizer:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_optimizer_instance: Optional[CopyOptimizer] = None
+_optimizer_instance: CopyOptimizer | None = None
 
 
 def get_copy_optimizer() -> CopyOptimizer:

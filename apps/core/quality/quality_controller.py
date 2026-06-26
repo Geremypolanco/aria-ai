@@ -1,14 +1,13 @@
 """Autonomous quality control: architecture audits, regression detection, health scoring."""
+
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -25,9 +24,9 @@ class QualityFinding:
     description: str
     affected_component: str
     remediation: str = ""
-    detected_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    detected_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     resolved: bool = False
-    resolved_at: Optional[str] = None
+    resolved_at: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -49,7 +48,7 @@ class AuditReport:
     audit_id: str
     scope: str
     started_at: str
-    finished_at: Optional[str] = None
+    finished_at: str | None = None
     findings: list[QualityFinding] = field(default_factory=list)
     health_score: float = 1.0
     summary: str = ""
@@ -94,10 +93,11 @@ class QualityController:
 
     async def run_architecture_audit(self) -> AuditReport:
         import uuid
+
         report = AuditReport(
             audit_id=f"audit_{uuid.uuid4().hex[:8]}",
             scope="architecture",
-            started_at=datetime.now(timezone.utc).isoformat(),
+            started_at=datetime.now(UTC).isoformat(),
         )
 
         findings = []
@@ -110,7 +110,7 @@ class QualityController:
             report.findings.append(f)
 
         report.health_score = self._compute_health_score(report.findings)
-        report.finished_at = datetime.now(timezone.utc).isoformat()
+        report.finished_at = datetime.now(UTC).isoformat()
         report.summary = self._generate_summary(report)
         self._audits.append(report)
         return report
@@ -119,43 +119,51 @@ class QualityController:
         findings = []
         try:
             from apps.core.memory.semantic_memory import get_semantic_memory
+
             mem = get_semantic_memory()
             stats = mem.summary() if hasattr(mem, "summary") else {}
             fact_count = stats.get("total_facts", 0)
             if fact_count == 0:
-                findings.append(QualityFinding(
+                findings.append(
+                    QualityFinding(
+                        id=self._new_id(),
+                        category="memory",
+                        severity=Severity.MEDIUM,
+                        title="Semantic memory empty",
+                        description="No facts stored in semantic memory. ARIA may lack grounding.",
+                        affected_component="semantic_memory",
+                        remediation="Ensure income cycles and tool calls record facts to semantic memory.",
+                    )
+                )
+        except Exception as exc:
+            findings.append(
+                QualityFinding(
                     id=self._new_id(),
                     category="memory",
-                    severity=Severity.MEDIUM,
-                    title="Semantic memory empty",
-                    description="No facts stored in semantic memory. ARIA may lack grounding.",
+                    severity=Severity.HIGH,
+                    title="Semantic memory unavailable",
+                    description=str(exc),
                     affected_component="semantic_memory",
-                    remediation="Ensure income cycles and tool calls record facts to semantic memory.",
-                ))
-        except Exception as exc:
-            findings.append(QualityFinding(
-                id=self._new_id(),
-                category="memory",
-                severity=Severity.HIGH,
-                title="Semantic memory unavailable",
-                description=str(exc),
-                affected_component="semantic_memory",
-            ))
+                )
+            )
 
         try:
             from apps.core.memory.orchestrator import get_memory_orchestrator
+
             orch = get_memory_orchestrator()
             s = orch.summary()
             if s.get("conflicts_detected", 0) > 10:
-                findings.append(QualityFinding(
-                    id=self._new_id(),
-                    category="memory",
-                    severity=Severity.MEDIUM,
-                    title="High memory conflict count",
-                    description=f"Memory orchestrator detected {s['conflicts_detected']} conflicts.",
-                    affected_component="memory_orchestrator",
-                    remediation="Review conflicting facts and prune stale semantic memory entries.",
-                ))
+                findings.append(
+                    QualityFinding(
+                        id=self._new_id(),
+                        category="memory",
+                        severity=Severity.MEDIUM,
+                        title="High memory conflict count",
+                        description=f"Memory orchestrator detected {s['conflicts_detected']} conflicts.",
+                        affected_component="memory_orchestrator",
+                        remediation="Review conflicting facts and prune stale semantic memory entries.",
+                    )
+                )
         except Exception:
             pass
 
@@ -165,19 +173,22 @@ class QualityController:
         findings = []
         try:
             from apps.core.agents.hierarchy.agent_hierarchy import get_agent_hierarchy
+
             hier = get_agent_hierarchy()
             s = hier.summary()
             rate = s.get("delegation_success_rate", 1.0)
             if rate < 0.7 and s.get("total_delegations", 0) >= 5:
-                findings.append(QualityFinding(
-                    id=self._new_id(),
-                    category="agents",
-                    severity=Severity.HIGH,
-                    title="Low agent delegation success rate",
-                    description=f"Delegation success rate is {rate:.0%} (threshold: 70%).",
-                    affected_component="agent_hierarchy",
-                    remediation="Inspect failing agents; check handlers and capability routing.",
-                ))
+                findings.append(
+                    QualityFinding(
+                        id=self._new_id(),
+                        category="agents",
+                        severity=Severity.HIGH,
+                        title="Low agent delegation success rate",
+                        description=f"Delegation success rate is {rate:.0%} (threshold: 70%).",
+                        affected_component="agent_hierarchy",
+                        remediation="Inspect failing agents; check handlers and capability routing.",
+                    )
+                )
         except Exception:
             pass
         return findings
@@ -186,18 +197,21 @@ class QualityController:
         findings = []
         try:
             from apps.core.tools.intelligence.tool_registry import get_tool_registry
+
             registry = get_tool_registry()
             failing = registry.failing_tools(threshold=0.3)
             for tool in failing[:3]:
-                findings.append(QualityFinding(
-                    id=self._new_id(),
-                    category="tools",
-                    severity=Severity.HIGH,
-                    title=f"Tool '{tool.name}' has low reliability",
-                    description=f"Success rate: {tool.success_rate:.0%} over {tool.call_count} calls.",
-                    affected_component=f"tool:{tool.name}",
-                    remediation=f"Investigate errors: {tool.error_patterns[-1] if tool.error_patterns else 'none recorded'}",
-                ))
+                findings.append(
+                    QualityFinding(
+                        id=self._new_id(),
+                        category="tools",
+                        severity=Severity.HIGH,
+                        title=f"Tool '{tool.name}' has low reliability",
+                        description=f"Success rate: {tool.success_rate:.0%} over {tool.call_count} calls.",
+                        affected_component=f"tool:{tool.name}",
+                        remediation=f"Investigate errors: {tool.error_patterns[-1] if tool.error_patterns else 'none recorded'}",
+                    )
+                )
         except Exception:
             pass
         return findings
@@ -236,13 +250,15 @@ class QualityController:
         if f is None:
             return False
         f.resolved = True
-        f.resolved_at = datetime.now(timezone.utc).isoformat()
+        f.resolved_at = datetime.now(UTC).isoformat()
         return True
 
     def set_baseline(self, metric_name: str, value: float) -> None:
         self._baseline_metrics[metric_name] = value
 
-    def detect_regression(self, metric_name: str, current_value: float, tolerance: float = 0.1) -> Optional[QualityFinding]:
+    def detect_regression(
+        self, metric_name: str, current_value: float, tolerance: float = 0.1
+    ) -> QualityFinding | None:
         baseline = self._baseline_metrics.get(metric_name)
         if baseline is None:
             return None
@@ -261,18 +277,23 @@ class QualityController:
             return f
         return None
 
-    def open_findings(self, severity: Optional[Severity] = None) -> list[QualityFinding]:
+    def open_findings(self, severity: Severity | None = None) -> list[QualityFinding]:
         result = [f for f in self._findings.values() if not f.resolved]
         if severity is not None:
             result = [f for f in result if f.severity == severity]
-        return sorted(result, key=lambda f: ["critical", "high", "medium", "low", "info"].index(f.severity.value))
+        return sorted(
+            result,
+            key=lambda f: ["critical", "high", "medium", "low", "info"].index(f.severity.value),
+        )
 
     def system_health(self) -> dict:
         all_open = self.open_findings()
         score = self._compute_health_score(all_open)
         return {
             "health_score": score,
-            "health_label": "healthy" if score >= 0.85 else "degraded" if score >= 0.6 else "critical",
+            "health_label": (
+                "healthy" if score >= 0.85 else "degraded" if score >= 0.6 else "critical"
+            ),
             "open_findings": len(all_open),
             "critical": sum(1 for f in all_open if f.severity == Severity.CRITICAL),
             "high": sum(1 for f in all_open if f.severity == Severity.HIGH),
@@ -282,7 +303,7 @@ class QualityController:
         }
 
 
-_controller: Optional[QualityController] = None
+_controller: QualityController | None = None
 
 
 def get_quality_controller() -> QualityController:

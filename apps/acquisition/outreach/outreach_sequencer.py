@@ -8,15 +8,15 @@ Capabilities:
   - AI personalization per contact
   - Sequence analytics
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 # ── Redis configuration ────────────────────────────────────────────────────────
 _REDIS_KEY = "acquisition:outreach:v1"
@@ -26,6 +26,7 @@ _TTL_90D = 60 * 60 * 24 * 90
 # ══════════════════════════════════════════════════════════════════════════════
 # Domain objects
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class OutreachSequence:
@@ -81,6 +82,7 @@ class OutreachContact:
 # Outreach Sequencer
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class OutreachSequencer:
     """
     AI-powered multi-channel outreach sequencer.
@@ -108,13 +110,13 @@ class OutreachSequencer:
             ttl_seconds=_TTL_90D,
         )
 
-    def _find_sequence(self, sequence_id: str) -> Optional[dict]:
+    def _find_sequence(self, sequence_id: str) -> dict | None:
         for s in self._sequences:
             if s.get("sequence_id") == sequence_id:
                 return s
         return None
 
-    def _find_contact(self, contact_id: str) -> Optional[dict]:
+    def _find_contact(self, contact_id: str) -> dict | None:
         for c in self._contacts:
             if c.get("contact_id") == contact_id:
                 return c
@@ -140,7 +142,7 @@ class OutreachSequencer:
         """AI generates full multi-step outreach sequence."""
         await self._load()
         ai = get_ai_client()
-        resp = await ai.complete(
+        await ai.complete(
             system=(
                 f"You are an outreach copywriter specializing in {channel} campaigns. "
                 f"Create a {steps}-step outreach sequence for {target_persona}. "
@@ -155,19 +157,20 @@ class OutreachSequencer:
             model=AIModel.CREATIVE,
             max_tokens=1000,
         )
-        content = resp.content if resp.success else ""
 
         # Generate structured steps
         action_types = ["email", "dm", "follow_up", "email", "follow_up"]
         sequence_steps = []
         day_offsets = [0, 3, 7, 10, 14, 21]
         for i in range(steps):
-            sequence_steps.append({
-                "day": day_offsets[min(i, len(day_offsets) - 1)],
-                "subject": f"Step {i + 1}: {name} — {target_persona}",
-                "body": f"Step {i + 1} message for {target_persona} via {channel}",
-                "action_type": action_types[i % len(action_types)],
-            })
+            sequence_steps.append(
+                {
+                    "day": day_offsets[min(i, len(day_offsets) - 1)],
+                    "subject": f"Step {i + 1}: {name} — {target_persona}",
+                    "body": f"Step {i + 1} message for {target_persona} via {channel}",
+                    "action_type": action_types[i % len(action_types)],
+                }
+            )
 
         sequence = OutreachSequence(
             name=name,
@@ -203,9 +206,7 @@ class OutreachSequencer:
         await self._save()
         return contact
 
-    async def personalize_step(
-        self, contact_id: str, step_index: int
-    ) -> dict:
+    async def personalize_step(self, contact_id: str, step_index: int) -> dict:
         """AI personalizes a sequence step message for a specific contact."""
         await self._load()
         contact_dict = self._find_contact(contact_id)
@@ -244,9 +245,9 @@ class OutreachSequencer:
         """Return contacts where next_action_at <= now."""
         now = time.time()
         return [
-            c for c in self._contacts
-            if c.get("status") == "active"
-            and c.get("next_action_at", float("inf")) <= now
+            c
+            for c in self._contacts
+            if c.get("status") == "active" and c.get("next_action_at", float("inf")) <= now
         ]
 
     def advance_contact(self, contact_id: str) -> bool:
@@ -292,7 +293,7 @@ class OutreachSequencer:
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
-_instance: Optional[OutreachSequencer] = None
+_instance: OutreachSequencer | None = None
 
 
 def get_outreach_sequencer() -> OutreachSequencer:

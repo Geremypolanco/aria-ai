@@ -7,10 +7,10 @@ Requires in Fly.io secrets:
   QUICKBOOKS_CLIENT_SECRET → same place
   ALPHA_VANTAGE_API_KEY    → from alphavantage.co
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -20,6 +20,7 @@ logger = logging.getLogger("aria.connections.finance")
 
 # ── QUICKBOOKS ────────────────────────────────────────────────────────────────
 
+
 class QuickBooksConnection:
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/quickbooks"
@@ -27,15 +28,17 @@ class QuickBooksConnection:
     TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
     SCOPES = "com.intuit.quickbooks.accounting"
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "QUICKBOOKS_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "QUICKBOOKS_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -48,13 +51,14 @@ class QuickBooksConnection:
         }
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str, realm_id: str = "") -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str, realm_id: str = "") -> dict | None:
         """Exchange auth code for tokens. realm_id comes from query param realmId."""
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("QUICKBOOKS_CLIENT_ID / QUICKBOOKS_CLIENT_SECRET not configured")
         import base64 as _b64
+
         credentials = _b64.b64encode(f"{cid}:{sec}".encode()).decode()
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
@@ -123,20 +127,23 @@ class QuickBooksConnection:
                 for inv in invoices
             ]
 
-    async def create_invoice(self, tokens: dict, customer_ref: str, amount: float,
-                              description: str = "") -> dict:
+    async def create_invoice(
+        self, tokens: dict, customer_ref: str, amount: float, description: str = ""
+    ) -> dict:
         """Create a new QuickBooks invoice."""
         body = {
-            "Line": [{
-                "Amount": amount,
-                "DetailType": "SalesItemLineDetail",
-                "SalesItemLineDetail": {
-                    "ItemRef": {"value": "1", "name": "Services"},
-                    "Qty": 1,
-                    "UnitPrice": amount,
-                },
-                "Description": description,
-            }],
+            "Line": [
+                {
+                    "Amount": amount,
+                    "DetailType": "SalesItemLineDetail",
+                    "SalesItemLineDetail": {
+                        "ItemRef": {"value": "1", "name": "Services"},
+                        "Qty": 1,
+                        "UnitPrice": amount,
+                    },
+                    "Description": description,
+                }
+            ],
             "CustomerRef": {"value": customer_ref},
         }
         async with httpx.AsyncClient(timeout=15.0) as http:
@@ -189,22 +196,27 @@ class QuickBooksConnection:
 
 # ── ALPHA VANTAGE ─────────────────────────────────────────────────────────────
 
+
 class AlphaVantageConnection:
 
     BASE = "https://www.alphavantage.co/query"
 
-    def _key(self) -> Optional[str]:
+    def _key(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ALPHA_VANTAGE_API_KEY", None)
 
     async def search_symbol(self, query: str) -> list[dict]:
         """Search for ticker symbols by keyword."""
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.get(self.BASE, params={
-                "function": "SYMBOL_SEARCH",
-                "keywords": query,
-                "apikey": self._key(),
-            })
+            r = await http.get(
+                self.BASE,
+                params={
+                    "function": "SYMBOL_SEARCH",
+                    "keywords": query,
+                    "apikey": self._key(),
+                },
+            )
             r.raise_for_status()
             matches = r.json().get("bestMatches", [])
             return [
@@ -220,11 +232,14 @@ class AlphaVantageConnection:
     async def get_stock_quote(self, symbol: str) -> dict:
         """Get real-time stock quote for a symbol."""
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.get(self.BASE, params={
-                "function": "GLOBAL_QUOTE",
-                "symbol": symbol,
-                "apikey": self._key(),
-            })
+            r = await http.get(
+                self.BASE,
+                params={
+                    "function": "GLOBAL_QUOTE",
+                    "symbol": symbol,
+                    "apikey": self._key(),
+                },
+            )
             r.raise_for_status()
             q = r.json().get("Global Quote", {})
             return {
@@ -242,35 +257,43 @@ class AlphaVantageConnection:
     async def get_time_series_daily(self, symbol: str, outputsize: str = "compact") -> list[dict]:
         """Get daily OHLCV data. Returns last 30 days when outputsize='compact'."""
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.get(self.BASE, params={
-                "function": "TIME_SERIES_DAILY",
-                "symbol": symbol,
-                "outputsize": outputsize,
-                "apikey": self._key(),
-            })
+            r = await http.get(
+                self.BASE,
+                params={
+                    "function": "TIME_SERIES_DAILY",
+                    "symbol": symbol,
+                    "outputsize": outputsize,
+                    "apikey": self._key(),
+                },
+            )
             r.raise_for_status()
             series = r.json().get("Time Series (Daily)", {})
             result = []
             for date, values in list(series.items())[:30]:
-                result.append({
-                    "date": date,
-                    "open": values.get("1. open"),
-                    "high": values.get("2. high"),
-                    "low": values.get("3. low"),
-                    "close": values.get("4. close"),
-                    "volume": values.get("5. volume"),
-                })
+                result.append(
+                    {
+                        "date": date,
+                        "open": values.get("1. open"),
+                        "high": values.get("2. high"),
+                        "low": values.get("3. low"),
+                        "close": values.get("4. close"),
+                        "volume": values.get("5. volume"),
+                    }
+                )
             return result
 
     async def get_forex_rate(self, from_currency: str, to_currency: str) -> dict:
         """Get real-time exchange rate between two currencies."""
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.get(self.BASE, params={
-                "function": "CURRENCY_EXCHANGE_RATE",
-                "from_currency": from_currency,
-                "to_currency": to_currency,
-                "apikey": self._key(),
-            })
+            r = await http.get(
+                self.BASE,
+                params={
+                    "function": "CURRENCY_EXCHANGE_RATE",
+                    "from_currency": from_currency,
+                    "to_currency": to_currency,
+                    "apikey": self._key(),
+                },
+            )
             r.raise_for_status()
             rate = r.json().get("Realtime Currency Exchange Rate", {})
             return {
@@ -285,12 +308,15 @@ class AlphaVantageConnection:
     async def get_crypto_price(self, symbol: str, market: str = "USD") -> dict:
         """Get crypto exchange rate for a given symbol."""
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.get(self.BASE, params={
-                "function": "CURRENCY_EXCHANGE_RATE",
-                "from_currency": symbol,
-                "to_currency": market,
-                "apikey": self._key(),
-            })
+            r = await http.get(
+                self.BASE,
+                params={
+                    "function": "CURRENCY_EXCHANGE_RATE",
+                    "from_currency": symbol,
+                    "to_currency": market,
+                    "apikey": self._key(),
+                },
+            )
             r.raise_for_status()
             rate = r.json().get("Realtime Currency Exchange Rate", {})
             return {
@@ -304,6 +330,7 @@ class AlphaVantageConnection:
 
 # ── COINGECKO ─────────────────────────────────────────────────────────────────
 
+
 class CoinGeckoConnection:
 
     BASE = "https://api.coingecko.com/api/v3"
@@ -313,8 +340,12 @@ class CoinGeckoConnection:
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{self.BASE}/simple/price",
-                params={"ids": coin_ids, "vs_currencies": vs_currencies,
-                        "include_market_cap": True, "include_24hr_change": True},
+                params={
+                    "ids": coin_ids,
+                    "vs_currencies": vs_currencies,
+                    "include_market_cap": True,
+                    "include_24hr_change": True,
+                },
             )
             r.raise_for_status()
             return r.json()
@@ -341,8 +372,12 @@ class CoinGeckoConnection:
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{self.BASE}/coins/{coin_id}",
-                params={"localization": False, "tickers": False,
-                        "community_data": False, "developer_data": False},
+                params={
+                    "localization": False,
+                    "tickers": False,
+                    "community_data": False,
+                    "developer_data": False,
+                },
             )
             r.raise_for_status()
             d = r.json()
@@ -369,10 +404,7 @@ class CoinGeckoConnection:
             )
             r.raise_for_status()
             prices = r.json().get("prices", [])
-            return [
-                {"timestamp": p[0], "price": p[1]}
-                for p in prices
-            ]
+            return [{"timestamp": p[0], "price": p[1]} for p in prices]
 
     async def search_coins(self, query: str) -> list[dict]:
         """Search for coins by name or symbol."""

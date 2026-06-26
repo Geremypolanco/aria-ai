@@ -6,20 +6,24 @@ AI calls use get_ai_client() (SYNC) then await ai.complete(...) inside
 a thread-pool helper to handle the async-inside-sync constraint of
 LangGraph's synchronous node dispatch.
 """
+
 from __future__ import annotations
 
 import asyncio
 import concurrent.futures
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from apps.cognition.langgraph.agent_state import AgentState
 from apps.core.tools.ai_client import get_ai_client
+
+if TYPE_CHECKING:
+    from apps.cognition.langgraph.agent_state import AgentState
 
 logger = logging.getLogger("aria.cognition.nodes")
 
 
 # ── async-inside-sync helper ──────────────────────────────────────────────────
+
 
 def _run_async(coro) -> Any:
     """
@@ -43,6 +47,7 @@ def _run_async(coro) -> Any:
 
 
 # ── node implementations ──────────────────────────────────────────────────────
+
 
 def analyze_task(state: AgentState) -> dict:
     """
@@ -87,7 +92,9 @@ def analyze_task(state: AgentState) -> dict:
             step = f"[Iteration {iteration}] Analysis: {response.content.strip()}"
             new_steps.append(step)
         else:
-            new_steps.append(f"[Iteration {iteration}] Analysis: could not reach AI — proceeding with task as-is")
+            new_steps.append(
+                f"[Iteration {iteration}] Analysis: could not reach AI — proceeding with task as-is"
+            )
     else:
         new_steps.append(f"[Iteration {iteration}] Analysis: AI client unavailable")
 
@@ -117,9 +124,7 @@ def create_plan(state: AgentState) -> dict:
             "Return exactly 3-5 numbered steps, one per line."
         )
         user = (
-            f"Task: {task}\n"
-            f"Analysis: {analysis_summary}\n"
-            "Create a numbered execution plan:"
+            f"Task: {task}\n" f"Analysis: {analysis_summary}\n" "Create a numbered execution plan:"
         )
 
         async def _call():
@@ -132,11 +137,7 @@ def create_plan(state: AgentState) -> dict:
 
         response = _run_async(_call())
         if response and response.success and response.content:
-            lines = [
-                line.strip()
-                for line in response.content.strip().splitlines()
-                if line.strip()
-            ]
+            lines = [line.strip() for line in response.content.strip().splitlines() if line.strip()]
             plan = lines[:5] if lines else [f"Execute: {task}"]
         else:
             plan = [f"Execute task directly: {task}"]
@@ -244,11 +245,7 @@ def reflect(state: AgentState) -> dict:
             "Score how well the result answers the original task (0.0 to 1.0). "
             "Reply with ONLY a float between 0.0 and 1.0, nothing else."
         )
-        user = (
-            f"Task: {task}\n"
-            f"Result: {result}\n"
-            "Confidence score (0.0–1.0):"
-        )
+        user = f"Task: {task}\n" f"Result: {result}\n" "Confidence score (0.0–1.0):"
 
         async def _call():
             return await ai.complete(

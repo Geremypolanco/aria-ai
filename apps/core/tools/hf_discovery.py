@@ -37,14 +37,13 @@ Tareas soportadas (y más que se descubren automáticamente):
   - audio-classification     → clasificar audio
   - visual-question-answering → preguntas sobre imágenes
 """
+
 from __future__ import annotations
 
 import asyncio
 import base64
-import json
 import logging
-import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -404,7 +403,9 @@ class HFDiscovery:
                     raw_payload = base64.b64decode(payload.split(",")[1])
                 else:
                     raw_payload = payload
-                res = await self._http.post(url, headers=headers, content=raw_payload, timeout=120.0)
+                res = await self._http.post(
+                    url, headers=headers, content=raw_payload, timeout=120.0
+                )
             else:
                 res = await self._http.post(url, headers=headers, json=payload, timeout=120.0)
 
@@ -425,13 +426,21 @@ class HFDiscovery:
                     est = 20
                 logger.info("[HFDiscovery] %s cargando, esperando %ss...", model, min(est, 25))
                 await asyncio.sleep(min(est, 25))
-                res2 = await self._http.post(url, headers=headers,
+                res2 = await self._http.post(
+                    url,
+                    headers=headers,
                     content=raw_payload if binary_input else None,
                     json=None if binary_input else payload,
-                    timeout=120.0)
+                    timeout=120.0,
+                )
                 if res2.status_code == 200:
                     out = res2.content if binary_output else res2.json()
-                    return {"success": True, "model_used": model, "result": out, "binary": binary_output}
+                    return {
+                        "success": True,
+                        "model_used": model,
+                        "result": out,
+                        "binary": binary_output,
+                    }
 
             logger.warning("[HFDiscovery] %s HTTP %d: %s", model, res.status_code, res.text[:150])
             return {"success": False, "model_used": model, "error": f"HTTP {res.status_code}"}
@@ -454,7 +463,9 @@ class HFDiscovery:
             result["summary"] = result["result"][0].get("summary_text", "")
         return result
 
-    async def translate(self, text: str, source_lang: str = "en", target_lang: str = "es") -> dict[str, Any]:
+    async def translate(
+        self, text: str, source_lang: str = "en", target_lang: str = "es"
+    ) -> dict[str, Any]:
         """Traduce texto. Soporta 100+ pares de idiomas via Helsinki-NLP."""
         model_key = f"Helsinki-NLP/opus-mt-{source_lang}-{target_lang}"
         result = await self._run_model(model_key, {"inputs": text})
@@ -475,7 +486,11 @@ class HFDiscovery:
             {"inputs": text[:512]},
         )
         if result["success"] and isinstance(result["result"], list):
-            r = result["result"][0] if isinstance(result["result"][0], dict) else result["result"][0][0]
+            r = (
+                result["result"][0]
+                if isinstance(result["result"][0], dict)
+                else result["result"][0][0]
+            )
             result["label"] = r.get("label", "")
             result["score"] = round(r.get("score", 0), 3)
         return result
@@ -493,8 +508,7 @@ class HFDiscovery:
             scores = result["result"].get("scores", [])
             labels_out = result["result"].get("labels", [])
             result["rankings"] = [
-                {"label": l, "score": round(s, 3)}
-                for l, s in zip(labels_out, scores)
+                {"label": l, "score": round(s, 3)} for l, s in zip(labels_out, scores, strict=False)
             ]
             if result["rankings"]:
                 result["best_label"] = result["rankings"][0]["label"]
@@ -565,7 +579,11 @@ class HFDiscovery:
         )
         if result["success"] and isinstance(result["result"], list):
             if result["result"]:
-                top = result["result"][0] if isinstance(result["result"][0], dict) else result["result"][0][0]
+                top = (
+                    result["result"][0]
+                    if isinstance(result["result"][0], dict)
+                    else result["result"][0][0]
+                )
                 result["language"] = top.get("label", "")
                 result["confidence"] = round(top.get("score", 0), 3)
         return result
@@ -707,25 +725,45 @@ class HFDiscovery:
             "token_configured": True,
             "supported_tasks": all_tasks,
             "tasks_count": len(all_tasks),
-            "cached_models": {k: v for k, v in self._model_cache.items()},
+            "cached_models": dict(self._model_cache.items()),
             "cached_count": len(cached),
             "categories": {
-                "texto": ["summarization", "translation", "sentiment-analysis",
-                          "zero-shot-classification", "named-entity-recognition",
-                          "question-answering", "fill-mask", "language-detection"],
-                "imagen": ["image-generation", "image-to-text", "object-detection",
-                           "image-classification", "depth-estimation", "visual-question-answering"],
+                "texto": [
+                    "summarization",
+                    "translation",
+                    "sentiment-analysis",
+                    "zero-shot-classification",
+                    "named-entity-recognition",
+                    "question-answering",
+                    "fill-mask",
+                    "language-detection",
+                ],
+                "imagen": [
+                    "image-generation",
+                    "image-to-text",
+                    "object-detection",
+                    "image-classification",
+                    "depth-estimation",
+                    "visual-question-answering",
+                ],
                 "audio": ["automatic-speech-recognition", "text-to-speech", "audio-classification"],
                 "embeddings": ["feature-extraction"],
                 "codigo": ["text-generation"],
-                "sectores_economia_circular": ["finanzas", "legal", "logística", "manufactura", "agricultura", "bioquímica"],
+                "sectores_economia_circular": [
+                    "finanzas",
+                    "legal",
+                    "logística",
+                    "manufactura",
+                    "agricultura",
+                    "bioquímica",
+                ],
             },
         }
 
 
 # ── SINGLETON ─────────────────────────────────────────────────────
 
-_instance: Optional[HFDiscovery] = None
+_instance: HFDiscovery | None = None
 
 
 def get_hf() -> HFDiscovery:

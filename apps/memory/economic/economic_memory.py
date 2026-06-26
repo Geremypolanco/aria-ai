@@ -1,13 +1,13 @@
 """EconomicMemory — Stores profitable patterns, failed strategies, and economic insights."""
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "memory:economic:v1"
 _TTL = 86400 * 365
@@ -26,7 +26,7 @@ class EconomicMemory:
     times_recalled: int = 0
 
     def to_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items()}
+        return dict(self.__dict__.items())
 
 
 class EconomicMemoryStore:
@@ -52,16 +52,33 @@ class EconomicMemoryStore:
         except Exception:
             pass
 
-    async def remember(self, memory_type: str, content: str, impact_usd: float = 0.0,
-                       context: dict = {}, tags: list = []) -> EconomicMemory:
+    async def remember(
+        self,
+        memory_type: str,
+        content: str,
+        impact_usd: float = 0.0,
+        context: dict = None,
+        tags: list = None,
+    ) -> EconomicMemory:
+        if tags is None:
+            tags = []
+        if context is None:
+            context = {}
         await self._load()
-        mem = EconomicMemory(memory_type=memory_type, content=content, impact_usd=impact_usd,
-                             context=context, tags=list(tags))
+        mem = EconomicMemory(
+            memory_type=memory_type,
+            content=content,
+            impact_usd=impact_usd,
+            context=context,
+            tags=list(tags),
+        )
         self._memories.append(mem.to_dict())
         await self._save()
         return mem
 
-    async def recall(self, query: str, memory_type: str = "", limit: int = 5) -> list[EconomicMemory]:
+    async def recall(
+        self, query: str, memory_type: str = "", limit: int = 5
+    ) -> list[EconomicMemory]:
         await self._load()
         query_lower = query.lower()
         results = []
@@ -72,7 +89,11 @@ class EconomicMemoryStore:
             tags = [t.lower() for t in m.get("tags", [])]
             if query_lower in content or any(query_lower in t for t in tags):
                 self._memories[i]["times_recalled"] = m.get("times_recalled", 0) + 1
-                results.append(EconomicMemory(**{k: v for k, v in m.items() if k in EconomicMemory.__dataclass_fields__}))
+                results.append(
+                    EconomicMemory(
+                        **{k: v for k, v in m.items() if k in EconomicMemory.__dataclass_fields__}
+                    )
+                )
         await self._save()
         return results[:limit]
 
@@ -85,16 +106,21 @@ class EconomicMemoryStore:
             resp = await ai.complete(
                 system="Economic pattern analyst.",
                 user=f"Extract 3 actionable insights from these economic observations: {summary}",
-                model=AIModel.STRATEGY, max_tokens=300,
+                model=AIModel.STRATEGY,
+                max_tokens=300,
             )
             if resp.success and resp.content:
                 for line in resp.content.strip().split("\n"):
                     if line.strip():
-                        insights.append({"insight": line.strip(), "confidence": 0.75, "actionable": True})
+                        insights.append(
+                            {"insight": line.strip(), "confidence": 0.75, "actionable": True}
+                        )
         except Exception:
             pass
         if not insights:
-            insights = [{"insight": "Focus on highest-ROI channels", "confidence": 0.8, "actionable": True}]
+            insights = [
+                {"insight": "Focus on highest-ROI channels", "confidence": 0.8, "actionable": True}
+            ]
         return insights
 
     def profitable_patterns(self, min_impact: float = 100.0) -> list[dict]:
@@ -118,7 +144,7 @@ class EconomicMemoryStore:
         }
 
 
-_instance: Optional[EconomicMemoryStore] = None
+_instance: EconomicMemoryStore | None = None
 
 
 def get_economic_memory() -> EconomicMemoryStore:

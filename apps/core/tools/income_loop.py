@@ -32,149 +32,268 @@ Scale at 30-min intervals:
 The loop NEVER stops. Every exception is caught, logged, and the
 loop resumes after a short backoff. Redis tracks all results.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import random
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.income_loop")
 
-INTERVAL_SECONDS  = 1200   # 20 minutes between cycles (was 30)
-FIRST_RUN_DELAY   = 45     # seconds after startup before first run
-ERROR_BACKOFF     = 300    # 5 min backoff after errors
-MAX_STRATEGY_TIME = 240    # 4 min max per strategy (avoids blocking)
+INTERVAL_SECONDS = 1200  # 20 minutes between cycles (was 30)
+FIRST_RUN_DELAY = 45  # seconds after startup before first run
+ERROR_BACKOFF = 300  # 5 min backoff after errors
+MAX_STRATEGY_TIME = 240  # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline",         3),   # boostado: contenido multiplica todos los canales
-    ("niche_rotator",            2),
-    ("product_factory",          5),   # boostado: crea productos Gumroad directamente
-    ("course_builder",           2),   # mini-course with syllabus + pricing (avg $79-$127/sale)
-    ("affiliate_network",        1),   # build own affiliate program, recruit promoters
-    ("opportunity_scan",         1),
-    ("github_publish",           3),   # boostado: works with only GITHUB_TOKEN — always active
-    ("content_repurposer",       2),   # 3x reach: LinkedIn + Twitter thread + email from 1 post
-    ("micro_saas",               1),   # full micro-SaaS product launch: README + API docs + pricing
-    ("shopify_listing",          1),
-    ("email_campaign",           1),
-    ("affiliate_content",        1),   # review/comparison articles with affiliate links
-    ("ebook_factory",            3),   # boostado: crea ebooks Gumroad directamente
-    ("lead_magnet",              2),   # free resource funnel → email capture → upsell
-    ("hf_spaces_demo",           1),   # live AI demo on HuggingFace Spaces (free, massive community)
-    ("seo_optimizer",            1),   # improve existing posts for compounding organic traffic
-    ("gist_blitz",               1),   # code snippet Gists with product CTAs (dev discovery)
-    ("product_bundle",           1),   # bundle 2-3 existing products at a discount → higher AOV
-    ("waitlist_builder",         1),   # waitlist landing page → email capture → launch pipeline
-    ("challenge_campaign",       1),   # 7-day challenge series → sustained traffic + lead capture
-    ("partner_outreach",         1),   # B2B collaboration pitches → cross-promotion + co-sells
-    ("newsletter_issue",         1),   # full newsletter edition → recurring reader monetization
-    ("job_board_listing",        1),   # B2B service listings → consulting leads
-    ("github_sponsors_setup",    1),   # passive income via GitHub Sponsors + FUNDING.yml
-    ("social_blitz",             1),
-    ("premium_offer",            1),
-    ("viral_thread",             1),   # Twitter/X thread optimized for virality
-    ("twitter_thread",           1),   # direct Twitter API thread via api_publisher (real posts)
-    ("linkedin_post",            1),   # direct LinkedIn API post via api_publisher (real posts)
-    ("reddit_organic",           1),   # subreddit posts → massive organic traffic → affiliate rev
-    ("stripe_checkout",          3),   # boostado: real Stripe payment link for instant revenue
-    ("tiktok_script",            1),   # TikTok/Reels/YouTube Shorts viral scripts → massive reach
-    ("linkedin_outreach",        1),   # B2B prospect messages → consulting/partnership leads
-    ("youtube_strategy",         1),   # YouTube content plan + optimized metadata + script → channel growth
-    ("product_hunt_launch",      1),   # Product Hunt launch post → massive traffic spike + backlinks
-    ("content_amplifier",        4),   # boostado: blast latest content to ALL platforms simultaneously — 5x reach
-    ("cold_email_outreach",      1),   # SMTP cold emails to B2B prospects → consulting/product sales
-    ("pinterest_pins",           1),   # Pinterest pin strategy → visual SEO traffic → product page clicks
-    ("landing_page_deploy",      1),   # HTML landing page deployed to GitHub Pages → real SEO-indexed URL
-    ("substack_publish",         1),   # Substack article → paid newsletter subscribers ($5-$10/mo each)
-    ("freelance_gig",            1),   # Fiverr/Upwork gig → direct B2B service revenue ($50-$500/gig)
-    ("media_pitch",              1),   # PR pitch to tech media → backlinks + brand authority + traffic
-    ("ab_content_test",          1),   # A/B test pricing & titles on existing products → higher conversion
-    ("smart_pricing",            1),   # AI-driven price optimization for existing products → higher AOV
-    ("voice_of_aria",            1),   # Proactive Telegram messages: daily tip + product spotlight + insight
-    ("self_monetize",            1),   # ARIA lists herself as a product: API docs + pricing page + RapidAPI
-    ("referral_engine",          1),   # Build referral/affiliate program for existing products → viral growth
-    ("digital_agency",           1),   # Done-for-you AI services pitch deck + client onboarding → $500-$5k
-    ("crowdfunding_kit",         1),   # Kickstarter/IndieGoGo campaign kit for ARIA's products
-    ("newsletter_monetize",      1),   # Beehiiv/ConvertKit paid tiers + ad sponsorships → $500-$3k/mo
-    ("community_launch",         1),   # Discord/Circle community with paid tiers → recurring MRR
-    ("podcast_pitch",            1),   # Pitch ARIA as podcast guest to 10 shows → backlinks + leads
-    ("multilingual_content",     1),   # Spanish/Portuguese/French content → 3x addressable audience
-    ("seo_tracking",             1),   # Monitor rankings + re-optimize top content → compounding traffic
-    ("viral_detector",           1),   # Detect viral content + amplify immediately across all channels
-    ("testimonial_collector",    1),   # Collect social proof from buyers + publish testimonials
-    ("seo_backlink_builder",     1),   # Submit content to directories for backlinks + authority
-    ("lead_closer",              1),   # Follow up with warm leads autonomously to close sales
-    ("retargeting_campaign",     1),   # Re-engage visitors who didn't buy with personalized sequences
-    ("influencer_outreach",      1),   # Pitch ARIA to micro-influencers for promotion deals
-    ("marketplace_lister",       3),   # boostado: List products on AppSumo, Envato, Gumroad marketplaces
-    ("daily_goal_tracker",       1),   # Track daily revenue vs target + take action on gaps
-    ("growth_hacker",            1),   # Rapid growth experiments: A/B tests, viral loops, referrals
-    ("knowledge_synthesizer",    1),   # Read latest AI/business content + ingest into knowledge base
-    ("conversion_optimizer",     1),   # Analyze full funnel + apply conversion rate improvements
-    ("brand_storyteller",        1),   # Create brand narrative + origin story + value proposition content
-    ("competitor_copy",          1),   # Analyze top competitors and create superior alternatives
-    ("price_ladder",             1),   # Design optimal pricing ladder from free to enterprise
-    ("auto_responder",           1),   # Reply to comments/mentions on all platforms → engagement + trust
-    ("affiliate_injector",       1),   # Inject affiliate links into existing published content → passive rev
-    ("social_dm_outreach",       1),   # DM qualified prospects on Twitter/LinkedIn → direct sales pipeline
-    ("upsell_engine",            1),   # create upsell offers for existing buyers → increase LTV instantly
-    ("podcast_producer",         1),   # produce AI audio script + episode notes + show outline → launch a podcast
-    ("saas_waitlist_blitz",      1),   # build + fill a micro-SaaS waitlist in one shot: landing + email capture + launch
-    ("vc_pitch_deck",            4),   # boostado: create investor pitch deck for ARIA → funding + credibility
-    ("job_posting_scout",        1),   # monitor freelance job boards + apply to relevant gigs → direct revenue
-    ("micro_grant_hunter",       4),   # boostado: find + apply to startup grants, accelerators → non-dilutive capital
-    ("notion_template_seller",   3),   # boostado: create Notion template → publish on Gumroad + Notion marketplace ($7-$49)
-    ("chrome_extension_builder", 1),   # design Chrome extension concept + README + landing page → developer audience
-    ("api_marketplace_lister",   1),   # list ARIA's AI API on RapidAPI/Mashape → recurring API subscription revenue
-    ("white_label_kit",          1),   # build white-label package: agencies resell ARIA's AI as their own → B2B revenue
-    ("data_product_seller",      3),   # boostado: compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
-    ("b2b_saas_pitch",           1),   # create full B2B pitch + send cold outreach to potential enterprise clients
-    ("email_list_builder",       1),   # grow email list fast: create lead magnet + landing page + subscribe form → list asset
-    ("joint_venture_pitch",      1),   # find JV partners, propose revenue-share deals, create co-marketing proposals
-    ("product_review_outreach",  1),   # reach out to review sites / blogs to get ARIA's products reviewed → organic SEO
-    ("seo_content_cluster",      1),   # build a topic cluster: pillar article + 5 supporting posts → SEO authority
-    ("price_anchoring",          1),   # redesign product pricing pages with anchoring + decoy pricing → higher AOV
-    ("social_proof_automation",  1),   # collect + auto-publish testimonials, review screenshots, trust badges → trust
-    ("influencer_collab",        1),   # identify micro-influencers, send collab proposals, create sponsored content briefs
-    ("content_licensing",        1),   # license ARIA's content/templates to newsletters, blogs, SaaS → recurring B2B rev
-    ("micro_consulting",         1),   # package ARIA's expertise as 1-hour consulting sessions → $200-$500/session
-    ("saas_upsell_sequence",     1),   # design full SaaS upgrade email sequence: free→paid→enterprise tiers
-    ("community_monetize",       1),   # create paid membership community: perks, pricing, onboarding → MRR
-    ("thought_leadership",       1),   # publish authoritative long-form opinion piece on AI/business trends → authority + leads
-    ("token_economy",            1),   # design token/points reward system for ARIA's community → retention + virality
-    ("api_product_launch",       1),   # package ARIA's AI as a paid API product: docs + pricing + Postman collection
-    ("growth_experiment",        1),   # run one targeted growth experiment: landing page tweak, hook test, channel test
-    ("app_store_listing",        1),   # create listing copy for Chrome Web Store / App Store / VS Code marketplace
-    ("case_study_publisher",     1),   # write detailed case study from buyer result → social proof + SEO + lead gen
-    ("catalog_repromoter",       5),   # boostado: re-promote existing Gumroad products with fresh angles → more sales, zero creation cost
-    ("stripe_subscription",      3),   # boostado: create recurring Stripe subscription product → MRR compound growth
+    ("content_pipeline", 3),  # boostado: contenido multiplica todos los canales
+    ("niche_rotator", 2),
+    ("product_factory", 5),  # boostado: crea productos Gumroad directamente
+    ("course_builder", 2),  # mini-course with syllabus + pricing (avg $79-$127/sale)
+    ("affiliate_network", 1),  # build own affiliate program, recruit promoters
+    ("opportunity_scan", 1),
+    ("github_publish", 3),  # boostado: works with only GITHUB_TOKEN — always active
+    ("content_repurposer", 2),  # 3x reach: LinkedIn + Twitter thread + email from 1 post
+    ("micro_saas", 1),  # full micro-SaaS product launch: README + API docs + pricing
+    ("shopify_listing", 1),
+    ("email_campaign", 1),
+    ("affiliate_content", 1),  # review/comparison articles with affiliate links
+    ("ebook_factory", 3),  # boostado: crea ebooks Gumroad directamente
+    ("lead_magnet", 2),  # free resource funnel → email capture → upsell
+    ("hf_spaces_demo", 1),  # live AI demo on HuggingFace Spaces (free, massive community)
+    ("seo_optimizer", 1),  # improve existing posts for compounding organic traffic
+    ("gist_blitz", 1),  # code snippet Gists with product CTAs (dev discovery)
+    ("product_bundle", 1),  # bundle 2-3 existing products at a discount → higher AOV
+    ("waitlist_builder", 1),  # waitlist landing page → email capture → launch pipeline
+    ("challenge_campaign", 1),  # 7-day challenge series → sustained traffic + lead capture
+    ("partner_outreach", 1),  # B2B collaboration pitches → cross-promotion + co-sells
+    ("newsletter_issue", 1),  # full newsletter edition → recurring reader monetization
+    ("job_board_listing", 1),  # B2B service listings → consulting leads
+    ("github_sponsors_setup", 1),  # passive income via GitHub Sponsors + FUNDING.yml
+    ("social_blitz", 1),
+    ("premium_offer", 1),
+    ("viral_thread", 1),  # Twitter/X thread optimized for virality
+    ("twitter_thread", 1),  # direct Twitter API thread via api_publisher (real posts)
+    ("linkedin_post", 1),  # direct LinkedIn API post via api_publisher (real posts)
+    ("reddit_organic", 1),  # subreddit posts → massive organic traffic → affiliate rev
+    ("stripe_checkout", 3),  # boostado: real Stripe payment link for instant revenue
+    ("tiktok_script", 1),  # TikTok/Reels/YouTube Shorts viral scripts → massive reach
+    ("linkedin_outreach", 1),  # B2B prospect messages → consulting/partnership leads
+    ("youtube_strategy", 1),  # YouTube content plan + optimized metadata + script → channel growth
+    ("product_hunt_launch", 1),  # Product Hunt launch post → massive traffic spike + backlinks
+    (
+        "content_amplifier",
+        4,
+    ),  # boostado: blast latest content to ALL platforms simultaneously — 5x reach
+    ("cold_email_outreach", 1),  # SMTP cold emails to B2B prospects → consulting/product sales
+    ("pinterest_pins", 1),  # Pinterest pin strategy → visual SEO traffic → product page clicks
+    ("landing_page_deploy", 1),  # HTML landing page deployed to GitHub Pages → real SEO-indexed URL
+    ("substack_publish", 1),  # Substack article → paid newsletter subscribers ($5-$10/mo each)
+    ("freelance_gig", 1),  # Fiverr/Upwork gig → direct B2B service revenue ($50-$500/gig)
+    ("media_pitch", 1),  # PR pitch to tech media → backlinks + brand authority + traffic
+    ("ab_content_test", 1),  # A/B test pricing & titles on existing products → higher conversion
+    ("smart_pricing", 1),  # AI-driven price optimization for existing products → higher AOV
+    ("voice_of_aria", 1),  # Proactive Telegram messages: daily tip + product spotlight + insight
+    ("self_monetize", 1),  # ARIA lists herself as a product: API docs + pricing page + RapidAPI
+    ("referral_engine", 1),  # Build referral/affiliate program for existing products → viral growth
+    ("digital_agency", 1),  # Done-for-you AI services pitch deck + client onboarding → $500-$5k
+    ("crowdfunding_kit", 1),  # Kickstarter/IndieGoGo campaign kit for ARIA's products
+    ("newsletter_monetize", 1),  # Beehiiv/ConvertKit paid tiers + ad sponsorships → $500-$3k/mo
+    ("community_launch", 1),  # Discord/Circle community with paid tiers → recurring MRR
+    ("podcast_pitch", 1),  # Pitch ARIA as podcast guest to 10 shows → backlinks + leads
+    ("multilingual_content", 1),  # Spanish/Portuguese/French content → 3x addressable audience
+    ("seo_tracking", 1),  # Monitor rankings + re-optimize top content → compounding traffic
+    ("viral_detector", 1),  # Detect viral content + amplify immediately across all channels
+    ("testimonial_collector", 1),  # Collect social proof from buyers + publish testimonials
+    ("seo_backlink_builder", 1),  # Submit content to directories for backlinks + authority
+    ("lead_closer", 1),  # Follow up with warm leads autonomously to close sales
+    ("retargeting_campaign", 1),  # Re-engage visitors who didn't buy with personalized sequences
+    ("influencer_outreach", 1),  # Pitch ARIA to micro-influencers for promotion deals
+    ("marketplace_lister", 3),  # boostado: List products on AppSumo, Envato, Gumroad marketplaces
+    ("daily_goal_tracker", 1),  # Track daily revenue vs target + take action on gaps
+    ("growth_hacker", 1),  # Rapid growth experiments: A/B tests, viral loops, referrals
+    ("knowledge_synthesizer", 1),  # Read latest AI/business content + ingest into knowledge base
+    ("conversion_optimizer", 1),  # Analyze full funnel + apply conversion rate improvements
+    ("brand_storyteller", 1),  # Create brand narrative + origin story + value proposition content
+    ("competitor_copy", 1),  # Analyze top competitors and create superior alternatives
+    ("price_ladder", 1),  # Design optimal pricing ladder from free to enterprise
+    ("auto_responder", 1),  # Reply to comments/mentions on all platforms → engagement + trust
+    (
+        "affiliate_injector",
+        1,
+    ),  # Inject affiliate links into existing published content → passive rev
+    ("social_dm_outreach", 1),  # DM qualified prospects on Twitter/LinkedIn → direct sales pipeline
+    ("upsell_engine", 1),  # create upsell offers for existing buyers → increase LTV instantly
+    (
+        "podcast_producer",
+        1,
+    ),  # produce AI audio script + episode notes + show outline → launch a podcast
+    (
+        "saas_waitlist_blitz",
+        1,
+    ),  # build + fill a micro-SaaS waitlist in one shot: landing + email capture + launch
+    ("vc_pitch_deck", 4),  # boostado: create investor pitch deck for ARIA → funding + credibility
+    (
+        "job_posting_scout",
+        1,
+    ),  # monitor freelance job boards + apply to relevant gigs → direct revenue
+    (
+        "micro_grant_hunter",
+        4,
+    ),  # boostado: find + apply to startup grants, accelerators → non-dilutive capital
+    (
+        "notion_template_seller",
+        3,
+    ),  # boostado: create Notion template → publish on Gumroad + Notion marketplace ($7-$49)
+    (
+        "chrome_extension_builder",
+        1,
+    ),  # design Chrome extension concept + README + landing page → developer audience
+    (
+        "api_marketplace_lister",
+        1,
+    ),  # list ARIA's AI API on RapidAPI/Mashape → recurring API subscription revenue
+    (
+        "white_label_kit",
+        1,
+    ),  # build white-label package: agencies resell ARIA's AI as their own → B2B revenue
+    (
+        "data_product_seller",
+        3,
+    ),  # boostado: compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
+    (
+        "b2b_saas_pitch",
+        1,
+    ),  # create full B2B pitch + send cold outreach to potential enterprise clients
+    (
+        "email_list_builder",
+        1,
+    ),  # grow email list fast: create lead magnet + landing page + subscribe form → list asset
+    (
+        "joint_venture_pitch",
+        1,
+    ),  # find JV partners, propose revenue-share deals, create co-marketing proposals
+    (
+        "product_review_outreach",
+        1,
+    ),  # reach out to review sites / blogs to get ARIA's products reviewed → organic SEO
+    (
+        "seo_content_cluster",
+        1,
+    ),  # build a topic cluster: pillar article + 5 supporting posts → SEO authority
+    (
+        "price_anchoring",
+        1,
+    ),  # redesign product pricing pages with anchoring + decoy pricing → higher AOV
+    (
+        "social_proof_automation",
+        1,
+    ),  # collect + auto-publish testimonials, review screenshots, trust badges → trust
+    (
+        "influencer_collab",
+        1,
+    ),  # identify micro-influencers, send collab proposals, create sponsored content briefs
+    (
+        "content_licensing",
+        1,
+    ),  # license ARIA's content/templates to newsletters, blogs, SaaS → recurring B2B rev
+    (
+        "micro_consulting",
+        1,
+    ),  # package ARIA's expertise as 1-hour consulting sessions → $200-$500/session
+    (
+        "saas_upsell_sequence",
+        1,
+    ),  # design full SaaS upgrade email sequence: free→paid→enterprise tiers
+    ("community_monetize", 1),  # create paid membership community: perks, pricing, onboarding → MRR
+    (
+        "thought_leadership",
+        1,
+    ),  # publish authoritative long-form opinion piece on AI/business trends → authority + leads
+    (
+        "token_economy",
+        1,
+    ),  # design token/points reward system for ARIA's community → retention + virality
+    (
+        "api_product_launch",
+        1,
+    ),  # package ARIA's AI as a paid API product: docs + pricing + Postman collection
+    (
+        "growth_experiment",
+        1,
+    ),  # run one targeted growth experiment: landing page tweak, hook test, channel test
+    (
+        "app_store_listing",
+        1,
+    ),  # create listing copy for Chrome Web Store / App Store / VS Code marketplace
+    (
+        "case_study_publisher",
+        1,
+    ),  # write detailed case study from buyer result → social proof + SEO + lead gen
+    (
+        "catalog_repromoter",
+        5,
+    ),  # boostado: re-promote existing Gumroad products with fresh angles → more sales, zero creation cost
+    (
+        "stripe_subscription",
+        3,
+    ),  # boostado: create recurring Stripe subscription product → MRR compound growth
 ]
 
 # Strategies that already call publish_to_twitter/linkedin internally.
 # The global distributor in _run_one_cycle skips these to avoid double-posting.
-_SELF_DISTRIBUTING_STRATEGIES: frozenset[str] = frozenset({
-    "social_blitz", "twitter_thread", "linkedin_post", "viral_thread",
-    "voice_of_aria", "challenge_campaign", "newsletter_issue",
-    "community_launch", "viral_detector", "saas_waitlist_blitz",
-    "email_list_builder", "thought_leadership", "growth_hacker",
-    "brand_storyteller", "notion_template_seller", "chrome_extension_builder",
-    "api_marketplace_lister", "case_study_publisher", "podcast_producer",
-    "waitlist_builder", "gist_blitz", "product_hunt_launch",
-    "content_amplifier", "stripe_checkout", "seo_content_cluster",
-    "testimonial_collector", "crowdfunding_kit", "premium_offer",
-    "product_factory", "github_blog", "content_pipeline",
-    "catalog_repromoter", "stripe_subscription", "content_repurposer",
-    "ebook_factory", "product_bundle",
-    "course_builder", "job_board_listing", "substack_publish",
-})
+_SELF_DISTRIBUTING_STRATEGIES: frozenset[str] = frozenset(
+    {
+        "social_blitz",
+        "twitter_thread",
+        "linkedin_post",
+        "viral_thread",
+        "voice_of_aria",
+        "challenge_campaign",
+        "newsletter_issue",
+        "community_launch",
+        "viral_detector",
+        "saas_waitlist_blitz",
+        "email_list_builder",
+        "thought_leadership",
+        "growth_hacker",
+        "brand_storyteller",
+        "notion_template_seller",
+        "chrome_extension_builder",
+        "api_marketplace_lister",
+        "case_study_publisher",
+        "podcast_producer",
+        "waitlist_builder",
+        "gist_blitz",
+        "product_hunt_launch",
+        "content_amplifier",
+        "stripe_checkout",
+        "seo_content_cluster",
+        "testimonial_collector",
+        "crowdfunding_kit",
+        "premium_offer",
+        "product_factory",
+        "github_blog",
+        "content_pipeline",
+        "catalog_repromoter",
+        "stripe_subscription",
+        "content_repurposer",
+        "ebook_factory",
+        "product_bundle",
+        "course_builder",
+        "job_board_listing",
+        "substack_publish",
+    }
+)
 
 
 class ThompsonBandit:
@@ -193,15 +312,16 @@ class ThompsonBandit:
     """
 
     def __init__(self, strategy_names: list[str], base_weights: dict[str, float]) -> None:
-        self._names  = strategy_names
+        self._names = strategy_names
         # Initialize α from base weights (domain-knowledge prior)
-        self._alpha  = {n: float(base_weights.get(n, 1.0)) for n in strategy_names}
-        self._beta   = {n: 1.0 for n in strategy_names}
+        self._alpha = {n: float(base_weights.get(n, 1.0)) for n in strategy_names}
+        self._beta = dict.fromkeys(strategy_names, 1.0)
 
     async def load(self) -> None:
         """Load persisted α/β counts from Redis."""
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if not cache:
                 return
@@ -212,7 +332,7 @@ class ThompsonBandit:
                         # max(0.1, ...) guards against corrupt zeros — Beta(0,x) raises ValueError
                         self._alpha[n] = max(0.1, float(raw[f"{n}.a"]))
                     if f"{n}.b" in raw:
-                        self._beta[n]  = max(0.1, float(raw[f"{n}.b"]))
+                        self._beta[n] = max(0.1, float(raw[f"{n}.b"]))
                 logger.info("[Bandit] Loaded counts for %d strategies", len(self._names))
         except Exception as exc:
             logger.debug("[Bandit] load error: %s", exc)
@@ -221,6 +341,7 @@ class ThompsonBandit:
         """Persist α/β counts to Redis."""
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if not cache:
                 return
@@ -239,6 +360,7 @@ class ThompsonBandit:
         """
         try:
             import numpy as np
+
             samples = {n: np.random.beta(self._alpha[n], self._beta[n]) for n in self._names}
             return max(samples, key=samples.__getitem__)
         except ImportError:
@@ -253,7 +375,7 @@ class ThompsonBandit:
         if success:
             self._alpha[strategy] += 1.0
         else:
-            self._beta[strategy]  += 1.0
+            self._beta[strategy] += 1.0
 
     @property
     def top_strategies(self) -> list[tuple[str, float]]:
@@ -271,7 +393,7 @@ class CycleResult:
     revenue_potential: float = 0.0
     urls_created: list[str] = field(default_factory=list)
     elapsed_seconds: int = 0
-    ts: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    ts: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class IncomeLoop:
@@ -282,11 +404,11 @@ class IncomeLoop:
     """
 
     def __init__(self) -> None:
-        self._running         = False
-        self._task            = None
-        self._cycle           = 0
-        self._niche_idx       = 0    # Round-robin through niche catalog (loaded from Redis in first cycle)
-        self._adaptive_weights: dict[str, float] = {}   # updated from Redis every 10 cycles
+        self._running = False
+        self._task = None
+        self._cycle = 0
+        self._niche_idx = 0  # Round-robin through niche catalog (loaded from Redis in first cycle)
+        self._adaptive_weights: dict[str, float] = {}  # updated from Redis every 10 cycles
         self._weights_refresh_cycle = 0
         # Thompson Sampling Bandit — learns which strategies perform best over time.
         # Base weights from STRATEGIES serve as Bayesian prior (domain knowledge).
@@ -305,7 +427,7 @@ class IncomeLoop:
         # Load bandit state from Redis before first cycle
         await self._bandit.load()
         self._running = True
-        self._task    = asyncio.create_task(self._run_forever())
+        self._task = asyncio.create_task(self._run_forever())
         logger.info("[IncomeLoop] 24/7 income loop started (interval=%ds)", INTERVAL_SECONDS)
         # Proactive Telegram notification on startup
         asyncio.create_task(self._notify_startup())
@@ -341,10 +463,10 @@ class IncomeLoop:
 
             await asyncio.sleep(INTERVAL_SECONDS)
 
-    async def _run_one_cycle(self, force_strategy: str | None = None) -> "CycleResult":
+    async def _run_one_cycle(self, force_strategy: str | None = None) -> CycleResult:
         self._cycle += 1
         strategy = force_strategy if force_strategy else await self._pick_strategy_smart()
-        start    = time.time()
+        start = time.time()
         logger.info("[IncomeLoop] Cycle #%d — strategy: %s", self._cycle, strategy)
 
         result = CycleResult(
@@ -355,14 +477,12 @@ class IncomeLoop:
         )
 
         try:
-            obs = await asyncio.wait_for(
-                self._execute(strategy), timeout=MAX_STRATEGY_TIME
-            )
-            result.success          = obs.get("success", False)
-            result.summary          = obs.get("summary", "")
+            obs = await asyncio.wait_for(self._execute(strategy), timeout=MAX_STRATEGY_TIME)
+            result.success = obs.get("success", False)
+            result.summary = obs.get("summary", "")
             result.revenue_potential = obs.get("revenue_potential", 0.0)
-            result.urls_created     = obs.get("urls", [])
-        except asyncio.TimeoutError:
+            result.urls_created = obs.get("urls", [])
+        except TimeoutError:
             result.summary = f"Strategy '{strategy}' timed out after {MAX_STRATEGY_TIME}s"
             logger.warning("[IncomeLoop] %s", result.summary)
         except Exception as exc:
@@ -383,16 +503,33 @@ class IncomeLoop:
             asyncio.create_task(self._refresh_adaptive_weights())
 
         # Notify on wins — also notify high-value strategies even without URLs (e.g. vc_pitch_deck, micro_grant_hunter)
-        _HIGH_VALUE_STRATEGIES = {"vc_pitch_deck", "micro_grant_hunter", "stripe_checkout", "gumroad_checkout"}
-        if result.success and (result.urls_created or (result.revenue_potential >= 50 and result.strategy in _HIGH_VALUE_STRATEGIES)):
+        _HIGH_VALUE_STRATEGIES = {
+            "vc_pitch_deck",
+            "micro_grant_hunter",
+            "stripe_checkout",
+            "gumroad_checkout",
+        }
+        if result.success and (
+            result.urls_created
+            or (result.revenue_potential >= 50 and result.strategy in _HIGH_VALUE_STRATEGIES)
+        ):
             await self._notify_win(result)
 
         # Product launch sequence: announce newly created products on the blog + Dev.to + Hashnode
         _PRODUCT_STRATEGIES = {
-            "product_factory", "ebook_factory", "premium_offer",
-            "stripe_checkout", "stripe_subscription", "shopify_listing", "niche_rotator",
-            "notion_template_seller", "white_label_kit", "data_product_seller",
-            "saas_waitlist_blitz", "api_product_launch", "chrome_extension_builder",
+            "product_factory",
+            "ebook_factory",
+            "premium_offer",
+            "stripe_checkout",
+            "stripe_subscription",
+            "shopify_listing",
+            "niche_rotator",
+            "notion_template_seller",
+            "white_label_kit",
+            "data_product_seller",
+            "saas_waitlist_blitz",
+            "api_product_launch",
+            "chrome_extension_builder",
         }
         if result.success and result.urls_created and result.strategy in _PRODUCT_STRATEGIES:
             asyncio.create_task(self._announce_product_on_blog(result))
@@ -403,14 +540,19 @@ class IncomeLoop:
 
         # Global social distribution fallback — catches all strategies that don't
         # self-distribute. Fires asynchronously so it never blocks the cycle.
-        if (result.success
-                and result.revenue_potential >= 1.0
-                and result.strategy not in _SELF_DISTRIBUTING_STRATEGIES):
+        if (
+            result.success
+            and result.revenue_potential >= 1.0
+            and result.strategy not in _SELF_DISTRIBUTING_STRATEGIES
+        ):
             asyncio.create_task(self._distribute_result_on_social(result))
 
         logger.info(
             "[IncomeLoop] Cycle #%d done in %ds | success=%s | %s",
-            self._cycle, result.elapsed_seconds, result.success, result.summary[:80]
+            self._cycle,
+            result.elapsed_seconds,
+            result.success,
+            result.summary[:80],
         )
         return result
 
@@ -424,6 +566,7 @@ class IncomeLoop:
         if self._cycle % 3 == 0:
             try:
                 from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
                 if cache:
                     raw = await cache.lpop("aria:income:opportunity_queue")
@@ -434,7 +577,9 @@ class IncomeLoop:
                         if recommended in valid:
                             logger.info(
                                 "[IncomeLoop] Trend queue: running '%s' for '%s' (urgency=%s)",
-                                recommended, opp.get("name", "?")[:40], opp.get("urgency", "?"),
+                                recommended,
+                                opp.get("name", "?")[:40],
+                                opp.get("urgency", "?"),
                             )
                             return recommended
             except Exception:
@@ -468,12 +613,16 @@ class IncomeLoop:
         """Load optimizer weights from Redis (written by strategy_optimizer objective)."""
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 raw = await cache.get("aria:income:adaptive_weights")
                 if raw and isinstance(raw, dict):
                     self._adaptive_weights = {k: float(v) for k, v in raw.items()}
-                    logger.info("[IncomeLoop] Adaptive weights loaded (%d strategies)", len(self._adaptive_weights))
+                    logger.info(
+                        "[IncomeLoop] Adaptive weights loaded (%d strategies)",
+                        len(self._adaptive_weights),
+                    )
         except Exception:
             pass
 
@@ -489,6 +638,7 @@ class IncomeLoop:
         _tw_posted = False
         try:
             from apps.distribution.publishers.api_publisher import get_api_publisher
+
             pub = get_api_publisher()
             tw_r = await pub.publish_to_twitter(tweet)
             _tw_posted = bool(tw_r and tw_r.success)
@@ -500,6 +650,7 @@ class IncomeLoop:
                 _ap = getattr(settings, "ARIA_PASSWORD", None)
                 if _ae and _ap:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_ae, _ap)
                     await _plat.twitter_thread_post(_tw_page, [tweet])
@@ -511,7 +662,8 @@ class IncomeLoop:
         Cross-posts to GitHub (always), Dev.to, and Hashnode via browser fallback."""
         try:
             await asyncio.sleep(10)  # let the main cycle finish logging first
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             if not ai:
                 return
@@ -543,8 +695,8 @@ JSON:
                 announcement["content"] += f"\n\n**[Get it here →]({product_url})**\n"
 
             title = announcement.get("title", result.summary[:60])
-            tags  = announcement.get("tags", ["launch", "product", "ai"])
-            body  = announcement.get("content", "")
+            tags = announcement.get("tags", ["launch", "product", "ai"])
+            body = announcement.get("content", "")
 
             # 1) GitHub (authoritative record — always attempt)
             if settings.GITHUB_TOKEN:
@@ -559,6 +711,7 @@ JSON:
             if _devto_key and body:
                 try:
                     import aiohttp as _aiohttp
+
                     payload = {
                         "article": {
                             "title": title,
@@ -579,7 +732,9 @@ JSON:
                                 _dt_data = await _rr.json()
                                 _dt_url = _dt_data.get("url", "")
                                 if _dt_url:
-                                    logger.info("[IncomeLoop] Product announcement on Dev.to: %s", _dt_url)
+                                    logger.info(
+                                        "[IncomeLoop] Product announcement on Dev.to: %s", _dt_url
+                                    )
                                     _dt_published = True
                 except Exception as _de:
                     logger.debug("[IncomeLoop] dev.to API announcement: %s", _de)
@@ -587,13 +742,14 @@ JSON:
             if not _dt_published and _dt_ae and _dt_ap and body:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _dt_pg = await _plat.devto(_dt_ae, _dt_ap)
-                    _dt_url = await _plat.devto_publish_article(
-                        _dt_pg, title, body, tags[:4]
-                    )
+                    _dt_url = await _plat.devto_publish_article(_dt_pg, title, body, tags[:4])
                     if _dt_url:
-                        logger.info("[IncomeLoop] Product announcement on Dev.to (browser): %s", _dt_url)
+                        logger.info(
+                            "[IncomeLoop] Product announcement on Dev.to (browser): %s", _dt_url
+                        )
                 except Exception as _de2:
                     logger.debug("[IncomeLoop] dev.to browser announcement: %s", _de2)
 
@@ -601,6 +757,7 @@ JSON:
             if _dt_ae and _dt_ap and body:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat2 = await get_platform_login()
                     _hn_pg = await _plat2.hashnode(_dt_ae, _dt_ap)
                     _hn_url = await _plat2.hashnode_publish_article(
@@ -619,201 +776,201 @@ JSON:
     async def _execute(self, strategy: str) -> dict:
         if strategy == "content_pipeline":
             return await self._exec_content_pipeline()
-        elif strategy == "niche_rotator":
+        if strategy == "niche_rotator":
             return await self._exec_niche_rotator()
-        elif strategy == "product_factory":
+        if strategy == "product_factory":
             return await self._exec_product_factory()
-        elif strategy == "opportunity_scan":
+        if strategy == "opportunity_scan":
             return await self._exec_opportunity_scan()
-        elif strategy == "github_publish":
+        if strategy == "github_publish":
             return await self._exec_github_publish()
-        elif strategy == "shopify_listing":
+        if strategy == "shopify_listing":
             return await self._exec_shopify_listing()
-        elif strategy == "email_campaign":
+        if strategy == "email_campaign":
             return await self._exec_email_campaign()
-        elif strategy == "ebook_factory":
+        if strategy == "ebook_factory":
             return await self._exec_ebook_factory()
-        elif strategy == "social_blitz":
+        if strategy == "social_blitz":
             return await self._exec_social_blitz()
-        elif strategy == "premium_offer":
+        if strategy == "premium_offer":
             return await self._exec_premium_offer()
-        elif strategy == "affiliate_content":
+        if strategy == "affiliate_content":
             return await self._exec_affiliate_content()
-        elif strategy == "lead_magnet":
+        if strategy == "lead_magnet":
             return await self._exec_lead_magnet()
-        elif strategy == "hf_spaces_demo":
+        if strategy == "hf_spaces_demo":
             return await self._exec_hf_spaces_demo()
-        elif strategy == "seo_optimizer":
+        if strategy == "seo_optimizer":
             return await self._exec_seo_optimizer()
-        elif strategy == "content_repurposer":
+        if strategy == "content_repurposer":
             return await self._exec_content_repurposer()
-        elif strategy == "course_builder":
+        if strategy == "course_builder":
             return await self._exec_course_builder()
-        elif strategy == "affiliate_network":
+        if strategy == "affiliate_network":
             return await self._exec_affiliate_network_builder()
-        elif strategy == "micro_saas":
+        if strategy == "micro_saas":
             return await self._exec_micro_saas()
-        elif strategy == "gist_blitz":
+        if strategy == "gist_blitz":
             return await self._exec_gist_blitz()
-        elif strategy == "github_sponsors_setup":
+        if strategy == "github_sponsors_setup":
             return await self._exec_github_sponsors_setup()
-        elif strategy == "product_bundle":
+        if strategy == "product_bundle":
             return await self._exec_product_bundle()
-        elif strategy == "waitlist_builder":
+        if strategy == "waitlist_builder":
             return await self._exec_waitlist_builder()
-        elif strategy == "challenge_campaign":
+        if strategy == "challenge_campaign":
             return await self._exec_challenge_campaign()
-        elif strategy == "partner_outreach":
+        if strategy == "partner_outreach":
             return await self._exec_partner_outreach()
-        elif strategy == "newsletter_issue":
+        if strategy == "newsletter_issue":
             return await self._exec_newsletter_issue()
-        elif strategy == "job_board_listing":
+        if strategy == "job_board_listing":
             return await self._exec_job_board_listing()
-        elif strategy == "viral_thread":
+        if strategy == "viral_thread":
             return await self._exec_viral_thread()
-        elif strategy == "twitter_thread":
+        if strategy == "twitter_thread":
             return await self._exec_twitter_thread()
-        elif strategy == "linkedin_post":
+        if strategy == "linkedin_post":
             return await self._exec_linkedin_post()
-        elif strategy == "reddit_organic":
+        if strategy == "reddit_organic":
             return await self._exec_reddit_organic()
-        elif strategy == "stripe_checkout":
+        if strategy == "stripe_checkout":
             return await self._exec_stripe_checkout()
-        elif strategy == "tiktok_script":
+        if strategy == "tiktok_script":
             return await self._exec_tiktok_script()
-        elif strategy == "linkedin_outreach":
+        if strategy == "linkedin_outreach":
             return await self._exec_linkedin_outreach()
-        elif strategy == "youtube_strategy":
+        if strategy == "youtube_strategy":
             return await self._exec_youtube_strategy()
-        elif strategy == "product_hunt_launch":
+        if strategy == "product_hunt_launch":
             return await self._exec_product_hunt_launch()
-        elif strategy == "content_amplifier":
+        if strategy == "content_amplifier":
             return await self._exec_content_amplifier()
-        elif strategy == "cold_email_outreach":
+        if strategy == "cold_email_outreach":
             return await self._exec_cold_email_outreach()
-        elif strategy == "pinterest_pins":
+        if strategy == "pinterest_pins":
             return await self._exec_pinterest_pins()
-        elif strategy == "landing_page_deploy":
+        if strategy == "landing_page_deploy":
             return await self._exec_landing_page_deploy()
-        elif strategy == "substack_publish":
+        if strategy == "substack_publish":
             return await self._exec_substack_publish()
-        elif strategy == "freelance_gig":
+        if strategy == "freelance_gig":
             return await self._exec_freelance_gig()
-        elif strategy == "media_pitch":
+        if strategy == "media_pitch":
             return await self._exec_media_pitch()
-        elif strategy == "ab_content_test":
+        if strategy == "ab_content_test":
             return await self._exec_ab_content_test()
-        elif strategy == "smart_pricing":
+        if strategy == "smart_pricing":
             return await self._exec_smart_pricing()
-        elif strategy == "voice_of_aria":
+        if strategy == "voice_of_aria":
             return await self._exec_voice_of_aria()
-        elif strategy == "self_monetize":
+        if strategy == "self_monetize":
             return await self._exec_self_monetize()
-        elif strategy == "referral_engine":
+        if strategy == "referral_engine":
             return await self._exec_referral_engine()
-        elif strategy == "digital_agency":
+        if strategy == "digital_agency":
             return await self._exec_digital_agency()
-        elif strategy == "crowdfunding_kit":
+        if strategy == "crowdfunding_kit":
             return await self._exec_crowdfunding_kit()
-        elif strategy == "newsletter_monetize":
+        if strategy == "newsletter_monetize":
             return await self._exec_newsletter_monetize()
-        elif strategy == "community_launch":
+        if strategy == "community_launch":
             return await self._exec_community_launch()
-        elif strategy == "podcast_pitch":
+        if strategy == "podcast_pitch":
             return await self._exec_podcast_pitch()
-        elif strategy == "multilingual_content":
+        if strategy == "multilingual_content":
             return await self._exec_multilingual_content()
-        elif strategy == "seo_tracking":
+        if strategy == "seo_tracking":
             return await self._exec_seo_tracking()
-        elif strategy == "viral_detector":
+        if strategy == "viral_detector":
             return await self._exec_viral_detector()
-        elif strategy == "testimonial_collector":
+        if strategy == "testimonial_collector":
             return await self._exec_testimonial_collector()
-        elif strategy == "seo_backlink_builder":
+        if strategy == "seo_backlink_builder":
             return await self._exec_seo_backlink_builder()
-        elif strategy == "lead_closer":
+        if strategy == "lead_closer":
             return await self._exec_lead_closer()
-        elif strategy == "retargeting_campaign":
+        if strategy == "retargeting_campaign":
             return await self._exec_retargeting_campaign()
-        elif strategy == "influencer_outreach":
+        if strategy == "influencer_outreach":
             return await self._exec_influencer_outreach()
-        elif strategy == "marketplace_lister":
+        if strategy == "marketplace_lister":
             return await self._exec_marketplace_lister()
-        elif strategy == "daily_goal_tracker":
+        if strategy == "daily_goal_tracker":
             return await self._exec_daily_goal_tracker()
-        elif strategy == "growth_hacker":
+        if strategy == "growth_hacker":
             return await self._exec_growth_hacker()
-        elif strategy == "knowledge_synthesizer":
+        if strategy == "knowledge_synthesizer":
             return await self._exec_knowledge_synthesizer()
-        elif strategy == "conversion_optimizer":
+        if strategy == "conversion_optimizer":
             return await self._exec_conversion_optimizer()
-        elif strategy == "brand_storyteller":
+        if strategy == "brand_storyteller":
             return await self._exec_brand_storyteller()
-        elif strategy == "competitor_copy":
+        if strategy == "competitor_copy":
             return await self._exec_competitor_copy()
-        elif strategy == "price_ladder":
+        if strategy == "price_ladder":
             return await self._exec_price_ladder()
-        elif strategy == "auto_responder":
+        if strategy == "auto_responder":
             return await self._exec_auto_responder()
-        elif strategy == "affiliate_injector":
+        if strategy == "affiliate_injector":
             return await self._exec_affiliate_injector()
-        elif strategy == "social_dm_outreach":
+        if strategy == "social_dm_outreach":
             return await self._exec_social_dm_outreach()
-        elif strategy == "upsell_engine":
+        if strategy == "upsell_engine":
             return await self._exec_upsell_engine()
-        elif strategy == "podcast_producer":
+        if strategy == "podcast_producer":
             return await self._exec_podcast_producer()
-        elif strategy == "saas_waitlist_blitz":
+        if strategy == "saas_waitlist_blitz":
             return await self._exec_saas_waitlist_blitz()
-        elif strategy == "vc_pitch_deck":
+        if strategy == "vc_pitch_deck":
             return await self._exec_vc_pitch_deck()
-        elif strategy == "job_posting_scout":
+        if strategy == "job_posting_scout":
             return await self._exec_job_posting_scout()
-        elif strategy == "micro_grant_hunter":
+        if strategy == "micro_grant_hunter":
             return await self._exec_micro_grant_hunter()
-        elif strategy == "notion_template_seller":
+        if strategy == "notion_template_seller":
             return await self._exec_notion_template_seller()
-        elif strategy == "chrome_extension_builder":
+        if strategy == "chrome_extension_builder":
             return await self._exec_chrome_extension_builder()
-        elif strategy == "api_marketplace_lister":
+        if strategy == "api_marketplace_lister":
             return await self._exec_api_marketplace_lister()
-        elif strategy == "white_label_kit":
+        if strategy == "white_label_kit":
             return await self._exec_white_label_kit()
-        elif strategy == "data_product_seller":
+        if strategy == "data_product_seller":
             return await self._exec_data_product_seller()
-        elif strategy == "b2b_saas_pitch":
+        if strategy == "b2b_saas_pitch":
             return await self._exec_b2b_saas_pitch()
-        elif strategy == "email_list_builder":
+        if strategy == "email_list_builder":
             return await self._exec_email_list_builder()
-        elif strategy == "joint_venture_pitch":
+        if strategy == "joint_venture_pitch":
             return await self._exec_joint_venture_pitch()
-        elif strategy == "product_review_outreach":
+        if strategy == "product_review_outreach":
             return await self._exec_product_review_outreach()
-        elif strategy == "seo_content_cluster":
+        if strategy == "seo_content_cluster":
             return await self._exec_seo_content_cluster()
-        elif strategy == "price_anchoring":
+        if strategy == "price_anchoring":
             return await self._exec_price_anchoring()
-        elif strategy == "social_proof_automation":
+        if strategy == "social_proof_automation":
             return await self._exec_social_proof_automation()
-        elif strategy == "influencer_collab":
+        if strategy == "influencer_collab":
             return await self._exec_influencer_collab()
-        elif strategy == "content_licensing":
+        if strategy == "content_licensing":
             return await self._exec_content_licensing()
-        elif strategy == "micro_consulting":
+        if strategy == "micro_consulting":
             return await self._exec_micro_consulting()
-        elif strategy == "saas_upsell_sequence":
+        if strategy == "saas_upsell_sequence":
             return await self._exec_saas_upsell_sequence()
-        elif strategy == "community_monetize":
+        if strategy == "community_monetize":
             return await self._exec_community_monetize()
-        elif strategy == "thought_leadership":
+        if strategy == "thought_leadership":
             return await self._exec_thought_leadership()
-        elif strategy == "token_economy":
+        if strategy == "token_economy":
             return await self._exec_token_economy()
-        elif strategy == "api_product_launch":
+        if strategy == "api_product_launch":
             return await self._exec_api_product_launch()
-        elif strategy == "growth_experiment":
+        if strategy == "growth_experiment":
             return await self._exec_growth_experiment()
-        elif strategy == "app_store_listing":
+        if strategy == "app_store_listing":
             return await self._exec_app_store_listing()
         elif strategy == "case_study_publisher":
             return await self._exec_case_study_publisher()
@@ -828,10 +985,11 @@ JSON:
         Falls back to GitHub blog when publishing credentials are missing."""
         try:
             from apps.core.tools.content_pipeline import ContentPipeline
-            cp     = ContentPipeline()
+
+            cp = ContentPipeline()
             result = await cp.run_pipeline(num_articles=3, language="en")
-            arts   = result.get("articles", [])
-            urls   = [u["url"] for a in arts for u in a.get("urls", []) if u.get("url")]
+            arts = result.get("articles", [])
+            urls = [u["url"] for a in arts for u in a.get("urls", []) if u.get("url")]
 
             if result.get("success", False) and urls:
                 return {
@@ -843,11 +1001,12 @@ JSON:
 
             # Ensure we have articles to publish — add hardcoded fallbacks if AI generated none
             if not arts:
-                from datetime import datetime, timezone as _tz
-                _today = datetime.now(_tz.utc).strftime("%B %d, %Y")
+                from datetime import datetime
+
+                _today = datetime.now(UTC).strftime("%B %d, %Y")
                 arts = [
                     {
-                        "title": f"How AI is Changing Small Business in 2026: 7 Real Examples",
+                        "title": "How AI is Changing Small Business in 2026: 7 Real Examples",
                         "body": f"# How AI is Changing Small Business in 2026: 7 Real Examples\n\n*Published {_today} by ARIA AI*\n\nSmall businesses that adopt AI tools in 2026 are seeing an average 3x improvement in productivity. Here are 7 concrete examples of how AI is transforming operations:\n\n## 1. Customer Service Automation\nAI chatbots now handle 70% of customer inquiries without human intervention, reducing support costs by up to 60%.\n\n## 2. Content Creation at Scale\nBusiness owners generate a month's worth of social media content in an afternoon using AI writing tools.\n\n## 3. Inventory Prediction\nML models predict stockouts 30 days in advance, reducing lost sales by 40%.\n\n## 4. Personalized Email Campaigns\nAI segments email lists and writes personalized copy, boosting open rates from 20% to 45%.\n\n## 5. Financial Forecasting\nSmall businesses use AI to forecast cash flow with 85% accuracy, avoiding overdrafts.\n\n## 6. Automated Lead Qualification\nAI scores and routes leads in real-time, increasing conversion rates by 35%.\n\n## 7. Dynamic Pricing\nE-commerce stores use AI to adjust prices based on demand, increasing margins by 15-25%.\n\n---\n*ARIA AI helps businesses automate income generation. Learn more at https://aria-ai.fly.dev/dashboard*",
                         "body_markdown": "",
                         "tags": ["AI", "business", "automation", "productivity"],
@@ -861,7 +1020,9 @@ JSON:
                         "urls": [],
                     },
                 ]
-                logger.info("[IncomeLoop] content_pipeline: using hardcoded fallback articles (AI unavailable)")
+                logger.info(
+                    "[IncomeLoop] content_pipeline: using hardcoded fallback articles (AI unavailable)"
+                )
 
             # Fallback: push generated content to GitHub blog
             if settings.GITHUB_TOKEN:
@@ -870,19 +1031,22 @@ JSON:
                     return blog_result
 
             # Last-resort fallback: publish to Dev.to via human browser using ARIA credentials
-            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_email = getattr(settings, "ARIA_EMAIL", None)
             aria_password = getattr(settings, "ARIA_PASSWORD", None)
             if aria_email and aria_password and arts:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     plat = await asyncio.wait_for(get_platform_login(), timeout=15.0)
-                    devto_page = await asyncio.wait_for(plat.devto(aria_email, aria_password), timeout=30.0)
+                    devto_page = await asyncio.wait_for(
+                        plat.devto(aria_email, aria_password), timeout=30.0
+                    )
                     devto_urls: list[str] = []
                     for art in arts[:2]:  # max 2 per cycle
                         try:
-                            title   = art.get("title", "")
+                            title = art.get("title", "")
                             body_md = art.get("body", art.get("body_markdown", ""))
-                            tags    = art.get("tags", [])
+                            tags = art.get("tags", [])
                             if not title or not body_md:
                                 continue
                             await devto_page.goto("https://dev.to/new")
@@ -890,14 +1054,14 @@ JSON:
                             await devto_page.type_human("#article-form-title", title)
                             await asyncio.sleep(1)
                             # Dev.to body editor is a CodeMirror — click then type
-                            try:
-                                await devto_page.click(".CodeMirror-code, .cm-content, [aria-label='Post Content']")
-                            except Exception:
-                                pass
+                            with contextlib.suppress(Exception):
+                                await devto_page.click(
+                                    ".CodeMirror-code, .cm-content, [aria-label='Post Content']"
+                                )
                             await asyncio.sleep(0.5)
                             # Inject markdown via evaluate for reliability
                             await devto_page.evaluate(
-                                f"document.querySelector('.CodeMirror-code, .cm-content')?.focus()"
+                                "document.querySelector('.CodeMirror-code, .cm-content')?.focus()"
                             )
                             full_md = (
                                 f"---\ntitle: {title}\npublished: true\ntags: {', '.join(tags[:4])}\n---\n\n"
@@ -906,10 +1070,14 @@ JSON:
                             await devto_page.evaluate(
                                 f"navigator.clipboard.writeText({repr(full_md)})"
                             )
-                            await devto_page.evaluate("document.execCommand('selectAll'); document.execCommand('paste')")
+                            await devto_page.evaluate(
+                                "document.execCommand('selectAll'); document.execCommand('paste')"
+                            )
                             await asyncio.sleep(1)
                             # Click publish
-                            await devto_page.click("button:has-text('Publish'), button#article-form-submit")
+                            await devto_page.click(
+                                "button:has-text('Publish'), button#article-form-submit"
+                            )
                             await asyncio.sleep(3)
                             current = devto_page.url
                             if "dev.to" in current and "new" not in current:
@@ -927,15 +1095,18 @@ JSON:
                     logger.debug("[IncomeLoop] content_pipeline devto browser: %s", _hb_exc)
 
             # Last-resort: publish article to a public GitHub Gist (indexed by Google)
-            github_token = getattr(settings, "GITHUB_TOKEN", None) or getattr(settings, "ARIA_GITHUB_TOKEN", None)
+            github_token = getattr(settings, "GITHUB_TOKEN", None) or getattr(
+                settings, "ARIA_GITHUB_TOKEN", None
+            )
             if github_token and arts:
                 try:
                     import httpx as _httpx
+
                     gist_urls: list[str] = []
                     async with _httpx.AsyncClient(timeout=20.0) as _gh_client:
                         for art in arts[:2]:
-                            _title   = art.get("title", "AI Insights")
-                            _body    = art.get("body", art.get("body_markdown", ""))[:8000]
+                            _title = art.get("title", "AI Insights")
+                            _body = art.get("body", art.get("body_markdown", ""))[:8000]
                             if not _body:
                                 continue
                             _payload = {
@@ -945,7 +1116,10 @@ JSON:
                             }
                             _r = await _gh_client.post(
                                 "https://api.github.com/gists",
-                                headers={"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"},
+                                headers={
+                                    "Authorization": f"token {github_token}",
+                                    "Accept": "application/vnd.github.v3+json",
+                                },
                                 json=_payload,
                             )
                             if _r.status_code == 201:
@@ -961,14 +1135,15 @@ JSON:
                     logger.debug("[IncomeLoop] content_pipeline gist fallback: %s", _gist_exc)
 
             # Reddit API fallback — post article summaries to relevant subreddits
-            reddit_id     = getattr(settings, "REDDIT_CLIENT_ID", None)
+            reddit_id = getattr(settings, "REDDIT_CLIENT_ID", None)
             reddit_secret = getattr(settings, "REDDIT_CLIENT_SECRET", None)
-            reddit_token  = getattr(settings, "REDDIT_REFRESH_TOKEN", None)
-            reddit_user   = getattr(settings, "REDDIT_USERNAME", None)
+            reddit_token = getattr(settings, "REDDIT_REFRESH_TOKEN", None)
+            getattr(settings, "REDDIT_USERNAME", None)
             if reddit_id and reddit_secret and reddit_token and arts:
                 try:
+
                     import httpx as _httpx
-                    import time as _time
+
                     reddit_urls: list[str] = []
                     # Get access token via refresh token grant
                     async with _httpx.AsyncClient(timeout=15.0) as _rc:
@@ -978,30 +1153,44 @@ JSON:
                             auth=(reddit_id, reddit_secret),
                             headers={"User-Agent": "ARIA-AI/1.0"},
                         )
-                        _access = _tok_r.json().get("access_token", "") if _tok_r.status_code == 200 else ""
+                        _access = (
+                            _tok_r.json().get("access_token", "")
+                            if _tok_r.status_code == 200
+                            else ""
+                        )
                     if _access:
                         _subreddits = ["Entrepreneur", "SideProject", "passive_income"]
                         async with _httpx.AsyncClient(
                             timeout=15.0,
-                            headers={"Authorization": f"Bearer {_access}", "User-Agent": "ARIA-AI/1.0"},
+                            headers={
+                                "Authorization": f"Bearer {_access}",
+                                "User-Agent": "ARIA-AI/1.0",
+                            },
                         ) as _rc2:
-                            for art, subreddit in zip(arts[:2], _subreddits):
+                            for art, subreddit in zip(arts[:2], _subreddits, strict=False):
                                 _art_title = art.get("title", "")
-                                _art_body  = art.get("body", art.get("body_markdown", ""))[:900]
+                                _art_body = art.get("body", art.get("body_markdown", ""))[:900]
                                 if not _art_title or not _art_body:
                                     continue
                                 _submit = await _rc2.post(
                                     "https://oauth.reddit.com/api/submit",
                                     data={
-                                        "sr": subreddit, "kind": "self",
+                                        "sr": subreddit,
+                                        "kind": "self",
                                         "title": _art_title[:300],
                                         "text": _art_body,
-                                        "nsfw": False, "spoiler": False,
+                                        "nsfw": False,
+                                        "spoiler": False,
                                         "resubmit": True,
                                     },
                                 )
                                 if _submit.status_code == 200:
-                                    _url = _submit.json().get("json", {}).get("data", {}).get("url", "")
+                                    _url = (
+                                        _submit.json()
+                                        .get("json", {})
+                                        .get("data", {})
+                                        .get("url", "")
+                                    )
                                     if _url:
                                         reddit_urls.append(_url)
                                 await asyncio.sleep(2)  # respect rate limits
@@ -1020,9 +1209,15 @@ JSON:
             if _hf_token_cp and arts:
                 try:
                     import httpx as _hf_cp_http
-                    _hf_un = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
+
+                    _hf_un = (
+                        getattr(settings, "HF_USERNAME", None)
+                        or getattr(settings, "GITHUB_USERNAME", None)
+                        or "ariaai"
+                    )
                     _hf_urls_cp: list[str] = []
                     from datetime import datetime as _dt_cp
+
                     _week_cp = _dt_cp.utcnow().strftime("%Y-w%W")
                     async with _hf_cp_http.AsyncClient(timeout=20.0) as _hfc:
                         for _art_cp in arts[:2]:
@@ -1031,21 +1226,38 @@ JSON:
                             if not _b_cp:
                                 continue
                             _rn_cp = _t_cp.lower().replace(" ", "-").replace("'", "")
-                            _rn_cp = "".join(c for c in _rn_cp if c.isalnum() or c == "-")[:22] + f"-{_week_cp}-art"
+                            _rn_cp = (
+                                "".join(c for c in _rn_cp if c.isalnum() or c == "-")[:22]
+                                + f"-{_week_cp}-art"
+                            )
                             _readme_cp = f"---\ntitle: {_t_cp}\ntags:\n- article\n- AI\n---\n\n{_b_cp}\n\n---\n*Published by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
                             _cr_cp = await _hfc.post(
                                 "https://huggingface.co/api/repos/create",
-                                headers={"Authorization": f"Bearer {_hf_token_cp}", "Content-Type": "application/json"},
+                                headers={
+                                    "Authorization": f"Bearer {_hf_token_cp}",
+                                    "Content-Type": "application/json",
+                                },
                                 json={"type": "dataset", "name": _rn_cp, "private": False},
                             )
                             if _cr_cp.status_code in (200, 201, 409):
                                 import base64 as _hf_b64_cp
+
                                 await _hfc.put(
                                     f"https://huggingface.co/api/datasets/{_hf_un}/{_rn_cp}/raw/main/README.md",
-                                    headers={"Authorization": f"Bearer {_hf_token_cp}", "Content-Type": "application/json"},
-                                    json={"content": _hf_b64_cp.b64encode(_readme_cp.encode()).decode(), "message": f"Publish: {_t_cp}"},
+                                    headers={
+                                        "Authorization": f"Bearer {_hf_token_cp}",
+                                        "Content-Type": "application/json",
+                                    },
+                                    json={
+                                        "content": _hf_b64_cp.b64encode(
+                                            _readme_cp.encode()
+                                        ).decode(),
+                                        "message": f"Publish: {_t_cp}",
+                                    },
                                 )
-                                _hf_urls_cp.append(f"https://huggingface.co/datasets/{_hf_un}/{_rn_cp}")
+                                _hf_urls_cp.append(
+                                    f"https://huggingface.co/datasets/{_hf_un}/{_rn_cp}"
+                                )
                     if _hf_urls_cp:
                         return {
                             "success": True,
@@ -1074,47 +1286,61 @@ JSON:
         GitHub indexes public repos — free organic traffic.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            import base64 as _b64
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
-            import base64 as _b64
-            from datetime import datetime, timezone
 
-            ai    = get_ai_client()
-            gh    = AriaGitHubClient()
+            ai = get_ai_client()
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
-            repo  = "aria-insights"
+            repo = "aria-insights"
             assoc = getattr(settings, "AMAZON_ASSOCIATE_TAG", None) or ""
 
             # Ensure the blog repo exists
             existing = await gh._get(f"/repos/{owner}/{repo}")
             if "error" in existing:
-                create_r = await gh._post("/user/repos", {
-                    "name": repo,
-                    "description": "AI-generated insights on technology, business & productivity",
-                    "private": False,
-                    "auto_init": True,
-                    "has_issues": False,
-                    "has_wiki": False,
-                })
+                create_r = await gh._post(
+                    "/user/repos",
+                    {
+                        "name": repo,
+                        "description": "AI-generated insights on technology, business & productivity",
+                        "private": False,
+                        "auto_init": True,
+                        "has_issues": False,
+                        "has_wiki": False,
+                    },
+                )
                 if "error" in create_r:
-                    return {"success": False, "summary": f"Could not create {repo}: {create_r.get('error','')[:60]}"}
+                    return {
+                        "success": False,
+                        "summary": f"Could not create {repo}: {create_r.get('error','')[:60]}",
+                    }
                 await asyncio.sleep(2)  # wait for GitHub to init
                 # Enable GitHub Pages (one-time setup — makes the blog a real website)
                 try:
-                    await gh._post(f"/repos/{owner}/{repo}/pages", {
-                        "source": {"branch": "main", "path": "/"},
-                    })
+                    await gh._post(
+                        f"/repos/{owner}/{repo}/pages",
+                        {
+                            "source": {"branch": "main", "path": "/"},
+                        },
+                    )
                     # Add FUNDING.yml for Sponsor button
                     import base64 as _b64blog
+
                     funding_yml = (
                         f"github: [{owner}]\n"
-                        f"custom: [\"https://github.com/{owner}/aria-portfolio\"]\n"
+                        f'custom: ["https://github.com/{owner}/aria-portfolio"]\n'
                     )
-                    await gh._put(f"/repos/{owner}/{repo}/contents/.github/FUNDING.yml", {
-                        "message": "chore: add FUNDING.yml",
-                        "content": _b64blog.b64encode(funding_yml.encode()).decode(),
-                    })
+                    await gh._put(
+                        f"/repos/{owner}/{repo}/contents/.github/FUNDING.yml",
+                        {
+                            "message": "chore: add FUNDING.yml",
+                            "content": _b64blog.b64encode(funding_yml.encode()).decode(),
+                        },
+                    )
                     # Add minimal Jekyll config
                     jekyll_config = (
                         "title: ARIA Insights\n"
@@ -1124,10 +1350,13 @@ JSON:
                         "  - jekyll-feed\n"
                         "  - jekyll-seo-tag\n"
                     )
-                    await gh._put(f"/repos/{owner}/{repo}/contents/_config.yml", {
-                        "message": "chore: enable Jekyll for GitHub Pages",
-                        "content": _b64.b64encode(jekyll_config.encode()).decode(),
-                    })
+                    await gh._put(
+                        f"/repos/{owner}/{repo}/contents/_config.yml",
+                        {
+                            "message": "chore: enable Jekyll for GitHub Pages",
+                            "content": _b64.b64encode(jekyll_config.encode()).decode(),
+                        },
+                    )
                 except Exception:
                     pass  # Pages may already be enabled or not available on free plan
 
@@ -1135,11 +1364,14 @@ JSON:
             published_topics: set = set()
             try:
                 from apps.core.memory.redis_client import get_cache as _get_cache
+
                 _cache = _get_cache()
                 if _cache:
                     raw_topics = await _cache.get("aria:blog:published_topics")
                     if raw_topics:
-                        published_topics = set(json.loads(raw_topics) if isinstance(raw_topics, str) else raw_topics)
+                        published_topics = set(
+                            json.loads(raw_topics) if isinstance(raw_topics, str) else raw_topics
+                        )
             except Exception:
                 pass
 
@@ -1148,7 +1380,9 @@ JSON:
                 if not ai:
                     return {"success": False, "summary": "AI unavailable"}
                 wt = WebTools()
-                r  = await wt.search_web("trending tech AI productivity 2025 tutorial", num_results=8)
+                r = await wt.search_web(
+                    "trending tech AI productivity 2025 tutorial", num_results=8
+                )
                 topic = "AI Productivity Guide 2025"
                 # Pick first result not already published
                 if r.get("success") and r.get("results"):
@@ -1189,14 +1423,15 @@ JSON:
                 existing_articles = [article_json]
 
             published_urls = []
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
 
             for art in existing_articles[:2]:
-                title   = art.get("title", art.get("product_name", "ARIA Insights"))[:60]
-                slug    = (art.get("slug", title.lower().replace(" ", "-").replace("'", ""))
-                           .replace(" ", "-")[:50])
+                title = art.get("title", art.get("product_name", "ARIA Insights"))[:60]
+                slug = art.get("slug", title.lower().replace(" ", "-").replace("'", "")).replace(
+                    " ", "-"
+                )[:50]
                 content = art.get("content", art.get("description", ""))
-                tags    = art.get("tags", ["ai", "productivity"])
+                tags = art.get("tags", ["ai", "productivity"])
 
                 # Inject Amazon affiliate links if configured
                 if assoc and content:
@@ -1210,7 +1445,7 @@ JSON:
                 # Build markdown file
                 frontmatter = (
                     f"---\n"
-                    f"title: \"{title}\"\n"
+                    f'title: "{title}"\n'
                     f"date: {today}\n"
                     f"description: \"{art.get('description', '')[:155]}\"\n"
                     f"tags: {tags}\n"
@@ -1220,12 +1455,15 @@ JSON:
                 full_content = frontmatter + f"# {title}\n\n" + content
 
                 filename = f"posts/{today}-{slug}.md"
-                encoded  = _b64.b64encode(full_content.encode()).decode()
+                encoded = _b64.b64encode(full_content.encode()).decode()
 
-                file_r = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
-                    "message": f"post: {title[:60]}",
-                    "content": encoded,
-                })
+                file_r = await gh._put(
+                    f"/repos/{owner}/{repo}/contents/{filename}",
+                    {
+                        "message": f"post: {title[:60]}",
+                        "content": encoded,
+                    },
+                )
 
                 if "error" not in file_r:
                     published_urls.append(f"https://github.com/{owner}/{repo}/blob/main/{filename}")
@@ -1233,17 +1471,25 @@ JSON:
             if published_urls:
                 # Update the blog index, sitemap, and published topics cache
                 try:
-                    published_titles = [art.get("title", "Article") for art in existing_articles[:len(published_urls)]]
+                    published_titles = [
+                        art.get("title", "Article")
+                        for art in existing_articles[: len(published_urls)]
+                    ]
                     await self._update_blog_index(gh, owner, repo, published_titles, published_urls)
                     await self._update_sitemap(gh, owner, repo)
                     await self._update_rss_feed(gh, owner, repo)
                     # Track published topics to avoid duplication
                     try:
                         from apps.core.memory.redis_client import get_cache as _gc2
+
                         _c2 = _gc2()
                         if _c2:
                             updated_topics = list(published_topics | set(published_titles))[-100:]
-                            await _c2.set("aria:blog:published_topics", json.dumps(updated_topics), ttl_seconds=86400 * 90)
+                            await _c2.set(
+                                "aria:blog:published_topics",
+                                json.dumps(updated_topics),
+                                ttl_seconds=86400 * 90,
+                            )
                     except Exception:
                         pass
                 except Exception:
@@ -1255,24 +1501,33 @@ JSON:
                 if devto_key:
                     try:
                         import httpx as _httpx_dt
+
                         async with _httpx_dt.AsyncClient(timeout=20) as _dt:
                             for art in existing_articles[:2]:
-                                art_title   = art.get("title", "")[:60]
+                                art_title = art.get("title", "")[:60]
                                 art_content = art.get("content", art.get("description", ""))
-                                art_tags    = [t.replace(" ", "").lower() for t in art.get("tags", ["ai", "productivity"])[:4]]
+                                art_tags = [
+                                    t.replace(" ", "").lower()
+                                    for t in art.get("tags", ["ai", "productivity"])[:4]
+                                ]
                                 dt_body = {
                                     "article": {
                                         "title": art_title,
                                         "body_markdown": f"# {art_title}\n\n{art_content}",
                                         "published": True,
                                         "tags": art_tags[:4],
-                                        "canonical_url": published_urls[0] if published_urls else None,
+                                        "canonical_url": (
+                                            published_urls[0] if published_urls else None
+                                        ),
                                     }
                                 }
                                 dt_r = await _dt.post(
                                     "https://dev.to/api/articles",
                                     json=dt_body,
-                                    headers={"api-key": devto_key, "Content-Type": "application/json"},
+                                    headers={
+                                        "api-key": devto_key,
+                                        "Content-Type": "application/json",
+                                    },
                                     timeout=15,
                                 )
                                 if dt_r.status_code in (200, 201):
@@ -1284,16 +1539,20 @@ JSON:
 
                 # Cross-post to Hashnode if configured
                 hn_token = getattr(settings, "HASHNODE_TOKEN", None)
-                hn_pub   = getattr(settings, "HASHNODE_PUBLICATION_ID", None)
+                hn_pub = getattr(settings, "HASHNODE_PUBLICATION_ID", None)
                 hashnode_urls: list[str] = []
                 if hn_token and hn_pub:
                     try:
                         import httpx as _httpx_hn
+
                         async with _httpx_hn.AsyncClient(timeout=20) as _hn:
                             for art in existing_articles[:1]:
-                                art_title   = art.get("title", "")[:150]
+                                art_title = art.get("title", "")[:150]
                                 art_content = art.get("content", art.get("description", ""))
-                                art_tags    = [{"slug": t.replace(" ", "-").lower()} for t in art.get("tags", ["ai", "productivity"])[:5]]
+                                art_tags = [
+                                    {"slug": t.replace(" ", "-").lower()}
+                                    for t in art.get("tags", ["ai", "productivity"])[:5]
+                                ]
                                 hn_mutation = """
                                 mutation PublishPost($input: PublishPostInput!) {
                                   publishPost(input: $input) {
@@ -1307,13 +1566,18 @@ JSON:
                                         "publicationId": hn_pub,
                                         "tags": art_tags,
                                         "disableComments": False,
-                                        "originalArticleURL": published_urls[0] if published_urls else None,
+                                        "originalArticleURL": (
+                                            published_urls[0] if published_urls else None
+                                        ),
                                     }
                                 }
                                 hn_r = await _hn.post(
                                     "https://gql.hashnode.com",
                                     json={"query": hn_mutation, "variables": hn_vars},
-                                    headers={"Authorization": hn_token, "Content-Type": "application/json"},
+                                    headers={
+                                        "Authorization": hn_token,
+                                        "Content-Type": "application/json",
+                                    },
                                     timeout=20,
                                 )
                                 if hn_r.status_code == 200:
@@ -1336,12 +1600,16 @@ JSON:
                     if _ae and _ap and existing_articles:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _art0 = existing_articles[0]
                             _hn_url = await _plat.hashnode_publish_article(
-                                _ae, _ap,
+                                _ae,
+                                _ap,
                                 title=_art0.get("title", "")[:150],
-                                content_markdown=_art0.get("content", _art0.get("description", ""))[:5000],
+                                content_markdown=_art0.get("content", _art0.get("description", ""))[
+                                    :5000
+                                ],
                                 tags=_art0.get("tags", ["ai", "productivity"])[:5],
                             )
                             if _hn_url:
@@ -1354,20 +1622,24 @@ JSON:
                 if discord_url:
                     try:
                         import httpx as _httpx
+
                         async with _httpx.AsyncClient(timeout=10) as _client:
                             extra = ""
                             if devto_urls:
                                 extra += f"Dev.to: {devto_urls[0]}\n"
                             if hashnode_urls:
                                 extra += f"Hashnode: {hashnode_urls[0]}\n"
-                            await _client.post(discord_url, json={
-                                "content": (
-                                    f"📝 **New article published!**\n"
-                                    f"{published_urls[0]}\n"
-                                    + extra
-                                    + f"*ARIA Insights — AI-generated content*"
-                                )
-                            })
+                            await _client.post(
+                                discord_url,
+                                json={
+                                    "content": (
+                                        f"📝 **New article published!**\n"
+                                        f"{published_urls[0]}\n"
+                                        + extra
+                                        + "*ARIA Insights — AI-generated content*"
+                                    )
+                                },
+                            )
                     except Exception:
                         pass
 
@@ -1377,7 +1649,11 @@ JSON:
                 _ap = getattr(settings, "ARIA_PASSWORD", None)
                 _first_art = existing_articles[0] if existing_articles else {}
                 _art_title = _first_art.get("title", "New article")[:100]
-                _art_url = (devto_urls + hashnode_urls + published_urls)[0] if (devto_urls + hashnode_urls + published_urls) else ""
+                _art_url = (
+                    (devto_urls + hashnode_urls + published_urls)[0]
+                    if (devto_urls + hashnode_urls + published_urls)
+                    else ""
+                )
                 _tw_text = f"📝 {_art_title}\n\n{_first_art.get('description','')[:160]}"
                 if _art_url:
                     _tw_text += f"\n\n{_art_url}"
@@ -1386,6 +1662,7 @@ JSON:
                 _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     tw_r = await pub.publish_to_twitter(_tw_text)
                     if tw_r and tw_r.success:
@@ -1396,6 +1673,7 @@ JSON:
                 if not _tw_ok and _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         if await _plat.twitter_thread_post(_tw_page, [_tw_text]):
@@ -1409,6 +1687,7 @@ JSON:
                 _li_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     li_r = await pub.publish_to_linkedin(_li_text[:1300])
                     if li_r and li_r.success:
@@ -1419,6 +1698,7 @@ JSON:
                 if not _li_ok and _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _li_page = await _plat.linkedin(_ae, _ap)
                         if await _plat.linkedin_create_post(_li_page, _li_text[:3000]):
@@ -1437,8 +1717,12 @@ JSON:
                 platforms = " + ".join(platform_parts)
                 return {
                     "success": True,
-                    "summary": f"Published {len(published_urls)} article(s) to {platforms}" +
-                               (f" with Amazon affiliate links" if assoc else " (add AMAZON_ASSOCIATE_TAG for affiliate income)"),
+                    "summary": f"Published {len(published_urls)} article(s) to {platforms}"
+                    + (
+                        " with Amazon affiliate links"
+                        if assoc
+                        else " (add AMAZON_ASSOCIATE_TAG for affiliate income)"
+                    ),
                     "revenue_potential": len(all_urls) * 2.0,
                     "urls": all_urls,
                 }
@@ -1447,13 +1731,17 @@ JSON:
             logger.error("[IncomeLoop] github_blog: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
-    async def _update_blog_index(self, gh, owner: str, repo: str, new_titles: list[str], new_urls: list[str]) -> None:
+    async def _update_blog_index(
+        self, gh, owner: str, repo: str, new_titles: list[str], new_urls: list[str]
+    ) -> None:
         """Update LINKS.md in aria-insights with recent article links."""
         try:
             import base64 as _b64
+
             # Load existing links from Redis
             try:
                 from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
                 raw = await cache.get("aria:blog:links") if cache else None
                 existing_links: list = json.loads(raw) if raw else []
@@ -1461,14 +1749,16 @@ JSON:
                 existing_links = []
 
             # Prepend new links
-            for title, url in zip(new_titles, new_urls):
+            for title, url in zip(new_titles, new_urls, strict=False):
                 existing_links.insert(0, {"title": title, "url": url})
             existing_links = existing_links[:50]  # keep latest 50
 
             # Save back to Redis
             try:
                 if cache:
-                    await cache.set("aria:blog:links", json.dumps(existing_links), ttl_seconds=86400 * 90)
+                    await cache.set(
+                        "aria:blog:links", json.dumps(existing_links), ttl_seconds=86400 * 90
+                    )
             except Exception:
                 pass
 
@@ -1501,22 +1791,27 @@ JSON:
         """Generate RSS feed for the blog — discoverable by RSS readers and news aggregators."""
         try:
             import base64 as _b64
-            from datetime import datetime, timezone
-            base_url    = f"https://{owner.lower()}.github.io/{repo}"
-            repo_url    = f"https://github.com/{owner}/{repo}"
-            today       = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
+            from datetime import datetime
+
+            base_url = f"https://{owner.lower()}.github.io/{repo}"
+            today = datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S +0000")
             # Load recent articles from Redis
             try:
                 from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
-                raw   = await cache.get("aria:blog:links") if cache else None
+                raw = await cache.get("aria:blog:links") if cache else None
                 links = json.loads(raw) if raw else []
             except Exception:
                 links = []
             items = []
             for link in links[:20]:
                 title = link.get("title", "Article")
-                url   = link.get("url", "").replace("github.com", f"{owner.lower()}.github.io").replace(f"/{owner}/{repo}/blob/main/", f"/{repo}/")
+                url = (
+                    link.get("url", "")
+                    .replace("github.com", f"{owner.lower()}.github.io")
+                    .replace(f"/{owner}/{repo}/blob/main/", f"/{repo}/")
+                )
                 items.append(
                     f"  <item>\n"
                     f"    <title>{title}</title>\n"
@@ -1533,15 +1828,14 @@ JSON:
                 f"    <title>ARIA Insights</title>\n"
                 f"    <link>{base_url}</link>\n"
                 f"    <description>AI-generated insights on technology, business and productivity</description>\n"
-                f"    <atom:link href=\"{base_url}/feed.xml\" rel=\"self\" type=\"application/rss+xml\"/>\n"
-                f"    <lastBuildDate>{today}</lastBuildDate>\n"
-                + "\n".join(items) + "\n"
+                f'    <atom:link href="{base_url}/feed.xml" rel="self" type="application/rss+xml"/>\n'
+                f"    <lastBuildDate>{today}</lastBuildDate>\n" + "\n".join(items) + "\n"
                 "  </channel>\n"
                 "</rss>\n"
             )
             encoded = _b64.b64encode(rss.encode()).decode()
             existing = await gh._get(f"/repos/{owner}/{repo}/contents/feed.xml")
-            sha      = existing.get("sha", "") if "error" not in existing else ""
+            sha = existing.get("sha", "") if "error" not in existing else ""
             put_args: dict = {"message": "chore: update RSS feed", "content": encoded}
             if sha:
                 put_args["sha"] = sha
@@ -1553,23 +1847,28 @@ JSON:
         """Generate sitemap.xml for the blog — helps search engines discover content."""
         try:
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             # List all posts in the posts/ directory
             files_r = await gh._get(f"/repos/{owner}/{repo}/contents/posts")
             if "error" in files_r or not isinstance(files_r, list):
                 return
             base_url = f"https://{owner.lower()}.github.io/{repo}"
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            urls = [f"  <url><loc>{base_url}/</loc><lastmod>{today}</lastmod><priority>1.0</priority></url>"]
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            urls = [
+                f"  <url><loc>{base_url}/</loc><lastmod>{today}</lastmod><priority>1.0</priority></url>"
+            ]
             for f in files_r:
                 if f.get("name", "").endswith(".md"):
                     slug = f["name"].replace(".md", "")
-                    urls.append(f"  <url><loc>{base_url}/posts/{slug}/</loc><lastmod>{today}</lastmod><priority>0.8</priority></url>")
+                    urls.append(
+                        f"  <url><loc>{base_url}/posts/{slug}/</loc><lastmod>{today}</lastmod><priority>0.8</priority></url>"
+                    )
             sitemap = (
                 '<?xml version="1.0" encoding="UTF-8"?>\n'
                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-                + "\n".join(urls) +
-                "\n</urlset>\n"
+                + "\n".join(urls)
+                + "\n</urlset>\n"
             )
             encoded = _b64.b64encode(sitemap.encode()).decode()
             existing_file = await gh._get(f"/repos/{owner}/{repo}/contents/sitemap.xml")
@@ -1584,10 +1883,9 @@ JSON:
     async def _exec_niche_rotator(self) -> dict:
         """Rotate through niche catalog — launch next unstarted niche."""
         try:
-            from apps.core.tools.niche_revenue_engine import (
-                get_niche_revenue_engine, NICHE_CATALOG
-            )
-            engine  = get_niche_revenue_engine()
+            from apps.core.tools.niche_revenue_engine import NICHE_CATALOG, get_niche_revenue_engine
+
+            engine = get_niche_revenue_engine()
             launched = {ls.niche_key for ls in await engine._load_listings()}
             all_keys = list(NICHE_CATALOG.keys())
 
@@ -1604,7 +1902,9 @@ JSON:
             await self._save_niche_idx()
 
             result = await engine.launch_niche(target)
-            urls   = [u["url"] for u in result.published_urls + result.seo_article_urls if u.get("url")]
+            urls = [
+                u["url"] for u in result.published_urls + result.seo_article_urls if u.get("url")
+            ]
 
             if result.success and urls:
                 # ── Announce niche launch on Twitter ──────────────────────────
@@ -1619,6 +1919,7 @@ JSON:
                 _nr_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _nr_pub = get_api_publisher()
                     _nr_tw_r = await _nr_pub.publish_to_twitter(_nr_tw)
                     if _nr_tw_r and _nr_tw_r.success:
@@ -1628,24 +1929,27 @@ JSON:
                 if not _nr_tw_ok and _nr_tw_ae and _nr_tw_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _nr_plat2 = await get_platform_login()
                         _nr_tw_pg = await _nr_plat2.twitter(_nr_tw_ae, _nr_tw_ap)
                         await _nr_plat2.twitter_thread_post(_nr_tw_pg, [_nr_tw])
                     except Exception:
                         pass
                 return {
-                    "success":          True,
-                    "summary":          f"Niche '{target}': checklist={result.checklist.score if result.checklist else 0}/100 | {len(result.published_urls)} listings | {len(result.seo_article_urls)} articles | Twitter announced",
+                    "success": True,
+                    "summary": f"Niche '{target}': checklist={result.checklist.score if result.checklist else 0}/100 | {len(result.published_urls)} listings | {len(result.seo_article_urls)} articles | Twitter announced",
                     "revenue_potential": result.revenue_potential_usd,
-                    "urls":             urls,
+                    "urls": urls,
                 }
 
             # Fallback: publish the niche as a GitHub landing page (free SEO)
             if settings.GITHUB_TOKEN:
                 try:
-                    from apps.core.tools.ai_client import get_ai_client, AIModel
-                    from apps.core.tools.github_client import AriaGitHubClient
                     import base64 as _b64
+
+                    from apps.core.tools.ai_client import AIModel, get_ai_client
+                    from apps.core.tools.github_client import AriaGitHubClient
+
                     niche_info = NICHE_CATALOG.get(target, {})
                     ai = get_ai_client()
                     if ai:
@@ -1665,9 +1969,9 @@ JSON:
                             max_tokens=1000,
                         )
                         if niche_page:
-                            gh    = AriaGitHubClient()
+                            gh = AriaGitHubClient()
                             owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                            repo  = f"aria-niche-{target.replace('_', '-')[:30]}"
+                            repo = f"aria-niche-{target.replace('_', '-')[:30]}"
                             readme = (
                                 f"# {niche_page.get('headline', target.replace('_', ' ').title())}\n\n"
                                 f"> {niche_page.get('description', '')}\n\n"
@@ -1679,14 +1983,22 @@ JSON:
                             )
                             existing = await gh._get(f"/repos/{owner}/{repo}")
                             if "error" in existing:
-                                await gh._post("/user/repos", {
-                                    "name": repo, "description": niche_page.get("headline", "")[:100],
-                                    "private": False, "auto_init": False,
-                                })
-                            file_r = await gh._put(f"/repos/{owner}/{repo}/contents/README.md", {
-                                "message": f"feat: {target} service landing page",
-                                "content": _b64.b64encode(readme.encode()).decode(),
-                            })
+                                await gh._post(
+                                    "/user/repos",
+                                    {
+                                        "name": repo,
+                                        "description": niche_page.get("headline", "")[:100],
+                                        "private": False,
+                                        "auto_init": False,
+                                    },
+                                )
+                            file_r = await gh._put(
+                                f"/repos/{owner}/{repo}/contents/README.md",
+                                {
+                                    "message": f"feat: {target} service landing page",
+                                    "content": _b64.b64encode(readme.encode()).decode(),
+                                },
+                            )
                             if "error" not in file_r:
                                 repo_url = f"https://github.com/{owner}/{repo}"
                                 return {
@@ -1708,7 +2020,8 @@ JSON:
                 price_usd = niche_info.get("pricing_basic", 29)
                 deliverables = niche_info.get("deliverables", [])
                 try:
-                    from apps.core.tools.ai_client import get_ai_client, AIModel
+                    from apps.core.tools.ai_client import AIModel, get_ai_client
+
                     _nr_ai = get_ai_client()
                     if _nr_ai:
                         _nr_prod = await _nr_ai.complete_json(
@@ -1717,10 +2030,12 @@ JSON:
 Deliverables: {deliverables}
 Create a Gumroad product.
 JSON: {{"name": "...", "description": "... (200+ words with clear value prop)", "price_usd": {price_usd}}}""",
-                            model=AIModel.FAST, max_tokens=600,
+                            model=AIModel.FAST,
+                            max_tokens=600,
                         )
                         if _nr_prod:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             try:
                                 _gm_page = await _plat.gumroad(_nr_ae, _nr_ap)
@@ -1740,7 +2055,8 @@ JSON: {{"name": "...", "description": "... (200+ words with clear value prop)", 
                                     system="You write viral Dev.to articles. Output JSON only.",
                                     user=f"""Write a Dev.to article about {niche_name}.
 JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["ai", "business"]}}""",
-                                    model=AIModel.STRATEGY, max_tokens=1500,
+                                    model=AIModel.STRATEGY,
+                                    max_tokens=1500,
                                 )
                                 if _nr_art:
                                     _dt_page = await _plat.devto(_nr_ae, _nr_ap)
@@ -1768,13 +2084,21 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
             _hf_tok_nr = getattr(settings, "HF_TOKEN", None)
             if _hf_tok_nr:
                 try:
-                    import httpx as _hf_nr_http
                     import base64 as _hf_nr_b64
                     from datetime import datetime as _dt_nr
-                    _hf_un_nr = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
+
+                    import httpx as _hf_nr_http
+
+                    _hf_un_nr = (
+                        getattr(settings, "HF_USERNAME", None)
+                        or getattr(settings, "GITHUB_USERNAME", None)
+                        or "ariaai"
+                    )
                     niche_info = NICHE_CATALOG.get(target, {})
                     _nr_name = niche_info.get("name", target.replace("_", " ").title())
-                    _nr_desc = niche_info.get("description", f"Professional {_nr_name} services powered by AI.")
+                    _nr_desc = niche_info.get(
+                        "description", f"Professional {_nr_name} services powered by AI."
+                    )
                     _nr_price = niche_info.get("pricing_basic", 29)
                     _nr_deliverables = niche_info.get("deliverables", [])
                     _day_nr = _dt_nr.utcnow().strftime("%m%d")
@@ -1784,21 +2108,43 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                         f"sdk: static\npinned: true\n---\n\n"
                         f"# {_nr_name}\n\n{_nr_desc}\n\n"
                         f"## Starting at ${_nr_price}/project\n\n"
-                        + (("## Deliverables\n\n" + "\n".join(f"- {d}" for d in _nr_deliverables) + "\n\n") if _nr_deliverables else "")
+                        + (
+                            (
+                                "## Deliverables\n\n"
+                                + "\n".join(f"- {d}" for d in _nr_deliverables)
+                                + "\n\n"
+                            )
+                            if _nr_deliverables
+                            else ""
+                        )
                         + "## Book a Project\n\nVisit [ARIA AI Dashboard](https://aria-ai.fly.dev/dashboard) to get started.\n\n"
-                        + f"---\n*Service powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                        + "---\n*Service powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
                     )
                     async with _hf_nr_http.AsyncClient(timeout=20.0) as _hnr:
                         _cr_nr = await _hnr.post(
                             "https://huggingface.co/api/repos/create",
-                            headers={"Authorization": f"Bearer {_hf_tok_nr}", "Content-Type": "application/json"},
-                            json={"type": "space", "name": _nr_rn, "private": False, "sdk": "static"},
+                            headers={
+                                "Authorization": f"Bearer {_hf_tok_nr}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "type": "space",
+                                "name": _nr_rn,
+                                "private": False,
+                                "sdk": "static",
+                            },
                         )
                         if _cr_nr.status_code in (200, 201, 409):
                             await _hnr.put(
                                 f"https://huggingface.co/api/spaces/{_hf_un_nr}/{_nr_rn}/raw/main/README.md",
-                                headers={"Authorization": f"Bearer {_hf_tok_nr}", "Content-Type": "application/json"},
-                                json={"content": _hf_nr_b64.b64encode(_nr_readme.encode()).decode(), "message": f"Publish niche: {_nr_name[:50]}"},
+                                headers={
+                                    "Authorization": f"Bearer {_hf_tok_nr}",
+                                    "Content-Type": "application/json",
+                                },
+                                json={
+                                    "content": _hf_nr_b64.b64encode(_nr_readme.encode()).decode(),
+                                    "message": f"Publish niche: {_nr_name[:50]}",
+                                },
                             )
                             _nr_hf_url = f"https://huggingface.co/spaces/{_hf_un_nr}/{_nr_rn}"
                             return {
@@ -1823,14 +2169,15 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
     async def _exec_product_factory(self) -> dict:
         """Create a new digital product — uses opportunity queue first, then trending topics."""
         try:
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.content_pipeline import ContentPipeline
             from apps.core.tools.gumroad_tools import GumroadTools
-            from apps.core.tools.ai_client import get_ai_client, AIModel
 
             # Try the opportunity queue first (populated by opportunity_scan)
             topic = None
             try:
                 from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
                 if cache:
                     raw = await cache.lpop("aria:income:opportunity_queue")
@@ -1847,16 +2194,16 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                 pass
 
             if not topic:
-                cp     = ContentPipeline()
+                cp = ContentPipeline()
                 topics = await cp.get_trending_topics(limit=5)
                 if not topics:
                     return {"success": False, "summary": "No trending topics found"}
                 topic = topics[0]
 
             title = topic.get("title", "Digital Guide")[:60]
-            cat   = topic.get("category", "tech")
+            cat = topic.get("category", "tech")
 
-            ai    = get_ai_client()
+            ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "AI client unavailable"}
 
@@ -1888,7 +2235,13 @@ Output JSON:
                         "product_name": "The Complete AI Freelancer Toolkit",
                         "tagline": "10 proven AI workflows that freelancers use to earn $5K+/month",
                         "description": "Master the AI tools and workflows that top freelancers use to 10x their output and income. This comprehensive toolkit includes 50+ prompt templates, workflow blueprints for writing, design, development, and consulting, plus a 30-day income ramp plan.\n\nInside you'll find: AI proposal templates that win 3x more clients, content systems that produce a week of work in 2 hours, pricing strategies for AI-augmented services, and real case studies from $10K/month freelancers.",
-                        "table_of_contents": ["Module 1: AI Writing & Content", "Module 2: Design Automation", "Module 3: Client Acquisition with AI", "Module 4: Pricing Your AI Services", "Module 5: Scaling to $10K/month"],
+                        "table_of_contents": [
+                            "Module 1: AI Writing & Content",
+                            "Module 2: Design Automation",
+                            "Module 3: Client Acquisition with AI",
+                            "Module 4: Pricing Your AI Services",
+                            "Module 5: Scaling to $10K/month",
+                        ],
                         "price_cents": 2700,
                         "tags": ["freelancing", "AI", "income", "productivity"],
                     },
@@ -1896,7 +2249,13 @@ Output JSON:
                         "product_name": "No-Code AI App Builder Masterclass",
                         "tagline": "Build and sell AI-powered apps without writing a single line of code",
                         "description": "Learn to build AI applications using no-code tools like Bubble, FlutterFlow, and Zapier combined with AI APIs. Students in this course have launched apps generating $500-$5,000/month within 60 days.\n\nCovers: connecting AI APIs without code, building subscription SaaS products, monetization strategies, marketing your AI app, and case studies of successful no-code AI businesses.",
-                        "table_of_contents": ["Chapter 1: No-Code Fundamentals", "Chapter 2: Connecting AI APIs", "Chapter 3: Building Your First AI App", "Chapter 4: Monetization Models", "Chapter 5: Marketing & Growth"],
+                        "table_of_contents": [
+                            "Chapter 1: No-Code Fundamentals",
+                            "Chapter 2: Connecting AI APIs",
+                            "Chapter 3: Building Your First AI App",
+                            "Chapter 4: Monetization Models",
+                            "Chapter 5: Marketing & Growth",
+                        ],
                         "price_cents": 4700,
                         "tags": ["no-code", "AI", "SaaS", "apps", "passive income"],
                     },
@@ -1904,17 +2263,26 @@ Output JSON:
                         "product_name": "Digital Agency Launch Blueprint",
                         "tagline": "Start a 6-figure digital agency using AI to deliver 10x faster results",
                         "description": "The complete playbook for launching a profitable digital agency in 90 days using AI tools to deliver services faster and at higher quality than traditional agencies. Includes agency positioning, service packaging, client acquisition scripts, proposal templates, and AI workflow SOPs.\n\nSpecific to: SEO agencies, content agencies, social media agencies, and web design agencies.",
-                        "table_of_contents": ["Part 1: Agency Foundation", "Part 2: Service Packaging with AI", "Part 3: Client Acquisition", "Part 4: Delivery Systems", "Part 5: Scaling to $20K/month"],
+                        "table_of_contents": [
+                            "Part 1: Agency Foundation",
+                            "Part 2: Service Packaging with AI",
+                            "Part 3: Client Acquisition",
+                            "Part 4: Delivery Systems",
+                            "Part 5: Scaling to $20K/month",
+                        ],
                         "price_cents": 9700,
                         "tags": ["agency", "business", "AI", "consulting", "income"],
                     },
                 ]
                 import hashlib as _pf_hash
+
                 _pf_idx = int(_pf_hash.md5(title.encode()).hexdigest(), 16) % len(_pf_fallbacks)
                 product_data = _pf_fallbacks[_pf_idx]
-                logger.info("[IncomeLoop] product_factory: using hardcoded fallback product (AI unavailable)")
+                logger.info(
+                    "[IncomeLoop] product_factory: using hardcoded fallback product (AI unavailable)"
+                )
 
-            gt     = GumroadTools()
+            gt = GumroadTools()
             gr_res = await gt.create_product(
                 name=product_data.get("product_name", title),
                 description=product_data.get("description", ""),
@@ -1926,6 +2294,7 @@ Output JSON:
                 url = gr_res.get("url", "")
                 try:
                     from apps.core.tools.zapier_connector import ZapierConnector
+
                     await ZapierConnector().dispatch_event(
                         "NEW_PRODUCT",
                         {
@@ -1952,6 +2321,7 @@ Output JSON:
                 _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     _tw_r = await pub.publish_to_twitter(_tw_text)
                     _tw_ok = bool(_tw_r and _tw_r.success)
@@ -1960,6 +2330,7 @@ Output JSON:
                 if not _tw_ok and _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         await _plat.twitter_thread_post(_tw_page, [_tw_text])
@@ -1969,12 +2340,12 @@ Output JSON:
                 _li_text = (
                     f"🚀 Just launched: {product_name}\n\n"
                     f"{tagline}\n\n"
-                    f"Price: {price_str}"
-                    + (f"\n\n👉 {url}" if url else "")
+                    f"Price: {price_str}" + (f"\n\n👉 {url}" if url else "")
                 )
                 _li_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     _li_r = await pub.publish_to_linkedin(_li_text[:1300])
                     _li_ok = bool(_li_r and _li_r.success)
@@ -1983,6 +2354,7 @@ Output JSON:
                 if not _li_ok and _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _li_page = await _plat.linkedin(_ae, _ap)
                         await _plat.linkedin_create_post(_li_page, _li_text[:3000])
@@ -1999,6 +2371,7 @@ Output JSON:
             # LemonSqueezy fallback (alternative payment processor, lower fees)
             try:
                 from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+
                 ls = LemonSqueezyTools()
                 if ls._configured():
                     ls_res = await ls.create_product(
@@ -2019,12 +2392,19 @@ Output JSON:
             # Fallback: publish as free GitHub repo (builds credibility + traffic)
             if settings.GITHUB_TOKEN:
                 logger.info("[IncomeLoop] Gumroad unavailable — publishing product as GitHub repo")
-                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
-                gh    = AriaGitHubClient()
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
+                gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                repo_name = (product_data.get("product_name", title)
-                             .lower().replace(" ", "-").replace("'", "")[:40] + "-guide")
+                repo_name = (
+                    product_data.get("product_name", title)
+                    .lower()
+                    .replace(" ", "-")
+                    .replace("'", "")[:40]
+                    + "-guide"
+                )
                 readme = (
                     f"# {product_data.get('product_name', title)}\n\n"
                     f"> {product_data.get('tagline', 'A complete guide.')}\n\n"
@@ -2033,15 +2413,23 @@ Output JSON:
                     + "\n".join(f"- {ch}" for ch in product_data.get("table_of_contents", []))
                     + "\n\n---\n*Generated by ARIA AI*"
                 )
-                create_r = await gh._post("/user/repos", {
-                    "name": repo_name, "description": product_data.get("tagline", "")[:100],
-                    "private": False, "auto_init": False,
-                })
+                create_r = await gh._post(
+                    "/user/repos",
+                    {
+                        "name": repo_name,
+                        "description": product_data.get("tagline", "")[:100],
+                        "private": False,
+                        "auto_init": False,
+                    },
+                )
                 if "error" not in create_r:
-                    await gh._put(f"/repos/{owner}/{repo_name}/contents/README.md", {
-                        "message": "feat: initial guide",
-                        "content": _b64.b64encode(readme.encode()).decode(),
-                    })
+                    await gh._put(
+                        f"/repos/{owner}/{repo_name}/contents/README.md",
+                        {
+                            "message": "feat: initial guide",
+                            "content": _b64.b64encode(readme.encode()).decode(),
+                        },
+                    )
                     repo_url = f"https://github.com/{owner}/{repo_name}"
                     return {
                         "success": True,
@@ -2051,18 +2439,23 @@ Output JSON:
                     }
 
             # Browser fallback: create Gumroad product via stealth browser (60s timeout)
-            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_email = getattr(settings, "ARIA_EMAIL", None)
             aria_password = getattr(settings, "ARIA_PASSWORD", None)
             if aria_email and aria_password:
                 try:
-                    prod_name  = product_data.get("product_name", title)
+                    prod_name = product_data.get("product_name", title)
                     prod_price = product_data.get("price_cents", 997)
-                    prod_desc  = product_data.get("description", "")
+                    prod_desc = product_data.get("description", "")
+
                     async def _pf_gumroad_browser() -> str:
                         from apps.core.tools.human_browser import get_platform_login
+
                         plat = await get_platform_login()
                         gum_page = await plat.gumroad(aria_email, aria_password)
-                        return await plat.gumroad_create_product(gum_page, prod_name, prod_price, prod_desc)
+                        return await plat.gumroad_create_product(
+                            gum_page, prod_name, prod_price, prod_desc
+                        )
+
                     gum_url = await asyncio.wait_for(_pf_gumroad_browser(), timeout=60.0)
                     if gum_url:
                         return {
@@ -2072,41 +2465,78 @@ Output JSON:
                             "urls": [gum_url],
                         }
                 except Exception as _br_exc:
-                    logger.warning("[IncomeLoop] Gumroad browser fallback (product_factory): %s", _br_exc)
+                    logger.warning(
+                        "[IncomeLoop] Gumroad browser fallback (product_factory): %s", _br_exc
+                    )
 
             # HuggingFace Hub fallback: publish product as a public Space
             _hf_tok_pf = getattr(settings, "HF_TOKEN", None)
             if _hf_tok_pf:
                 try:
-                    import httpx as _hf_pf_http
                     import base64 as _hf_pf_b64
                     from datetime import datetime as _dt_pf
-                    _hf_un_pf = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
+
+                    import httpx as _hf_pf_http
+
+                    _hf_un_pf = (
+                        getattr(settings, "HF_USERNAME", None)
+                        or getattr(settings, "GITHUB_USERNAME", None)
+                        or "ariaai"
+                    )
                     _day_pf = _dt_pf.utcnow().strftime("%m%d")
                     _pf_name = product_data.get("product_name", title)
                     _pf_price = product_data.get("price_cents", 997) / 100
-                    _pf_rn = _pf_name[:28].lower().replace(" ", "-").replace("'", "").replace(":", "")
-                    _pf_rn = "".join(c for c in _pf_rn if c.isalnum() or c == "-")[:24] + f"-{_day_pf}-prod"
+                    _pf_rn = (
+                        _pf_name[:28].lower().replace(" ", "-").replace("'", "").replace(":", "")
+                    )
+                    _pf_rn = (
+                        "".join(c for c in _pf_rn if c.isalnum() or c == "-")[:24]
+                        + f"-{_day_pf}-prod"
+                    )
                     _pf_readme = (
                         f"---\ntitle: {_pf_name[:50]}\nemoji: 🚀\ncolorFrom: green\ncolorTo: blue\n"
                         f"sdk: static\npinned: true\n---\n\n"
                         f"# {_pf_name}\n\n**{product_data.get('tagline', '')}**\n\n"
                         f"**Price: ${_pf_price:.2f}** | Instant Download\n\n"
                         f"{product_data.get('description', '')}\n\n"
-                        + (("## Table of Contents\n\n" + "\n".join(f"- {ch}" for ch in product_data.get("table_of_contents", [])) + "\n\n") if product_data.get("table_of_contents") else "")
-                        + f"---\n*Digital product by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                        + (
+                            (
+                                "## Table of Contents\n\n"
+                                + "\n".join(
+                                    f"- {ch}" for ch in product_data.get("table_of_contents", [])
+                                )
+                                + "\n\n"
+                            )
+                            if product_data.get("table_of_contents")
+                            else ""
+                        )
+                        + "---\n*Digital product by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
                     )
                     async with _hf_pf_http.AsyncClient(timeout=20.0) as _hpf:
                         _cr_pf = await _hpf.post(
                             "https://huggingface.co/api/repos/create",
-                            headers={"Authorization": f"Bearer {_hf_tok_pf}", "Content-Type": "application/json"},
-                            json={"type": "space", "name": _pf_rn, "private": False, "sdk": "static"},
+                            headers={
+                                "Authorization": f"Bearer {_hf_tok_pf}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "type": "space",
+                                "name": _pf_rn,
+                                "private": False,
+                                "sdk": "static",
+                            },
                         )
                         if _cr_pf.status_code in (200, 201, 409):
                             await _hpf.put(
                                 f"https://huggingface.co/api/spaces/{_hf_un_pf}/{_pf_rn}/raw/main/README.md",
-                                headers={"Authorization": f"Bearer {_hf_tok_pf}", "Content-Type": "application/json"},
-                                json={"content": _hf_pf_b64.b64encode(_pf_readme.encode()).decode(), "message": f"Publish product: {_pf_name[:50]}"},
+                                headers={
+                                    "Authorization": f"Bearer {_hf_tok_pf}",
+                                    "Content-Type": "application/json",
+                                },
+                                json={
+                                    "content": _hf_pf_b64.b64encode(_pf_readme.encode()).decode(),
+                                    "message": f"Publish product: {_pf_name[:50]}",
+                                },
                             )
                             _pf_hf_url = f"https://huggingface.co/spaces/{_hf_un_pf}/{_pf_rn}"
                             return {
@@ -2129,10 +2559,10 @@ Output JSON:
     async def _exec_opportunity_scan(self) -> dict:
         """Web research to discover NEW income opportunities ARIA hasn't tried yet."""
         try:
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.ai_client import get_ai_client, AIModel
 
-            wt  = WebTools()
+            wt = WebTools()
             queries = [
                 "high converting digital product niches 2025 trending",
                 "best affiliate marketing niches low competition 2025",
@@ -2148,6 +2578,7 @@ Output JSON:
             if not all_results:
                 try:
                     from apps.core.tools.content_pipeline import ContentPipeline as _CP
+
                     _cp = _CP()
                     _topics = await _cp.get_trending_topics(limit=10)
                     all_results = [
@@ -2156,7 +2587,8 @@ Output JSON:
                             "url": t.get("url", ""),
                             "snippet": f"Trending on {t.get('source','web')} with score {t.get('score',0)}",
                         }
-                        for t in _topics if isinstance(t, dict) and t.get("title")
+                        for t in _topics
+                        if isinstance(t, dict) and t.get("title")
                     ]
                 except Exception:
                     pass
@@ -2169,8 +2601,7 @@ Output JSON:
                 return {"success": False, "summary": "AI unavailable for opportunity analysis"}
 
             results_text = "\n".join(
-                f"- {r.get('title','')}: {r.get('snippet','')[:150]}"
-                for r in all_results[:12]
+                f"- {r.get('title','')}: {r.get('snippet','')[:150]}" for r in all_results[:12]
             )
 
             opp_data = await ai.complete_json(
@@ -2202,20 +2633,29 @@ Output JSON:
             if opportunities:
                 try:
                     from apps.core.memory.redis_client import get_cache
+
                     cache = get_cache()
                     if cache:
                         for i, opp in enumerate(opportunities):
                             # Distribute: odd index → product_factory, even → ebook_factory
-                            queue = "aria:income:opportunity_queue" if i % 2 == 0 else "aria:income:ebook_queue"
+                            queue = (
+                                "aria:income:opportunity_queue"
+                                if i % 2 == 0
+                                else "aria:income:ebook_queue"
+                            )
                             await cache.rpush(queue, json.dumps(opp))
                 except Exception:
                     pass
 
-            summaries = [f"{o.get('name','')} ({o.get('time_to_first_dollar','')}" for o in opportunities[:3]]
+            summaries = [
+                f"{o.get('name','')} ({o.get('time_to_first_dollar','')}" for o in opportunities[:3]
+            ]
             return {
                 "success": True,
                 "summary": f"Found {len(opportunities)} opportunities: {', '.join(summaries)}",
-                "revenue_potential": sum(o.get("estimated_monthly_revenue", 0) for o in opportunities),
+                "revenue_potential": sum(
+                    o.get("estimated_monthly_revenue", 0) for o in opportunities
+                ),
                 "urls": [],
             }
         except Exception as exc:
@@ -2225,19 +2665,19 @@ Output JSON:
     async def _exec_social_blitz(self) -> dict:
         """Promote live products on Twitter + LinkedIn + Zapier + Discord."""
         try:
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
-            from apps.core.tools.ai_client import get_ai_client, AIModel
             from apps.distribution.publishers.api_publisher import get_api_publisher
 
-            engine   = get_niche_revenue_engine()
+            engine = get_niche_revenue_engine()
             listings = await engine._load_listings()
-            live     = [ls for ls in listings if ls.listing_urls]
+            live = [ls for ls in listings if ls.listing_urls]
             sent = 0
             urls_created: list[str] = []
 
             # Direct Twitter + LinkedIn blast for each live product
             pub = get_api_publisher()
-            ai  = get_ai_client()
+            ai = get_ai_client()
             _ae = getattr(settings, "ARIA_EMAIL", None)
             _ap = getattr(settings, "ARIA_PASSWORD", None)
             for ls in live[:3]:
@@ -2250,7 +2690,11 @@ Output JSON:
                             model=AIModel.FAST,
                             max_tokens=100,
                         )
-                        tweet = (tweet_text.content if hasattr(tweet_text, 'content') else str(tweet_text))[:240]
+                        tweet = (
+                            tweet_text.content
+                            if hasattr(tweet_text, "content")
+                            else str(tweet_text)
+                        )[:240]
                     except Exception:
                         tweet = f"🚀 {ls.title}: {ls.tagline}"
                 else:
@@ -2271,11 +2715,14 @@ Output JSON:
                     pass
                 if not _tw_ok and _ae and _ap:
                     try:
-                        async def _browser_tweet() -> str:
+
+                        async def _browser_tweet(_tw=tweet) -> str:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _tw_page = await _plat.twitter(_ae, _ap)
-                            return await _plat.twitter_thread_post(_tw_page, [tweet])
+                            return await _plat.twitter_thread_post(_tw_page, [_tw])
+
                         _tw_url = await asyncio.wait_for(_browser_tweet(), timeout=20.0)
                         if _tw_url:
                             sent += 1
@@ -2292,7 +2739,9 @@ Output JSON:
                 )
                 _li_ok = False
                 try:
-                    lk_result = await asyncio.wait_for(pub.publish_to_linkedin(lk_content), timeout=15.0)
+                    lk_result = await asyncio.wait_for(
+                        pub.publish_to_linkedin(lk_content), timeout=15.0
+                    )
                     if lk_result.success:
                         sent += 1
                         _li_ok = True
@@ -2300,11 +2749,14 @@ Output JSON:
                     pass
                 if not _li_ok and _ae and _ap:
                     try:
-                        async def _browser_linkedin() -> str:
+
+                        async def _browser_linkedin(_lk=lk_content) -> str:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _li_page = await _plat.linkedin(_ae, _ap)
-                            return await _plat.linkedin_create_post(_li_page, lk_content[:3000])
+                            return await _plat.linkedin_create_post(_li_page, _lk[:3000])
+
                         _li_url = await asyncio.wait_for(_browser_linkedin(), timeout=20.0)
                         if _li_url:
                             sent += 1
@@ -2315,14 +2767,18 @@ Output JSON:
             if live:
                 try:
                     from apps.core.tools.zapier_connector import ZapierConnector
+
                     zc = ZapierConnector()
                     for ls in live[:5]:
-                        await zc.dispatch_event("CONTENT_READY", {
-                            "product_name": ls.title,
-                            "tagline": ls.tagline,
-                            "price": ls.pricing_tiers.get("basic", {}).get("price", 0),
-                            "urls": ls.listing_urls,
-                        })
+                        await zc.dispatch_event(
+                            "CONTENT_READY",
+                            {
+                                "product_name": ls.title,
+                                "tagline": ls.tagline,
+                                "price": ls.pricing_tiers.get("basic", {}).get("price", 0),
+                                "urls": ls.listing_urls,
+                            },
+                        )
                         sent += 1
                         await asyncio.sleep(2)
                 except Exception:
@@ -2334,6 +2790,7 @@ Output JSON:
                 try:
                     owner = settings.GITHUB_USERNAME or "Geremypolanco"
                     import httpx as _httpx
+
                     async with _httpx.AsyncClient(timeout=10) as _client:
                         msg = (
                             f"🚀 **ARIA Social Blitz**\n"
@@ -2392,7 +2849,10 @@ Output JSON:
                     "revenue_potential": 5.0,
                     "urls": urls_created[:5],
                 }
-            return {"success": False, "summary": "Social blitz: no channels available (add Twitter/LinkedIn credentials)"}
+            return {
+                "success": False,
+                "summary": "Social blitz: no channels available (add Twitter/LinkedIn credentials)",
+            }
         except Exception as exc:
             logger.error("[IncomeLoop] social_blitz: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
@@ -2400,12 +2860,12 @@ Output JSON:
     async def _exec_premium_offer(self) -> dict:
         """Create a high-ticket B2B service offer ($500-$5,000+)."""
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.gumroad_tools import GumroadTools
             from apps.core.tools.web_tools import WebTools
 
             wt = WebTools()
-            r  = await wt.search_web("business automation AI consulting demand 2025", num_results=5)
+            r = await wt.search_web("business automation AI consulting demand 2025", num_results=5)
             context = ""
             if r.get("success") and r.get("results"):
                 context = r["results"][0].get("snippet", "")[:300]
@@ -2451,6 +2911,7 @@ JSON:
                 # Promote premium offer on LinkedIn (best channel for B2B)
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     price_str = f"${offer.get('price_cents', 149700)/100:.0f}"
                     included_short = " | ".join(offer.get("what_included", [])[:3])
@@ -2473,6 +2934,7 @@ JSON:
                     if _ae and _ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _li_page = await _plat.linkedin(_ae, _ap)
                             await _plat.linkedin_create_post(_li_page, li_text[:3000])
@@ -2493,6 +2955,7 @@ JSON:
                 _po2_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _po2_pub = get_api_publisher()
                     _po2_tw_r = await _po2_pub.publish_to_twitter(_po2_tw)
                     if _po2_tw_r and _po2_tw_r.success:
@@ -2502,6 +2965,7 @@ JSON:
                 if not _po2_tw_ok and _po2_ae and _po2_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _po2_plat = await get_platform_login()
                         _po2_tw_pg = await _po2_plat.twitter(_po2_ae, _po2_ap)
                         await _po2_plat.twitter_thread_post(_po2_tw_pg, [_po2_tw])
@@ -2518,9 +2982,11 @@ JSON:
             # GitHub fallback: create a consulting landing page repo
             if settings.GITHUB_TOKEN:
                 try:
-                    from apps.core.tools.github_client import AriaGitHubClient
                     import base64 as _b64
-                    gh    = AriaGitHubClient()
+
+                    from apps.core.tools.github_client import AriaGitHubClient
+
+                    gh = AriaGitHubClient()
                     owner = settings.GITHUB_USERNAME or "Geremypolanco"
                     repo_name = "ai-consulting-services"
                     included = "\n".join(f"- {item}" for item in offer.get("what_included", []))
@@ -2536,11 +3002,15 @@ JSON:
                     )
                     existing = await gh._get(f"/repos/{owner}/{repo_name}")
                     if "error" in existing:
-                        await gh._post("/user/repos", {
-                            "name": repo_name,
-                            "description": offer.get("tagline", "AI consulting services")[:100],
-                            "private": False, "auto_init": False,
-                        })
+                        await gh._post(
+                            "/user/repos",
+                            {
+                                "name": repo_name,
+                                "description": offer.get("tagline", "AI consulting services")[:100],
+                                "private": False,
+                                "auto_init": False,
+                            },
+                        )
                     existing_file = await gh._get(f"/repos/{owner}/{repo_name}/contents/README.md")
                     sha = existing_file.get("sha", "") if "error" not in existing_file else ""
                     put_args: dict = {
@@ -2560,17 +3030,20 @@ JSON:
                     pass
 
             # Browser fallback: create Gumroad premium offer via stealth browser
-            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_email = getattr(settings, "ARIA_EMAIL", None)
             aria_password = getattr(settings, "ARIA_PASSWORD", None)
             if aria_email and aria_password:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     plat = await get_platform_login()
-                    gum_page   = await plat.gumroad(aria_email, aria_password)
-                    offer_name  = offer.get("offer_name", "AI Business Consulting")
+                    gum_page = await plat.gumroad(aria_email, aria_password)
+                    offer_name = offer.get("offer_name", "AI Business Consulting")
                     offer_price = offer.get("price_cents", 149700)
-                    offer_desc  = offer.get("description", "")
-                    gum_url = await plat.gumroad_create_product(gum_page, offer_name, offer_price, offer_desc)
+                    offer_desc = offer.get("description", "")
+                    gum_url = await plat.gumroad_create_product(
+                        gum_page, offer_name, offer_price, offer_desc
+                    )
                     if gum_url:
                         return {
                             "success": True,
@@ -2579,9 +3052,14 @@ JSON:
                             "urls": [gum_url],
                         }
                 except Exception as _br_exc:
-                    logger.warning("[IncomeLoop] Gumroad browser fallback (premium_offer): %s", _br_exc)
+                    logger.warning(
+                        "[IncomeLoop] Gumroad browser fallback (premium_offer): %s", _br_exc
+                    )
 
-            return {"success": False, "summary": f"Gumroad: {gr.get('error', 'failed')} — add GUMROAD_TOKEN to Fly.io secrets"}
+            return {
+                "success": False,
+                "summary": f"Gumroad: {gr.get('error', 'failed')} — add GUMROAD_TOKEN to Fly.io secrets",
+            }
 
         except Exception as exc:
             logger.error("[IncomeLoop] premium_offer: %s", exc)
@@ -2590,11 +3068,11 @@ JSON:
     async def _exec_shopify_listing(self) -> dict:
         """Create a Shopify product listing for a trending digital item."""
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.commerce_tools import get_commerce_tools
             from apps.core.tools.content_pipeline import ContentPipeline
 
-            cp     = ContentPipeline()
+            cp = ContentPipeline()
             topics = await cp.get_trending_topics(limit=3)
             raw_topic = topics[0] if topics else "AI productivity tools 2025"
             # Extract string title whether topic is a dict or a plain string
@@ -2665,21 +3143,28 @@ JSON:
                     },
                 ]
                 import hashlib as _hash
+
                 _idx = int(_hash.md5(topic_str.encode()).hexdigest(), 16) % len(_fallback_products)
                 product = _fallback_products[_idx]
-                logger.info("[IncomeLoop] shopify_listing: using fallback product #%d (AI unavailable)", _idx)
+                logger.info(
+                    "[IncomeLoop] shopify_listing: using fallback product #%d (AI unavailable)",
+                    _idx,
+                )
 
-            ct    = get_commerce_tools()
+            ct = get_commerce_tools()
             price = float(product.get("price", "29.99"))
             prod_title = product.get("title") or f"Digital Product: {topic_str[:40]}"
-            res   = await ct.shopify_create_product(
+            res = await ct.shopify_create_product(
                 title=prod_title,
                 description=product.get("description", ""),
                 price=price,
                 product_type=product.get("product_type", "Digital Download"),
             )
             if not res.get("success"):
-                logger.warning("[IncomeLoop] shopify_listing Shopify failed: %s", res.get("error", "unknown")[:120])
+                logger.warning(
+                    "[IncomeLoop] shopify_listing Shopify failed: %s",
+                    res.get("error", "unknown")[:120],
+                )
 
             if res.get("success"):
                 url = res.get("shop_url", "")
@@ -2694,6 +3179,7 @@ JSON:
                 _sl_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _sl_pub = get_api_publisher()
                     _sl_tw_r = await _sl_pub.publish_to_twitter(_sl_tw)
                     if _sl_tw_r and _sl_tw_r.success:
@@ -2702,11 +3188,14 @@ JSON:
                     pass
                 if not _sl_tw_ok and _sl_tw_ae and _sl_tw_ap:
                     try:
+
                         async def _sl_browser_tweet() -> None:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _sl_plat2 = await get_platform_login()
                             _sl_tw_pg = await _sl_plat2.twitter(_sl_tw_ae, _sl_tw_ap)
                             await _sl_plat2.twitter_thread_post(_sl_tw_pg, [_sl_tw])
+
                         await asyncio.wait_for(_sl_browser_tweet(), timeout=20.0)
                     except Exception:
                         pass
@@ -2720,6 +3209,7 @@ JSON:
             # Fallback: LemonSqueezy
             try:
                 from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+
                 ls = LemonSqueezyTools()
                 if ls._configured():
                     ls_res = await ls.create_product(
@@ -2740,6 +3230,7 @@ JSON:
             # Fallback: Gumroad
             try:
                 from apps.core.tools.gumroad_tools import GumroadTools
+
                 gt = GumroadTools()
                 gr = await gt.create_product(
                     name=prod_title,
@@ -2754,7 +3245,10 @@ JSON:
                         "revenue_potential": price,
                         "urls": [gr.get("url", "")] if gr.get("url") else [],
                     }
-                logger.warning("[IncomeLoop] shopify_listing Gumroad API failed: %s", gr.get("error", "no token")[:80])
+                logger.warning(
+                    "[IncomeLoop] shopify_listing Gumroad API failed: %s",
+                    gr.get("error", "no token")[:80],
+                )
             except Exception as _gr_exc:
                 logger.warning("[IncomeLoop] shopify_listing Gumroad exception: %s", _gr_exc)
 
@@ -2763,14 +3257,19 @@ JSON:
             _sl_ap = getattr(settings, "ARIA_PASSWORD", None)
             if _sl_ae and _sl_ap:
                 try:
+
                     async def _sl_gumroad_browser() -> str:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gm_page = await _plat.gumroad(_sl_ae, _sl_ap)
                         return await _plat.gumroad_create_product(
-                            _gm_page, prod_title[:100], int(price * 100),
+                            _gm_page,
+                            prod_title[:100],
+                            int(price * 100),
                             product.get("description", "")[:2000],
                         )
+
                     _gm_url = await asyncio.wait_for(_sl_gumroad_browser(), timeout=90.0)
                     if _gm_url:
                         return {
@@ -2787,32 +3286,62 @@ JSON:
             if hf_token:
                 try:
                     import httpx as _hf_http
-                    _hf_username = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
+
+                    _hf_username = (
+                        getattr(settings, "HF_USERNAME", None)
+                        or getattr(settings, "GITHUB_USERNAME", None)
+                        or "ariaai"
+                    )
                     from datetime import datetime as _dt_sl
+
                     _day_sl = _dt_sl.utcnow().strftime("%m%d")
-                    _repo_name = prod_title[:32].lower().replace(" ", "-").replace("'", "").replace(":", "")
-                    _repo_name = "".join(c for c in _repo_name if c.isalnum() or c == "-")[:26] + f"-{_day_sl}-prod"
+                    _repo_name = (
+                        prod_title[:32].lower().replace(" ", "-").replace("'", "").replace(":", "")
+                    )
+                    _repo_name = (
+                        "".join(c for c in _repo_name if c.isalnum() or c == "-")[:26]
+                        + f"-{_day_sl}-prod"
+                    )
                     _readme = (
                         f"---\ntitle: {prod_title[:50]}\nemoji: 🛍️\ncolorFrom: purple\ncolorTo: blue\n"
                         f"sdk: static\npinned: true\n---\n\n"
                         f"# {prod_title}\n\n**Price: ${price:.2f}**\n\n"
-                        + product.get("description", "").replace("<p>", "").replace("</p>", "\n\n").replace("<strong>", "**").replace("</strong>", "**")
-                        + f"\n\n---\n\n*Digital product powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*\n"
+                        + product.get("description", "")
+                        .replace("<p>", "")
+                        .replace("</p>", "\n\n")
+                        .replace("<strong>", "**")
+                        .replace("</strong>", "**")
+                        + "\n\n---\n\n*Digital product powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*\n"
                     )
                     async with _hf_http.AsyncClient(timeout=20.0) as _hc:
                         # Create repo (Space)
                         _cr = await _hc.post(
                             "https://huggingface.co/api/repos/create",
-                            headers={"Authorization": f"Bearer {hf_token}", "Content-Type": "application/json"},
-                            json={"type": "space", "name": _repo_name, "private": False, "sdk": "static"},
+                            headers={
+                                "Authorization": f"Bearer {hf_token}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "type": "space",
+                                "name": _repo_name,
+                                "private": False,
+                                "sdk": "static",
+                            },
                         )
                         if _cr.status_code in (200, 201, 409):
                             import base64 as _hf_b64
+
                             _readme_b64 = _hf_b64.b64encode(_readme.encode()).decode()
                             await _hc.put(
                                 f"https://huggingface.co/api/spaces/{_hf_username}/{_repo_name}/raw/main/README.md",
-                                headers={"Authorization": f"Bearer {hf_token}", "Content-Type": "application/json"},
-                                json={"content": _readme_b64, "message": f"Add product landing page: {prod_title[:50]}"},
+                                headers={
+                                    "Authorization": f"Bearer {hf_token}",
+                                    "Content-Type": "application/json",
+                                },
+                                json={
+                                    "content": _readme_b64,
+                                    "message": f"Add product landing page: {prod_title[:50]}",
+                                },
                             )
                             _hf_url = f"https://huggingface.co/spaces/{_hf_username}/{_repo_name}"
                             return {
@@ -2824,7 +3353,10 @@ JSON:
                 except Exception as _hf_exc:
                     logger.warning("[IncomeLoop] shopify_listing HF fallback: %s", _hf_exc)
 
-            return {"success": False, "summary": f"Shopify: add SHOPIFY_ADMIN_TOKEN or GUMROAD_TOKEN to publish products"}
+            return {
+                "success": False,
+                "summary": "Shopify: add SHOPIFY_ADMIN_TOKEN or GUMROAD_TOKEN to publish products",
+            }
 
         except Exception as exc:
             logger.error("[IncomeLoop] shopify_listing: %s", exc)
@@ -2833,14 +3365,15 @@ JSON:
     async def _exec_ebook_factory(self) -> dict:
         """Generate a complete ebook on a trending topic and sell it on Gumroad at $7-$27."""
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.gumroad_tools import GumroadTools
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.content_pipeline import ContentPipeline
+            from apps.core.tools.gumroad_tools import GumroadTools
 
             # Try opportunity queue first (same source as product_factory but dedicated key)
             topic_str = ""
             try:
                 from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
                 if cache:
                     raw = await cache.lpop("aria:income:ebook_queue")
@@ -2851,11 +3384,15 @@ JSON:
                 pass
 
             if not topic_str:
-                cp     = ContentPipeline()
+                cp = ContentPipeline()
                 topics = await cp.get_trending_topics(limit=5)
                 if topics:
-                    raw_topic = topics[random.randint(0, min(2, len(topics)-1))]
-                    topic_str = raw_topic.get("title", str(raw_topic))[:80] if isinstance(raw_topic, dict) else str(raw_topic)[:80]
+                    raw_topic = topics[random.randint(0, min(2, len(topics) - 1))]
+                    topic_str = (
+                        raw_topic.get("title", str(raw_topic))[:80]
+                        if isinstance(raw_topic, dict)
+                        else str(raw_topic)[:80]
+                    )
                 else:
                     topic_str = "AI side income strategies for solopreneurs"
 
@@ -2887,7 +3424,13 @@ JSON:
                         "title": "The 30-Day AI Income Accelerator",
                         "subtitle": "Build Your First AI Revenue Stream in a Month",
                         "description": "A complete 30-day action plan to launch an AI-powered income stream from zero. Each day comes with a specific task, tool recommendation, and expected outcome. By day 30, you'll have a working AI business generating at least $500/month.\n\nInside: AI tool stack ($0 to start), product creation templates, traffic strategies, and a community of 1,000+ members doing the same journey.",
-                        "table_of_contents": ["Week 1: Foundation & Mindset", "Week 2: AI Product Creation", "Week 3: Traffic & Promotion", "Week 4: Optimization & Scale", "Bonus: 100 AI Prompts for Business"],
+                        "table_of_contents": [
+                            "Week 1: Foundation & Mindset",
+                            "Week 2: AI Product Creation",
+                            "Week 3: Traffic & Promotion",
+                            "Week 4: Optimization & Scale",
+                            "Bonus: 100 AI Prompts for Business",
+                        ],
                         "price_cents": 1700,
                         "tags": ["AI", "income", "30 day", "challenge"],
                         "category": "Business",
@@ -2896,7 +3439,13 @@ JSON:
                         "title": "Prompt Engineering for Profit: The Complete Guide",
                         "subtitle": "Turn ChatGPT and Claude into Your Personal Money Machine",
                         "description": "Master the art and science of AI prompting to create digital products, write marketing copy, generate leads, and build passive income streams. This guide covers 6 advanced prompting frameworks used by top AI entrepreneurs earning $10K+/month.\n\nIncludes 200+ tested prompts, real before/after examples, and a 14-day implementation plan.",
-                        "table_of_contents": ["Chapter 1: The Prompt Entrepreneur Mindset", "Chapter 2: Framework 1 — The Chain of Thought Method", "Chapter 3: Framework 2 — Persona Stacking", "Chapter 4: Creating Digital Products with AI", "Chapter 5: AI Content That Actually Sells"],
+                        "table_of_contents": [
+                            "Chapter 1: The Prompt Entrepreneur Mindset",
+                            "Chapter 2: Framework 1 — The Chain of Thought Method",
+                            "Chapter 3: Framework 2 — Persona Stacking",
+                            "Chapter 4: Creating Digital Products with AI",
+                            "Chapter 5: AI Content That Actually Sells",
+                        ],
                         "price_cents": 2700,
                         "tags": ["prompting", "ChatGPT", "Claude", "AI income"],
                         "category": "Technology",
@@ -2905,22 +3454,35 @@ JSON:
                         "title": "The Solopreneur's AI Playbook",
                         "subtitle": "Run a 6-Figure Business Alone Using AI Tools",
                         "description": "Everything a one-person business needs to compete with 10-person teams using AI. From customer support automation to product creation, content marketing, and financial management — this playbook covers every function of a modern business.\n\nBased on real interviews with 50 solopreneurs doing $100K+ annually using AI leverage.",
-                        "table_of_contents": ["Chapter 1: The AI Solopreneur Stack", "Chapter 2: Product Creation at Scale", "Chapter 3: Marketing Automation", "Chapter 4: Customer Experience with AI", "Chapter 5: Financial Systems & Passive Income"],
+                        "table_of_contents": [
+                            "Chapter 1: The AI Solopreneur Stack",
+                            "Chapter 2: Product Creation at Scale",
+                            "Chapter 3: Marketing Automation",
+                            "Chapter 4: Customer Experience with AI",
+                            "Chapter 5: Financial Systems & Passive Income",
+                        ],
                         "price_cents": 1999,
                         "tags": ["solopreneur", "AI", "business", "automation"],
                         "category": "Business",
                     },
                 ]
                 import hashlib as _hash2
+
                 _idx2 = int(_hash2.md5(topic_str.encode()).hexdigest(), 16) % len(_ebook_fallbacks)
                 ebook = _ebook_fallbacks[_idx2]
-                logger.info("[IncomeLoop] ebook_factory: using fallback ebook #%d (AI unavailable)", _idx2)
+                logger.info(
+                    "[IncomeLoop] ebook_factory: using fallback ebook #%d (AI unavailable)", _idx2
+                )
 
             toc = ebook.get("table_of_contents", [])
             full_description = ebook.get("description", "")
             if toc:
-                full_description += "\n\n**What You'll Learn:**\n" + "\n".join(f"✓ {ch}" for ch in toc)
-            full_description += f"\n\n**Format:** Digital Guide | Instant Access | {len(toc)} Chapters"
+                full_description += "\n\n**What You'll Learn:**\n" + "\n".join(
+                    f"✓ {ch}" for ch in toc
+                )
+            full_description += (
+                f"\n\n**Format:** Digital Guide | Instant Access | {len(toc)} Chapters"
+            )
 
             # Generate actual chapter content so the product has real value
             ebook_content_md = f"# {ebook.get('title', topic_str)}\n\n"
@@ -2945,12 +3507,16 @@ JSON:
                 )
                 if chapters_data and chapters_data.get("chapters"):
                     for ch in chapters_data["chapters"]:
-                        ebook_content_md += f"## {ch.get('title', '')}\n\n{ch.get('content', '')}\n\n---\n\n"
+                        ebook_content_md += (
+                            f"## {ch.get('title', '')}\n\n{ch.get('content', '')}\n\n---\n\n"
+                        )
             except Exception:
-                ebook_content_md += "\n".join(f"## {ch}\n\nContent for this chapter.\n\n" for ch in toc)
+                ebook_content_md += "\n".join(
+                    f"## {ch}\n\nContent for this chapter.\n\n" for ch in toc
+                )
 
-            gt  = GumroadTools()
-            gr  = await gt.create_product(
+            gt = GumroadTools()
+            gr = await gt.create_product(
                 name=ebook.get("title", f"The Complete Guide to {topic_str[:30]}"),
                 description=full_description,
                 price_cents=ebook.get("price_cents", 1700),
@@ -2968,12 +3534,12 @@ JSON:
                 _ef_tw = (
                     f"📚 New ebook: {_ef_title[:100]}\n\n"
                     f"${price:.2f} | {len(toc)} chapters | Instant download\n\n"
-                    f"{ebook.get('subtitle','')[:100]}"
-                    + (f"\n→ {_ef_url}" if _ef_url else "")
+                    f"{ebook.get('subtitle','')[:100]}" + (f"\n→ {_ef_url}" if _ef_url else "")
                 )[:280]
                 _ef_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _ef_pub = get_api_publisher()
                     _ef_tw_r = await _ef_pub.publish_to_twitter(_ef_tw)
                     if _ef_tw_r and _ef_tw_r.success:
@@ -2983,6 +3549,7 @@ JSON:
                 if not _ef_tw_ok and _ef_ae and _ef_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _ef_plat = await get_platform_login()
                         _ef_tw_pg = await _ef_plat.twitter(_ef_ae, _ef_ap)
                         await _ef_plat.twitter_thread_post(_ef_tw_pg, [_ef_tw])
@@ -2998,6 +3565,7 @@ JSON:
             # LemonSqueezy fallback for ebook
             try:
                 from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+
                 ls = LemonSqueezyTools()
                 if ls._configured():
                     ls_res = await ls.create_product(
@@ -3021,8 +3589,10 @@ JSON:
             _eb_ap = getattr(settings, "ARIA_PASSWORD", None)
             if _eb_ae and _eb_ap:
                 try:
+
                     async def _ef_gm_browser() -> str:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gm_page = await _plat.gumroad(_eb_ae, _eb_ap)
                         return await _plat.gumroad_create_product(
@@ -3031,6 +3601,7 @@ JSON:
                             ebook.get("price_cents", 1700),
                             full_description[:2000],
                         )
+
                     _gm_url = await asyncio.wait_for(_ef_gm_browser(), timeout=60.0)
                     if _gm_url:
                         price = ebook.get("price_cents", 1700) / 100
@@ -3051,7 +3622,7 @@ JSON:
                 # Generate real content for each chapter
                 chapters_content_parts = []
                 if toc and ai:
-                    for i, chapter_title in enumerate(toc[:5]):
+                    for _i, chapter_title in enumerate(toc[:5]):
                         try:
                             chapter_data = await ai.complete_json(
                                 system="You write detailed, actionable educational content. Output JSON only.",
@@ -3063,7 +3634,9 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
                                 model=AIModel.FAST,
                                 max_tokens=800,
                             )
-                            chapter_content = (chapter_data or {}).get("content", f"Content about {chapter_title}.")
+                            chapter_content = (chapter_data or {}).get(
+                                "content", f"Content about {chapter_title}."
+                            )
                         except Exception:
                             chapter_content = f"This chapter covers {chapter_title} in depth with practical examples and actionable tips."
                         chapters_content_parts.append(f"## {chapter_title}\n\n{chapter_content}")
@@ -3074,18 +3647,16 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
                     ]
 
                 chapters_content = "\n\n---\n\n".join(chapters_content_parts)
-                pdf_content = (
-                    f"{ebook.get('description', '')}\n\n"
-                    f"---\n\n{chapters_content}"
-                )
+                pdf_content = f"{ebook.get('description', '')}\n\n" f"---\n\n{chapters_content}"
                 pdf_r = await _gen_pdf(
-                    title=ebook.get("title", f"Guide to {topic}"),
+                    title=ebook.get("title", f"Guide to {topic_str}"),
                     content=pdf_content,
                     sections=[],
                 )
                 if pdf_r.get("success") and pdf_r.get("pdf_bytes"):
                     try:
                         from apps.core.tools.telegram_bot import get_bot
+
                         bot = get_bot()
                         fname = pdf_r.get("filename", "ebook.pdf")
                         await bot._send_document_bytes(
@@ -3115,14 +3686,25 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
             _hf_tok_ef = getattr(settings, "HF_TOKEN", None)
             if _hf_tok_ef:
                 try:
-                    import httpx as _hf_ef_http
                     import base64 as _hf_ef_b64
                     from datetime import datetime as _dt_ef
-                    _hf_un_ef = getattr(settings, "HF_USERNAME", None) or getattr(settings, "GITHUB_USERNAME", None) or "ariaai"
+
+                    import httpx as _hf_ef_http
+
+                    _hf_un_ef = (
+                        getattr(settings, "HF_USERNAME", None)
+                        or getattr(settings, "GITHUB_USERNAME", None)
+                        or "ariaai"
+                    )
                     _day_ef = _dt_ef.utcnow().strftime("%m%d")
                     _ef_title = ebook.get("title", f"Guide to {topic_str[:30]}")
-                    _ef_rn = _ef_title[:28].lower().replace(" ", "-").replace("'", "").replace(":", "")
-                    _ef_rn = "".join(c for c in _ef_rn if c.isalnum() or c == "-")[:24] + f"-{_day_ef}-ebook"
+                    _ef_rn = (
+                        _ef_title[:28].lower().replace(" ", "-").replace("'", "").replace(":", "")
+                    )
+                    _ef_rn = (
+                        "".join(c for c in _ef_rn if c.isalnum() or c == "-")[:24]
+                        + f"-{_day_ef}-ebook"
+                    )
                     _ef_price = ebook.get("price_cents", 1700) / 100
                     _ef_readme = (
                         f"---\ntitle: {_ef_title[:60]}\ntags:\n- ebook\n- guide\n- AI\n---\n\n"
@@ -3134,14 +3716,23 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
                     async with _hf_ef_http.AsyncClient(timeout=20.0) as _hef:
                         _cr_ef = await _hef.post(
                             "https://huggingface.co/api/repos/create",
-                            headers={"Authorization": f"Bearer {_hf_tok_ef}", "Content-Type": "application/json"},
+                            headers={
+                                "Authorization": f"Bearer {_hf_tok_ef}",
+                                "Content-Type": "application/json",
+                            },
                             json={"type": "dataset", "name": _ef_rn, "private": False},
                         )
                         if _cr_ef.status_code in (200, 201, 409):
                             await _hef.put(
                                 f"https://huggingface.co/api/datasets/{_hf_un_ef}/{_ef_rn}/raw/main/README.md",
-                                headers={"Authorization": f"Bearer {_hf_tok_ef}", "Content-Type": "application/json"},
-                                json={"content": _hf_ef_b64.b64encode(_ef_readme.encode()).decode(), "message": f"Publish ebook: {_ef_title[:50]}"},
+                                headers={
+                                    "Authorization": f"Bearer {_hf_tok_ef}",
+                                    "Content-Type": "application/json",
+                                },
+                                json={
+                                    "content": _hf_ef_b64.b64encode(_ef_readme.encode()).decode(),
+                                    "message": f"Publish ebook: {_ef_title[:50]}",
+                                },
                             )
                             _ef_hf_url = f"https://huggingface.co/datasets/{_hf_un_ef}/{_ef_rn}"
                             return {
@@ -3153,7 +3744,10 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
                 except Exception as _ef_hf_exc:
                     logger.warning("[IncomeLoop] ebook_factory HF fallback: %s", _ef_hf_exc)
 
-            return {"success": False, "summary": f"Gumroad: {gr.get('error', 'failed')} — add GUMROAD_TOKEN to publish"}
+            return {
+                "success": False,
+                "summary": f"Gumroad: {gr.get('error', 'failed')} — add GUMROAD_TOKEN to publish",
+            }
 
         except Exception as exc:
             logger.error("[IncomeLoop] ebook_factory: %s", exc)
@@ -3163,8 +3757,8 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
         """Create and send a Mailchimp email campaign; falls back to GitHub newsletter edition."""
         # Primary: Mailchimp
         try:
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.mailchimp_tools import MailchimpTools
-            from apps.core.tools.ai_client import get_ai_client, AIModel
 
             mc = MailchimpTools()
             if mc._configured():
@@ -3189,11 +3783,19 @@ JSON:
                         if email_data:
                             result = await mc.create_campaign(
                                 list_id=list_id,
-                                subject=email_data.get("subject", "Discover AI Tools That Make You Money"),
-                                from_name=getattr(settings, "MAILCHIMP_FROM_NAME", None) or "ARIA AI",
-                                reply_to=getattr(settings, "MAILCHIMP_REPLY_TO", None) or "noreply@aria.ai",
-                                preview_text=email_data.get("preview_text", "Exclusive offer inside"),
-                                body_html=email_data.get("html_body", "<p>Check out our latest products!</p>"),
+                                subject=email_data.get(
+                                    "subject", "Discover AI Tools That Make You Money"
+                                ),
+                                from_name=getattr(settings, "MAILCHIMP_FROM_NAME", None)
+                                or "ARIA AI",
+                                reply_to=getattr(settings, "MAILCHIMP_REPLY_TO", None)
+                                or "noreply@aria.ai",
+                                preview_text=email_data.get(
+                                    "preview_text", "Exclusive offer inside"
+                                ),
+                                body_html=email_data.get(
+                                    "html_body", "<p>Check out our latest products!</p>"
+                                ),
                             )
                             if result.get("success"):
                                 return {
@@ -3207,21 +3809,25 @@ JSON:
 
         # Fallback: publish a newsletter edition to GitHub (public, indexed by Google)
         if not settings.GITHUB_TOKEN:
-            return {"success": False, "summary": "Email campaign: add MAILCHIMP_API_KEY; GitHub newsletter requires GITHUB_TOKEN"}
+            return {
+                "success": False,
+                "summary": "Email campaign: add MAILCHIMP_API_KEY; GitHub newsletter requires GITHUB_TOKEN",
+            }
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.github_client import AriaGitHubClient
 
             ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "AI unavailable"}
 
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
-            repo  = "aria-newsletter"
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            month = datetime.now(timezone.utc).strftime("%B %Y")
+            repo = "aria-newsletter"
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            month = datetime.now(UTC).strftime("%B %Y")
 
             edition = await ai.complete_json(
                 system="You write valuable newsletter editions that people forward to their friends. Output JSON only.",
@@ -3249,7 +3855,11 @@ JSON:
                 return {"success": False, "summary": "AI failed to generate newsletter"}
 
             assoc = getattr(settings, "AMAZON_ASSOCIATE_TAG", None) or ""
-            aff_link = f"https://amazon.com/s?k=ai+tools+productivity&tag={assoc}" if assoc else "https://github.com/{owner}/aria-insights"
+            aff_link = (
+                f"https://amazon.com/s?k=ai+tools+productivity&tag={assoc}"
+                if assoc
+                else "https://github.com/{owner}/aria-insights"
+            )
 
             newsletter_md = (
                 f"# {edition.get('headline', f'ARIA AI Newsletter — {month}')}\n\n"
@@ -3274,23 +3884,35 @@ JSON:
             gh = AriaGitHubClient()
             existing = await gh._get(f"/repos/{owner}/{repo}")
             if "error" in existing:
-                await gh._post("/user/repos", {
-                    "name": repo,
-                    "description": f"ARIA AI Monthly Newsletter — AI tools, productivity, and online income",
-                    "private": False, "auto_init": True,
-                })
+                await gh._post(
+                    "/user/repos",
+                    {
+                        "name": repo,
+                        "description": "ARIA AI Monthly Newsletter — AI tools, productivity, and online income",
+                        "private": False,
+                        "auto_init": True,
+                    },
+                )
                 await asyncio.sleep(2)
                 try:
-                    await gh._post(f"/repos/{owner}/{repo}/pages", {"source": {"branch": "main", "path": "/"}})
-                    await gh._put(f"/repos/{owner}/{repo}/topics", {"names": ["newsletter", "ai", "productivity", "income", "tools"]})
+                    await gh._post(
+                        f"/repos/{owner}/{repo}/pages", {"source": {"branch": "main", "path": "/"}}
+                    )
+                    await gh._put(
+                        f"/repos/{owner}/{repo}/topics",
+                        {"names": ["newsletter", "ai", "productivity", "income", "tools"]},
+                    )
                 except Exception:
                     pass
 
             filename = f"editions/{today}-newsletter.md"
-            file_r   = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
-                "message": f"newsletter: {edition.get('subject', month)[:60]}",
-                "content": _b64.b64encode(newsletter_md.encode()).decode(),
-            })
+            file_r = await gh._put(
+                f"/repos/{owner}/{repo}/contents/{filename}",
+                {
+                    "message": f"newsletter: {edition.get('subject', month)[:60]}",
+                    "content": _b64.b64encode(newsletter_md.encode()).decode(),
+                },
+            )
 
             if "error" not in file_r:
                 url = f"https://github.com/{owner}/{repo}/blob/main/{filename}"
@@ -3300,7 +3922,10 @@ JSON:
                     "revenue_potential": 5.0,
                     "urls": [url],
                 }
-            return {"success": False, "summary": "Email campaign: Mailchimp not configured; GitHub newsletter push failed"}
+            return {
+                "success": False,
+                "summary": "Email campaign: Mailchimp not configured; GitHub newsletter push failed",
+            }
 
         except Exception as exc:
             logger.error("[IncomeLoop] email_campaign fallback: %s", exc)
@@ -3313,15 +3938,15 @@ JSON:
         All public GitHub repos get indexed by search engines within 24h.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
 
             if not settings.GITHUB_TOKEN:
                 return {"success": False, "summary": "GITHUB_TOKEN not configured"}
 
-            wt     = WebTools()
-            ai     = get_ai_client()
+            wt = WebTools()
+            ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "AI unavailable"}
 
@@ -3354,58 +3979,81 @@ JSON:
             if not content_data:
                 return {"success": False, "summary": "AI failed to generate content"}
 
-            repo_name   = content_data.get("repo_name", "ai-productivity-guide").replace(" ", "-").lower()[:60]
+            repo_name = (
+                content_data.get("repo_name", "ai-productivity-guide")
+                .replace(" ", "-")
+                .lower()[:60]
+            )
             description = content_data.get("description", f"A complete guide to {topic}")[:100]
-            readme      = content_data.get("readme", f"# {topic}\n\nA comprehensive guide.\n")
-            example     = content_data.get("example_code", "")
-            topics      = content_data.get("tags", ["ai", "productivity", "guide"])[:5]
+            readme = content_data.get("readme", f"# {topic}\n\nA comprehensive guide.\n")
+            example = content_data.get("example_code", "")
+            topics = content_data.get("tags", ["ai", "productivity", "guide"])[:5]
 
-            gh     = AriaGitHubClient()
-            owner  = settings.GITHUB_USERNAME or "Geremypolanco"
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
             # Check if repo exists — create it if not
             existing = await gh._get(f"/repos/{owner}/{repo_name}")
             if "error" in existing:
-                create_r = await gh._post(f"/user/repos", {
-                    "name":        repo_name,
-                    "description": description,
-                    "private":     False,
-                    "auto_init":   False,
-                    "has_issues":  True,
-                    "has_wiki":    False,
-                })
+                create_r = await gh._post(
+                    "/user/repos",
+                    {
+                        "name": repo_name,
+                        "description": description,
+                        "private": False,
+                        "auto_init": False,
+                        "has_issues": True,
+                        "has_wiki": False,
+                    },
+                )
                 if "error" in create_r:
-                    return {"success": False, "summary": f"GitHub repo creation: {create_r.get('error','failed')[:80]}"}
+                    return {
+                        "success": False,
+                        "summary": f"GitHub repo creation: {create_r.get('error','failed')[:80]}",
+                    }
 
             import base64 as _b64
 
             # Push README.md
             encoded = _b64.b64encode(readme.encode()).decode()
-            file_r  = await gh._put(f"/repos/{owner}/{repo_name}/contents/README.md", {
-                "message": f"feat: add comprehensive guide — {description[:60]}",
-                "content": encoded,
-            })
+            file_r = await gh._put(
+                f"/repos/{owner}/{repo_name}/contents/README.md",
+                {
+                    "message": f"feat: add comprehensive guide — {description[:60]}",
+                    "content": encoded,
+                },
+            )
 
             if "error" in file_r:
                 # File may already exist — try updating
                 existing_file = await gh._get(f"/repos/{owner}/{repo_name}/contents/README.md")
                 sha = existing_file.get("sha", "")
                 if sha:
-                    file_r = await gh._put(f"/repos/{owner}/{repo_name}/contents/README.md", {
-                        "message": f"update: refresh guide content",
-                        "content": encoded,
-                        "sha": sha,
-                    })
+                    file_r = await gh._put(
+                        f"/repos/{owner}/{repo_name}/contents/README.md",
+                        {
+                            "message": "update: refresh guide content",
+                            "content": encoded,
+                            "sha": sha,
+                        },
+                    )
 
             # Push examples/quickstart — makes repo more valuable and searchable
             if example:
                 try:
-                    ext = "py" if ("def " in example or "import " in example) else ("js" if "function " in example or "const " in example else "sh")
+                    ext = (
+                        "py"
+                        if ("def " in example or "import " in example)
+                        else ("js" if "function " in example or "const " in example else "sh")
+                    )
                     example_encoded = _b64.b64encode(example.encode()).decode()
-                    await gh._put(f"/repos/{owner}/{repo_name}/contents/examples/quickstart.{ext}", {
-                        "message": "feat: add quickstart example",
-                        "content": example_encoded,
-                    })
+                    await gh._put(
+                        f"/repos/{owner}/{repo_name}/contents/examples/quickstart.{ext}",
+                        {
+                            "message": "feat: add quickstart example",
+                            "content": example_encoded,
+                        },
+                    )
                 except Exception:
                     pass
 
@@ -3426,44 +4074,54 @@ JSON:
                     f"- Update README.md when adding features\n\n"
                     f"## Questions?\n\nOpen an issue — we respond within 24 hours.\n"
                 )
-                await gh._put(f"/repos/{owner}/{repo_name}/contents/CONTRIBUTING.md", {
-                    "message": "docs: add contributing guide",
-                    "content": _b64.b64encode(contributing.encode()).decode(),
-                })
+                await gh._put(
+                    f"/repos/{owner}/{repo_name}/contents/CONTRIBUTING.md",
+                    {
+                        "message": "docs: add contributing guide",
+                        "content": _b64.b64encode(contributing.encode()).decode(),
+                    },
+                )
             except Exception:
                 pass
 
             # Set topics and homepage (GitHub Pages URL for better SEO)
-            try:
+            with contextlib.suppress(Exception):
                 await gh._put(f"/repos/{owner}/{repo_name}/topics", {"names": topics})
-            except Exception:
-                pass
             try:
                 pages_url = f"https://{owner.lower()}.github.io/{repo_name}/"
-                await gh._patch(f"/repos/{owner}/{repo_name}", {
-                    "homepage": pages_url,
-                    "has_wiki": False,
-                })
+                await gh._patch(
+                    f"/repos/{owner}/{repo_name}",
+                    {
+                        "homepage": pages_url,
+                        "has_wiki": False,
+                    },
+                )
                 # Enable GitHub Pages
-                await gh._post(f"/repos/{owner}/{repo_name}/pages", {
-                    "source": {"branch": "main", "path": "/"},
-                })
+                await gh._post(
+                    f"/repos/{owner}/{repo_name}/pages",
+                    {
+                        "source": {"branch": "main", "path": "/"},
+                    },
+                )
             except Exception:
                 pass
 
             # Add FUNDING.yml — enables the "Sponsor" button on GitHub
             try:
                 import base64 as _b64f
+
                 assoc = getattr(settings, "AMAZON_ASSOCIATE_TAG", None) or ""
                 funding_content = (
                     f"# ARIA AI Open Source Funding\n"
                     f"# Support our AI projects\n"
                     f"github: [{owner}]\n"
-                    f"custom: [\"https://github.com/{owner}/aria-portfolio\"]\n"
+                    f'custom: ["https://github.com/{owner}/aria-portfolio"]\n'
                 )
                 if assoc:
                     funding_content += f"# amazon_wishlist: {assoc}\n"
-                existing_funding = await gh._get(f"/repos/{owner}/{repo_name}/contents/.github/FUNDING.yml")
+                existing_funding = await gh._get(
+                    f"/repos/{owner}/{repo_name}/contents/.github/FUNDING.yml"
+                )
                 sha_f = existing_funding.get("sha", "") if "error" not in existing_funding else ""
                 put_f: dict = {
                     "message": "chore: add FUNDING.yml",
@@ -3488,6 +4146,7 @@ JSON:
             _gp_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _gp_pub = get_api_publisher()
                 _gp_tw_r = await _gp_pub.publish_to_twitter(_gp_tw)
                 if _gp_tw_r and _gp_tw_r.success:
@@ -3497,6 +4156,7 @@ JSON:
             if not _gp_tw_ok and _gp_ae and _gp_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _gp_plat = await get_platform_login()
                     _gp_tw_pg = await _gp_plat.twitter(_gp_ae, _gp_ap)
                     await _gp_plat.twitter_thread_post(_gp_tw_pg, [_gp_tw])
@@ -3521,10 +4181,9 @@ JSON:
         Works with only GITHUB_TOKEN — earns passive income via affiliate clicks.
         """
         try:
-            import re as _re
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.content_pipeline import AFFILIATE_CATALOG
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -3534,26 +4193,26 @@ JSON:
 
             # Pick a category with known products from catalog
             categories = list(AFFILIATE_CATALOG.keys())
-            category   = random.choice(categories)
-            products   = AFFILIATE_CATALOG[category][:5]
+            category = random.choice(categories)
+            products = AFFILIATE_CATALOG[category][:5]
 
             # Build topic from category
             category_topics = {
-                "tech":             "best tech accessories for developers and entrepreneurs 2025",
-                "ai":               "best AI tools and hardware for machine learning 2025",
-                "business":         "best business tools for entrepreneurs and solopreneurs 2025",
-                "finance":          "best finance books and tools for building wealth 2025",
-                "fitness":          "best fitness trackers and health gadgets for productivity 2025",
-                "marketing":        "best marketing tools and books for digital marketers 2025",
-                "crypto":           "best crypto hardware wallets and resources for investors 2025",
-                "productivity":     "best productivity tools and books for high performers 2025",
-                "ecommerce":        "best tools and equipment for starting an ecommerce business 2025",
-                "content_creator":  "best gear and equipment for content creators and streamers 2025",
+                "tech": "best tech accessories for developers and entrepreneurs 2025",
+                "ai": "best AI tools and hardware for machine learning 2025",
+                "business": "best business tools for entrepreneurs and solopreneurs 2025",
+                "finance": "best finance books and tools for building wealth 2025",
+                "fitness": "best fitness trackers and health gadgets for productivity 2025",
+                "marketing": "best marketing tools and books for digital marketers 2025",
+                "crypto": "best crypto hardware wallets and resources for investors 2025",
+                "productivity": "best productivity tools and books for high performers 2025",
+                "ecommerce": "best tools and equipment for starting an ecommerce business 2025",
+                "content_creator": "best gear and equipment for content creators and streamers 2025",
             }
             topic = category_topics.get(category, f"best {category} products and tools 2025")
 
             wt = WebTools()
-            r  = await wt.search_web(f"{topic} review", num_results=5)
+            r = await wt.search_web(f"{topic} review", num_results=5)
             search_context = ""
             if r.get("success") and r.get("results"):
                 search_context = "\n".join(
@@ -3562,10 +4221,7 @@ JSON:
                 )
 
             # Build product hints for AI
-            product_hints = "\n".join(
-                f"- {p['title']} (keyword: {p['keyword']})"
-                for p in products
-            )
+            product_hints = "\n".join(f"- {p['title']} (keyword: {p['keyword']})" for p in products)
 
             article_data = await ai.complete_json(
                 system=(
@@ -3594,39 +4250,64 @@ JSON:
 
             if not article_data:
                 # AI unavailable — post a pre-built value-first Reddit summary instead
-                _reddit_id     = getattr(settings, "REDDIT_CLIENT_ID", None)
+                _reddit_id = getattr(settings, "REDDIT_CLIENT_ID", None)
                 _reddit_secret = getattr(settings, "REDDIT_CLIENT_SECRET", None)
-                _reddit_token  = getattr(settings, "REDDIT_REFRESH_TOKEN", None)
+                _reddit_token = getattr(settings, "REDDIT_REFRESH_TOKEN", None)
                 if _reddit_id and _reddit_secret and _reddit_token:
                     try:
                         import httpx as _httpx2
+
                         async with _httpx2.AsyncClient(timeout=15.0) as _rc3:
                             _tok3 = await _rc3.post(
                                 "https://www.reddit.com/api/v1/access_token",
-                                data={"grant_type": "refresh_token", "refresh_token": _reddit_token},
+                                data={
+                                    "grant_type": "refresh_token",
+                                    "refresh_token": _reddit_token,
+                                },
                                 auth=(_reddit_id, _reddit_secret),
                                 headers={"User-Agent": "ARIA-AI/1.0"},
                             )
-                            _a3 = _tok3.json().get("access_token", "") if _tok3.status_code == 200 else ""
+                            _a3 = (
+                                _tok3.json().get("access_token", "")
+                                if _tok3.status_code == 200
+                                else ""
+                            )
                         if _a3:
                             _aff_body = (
                                 f"I've been researching the best {category} tools and wanted to share what's actually worth paying for in 2026.\n\n"
                                 f"**Topic: {topic}**\n\n"
-                                + "\n".join(f"- **{p['title']}**: A solid option for {p['keyword']} needs." for p in products[:5])
+                                + "\n".join(
+                                    f"- **{p['title']}**: A solid option for {p['keyword']} needs."
+                                    for p in products[:5]
+                                )
                                 + f"\n\nHappy to answer questions about any of these. What tools are you currently using for {category}?"
                             )
                             async with _httpx2.AsyncClient(
                                 timeout=15.0,
-                                headers={"Authorization": f"Bearer {_a3}", "User-Agent": "ARIA-AI/1.0"},
+                                headers={
+                                    "Authorization": f"Bearer {_a3}",
+                                    "User-Agent": "ARIA-AI/1.0",
+                                },
                             ) as _rc4:
                                 _sr = await _rc4.post(
                                     "https://oauth.reddit.com/api/submit",
-                                    data={"sr": "Entrepreneur", "kind": "self", "title": f"Best {category} tools worth paying for in 2026 (honest review)", "text": _aff_body, "resubmit": True},
+                                    data={
+                                        "sr": "Entrepreneur",
+                                        "kind": "self",
+                                        "title": f"Best {category} tools worth paying for in 2026 (honest review)",
+                                        "text": _aff_body,
+                                        "resubmit": True,
+                                    },
                                 )
                             if _sr.status_code == 200:
                                 _url3 = _sr.json().get("json", {}).get("data", {}).get("url", "")
                                 if _url3:
-                                    return {"success": True, "summary": f"Affiliate summary posted to r/Entrepreneur (AI unavailable, Reddit fallback)", "revenue_potential": 1.0, "urls": [_url3]}
+                                    return {
+                                        "success": True,
+                                        "summary": "Affiliate summary posted to r/Entrepreneur (AI unavailable, Reddit fallback)",
+                                        "revenue_potential": 1.0,
+                                        "urls": [_url3],
+                                    }
                     except Exception:
                         pass
                 return {"success": False, "summary": "AI failed to generate affiliate article"}
@@ -3635,18 +4316,19 @@ JSON:
 
             # Inject real ASIN-based affiliate links
             for product in products:
-                kw  = product["keyword"].lower()
+                kw = product["keyword"].lower()
                 if kw in content.lower():
                     aff_url = (
                         f"https://amazon.com/dp/{product['asin']}?tag={assoc}"
-                        if assoc else
-                        f"https://amazon.com/dp/{product['asin']}"
+                        if assoc
+                        else f"https://amazon.com/dp/{product['asin']}"
                     )
                     import re as _re2
-                    pattern = _re2.compile(re.escape(product["title"]), _re2.IGNORECASE)
+
+                    pattern = _re2.compile(_re2.escape(product["title"]), _re2.IGNORECASE)
                     content, n = pattern.subn(f"[{product['title']}]({aff_url})", content, count=1)
                     if n == 0:
-                        pattern2 = _re2.compile(re.escape(kw), _re2.IGNORECASE)
+                        pattern2 = _re2.compile(_re2.escape(kw), _re2.IGNORECASE)
                         content, _ = pattern2.subn(f"[{kw}]({aff_url})", content, count=1)
 
             if assoc:
@@ -3659,16 +4341,24 @@ JSON:
                 )
 
             result = await self._exec_github_blog(
-                existing_articles=[{
-                    "title":       article_data.get("title", topic),
-                    "slug":        article_data.get("slug", topic.replace(" ", "-").lower()[:50]),
-                    "description": article_data.get("description", f"Best {topic} reviewed"),
-                    "tags":        article_data.get("tags", [category, "tools", "review"]),
-                    "content":     content,
-                }],
+                existing_articles=[
+                    {
+                        "title": article_data.get("title", topic),
+                        "slug": article_data.get("slug", topic.replace(" ", "-").lower()[:50]),
+                        "description": article_data.get("description", f"Best {topic} reviewed"),
+                        "tags": article_data.get("tags", [category, "tools", "review"]),
+                        "content": content,
+                    }
+                ],
             )
-            suffix = f" ({len(products)} Amazon links, tag={assoc})" if assoc else " (add AMAZON_ASSOCIATE_TAG for commissions)"
-            result["summary"] = f"Affiliate review: '{article_data.get('title', topic)[:45]}'{suffix}"
+            suffix = (
+                f" ({len(products)} Amazon links, tag={assoc})"
+                if assoc
+                else " (add AMAZON_ASSOCIATE_TAG for commissions)"
+            )
+            result["summary"] = (
+                f"Affiliate review: '{article_data.get('title', topic)[:45]}'{suffix}"
+            )
 
             # ── Announce affiliate article on Twitter ──────────────────────────
             _ac_ae = getattr(settings, "ARIA_EMAIL", None)
@@ -3683,6 +4373,7 @@ JSON:
             _ac_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _ac_pub = get_api_publisher()
                 _ac_tw_r = await _ac_pub.publish_to_twitter(_ac_tw)
                 if _ac_tw_r and _ac_tw_r.success:
@@ -3692,6 +4383,7 @@ JSON:
             if not _ac_tw_ok and _ac_ae and _ac_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _ac_plat = await get_platform_login()
                     _ac_tw_pg = await _ac_plat.twitter(_ac_ae, _ac_ap)
                     await _ac_plat.twitter_thread_post(_ac_tw_pg, [_ac_tw])
@@ -3712,34 +4404,66 @@ JSON:
         Works with GITHUB_TOKEN only. Drives organic traffic via SEO.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
 
             if not settings.GITHUB_TOKEN:
                 # Redirect to Gumroad free product as lead magnet instead
                 from apps.core.tools.gumroad_tools import GumroadTools
+
                 _gt_lm = GumroadTools()
                 _lm_fallbacks = [
-                    ("AI Business Automation Checklist (Free)", "Complete 50-point checklist to audit and automate your business with AI. Free download. Start here before spending on any AI tools.", 0),
-                    ("The Indie Hacker AI Toolkit (Free)", "Curated list of 30+ free AI tools to run a one-person business: content, products, marketing, and analytics. No fluff.", 0),
-                    ("7 AI Income Streams Ranked by Effort (Free)", "Honest breakdown of 7 ways to earn with AI: effort required, tools needed, realistic income, and first steps. Free resource.", 0),
+                    (
+                        "AI Business Automation Checklist (Free)",
+                        "Complete 50-point checklist to audit and automate your business with AI. Free download. Start here before spending on any AI tools.",
+                        0,
+                    ),
+                    (
+                        "The Indie Hacker AI Toolkit (Free)",
+                        "Curated list of 30+ free AI tools to run a one-person business: content, products, marketing, and analytics. No fluff.",
+                        0,
+                    ),
+                    (
+                        "7 AI Income Streams Ranked by Effort (Free)",
+                        "Honest breakdown of 7 ways to earn with AI: effort required, tools needed, realistic income, and first steps. Free resource.",
+                        0,
+                    ),
                 ]
                 import hashlib as _hash_lm
-                _lm_i = int(_hash_lm.md5(str(random.random()).encode()).hexdigest(), 16) % len(_lm_fallbacks)
+
+                _lm_i = int(_hash_lm.md5(str(random.random()).encode()).hexdigest(), 16) % len(
+                    _lm_fallbacks
+                )
                 _lm_name, _lm_desc, _lm_price = _lm_fallbacks[_lm_i]
-                _lm_gr = await _gt_lm.create_product(name=_lm_name, description=_lm_desc, price_cents=_lm_price, tags=["free", "AI", "toolkit", "checklist"])
+                _lm_gr = await _gt_lm.create_product(
+                    name=_lm_name,
+                    description=_lm_desc,
+                    price_cents=_lm_price,
+                    tags=["free", "AI", "toolkit", "checklist"],
+                )
                 if _lm_gr.get("success"):
-                    return {"success": True, "summary": f"Lead magnet '{_lm_name[:50]}' published free on Gumroad (GitHub unavailable)", "revenue_potential": 5.0, "urls": [_lm_gr.get("url", "")] if _lm_gr.get("url") else []}
-                return {"success": False, "summary": "GITHUB_TOKEN required for full lead magnet — Gumroad fallback also failed"}
+                    return {
+                        "success": True,
+                        "summary": f"Lead magnet '{_lm_name[:50]}' published free on Gumroad (GitHub unavailable)",
+                        "revenue_potential": 5.0,
+                        "urls": [_lm_gr.get("url", "")] if _lm_gr.get("url") else [],
+                    }
+                return {
+                    "success": False,
+                    "summary": "GITHUB_TOKEN required for full lead magnet — Gumroad fallback also failed",
+                }
 
             ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "AI unavailable"}
 
             wt = WebTools()
-            r  = await wt.search_web("high demand free resources templates checklists entrepreneurs 2025", num_results=5)
+            r = await wt.search_web(
+                "high demand free resources templates checklists entrepreneurs 2025", num_results=5
+            )
             topic = "AI Business Automation Toolkit"
             if r.get("success") and r.get("results"):
                 topic = r["results"][0].get("title", topic)[:80]
@@ -3767,12 +4491,12 @@ JSON:
             if not magnet:
                 return {"success": False, "summary": "AI failed to generate lead magnet"}
 
-            owner     = settings.GITHUB_USERNAME or "Geremypolanco"
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
             repo_name = "aria-free-resources"
-            slug      = magnet.get("slug", "free-toolkit").replace(" ", "-").lower()[:50]
-            title     = magnet.get("title", topic)[:60]
-            content   = magnet.get("content", "")
-            rtype     = magnet.get("resource_type", "toolkit")
+            slug = magnet.get("slug", "free-toolkit").replace(" ", "-").lower()[:50]
+            title = magnet.get("title", topic)[:60]
+            content = magnet.get("content", "")
+            rtype = magnet.get("resource_type", "toolkit")
 
             # Build the resource file
             resource_md = (
@@ -3791,53 +4515,78 @@ JSON:
             gh = AriaGitHubClient()
             existing = await gh._get(f"/repos/{owner}/{repo_name}")
             if "error" in existing:
-                create_r = await gh._post("/user/repos", {
-                    "name": repo_name,
-                    "description": "Free AI-powered resources, templates, and toolkits for entrepreneurs",
-                    "private": False, "auto_init": True, "has_issues": False,
-                })
+                create_r = await gh._post(
+                    "/user/repos",
+                    {
+                        "name": repo_name,
+                        "description": "Free AI-powered resources, templates, and toolkits for entrepreneurs",
+                        "private": False,
+                        "auto_init": True,
+                        "has_issues": False,
+                    },
+                )
                 if "error" in create_r:
                     return {"success": False, "summary": f"Could not create {repo_name}"}
                 await asyncio.sleep(2)
                 # Set topics
-                try:
-                    await gh._put(f"/repos/{owner}/{repo_name}/topics", {
-                        "names": ["free-resources", "templates", "productivity", "ai", "entrepreneur"]
-                    })
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    await gh._put(
+                        f"/repos/{owner}/{repo_name}/topics",
+                        {
+                            "names": [
+                                "free-resources",
+                                "templates",
+                                "productivity",
+                                "ai",
+                                "entrepreneur",
+                            ]
+                        },
+                    )
 
             # Push the resource
             filename = f"resources/{slug}.md"
-            encoded  = _b64.b64encode(resource_md.encode()).decode()
-            file_r   = await gh._put(f"/repos/{owner}/{repo_name}/contents/{filename}", {
-                "message": f"feat: add {rtype} — {title[:50]}",
-                "content": encoded,
-            })
+            encoded = _b64.b64encode(resource_md.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/{repo_name}/contents/{filename}",
+                {
+                    "message": f"feat: add {rtype} — {title[:50]}",
+                    "content": encoded,
+                },
+            )
 
             repo_url = f"https://github.com/{owner}/{repo_name}"
             if "error" not in file_r:
                 # Also publish announcement on blog
-                asyncio.create_task(self._exec_github_blog([{
-                    "title": f"Free {rtype.title()}: {title}",
-                    "slug": f"free-{slug}",
-                    "description": magnet.get("tagline", "")[:155],
-                    "tags": ["free", "resource", rtype, "ai", "productivity"],
-                    "content": (
-                        f"We just published a completely free {rtype} that you can download right now.\n\n"
-                        f"**{title}**\n\n{magnet.get('tagline', '')}\n\n"
-                        f"[Download free →]({repo_url}/blob/main/{filename})\n\n"
-                        f"{content[:400]}...\n\n"
-                        f"[Get the full {rtype} here →]({repo_url})"
-                    ),
-                }], cp=None))
+                asyncio.create_task(
+                    self._exec_github_blog(
+                        [
+                            {
+                                "title": f"Free {rtype.title()}: {title}",
+                                "slug": f"free-{slug}",
+                                "description": magnet.get("tagline", "")[:155],
+                                "tags": ["free", "resource", rtype, "ai", "productivity"],
+                                "content": (
+                                    f"We just published a completely free {rtype} that you can download right now.\n\n"
+                                    f"**{title}**\n\n{magnet.get('tagline', '')}\n\n"
+                                    f"[Download free →]({repo_url}/blob/main/{filename})\n\n"
+                                    f"{content[:400]}...\n\n"
+                                    f"[Get the full {rtype} here →]({repo_url})"
+                                ),
+                            }
+                        ],
+                        cp=None,
+                    )
+                )
                 _lm_ae = getattr(settings, "ARIA_EMAIL", None)
                 _lm_ap = getattr(settings, "ARIA_PASSWORD", None)
                 _lm_url = f"{repo_url}/blob/main/{filename}"
-                tw_lm = f"🎁 FREE {rtype}: {title[:80]}\n\n{magnet.get('tagline','')[:120]}\n\n→ {_lm_url}"[:280]
+                tw_lm = f"🎁 FREE {rtype}: {title[:80]}\n\n{magnet.get('tagline','')[:120]}\n\n→ {_lm_url}"[
+                    :280
+                ]
                 _lm_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _lm_pub = get_api_publisher()
                     _lm_tw_r = await _lm_pub.publish_to_twitter(tw_lm)
                     if _lm_tw_r and _lm_tw_r.success:
@@ -3847,6 +4596,7 @@ JSON:
                 if not _lm_tw_ok and _lm_ae and _lm_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _lm_plat = await get_platform_login()
                         _lm_tw_pg = await _lm_plat.twitter(_lm_ae, _lm_ap)
                         await _lm_plat.twitter_thread_post(_lm_tw_pg, [tw_lm])
@@ -3872,22 +4622,39 @@ JSON:
         """
         try:
             from apps.core.llm.llm_client import complete_json
+
             hf_token = getattr(settings, "HF_TOKEN", None)
-            owner    = getattr(settings, "GITHUB_USERNAME", None) or "Geremypolanco"
+            owner = getattr(settings, "GITHUB_USERNAME", None) or "Geremypolanco"
 
             # Generate demo concept
             niches = [
-                ("AI Content Generator", "content-generator", "Generate SEO-optimized blog posts with AI"),
-                ("Keyword Research Tool", "keyword-research", "Find profitable keywords for your niche"),
-                ("Product Description Writer", "product-writer", "Write compelling product descriptions instantly"),
-                ("Email Subject Line Optimizer", "email-optimizer", "A/B test email subject lines with AI scoring"),
+                (
+                    "AI Content Generator",
+                    "content-generator",
+                    "Generate SEO-optimized blog posts with AI",
+                ),
+                (
+                    "Keyword Research Tool",
+                    "keyword-research",
+                    "Find profitable keywords for your niche",
+                ),
+                (
+                    "Product Description Writer",
+                    "product-writer",
+                    "Write compelling product descriptions instantly",
+                ),
+                (
+                    "Email Subject Line Optimizer",
+                    "email-optimizer",
+                    "A/B test email subject lines with AI scoring",
+                ),
                 ("AI Summarizer", "ai-summarizer", "Summarize any article or document in seconds"),
                 ("Headline Generator", "headline-gen", "Generate 10 viral headlines for any topic"),
                 ("SEO Score Analyzer", "seo-analyzer", "Analyze and score your content for SEO"),
             ]
-            niche_idx   = self._niche_idx % len(niches)
+            niche_idx = self._niche_idx % len(niches)
             demo_name, demo_slug, demo_desc = niches[niche_idx]
-            space_name  = f"aria-{demo_slug}"
+            space_name = f"aria-{demo_slug}"
 
             # Generate the Gradio app code
             demo_data = await complete_json(
@@ -3910,9 +4677,9 @@ Return JSON:
                 model="fast",
             )
 
-            app_code    = demo_data.get("app_code", "")
-            tagline     = demo_data.get("tagline", demo_desc)
-            examples    = demo_data.get("examples", [])
+            app_code = demo_data.get("app_code", "")
+            tagline = demo_data.get("tagline", demo_desc)
+            examples = demo_data.get("examples", [])
 
             if not app_code:
                 # Default minimal app
@@ -3979,6 +4746,7 @@ Enter your text and see the magic happen.
             if hf_token:
                 try:
                     import httpx as _hf_http
+
                     hf_api = "https://huggingface.co/api"
                     headers = {"Authorization": f"Bearer {hf_token}"}
 
@@ -3986,7 +4754,12 @@ Enter your text and see the magic happen.
                         # Create space repo
                         cr = await _hf.post(
                             f"{hf_api}/repos/create",
-                            json={"type": "space", "name": space_name, "sdk": "gradio", "private": False},
+                            json={
+                                "type": "space",
+                                "name": space_name,
+                                "sdk": "gradio",
+                                "private": False,
+                            },
                             headers=headers,
                         )
                         repo_exists = cr.status_code in (200, 201, 409)  # 409 = already exists
@@ -4021,28 +4794,37 @@ Enter your text and see the magic happen.
 
             # GitHub fallback — create a demo repo with the Gradio code
             if not space_url and settings.GITHUB_TOKEN:
-                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
-                gh    = AriaGitHubClient()
-                repo  = f"aria-demo-{demo_slug}"
-                desc  = f"{demo_name} — AI demo by ARIA"
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
+                gh = AriaGitHubClient()
+                repo = f"aria-demo-{demo_slug}"
+                desc = f"{demo_name} — AI demo by ARIA"
 
                 # Create repo (POST /user/repos)
-                r_create = await gh._post("/user/repos", {
-                    "name": repo, "description": desc,
-                    "private": False, "auto_init": False,
-                })
+                r_create = await gh._post(
+                    "/user/repos",
+                    {
+                        "name": repo,
+                        "description": desc,
+                        "private": False,
+                        "auto_init": False,
+                    },
+                )
                 if "html_url" in r_create or r_create.get("status") == 422:
                     # 422 may mean repo already exists
                     files = {
-                        "app.py":           app_code,
+                        "app.py": app_code,
                         "requirements.txt": requirements_txt,
-                        "README.md":        readme_md,
+                        "README.md": readme_md,
                     }
                     pushed = []
                     for fname, fcontent in files.items():
                         fr = await gh.create_or_update_file(
-                            owner=owner, repo=repo, path=fname,
+                            owner=owner,
+                            repo=repo,
+                            path=fname,
                             content=_b64.b64encode(fcontent.encode()).decode(),
                             message=f"feat: {demo_name} AI demo",
                         )
@@ -4053,21 +4835,30 @@ Enter your text and see the magic happen.
 
             if space_url:
                 # Announce on blog
-                asyncio.create_task(self._exec_github_blog([{
-                    "title":       f"Free {demo_name}: Live AI Demo",
-                    "slug":        f"free-{demo_slug}-ai-demo",
-                    "description": tagline,
-                    "content":     f"# Free {demo_name}\n\n{tagline}\n\n{demo_desc}\n\n[**Try the live demo →**]({space_url})\n\nBuilt with ARIA AI autonomous agent.\n",
-                    "tags":        ["ai", "demo", "free-tool", "productivity"],
-                }]))
+                asyncio.create_task(
+                    self._exec_github_blog(
+                        [
+                            {
+                                "title": f"Free {demo_name}: Live AI Demo",
+                                "slug": f"free-{demo_slug}-ai-demo",
+                                "description": tagline,
+                                "content": f"# Free {demo_name}\n\n{tagline}\n\n{demo_desc}\n\n[**Try the live demo →**]({space_url})\n\nBuilt with ARIA AI autonomous agent.\n",
+                                "tags": ["ai", "demo", "free-tool", "productivity"],
+                            }
+                        ]
+                    )
+                )
 
                 # ── Twitter announcement ───────────────────────────────────────
                 _hf_ae = getattr(settings, "ARIA_EMAIL", None)
                 _hf_ap = getattr(settings, "ARIA_PASSWORD", None)
-                tw_hf = f"🤖 Just deployed a live AI demo: {demo_name}\n\n{tagline}\n\nTry it free → {space_url}"[:280]
+                tw_hf = f"🤖 Just deployed a live AI demo: {demo_name}\n\n{tagline}\n\nTry it free → {space_url}"[
+                    :280
+                ]
                 _hf_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _hf_pub = get_api_publisher()
                     _hf_tw_r = await _hf_pub.publish_to_twitter(tw_hf)
                     if _hf_tw_r and _hf_tw_r.success:
@@ -4077,6 +4868,7 @@ Enter your text and see the magic happen.
                 if not _hf_tw_ok and _hf_ae and _hf_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _hf_plat = await get_platform_login()
                         _hf_tw_pg = await _hf_plat.twitter(_hf_ae, _hf_ap)
                         await _hf_plat.twitter_thread_post(_hf_tw_pg, [tw_hf])
@@ -4111,21 +4903,50 @@ Enter your text and see the magic happen.
         if not settings.GITHUB_TOKEN:
             return {"success": False, "summary": "micro_saas: needs GITHUB_TOKEN"}
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
 
-            gh    = AriaGitHubClient()
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
             saas_concepts = [
-                ("AI Email Writer API", "email-writer-api", "REST API that writes personalized cold emails using AI"),
-                ("Content Calendar AI", "content-calendar-ai", "Auto-generate 30-day content calendar for any brand"),
-                ("SEO Audit Bot", "seo-audit-bot", "Automated SEO scoring and fix recommendations via API"),
-                ("AI Product Description Generator", "product-desc-gen", "Generate Shopify/Amazon product descriptions at scale"),
-                ("Competitor Monitor", "competitor-monitor", "Track competitor pricing, content, and social updates daily"),
-                ("AI Blog Factory", "blog-factory-api", "Generate SEO blog posts programmatically via REST API"),
-                ("Lead Qualifier AI", "lead-qualifier-ai", "Score and qualify leads using behavior + demographics"),
+                (
+                    "AI Email Writer API",
+                    "email-writer-api",
+                    "REST API that writes personalized cold emails using AI",
+                ),
+                (
+                    "Content Calendar AI",
+                    "content-calendar-ai",
+                    "Auto-generate 30-day content calendar for any brand",
+                ),
+                (
+                    "SEO Audit Bot",
+                    "seo-audit-bot",
+                    "Automated SEO scoring and fix recommendations via API",
+                ),
+                (
+                    "AI Product Description Generator",
+                    "product-desc-gen",
+                    "Generate Shopify/Amazon product descriptions at scale",
+                ),
+                (
+                    "Competitor Monitor",
+                    "competitor-monitor",
+                    "Track competitor pricing, content, and social updates daily",
+                ),
+                (
+                    "AI Blog Factory",
+                    "blog-factory-api",
+                    "Generate SEO blog posts programmatically via REST API",
+                ),
+                (
+                    "Lead Qualifier AI",
+                    "lead-qualifier-ai",
+                    "Score and qualify leads using behavior + demographics",
+                ),
             ]
 
             concept = saas_concepts[self._niche_idx % len(saas_concepts)]
@@ -4155,16 +4976,18 @@ Generate complete product documentation. Return JSON:
                 model="fast",
             )
 
-            tagline     = saas_data.get("tagline", desc)
-            features    = saas_data.get("features", [])
-            pricing     = saas_data.get("pricing_tiers", [])
+            tagline = saas_data.get("tagline", desc)
+            features = saas_data.get("features", [])
+            pricing = saas_data.get("pricing_tiers", [])
             pain_points = saas_data.get("pain_points", [])
-            demo_code   = saas_data.get("demo_code", "")
-            use_cases   = saas_data.get("use_cases", [])
-            target      = saas_data.get("target_customers", "")
+            demo_code = saas_data.get("demo_code", "")
+            use_cases = saas_data.get("use_cases", [])
+            target = saas_data.get("target_customers", "")
 
             # Build pricing table markdown
-            pricing_md = "| Plan | Price | Requests | Features |\n|------|-------|----------|----------|\n"
+            pricing_md = (
+                "| Plan | Price | Requests | Features |\n|------|-------|----------|----------|\n"
+            )
             for tier in pricing:
                 feats = ", ".join(tier.get("features", [])[:2])
                 pricing_md += f"| {tier.get('name','')} | ${tier.get('price_monthly',0)}/mo | {tier.get('limits','')} | {feats} |\n"
@@ -4272,23 +5095,30 @@ Generate output using AI.
 """
 
             repo_name = slug
-            r_create = await gh._post("/user/repos", {
-                "name": repo_name,
-                "description": f"{tagline} | {desc}",
-                "private": False, "auto_init": False,
-                "topics": ["ai", "saas", "api", "automation"],
-            })
+            r_create = await gh._post(
+                "/user/repos",
+                {
+                    "name": repo_name,
+                    "description": f"{tagline} | {desc}",
+                    "private": False,
+                    "auto_init": False,
+                    "topics": ["ai", "saas", "api", "automation"],
+                },
+            )
 
             if "html_url" in r_create or r_create.get("status") == 422:
                 files = {
-                    "README.md":  readme,
-                    "API.md":     api_md,
+                    "README.md": readme,
+                    "API.md": api_md,
                 }
                 for fname, content in files.items():
-                    await gh._put(f"/repos/{owner}/{repo_name}/contents/{fname}", {
-                        "message": f"feat: {name} micro-SaaS launch",
-                        "content": _b64.b64encode(content.encode()).decode(),
-                    })
+                    await gh._put(
+                        f"/repos/{owner}/{repo_name}/contents/{fname}",
+                        {
+                            "message": f"feat: {name} micro-SaaS launch",
+                            "content": _b64.b64encode(content.encode()).decode(),
+                        },
+                    )
 
                 repo_url = f"https://github.com/{owner}/{repo_name}"
                 logger.info("[IncomeLoop] Micro-SaaS published: %s", repo_url)
@@ -4301,9 +5131,15 @@ Generate output using AI.
                 try:
                     if settings.GUMROAD_TOKEN:
                         from apps.core.tools.gumroad_tools import GumroadTools
+
                         gt = GumroadTools()
                         starter_price = next(
-                            (t.get("price_monthly", 29) for t in pricing if t.get("name") == "Starter"), 29
+                            (
+                                t.get("price_monthly", 29)
+                                for t in pricing
+                                if t.get("name") == "Starter"
+                            ),
+                            29,
                         )
                         gr = await gt.create_product(
                             name=f"{name} — Starter Kit & API Docs",
@@ -4320,14 +5156,22 @@ Generate output using AI.
                 if not _ms_sold and _ms_ae and _ms_ap:
                     try:
                         starter_price = next(
-                            (t.get("price_monthly", 29) for t in pricing if t.get("name") == "Starter"), 29
+                            (
+                                t.get("price_monthly", 29)
+                                for t in pricing
+                                if t.get("name") == "Starter"
+                            ),
+                            29,
                         )
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gm_page = await _plat.gumroad(_ms_ae, _ms_ap)
                         _gm_url = await _plat.gumroad_create_product(
-                            _gm_page, f"{name} — Starter Kit"[:100],
-                            int(starter_price * 100), f"{tagline}\n\n{desc}"[:2000]
+                            _gm_page,
+                            f"{name} — Starter Kit"[:100],
+                            int(starter_price * 100),
+                            f"{tagline}\n\n{desc}"[:2000],
                         )
                         if _gm_url:
                             sale_url = _gm_url
@@ -4335,13 +5179,19 @@ Generate output using AI.
                         pass
 
                 # Announce on blog
-                asyncio.create_task(self._exec_github_blog([{
-                    "title": f"Introducing {name}: {tagline}",
-                    "slug": f"introducing-{slug}",
-                    "description": tagline,
-                    "content": f"# Introducing {name}\n\n{tagline}\n\n{desc}\n\n[View on GitHub →]({repo_url})\n\n## Pricing\n\n{pricing_md}",
-                    "tags": ["saas", "product", "ai", "launch"],
-                }]))
+                asyncio.create_task(
+                    self._exec_github_blog(
+                        [
+                            {
+                                "title": f"Introducing {name}: {tagline}",
+                                "slug": f"introducing-{slug}",
+                                "description": tagline,
+                                "content": f"# Introducing {name}\n\n{tagline}\n\n{desc}\n\n[View on GitHub →]({repo_url})\n\n## Pricing\n\n{pricing_md}",
+                                "tags": ["saas", "product", "ai", "launch"],
+                            }
+                        ]
+                    )
+                )
 
                 min_price = min(t.get("price_monthly", 0) for t in pricing) if pricing else 0
 
@@ -4355,6 +5205,7 @@ Generate output using AI.
                 _ms_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _ms_pub = get_api_publisher()
                     _ms_tw_r = await _ms_pub.publish_to_twitter(tw_ms)
                     if _ms_tw_r and _ms_tw_r.success:
@@ -4364,6 +5215,7 @@ Generate output using AI.
                 if not _ms_tw_ok and _ms_ae and _ms_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _ms_plat = await get_platform_login()
                         _ms_tw_pg = await _ms_plat.twitter(_ms_ae, _ms_ap)
                         await _ms_plat.twitter_thread_post(_ms_tw_pg, [tw_ms])
@@ -4396,12 +5248,12 @@ Generate output using AI.
         if not settings.GITHUB_TOKEN:
             return {"success": False, "summary": "affiliate_network: needs GITHUB_TOKEN"}
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            gh    = AriaGitHubClient()
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             cache = get_cache()
 
@@ -4409,7 +5261,7 @@ Generate output using AI.
             catalog_items: list = []
             if cache:
                 raw_items = await cache.lrange("aria:products:catalog", -20, -1)
-                for raw in (raw_items or []):
+                for raw in raw_items or []:
                     try:
                         item = json.loads(raw) if isinstance(raw, str) else raw
                         if item.get("urls"):
@@ -4421,13 +5273,20 @@ Generate output using AI.
             if catalog_items:
                 product_list_md = "## 🛒 Products Available for Promotion\n\n"
                 for item in catalog_items[-8:]:
-                    title   = (item.get("name") or item.get("title", ""))[:70]
-                    rev     = float(item.get("price_usd") or item.get("revenue") or item.get("price", 0))
-                    urls    = item.get("urls", [])
-                    link    = urls[0] if urls else ""
+                    title = (item.get("name") or item.get("title", ""))[:70]
+                    rev = float(
+                        item.get("price_usd") or item.get("revenue") or item.get("price", 0)
+                    )
+                    urls = item.get("urls", [])
+                    link = urls[0] if urls else ""
                     commission = round(rev * 0.30, 2)
-                    product_list_md += f"| [{title}]({link}) | ${rev:.0f} | ${commission:.2f}/sale |\n"
-                product_list_md = "| Product | Price | Your Commission |\n|---------|-------|-----------------|\n" + product_list_md
+                    product_list_md += (
+                        f"| [{title}]({link}) | ${rev:.0f} | ${commission:.2f}/sale |\n"
+                    )
+                product_list_md = (
+                    "| Product | Price | Your Commission |\n|---------|-------|-----------------|\n"
+                    + product_list_md
+                )
             else:
                 product_list_md = "*(Products will be listed here as they are created)*"
 
@@ -4484,20 +5343,27 @@ Open an issue or reach out at the portfolio: https://github.com/{owner}/aria-por
 
             # Add AFFILIATE.md to the portfolio repo too
             repos_to_update = ["aria-portfolio", "aria-ai"]
-            published_urls  = []
+            published_urls = []
 
             # Create dedicated affiliate program repo
             affiliate_repo = "aria-affiliate-program"
-            r_create = await gh._post("/user/repos", {
-                "name": affiliate_repo,
-                "description": "ARIA AI Affiliate Program — Earn 30% commissions promoting AI products",
-                "private": False, "auto_init": False,
-            })
+            r_create = await gh._post(
+                "/user/repos",
+                {
+                    "name": affiliate_repo,
+                    "description": "ARIA AI Affiliate Program — Earn 30% commissions promoting AI products",
+                    "private": False,
+                    "auto_init": False,
+                },
+            )
             if "html_url" in r_create or r_create.get("status") == 422:
-                await gh._put(f"/repos/{owner}/{affiliate_repo}/contents/README.md", {
-                    "message": "launch: ARIA affiliate program",
-                    "content": _b64.b64encode(affiliate_md.encode()).decode(),
-                })
+                await gh._put(
+                    f"/repos/{owner}/{affiliate_repo}/contents/README.md",
+                    {
+                        "message": "launch: ARIA affiliate program",
+                        "content": _b64.b64encode(affiliate_md.encode()).decode(),
+                    },
+                )
                 published_urls.append(f"https://github.com/{owner}/{affiliate_repo}")
 
             # Also put AFFILIATE.md in main aria-ai repo
@@ -4530,6 +5396,7 @@ Open an issue or reach out at the portfolio: https://github.com/{owner}/aria-por
                 _af_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _af_pub = get_api_publisher()
                     _af_tw_r = await _af_pub.publish_to_twitter(_af_tw)
                     if _af_tw_r and _af_tw_r.success:
@@ -4539,6 +5406,7 @@ Open an issue or reach out at the portfolio: https://github.com/{owner}/aria-por
                 if not _af_tw_ok and _af_ae and _af_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _af_plat = await get_platform_login()
                         _af_tw_pg = await _af_plat.twitter(_af_ae, _af_ap)
                         await _af_plat.twitter_thread_post(_af_tw_pg, [_af_tw])
@@ -4567,11 +5435,12 @@ Open an issue or reach out at the portfolio: https://github.com/{owner}/aria-por
         if not settings.GITHUB_TOKEN:
             return {"success": False, "summary": "course_builder: needs GITHUB_TOKEN"}
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
 
-            gh    = AriaGitHubClient()
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
             course_topics = [
@@ -4613,12 +5482,12 @@ Return JSON:
                 model="fast",
             )
 
-            subtitle   = course_data.get("subtitle", "")
-            promise    = course_data.get("promise", "")
-            audience   = course_data.get("target_audience", "")
-            modules    = course_data.get("modules", [])
-            bonuses    = course_data.get("bonuses", [])
-            faq        = course_data.get("faq", [])
+            subtitle = course_data.get("subtitle", "")
+            promise = course_data.get("promise", "")
+            audience = course_data.get("target_audience", "")
+            modules = course_data.get("modules", [])
+            bonuses = course_data.get("bonuses", [])
+            faq = course_data.get("faq", [])
 
             total_duration = sum(
                 int(m.get("duration", "0 min").split()[0]) for m in modules if m.get("duration")
@@ -4682,27 +5551,37 @@ Return JSON:
 """
 
             repo_name = slug
-            r_create = await gh._post("/user/repos", {
-                "name": repo_name,
-                "description": f"{subtitle} | {promise}",
-                "private": False, "auto_init": False,
-            })
+            r_create = await gh._post(
+                "/user/repos",
+                {
+                    "name": repo_name,
+                    "description": f"{subtitle} | {promise}",
+                    "private": False,
+                    "auto_init": False,
+                },
+            )
 
             if "html_url" in r_create or r_create.get("status") == 422:
-                await gh._put(f"/repos/{owner}/{repo_name}/contents/README.md", {
-                    "message": f"launch: {title} course",
-                    "content": _b64.b64encode(readme.encode()).decode(),
-                })
+                await gh._put(
+                    f"/repos/{owner}/{repo_name}/contents/README.md",
+                    {
+                        "message": f"launch: {title} course",
+                        "content": _b64.b64encode(readme.encode()).decode(),
+                    },
+                )
                 repo_url = f"https://github.com/{owner}/{repo_name}"
                 logger.info("[IncomeLoop] Course published: %s", repo_url)
 
                 # Try to sell on Gumroad/LemonSqueezy (API → browser fallback)
                 sale_url = repo_url
-                full_description = f"{subtitle}\n\n{promise}\n\nTarget audience: {audience}\n\n{modules_md}"
+                full_description = (
+                    f"{subtitle}\n\n{promise}\n\nTarget audience: {audience}\n\n{modules_md}"
+                )
                 _cb_sold = False
                 try:
                     if settings.GUMROAD_TOKEN:
                         from apps.core.tools.gumroad_tools import GumroadTools
+
                         gt = GumroadTools()
                         gr = await gt.create_product(
                             name=title,
@@ -4715,9 +5594,11 @@ Return JSON:
                             _cb_sold = True
                     elif getattr(settings, "LEMONSQUEEZY_API_KEY", None):
                         from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+
                         ls = LemonSqueezyTools()
                         lr = await ls.create_product(
-                            name=title, description=promise,
+                            name=title,
+                            description=promise,
                             price_cents=price * 100,
                         )
                         if lr.get("success") and lr.get("url"):
@@ -4731,6 +5612,7 @@ Return JSON:
                     if _cb_ae and _cb_ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _gm_page = await _plat.gumroad(_cb_ae, _cb_ap)
                             _gm_url = await _plat.gumroad_create_product(
@@ -4753,6 +5635,7 @@ Return JSON:
                 _cb_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     _cb_tw_r = await pub.publish_to_twitter(tw_course)
                     _cb_tw_ok = bool(_cb_tw_r and _cb_tw_r.success)
@@ -4761,6 +5644,7 @@ Return JSON:
                 if not _cb_tw_ok and _cb_ae2 and _cb_ap2:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_cb_ae2, _cb_ap2)
                         await _plat.twitter_thread_post(_tw_page, [tw_course])
@@ -4774,6 +5658,7 @@ Return JSON:
                 _cb_li_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     _cb_li_r = await pub.publish_to_linkedin(li_course)
                     _cb_li_ok = bool(_cb_li_r and _cb_li_r.success)
@@ -4782,6 +5667,7 @@ Return JSON:
                 if not _cb_li_ok and _cb_ae2 and _cb_ap2:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _li_page = await _plat.linkedin(_cb_ae2, _cb_ap2)
                         await _plat.linkedin_create_post(_li_page, li_course)
@@ -4811,18 +5697,31 @@ Return JSON:
         if not settings.GITHUB_TOKEN:
             return {"success": False, "summary": "gist_blitz: needs GITHUB_TOKEN"}
         try:
-            from apps.core.llm.llm_client import complete_json
             import httpx as _hx
+
+            from apps.core.llm.llm_client import complete_json
 
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             portfolio_url = f"https://github.com/{owner}/aria-portfolio"
 
             topics = [
-                ("python-productivity", "Python", "10 Python one-liners that will save you hours every week"),
-                ("ai-prompts-cheatsheet", "Markdown", "The ultimate AI prompts cheatsheet for developers (2025)"),
+                (
+                    "python-productivity",
+                    "Python",
+                    "10 Python one-liners that will save you hours every week",
+                ),
+                (
+                    "ai-prompts-cheatsheet",
+                    "Markdown",
+                    "The ultimate AI prompts cheatsheet for developers (2025)",
+                ),
                 ("bash-automation", "Shell", "20 Bash aliases every developer should have"),
                 ("async-patterns", "Python", "Async/await patterns every Python dev should know"),
-                ("git-shortcuts", "Shell", "Git commands that make you look like a senior developer"),
+                (
+                    "git-shortcuts",
+                    "Shell",
+                    "Git commands that make you look like a senior developer",
+                ),
             ]
             # Pick 2 topics randomly
             picks = random.sample(topics, min(2, len(topics)))
@@ -4850,15 +5749,15 @@ Return JSON:
 }}""",
                     model="fast",
                 )
-                code     = snippet_data.get("code", "")
+                code = snippet_data.get("code", "")
                 filename = snippet_data.get("filename", f"{slug}.txt")
-                desc     = snippet_data.get("description", topic)
+                desc = snippet_data.get("description", topic)
 
                 if not code:
                     continue
 
                 # Append CTA comment at the end
-                cta_sep  = "#" if lang in ("Python", "Shell") else "---"
+                cta_sep = "#" if lang in ("Python", "Shell") else "---"
                 cta_lang = "# " if lang != "Markdown" else ""
                 cta = (
                     f"\n\n{cta_sep}{cta_sep}{cta_sep}\n"
@@ -4895,6 +5794,7 @@ Return JSON:
                 _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     gist_links = "\n".join(published_gist_urls[:2])
                     tw_text = (
@@ -4912,6 +5812,7 @@ Return JSON:
                     if _ae and _ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _tw_page = await _plat.twitter(_ae, _ap)
                             await _plat.twitter_thread_post(_tw_page, [tw_text[:280]])
@@ -4939,9 +5840,11 @@ Return JSON:
         if not settings.GITHUB_TOKEN:
             return {"success": False, "summary": "sponsors_setup: needs GITHUB_TOKEN"}
         try:
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
-            gh    = AriaGitHubClient()
+
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
             # FUNDING.yml content for GitHub Sponsors
@@ -4984,7 +5887,10 @@ Return JSON:
                     "revenue_potential": 5.0,
                     "urls": [f"https://github.com/{owner}/{r}" for r in updated],
                 }
-            return {"success": False, "summary": "sponsors_setup: no repos updated (create repos first)"}
+            return {
+                "success": False,
+                "summary": "sponsors_setup: no repos updated (create repos first)",
+            }
 
         except Exception as exc:
             logger.error("[IncomeLoop] sponsors_setup: %s", exc)
@@ -5001,14 +5907,15 @@ Return JSON:
         if not settings.GITHUB_TOKEN:
             return {"success": False, "summary": "content_repurposer: needs GITHUB_TOKEN"}
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            cache    = get_cache()
-            gh       = AriaGitHubClient()
-            owner    = settings.GITHUB_USERNAME or "Geremypolanco"
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            cache = get_cache()
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
             # Get a recent blog post to repurpose
             raw_links = await cache.get("aria:blog:links") if cache else None
@@ -5024,7 +5931,9 @@ Return JSON:
             if cache:
                 raw_rep = await cache.get(repurposed_key)
                 if raw_rep:
-                    repurposed_set = set(json.loads(raw_rep) if isinstance(raw_rep, str) else raw_rep)
+                    repurposed_set = set(
+                        json.loads(raw_rep) if isinstance(raw_rep, str) else raw_rep
+                    )
 
             candidates = [l for l in existing_links if l.get("slug") not in repurposed_set]
             if not candidates:
@@ -5032,17 +5941,17 @@ Return JSON:
                 candidates = existing_links
 
             source = candidates[-1]  # most recent
-            title  = source.get("title", "")
-            slug   = source.get("slug", "")
-            url    = source.get("url", "")
+            title = source.get("title", "")
+            slug = source.get("slug", "")
+            url = source.get("url", "")
 
             # Read the source post
             file_data = await gh._get(f"/repos/{owner}/aria-insights/contents/posts/{slug}.md")
             source_content = ""
             if "content" in file_data:
-                source_content = _b64.b64decode(
-                    file_data["content"].replace("\n", "")
-                ).decode("utf-8", errors="replace")[:4000]
+                source_content = _b64.b64decode(file_data["content"].replace("\n", "")).decode(
+                    "utf-8", errors="replace"
+                )[:4000]
 
             # Generate all repurposed formats
             repurposed = await complete_json(
@@ -5063,8 +5972,8 @@ Return JSON:
                 model="fast",
             )
 
-            published_urls  = []
-            platforms_used  = []
+            published_urls = []
+            platforms_used = []
 
             # 1. Publish LinkedIn content to GitHub repo
             linkedin_content = repurposed.get("linkedin_article", "")
@@ -5074,10 +5983,15 @@ Return JSON:
                 li_md = f"# {title}\n\n*Source: {url}*\n\n---\n\n{linkedin_content}\n\n---\n*Published by ARIA AI*"
 
                 # Create repo if needed
-                await gh._post("/user/repos", {
-                    "name": li_repo, "description": "ARIA LinkedIn content — professional AI business insights",
-                    "private": False, "auto_init": False,
-                })
+                await gh._post(
+                    "/user/repos",
+                    {
+                        "name": li_repo,
+                        "description": "ARIA LinkedIn content — professional AI business insights",
+                        "private": False,
+                        "auto_init": False,
+                    },
+                )
                 li_sha = None
                 existing = await gh._get(f"/repos/{owner}/{li_repo}/contents/{li_fname}")
                 if "sha" in existing:
@@ -5101,6 +6015,7 @@ Return JSON:
                 _li_posted = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _li_pub = get_api_publisher()
                     _li_r = await _li_pub.publish_to_linkedin(linkedin_content[:1300])
                     _li_posted = bool(_li_r and _li_r.success)
@@ -5111,9 +6026,12 @@ Return JSON:
                 if not _li_posted and _li_ae and _li_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _li_page = await _plat.linkedin(_li_ae, _li_ap)
-                        _li_live_url = await _plat.linkedin_create_post(_li_page, linkedin_content[:3000])
+                        _li_live_url = await _plat.linkedin_create_post(
+                            _li_page, linkedin_content[:3000]
+                        )
                         if _li_live_url:
                             published_urls.append(_li_live_url)
                             _li_posted = True
@@ -5124,29 +6042,39 @@ Return JSON:
 
             # 2. Post Twitter thread via Zapier or to GitHub threads/
             thread_content = repurposed.get("twitter_thread", "")
-            hashtags       = " ".join(repurposed.get("hashtags", ["#ai"])[:3])
+            hashtags = " ".join(repurposed.get("hashtags", ["#ai"])[:3])
             if thread_content:
                 zapier_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None)
                 if zapier_url:
                     try:
                         import httpx as _hx
+
                         async with _hx.AsyncClient(timeout=10) as _zap:
                             tweets = thread_content.split("---")
-                            first_tweet = tweets[0].strip()[:280] if tweets else f"🧵 {title}\n\n{hashtags}"
-                            await _zap.post(zapier_url, json={
-                                "action": "tweet",
-                                "text": first_tweet + f"\n\n{hashtags}",
-                                "thread": [t.strip()[:280] for t in tweets[1:5]],
-                            })
+                            first_tweet = (
+                                tweets[0].strip()[:280] if tweets else f"🧵 {title}\n\n{hashtags}"
+                            )
+                            await _zap.post(
+                                zapier_url,
+                                json={
+                                    "action": "tweet",
+                                    "text": first_tweet + f"\n\n{hashtags}",
+                                    "thread": [t.strip()[:280] for t in tweets[1:5]],
+                                },
+                            )
                         platforms_used.append("Twitter/Zapier")
                     except Exception:
                         pass
 
                 # Always save thread to GitHub as fallback
-                thread_repo  = "aria-insights"
+                thread_repo = "aria-insights"
                 thread_fname = f"threads/{slug}-thread.md"
-                thread_md    = f"# 🧵 Thread: {title}\n\n*Source: {url}*\n\n---\n\n" + "\n\n---\n\n".join(
-                    f"**Tweet {i+1}:** {t.strip()}" for i, t in enumerate(thread_content.split("---")[:10])
+                thread_md = (
+                    f"# 🧵 Thread: {title}\n\n*Source: {url}*\n\n---\n\n"
+                    + "\n\n---\n\n".join(
+                        f"**Tweet {i+1}:** {t.strip()}"
+                        for i, t in enumerate(thread_content.split("---")[:10])
+                    )
                 )
                 t_sha = None
                 existing_t = await gh._get(f"/repos/{owner}/{thread_repo}/contents/{thread_fname}")
@@ -5160,7 +6088,9 @@ Return JSON:
                     tb["sha"] = t_sha
                 t_r = await gh._put(f"/repos/{owner}/{thread_repo}/contents/{thread_fname}", tb)
                 if "error" not in t_r:
-                    published_urls.append(f"https://github.com/{owner}/{thread_repo}/blob/main/{thread_fname}")
+                    published_urls.append(
+                        f"https://github.com/{owner}/{thread_repo}/blob/main/{thread_fname}"
+                    )
                     if "Twitter/Zapier" not in platforms_used:
                         platforms_used.append("Twitter/GitHub")
 
@@ -5168,18 +6098,24 @@ Return JSON:
                 if "Twitter/Zapier" not in platforms_used:
                     _tw_ae = getattr(settings, "ARIA_EMAIL", None)
                     _tw_ap = getattr(settings, "ARIA_PASSWORD", None)
-                    _tw_tweets = [t.strip()[:280] for t in thread_content.split("---") if t.strip()][:10]
+                    _tw_tweets = [
+                        t.strip()[:280] for t in thread_content.split("---") if t.strip()
+                    ][:10]
                     _tw_done = False
                     try:
                         from apps.distribution.publishers.api_publisher import get_api_publisher
+
                         _tw_pub = get_api_publisher()
-                        _tw_r = await _tw_pub.publish_to_twitter(_tw_tweets[0] if _tw_tweets else title[:280])
+                        _tw_r = await _tw_pub.publish_to_twitter(
+                            _tw_tweets[0] if _tw_tweets else title[:280]
+                        )
                         _tw_done = bool(_tw_r and _tw_r.success)
                     except Exception:
                         pass
                     if not _tw_done and _tw_ae and _tw_ap and _tw_tweets:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _tw_page = await _plat.twitter(_tw_ae, _tw_ap)
                             _tw_url = await _plat.twitter_thread_post(_tw_page, _tw_tweets)
@@ -5193,24 +6129,34 @@ Return JSON:
             email_snippet = repurposed.get("email_snippet", "")
             if email_snippet:
                 from datetime import datetime as _dt
-                month_key  = _dt.now().strftime("%Y-%m")
-                nl_repo    = "aria-newsletter"
-                nl_fname   = f"editions/{month_key}.md"
 
-                await gh._post("/user/repos", {
-                    "name": nl_repo, "description": "ARIA monthly newsletter editions",
-                    "private": False, "auto_init": False,
-                })
+                month_key = _dt.now().strftime("%Y-%m")
+                nl_repo = "aria-newsletter"
+                nl_fname = f"editions/{month_key}.md"
+
+                await gh._post(
+                    "/user/repos",
+                    {
+                        "name": nl_repo,
+                        "description": "ARIA monthly newsletter editions",
+                        "private": False,
+                        "auto_init": False,
+                    },
+                )
                 existing_nl = await gh._get(f"/repos/{owner}/{nl_repo}/contents/{nl_fname}")
-                current_nl  = ""
-                nl_sha      = None
+                current_nl = ""
+                nl_sha = None
                 if "content" in existing_nl:
-                    current_nl = _b64.b64decode(existing_nl["content"].replace("\n", "")).decode("utf-8", errors="replace")
-                    nl_sha     = existing_nl.get("sha")
+                    current_nl = _b64.b64decode(existing_nl["content"].replace("\n", "")).decode(
+                        "utf-8", errors="replace"
+                    )
+                    nl_sha = existing_nl.get("sha")
                 else:
                     current_nl = f"# ARIA Newsletter — {month_key}\n\n*AI business insights, products, and tools*\n\n"
 
-                current_nl += f"\n\n## 📝 {title}\n\n{email_snippet}\n\n[Read full article →]({url})\n"
+                current_nl += (
+                    f"\n\n## 📝 {title}\n\n{email_snippet}\n\n[Read full article →]({url})\n"
+                )
                 nl_body: dict = {
                     "message": f"newsletter: add '{title[:50]}'",
                     "content": _b64.b64encode(current_nl.encode()).decode(),
@@ -5219,16 +6165,22 @@ Return JSON:
                     nl_body["sha"] = nl_sha
                 nl_r = await gh._put(f"/repos/{owner}/{nl_repo}/contents/{nl_fname}", nl_body)
                 if "error" not in nl_r:
-                    published_urls.append(f"https://github.com/{owner}/{nl_repo}/blob/main/{nl_fname}")
+                    published_urls.append(
+                        f"https://github.com/{owner}/{nl_repo}/blob/main/{nl_fname}"
+                    )
                     platforms_used.append("Newsletter/GitHub")
 
             if published_urls:
                 # Mark as repurposed
                 repurposed_set.add(slug)
                 if cache:
-                    await cache.set(repurposed_key, json.dumps(list(repurposed_set)), ttl_seconds=86400 * 60)
+                    await cache.set(
+                        repurposed_key, json.dumps(list(repurposed_set)), ttl_seconds=86400 * 60
+                    )
 
-                logger.info("[IncomeLoop] Repurposed '%s' → %s", title[:50], ", ".join(platforms_used))
+                logger.info(
+                    "[IncomeLoop] Repurposed '%s' → %s", title[:50], ", ".join(platforms_used)
+                )
                 return {
                     "success": True,
                     "summary": f"Repurposed '{title[:50]}' → {', '.join(platforms_used)}",
@@ -5253,14 +6205,15 @@ Return JSON:
         if not settings.GITHUB_TOKEN:
             return {"success": False, "summary": "seo_optimizer: needs GITHUB_TOKEN"}
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            cache    = get_cache()
-            gh       = AriaGitHubClient()
-            owner    = settings.GITHUB_USERNAME or "Geremypolanco"
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            cache = get_cache()
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
             blog_repo = "aria-insights"
 
             # Get existing articles from Redis
@@ -5268,7 +6221,10 @@ Return JSON:
             existing_links: list = json.loads(raw_links) if raw_links else []
 
             if not existing_links:
-                return {"success": False, "summary": "seo_optimizer: no existing articles to optimize"}
+                return {
+                    "success": False,
+                    "summary": "seo_optimizer: no existing articles to optimize",
+                }
 
             # Pick an article to optimize (oldest that hasn't been optimized recently)
             opt_set_key = "aria:income:seo_optimized"
@@ -5276,7 +6232,9 @@ Return JSON:
             if cache:
                 raw_opt = await cache.get(opt_set_key)
                 if raw_opt:
-                    optimized_slugs = set(json.loads(raw_opt) if isinstance(raw_opt, str) else raw_opt)
+                    optimized_slugs = set(
+                        json.loads(raw_opt) if isinstance(raw_opt, str) else raw_opt
+                    )
 
             candidates = [l for l in existing_links if l.get("slug") not in optimized_slugs]
             if not candidates:
@@ -5287,19 +6245,19 @@ Return JSON:
             target = candidates[0]
             target_slug = target.get("slug", "")
             target_title = target.get("title", "")
-            target_path  = f"posts/{target_slug}.md"
+            target_path = f"posts/{target_slug}.md"
 
             # Read the current file
             file_data = await gh._get(f"/repos/{owner}/{blog_repo}/contents/{target_path}")
             if "error" in file_data or "content" not in file_data:
                 return {"success": False, "summary": f"seo_optimizer: could not read {target_path}"}
 
-            current_content = _b64.b64decode(
-                file_data["content"].replace("\n", "")
-            ).decode("utf-8", errors="replace")
+            current_content = _b64.b64decode(file_data["content"].replace("\n", "")).decode(
+                "utf-8", errors="replace"
+            )
 
             current_sha = file_data.get("sha", "")
-            word_count  = len(current_content.split())
+            word_count = len(current_content.split())
 
             # Generate improved version
             improved = await complete_json(
@@ -5327,12 +6285,15 @@ Return JSON:
                 model="fast",
             )
 
-            new_content  = improved.get("improved_content", "")
-            seo_score    = improved.get("seo_score_estimate", 0)
+            new_content = improved.get("improved_content", "")
+            seo_score = improved.get("seo_score_estimate", 0)
             new_word_count = improved.get("word_count", 0)
 
             if not new_content or len(new_content) < len(current_content) * 0.8:
-                return {"success": False, "summary": "seo_optimizer: LLM returned degraded content — skipping"}
+                return {
+                    "success": False,
+                    "summary": "seo_optimizer: LLM returned degraded content — skipping",
+                }
 
             # Push updated file
             update_r = await gh._put(
@@ -5348,10 +6309,16 @@ Return JSON:
                 # Mark as optimized
                 optimized_slugs.add(target_slug)
                 if cache:
-                    await cache.set(opt_set_key, json.dumps(list(optimized_slugs)), ttl_seconds=86400 * 30)
+                    await cache.set(
+                        opt_set_key, json.dumps(list(optimized_slugs)), ttl_seconds=86400 * 30
+                    )
 
-                logger.info("[IncomeLoop] SEO optimized: '%s' → %d words, SEO %d%%",
-                            target_title[:50], new_word_count, seo_score)
+                logger.info(
+                    "[IncomeLoop] SEO optimized: '%s' → %d words, SEO %d%%",
+                    target_title[:50],
+                    new_word_count,
+                    seo_score,
+                )
                 return {
                     "success": True,
                     "summary": f"SEO optimized: '{target_title[:50]}' ({word_count}→{new_word_count} words, SEO {seo_score}%)",
@@ -5371,7 +6338,7 @@ Return JSON:
         Falls back to GitHub Gist for public visibility when Zapier isn't configured.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.web_tools import WebTools
             from apps.core.tools.zapier_connector import ZapierConnector
 
@@ -5380,7 +6347,9 @@ Return JSON:
                 return {"success": False, "summary": "AI unavailable"}
 
             wt = WebTools()
-            r  = await wt.search_web("viral twitter thread topics trending AI business 2025", num_results=5)
+            r = await wt.search_web(
+                "viral twitter thread topics trending AI business 2025", num_results=5
+            )
             topic = "AI is changing everything — here's what nobody tells you"
             if r.get("success") and r.get("results"):
                 topic = r["results"][0].get("title", topic)[:100]
@@ -5467,25 +6436,27 @@ JSON:
                     },
                 ]
                 import hashlib as _hash3
+
                 _t_idx = int(_hash3.md5(topic.encode()).hexdigest(), 16) % len(_thread_fallbacks)
                 thread = _thread_fallbacks[_t_idx]
-                logger.info("[IncomeLoop] viral_thread: using fallback thread #%d (AI unavailable)", _t_idx)
+                logger.info(
+                    "[IncomeLoop] viral_thread: using fallback thread #%d (AI unavailable)", _t_idx
+                )
 
-            tweets   = thread.get("tweets", [])
-            hook     = tweets[0][:280] if tweets else ""
+            tweets = thread.get("tweets", [])
+            hook = tweets[0][:280] if tweets else ""
             full_txt = "\n\n".join(f"[{i+1}] {t}" for i, t in enumerate(tweets))
 
             # Primary: post thread directly via Twitter API
-            api_ok = False
             api_urls: list[str] = []
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tweet_texts = [t[:280] for t in tweets if t]
                 results = await pub.publish_thread_to_twitter(tweet_texts)
                 successful = [r for r in results if r.success]
                 if successful:
-                    api_ok = True
                     api_urls = [r.url for r in successful if r.url]
                     return {
                         "success": True,
@@ -5500,15 +6471,18 @@ JSON:
                 pass
 
             # Secondary: Try Zapier
-            zc       = ZapierConnector()
+            zc = ZapierConnector()
             zapier_ok = False
             try:
-                zr = await zc.dispatch_event("VIRAL_THREAD", {
-                    "topic":       thread.get("topic", topic),
-                    "hook":        hook,
-                    "full_thread": full_txt,
-                    "tweet_count": len(tweets),
-                })
+                zr = await zc.dispatch_event(
+                    "VIRAL_THREAD",
+                    {
+                        "topic": thread.get("topic", topic),
+                        "hook": hook,
+                        "full_thread": full_txt,
+                        "tweet_count": len(tweets),
+                    },
+                )
                 zapier_ok = bool(zr and zr.get("success"))
             except Exception:
                 pass
@@ -5520,6 +6494,7 @@ JSON:
                 if _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         tweet_list = [t[:280] for t in tweets if t]
@@ -5537,16 +6512,19 @@ JSON:
             # Fallback: publish as GitHub Gist (public, indexed by Google)
             if not zapier_ok and settings.GITHUB_TOKEN:
                 try:
-                    from apps.core.tools.github_client import AriaGitHubClient
                     import base64 as _b64
+
+                    from apps.core.tools.github_client import AriaGitHubClient
+
                     gh = AriaGitHubClient()
                     owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                    repo  = "aria-insights"
-                    from datetime import datetime, timezone
-                    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    slug  = thread.get("topic", "viral-thread")[:40].lower().replace(" ", "-")
+                    repo = "aria-insights"
+                    from datetime import datetime
+
+                    today = datetime.now(UTC).strftime("%Y-%m-%d")
+                    slug = thread.get("topic", "viral-thread")[:40].lower().replace(" ", "-")
                     filename = f"threads/{today}-{slug}.md"
-                    content  = (
+                    content = (
                         f"# Thread: {thread.get('topic', topic)}\n\n"
                         f"*Optimized for Twitter/X — {len(tweets)} tweets*\n\n"
                         + "\n\n---\n\n".join(
@@ -5555,15 +6533,18 @@ JSON:
                         + f"\n\n---\n\n*Thread by [ARIA AI](https://github.com/{owner}/aria-portfolio)*"
                     )
                     encoded = _b64.b64encode(content.encode()).decode()
-                    file_r  = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
-                        "message": f"thread: {thread.get('topic', topic)[:60]}",
-                        "content": encoded,
-                    })
+                    file_r = await gh._put(
+                        f"/repos/{owner}/{repo}/contents/{filename}",
+                        {
+                            "message": f"thread: {thread.get('topic', topic)[:60]}",
+                            "content": encoded,
+                        },
+                    )
                     if "error" not in file_r:
                         url = f"https://github.com/{owner}/{repo}/blob/main/{filename}"
                         return {
                             "success": True,
-                            "summary": f"Viral thread published to GitHub (add ZAPIER_WEBHOOK_URL to auto-post to Twitter)",
+                            "summary": "Viral thread published to GitHub (add ZAPIER_WEBHOOK_URL to auto-post to Twitter)",
                             "revenue_potential": 1.5,
                             "urls": [url],
                         }
@@ -5577,7 +6558,10 @@ JSON:
                     "revenue_potential": 5.0,
                     "urls": [],
                 }
-            return {"success": False, "summary": "Viral thread: add ZAPIER_WEBHOOK_URL or GITHUB_TOKEN"}
+            return {
+                "success": False,
+                "summary": "Viral thread: add ZAPIER_WEBHOOK_URL or GITHUB_TOKEN",
+            }
 
         except Exception as exc:
             logger.error("[IncomeLoop] viral_thread: %s", exc)
@@ -5590,13 +6574,14 @@ JSON:
         Publishes bundle page on GitHub + announces on blog.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            ai    = get_ai_client()
-            gh    = AriaGitHubClient()
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            ai = get_ai_client()
+            gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
@@ -5607,7 +6592,7 @@ JSON:
             existing_products = []
             if cache:
                 raw_items = await cache.lrange("aria:products:catalog", -30, -1)
-                for raw in (raw_items or []):
+                for raw in raw_items or []:
                     try:
                         item = json.loads(raw) if isinstance(raw, str) else raw
                         if item.get("revenue", 0) > 0 and item.get("urls"):
@@ -5616,10 +6601,14 @@ JSON:
                         pass
 
             # AI generates bundle concept (works even if no catalog yet)
-            catalog_summary = "\n".join(
-                f"- {p.get('title','')[:80]} (${p.get('revenue',0):.0f}, {p.get('strategy','')})"
-                for p in existing_products[-6:]
-            ) if existing_products else "No products yet — generate a hypothetical bundle for a trending niche"
+            catalog_summary = (
+                "\n".join(
+                    f"- {p.get('title','')[:80]} (${p.get('revenue',0):.0f}, {p.get('strategy','')})"
+                    for p in existing_products[-6:]
+                )
+                if existing_products
+                else "No products yet — generate a hypothetical bundle for a trending niche"
+            )
 
             bundle_data = await ai.complete_json(
                 system="You are a digital product bundling expert. Create irresistible value bundles. Output JSON only.",
@@ -5662,22 +6651,24 @@ JSON:
                 return {"success": False, "summary": "product_bundle: AI generation failed"}
 
             bundle_name = bundle_data.get("bundle_name", "Ultimate AI Toolkit Bundle")
-            slug        = bundle_data.get("slug", "ultimate-bundle")
-            price       = bundle_data.get("bundle_price", 47)
-            discount    = bundle_data.get("discount_pct", 50)
-            total_val   = bundle_data.get("total_value", 100)
-            desc_md     = bundle_data.get("description_md", "")
-            items       = bundle_data.get("included_items", [])
+            slug = bundle_data.get("slug", "ultimate-bundle")
+            price = bundle_data.get("bundle_price", 47)
+            discount = bundle_data.get("discount_pct", 50)
+            total_val = bundle_data.get("total_value", 100)
+            desc_md = bundle_data.get("description_md", "")
+            items = bundle_data.get("included_items", [])
 
             if not desc_md:
                 return {"success": False, "summary": "product_bundle: empty description"}
 
             # Build full bundle page
-            from datetime import datetime, timezone
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            from datetime import datetime
+
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             portfolio_url = f"https://github.com/{owner}/aria-portfolio"
 
-            full_page = f"""# {bundle_name}
+            full_page = (
+                f"""# {bundle_name}
 
 > {bundle_data.get('tagline', '')}
 
@@ -5691,10 +6682,11 @@ JSON:
 
 | Product | Individual Value |
 |---------|-----------------|
-""" + "\n".join(
-    f"| {item.get('title', '')} | ${item.get('value', 0)} |"
-    for item in items
-) + f"""
+"""
+                + "\n".join(
+                    f"| {item.get('title', '')} | ${item.get('value', 0)} |" for item in items
+                )
+                + f"""
 
 **TOTAL VALUE: ${total_val}**
 **YOUR PRICE: ${price}** (Save {discount}%!)
@@ -5703,28 +6695,37 @@ JSON:
 
 *Bundle curated by [ARIA AI]({portfolio_url}) | {today}*
 """
+            )
 
             urls_created = []
 
             # Publish to GitHub aria-insights/bundles/
             if settings.GITHUB_TOKEN:
-                repo     = "aria-insights"
+                repo = "aria-insights"
                 filename = f"bundles/{today}-{slug}.md"
-                encoded  = _b64.b64encode(full_page.encode()).decode()
-                file_r   = await gh._put(f"/repos/{owner}/{repo}/contents/{filename}", {
-                    "message": f"bundle: {bundle_name[:60]}",
-                    "content": encoded,
-                })
+                encoded = _b64.b64encode(full_page.encode()).decode()
+                file_r = await gh._put(
+                    f"/repos/{owner}/{repo}/contents/{filename}",
+                    {
+                        "message": f"bundle: {bundle_name[:60]}",
+                        "content": encoded,
+                    },
+                )
                 if "error" not in file_r:
                     url = f"https://github.com/{owner}/{repo}/blob/main/{filename}"
                     urls_created.append(url)
 
             # Try Gumroad API
-            bundle_desc = (bundle_data.get("tagline", "") + f"\n\nIncludes: {', '.join(i.get('title','') for i in items[:3])}\n\n" + desc_md[:1500])
+            bundle_desc = (
+                bundle_data.get("tagline", "")
+                + f"\n\nIncludes: {', '.join(i.get('title','') for i in items[:3])}\n\n"
+                + desc_md[:1500]
+            )
             _pb_gm_url = ""
             if settings.GUMROAD_TOKEN:
                 try:
                     from apps.core.tools.gumroad_tools import GumroadTools
+
                     gr = GumroadTools()
                     gr_result = await gr.create_product(
                         name=bundle_name,
@@ -5744,6 +6745,7 @@ JSON:
                 if _pb_ae and _pb_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gm_pg = await _plat.gumroad(_pb_ae, _pb_ap)
                         _gm_url = await _plat.gumroad_create_product(
@@ -5763,9 +6765,14 @@ JSON:
                 existing_slugs_raw = await cache.get(bundle_key)
                 existing_slugs = json.loads(existing_slugs_raw) if existing_slugs_raw else []
                 if slug in existing_slugs:
-                    return {"success": False, "summary": f"product_bundle: bundle '{slug}' already published"}
+                    return {
+                        "success": False,
+                        "summary": f"product_bundle: bundle '{slug}' already published",
+                    }
                 existing_slugs.append(slug)
-                await cache.set(bundle_key, json.dumps(existing_slugs[-100:]), ttl_seconds=86400 * 90)
+                await cache.set(
+                    bundle_key, json.dumps(existing_slugs[-100:]), ttl_seconds=86400 * 90
+                )
 
             # Announce on Twitter + LinkedIn
             buy_url = urls_created[0]
@@ -5778,17 +6785,21 @@ JSON:
             )[:280]
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _pub = get_api_publisher()
                 _tw_r = await _pub.publish_to_twitter(tw_text)
                 if not (_tw_r and _tw_r.success) and _pb_ae2 and _pb_ap2:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat2 = await get_platform_login()
                     _tw_pg = await _plat2.twitter(_pb_ae2, _pb_ap2)
                     await _plat2.twitter_thread_post(_tw_pg, [tw_text])
             except Exception:
                 pass
 
-            logger.info("[IncomeLoop] Bundle published: %s ($%s, %s%% off)", bundle_name, price, discount)
+            logger.info(
+                "[IncomeLoop] Bundle published: %s ($%s, %s%% off)", bundle_name, price, discount
+            )
             return {
                 "success": True,
                 "summary": f"Bundle '{bundle_name}' — ${price} (save {discount}%) | {len(items)} products included",
@@ -5808,13 +6819,14 @@ JSON:
         Converts cold traffic into warm leads before the product exists.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            ai    = get_ai_client()
-            gh    = AriaGitHubClient()
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            ai = get_ai_client()
+            gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
@@ -5862,21 +6874,25 @@ JSON:
                 return {"success": False, "summary": "waitlist_builder: AI generation failed"}
 
             product_name = waitlist_data.get("product_name", "Upcoming AI Tool")
-            slug         = waitlist_data.get("slug", "upcoming-product")
-            tagline      = waitlist_data.get("tagline", "")
-            early_bird   = waitlist_data.get("early_bird_offer", "50% early bird discount")
-            landing_md   = waitlist_data.get("landing_page_md", "")
+            slug = waitlist_data.get("slug", "upcoming-product")
+            tagline = waitlist_data.get("tagline", "")
+            early_bird = waitlist_data.get("early_bird_offer", "50% early bird discount")
+            landing_md = waitlist_data.get("landing_page_md", "")
 
             if not landing_md:
                 return {"success": False, "summary": "waitlist_builder: empty landing page"}
 
-            from datetime import datetime, timezone
-            today    = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            topic    = waitlist_data.get("topic_tag", slug)
+            from datetime import datetime
+
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            topic = waitlist_data.get("topic_tag", slug)
 
             # Check deduplication
             if topic in existing_topics:
-                return {"success": False, "summary": f"waitlist_builder: topic '{topic}' already has a waitlist"}
+                return {
+                    "success": False,
+                    "summary": f"waitlist_builder: topic '{topic}' already has a waitlist",
+                }
 
             # Build the full page with signup instructions
             portfolio_url = f"https://github.com/{owner}/aria-portfolio"
@@ -5908,28 +6924,32 @@ JSON:
             # Ensure aria-waitlists repo exists
             existing = await gh._get(f"/repos/{owner}/{waitlist_repo}")
             if "error" in existing:
-                create_r = await gh._post("/user/repos", {
-                    "name": waitlist_repo,
-                    "description": "Product waitlists — join early to get exclusive discounts",
-                    "private": False,
-                    "auto_init": True,
-                    "has_issues": True,
-                })
+                create_r = await gh._post(
+                    "/user/repos",
+                    {
+                        "name": waitlist_repo,
+                        "description": "Product waitlists — join early to get exclusive discounts",
+                        "private": False,
+                        "auto_init": True,
+                        "has_issues": True,
+                    },
+                )
                 if "error" not in create_r:
                     await asyncio.sleep(2)
                     # Enable issues (for waitlist signups via GitHub Issues)
-                    try:
+                    with contextlib.suppress(Exception):
                         await gh._patch(f"/repos/{owner}/{waitlist_repo}", {"has_issues": True})
-                    except Exception:
-                        pass
 
             # Publish landing page
             filename = f"waitlists/{today}-{slug}.md"
-            encoded  = _b64.b64encode(full_page.encode()).decode()
-            file_r   = await gh._put(f"/repos/{owner}/{waitlist_repo}/contents/{filename}", {
-                "message": f"waitlist: {product_name[:60]}",
-                "content": encoded,
-            })
+            encoded = _b64.b64encode(full_page.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/{waitlist_repo}/contents/{filename}",
+                {
+                    "message": f"waitlist: {product_name[:60]}",
+                    "content": encoded,
+                },
+            )
             if "error" not in file_r:
                 url = f"https://github.com/{owner}/{waitlist_repo}/blob/main/{filename}"
                 urls_created.append(url)
@@ -5949,11 +6969,14 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
 *[Join the waitlist →]({urls_created[0] if urls_created else '#'})*
 """
             teaser_file = f"coming-soon/{today}-{slug}-teaser.md"
-            teaser_enc  = _b64.b64encode(teaser.encode()).decode()
-            await gh._put(f"/repos/{owner}/aria-insights/contents/{teaser_file}", {
-                "message": f"teaser: {product_name[:60]} waitlist",
-                "content": teaser_enc,
-            })
+            teaser_enc = _b64.b64encode(teaser.encode()).decode()
+            await gh._put(
+                f"/repos/{owner}/aria-insights/contents/{teaser_file}",
+                {
+                    "message": f"teaser: {product_name[:60]} waitlist",
+                    "content": teaser_enc,
+                },
+            )
             if urls_created:
                 teaser_url = f"https://github.com/{owner}/aria-insights/blob/main/{teaser_file}"
                 urls_created.append(teaser_url)
@@ -5964,7 +6987,11 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
             # Track topic
             if cache:
                 existing_topics.append(topic)
-                await cache.set("aria:income:waitlist_topics", json.dumps(existing_topics[-50:]), ttl_seconds=86400 * 90)
+                await cache.set(
+                    "aria:income:waitlist_topics",
+                    json.dumps(existing_topics[-50:]),
+                    ttl_seconds=86400 * 90,
+                )
 
                 # Store waitlist info for future launch pipeline
                 waitlist_entry = {
@@ -5986,6 +7013,7 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tw_text = (
                     f"🚀 COMING SOON: {product_name}\n\n"
@@ -6004,6 +7032,7 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
             if not _tw_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_ae, _ap)
                     if await _plat.twitter_thread_post(_tw_page, [tw_text[:280]]):
@@ -6014,6 +7043,7 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
             _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 li_text = (
                     f"🚀 Building something new — {product_name}\n\n"
@@ -6033,6 +7063,7 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
             if not _li_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _li_page = await _plat.linkedin(_ae, _ap)
                     if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
@@ -6063,13 +7094,14 @@ We're building something new. **[Join the waitlist]({urls_created[0] if urls_cre
         Converts browsers into community members who become buyers.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            ai    = get_ai_client()
-            gh    = AriaGitHubClient()
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            ai = get_ai_client()
+            gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
@@ -6126,12 +7158,12 @@ JSON:
                 return {"success": False, "summary": "challenge_campaign: AI generation failed"}
 
             challenge_name = challenge_data.get("challenge_name", "7-Day Challenge")
-            slug           = challenge_data.get("slug", "7-day-challenge")
-            topic          = challenge_data.get("topic", slug)
-            days           = challenge_data.get("days", [])
+            slug = challenge_data.get("slug", "7-day-challenge")
+            topic = challenge_data.get("topic", slug)
+            days = challenge_data.get("days", [])
             upsell_product = challenge_data.get("upsell_product", "Full Course")
-            upsell_price   = challenge_data.get("upsell_price", 47)
-            landing_md     = challenge_data.get("landing_page_md", "")
+            upsell_price = challenge_data.get("upsell_price", 47)
+            landing_md = challenge_data.get("landing_page_md", "")
 
             if topic in existing_challenges:
                 return {"success": False, "summary": f"challenge_campaign: '{topic}' already done"}
@@ -6139,14 +7171,16 @@ JSON:
             if not days:
                 return {"success": False, "summary": "challenge_campaign: no days generated"}
 
-            from datetime import datetime, timezone
-            today    = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            repo     = "aria-insights"
+            from datetime import datetime
+
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            repo = "aria-insights"
             urls_created = []
 
             # Publish landing page
             portfolio_url = f"https://github.com/{owner}/aria-portfolio"
-            full_landing  = f"""# {challenge_name}
+            full_landing = (
+                f"""# {challenge_name}
 
 > {challenge_data.get('tagline', '')}
 
@@ -6160,10 +7194,12 @@ JSON:
 
 | Day | Title | Task |
 |-----|-------|------|
-""" + "\n".join(
-    f"| Day {d.get('day',i+1)} | {d.get('title','')} | {d.get('task','')[:80]} |"
-    for i, d in enumerate(days[:7])
-) + f"""
+"""
+                + "\n".join(
+                    f"| Day {d.get('day',i+1)} | {d.get('title','')} | {d.get('task','')[:80]} |"
+                    for i, d in enumerate(days[:7])
+                )
+                + f"""
 
 ---
 
@@ -6181,13 +7217,17 @@ Challenge completers get **50% off** [{upsell_product}](https://github.com/{owne
 
 *Challenge by [ARIA AI]({portfolio_url}) | Started {today}*
 """
+            )
 
             landing_filename = f"challenges/{today}-{slug}-landing.md"
-            encoded          = _b64.b64encode(full_landing.encode()).decode()
-            file_r           = await gh._put(f"/repos/{owner}/{repo}/contents/{landing_filename}", {
-                "message": f"challenge: {challenge_name[:60]}",
-                "content": encoded,
-            })
+            encoded = _b64.b64encode(full_landing.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/{repo}/contents/{landing_filename}",
+                {
+                    "message": f"challenge: {challenge_name[:60]}",
+                    "content": encoded,
+                },
+            )
             if "error" not in file_r:
                 landing_url = f"https://github.com/{owner}/{repo}/blob/main/{landing_filename}"
                 urls_created.append(landing_url)
@@ -6210,11 +7250,14 @@ Challenge completers get **50% off** [{upsell_product}](https://github.com/{owne
 *[ARIA AI](https://github.com/{owner}/aria-portfolio)*
 """
                 day1_filename = f"challenges/{today}-{slug}-day1.md"
-                day1_encoded  = _b64.b64encode(day1_content.encode()).decode()
-                day1_r        = await gh._put(f"/repos/{owner}/{repo}/contents/{day1_filename}", {
-                    "message": f"challenge day 1: {day1.get('title', '')[:60]}",
-                    "content": day1_encoded,
-                })
+                day1_encoded = _b64.b64encode(day1_content.encode()).decode()
+                day1_r = await gh._put(
+                    f"/repos/{owner}/{repo}/contents/{day1_filename}",
+                    {
+                        "message": f"challenge day 1: {day1.get('title', '')[:60]}",
+                        "content": day1_encoded,
+                    },
+                )
                 if "error" not in day1_r:
                     day1_url = f"https://github.com/{owner}/{repo}/blob/main/{day1_filename}"
                     urls_created.append(day1_url)
@@ -6225,7 +7268,11 @@ Challenge completers get **50% off** [{upsell_product}](https://github.com/{owne
             # Track topic
             if cache:
                 existing_challenges.append(topic)
-                await cache.set("aria:income:challenge_topics", json.dumps(existing_challenges[-30:]), ttl_seconds=86400 * 90)
+                await cache.set(
+                    "aria:income:challenge_topics",
+                    json.dumps(existing_challenges[-30:]),
+                    ttl_seconds=86400 * 90,
+                )
 
                 # Store challenge metadata for future days
                 challenge_meta = {
@@ -6254,6 +7301,7 @@ Challenge completers get **50% off** [{upsell_product}](https://github.com/{owne
             _ch_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 _ch_r = await pub.publish_to_twitter(_ch_tw_text)
                 _ch_tw_ok = bool(_ch_r and _ch_r.success)
@@ -6265,6 +7313,7 @@ Challenge completers get **50% off** [{upsell_product}](https://github.com/{owne
                 if _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         await _plat.twitter_thread_post(_tw_page, [_ch_tw_text])
@@ -6291,13 +7340,14 @@ Challenge completers get **50% off** [{upsell_product}](https://github.com/{owne
         Published to GitHub for discoverability; potential for exponential reach.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            ai    = get_ai_client()
-            gh    = AriaGitHubClient()
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            ai = get_ai_client()
+            gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
@@ -6350,18 +7400,22 @@ JSON:
             if not outreach_data or "pitches" not in outreach_data:
                 return {"success": False, "summary": "partner_outreach: AI generation failed"}
 
-            niche        = outreach_data.get("niche", "tech")
-            slug         = outreach_data.get("slug", "partner-outreach")
-            pitches      = outreach_data.get("pitches", [])
-            kit_md       = outreach_data.get("outreach_kit_md", "")
+            niche = outreach_data.get("niche", "tech")
+            slug = outreach_data.get("slug", "partner-outreach")
+            pitches = outreach_data.get("pitches", [])
+            kit_md = outreach_data.get("outreach_kit_md", "")
             partnership_angle = outreach_data.get("partnership_angle", "")
 
             if niche in existing_niches:
-                return {"success": False, "summary": f"partner_outreach: niche '{niche}' already covered"}
+                return {
+                    "success": False,
+                    "summary": f"partner_outreach: niche '{niche}' already covered",
+                }
 
-            from datetime import datetime, timezone
-            today        = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            repo_name    = "aria-partnerships"
+            from datetime import datetime
+
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            repo_name = "aria-partnerships"
             portfolio_url = f"https://github.com/{owner}/aria-portfolio"
 
             # Build the outreach kit page
@@ -6408,23 +7462,29 @@ Open a GitHub Issue: [Apply Here](https://github.com/{owner}/{repo_name}/issues/
             # Ensure aria-partnerships repo exists
             existing = await gh._get(f"/repos/{owner}/{repo_name}")
             if "error" in existing:
-                create_r = await gh._post("/user/repos", {
-                    "name": repo_name,
-                    "description": "ARIA partnership program — collaborate, cross-promote, earn together",
-                    "private": False,
-                    "auto_init": True,
-                    "has_issues": True,
-                })
+                create_r = await gh._post(
+                    "/user/repos",
+                    {
+                        "name": repo_name,
+                        "description": "ARIA partnership program — collaborate, cross-promote, earn together",
+                        "private": False,
+                        "auto_init": True,
+                        "has_issues": True,
+                    },
+                )
                 if "error" not in create_r:
                     await asyncio.sleep(2)
 
             # Publish outreach kit
             filename = f"outreach/{today}-{slug}.md"
-            encoded  = _b64.b64encode(full_kit.encode()).decode()
-            file_r   = await gh._put(f"/repos/{owner}/{repo_name}/contents/{filename}", {
-                "message": f"outreach: {niche} partnership batch",
-                "content": encoded,
-            })
+            encoded = _b64.b64encode(full_kit.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/{repo_name}/contents/{filename}",
+                {
+                    "message": f"outreach: {niche} partnership batch",
+                    "content": encoded,
+                },
+            )
             if "error" not in file_r:
                 url = f"https://github.com/{owner}/{repo_name}/blob/main/{filename}"
                 urls_created.append(url)
@@ -6441,19 +7501,27 @@ We're actively seeking collaborators in the {niche} space.
 
 *[View partnership kit →]({urls_created[0] if urls_created else '#'})*
 """
-                portfolio_readme = await gh._get(f"/repos/{owner}/aria-portfolio/contents/README.md")
+                portfolio_readme = await gh._get(
+                    f"/repos/{owner}/aria-portfolio/contents/README.md"
+                )
                 if "content" in portfolio_readme:
                     import base64 as _b64p
-                    current = _b64p.b64decode(portfolio_readme["content"].replace("\n", "")).decode("utf-8", errors="replace")
+
+                    current = _b64p.b64decode(portfolio_readme["content"].replace("\n", "")).decode(
+                        "utf-8", errors="replace"
+                    )
                     sha = portfolio_readme.get("sha", "")
                     marker = "## 🤝 Partner with ARIA"
                     if marker not in current:
                         new_readme = current.rstrip() + "\n\n" + partner_blurb
-                        await gh._put(f"/repos/{owner}/aria-portfolio/contents/README.md", {
-                            "message": "add: partnership section to portfolio",
-                            "content": _b64p.b64encode(new_readme.encode()).decode(),
-                            "sha": sha,
-                        })
+                        await gh._put(
+                            f"/repos/{owner}/aria-portfolio/contents/README.md",
+                            {
+                                "message": "add: partnership section to portfolio",
+                                "content": _b64p.b64encode(new_readme.encode()).decode(),
+                                "sha": sha,
+                            },
+                        )
             except Exception:
                 pass
 
@@ -6463,7 +7531,11 @@ We're actively seeking collaborators in the {niche} space.
             # Track niche
             if cache:
                 existing_niches.append(niche)
-                await cache.set("aria:income:outreach_niches", json.dumps(existing_niches[-30:]), ttl_seconds=86400 * 90)
+                await cache.set(
+                    "aria:income:outreach_niches",
+                    json.dumps(existing_niches[-30:]),
+                    ttl_seconds=86400 * 90,
+                )
 
             # ── Announce partnership program on Twitter + LinkedIn ─────────────
             _po_ae = getattr(settings, "ARIA_EMAIL", None)
@@ -6484,6 +7556,7 @@ We're actively seeking collaborators in the {niche} space.
             _po_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _po_pub = get_api_publisher()
                 _po_tw_r = await _po_pub.publish_to_twitter(_po_tw)
                 if _po_tw_r and _po_tw_r.success:
@@ -6493,6 +7566,7 @@ We're actively seeking collaborators in the {niche} space.
             if not _po_tw_ok and _po_ae and _po_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _po_plat = await get_platform_login()
                     _po_tw_pg = await _po_plat.twitter(_po_ae, _po_ap)
                     await _po_plat.twitter_thread_post(_po_tw_pg, [_po_tw])
@@ -6501,6 +7575,7 @@ We're actively seeking collaborators in the {niche} space.
             _po_li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _po_pub2 = get_api_publisher()
                 _po_li_r = await _po_pub2.publish_to_linkedin(_po_li)
                 if _po_li_r and _po_li_r.success:
@@ -6510,13 +7585,18 @@ We're actively seeking collaborators in the {niche} space.
             if not _po_li_ok and _po_ae and _po_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _po_plat2 = await get_platform_login()
                     _po_li_pg = await _po_plat2.linkedin(_po_ae, _po_ap)
                     await _po_plat2.linkedin_post(_po_li_pg, _po_li)
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] Partner outreach kit published for niche: %s (%d pitches)", niche, len(pitches))
+            logger.info(
+                "[IncomeLoop] Partner outreach kit published for niche: %s (%d pitches)",
+                niche,
+                len(pitches),
+            )
             return {
                 "success": True,
                 "summary": f"Partner outreach kit published ({niche} niche, {len(pitches)} email templates) → Twitter+LinkedIn announced",
@@ -6535,21 +7615,23 @@ We're actively seeking collaborators in the {niche} space.
         Recurring readers = recurring revenue through embedded affiliate + product CTAs.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            ai    = get_ai_client()
-            gh    = AriaGitHubClient()
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            ai = get_ai_client()
+            gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
             if not ai or not settings.GITHUB_TOKEN:
                 return {"success": False, "summary": "newsletter_issue: need AI + GITHUB_TOKEN"}
 
-            from datetime import datetime, timezone
-            now   = datetime.now(timezone.utc)
+            from datetime import datetime
+
+            now = datetime.now(UTC)
             today = now.strftime("%Y-%m-%d")
             month = now.strftime("%B %Y")
 
@@ -6600,11 +7682,11 @@ JSON:
             if not newsletter_data:
                 return {"success": False, "summary": "newsletter_issue: AI generation failed"}
 
-            subject    = newsletter_data.get("subject_line", f"ARIA Weekly #{issue_num}")
-            big_idea   = newsletter_data.get("big_idea", "")
-            sections   = newsletter_data.get("sections", [])
-            closing    = newsletter_data.get("closing", "")
-            ps_line    = newsletter_data.get("ps_line", "")
+            subject = newsletter_data.get("subject_line", f"ARIA Weekly #{issue_num}")
+            big_idea = newsletter_data.get("big_idea", "")
+            sections = newsletter_data.get("sections", [])
+            closing = newsletter_data.get("closing", "")
+            ps_line = newsletter_data.get("ps_line", "")
             portfolio_url = f"https://github.com/{owner}/aria-portfolio"
 
             # Build full newsletter markdown
@@ -6620,7 +7702,9 @@ JSON:
 
 """
             for section in sections:
-                full_issue += f"## {section.get('title', '')}\n\n{section.get('content', '')}\n\n---\n\n"
+                full_issue += (
+                    f"## {section.get('title', '')}\n\n{section.get('content', '')}\n\n---\n\n"
+                )
 
             full_issue += f"""
 {closing}
@@ -6638,25 +7722,31 @@ JSON:
 
             # Ensure aria-newsletter repo exists
             repo_name = "aria-newsletter"
-            existing  = await gh._get(f"/repos/{owner}/{repo_name}")
+            existing = await gh._get(f"/repos/{owner}/{repo_name}")
             if "error" in existing:
-                create_r = await gh._post("/user/repos", {
-                    "name": repo_name,
-                    "description": "ARIA Weekly — tech + business insights for AI-first entrepreneurs",
-                    "private": False,
-                    "auto_init": True,
-                    "has_issues": False,
-                })
+                create_r = await gh._post(
+                    "/user/repos",
+                    {
+                        "name": repo_name,
+                        "description": "ARIA Weekly — tech + business insights for AI-first entrepreneurs",
+                        "private": False,
+                        "auto_init": True,
+                        "has_issues": False,
+                    },
+                )
                 if "error" not in create_r:
                     await asyncio.sleep(2)
 
             # Publish newsletter issue
             filename = f"issues/{today}-issue-{issue_num:03d}.md"
-            encoded  = _b64.b64encode(full_issue.encode()).decode()
-            file_r   = await gh._put(f"/repos/{owner}/{repo_name}/contents/{filename}", {
-                "message": f"newsletter #{issue_num}: {subject[:60]}",
-                "content": encoded,
-            })
+            encoded = _b64.b64encode(full_issue.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/{repo_name}/contents/{filename}",
+                {
+                    "message": f"newsletter #{issue_num}: {subject[:60]}",
+                    "content": encoded,
+                },
+            )
             if "error" not in file_r:
                 url = f"https://github.com/{owner}/{repo_name}/blob/main/{filename}"
                 urls_created.append(url)
@@ -6675,20 +7765,26 @@ JSON:
 **Subscribe to ARIA Weekly:** [GitHub](https://github.com/{owner}/{repo_name}) | [Portfolio]({portfolio_url})
 """
             teaser_file = f"newsletter-teasers/{today}-issue-{issue_num:03d}.md"
-            teaser_enc  = _b64.b64encode(teaser.encode()).decode()
-            await gh._put(f"/repos/{owner}/aria-insights/contents/{teaser_file}", {
-                "message": f"newsletter teaser #{issue_num}",
-                "content": teaser_enc,
-            })
+            teaser_enc = _b64.b64encode(teaser.encode()).decode()
+            await gh._put(
+                f"/repos/{owner}/aria-insights/contents/{teaser_file}",
+                {
+                    "message": f"newsletter teaser #{issue_num}",
+                    "content": teaser_enc,
+                },
+            )
             if urls_created:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/{teaser_file}")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/{teaser_file}"
+                )
 
             # Also try Mailchimp
             mailchimp_ok = False
             if getattr(settings, "MAILCHIMP_API_KEY", None):
                 try:
                     from apps.core.tools.mailchimp_tools import MailchimpTools
-                    mc   = MailchimpTools()
+
+                    mc = MailchimpTools()
                     mc_r = await mc.create_campaign(
                         subject=f"ARIA Weekly #{issue_num}: {subject}",
                         body=full_issue,
@@ -6702,7 +7798,9 @@ JSON:
                 return {"success": False, "summary": "newsletter_issue: publish failed"}
 
             if cache:
-                await cache.set("aria:income:newsletter_issue_count", str(issue_num), ttl_seconds=86400 * 365)
+                await cache.set(
+                    "aria:income:newsletter_issue_count", str(issue_num), ttl_seconds=86400 * 365
+                )
 
             # Promote newsletter on Twitter + LinkedIn (API → browser fallback)
             nl_url = urls_created[0] if urls_created else ""
@@ -6715,6 +7813,7 @@ JSON:
             _nl_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 _nl_tw_r = await pub.publish_to_twitter(tw_text)
                 _nl_tw_ok = bool(_nl_tw_r and _nl_tw_r.success)
@@ -6723,6 +7822,7 @@ JSON:
             if not _nl_tw_ok and _nl_ae and _nl_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_nl_ae, _nl_ap)
                     await _plat.twitter_thread_post(_tw_page, [tw_text])
@@ -6739,6 +7839,7 @@ JSON:
             _nl_li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 _nl_li_r = await pub.publish_to_linkedin(li_text[:1300])
                 _nl_li_ok = bool(_nl_li_r and _nl_li_r.success)
@@ -6747,6 +7848,7 @@ JSON:
             if not _nl_li_ok and _nl_ae and _nl_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _li_page = await _plat.linkedin(_nl_ae, _nl_ap)
                     await _plat.linkedin_create_post(_li_page, li_text[:3000])
@@ -6773,13 +7875,14 @@ JSON:
         and service directories. Generates inbound B2B consulting inquiries.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            ai    = get_ai_client()
-            gh    = AriaGitHubClient()
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            ai = get_ai_client()
+            gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
@@ -6822,19 +7925,23 @@ JSON:
             if not listing_data:
                 return {"success": False, "summary": "job_board_listing: AI generation failed"}
 
-            service_title    = listing_data.get("service_title", "AI Automation Service")
+            service_title = listing_data.get("service_title", "AI Automation Service")
             service_category = listing_data.get("service_category", "automation")
-            slug             = listing_data.get("slug", "ai-service")
-            price_range      = listing_data.get("price_range", "$500-$2,000")
-            listing_md       = listing_data.get("listing_md", "")
+            slug = listing_data.get("slug", "ai-service")
+            price_range = listing_data.get("price_range", "$500-$2,000")
+            listing_md = listing_data.get("listing_md", "")
 
             if service_category in existing_services:
-                return {"success": False, "summary": f"job_board_listing: '{service_category}' already listed"}
+                return {
+                    "success": False,
+                    "summary": f"job_board_listing: '{service_category}' already listed",
+                }
 
-            from datetime import datetime, timezone
-            today         = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            from datetime import datetime
+
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             portfolio_url = f"https://github.com/{owner}/aria-portfolio"
-            repo_name     = "aria-services"
+            repo_name = "aria-services"
 
             full_listing = f"""# {service_title}
 
@@ -6864,23 +7971,29 @@ Or contact via [portfolio]({portfolio_url}).
             # Ensure aria-services repo exists
             existing = await gh._get(f"/repos/{owner}/{repo_name}")
             if "error" in existing:
-                create_r = await gh._post("/user/repos", {
-                    "name": repo_name,
-                    "description": "ARIA AI consulting & automation services — hire ARIA for your projects",
-                    "private": False,
-                    "auto_init": True,
-                    "has_issues": True,
-                })
+                create_r = await gh._post(
+                    "/user/repos",
+                    {
+                        "name": repo_name,
+                        "description": "ARIA AI consulting & automation services — hire ARIA for your projects",
+                        "private": False,
+                        "auto_init": True,
+                        "has_issues": True,
+                    },
+                )
                 if "error" not in create_r:
                     await asyncio.sleep(2)
 
             # Publish service listing
             filename = f"services/{today}-{slug}.md"
-            encoded  = _b64.b64encode(full_listing.encode()).decode()
-            file_r   = await gh._put(f"/repos/{owner}/{repo_name}/contents/{filename}", {
-                "message": f"service: {service_title[:60]}",
-                "content": encoded,
-            })
+            encoded = _b64.b64encode(full_listing.encode()).decode()
+            file_r = await gh._put(
+                f"/repos/{owner}/{repo_name}/contents/{filename}",
+                {
+                    "message": f"service: {service_title[:60]}",
+                    "content": encoded,
+                },
+            )
             if "error" not in file_r:
                 url = f"https://github.com/{owner}/{repo_name}/blob/main/{filename}"
                 urls_created.append(url)
@@ -6893,10 +8006,15 @@ Or contact via [portfolio]({portfolio_url}).
 
 **[View service →]({urls_created[0] if urls_created else '#'})** | [Hire me](https://github.com/{owner}/{repo_name}/issues/new)
 """
-                portfolio_readme = await gh._get(f"/repos/{owner}/aria-portfolio/contents/README.md")
+                portfolio_readme = await gh._get(
+                    f"/repos/{owner}/aria-portfolio/contents/README.md"
+                )
                 if "content" in portfolio_readme:
                     import base64 as _b64p
-                    current = _b64p.b64decode(portfolio_readme["content"].replace("\n", "")).decode("utf-8", errors="replace")
+
+                    current = _b64p.b64decode(portfolio_readme["content"].replace("\n", "")).decode(
+                        "utf-8", errors="replace"
+                    )
                     sha = portfolio_readme.get("sha", "")
                     services_marker = "## 💼 Services"
                     if services_marker not in current:
@@ -6907,12 +8025,19 @@ Or contact via [portfolio]({portfolio_url}).
                         if next_h2 == -1:
                             new_readme = current[:idx] + f"{services_marker}\n\n{service_blurb}"
                         else:
-                            new_readme = current[:idx] + f"{services_marker}\n\n{service_blurb}\n" + current[next_h2:]
-                    await gh._put(f"/repos/{owner}/aria-portfolio/contents/README.md", {
-                        "message": f"add service: {service_title[:50]}",
-                        "content": _b64p.b64encode(new_readme.encode()).decode(),
-                        "sha": sha,
-                    })
+                            new_readme = (
+                                current[:idx]
+                                + f"{services_marker}\n\n{service_blurb}\n"
+                                + current[next_h2:]
+                            )
+                    await gh._put(
+                        f"/repos/{owner}/aria-portfolio/contents/README.md",
+                        {
+                            "message": f"add service: {service_title[:50]}",
+                            "content": _b64p.b64encode(new_readme.encode()).decode(),
+                            "sha": sha,
+                        },
+                    )
             except Exception:
                 pass
 
@@ -6921,7 +8046,11 @@ Or contact via [portfolio]({portfolio_url}).
 
             if cache:
                 existing_services.append(service_category)
-                await cache.set("aria:income:service_listings", json.dumps(existing_services[-30:]), ttl_seconds=86400 * 90)
+                await cache.set(
+                    "aria:income:service_listings",
+                    json.dumps(existing_services[-30:]),
+                    ttl_seconds=86400 * 90,
+                )
 
             # Promote new service on Twitter + LinkedIn (API → browser fallback)
             _jb_ae = getattr(settings, "ARIA_EMAIL", None)
@@ -6936,6 +8065,7 @@ Or contact via [portfolio]({portfolio_url}).
             _jb_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 _jb_tw_r = await pub.publish_to_twitter(tw_jb)
                 _jb_tw_ok = bool(_jb_tw_r and _jb_tw_r.success)
@@ -6944,6 +8074,7 @@ Or contact via [portfolio]({portfolio_url}).
             if not _jb_tw_ok and _jb_ae and _jb_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_jb_ae, _jb_ap)
                     await _plat.twitter_thread_post(_tw_page, [tw_jb])
@@ -6952,13 +8083,15 @@ Or contact via [portfolio]({portfolio_url}).
             li_jb = (
                 f"Available for hire: {service_title}\n\n"
                 f"{listing_data.get('tagline', '')}\n\n"
-                f"What you get:\n" + "\n".join(f"• {d}" for d in listing_data.get("what_you_get", [])[:3]) +
-                f"\n\nPrice: {price_range} | Timeline: {listing_data.get('timeline', '3-5 days')}\n"
+                f"What you get:\n"
+                + "\n".join(f"• {d}" for d in listing_data.get("what_you_get", [])[:3])
+                + f"\n\nPrice: {price_range} | Timeline: {listing_data.get('timeline', '3-5 days')}\n"
                 f"Interested? → {_jb_url}"
             )[:1300]
             _jb_li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 _jb_li_r = await pub.publish_to_linkedin(li_jb)
                 _jb_li_ok = bool(_jb_li_r and _jb_li_r.success)
@@ -6967,13 +8100,16 @@ Or contact via [portfolio]({portfolio_url}).
             if not _jb_li_ok and _jb_ae and _jb_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _li_page = await _plat.linkedin(_jb_ae, _jb_ap)
                     await _plat.linkedin_create_post(_li_page, li_jb)
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] Service listing published: %s (%s)", service_title, price_range)
+            logger.info(
+                "[IncomeLoop] Service listing published: %s (%s)", service_title, price_range
+            )
             return {
                 "success": True,
                 "summary": f"Service listed: '{service_title}' | {price_range} | aria-services repo + social",
@@ -6993,11 +8129,13 @@ Or contact via [portfolio]({portfolio_url}).
         """
         try:
             from apps.core.tools.web_tools import WebTools
-            from apps.distribution.twitter.twitter_engine import TwitterEngine
             from apps.distribution.publishers.api_publisher import get_api_publisher
+            from apps.distribution.twitter.twitter_engine import TwitterEngine
 
             wt = WebTools()
-            r = await wt.search_web("trending AI business automation productivity 2025", num_results=5)
+            r = await wt.search_web(
+                "trending AI business automation productivity 2025", num_results=5
+            )
             topic = "AI is replacing human work faster than anyone admits"
             if r.get("success") and r.get("results"):
                 topic = r["results"][0].get("title", topic)[:100]
@@ -7015,7 +8153,11 @@ Or contact via [portfolio]({portfolio_url}).
             urls_created = [r.url for r in successful if r.url]
 
             if successful:
-                logger.info("[IncomeLoop] Twitter thread posted: %d/%d tweets", len(successful), len(results))
+                logger.info(
+                    "[IncomeLoop] Twitter thread posted: %d/%d tweets",
+                    len(successful),
+                    len(results),
+                )
                 return {
                     "success": True,
                     "summary": f"Twitter thread: '{topic[:50]}' — {len(successful)}/{len(results)} tweets posted",
@@ -7025,25 +8167,32 @@ Or contact via [portfolio]({portfolio_url}).
 
             # Fallback: publish to GitHub aria-insights/threads/
             if settings.GITHUB_TOKEN:
-                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
-                from datetime import datetime, timezone
+                from datetime import datetime
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
                 slug = topic[:35].lower().replace(" ", "-").replace("'", "")
                 content = (
                     f"# Twitter Thread: {topic}\n\n"
                     f"*{len(tweet_texts)} tweets — optimized for virality*\n\n"
-                    + "\n\n---\n\n".join(f"**Tweet {i+1}:**\n\n{t}" for i, t in enumerate(tweet_texts))
+                    + "\n\n---\n\n".join(
+                        f"**Tweet {i+1}:**\n\n{t}" for i, t in enumerate(tweet_texts)
+                    )
                     + f"\n\n---\n\n*Generated by [ARIA AI](https://github.com/{owner}/aria-portfolio)*\n"
                     + "\n*To post: add TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET to Fly.io secrets*"
                 )
                 encoded = _b64.b64encode(content.encode()).decode()
-                file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/threads/{today}-{slug}.md", {
-                    "message": f"thread: {topic[:60]}",
-                    "content": encoded,
-                })
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/threads/{today}-{slug}.md",
+                    {
+                        "message": f"thread: {topic[:60]}",
+                        "content": encoded,
+                    },
+                )
                 if "error" not in file_r:
                     url = f"https://github.com/{owner}/aria-insights/blob/main/threads/{today}-{slug}.md"
                     return {
@@ -7056,28 +8205,42 @@ Or contact via [portfolio]({portfolio_url}).
             # Zapier fallback (configured via ZAPIER_WEBHOOK_URL)
             try:
                 from apps.core.tools.zapier_connector import ZapierConnector
+
                 _zc_tt = ZapierConnector()
-                _zt_r = await _zc_tt.dispatch_event("VIRAL_THREAD", {
-                    "topic": topic,
-                    "hook": tweet_texts[0][:280] if tweet_texts else topic[:280],
-                    "full_thread": "\n\n".join(f"[{i+1}] {t}" for i, t in enumerate(tweet_texts)),
-                    "tweet_count": len(tweet_texts),
-                })
+                _zt_r = await _zc_tt.dispatch_event(
+                    "VIRAL_THREAD",
+                    {
+                        "topic": topic,
+                        "hook": tweet_texts[0][:280] if tweet_texts else topic[:280],
+                        "full_thread": "\n\n".join(
+                            f"[{i+1}] {t}" for i, t in enumerate(tweet_texts)
+                        ),
+                        "tweet_count": len(tweet_texts),
+                    },
+                )
                 if _zt_r and _zt_r.get("success"):
-                    return {"success": True, "summary": f"Twitter thread via Zapier: '{topic[:50]}' — {len(tweet_texts)} tweets", "revenue_potential": 5.0, "urls": []}
+                    return {
+                        "success": True,
+                        "summary": f"Twitter thread via Zapier: '{topic[:50]}' — {len(tweet_texts)} tweets",
+                        "revenue_potential": 5.0,
+                        "urls": [],
+                    }
             except Exception:
                 pass
 
             # Browser fallback: post thread via stealth browser using ARIA credentials
-            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_email = getattr(settings, "ARIA_EMAIL", None)
             aria_password = getattr(settings, "ARIA_PASSWORD", None)
             if aria_email and aria_password:
                 try:
+
                     async def _tt_browser() -> str:
                         from apps.core.tools.human_browser import get_platform_login
+
                         plat = await get_platform_login()
                         tw_page = await plat.twitter(aria_email, aria_password)
                         return await plat.twitter_thread_post(tw_page, tweet_texts[:10])
+
                     thread_url = await asyncio.wait_for(_tt_browser(), timeout=20.0)
                     if thread_url:
                         return {
@@ -7089,7 +8252,10 @@ Or contact via [portfolio]({portfolio_url}).
                 except Exception as _br_exc:
                     logger.warning("[IncomeLoop] Twitter browser fallback: %s", _br_exc)
 
-            return {"success": False, "summary": "twitter_thread: add TWITTER_API_KEY to Fly.io secrets"}
+            return {
+                "success": False,
+                "summary": "twitter_thread: add TWITTER_API_KEY to Fly.io secrets",
+            }
 
         except Exception as exc:
             logger.error("[IncomeLoop] twitter_thread: %s", exc)
@@ -7107,7 +8273,9 @@ Or contact via [portfolio]({portfolio_url}).
             from apps.distribution.publishers.api_publisher import get_api_publisher
 
             wt = WebTools()
-            r = await wt.search_web("B2B AI automation business strategy 2025 trending", num_results=5)
+            r = await wt.search_web(
+                "B2B AI automation business strategy 2025 trending", num_results=5
+            )
             topic = "AI is transforming how companies operate — here's what leaders must know"
             if r.get("success") and r.get("results"):
                 topic = r["results"][0].get("title", topic)[:120]
@@ -7132,12 +8300,14 @@ Or contact via [portfolio]({portfolio_url}).
 
             # Fallback: archive to GitHub aria-insights/linkedin/
             if settings.GITHUB_TOKEN:
-                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
-                from datetime import datetime, timezone
+                from datetime import datetime
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
                 slug = topic[:35].lower().replace(" ", "-").replace("'", "")
                 md_content = (
                     f"# LinkedIn Post: {topic}\n\n"
@@ -7147,10 +8317,13 @@ Or contact via [portfolio]({portfolio_url}).
                     f"*To auto-post: add LINKEDIN_ACCESS_TOKEN + LINKEDIN_PERSON_URN to Fly.io secrets*"
                 )
                 encoded = _b64.b64encode(md_content.encode()).decode()
-                file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/linkedin/{today}-{slug}.md", {
-                    "message": f"linkedin: {topic[:60]}",
-                    "content": encoded,
-                })
+                file_r = await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/linkedin/{today}-{slug}.md",
+                    {
+                        "message": f"linkedin: {topic[:60]}",
+                        "content": encoded,
+                    },
+                )
                 if "error" not in file_r:
                     url = f"https://github.com/{owner}/aria-insights/blob/main/linkedin/{today}-{slug}.md"
                     return {
@@ -7161,11 +8334,12 @@ Or contact via [portfolio]({portfolio_url}).
                     }
 
             # Browser fallback: create LinkedIn post via stealth browser
-            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_email = getattr(settings, "ARIA_EMAIL", None)
             aria_password = getattr(settings, "ARIA_PASSWORD", None)
             if aria_email and aria_password:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     plat = await get_platform_login()
                     li_page = await plat.linkedin(aria_email, aria_password)
                     li_url = await plat.linkedin_create_post(li_page, post.content[:3000])
@@ -7179,7 +8353,10 @@ Or contact via [portfolio]({portfolio_url}).
                 except Exception as _br_exc:
                     logger.warning("[IncomeLoop] LinkedIn browser fallback: %s", _br_exc)
 
-            return {"success": False, "summary": f"linkedin_post: {result.error or 'add LINKEDIN_ACCESS_TOKEN + LINKEDIN_PERSON_URN'}"}
+            return {
+                "success": False,
+                "summary": f"linkedin_post: {result.error or 'add LINKEDIN_ACCESS_TOKEN + LINKEDIN_PERSON_URN'}",
+            }
 
         except Exception as exc:
             logger.error("[IncomeLoop] linkedin_post: %s", exc)
@@ -7196,17 +8373,22 @@ Or contact via [portfolio]({portfolio_url}).
           r/MachineLearning, r/learnprogramming, r/digitalnomad
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
             import os as _os
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "reddit_organic: AI unavailable"}
 
             wt = WebTools()
-            r = await wt.search_web("top Reddit posts r/entrepreneur r/SideProject 2025 AI automation", num_results=5)
-            trending_topic = "How I automated my entire business with AI in 30 days (and what actually worked)"
+            r = await wt.search_web(
+                "top Reddit posts r/entrepreneur r/SideProject 2025 AI automation", num_results=5
+            )
+            trending_topic = (
+                "How I automated my entire business with AI in 30 days (and what actually worked)"
+            )
             if r.get("success") and r.get("results"):
                 trending_topic = r["results"][0].get("title", trending_topic)[:120]
 
@@ -7265,11 +8447,14 @@ JSON:
             reddit_refresh_token = _os.getenv("REDDIT_REFRESH_TOKEN", "")
             reddit_username = _os.getenv("REDDIT_USERNAME", "")
 
-            praw_available = all([reddit_client_id, reddit_client_secret, reddit_refresh_token, reddit_username])
+            praw_available = all(
+                [reddit_client_id, reddit_client_secret, reddit_refresh_token, reddit_username]
+            )
 
             if praw_available:
                 try:
                     import asyncpraw  # type: ignore
+
                     reddit = asyncpraw.Reddit(
                         client_id=reddit_client_id,
                         client_secret=reddit_client_secret,
@@ -7298,11 +8483,12 @@ JSON:
 
             # Human-browser fallback: post to Reddit using ARIA's stealth browser
             if not posted_count and not praw_available:
-                aria_email    = getattr(settings, "ARIA_EMAIL", None)
+                aria_email = getattr(settings, "ARIA_EMAIL", None)
                 aria_password = getattr(settings, "ARIA_PASSWORD", None)
                 if aria_email and aria_password:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         plat = await get_platform_login()
                         reddit_page = await plat.reddit(aria_email, aria_password)
                         # Post to first 2 subreddits with human delays
@@ -7323,15 +8509,19 @@ JSON:
 
             # Always archive to GitHub (even if PRAW posted, for SEO + record)
             if settings.GITHUB_TOKEN:
-                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
-                from datetime import datetime, timezone
+                from datetime import datetime
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 for i, post in enumerate(posts):
-                    slug = post["title"][:35].lower().replace(" ", "-").replace("'", "").replace("[", "").replace("]", "")
+                    post["title"][:35].lower().replace(" ", "-").replace("'", "").replace(
+                        "[", ""
+                    ).replace("]", "")
                     md = (
                         f"# r/{post['subreddit']}: {post['title']}\n\n"
                         f"*Subreddit: r/{post['subreddit']} | Flair: {post.get('flair', '')}*\n\n"
@@ -7341,7 +8531,10 @@ JSON:
                     encoded = _b64.b64encode(md.encode()).decode()
                     file_r = await gh._put(
                         f"/repos/{owner}/aria-insights/contents/reddit/{today}-r-{post['subreddit']}-{i}.md",
-                        {"message": f"reddit: r/{post['subreddit']} — {post['title'][:50]}", "content": encoded}
+                        {
+                            "message": f"reddit: r/{post['subreddit']} — {post['title'][:50]}",
+                            "content": encoded,
+                        },
                     )
                     if "error" not in file_r:
                         url = f"https://github.com/{owner}/aria-insights/blob/main/reddit/{today}-r-{post['subreddit']}-{i}.md"
@@ -7373,7 +8566,7 @@ JSON:
         Falls back to GitHub product announcement when no payment processor is available.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
@@ -7381,7 +8574,9 @@ JSON:
                 return {"success": False, "summary": "stripe_checkout: AI unavailable"}
 
             wt = WebTools()
-            r = await wt.search_web("best selling digital products entrepreneurs 2025 AI tools", num_results=5)
+            r = await wt.search_web(
+                "best selling digital products entrepreneurs 2025 AI tools", num_results=5
+            )
             inspiration = "AI Automation Blueprint: 10 tools to 10x your output"
             if r.get("success") and r.get("results"):
                 inspiration = r["results"][0].get("title", inspiration)[:100]
@@ -7412,13 +8607,16 @@ JSON:
             )
 
             if not product_data:
-                return {"success": False, "summary": "stripe_checkout: AI failed to generate product"}
+                return {
+                    "success": False,
+                    "summary": "stripe_checkout: AI failed to generate product",
+                }
 
             product_name = product_data.get("name", "AI Automation Blueprint")
             product_desc = product_data.get("description", "")
-            price_cents  = int(product_data.get("price_cents", 2700))
-            tagline      = product_data.get("tagline", "")
-            features     = product_data.get("features", [])
+            price_cents = int(product_data.get("price_cents", 2700))
+            tagline = product_data.get("tagline", "")
+            features = product_data.get("features", [])
 
             urls_created = []
             platform_used = ""
@@ -7428,6 +8626,7 @@ JSON:
             if stripe_key:
                 try:
                     import httpx as _httpx
+
                     async with _httpx.AsyncClient(timeout=20.0) as _client:
                         # Create Stripe product
                         prod_r = await _client.post(
@@ -7452,7 +8651,10 @@ JSON:
                                 # Create payment link
                                 link_r = await _client.post(
                                     "https://api.stripe.com/v1/payment_links",
-                                    data={f"line_items[0][price]": stripe_price_id, "line_items[0][quantity]": "1"},
+                                    data={
+                                        "line_items[0][price]": stripe_price_id,
+                                        "line_items[0][quantity]": "1",
+                                    },
                                     auth=(stripe_key, ""),
                                 )
                                 if link_r.status_code == 200:
@@ -7465,11 +8667,12 @@ JSON:
 
             # Try LemonSqueezy if Stripe failed
             if not urls_created:
-                ls_key  = getattr(settings, "LEMONSQUEEZY_API_KEY", None)
+                ls_key = getattr(settings, "LEMONSQUEEZY_API_KEY", None)
                 ls_store = getattr(settings, "LEMONSQUEEZY_STORE_ID", None)
                 if ls_key and ls_store:
                     try:
                         from apps.core.tools.lemon_squeezy_tools import LemonSqueezyTools
+
                         ls = LemonSqueezyTools()
                         ls_r = await ls.create_product(
                             name=product_name,
@@ -7488,12 +8691,20 @@ JSON:
                 if settings.GUMROAD_TOKEN:
                     try:
                         from apps.core.tools.gumroad_tools import GumroadTools
+
                         gumroad = GumroadTools()
                         gr = await gumroad.create_product(
                             name=product_name,
-                            description=product_desc + "\n\n" + "\n".join(f"✅ {f}" for f in features[:5]),
+                            description=product_desc
+                            + "\n\n"
+                            + "\n".join(f"✅ {f}" for f in features[:5]),
                             price_cents=price_cents,
-                            tags=["AI", "automation", "digital", product_data.get("category", "productivity")],
+                            tags=[
+                                "AI",
+                                "automation",
+                                "digital",
+                                product_data.get("category", "productivity"),
+                            ],
                         )
                         if gr.get("success") and gr.get("url"):
                             urls_created.append(gr["url"])
@@ -7508,10 +8719,15 @@ JSON:
                 if _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gum_page = await _plat.gumroad(_ae, _ap)
-                        _full_desc = product_desc + "\n\n" + "\n".join(f"✅ {f}" for f in features[:5])
-                        _gum_url = await _plat.gumroad_create_product(_gum_page, product_name, price_cents, _full_desc)
+                        _full_desc = (
+                            product_desc + "\n\n" + "\n".join(f"✅ {f}" for f in features[:5])
+                        )
+                        _gum_url = await _plat.gumroad_create_product(
+                            _gum_page, product_name, price_cents, _full_desc
+                        )
                         if _gum_url:
                             urls_created.append(_gum_url)
                             platform_used = "Gumroad (browser)"
@@ -7521,13 +8737,15 @@ JSON:
             # Always publish product to GitHub with payment link
             if settings.GITHUB_TOKEN:
                 try:
-                    from apps.core.tools.github_client import AriaGitHubClient
                     import base64 as _b64
-                    from datetime import datetime, timezone
+                    from datetime import datetime
+
+                    from apps.core.tools.github_client import AriaGitHubClient
+
                     gh = AriaGitHubClient()
                     owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    slug  = product_name[:35].lower().replace(" ", "-").replace("'", "")
+                    today = datetime.now(UTC).strftime("%Y-%m-%d")
+                    slug = product_name[:35].lower().replace(" ", "-").replace("'", "")
                     payment_link = urls_created[0] if urls_created else ""
                     features_md = "\n".join(f"- ✅ {f}" for f in features[:6])
                     md = (
@@ -7541,10 +8759,13 @@ JSON:
                         f"*Created by [ARIA AI](https://github.com/{owner}/aria-portfolio)*\n"
                     )
                     encoded = _b64.b64encode(md.encode()).decode()
-                    file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/products/{today}-{slug}.md", {
-                        "message": f"product: {product_name[:60]}",
-                        "content": encoded,
-                    })
+                    file_r = await gh._put(
+                        f"/repos/{owner}/aria-insights/contents/products/{today}-{slug}.md",
+                        {
+                            "message": f"product: {product_name[:60]}",
+                            "content": encoded,
+                        },
+                    )
                     if "error" not in file_r:
                         gh_url = f"https://github.com/{owner}/aria-insights/blob/main/products/{today}-{slug}.md"
                         urls_created.append(gh_url)
@@ -7554,11 +8775,15 @@ JSON:
             if not urls_created:
                 return {
                     "success": False,
-                    "summary": f"stripe_checkout: product '{product_name}' created but no payment processor configured. Add STRIPE_SECRET_KEY, LEMONSQUEEZY_API_KEY, or GUMROAD_TOKEN."
+                    "summary": f"stripe_checkout: product '{product_name}' created but no payment processor configured. Add STRIPE_SECRET_KEY, LEMONSQUEEZY_API_KEY, or GUMROAD_TOKEN.",
                 }
 
             price_display = f"${price_cents/100:.0f}"
-            platform_note = f" via {platform_used}" if platform_used else " (GitHub only — add STRIPE_SECRET_KEY for live checkout)"
+            platform_note = (
+                f" via {platform_used}"
+                if platform_used
+                else " (GitHub only — add STRIPE_SECRET_KEY for live checkout)"
+            )
             buy_url = urls_created[0] if urls_created else ""
             distributed_to: list[str] = []
 
@@ -7575,6 +8800,7 @@ JSON:
             _sc_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tw_text)
                 if tw_result and tw_result.success:
@@ -7585,6 +8811,7 @@ JSON:
             if not _sc_tw_ok and _sc_ae and _sc_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_sc_ae, _sc_ap)
                     if await _plat.twitter_thread_post(_tw_page, [tw_text]):
@@ -7596,14 +8823,14 @@ JSON:
             li_text = (
                 f"🚀 Just launched: {product_name} at {price_display}\n\n"
                 f"{tagline}\n\n"
-                f"{product_desc[:400]}\n\n"
-                + "\n".join(f"✅ {f}" for f in features[:4])
+                f"{product_desc[:400]}\n\n" + "\n".join(f"✅ {f}" for f in features[:4])
             )
             if buy_url:
                 li_text += f"\n\n👉 {buy_url}"
             _sc_li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 li_result = await pub.publish_to_linkedin(li_text[:1300])
                 if li_result and li_result.success:
@@ -7614,6 +8841,7 @@ JSON:
             if not _sc_li_ok and _sc_ae and _sc_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _li_page = await _plat.linkedin(_sc_ae, _sc_ap)
                     if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
@@ -7621,7 +8849,12 @@ JSON:
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] stripe_checkout: '%s' %s %s", product_name, price_display, platform_used)
+            logger.info(
+                "[IncomeLoop] stripe_checkout: '%s' %s %s",
+                product_name,
+                price_display,
+                platform_used,
+            )
             return {
                 "success": True,
                 "summary": (
@@ -7643,7 +8876,7 @@ JSON:
         queues for TikTok API upload. Drives brand awareness + product clicks.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import get_ai_client
             from apps.core.tools.web_tools import WebTools
             from apps.distribution.tiktok.tiktok_engine import TikTokEngine
 
@@ -7679,18 +8912,20 @@ JSON:
 
             # Archive scripts to GitHub
             if settings.GITHUB_TOKEN:
-                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
-                from datetime import datetime, timezone
+                from datetime import datetime
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
                 owner_url = f"https://github.com/{owner}/aria-portfolio"
 
                 for i, script in enumerate(scripts[:3]):
                     niche = script.niche
-                    hook  = script.hook[:60] if script.hook else f"script-{i}"
-                    slug  = hook.lower().replace(" ", "-").replace("'", "")[:35]
+                    hook = script.hook[:60] if script.hook else f"script-{i}"
+                    hook.lower().replace(" ", "-").replace("'", "")[:35]
                     md = (
                         f"# TikTok Script: {hook}\n\n"
                         f"*Niche: {niche} | Platform: {script.platform} | Duration: {script.duration_seconds}s*\n"
@@ -7705,7 +8940,7 @@ JSON:
                     encoded = _b64.b64encode(md.encode()).decode()
                     file_r = await gh._put(
                         f"/repos/{owner}/aria-insights/contents/tiktok/{today}-{niche}-{i}.md",
-                        {"message": f"tiktok: {niche} — {hook[:50]}", "content": encoded}
+                        {"message": f"tiktok: {niche} — {hook[:50]}", "content": encoded},
                     )
                     if "error" not in file_r:
                         url = f"https://github.com/{owner}/aria-insights/blob/main/tiktok/{today}-{niche}-{i}.md"
@@ -7720,17 +8955,19 @@ JSON:
             # ── Announce TikTok scripts on Twitter ────────────────────────────
             _tk_ae = getattr(settings, "ARIA_EMAIL", None)
             _tk_ap = getattr(settings, "ARIA_PASSWORD", None)
-            _tk_hook = scripts[0].hook[:120] if scripts and scripts[0].hook else trending_topic[:120]
+            _tk_hook = (
+                scripts[0].hook[:120] if scripts and scripts[0].hook else trending_topic[:120]
+            )
             _tk_url = urls_created[0] if urls_created else ""
             _tk_tw = (
-                f"🎬 New TikTok hook: \"{_tk_hook}\"\n\n"
+                f'🎬 New TikTok hook: "{_tk_hook}"\n\n'
                 f"Scripts for: {', '.join(niches)} niches\n"
-                f"Est. reach: ~{avg_views:,} views each"
-                + (f"\n→ {_tk_url}" if _tk_url else "")
+                f"Est. reach: ~{avg_views:,} views each" + (f"\n→ {_tk_url}" if _tk_url else "")
             )[:280]
             _tk_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _tk_pub = get_api_publisher()
                 _tk_tw_r = await _tk_pub.publish_to_twitter(_tk_tw)
                 if _tk_tw_r and _tk_tw_r.success:
@@ -7740,6 +8977,7 @@ JSON:
             if not _tk_tw_ok and _tk_ae and _tk_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _tk_plat = await get_platform_login()
                     _tk_tw_pg = await _tk_plat.twitter(_tk_ae, _tk_ap)
                     await _tk_plat.twitter_thread_post(_tk_tw_pg, [_tk_tw])
@@ -7765,10 +9003,11 @@ JSON:
         can be worth $500-$5,000.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.memory.redis_client import get_cache
             import json as _json
+
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -7784,7 +9023,9 @@ JSON:
                     outreach_log = _json.loads(raw) if isinstance(raw, str) else raw
 
             wt = WebTools()
-            r = await wt.search_web("B2B SaaS startups looking for AI automation consulting 2025", num_results=5)
+            r = await wt.search_web(
+                "B2B SaaS startups looking for AI automation consulting 2025", num_results=5
+            )
             industry_context = "SaaS startups and e-commerce businesses that need AI automation"
             if r.get("success") and r.get("results"):
                 industry_context = r["results"][0].get("snippet", industry_context)[:200]
@@ -7825,19 +9066,24 @@ JSON:
             )
 
             if not outreach_data or not outreach_data.get("prospects"):
-                return {"success": False, "summary": "linkedin_outreach: AI failed to generate prospects"}
+                return {
+                    "success": False,
+                    "summary": "linkedin_outreach: AI failed to generate prospects",
+                }
 
             prospects = outreach_data["prospects"]
             urls_created = []
 
             # Archive outreach sequences to GitHub
             if settings.GITHUB_TOKEN:
-                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
-                from datetime import datetime, timezone
+                from datetime import datetime
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 md_lines = [
                     f"# LinkedIn Outreach Batch — {today}",
@@ -7850,10 +9096,10 @@ JSON:
                         f"**Industry:** {p.get('industry', '')}",
                         f"**Pain point:** {p.get('pain_point', '')}",
                         "",
-                        f"### Connection Note",
+                        "### Connection Note",
                         f"> {p.get('connection_note', '')}",
                         "",
-                        f"### Follow-up Sequence",
+                        "### Follow-up Sequence",
                         f"- **Day 3:** {p.get('follow_up_1', '')}",
                         f"- **Day 7:** {p.get('follow_up_2', '')}",
                         f"- **Day 14:** {p.get('follow_up_3', '')}",
@@ -7874,7 +9120,7 @@ JSON:
                 encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/outreach/{today}-linkedin-batch.md",
-                    {"message": f"outreach: LinkedIn B2B batch {today}", "content": encoded}
+                    {"message": f"outreach: LinkedIn B2B batch {today}", "content": encoded},
                 )
                 if "error" not in file_r:
                     url = f"https://github.com/{owner}/aria-insights/blob/main/outreach/{today}-linkedin-batch.md"
@@ -7884,12 +9130,18 @@ JSON:
             if cache and prospects:
                 new_entries = [f"{p.get('name', '')}@{p.get('company', '')}" for p in prospects]
                 outreach_log = (outreach_log + new_entries)[-200:]
-                await cache.set("aria:income:linkedin_outreach_log", _json.dumps(outreach_log), ttl_seconds=86400 * 90)
+                await cache.set(
+                    "aria:income:linkedin_outreach_log",
+                    _json.dumps(outreach_log),
+                    ttl_seconds=86400 * 90,
+                )
 
             if not urls_created:
                 return {"success": False, "summary": "linkedin_outreach: archive failed"}
 
-            logger.info("[IncomeLoop] linkedin_outreach: %d prospect sequences generated", len(prospects))
+            logger.info(
+                "[IncomeLoop] linkedin_outreach: %d prospect sequences generated", len(prospects)
+            )
             return {
                 "success": True,
                 "summary": f"LinkedIn outreach: {len(prospects)} personalized sequences for B2B prospects (potential $500-$5,000/client)",
@@ -7905,9 +9157,12 @@ JSON:
         """Returns which income channels are configured vs. missing."""
         channels = {
             "ai_generation": {
-                "active": bool(settings.HF_TOKEN or getattr(settings, "HF_API_KEY", None) or
-                               getattr(settings, "GROQ_API_KEY", None) or
-                               getattr(settings, "OPENAI_API_KEY", None)),
+                "active": bool(
+                    settings.HF_TOKEN
+                    or getattr(settings, "HF_API_KEY", None)
+                    or getattr(settings, "GROQ_API_KEY", None)
+                    or getattr(settings, "OPENAI_API_KEY", None)
+                ),
                 "keys_needed": ["HF_TOKEN or GROQ_API_KEY or OPENAI_API_KEY"],
                 "revenue_channels": ["content generation", "product descriptions", "ebooks"],
             },
@@ -7917,16 +9172,27 @@ JSON:
                 "revenue_channels": ["open source projects", "SEO content", "free tools"],
             },
             "gumroad": {
-                "active": bool(settings.GUMROAD_TOKEN or
-                               (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))),
+                "active": bool(
+                    settings.GUMROAD_TOKEN
+                    or (
+                        getattr(settings, "ARIA_EMAIL", None)
+                        and getattr(settings, "ARIA_PASSWORD", None)
+                    )
+                ),
                 "keys_needed": ["GUMROAD_TOKEN (or ARIA_EMAIL+ARIA_PASSWORD for browser mode)"],
                 "revenue_channels": ["ebook sales", "digital products", "courses", "templates"],
             },
             "lemonsqueezy": {
-                "active": bool(getattr(settings, "LEMONSQUEEZY_API_KEY", None) and
-                               getattr(settings, "LEMONSQUEEZY_STORE_ID", None)),
+                "active": bool(
+                    getattr(settings, "LEMONSQUEEZY_API_KEY", None)
+                    and getattr(settings, "LEMONSQUEEZY_STORE_ID", None)
+                ),
                 "keys_needed": ["LEMONSQUEEZY_API_KEY", "LEMONSQUEEZY_STORE_ID"],
-                "revenue_channels": ["digital products", "subscriptions", "lower fees than Gumroad (5%+$0.50)"],
+                "revenue_channels": [
+                    "digital products",
+                    "subscriptions",
+                    "lower fees than Gumroad (5%+$0.50)",
+                ],
             },
             "medium": {
                 "active": bool(getattr(settings, "MEDIUM_TOKEN", None)),
@@ -7939,14 +9205,18 @@ JSON:
                 "revenue_channels": ["developer audience", "product launches"],
             },
             "hashnode": {
-                "active": bool(getattr(settings, "HASHNODE_TOKEN", None) and
-                               getattr(settings, "HASHNODE_PUBLICATION_ID", None)),
+                "active": bool(
+                    getattr(settings, "HASHNODE_TOKEN", None)
+                    and getattr(settings, "HASHNODE_PUBLICATION_ID", None)
+                ),
                 "keys_needed": ["HASHNODE_TOKEN", "HASHNODE_PUBLICATION_ID"],
                 "revenue_channels": ["tech blogging", "newsletter"],
             },
             "shopify": {
-                "active": bool(getattr(settings, "SHOPIFY_ADMIN_TOKEN", None) and
-                               getattr(settings, "SHOPIFY_URL", None)),
+                "active": bool(
+                    getattr(settings, "SHOPIFY_ADMIN_TOKEN", None)
+                    and getattr(settings, "SHOPIFY_URL", None)
+                ),
                 "keys_needed": ["SHOPIFY_ADMIN_TOKEN", "SHOPIFY_URL"],
                 "revenue_channels": ["e-commerce products", "digital downloads"],
             },
@@ -7957,10 +9227,18 @@ JSON:
             },
             "twitter": {
                 "active": bool(
-                    (getattr(settings, "TWITTER_API_KEY", None) and getattr(settings, "TWITTER_ACCESS_TOKEN", None)) or
-                    (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))
+                    (
+                        getattr(settings, "TWITTER_API_KEY", None)
+                        and getattr(settings, "TWITTER_ACCESS_TOKEN", None)
+                    )
+                    or (
+                        getattr(settings, "ARIA_EMAIL", None)
+                        and getattr(settings, "ARIA_PASSWORD", None)
+                    )
                 ),
-                "keys_needed": ["TWITTER_API_KEY + secrets OR ARIA_EMAIL+ARIA_PASSWORD for browser mode"],
+                "keys_needed": [
+                    "TWITTER_API_KEY + secrets OR ARIA_EMAIL+ARIA_PASSWORD for browser mode"
+                ],
                 "revenue_channels": ["product promotion", "audience building"],
             },
             "amazon_affiliate": {
@@ -7976,12 +9254,20 @@ JSON:
             "zapier": {
                 "active": bool(getattr(settings, "ZAPIER_WEBHOOK_URL", None)),
                 "keys_needed": ["ZAPIER_WEBHOOK_URL"],
-                "revenue_channels": ["social automation", "multi-platform distribution", "viral threads"],
+                "revenue_channels": [
+                    "social automation",
+                    "multi-platform distribution",
+                    "viral threads",
+                ],
             },
             "huggingface": {
                 "active": bool(getattr(settings, "HF_TOKEN", None)),
                 "keys_needed": ["HF_TOKEN"],
-                "revenue_channels": ["AI demo traffic", "HuggingFace Spaces", "millions of AI community visitors"],
+                "revenue_channels": [
+                    "AI demo traffic",
+                    "HuggingFace Spaces",
+                    "millions of AI community visitors",
+                ],
             },
             "github_gists": {
                 "active": bool(settings.GITHUB_TOKEN),
@@ -7991,40 +9277,76 @@ JSON:
             "github_sponsors": {
                 "active": bool(settings.GITHUB_TOKEN),
                 "keys_needed": ["GITHUB_TOKEN"],
-                "revenue_channels": ["passive supporter income", "sponsorships", "ko-fi / buy-me-a-coffee"],
+                "revenue_channels": [
+                    "passive supporter income",
+                    "sponsorships",
+                    "ko-fi / buy-me-a-coffee",
+                ],
             },
             "twitter_api": {
                 "active": bool(
-                    (getattr(settings, "TWITTER_API_KEY", None) and
-                     getattr(settings, "TWITTER_API_SECRET", None) and
-                     getattr(settings, "TWITTER_ACCESS_TOKEN", None) and
-                     getattr(settings, "TWITTER_ACCESS_SECRET", None)) or
-                    (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))
+                    (
+                        getattr(settings, "TWITTER_API_KEY", None)
+                        and getattr(settings, "TWITTER_API_SECRET", None)
+                        and getattr(settings, "TWITTER_ACCESS_TOKEN", None)
+                        and getattr(settings, "TWITTER_ACCESS_SECRET", None)
+                    )
+                    or (
+                        getattr(settings, "ARIA_EMAIL", None)
+                        and getattr(settings, "ARIA_PASSWORD", None)
+                    )
                 ),
-                "keys_needed": ["TWITTER_API_KEY+secrets OR ARIA_EMAIL+ARIA_PASSWORD (browser fallback active)"],
-                "revenue_channels": ["viral threads", "direct Twitter posting", "audience building"],
+                "keys_needed": [
+                    "TWITTER_API_KEY+secrets OR ARIA_EMAIL+ARIA_PASSWORD (browser fallback active)"
+                ],
+                "revenue_channels": [
+                    "viral threads",
+                    "direct Twitter posting",
+                    "audience building",
+                ],
             },
             "linkedin_api": {
                 "active": bool(
-                    (getattr(settings, "LINKEDIN_ACCESS_TOKEN", None) and
-                     getattr(settings, "LINKEDIN_PERSON_URN", None)) or
-                    (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))
+                    (
+                        getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
+                        and getattr(settings, "LINKEDIN_PERSON_URN", None)
+                    )
+                    or (
+                        getattr(settings, "ARIA_EMAIL", None)
+                        and getattr(settings, "ARIA_PASSWORD", None)
+                    )
                 ),
-                "keys_needed": ["LINKEDIN_ACCESS_TOKEN+URN OR ARIA_EMAIL+ARIA_PASSWORD (browser fallback active)"],
+                "keys_needed": [
+                    "LINKEDIN_ACCESS_TOKEN+URN OR ARIA_EMAIL+ARIA_PASSWORD (browser fallback active)"
+                ],
                 "revenue_channels": ["B2B leads", "LinkedIn articles", "thought leadership"],
             },
             "reddit": {
                 "active": bool(
-                    (getattr(settings, "REDDIT_CLIENT_ID", None) and
-                     getattr(settings, "REDDIT_CLIENT_SECRET", None) and
-                     getattr(settings, "REDDIT_REFRESH_TOKEN", None)) or
-                    (getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None))
+                    (
+                        getattr(settings, "REDDIT_CLIENT_ID", None)
+                        and getattr(settings, "REDDIT_CLIENT_SECRET", None)
+                        and getattr(settings, "REDDIT_REFRESH_TOKEN", None)
+                    )
+                    or (
+                        getattr(settings, "ARIA_EMAIL", None)
+                        and getattr(settings, "ARIA_PASSWORD", None)
+                    )
                 ),
-                "keys_needed": ["REDDIT_CLIENT_ID+SECRET+TOKEN OR ARIA_EMAIL+ARIA_PASSWORD (browser fallback active)"],
-                "revenue_channels": ["organic Reddit traffic", "subreddit reach", "affiliate link traffic"],
+                "keys_needed": [
+                    "REDDIT_CLIENT_ID+SECRET+TOKEN OR ARIA_EMAIL+ARIA_PASSWORD (browser fallback active)"
+                ],
+                "revenue_channels": [
+                    "organic Reddit traffic",
+                    "subreddit reach",
+                    "affiliate link traffic",
+                ],
             },
             "browser_automation": {
-                "active": bool(getattr(settings, "ARIA_EMAIL", None) and getattr(settings, "ARIA_PASSWORD", None)),
+                "active": bool(
+                    getattr(settings, "ARIA_EMAIL", None)
+                    and getattr(settings, "ARIA_PASSWORD", None)
+                ),
                 "keys_needed": ["ARIA_EMAIL", "ARIA_PASSWORD"],
                 "revenue_channels": [
                     "Twitter/X threads (stealth browser)",
@@ -8043,27 +9365,48 @@ JSON:
             "youtube": {
                 "active": bool(getattr(settings, "YOUTUBE_API_KEY", None)),
                 "keys_needed": ["YOUTUBE_API_KEY"],
-                "revenue_channels": ["AdSense revenue", "sponsored videos", "product CTAs", "channel membership"],
+                "revenue_channels": [
+                    "AdSense revenue",
+                    "sponsored videos",
+                    "product CTAs",
+                    "channel membership",
+                ],
             },
             "smtp_email": {
                 "active": bool(
-                    getattr(settings, "SMTP_HOST", None) and
-                    getattr(settings, "SMTP_USER", None) and
-                    getattr(settings, "SMTP_PASSWORD", None)
+                    getattr(settings, "SMTP_HOST", None)
+                    and getattr(settings, "SMTP_USER", None)
+                    and getattr(settings, "SMTP_PASSWORD", None)
                 ),
-                "keys_needed": ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"],
-                "revenue_channels": ["cold email outreach", "newsletter sending", "B2B sales", "consulting leads"],
+                "keys_needed": [
+                    "SMTP_HOST",
+                    "SMTP_PORT",
+                    "SMTP_USER",
+                    "SMTP_PASSWORD",
+                    "SMTP_FROM",
+                ],
+                "revenue_channels": [
+                    "cold email outreach",
+                    "newsletter sending",
+                    "B2B sales",
+                    "consulting leads",
+                ],
             },
             "pinterest": {
                 "active": bool(
-                    getattr(settings, "PINTEREST_ACCESS_TOKEN", None) and
-                    getattr(settings, "PINTEREST_BOARD_ID", None)
+                    getattr(settings, "PINTEREST_ACCESS_TOKEN", None)
+                    and getattr(settings, "PINTEREST_BOARD_ID", None)
                 ),
                 "keys_needed": ["PINTEREST_ACCESS_TOKEN", "PINTEREST_BOARD_ID"],
-                "revenue_channels": ["visual SEO traffic", "product page clicks", "affiliate traffic", "450M monthly users"],
+                "revenue_channels": [
+                    "visual SEO traffic",
+                    "product page clicks",
+                    "affiliate traffic",
+                    "450M monthly users",
+                ],
             },
         }
-        active   = {k: v for k, v in channels.items() if v["active"]}
+        active = {k: v for k, v in channels.items() if v["active"]}
         inactive = {k: v for k, v in channels.items() if not v["active"]}
         return {"active": active, "inactive": inactive}
 
@@ -8072,6 +9415,7 @@ JSON:
     async def _load_niche_idx(self) -> int:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 val = await cache.get("aria:income:niche_idx")
@@ -8083,15 +9427,19 @@ JSON:
     async def _save_niche_idx(self) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
-                await cache.set("aria:income:niche_idx", str(self._niche_idx), ttl_seconds=86400 * 90)
+                await cache.set(
+                    "aria:income:niche_idx", str(self._niche_idx), ttl_seconds=86400 * 90
+                )
         except Exception:
             pass
 
     async def _save_result(self, result: CycleResult) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 data = json.dumps(asdict(result))
@@ -8125,11 +9473,13 @@ JSON:
     async def _save_error(self, error: str) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
-                await cache.rpush("aria:income:errors", json.dumps({
-                    "error": error, "ts": datetime.now(timezone.utc).isoformat()
-                }))
+                await cache.rpush(
+                    "aria:income:errors",
+                    json.dumps({"error": error, "ts": datetime.now(UTC).isoformat()}),
+                )
                 await cache.ltrim("aria:income:errors", -50, -1)
         except Exception:
             pass
@@ -8140,8 +9490,8 @@ JSON:
         """Send startup Telegram message and bootstrap portfolio + blog on first run."""
         try:
             await asyncio.sleep(5)
-            creds    = self.check_credentials()
-            active   = list(creds.get("active", {}).keys())
+            creds = self.check_credentials()
+            active = list(creds.get("active", {}).keys())
             inactive = list(creds.get("inactive", {}).keys())
             from apps.core.tools.telegram_bot import get_bot
 
@@ -8155,10 +9505,14 @@ JSON:
             pending_lines = []
             if inactive:
                 top = inactive[:4]
-                if "gumroad"  in top: pending_lines.append("  GUMROAD_TOKEN  →  ventas digitales")
-                if "devto"    in top: pending_lines.append("  DEVTO_API_KEY  →  artículos técnicos")
-                if "twitter"  in top: pending_lines.append("  TWITTER_*      →  distribución social")
-                if "shopify"  in top: pending_lines.append("  SHOPIFY_TOKEN  →  e-commerce")
+                if "gumroad" in top:
+                    pending_lines.append("  GUMROAD_TOKEN  →  ventas digitales")
+                if "devto" in top:
+                    pending_lines.append("  DEVTO_API_KEY  →  artículos técnicos")
+                if "twitter" in top:
+                    pending_lines.append("  TWITTER_*      →  distribución social")
+                if "shopify" in top:
+                    pending_lines.append("  SHOPIFY_TOKEN  →  e-commerce")
 
             sections = [
                 "🤖 <b>ARIA · SISTEMA EN LÍNEA</b>",
@@ -8186,26 +9540,31 @@ JSON:
             await asyncio.sleep(30)  # let the app fully start first
             # Only run if we haven't bootstrapped in the last 24 hours
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 last_bootstrap = await cache.get("aria:income:last_portfolio_bootstrap")
                 if last_bootstrap and (time.time() - float(last_bootstrap)) < 86400:
                     return
             from apps.core.cognition.aria_mind import AriaMind
+
             mind = AriaMind()
             result = await mind._handle_tool_call("setup_portfolio", {})
             url = (result or {}).get("url", "")
             logger.info("[IncomeLoop] Portfolio bootstrapped: %s", url)
             if cache:
-                await cache.set("aria:income:last_portfolio_bootstrap", str(time.time()), ttl_seconds=86400 * 90)
+                await cache.set(
+                    "aria:income:last_portfolio_bootstrap", str(time.time()), ttl_seconds=86400 * 90
+                )
         except Exception as exc:
             logger.debug("[IncomeLoop] bootstrap portfolio: %s", exc)
 
     async def _notify_win(self, result: CycleResult) -> None:
         """Notify via Telegram when something was published or is high-value."""
         import html as _html
+
         high_value = result.revenue_potential >= 10
-        has_urls   = bool(result.urls_created)
+        has_urls = bool(result.urls_created)
 
         if not high_value and not has_urls:
             return
@@ -8213,10 +9572,11 @@ JSON:
         if not high_value and has_urls:
             try:
                 from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
                 if cache:
                     lock_key = "aria:income:last_url_notify"
-                    last_ts  = await cache.get(lock_key)
+                    last_ts = await cache.get(lock_key)
                     if last_ts and (time.time() - float(last_ts)) < 3600:
                         return
                     await cache.set(lock_key, str(time.time()), ttl_seconds=3600)
@@ -8227,14 +9587,29 @@ JSON:
             from apps.core.tools.telegram_bot import get_bot
 
             is_product = result.strategy in (
-                "product_factory", "ebook_factory", "premium_offer", "shopify_listing",
-                "niche_rotator", "hf_spaces_demo", "lead_magnet", "stripe_checkout",
-                "stripe_subscription", "notion_template_seller", "data_product_seller",
-                "white_label_kit", "api_product_launch", "saas_waitlist_blitz",
+                "product_factory",
+                "ebook_factory",
+                "premium_offer",
+                "shopify_listing",
+                "niche_rotator",
+                "hf_spaces_demo",
+                "lead_magnet",
+                "stripe_checkout",
+                "stripe_subscription",
+                "notion_template_seller",
+                "data_product_seller",
+                "white_label_kit",
+                "api_product_launch",
+                "saas_waitlist_blitz",
             )
             is_content = result.strategy in (
-                "github_publish", "content_pipeline", "affiliate_content", "content_repurposer",
-                "devto_article", "newsletter_blast", "seo_article",
+                "github_publish",
+                "content_pipeline",
+                "affiliate_content",
+                "content_repurposer",
+                "devto_article",
+                "newsletter_blast",
+                "seo_article",
             )
 
             if high_value:
@@ -8263,10 +9638,11 @@ JSON:
                 safe_url = _html.escape(url)
                 try:
                     from urllib.parse import urlparse as _up
+
                     domain = _up(url).netloc or url[:45]
                 except Exception:
                     domain = url[:45]
-                link_lines.append(f"  🔗 <a href=\"{safe_url}\">{_html.escape(domain)}</a>")
+                link_lines.append(f'  🔗 <a href="{safe_url}">{_html.escape(domain)}</a>')
 
             sections = [
                 f"{icon} <b>{label}</b>",
@@ -8278,8 +9654,10 @@ JSON:
                 sections.append("\n".join(link_lines))
             if is_product or is_content or high_value:
                 footer = []
-                if is_product or is_content: footer.append("📦 /catalogo")
-                if high_value:               footer.append("📊 /reporte")
+                if is_product or is_content:
+                    footer.append("📦 /catalogo")
+                if high_value:
+                    footer.append("📊 /reporte")
                 sections.append("  ·  ".join(footer))
 
             await get_bot().notify_owner("\n\n".join(sections), already_html=True)
@@ -8290,26 +9668,29 @@ JSON:
 
     async def get_status_dict(self) -> dict:
         """Return structured status dict for API/dashboard consumption."""
-        total_cycles    = 0
-        success_count   = 0
-        error_count     = 0
+        total_cycles = 0
+        success_count = 0
+        error_count = 0
         last_cycle_data = {}
-        recent_cycles   = []
-        opportunities   = []
-        total_revenue   = 0.0
+        recent_cycles = []
+        opportunities = []
+        total_revenue = 0.0
 
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
-                total_cycles  = int(await cache.get("aria:income:total_cycles") or 0)
+                total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
                 success_count = int(await cache.get("aria:income:successful_cycles") or 0)
-                err_len       = await cache.llen("aria:income:errors")
-                error_count   = err_len or 0
+                err_len = await cache.llen("aria:income:errors")
+                error_count = err_len or 0
 
                 last_raw = await cache.get("aria:income:last_cycle")
                 if last_raw:
-                    last_cycle_data = json.loads(last_raw) if isinstance(last_raw, str) else last_raw
+                    last_cycle_data = (
+                        json.loads(last_raw) if isinstance(last_raw, str) else last_raw
+                    )
 
                 history_raw = await cache.lrange("aria:income:loop_history", -20, -1)
                 for raw in reversed(history_raw or []):
@@ -8322,11 +9703,9 @@ JSON:
                         pass
 
                 opp_raw = await cache.lrange("aria:income:opportunity_queue", 0, 9)
-                for raw in (opp_raw or []):
-                    try:
+                for raw in opp_raw or []:
+                    with contextlib.suppress(Exception):
                         opportunities.append(json.loads(raw) if isinstance(raw, str) else raw)
-                    except Exception:
-                        pass
         except Exception:
             pass
 
@@ -8347,23 +9726,24 @@ JSON:
     async def get_status(self) -> str:
         total_cycles = 0
         success_rate = 0.0
-        last_cycle   = {}
-        recent_urls  = []
+        last_cycle = {}
+        recent_urls = []
 
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
-                total_cycles  = int(await cache.get("aria:income:total_cycles") or 0)
+                total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
                 success_count = int(await cache.get("aria:income:successful_cycles") or 0)
-                success_rate  = (success_count / total_cycles * 100) if total_cycles else 0
+                success_rate = (success_count / total_cycles * 100) if total_cycles else 0
 
                 last_raw = await cache.get("aria:income:last_cycle")
                 if last_raw:
                     last_cycle = json.loads(last_raw) if isinstance(last_raw, str) else last_raw
 
                 history_raw = await cache.lrange("aria:income:loop_history", -10, -1)
-                for raw in (history_raw or []):
+                for raw in history_raw or []:
                     try:
                         cycle = json.loads(raw) if isinstance(raw, str) else raw
                         if isinstance(cycle, dict):
@@ -8373,17 +9753,21 @@ JSON:
         except Exception:
             pass
 
-        next_run = INTERVAL_SECONDS - ((self._cycle * INTERVAL_SECONDS) % INTERVAL_SECONDS) if self._cycle else FIRST_RUN_DELAY
+        (
+            INTERVAL_SECONDS - ((self._cycle * INTERVAL_SECONDS) % INTERVAL_SECONDS)
+            if self._cycle
+            else FIRST_RUN_DELAY
+        )
         status_label = "🟢 RUNNING" if self.is_running else "🔴 STOPPED"
 
         lines = [
             f"**ARIA Income Loop — {status_label}**",
-            f"━━━━━━━━━━━━━━━━━━━━━━",
+            "━━━━━━━━━━━━━━━━━━━━━━",
             f"Cycles completed: {total_cycles}",
             f"Success rate: {success_rate:.1f}%",
             f"Interval: every {INTERVAL_SECONDS//60} minutes",
-            f"",
-            f"**Last cycle:**",
+            "",
+            "**Last cycle:**",
         ]
         if last_cycle:
             lines += [
@@ -8406,7 +9790,7 @@ JSON:
 
         lines += [
             "",
-            f"**Strategies in rotation:**",
+            "**Strategies in rotation:**",
         ]
         for name, weight in STRATEGIES:
             lines.append(f"  {weight}% — {name}")
@@ -8417,18 +9801,19 @@ JSON:
         """Persist a newly published product/URL to the product catalog in Redis."""
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if not cache:
                 return
             entry = {
-                "name":      result.summary[:120],
-                "title":     result.summary[:120],
-                "strategy":  result.strategy,
-                "urls":      result.urls_created,
-                "price":     result.revenue_potential,
+                "name": result.summary[:120],
+                "title": result.summary[:120],
+                "strategy": result.strategy,
+                "urls": result.urls_created,
+                "price": result.revenue_potential,
                 "price_usd": result.revenue_potential,
-                "revenue":   result.revenue_potential,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "revenue": result.revenue_potential,
+                "created_at": datetime.now(UTC).isoformat(),
             }
             await cache.rpush("aria:products:catalog", json.dumps(entry))
             await cache.ltrim("aria:products:catalog", -500, -1)
@@ -8447,31 +9832,33 @@ JSON:
         if not settings.GITHUB_TOKEN:
             return
         try:
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
-            gh    = AriaGitHubClient()
+
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
-            repo  = "aria-portfolio"
+            repo = "aria-portfolio"
 
             # Load catalog (last 10 items)
             raw_items = await cache.lrange("aria:products:catalog", -10, -1)
-            catalog   = []
-            for raw in (raw_items or []):
-                try:
+            catalog = []
+            for raw in raw_items or []:
+                with contextlib.suppress(Exception):
                     catalog.append(json.loads(raw) if isinstance(raw, str) else raw)
-                except Exception:
-                    pass
 
             # Build products section
             products_section = "## 📦 Latest Products & Publications\n\n"
             for item in reversed(catalog[-8:]):
-                title   = item.get("title", "")[:80]
-                urls    = item.get("urls", [])
+                title = item.get("title", "")[:80]
+                urls = item.get("urls", [])
                 revenue = item.get("revenue", 0)
-                date    = item.get("created_at", "")[:10]
+                date = item.get("created_at", "")[:10]
                 if urls:
                     link = urls[0]
-                    products_section += f"- **[{title}]({link})** — ${revenue:.0f} potential ({date})\n"
+                    products_section += (
+                        f"- **[{title}]({link})** — ${revenue:.0f} potential ({date})\n"
+                    )
                 else:
                     products_section += f"- **{title}** — ${revenue:.0f} potential ({date})\n"
 
@@ -8479,7 +9866,9 @@ JSON:
             readme_data = await gh._get(f"/repos/{owner}/{repo}/contents/README.md")
             if "error" in readme_data or "content" not in readme_data:
                 return
-            current_readme = _b64.b64decode(readme_data["content"].replace("\n", "")).decode("utf-8", errors="replace")
+            current_readme = _b64.b64decode(readme_data["content"].replace("\n", "")).decode(
+                "utf-8", errors="replace"
+            )
             sha = readme_data.get("sha", "")
 
             # Replace or append products section
@@ -8487,19 +9876,27 @@ JSON:
             if marker_start in current_readme:
                 # Find next H2 after the products section
                 idx_start = current_readme.index(marker_start)
-                idx_end   = current_readme.find("\n## ", idx_start + 1)
+                idx_end = current_readme.find("\n## ", idx_start + 1)
                 if idx_end == -1:
                     new_readme = current_readme[:idx_start] + products_section
                 else:
-                    new_readme = current_readme[:idx_start] + products_section + "\n" + current_readme[idx_end:]
+                    new_readme = (
+                        current_readme[:idx_start]
+                        + products_section
+                        + "\n"
+                        + current_readme[idx_end:]
+                    )
             else:
                 new_readme = current_readme.rstrip() + "\n\n" + products_section
 
-            await gh._put(f"/repos/{owner}/{repo}/contents/README.md", {
-                "message": "auto: update portfolio with latest products",
-                "content": _b64.b64encode(new_readme.encode()).decode(),
-                "sha": sha,
-            })
+            await gh._put(
+                f"/repos/{owner}/{repo}/contents/README.md",
+                {
+                    "message": "auto: update portfolio with latest products",
+                    "content": _b64.b64encode(new_readme.encode()).decode(),
+                    "sha": sha,
+                },
+            )
             logger.info("[IncomeLoop] Portfolio updated with %d products", len(catalog))
         except Exception as exc:
             logger.debug("[IncomeLoop] update_portfolio_products: %s", exc)
@@ -8508,6 +9905,7 @@ JSON:
         """Return a formatted catalog of all products/URLs published by ARIA."""
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if not cache:
                 return "⚠️ Redis no disponible — sin catálogo de productos."
@@ -8522,10 +9920,8 @@ JSON:
 
             items = []
             for raw in reversed(raw_items or []):
-                try:
+                with contextlib.suppress(Exception):
                     items.append(json.loads(raw) if isinstance(raw, str) else raw)
-                except Exception:
-                    pass
 
             lines = [
                 "📦 <b>Catálogo de Productos ARIA</b>",
@@ -8533,11 +9929,11 @@ JSON:
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             ]
             for i, item in enumerate(items[:limit], 1):
-                title   = item.get("title", "")[:80]
-                strat   = item.get("strategy", "")
+                title = item.get("title", "")[:80]
+                strat = item.get("strategy", "")
                 revenue = item.get("revenue", 0)
-                urls    = item.get("urls", [])
-                date    = item.get("created_at", "")[:10]
+                urls = item.get("urls", [])
+                date = item.get("created_at", "")[:10]
                 lines.append(f"\n<b>{i}. {title}</b>")
                 lines.append(f"   📅 {date}  |  📊 {strat}  |  💰 ${revenue:.0f} potencial")
                 for url in urls[:2]:
@@ -8548,7 +9944,7 @@ JSON:
             lines += [
                 "",
                 f"<b>Revenue potencial acumulado: ${total_rev:.2f}</b>",
-                f"<i>Actualizado automáticamente en cada ciclo exitoso</i>",
+                "<i>Actualizado automáticamente en cada ciclo exitoso</i>",
             ]
             return "\n".join(lines)
 
@@ -8560,22 +9956,23 @@ JSON:
         """Return a per-strategy performance breakdown from Redis analytics."""
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if not cache:
                 return "⚠️ Redis no disponible — sin datos de analíticas."
 
-            total_cycles   = int(await cache.get("aria:income:total_cycles") or 0)
+            total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
             success_cycles = int(await cache.get("aria:income:successful_cycles") or 0)
-            total_urls     = int(await cache.get("aria:income:total_urls_published") or 0)
-            success_rate   = (success_cycles / total_cycles * 100) if total_cycles else 0
+            total_urls = int(await cache.get("aria:income:total_urls_published") or 0)
+            success_rate = (success_cycles / total_cycles * 100) if total_cycles else 0
 
             rows: list[tuple[str, int, int, float, float]] = []
             total_tracked_rev = 0.0
             for name, weight in STRATEGIES:
-                runs  = int(await cache.get(f"aria:income:strategy:{name}:runs") or 0)
-                wins  = int(await cache.get(f"aria:income:strategy:{name}:successes") or 0)
+                runs = int(await cache.get(f"aria:income:strategy:{name}:runs") or 0)
+                wins = int(await cache.get(f"aria:income:strategy:{name}:successes") or 0)
                 raw_r = await cache.get(f"aria:income:strategy:{name}:revenue")
-                rev   = float(raw_r) if raw_r else 0.0
+                rev = float(raw_r) if raw_r else 0.0
                 total_tracked_rev += rev
                 rows.append((name, runs, wins, rev, weight))
 
@@ -8590,9 +9987,9 @@ JSON:
                 "",
                 "<b>Estrategia              Runs  Win%  Revenue  Peso</b>",
             ]
-            for (name, runs, wins, rev, weight) in rows:
+            for name, runs, wins, rev, weight in rows:
                 win_pct = (wins / runs * 100) if runs else 0
-                bar     = "█" * min(int(win_pct / 10), 10)
+                "█" * min(int(win_pct / 10), 10)
                 lines.append(
                     f"<code>{name:<22}</code>  {runs:>3}  {win_pct:>4.0f}%  ${rev:>7.2f}  {weight}%"
                 )
@@ -8607,8 +10004,8 @@ JSON:
             # Revenue projection
             if total_cycles > 0 and total_tracked_rev > 0:
                 cycles_per_day = (24 * 3600) / INTERVAL_SECONDS  # ~48 cycles/day
-                rev_per_cycle  = total_tracked_rev / max(total_cycles, 1)
-                proj_7d  = rev_per_cycle * cycles_per_day * 7
+                rev_per_cycle = total_tracked_rev / max(total_cycles, 1)
+                proj_7d = rev_per_cycle * cycles_per_day * 7
                 proj_30d = rev_per_cycle * cycles_per_day * 30
                 lines += [
                     "",
@@ -8628,7 +10025,6 @@ JSON:
             logger.error("[IncomeLoop] analytics_report: %s", exc)
             return f"⚠️ Error al generar reporte: {exc}"
 
-
     async def _exec_landing_page_deploy(self) -> dict:
         """
         Generate a real HTML landing page for an ARIA product and deploy it to GitHub Pages.
@@ -8641,22 +10037,23 @@ JSON:
         if not settings.GITHUB_TOKEN:
             return {"success": False, "summary": "landing_page_deploy: needs GITHUB_TOKEN"}
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.website_engine import WebsiteEngine
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
-            import base64 as _b64, json as _json
+            import base64 as _b64
+            import json as _json
 
-            gh    = AriaGitHubClient()
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.website_engine import WebsiteEngine
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             cache = get_cache()
 
             # Get a recent product to create a landing page for
-            product_name  = ""
-            product_desc  = ""
+            product_name = ""
+            product_desc = ""
             product_price = "29"
-            checkout_url  = f"https://github.com/{owner}/aria-portfolio"
-            product_tags: list = []
+            checkout_url = f"https://github.com/{owner}/aria-portfolio"
 
             if cache:
                 raw_items = await cache.lrange("aria:products:catalog", -10, -1)
@@ -8665,19 +10062,25 @@ JSON:
                         item = _json.loads(raw) if isinstance(raw, str) else raw
                         item_name = item.get("name") or item.get("title", "")
                         if item_name:
-                            product_name  = item_name[:80]
-                            product_desc  = item.get("summary", item.get("description", ""))[:300]
+                            product_name = item_name[:80]
+                            product_desc = item.get("summary", item.get("description", ""))[:300]
                             if item.get("urls"):
                                 checkout_url = item["urls"][0]
-                            raw_price = item.get("price_usd") or item.get("revenue") or item.get("price", 29)
+                            raw_price = (
+                                item.get("price_usd")
+                                or item.get("revenue")
+                                or item.get("price", 29)
+                            )
                             product_price = str(int(float(raw_price)))
                             break
                     except Exception:
                         pass
 
             if not product_name:
-                product_name  = "AI Business Automation Starter Kit"
-                product_desc  = "Everything you need to start automating your business with AI in 2025"
+                product_name = "AI Business Automation Starter Kit"
+                product_desc = (
+                    "Everything you need to start automating your business with AI in 2025"
+                )
                 product_price = "27"
 
             # AI generates landing page copy
@@ -8708,15 +10111,23 @@ Return JSON:
                 model="fast",
             )
 
-            headline    = (copy_data or {}).get("headline", f"Get {product_name}")
+            headline = (copy_data or {}).get("headline", f"Get {product_name}")
             subheadline = (copy_data or {}).get("subheadline", product_desc[:80])
-            features    = (copy_data or {}).get("features", [
-                "Instant digital download", "Lifetime access", "Step-by-step guide",
-                "Works for beginners", "30-day money-back guarantee",
-            ])
-            cta         = (copy_data or {}).get("cta", f"Get It Now — ${product_price}")
-            color       = (copy_data or {}).get("color_scheme", "blue")
-            guarantee   = (copy_data or {}).get("guarantee", "30-day money-back guarantee — no questions asked")
+            features = (copy_data or {}).get(
+                "features",
+                [
+                    "Instant digital download",
+                    "Lifetime access",
+                    "Step-by-step guide",
+                    "Works for beginners",
+                    "30-day money-back guarantee",
+                ],
+            )
+            cta = (copy_data or {}).get("cta", f"Get It Now — ${product_price}")
+            color = (copy_data or {}).get("color_scheme", "blue")
+            guarantee = (copy_data or {}).get(
+                "guarantee", "30-day money-back guarantee — no questions asked"
+            )
             testimonial = (copy_data or {}).get("social_proof", "")
 
             # Generate HTML with website engine
@@ -8733,9 +10144,15 @@ Return JSON:
             if checkout_url and "href=#" in html:
                 html = html.replace("href=#", f'href="{checkout_url}"', 2)
             if guarantee:
-                html = html.replace("</body>", f'<p style="text-align:center;color:#888;font-size:0.9rem;margin-top:1rem;">🔒 {guarantee}</p></body>')
+                html = html.replace(
+                    "</body>",
+                    f'<p style="text-align:center;color:#888;font-size:0.9rem;margin-top:1rem;">🔒 {guarantee}</p></body>',
+                )
             if testimonial:
-                html = html.replace("</body>", f'<blockquote style="max-width:600px;margin:2rem auto;padding:1.5rem;background:#f9f9f9;border-left:4px solid #666;font-style:italic;">{testimonial}</blockquote></body>')
+                html = html.replace(
+                    "</body>",
+                    f'<blockquote style="max-width:600px;margin:2rem auto;padding:1.5rem;background:#f9f9f9;border-left:4px solid #666;font-style:italic;">{testimonial}</blockquote></body>',
+                )
 
             # Deploy to aria-portfolio (GitHub Pages source)
             slug = product_name.lower()[:40].replace(" ", "-").replace("'", "").replace("/", "-")
@@ -8743,11 +10160,16 @@ Return JSON:
             repo_name = "aria-portfolio"
 
             # Ensure repo exists
-            await gh._post("/user/repos", {
-                "name": repo_name, "private": False, "auto_init": False,
-                "description": f"ARIA AI Portfolio — Products & Services",
-                "homepage": f"https://{owner}.github.io/{repo_name}",
-            })
+            await gh._post(
+                "/user/repos",
+                {
+                    "name": repo_name,
+                    "private": False,
+                    "auto_init": False,
+                    "description": "ARIA AI Portfolio — Products & Services",
+                    "homepage": f"https://{owner}.github.io/{repo_name}",
+                },
+            )
 
             existing = await gh._get(f"/repos/{owner}/{repo_name}/contents/{path}")
             sha = existing.get("sha") if "error" not in existing else None
@@ -8760,15 +10182,16 @@ Return JSON:
             result = await gh._put(f"/repos/{owner}/{repo_name}/contents/{path}", body)
 
             # Enable GitHub Pages on main branch if not already enabled
-            try:
-                await gh._post(f"/repos/{owner}/{repo_name}/pages", {
-                    "source": {"branch": "main", "path": "/"},
-                })
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                await gh._post(
+                    f"/repos/{owner}/{repo_name}/pages",
+                    {
+                        "source": {"branch": "main", "path": "/"},
+                    },
+                )
 
             page_url = f"https://{owner}.github.io/{repo_name}/products/{slug}/"
-            raw_url  = f"https://github.com/{owner}/{repo_name}/blob/main/{path}"
+            raw_url = f"https://github.com/{owner}/{repo_name}/blob/main/{path}"
 
             if "content" in result or "commit" in result:
                 logger.info("[IncomeLoop] Landing page deployed: %s", page_url)
@@ -8776,10 +10199,13 @@ Return JSON:
                 # ── Twitter announcement ───────────────────────────────────────
                 _lp_ae = getattr(settings, "ARIA_EMAIL", None)
                 _lp_ap = getattr(settings, "ARIA_PASSWORD", None)
-                tw_lp = f"🚀 New landing page live: {product_name[:60]}\n\n${product_price} → {page_url}"[:280]
+                tw_lp = f"🚀 New landing page live: {product_name[:60]}\n\n${product_price} → {page_url}"[
+                    :280
+                ]
                 _lp_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _lp_pub = get_api_publisher()
                     _lp_tw_r = await _lp_pub.publish_to_twitter(tw_lp)
                     if _lp_tw_r and _lp_tw_r.success:
@@ -8789,6 +10215,7 @@ Return JSON:
                 if not _lp_tw_ok and _lp_ae and _lp_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _lp_plat = await get_platform_login()
                         _lp_tw_pg = await _lp_plat.twitter(_lp_ae, _lp_ap)
                         await _lp_plat.twitter_thread_post(_lp_tw_pg, [tw_lp])
@@ -8817,23 +10244,27 @@ Return JSON:
                   GITHUB_TOKEN (for archiving — always runs).
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
+
             import httpx as _hx
 
-            gh    = AriaGitHubClient()
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
-            pinterest_token    = getattr(settings, "PINTEREST_ACCESS_TOKEN", None)
+            pinterest_token = getattr(settings, "PINTEREST_ACCESS_TOKEN", None)
             pinterest_board_id = getattr(settings, "PINTEREST_BOARD_ID", None)
             can_pin = bool(pinterest_token and pinterest_board_id)
 
             # Latest product URL for click destination
             latest_url = f"https://github.com/{owner}/aria-portfolio"
             try:
-                from apps.core.memory.redis_client import get_cache
                 import json as _json
+
+                from apps.core.memory.redis_client import get_cache
+
                 _cache = get_cache()
                 if _cache:
                     raw_items = await _cache.lrange("aria:products:catalog", -3, -1)
@@ -8877,19 +10308,19 @@ Return JSON array:
             pins_created = 0
             pin_ids: list[str] = []
             archive_lines = [
-                f"# Pinterest Strategy — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
+                f"# Pinterest Strategy — {datetime.now(UTC).strftime('%Y-%m-%d')}",
                 f"**Board ID:** {pinterest_board_id or 'not configured'}",
                 f"**API Status:** {'Connected' if can_pin else 'Archived only (set PINTEREST_ACCESS_TOKEN + PINTEREST_BOARD_ID)'}",
                 "",
             ]
 
             for i, pin in enumerate(pins_data[:5], 1):
-                title       = pin.get("title", f"Pin {i}")
+                title = pin.get("title", f"Pin {i}")
                 description = pin.get("description", "")
-                alt_text    = pin.get("alt_text", "")
+                alt_text = pin.get("alt_text", "")
                 img_concept = pin.get("image_concept", "")
-                link        = pin.get("link", latest_url)
-                keywords    = pin.get("keywords", [])
+                link = pin.get("link", latest_url)
+                keywords = pin.get("keywords", [])
 
                 archive_lines += [
                     f"## Pin {i}: {title}",
@@ -8937,6 +10368,7 @@ Return JSON array:
                     if _pt_ae and _pt_ap and i <= 2:  # cap at 2 browser pins per cycle
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _pt_plat = await get_platform_login()
                             _pt_page = await _pt_plat.pinterest(_pt_ae, _pt_ap)
                             _pt_url = await _pt_plat.pinterest_create_pin(
@@ -8953,9 +10385,11 @@ Return JSON array:
                             logger.warning("[IncomeLoop] pinterest browser pin %d: %s", i, _pt_exc)
 
             # Archive to GitHub
-            slug = f"pinterest-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
+            slug = f"pinterest-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}"
             path = f"pinterest/{slug}.md"
-            await gh._post("/user/repos", {"name": "aria-insights", "private": False, "auto_init": False})
+            await gh._post(
+                "/user/repos", {"name": "aria-insights", "private": False, "auto_init": False}
+            )
             existing = await gh._get(f"/repos/{owner}/aria-insights/contents/{path}")
             sha = existing.get("sha") if "error" not in existing else None
             body_put: dict = {
@@ -8998,14 +10432,16 @@ Return JSON array:
                   GITHUB_TOKEN (for archiving — always runs).
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
-            import base64 as _b64, smtplib
-            from email.mime.text import MIMEText
+            import base64 as _b64
+            import smtplib
             from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
 
-            gh    = AriaGitHubClient()
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             cache = get_cache()
 
@@ -9048,42 +10484,44 @@ Return JSON:
                 return {"success": False, "summary": "cold_email: AI failed to generate prospects"}
 
             campaign_name = outreach_data.get("campaign_name", f"Outreach: {niche_name}")
-            offer         = outreach_data.get("offer", "")
-            prospects     = outreach_data.get("prospects", [])
+            offer = outreach_data.get("offer", "")
+            prospects = outreach_data.get("prospects", [])
 
             # SMTP config
-            smtp_host  = getattr(settings, "SMTP_HOST", None)
-            smtp_port  = int(getattr(settings, "SMTP_PORT", 587))
-            smtp_user  = getattr(settings, "SMTP_USER", None)
-            smtp_pass  = getattr(settings, "SMTP_PASSWORD", None)
-            smtp_from  = getattr(settings, "SMTP_FROM", smtp_user)
-            can_send   = all([smtp_host, smtp_user, smtp_pass, smtp_from])
+            smtp_host = getattr(settings, "SMTP_HOST", None)
+            smtp_port = int(getattr(settings, "SMTP_PORT", 587))
+            smtp_user = getattr(settings, "SMTP_USER", None)
+            smtp_pass = getattr(settings, "SMTP_PASSWORD", None)
+            smtp_from = getattr(settings, "SMTP_FROM", smtp_user)
+            can_send = all([smtp_host, smtp_user, smtp_pass, smtp_from])
 
-            emails_sent     = 0
+            emails_sent = 0
             emails_archived = 0
 
             # Archive all prospects + emails to GitHub
             sent_log = f"# Cold Email Campaign: {campaign_name}\n"
-            sent_log += f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d')}\n"
+            sent_log += f"**Date:** {datetime.now(UTC).strftime('%Y-%m-%d')}\n"
             sent_log += f"**Niche:** {niche_name}\n"
             sent_log += f"**Offer:** {offer}\n"
-            sent_log += f"**Sent via SMTP:** {'Yes' if can_send else 'No (SMTP not configured)'}\n\n---\n\n"
+            sent_log += (
+                f"**Sent via SMTP:** {'Yes' if can_send else 'No (SMTP not configured)'}\n\n---\n\n"
+            )
 
             for p in prospects[:5]:
-                name    = p.get("name", "")
+                name = p.get("name", "")
                 company = p.get("company", "")
-                role    = p.get("role", "")
-                email   = p.get("email", "")
+                role = p.get("role", "")
+                email = p.get("email", "")
                 subject = p.get("subject_line", f"AI automation for {company}")
-                body    = p.get("email_body", "")
-                pain    = p.get("pain_signal", "")
+                body = p.get("email_body", "")
+                pain = p.get("pain_signal", "")
 
                 if can_send and email and "@" in email:
                     try:
                         msg = MIMEMultipart("alternative")
                         msg["Subject"] = subject
-                        msg["From"]    = smtp_from
-                        msg["To"]      = email
+                        msg["From"] = smtp_from
+                        msg["To"] = email
                         msg.attach(MIMEText(body, "plain"))
                         with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
                             server.ehlo()
@@ -9106,19 +10544,31 @@ Return JSON:
                 if cache:
                     try:
                         import json as _json
-                        await cache.rpush("aria:crm:outreach_queue", _json.dumps({
-                            "name": name, "company": company, "role": role,
-                            "email": email, "subject": subject,
-                            "sent": can_send, "ts": time.time(),
-                        }))
+
+                        await cache.rpush(
+                            "aria:crm:outreach_queue",
+                            _json.dumps(
+                                {
+                                    "name": name,
+                                    "company": company,
+                                    "role": role,
+                                    "email": email,
+                                    "subject": subject,
+                                    "sent": can_send,
+                                    "ts": time.time(),
+                                }
+                            ),
+                        )
                         await cache.ltrim("aria:crm:outreach_queue", -200, -1)
                     except Exception:
                         pass
 
             # Archive to aria-insights
-            slug = f"emails-{niche_name.lower().replace(' ', '-')[:20]}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
+            slug = f"emails-{niche_name.lower().replace(' ', '-')[:20]}-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}"
             path = f"outreach/emails/{slug}.md"
-            await gh._post("/user/repos", {"name": "aria-insights", "private": False, "auto_init": False})
+            await gh._post(
+                "/user/repos", {"name": "aria-insights", "private": False, "auto_init": False}
+            )
             existing = await gh._get(f"/repos/{owner}/aria-insights/contents/{path}")
             sha = existing.get("sha") if "error" not in existing else None
             body_put: dict = {
@@ -9161,13 +10611,14 @@ Return JSON:
         Requires: at least GITHUB_TOKEN. More APIs = more reach.
         """
         try:
+            import base64 as _b64
+
             from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
-            import base64 as _b64
 
             cache = get_cache()
-            gh    = AriaGitHubClient()
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
 
             # 1. Get latest published content
@@ -9195,10 +10646,10 @@ Return JSON:
                     "strategy": "content_pipeline",
                 }
 
-            title   = (source_item.get("title") or source_item.get("name", ""))[:80]
+            title = (source_item.get("title") or source_item.get("name", ""))[:80]
             summary = source_item.get("summary", "")[:300]
-            urls    = source_item.get("urls", [])
-            url     = urls[0] if urls else f"https://github.com/{owner}/aria-portfolio"
+            urls = source_item.get("urls", [])
+            url = urls[0] if urls else f"https://github.com/{owner}/aria-portfolio"
 
             # 2. Generate platform-specific adaptations
             adaptations = await complete_json(
@@ -9241,11 +10692,12 @@ Return JSON:
                 tweets = adaptations.get("twitter_thread", [])
                 if tweets:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
-                    tw_key    = getattr(settings, "TWITTER_API_KEY", None)
+                    tw_key = getattr(settings, "TWITTER_API_KEY", None)
                     tw_secret = getattr(settings, "TWITTER_API_SECRET", None)
-                    tw_tok    = getattr(settings, "TWITTER_ACCESS_TOKEN", None)
-                    tw_sec    = getattr(settings, "TWITTER_ACCESS_SECRET", None)
+                    tw_tok = getattr(settings, "TWITTER_ACCESS_TOKEN", None)
+                    tw_sec = getattr(settings, "TWITTER_ACCESS_SECRET", None)
                     if all([tw_key, tw_secret, tw_tok, tw_sec]):
                         ok = await pub.publish_thread_to_twitter(tweets)
                         if ok:
@@ -9255,17 +10707,28 @@ Return JSON:
                         zapier_url = getattr(settings, "ZAPIER_WEBHOOK_URL", None)
                         if zapier_url:
                             import httpx as _hx
+
                             async with _hx.AsyncClient(timeout=10.0) as hc:
-                                r = await hc.post(zapier_url, json={"text": "\n\n".join(tweets[:4])})
+                                r = await hc.post(
+                                    zapier_url, json={"text": "\n\n".join(tweets[:4])}
+                                )
                                 if r.status_code < 300:
                                     published_to.append("Twitter/Zapier")
                     # Browser fallback
-                    if "Twitter" not in published_to and "Twitter/Zapier" not in published_to and _ca_ae and _ca_ap:
+                    if (
+                        "Twitter" not in published_to
+                        and "Twitter/Zapier" not in published_to
+                        and _ca_ae
+                        and _ca_ap
+                    ):
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _tw_page = await _plat.twitter(_ca_ae, _ca_ap)
-                            if await _plat.twitter_thread_post(_tw_page, [t[:280] for t in tweets[:10]]):
+                            if await _plat.twitter_thread_post(
+                                _tw_page, [t[:280] for t in tweets[:10]]
+                            ):
                                 published_to.append("Twitter")
                         except Exception:
                             pass
@@ -9275,11 +10738,12 @@ Return JSON:
             # 4. LinkedIn post
             try:
                 lk_token = getattr(settings, "LINKEDIN_ACCESS_TOKEN", None)
-                lk_urn   = getattr(settings, "LINKEDIN_PERSON_URN", None)
+                lk_urn = getattr(settings, "LINKEDIN_PERSON_URN", None)
                 li_text = adaptations.get("linkedin_post", f"{title}\n\n{summary}\n\n{url}")
                 _li_posted = False
                 if lk_token and lk_urn:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     ok = await pub.publish_to_linkedin(li_text)
                     if ok:
@@ -9288,6 +10752,7 @@ Return JSON:
                 if not _li_posted and _ca_ae and _ca_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _li_page = await _plat.linkedin(_ca_ae, _ca_ap)
                         if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
@@ -9300,19 +10765,22 @@ Return JSON:
             # 5. Reddit post
             try:
                 reddit_data = adaptations.get("reddit_post", {})
-                sub   = reddit_data.get("subreddit", "Entrepreneur")
+                sub = reddit_data.get("subreddit", "Entrepreneur")
                 rtitle = reddit_data.get("title", title)
-                rbody  = reddit_data.get("body", summary)
-                reddit_id     = getattr(settings, "REDDIT_CLIENT_ID", None)
+                rbody = reddit_data.get("body", summary)
+                reddit_id = getattr(settings, "REDDIT_CLIENT_ID", None)
                 reddit_secret = getattr(settings, "REDDIT_CLIENT_SECRET", None)
-                reddit_refresh= getattr(settings, "REDDIT_REFRESH_TOKEN", None)
-                reddit_user   = getattr(settings, "REDDIT_USERNAME", None)
+                reddit_refresh = getattr(settings, "REDDIT_REFRESH_TOKEN", None)
+                reddit_user = getattr(settings, "REDDIT_USERNAME", None)
                 if all([reddit_id, reddit_secret, reddit_refresh, reddit_user]):
                     try:
                         import asyncpraw
+
                         reddit = asyncpraw.Reddit(
-                            client_id=reddit_id, client_secret=reddit_secret,
-                            refresh_token=reddit_refresh, user_agent=f"ARIA-Bot/1.0 by /u/{reddit_user}",
+                            client_id=reddit_id,
+                            client_secret=reddit_secret,
+                            refresh_token=reddit_refresh,
+                            user_agent=f"ARIA-Bot/1.0 by /u/{reddit_user}",
                         )
                         async with reddit:
                             subreddit = await reddit.subreddit(sub)
@@ -9324,10 +10792,13 @@ Return JSON:
                 if "Reddit" not in " ".join(published_to) and _ca_ae and _ca_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _rd_plat = await get_platform_login()
                         _rd_page = await _rd_plat.reddit(_ca_ae, _ca_ap)
                         _rd_url = await _rd_plat.reddit_post(
-                            _rd_page, sub, rtitle[:300],
+                            _rd_page,
+                            sub,
+                            rtitle[:300],
                             f"{rbody}\n\n{url}"[:5000],
                         )
                         if _rd_url:
@@ -9336,17 +10807,21 @@ Return JSON:
                         pass
 
                 # Always archive Reddit post to GitHub
-                reddit_slug = f"reddit-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}"
+                reddit_slug = f"reddit-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}"
                 reddit_md = f"# r/{sub} — {rtitle}\n\n{rbody}\n\n**Link:** {url}\n"
-                existing_r = await gh._get(f"/repos/{owner}/aria-insights/contents/reddit/{reddit_slug}.md")
+                existing_r = await gh._get(
+                    f"/repos/{owner}/aria-insights/contents/reddit/{reddit_slug}.md"
+                )
                 sha_r = existing_r.get("sha") if "error" not in existing_r else None
                 body_r: dict = {
-                    "message": f"feat: Reddit amplification post",
+                    "message": "feat: Reddit amplification post",
                     "content": _b64.b64encode(reddit_md.encode()).decode(),
                 }
                 if sha_r:
                     body_r["sha"] = sha_r
-                await gh._put(f"/repos/{owner}/aria-insights/contents/reddit/{reddit_slug}.md", body_r)
+                await gh._put(
+                    f"/repos/{owner}/aria-insights/contents/reddit/{reddit_slug}.md", body_r
+                )
                 if "Reddit" not in " ".join(published_to):
                     published_to.append("GitHub/Reddit-Archive")
             except Exception as exc:
@@ -9358,16 +10833,21 @@ Return JSON:
                 if devto_key:
                     devto_data = adaptations.get("devto_article", {})
                     import httpx as _hx
+
                     async with _hx.AsyncClient(timeout=15.0) as hc:
                         r = await hc.post(
                             "https://dev.to/api/articles",
                             headers={"api-key": devto_key, "Content-Type": "application/json"},
-                            json={"article": {
-                                "title": devto_data.get("title", title),
-                                "published": True,
-                                "body_markdown": devto_data.get("content", f"{summary}\n\n[Read more]({url})"),
-                                "tags": devto_data.get("tags", ["ai", "productivity"]),
-                            }},
+                            json={
+                                "article": {
+                                    "title": devto_data.get("title", title),
+                                    "published": True,
+                                    "body_markdown": devto_data.get(
+                                        "content", f"{summary}\n\n[Read more]({url})"
+                                    ),
+                                    "tags": devto_data.get("tags", ["ai", "productivity"]),
+                                }
+                            },
                         )
                         if r.status_code in (200, 201):
                             art = r.json()
@@ -9378,10 +10858,11 @@ Return JSON:
             # 7. Hashnode article
             try:
                 hn_token = getattr(settings, "HASHNODE_TOKEN", None)
-                hn_pub   = getattr(settings, "HASHNODE_PUBLICATION_ID", None)
+                hn_pub = getattr(settings, "HASHNODE_PUBLICATION_ID", None)
                 if hn_token and hn_pub:
                     hn_data = adaptations.get("devto_article", {})
                     import httpx as _hx
+
                     hn_mutation = """
 mutation CreatePost($input: CreateStoryInput!) {
   createStory(input: $input) { post { url } }
@@ -9390,17 +10871,31 @@ mutation CreatePost($input: CreateStoryInput!) {
                         r = await hc.post(
                             "https://gql.hashnode.com/",
                             headers={"Authorization": hn_token},
-                            json={"query": hn_mutation, "variables": {"input": {
-                                "title": hn_data.get("title", title),
-                                "contentMarkdown": hn_data.get("content", f"{summary}\n\n[Read more]({url})"),
-                                "publicationId": hn_pub,
-                                "tags": [],
-                            }}},
+                            json={
+                                "query": hn_mutation,
+                                "variables": {
+                                    "input": {
+                                        "title": hn_data.get("title", title),
+                                        "contentMarkdown": hn_data.get(
+                                            "content", f"{summary}\n\n[Read more]({url})"
+                                        ),
+                                        "publicationId": hn_pub,
+                                        "tags": [],
+                                    }
+                                },
+                            },
                         )
                         if r.status_code == 200:
                             hn_res = r.json()
-                            hn_url = hn_res.get("data", {}).get("createStory", {}).get("post", {}).get("url", "")
-                            published_to.append(f"Hashnode ({hn_url[:40]})" if hn_url else "Hashnode")
+                            hn_url = (
+                                hn_res.get("data", {})
+                                .get("createStory", {})
+                                .get("post", {})
+                                .get("url", "")
+                            )
+                            published_to.append(
+                                f"Hashnode ({hn_url[:40]})" if hn_url else "Hashnode"
+                            )
             except Exception as exc:
                 errors.append(f"Hashnode: {str(exc)[:50]}")
 
@@ -9410,6 +10905,7 @@ mutation CreatePost($input: CreateStoryInput!) {
                 if discord_url:
                     discord_msg = adaptations.get("discord_message", f"🚀 New: {title}\n{url}")
                     import httpx as _hx
+
                     async with _hx.AsyncClient(timeout=10.0) as hc:
                         r = await hc.post(discord_url, json={"content": f"{discord_msg}"})
                         if r.status_code in (200, 204):
@@ -9422,6 +10918,7 @@ mutation CreatePost($input: CreateStoryInput!) {
                 mc_key = getattr(settings, "MAILCHIMP_API_KEY", None)
                 if mc_key:
                     from apps.core.tools.mailchimp_tools import MailchimpTools
+
                     mc = MailchimpTools()
                     email_subj = adaptations.get("email_subject", f"New: {title[:40]}")
                     mc_res = await mc.send_campaign(
@@ -9434,7 +10931,7 @@ mutation CreatePost($input: CreateStoryInput!) {
                 errors.append(f"Email: {str(exc)[:50]}")
 
             platforms_str = " + ".join(published_to) if published_to else "GitHub only"
-            errors_str    = f" (errors: {'; '.join(errors[:3])})" if errors else ""
+            errors_str = f" (errors: {'; '.join(errors[:3])})" if errors else ""
 
             return {
                 "success": len(published_to) > 0,
@@ -9455,13 +10952,14 @@ mutation CreatePost($input: CreateStoryInput!) {
         Requires: GITHUB_TOKEN (always archives); YOUTUBE_API_KEY optional for upload metadata.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.video.youtube.youtube_engine import YouTubeEngine
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
 
-            gh     = AriaGitHubClient()
-            owner  = settings.GITHUB_USERNAME or "Geremypolanco"
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.video.youtube.youtube_engine import YouTubeEngine
+
+            gh = AriaGitHubClient()
+            owner = settings.GITHUB_USERNAME or "Geremypolanco"
             engine = YouTubeEngine()
 
             # Pick a niche + topic
@@ -9535,7 +11033,7 @@ Return JSON:
             archive_md = f"""# YouTube Strategy — {niche}
 ## Channel: {channel_name}
 **Keyword:** {keyword}
-**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d')}
+**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d')}
 
 ---
 
@@ -9574,14 +11072,19 @@ Return JSON:
 *Generated by ARIA AI — autonomous business intelligence system*
 """
 
-            slug = f"{keyword.replace(' ', '-')[:40]}-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+            slug = f"{keyword.replace(' ', '-')[:40]}-{datetime.now(UTC).strftime('%Y%m%d')}"
             path = f"youtube/{slug}.md"
 
             # Archive to aria-insights
             insights_repo = "aria-insights"
-            r_repo = await gh._post("/user/repos", {
-                "name": insights_repo, "private": False, "auto_init": False,
-            })
+            await gh._post(
+                "/user/repos",
+                {
+                    "name": insights_repo,
+                    "private": False,
+                    "auto_init": False,
+                },
+            )
             existing = await gh._get(f"/repos/{owner}/{insights_repo}/contents/{path}")
             sha = existing.get("sha") if "error" not in existing else None
             body: dict = {
@@ -9609,6 +11112,7 @@ Return JSON:
                 _yt_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _yt_pub = get_api_publisher()
                     _yt_tw_r = await _yt_pub.publish_to_twitter(_yt_tw)
                     if _yt_tw_r and _yt_tw_r.success:
@@ -9618,6 +11122,7 @@ Return JSON:
                 if not _yt_tw_ok and _yt_ae and _yt_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _yt_plat = await get_platform_login()
                         _yt_tw_pg = await _yt_plat.twitter(_yt_ae, _yt_ap)
                         await _yt_plat.twitter_thread_post(_yt_tw_pg, [_yt_tw])
@@ -9653,19 +11158,20 @@ Return JSON:
         if not settings.GITHUB_TOKEN:
             return {"success": False, "summary": "product_hunt_launch: needs GITHUB_TOKEN"}
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
 
-            gh    = AriaGitHubClient()
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
+            gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             cache = get_cache()
 
             # Grab latest product from catalog
             product_title = ""
-            product_url   = ""
-            product_desc  = ""
+            product_url = ""
+            product_desc = ""
             if cache:
                 raw_items = await cache.lrange("aria:products:catalog", -5, -1)
                 for raw in reversed(raw_items or []):
@@ -9674,16 +11180,16 @@ Return JSON:
                         item_title = item.get("title") or item.get("name", "")
                         if item_title and item.get("urls"):
                             product_title = item_title[:80]
-                            product_url   = item["urls"][0]
-                            product_desc  = item.get("summary", "")[:200]
+                            product_url = item["urls"][0]
+                            product_desc = item.get("summary", "")[:200]
                             break
                     except Exception:
                         pass
 
             if not product_title:
                 product_title = "ARIA AI — Autonomous Income Generation Platform"
-                product_url   = f"https://github.com/{owner}/aria-ai"
-                product_desc  = "The autonomous AI that generates income 24/7 while you sleep."
+                product_url = f"https://github.com/{owner}/aria-ai"
+                product_desc = "The autonomous AI that generates income 24/7 while you sleep."
 
             launch_data = await complete_json(
                 f"""Create a complete Product Hunt launch package for this product:
@@ -9708,21 +11214,21 @@ Return JSON:
                 model="strategy",
             )
 
-            tagline     = launch_data.get("tagline", f"The AI that generates income while you sleep")
+            tagline = launch_data.get("tagline", "The AI that generates income while you sleep")
             description = launch_data.get("description", product_desc)
             first_comment = launch_data.get("first_comment", "")
-            hunter_msg  = launch_data.get("hunter_message", "")
-            upvote_ask  = launch_data.get("upvote_ask", "")
-            checklist   = launch_data.get("launch_checklist", [])
-            best_day    = launch_data.get("best_launch_day", "Tuesday")
+            hunter_msg = launch_data.get("hunter_message", "")
+            upvote_ask = launch_data.get("upvote_ask", "")
+            checklist = launch_data.get("launch_checklist", [])
+            best_day = launch_data.get("best_launch_day", "Tuesday")
             launch_time = launch_data.get("launch_time", "12:01 AM PST")
             communities = launch_data.get("shoutout_communities", [])
 
             checklist_md = "\n".join(f"- [ ] {c}" for c in checklist)
             communities_md = "\n".join(f"- {c}" for c in communities)
 
-            launch_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            slug        = f"ph-launch-{product_title[:30].lower().replace(' ', '-').replace('/', '-')}-{launch_date}"
+            launch_date = datetime.now(UTC).strftime("%Y-%m-%d")
+            slug = f"ph-launch-{product_title[:30].lower().replace(' ', '-').replace('/', '-')}-{launch_date}"
 
             kit_md = f"""# 🚀 Product Hunt Launch Kit — {product_title}
 **Launch Date:** {best_day} at {launch_time}
@@ -9787,9 +11293,14 @@ Return JSON:
             # Archive to aria-insights
             path = f"product_hunt/{slug}.md"
             insights_repo = "aria-insights"
-            await gh._post("/user/repos", {
-                "name": insights_repo, "private": False, "auto_init": False,
-            })
+            await gh._post(
+                "/user/repos",
+                {
+                    "name": insights_repo,
+                    "private": False,
+                    "auto_init": False,
+                },
+            )
             existing = await gh._get(f"/repos/{owner}/{insights_repo}/contents/{path}")
             sha = existing.get("sha") if "error" not in existing else None
             body: dict = {
@@ -9809,6 +11320,7 @@ Return JSON:
                 _ph_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     _ph_tw_text = f"{upvote_ask}\n\n{product_url}"[:280]
                     tw = await pub.publish_to_twitter(_ph_tw_text)
@@ -9823,6 +11335,7 @@ Return JSON:
                     if _ae and _ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _tw_page = await _plat.twitter(_ae, _ap)
                             await _plat.twitter_thread_post(_tw_page, [_ph_tw_text])
@@ -9830,14 +11343,16 @@ Return JSON:
                             pass
 
             # Submit "Show HN" to Hacker News via human browser
-            aria_email    = getattr(settings, "ARIA_EMAIL", None)
+            aria_email = getattr(settings, "ARIA_EMAIL", None)
             aria_password = getattr(settings, "ARIA_PASSWORD", None)
             if aria_email and aria_password:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     plat = await get_platform_login()
                     hn_url = await plat.hackernews_show_hn(
-                        aria_email, aria_password,
+                        aria_email,
+                        aria_password,
                         title=f"{product_title}: {tagline}",
                         url=product_url,
                     )
@@ -9848,22 +11363,30 @@ Return JSON:
                     logger.debug("[IncomeLoop] HN submission: %s", _hn_exc)
 
             # Also publish a blog post to drive pre-launch awareness
-            asyncio.create_task(self._exec_github_blog([{
-                "title": f"We're Launching on Product Hunt: {tagline}",
-                "slug": f"product-hunt-{launch_date}",
-                "description": description[:155],
-                "tags": ["product-hunt", "launch", "ai", "saas"],
-                "content": (
-                    f"# We're Launching on Product Hunt!\n\n"
-                    f"> {tagline}\n\n"
-                    f"{description}\n\n"
-                    f"## Support the Launch\n\n"
-                    f"{upvote_ask}\n\n"
-                    f"**Launch URL:** {product_url}\n"
-                ),
-            }]))
+            asyncio.create_task(
+                self._exec_github_blog(
+                    [
+                        {
+                            "title": f"We're Launching on Product Hunt: {tagline}",
+                            "slug": f"product-hunt-{launch_date}",
+                            "description": description[:155],
+                            "tags": ["product-hunt", "launch", "ai", "saas"],
+                            "content": (
+                                f"# We're Launching on Product Hunt!\n\n"
+                                f"> {tagline}\n\n"
+                                f"{description}\n\n"
+                                f"## Support the Launch\n\n"
+                                f"{upvote_ask}\n\n"
+                                f"**Launch URL:** {product_url}\n"
+                            ),
+                        }
+                    ]
+                )
+            )
 
-            all_urls = ([archive_url] if "content" in result or "commit" in result else []) + extra_urls
+            all_urls = (
+                [archive_url] if "content" in result or "commit" in result else []
+            ) + extra_urls
             return {
                 "success": True,
                 "summary": f"PH launch kit: '{tagline}' — {len(extra_urls)} live posts (HN/Twitter) + kit archived",
@@ -9883,10 +11406,11 @@ Return JSON:
         social media algorithms. Archives to aria-insights/substack/.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -9928,7 +11452,10 @@ JSON:
             )
 
             if not article or not article.get("title"):
-                return {"success": False, "summary": "substack_publish: AI failed to generate article"}
+                return {
+                    "success": False,
+                    "summary": "substack_publish: AI failed to generate article",
+                }
 
             title = article.get("title", "Untitled")
             content = article.get("content", "")
@@ -9961,15 +11488,16 @@ JSON:
             # Archive to GitHub aria-insights/substack/
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
                 slug = title.lower().replace(" ", "-").replace("'", "").replace('"', "")[:45]
 
                 encoded = _b64.b64encode(full_article.encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/substack/{today}-{slug}.md",
-                    {"message": f"substack: {title[:60]}", "content": encoded}
+                    {"message": f"substack: {title[:60]}", "content": encoded},
                 )
                 if "error" not in file_r:
                     url = f"https://github.com/{owner}/aria-insights/blob/main/substack/{today}-{slug}.md"
@@ -9978,13 +11506,19 @@ JSON:
                     # Also publish to Dev.to as free preview (drives Substack subs)
                     try:
                         from apps.core.tools.publishing_tools import PublishingTools
-                        devto_content = content[:1200] + f"\n\n*Read the full article + exclusive resources on [our Substack](https://substack.com)*"
-                        r = await PublishingTools().publish_devto({
-                            "title": title,
-                            "body": devto_content,
-                            "tags": tags[:4],
-                            "meta_description": subtitle[:155] if subtitle else "",
-                        })
+
+                        devto_content = (
+                            content[:1200]
+                            + "\n\n*Read the full article + exclusive resources on [our Substack](https://substack.com)*"
+                        )
+                        r = await PublishingTools().publish_devto(
+                            {
+                                "title": title,
+                                "body": devto_content,
+                                "tags": tags[:4],
+                                "meta_description": subtitle[:155] if subtitle else "",
+                            }
+                        )
                         if r.get("success") and r.get("url"):
                             urls_created.append(r["url"])
                     except Exception:
@@ -9997,9 +11531,11 @@ JSON:
             if _sb_ae and _sb_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _sb_plat = await get_platform_login()
                     _sb_url = await _sb_plat.substack_publish_post(
-                        _sb_ae, _sb_ap,
+                        _sb_ae,
+                        _sb_ap,
                         title,
                         subtitle or "",
                         full_article,
@@ -10026,12 +11562,12 @@ JSON:
             _sb_tw = (
                 f"📝 New article: {title[:120]}\n\n"
                 f"{viral_hook[:120]}\n\n"
-                f"Read time: {read_time} min"
-                + (f"\n→ {_sb_post_url}" if _sb_post_url else "")
+                f"Read time: {read_time} min" + (f"\n→ {_sb_post_url}" if _sb_post_url else "")
             )[:280]
             _sb_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _sb_pub = get_api_publisher()
                 _sb_tw_r = await _sb_pub.publish_to_twitter(_sb_tw)
                 if _sb_tw_r and _sb_tw_r.success:
@@ -10041,6 +11577,7 @@ JSON:
             if not _sb_tw_ok and _sb_tw_ae and _sb_tw_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _sb_plat2 = await get_platform_login()
                     _sb_tw_pg = await _sb_plat2.twitter(_sb_tw_ae, _sb_tw_ap)
                     await _sb_plat2.twitter_thread_post(_sb_tw_pg, [_sb_tw])
@@ -10066,10 +11603,11 @@ JSON:
         can be $500-$5,000. Drives direct service revenue.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -10080,9 +11618,7 @@ JSON:
             r = await wt.search_web("top selling Fiverr AI automation gigs 2025", num_results=5)
             market_context = "AI automation, chatbot development, content generation"
             if r.get("success") and r.get("results"):
-                market_context = " ".join(
-                    res.get("snippet", "")[:100] for res in r["results"][:3]
-                )
+                market_context = " ".join(res.get("snippet", "")[:100] for res in r["results"][:3])
 
             gig_data = await ai.complete_json(
                 system=(
@@ -10138,9 +11674,10 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 md_lines = [
                     f"# Freelance Gig Listings — {today}",
@@ -10208,7 +11745,10 @@ JSON:
                 encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/freelance/{today}-gig-listings.md",
-                    {"message": f"freelance: {len(gigs)} Fiverr/Upwork gig listings {today}", "content": encoded}
+                    {
+                        "message": f"freelance: {len(gigs)} Fiverr/Upwork gig listings {today}",
+                        "content": encoded,
+                    },
                 )
                 if "error" not in file_r:
                     url = f"https://github.com/{owner}/aria-insights/blob/main/freelance/{today}-gig-listings.md"
@@ -10232,6 +11772,7 @@ JSON:
             _fg_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _fg_pub = get_api_publisher()
                 _fg_tw_r = await _fg_pub.publish_to_twitter(tw_fg)
                 if _fg_tw_r and _fg_tw_r.success:
@@ -10243,6 +11784,7 @@ JSON:
             if not _fg_tw_ok and _fg_ae and _fg_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _fg_plat = await get_platform_login()
                     _fg_tw_pg = await _fg_plat.twitter(_fg_ae, _fg_ap)
                     await _fg_plat.twitter_thread_post(_fg_tw_pg, [tw_fg])
@@ -10270,17 +11812,20 @@ JSON:
         Archives to aria-insights/press/.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "media_pitch: AI unavailable"}
 
             wt = WebTools()
-            r = await wt.search_web("AI automation startups funding announcements 2025", num_results=5)
+            r = await wt.search_web(
+                "AI automation startups funding announcements 2025", num_results=5
+            )
             news_context = "AI automation is the fastest growing category in SaaS"
             if r.get("success") and r.get("results"):
                 news_context = r["results"][0].get("snippet", news_context)[:200]
@@ -10348,9 +11893,10 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 md_lines = [
                     f"# Media Pitch Kit — {today}",
@@ -10363,7 +11909,7 @@ JSON:
                     "",
                     press_release.get("body", ""),
                     "",
-                    f"---",
+                    "---",
                     f"*{press_release.get('boilerplate', '')}*",
                     "",
                     "## Journalist Pitches",
@@ -10396,7 +11942,9 @@ JSON:
                 if bullets:
                     md_lines += ["## Social Proof", ""] + [f"- {b}" for b in bullets[:5]] + [""]
                 if data_points:
-                    md_lines += ["## Unique Data Points", ""] + [f"- {d}" for d in data_points[:5]] + [""]
+                    md_lines += (
+                        ["## Unique Data Points", ""] + [f"- {d}" for d in data_points[:5]] + [""]
+                    )
                 md_lines += [
                     "## How to Send",
                     "1. Find journalist emails via Hunter.io or their Twitter bio",
@@ -10410,7 +11958,7 @@ JSON:
                 encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/press/{today}-media-kit.md",
-                    {"message": f"press: media pitch kit {today}", "content": encoded}
+                    {"message": f"press: media pitch kit {today}", "content": encoded},
                 )
                 if "error" not in file_r:
                     url = f"https://github.com/{owner}/aria-insights/blob/main/press/{today}-media-kit.md"
@@ -10431,13 +11979,24 @@ JSON:
             if _mp_smtp_host and _mp_smtp_user and _mp_smtp_pass:
                 import smtplib
                 from email.mime.text import MIMEText as _MPMime
+
                 # Known journalist emails for seeding outreach
                 known_outlets: list[tuple[str, str]] = [
-                    ("news@ycombinator.com", pitches[0].get("subject_line", headline) if pitches else headline),
-                    ("tips@techcrunch.com", pitches[1].get("subject_line", headline) if len(pitches) > 1 else headline),
+                    (
+                        "news@ycombinator.com",
+                        pitches[0].get("subject_line", headline) if pitches else headline,
+                    ),
+                    (
+                        "tips@techcrunch.com",
+                        pitches[1].get("subject_line", headline) if len(pitches) > 1 else headline,
+                    ),
                 ]
                 for to_email, subj in known_outlets[:2]:
-                    body = press_release.get("body", "") + "\n\n" + press_release.get("boilerplate", "")
+                    body = (
+                        press_release.get("body", "")
+                        + "\n\n"
+                        + press_release.get("boilerplate", "")
+                    )
                     try:
                         _mp_msg = _MPMime(body)
                         _mp_msg["Subject"] = subj[:100]
@@ -10446,7 +12005,9 @@ JSON:
                         with smtplib.SMTP(_mp_smtp_host, _mp_smtp_port) as _mp_srv:
                             _mp_srv.starttls()
                             _mp_srv.login(_mp_smtp_user, _mp_smtp_pass)
-                            _mp_srv.sendmail(_mp_smtp_from or _mp_smtp_user, [to_email], _mp_msg.as_string())
+                            _mp_srv.sendmail(
+                                _mp_smtp_from or _mp_smtp_user, [to_email], _mp_msg.as_string()
+                            )
                         pitch_emails_sent += 1
                     except Exception:
                         pass
@@ -10457,9 +12018,11 @@ JSON:
             if _mp_ae and _mp_ap and urls_created:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _mp_plat = await get_platform_login()
                     _hn_url2 = await _mp_plat.hackernews_show_hn(
-                        _mp_ae, _mp_ap,
+                        _mp_ae,
+                        _mp_ap,
                         title=f"Show HN: {headline[:100]}",
                         url=urls_created[0],
                         text=press_release.get("body", "")[:500],
@@ -10478,6 +12041,7 @@ JSON:
             _mp_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _mp_pub = get_api_publisher()
                 _mp_tw_r = await _mp_pub.publish_to_twitter(tw_mp)
                 if _mp_tw_r and _mp_tw_r.success:
@@ -10489,13 +12053,19 @@ JSON:
             if not _mp_tw_ok and _mp_ae and _mp_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _mp_plat2 = await get_platform_login()
                     _mp_tw_pg = await _mp_plat2.twitter(_mp_ae, _mp_ap)
                     await _mp_plat2.twitter_thread_post(_mp_tw_pg, [tw_mp])
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] media_pitch: '%s' — %d pitches | %d emails sent", headline[:60], len(pitches), pitch_emails_sent)
+            logger.info(
+                "[IncomeLoop] media_pitch: '%s' — %d pitches | %d emails sent",
+                headline[:60],
+                len(pitches),
+                pitch_emails_sent,
+            )
             return {
                 "success": True,
                 "summary": f"Media kit: '{headline[:70]}' — {len(pitches)} journalist pitches | {pitch_emails_sent} emails sent | HN + Twitter shared",
@@ -10516,11 +12086,12 @@ JSON:
         to track which variants to test and results.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.memory.redis_client import get_cache
-            import json as _json
             import base64 as _b64
-            from datetime import datetime, timezone
+            import json as _json
+            from datetime import datetime
+
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
             if not ai:
@@ -10532,11 +12103,9 @@ JSON:
             catalog_items = []
             if cache:
                 raw = await cache.lrange("aria:products:catalog", 0, 10)
-                for item in (raw or []):
-                    try:
+                for item in raw or []:
+                    with contextlib.suppress(Exception):
                         catalog_items.append(_json.loads(item) if isinstance(item, str) else item)
-                    except Exception:
-                        pass
 
             if not catalog_items:
                 # Fallback to synthetic products if catalog is empty
@@ -10599,16 +12168,17 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 md_lines = [
                     f"# A/B Test Matrix — {today}",
                     f"*{len(tests)} tests | Expected avg lift: "
                     f"{sum(t.get('expected_lift_pct',25) for t in tests)//max(len(tests),1)}%*",
                     "",
-                    f"## Strategy",
+                    "## Strategy",
                     strategy,
                     "",
                 ]
@@ -10647,7 +12217,7 @@ JSON:
                 encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/cro/{today}-ab-tests.md",
-                    {"message": f"cro: A/B test matrix {today}", "content": encoded}
+                    {"message": f"cro: A/B test matrix {today}", "content": encoded},
                 )
                 if "error" not in file_r:
                     url = f"https://github.com/{owner}/aria-insights/blob/main/cro/{today}-ab-tests.md"
@@ -10656,7 +12226,7 @@ JSON:
             # Store test plans in Redis for tracking
             if cache and tests:
                 test_record = {
-                    "date": datetime.now(timezone.utc).isoformat(),
+                    "date": datetime.now(UTC).isoformat(),
                     "tests": [
                         {
                             "product": t.get("product_title", ""),
@@ -10676,7 +12246,11 @@ JSON:
                 return {"success": False, "summary": "ab_content_test: archive failed"}
 
             avg_lift = sum(t.get("expected_lift_pct", 25) for t in tests) // max(len(tests), 1)
-            logger.info("[IncomeLoop] ab_content_test: %d tests designed, avg expected lift %d%%", len(tests), avg_lift)
+            logger.info(
+                "[IncomeLoop] ab_content_test: %d tests designed, avg expected lift %d%%",
+                len(tests),
+                avg_lift,
+            )
             return {
                 "success": True,
                 "summary": f"A/B tests: {len(tests)} conversion tests designed — avg expected lift +{avg_lift}%",
@@ -10688,7 +12262,6 @@ JSON:
             logger.error("[IncomeLoop] ab_content_test: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
-
     async def _exec_smart_pricing(self) -> dict:
         """
         AI-driven price optimization for existing products.
@@ -10698,12 +12271,13 @@ JSON:
         used by product_factory and stripe_checkout for future listings.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.memory.redis_client import get_cache
-            import json as _json
             import base64 as _b64
-            from datetime import datetime, timezone
+            import json as _json
+            from datetime import datetime
+
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -10715,11 +12289,9 @@ JSON:
             catalog_items = []
             if cache:
                 raw = await cache.lrange("aria:products:catalog", 0, 20)
-                for item in (raw or []):
-                    try:
+                for item in raw or []:
+                    with contextlib.suppress(Exception):
                         catalog_items.append(_json.loads(item) if isinstance(item, str) else item)
-                    except Exception:
-                        pass
 
             if not catalog_items:
                 catalog_items = [
@@ -10730,7 +12302,9 @@ JSON:
 
             # Research pricing benchmarks
             wt = WebTools()
-            r = await wt.search_web("best digital product pricing strategy 2025 conversion", num_results=5)
+            r = await wt.search_web(
+                "best digital product pricing strategy 2025 conversion", num_results=5
+            )
             pricing_context = "Most digital products convert best at $17, $37, or $97 price points"
             if r.get("success") and r.get("results"):
                 pricing_context = r["results"][0].get("snippet", pricing_context)[:300]
@@ -10805,9 +12379,10 @@ JSON:
             urls_created = []
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 md_lines = [
                     f"# Smart Pricing Report — {today}",
@@ -10821,10 +12396,10 @@ JSON:
                     lift = item.get("expected_revenue_lift_pct", 0)
                     md_lines += [
                         f"### {item.get('product_title', 'Product')}",
-                        f"| | Current | Optimal | Anchor |",
-                        f"|---|---|---|---|",
+                        "| | Current | Optimal | Anchor |",
+                        "|---|---|---|---|",
                         f"| Price | ${item.get('current_price', 0)} | ${item.get('optimal_price', 0)} | ${item.get('anchor_price', 0)} |",
-                        f"",
+                        "",
                         f"**Why:** {item.get('price_psychology_rationale', '')}",
                         f"**Anchor copy:** *{item.get('anchor_tagline', '')}*",
                         f"**Expected revenue lift:** +{lift}%",
@@ -10833,22 +12408,30 @@ JSON:
                     ]
                     vl = item.get("value_ladder", {})
                     for tier, info in vl.items():
-                        md_lines.append(f"  - {tier.title()}: ${info.get('price', 0)} — {info.get('offer', '')}")
+                        md_lines.append(
+                            f"  - {tier.title()}: ${info.get('price', 0)} — {info.get('offer', '')}"
+                        )
                     md_lines += ["", "---", ""]
 
                 md_lines.append("*Generated by ARIA AI — Smart Pricing Engine*")
                 encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/pricing/{today}-smart-pricing.md",
-                    {"message": f"pricing: AI-optimized price matrix {today}", "content": encoded}
+                    {"message": f"pricing: AI-optimized price matrix {today}", "content": encoded},
                 )
                 if "error" not in file_r:
                     urls_created.append(
                         f"https://github.com/{owner}/aria-insights/blob/main/pricing/{today}-smart-pricing.md"
                     )
 
-            avg_lift = sum(m.get("expected_revenue_lift_pct", 0) for m in matrix) // max(len(matrix), 1)
-            logger.info("[IncomeLoop] smart_pricing: %d products optimized, avg lift +%d%%", len(matrix), avg_lift)
+            avg_lift = sum(m.get("expected_revenue_lift_pct", 0) for m in matrix) // max(
+                len(matrix), 1
+            )
+            logger.info(
+                "[IncomeLoop] smart_pricing: %d products optimized, avg lift +%d%%",
+                len(matrix),
+                avg_lift,
+            )
             return {
                 "success": True,
                 "summary": f"Smart pricing: {len(matrix)} products optimized — avg revenue lift +{avg_lift}% | {strategy_note[:60]}",
@@ -10869,10 +12452,11 @@ JSON:
         Archives to aria-insights/newsletter/.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -10934,9 +12518,10 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 mon = data.get("monetization_plan", {})
                 issue = data.get("issue_today", {})
@@ -10994,7 +12579,10 @@ JSON:
                 encoded = _b64.b64encode(md.encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/newsletter/monetize-{today}.md",
-                    {"message": f"newsletter: monetization kit + issue {today}", "content": encoded}
+                    {
+                        "message": f"newsletter: monetization kit + issue {today}",
+                        "content": encoded,
+                    },
                 )
                 if "error" not in file_r:
                     urls_created.append(
@@ -11004,12 +12592,17 @@ JSON:
                 # Also publish the free-tier portion to Dev.to for reach
                 try:
                     from apps.core.tools.publishing_tools import PublishingTools
-                    r = await PublishingTools().publish_devto({
-                        "title": issue.get("subject_line", data.get("newsletter_name", "")),
-                        "body": issue.get("intro", "") + "\n\n" + issue.get("main_content", "")[:800],
-                        "tags": ["newsletter", "ai", "productivity", "business"],
-                        "meta_description": issue.get("preview_text", "")[:155],
-                    })
+
+                    r = await PublishingTools().publish_devto(
+                        {
+                            "title": issue.get("subject_line", data.get("newsletter_name", "")),
+                            "body": issue.get("intro", "")
+                            + "\n\n"
+                            + issue.get("main_content", "")[:800],
+                            "tags": ["newsletter", "ai", "productivity", "business"],
+                            "meta_description": issue.get("preview_text", "")[:155],
+                        }
+                    )
                     if r.get("success") and r.get("url"):
                         urls_created.append(r["url"])
                 except Exception:
@@ -11032,6 +12625,7 @@ JSON:
             _nm_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _nm_pub = get_api_publisher()
                 _nm_tw_r = await _nm_pub.publish_to_twitter(_nm_tw)
                 if _nm_tw_r and _nm_tw_r.success:
@@ -11041,17 +12635,24 @@ JSON:
             if not _nm_tw_ok and _nm_ae and _nm_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _nm_plat = await get_platform_login()
                     _nm_tw_pg = await _nm_plat.twitter(_nm_ae, _nm_ap)
                     await _nm_plat.twitter_thread_post(_nm_tw_pg, [_nm_tw])
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] newsletter_monetize: '%s' — $%d projected MRR @ month 12", _nm_nl_name[:40], m12)
+            logger.info(
+                "[IncomeLoop] newsletter_monetize: '%s' — $%d projected MRR @ month 12",
+                _nm_nl_name[:40],
+                m12,
+            )
             return {
                 "success": bool(urls_created),
                 "summary": f"Newsletter: '{_nm_nl_name}' — ${m12:,}/mo projected MRR at month 12 | Twitter announced",
-                "revenue_potential": float(mon.get("paid_tier_price_monthly", 9) * 100),  # 100 paid subs
+                "revenue_potential": float(
+                    mon.get("paid_tier_price_monthly", 9) * 100
+                ),  # 100 paid subs
                 "urls": urls_created[:3],
             }
 
@@ -11068,9 +12669,10 @@ JSON:
         Archives to aria-insights/community/.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
             if not ai:
@@ -11131,9 +12733,10 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 tiers = data.get("membership_tiers", [])
                 structure = data.get("discord_structure", {})
@@ -11210,7 +12813,7 @@ JSON:
                 encoded = _b64.b64encode(md.encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/community/launch-kit-{today}.md",
-                    {"message": f"community: launch kit {today}", "content": encoded}
+                    {"message": f"community: launch kit {today}", "content": encoded},
                 )
                 if "error" not in file_r:
                     urls_created.append(
@@ -11233,10 +12836,13 @@ JSON:
                 if twitter_thread_text:
                     tweets = [t.strip() for t in twitter_thread_text.split("\n") if t.strip()][:10]
                     if len(tweets) == 1:
-                        tweets = [t.strip() for t in twitter_thread_text.split("\n\n") if t.strip()][:10]
+                        tweets = [
+                            t.strip() for t in twitter_thread_text.split("\n\n") if t.strip()
+                        ][:10]
                     tweet_texts = tweets
                     if tweets:
                         from apps.distribution.publishers.api_publisher import get_api_publisher
+
                         pub = get_api_publisher()
                         results = await pub.publish_thread_to_twitter([t[:280] for t in tweets])
                         if any(r.success for r in results):
@@ -11247,6 +12853,7 @@ JSON:
             if not _ok and _ae and _ap and tweet_texts:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_ae, _ap)
                     await _plat.twitter_thread_post(_tw_page, [t[:280] for t in tweet_texts[:10]])
@@ -11265,6 +12872,7 @@ JSON:
                 li_text += f"\n\n{urls_created[0]}"
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 li_result = await pub.publish_to_linkedin(li_text[:1300])
                 if li_result and li_result.success:
@@ -11275,6 +12883,7 @@ JSON:
             if not _li_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _li_page = await _plat.linkedin(_ae, _ap)
                     if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
@@ -11282,14 +12891,20 @@ JSON:
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] community_launch: '%s' — $%d MRR at 100 members", community_name[:40], mrr)
+            logger.info(
+                "[IncomeLoop] community_launch: '%s' — $%d MRR at 100 members",
+                community_name[:40],
+                mrr,
+            )
             return {
                 "success": True,
                 "summary": (
                     f"Community: '{community_name}' — ${mrr:,}/mo MRR at 100 members | "
                     f"announced on: {', '.join(distributed_to) or 'GitHub'}"
                 ),
-                "revenue_potential": float(tiers[0].get("price_monthly", 19) * 50) if tiers else 950.0,
+                "revenue_potential": (
+                    float(tiers[0].get("price_monthly", 19) * 50) if tiers else 950.0
+                ),
                 "urls": urls_created[:2],
             }
 
@@ -11306,22 +12921,25 @@ JSON:
         Archives to aria-insights/podcast/.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
                 return {"success": False, "summary": "podcast_pitch: AI unavailable"}
 
             wt = WebTools()
-            r = await wt.search_web("top AI entrepreneur startup podcasts 2025 guest submission", num_results=5)
-            podcast_context = "Indie Hackers Podcast, My First Million, How I Built This, The Tim Ferriss Show"
+            r = await wt.search_web(
+                "top AI entrepreneur startup podcasts 2025 guest submission", num_results=5
+            )
+            podcast_context = (
+                "Indie Hackers Podcast, My First Million, How I Built This, The Tim Ferriss Show"
+            )
             if r.get("success") and r.get("results"):
-                podcast_context = " | ".join(
-                    res.get("title", "")[:60] for res in r["results"][:4]
-                )
+                podcast_context = " | ".join(res.get("title", "")[:60] for res in r["results"][:4])
 
             data = await ai.complete_json(
                 system=(
@@ -11371,9 +12989,10 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 shows = data.get("target_shows", [])
                 topics = data.get("signature_topics", [])
@@ -11423,7 +13042,10 @@ JSON:
                 encoded = _b64.b64encode(md.encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/podcast/pitch-kit-{today}.md",
-                    {"message": f"podcast: guest pitch kit — {len(shows)} target shows", "content": encoded}
+                    {
+                        "message": f"podcast: guest pitch kit — {len(shows)} target shows",
+                        "content": encoded,
+                    },
                 )
                 if "error" not in file_r:
                     urls_created.append(
@@ -11444,6 +13066,7 @@ JSON:
             _pp_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _pp_pub = get_api_publisher()
                 _pp_tw_r = await _pp_pub.publish_to_twitter(_pp_tw)
                 if _pp_tw_r and _pp_tw_r.success:
@@ -11453,13 +13076,16 @@ JSON:
             if not _pp_tw_ok and _pp_ae and _pp_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _pp_plat = await get_platform_login()
                     _pp_tw_pg = await _pp_plat.twitter(_pp_ae, _pp_ap)
                     await _pp_plat.twitter_thread_post(_pp_tw_pg, [_pp_tw])
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] podcast_pitch: %d target shows, pitch kit archived", len(shows))
+            logger.info(
+                "[IncomeLoop] podcast_pitch: %d target shows, pitch kit archived", len(shows)
+            )
             return {
                 "success": bool(urls_created),
                 "summary": f"Podcast kit: '{data.get('one_liner','')[:70]}' — {len(shows)} shows targeted | Twitter announced",
@@ -11480,12 +13106,13 @@ JSON:
         competition than English content.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.memory.redis_client import get_cache
-            import json as _json
             import base64 as _b64
-            from datetime import datetime, timezone
+            import json as _json
+            from datetime import datetime
+
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -11575,10 +13202,11 @@ JSON:
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
                 from apps.core.tools.publishing_tools import PublishingTools
+
                 gh = AriaGitHubClient()
                 pt = PublishingTools()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 for t in translations:
                     locale = t.get("locale", "es")
@@ -11613,7 +13241,10 @@ JSON:
                     encoded = _b64.b64encode(article_md.encode()).decode()
                     file_r = await gh._put(
                         f"/repos/{owner}/aria-insights/contents/multilingual/{locale}/{today}-{slug}.md",
-                        {"message": f"multilingual: {locale} content — {title[:50]}", "content": encoded}
+                        {
+                            "message": f"multilingual: {locale} content — {title[:50]}",
+                            "content": encoded,
+                        },
                     )
                     if "error" not in file_r:
                         urls_created.append(
@@ -11622,12 +13253,14 @@ JSON:
 
                     # Publish to Dev.to with locale tag
                     try:
-                        r = await pt.publish_devto({
-                            "title": title,
-                            "body": article_md,
-                            "tags": [locale, "ia", "automatizacion", "negocios"][:4],
-                            "meta_description": "",
-                        })
+                        r = await pt.publish_devto(
+                            {
+                                "title": title,
+                                "body": article_md,
+                                "tags": [locale, "ia", "automatizacion", "negocios"][:4],
+                                "meta_description": "",
+                            }
+                        )
                         if r.get("success") and r.get("url"):
                             urls_created.append(r["url"])
                     except Exception:
@@ -11646,6 +13279,7 @@ JSON:
             _ml_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _ml_pub = get_api_publisher()
                 _ml_tw_r = await _ml_pub.publish_to_twitter(tw_ml)
                 if _ml_tw_r and _ml_tw_r.success:
@@ -11655,13 +13289,18 @@ JSON:
             if not _ml_tw_ok and _ml_ae and _ml_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _ml_plat = await get_platform_login()
                     _ml_tw_pg = await _ml_plat.twitter(_ml_ae, _ml_ap)
                     await _ml_plat.twitter_thread_post(_ml_tw_pg, [tw_ml])
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] multilingual_content: '%s' → %d languages", source_title[:40], len(translations))
+            logger.info(
+                "[IncomeLoop] multilingual_content: '%s' → %d languages",
+                source_title[:40],
+                len(translations),
+            )
             return {
                 "success": bool(urls_created),
                 "summary": f"Multilingual: '{source_title[:50]}' → {', '.join(langs)} ({len(urls_created)} URLs) | announced",
@@ -11682,12 +13321,13 @@ JSON:
         Compounding traffic = compounding revenue.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.memory.redis_client import get_cache
-            import json as _json
             import base64 as _b64
-            from datetime import datetime, timezone
+            import json as _json
+            from datetime import datetime
+
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -11711,7 +13351,7 @@ JSON:
             if not tracked_urls:
                 # Use catalog items
                 raw_cat = await cache.lrange("aria:products:catalog", 0, 5) if cache else []
-                for raw in (raw_cat or []):
+                for raw in raw_cat or []:
                     try:
                         item = _json.loads(raw) if isinstance(raw, str) else raw
                         item_urls = item.get("urls") or ([item["url"]] if item.get("url") else [])
@@ -11731,11 +13371,13 @@ JSON:
                 search_query = f'"{title[:50]}" OR similar to site:dev.to OR site:medium.com'
                 r = await wt.search_web(search_query[:100], num_results=5)
                 competitor_count = len(r.get("results", [])) if r.get("success") else 0
-                seo_insights.append({
-                    "title": title[:80],
-                    "url": item.get("url", ""),
-                    "competitor_results": competitor_count,
-                })
+                seo_insights.append(
+                    {
+                        "title": title[:80],
+                        "url": item.get("url", ""),
+                        "competitor_results": competitor_count,
+                    }
+                )
 
             if not seo_insights:
                 seo_insights = [
@@ -11792,11 +13434,14 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
-                avg_lift = sum(a.get("estimated_traffic_lift_pct", 0) for a in analysis) // max(len(analysis), 1)
+                avg_lift = sum(a.get("estimated_traffic_lift_pct", 0) for a in analysis) // max(
+                    len(analysis), 1
+                )
 
                 md = f"""# SEO Tracking Report — {today}
 
@@ -11840,15 +13485,24 @@ This is the highest-ROI content opportunity based on current SEO gaps and compet
                 encoded = _b64.b64encode(md.encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/seo/tracking-{today}.md",
-                    {"message": f"seo: tracking report {today} — {len(analysis)} articles", "content": encoded}
+                    {
+                        "message": f"seo: tracking report {today} — {len(analysis)} articles",
+                        "content": encoded,
+                    },
                 )
                 if "error" not in file_r:
                     urls_created.append(
                         f"https://github.com/{owner}/aria-insights/blob/main/seo/tracking-{today}.md"
                     )
 
-            avg_lift = sum(a.get("estimated_traffic_lift_pct", 0) for a in analysis) // max(len(analysis), 1)
-            logger.info("[IncomeLoop] seo_tracking: %d articles analyzed, avg lift +%d%%", len(analysis), avg_lift)
+            avg_lift = sum(a.get("estimated_traffic_lift_pct", 0) for a in analysis) // max(
+                len(analysis), 1
+            )
+            logger.info(
+                "[IncomeLoop] seo_tracking: %d articles analyzed, avg lift +%d%%",
+                len(analysis),
+                avg_lift,
+            )
             return {
                 "success": bool(urls_created),
                 "summary": f"SEO tracking: {len(analysis)} articles — avg +{avg_lift}% traffic lift. Next: '{next_article[:60]}'",
@@ -11869,10 +13523,11 @@ This is the highest-ROI content opportunity based on current SEO gaps and compet
         Archives to aria-insights/agency/.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -11956,9 +13611,10 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 md_lines = [
                     f"# {agency_data.get('agency_name', 'ARIA AI Agency')} — Service Kit",
@@ -12029,7 +13685,7 @@ JSON:
                 encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/agency/{today}-service-kit.md",
-                    {"message": f"agency: AI service kit {today}", "content": encoded}
+                    {"message": f"agency: AI service kit {today}", "content": encoded},
                 )
                 if "error" not in file_r:
                     urls_created.append(
@@ -12043,13 +13699,16 @@ JSON:
             _da_ap = getattr(settings, "ARIA_PASSWORD", None)
             _da_url = urls_created[0] if urls_created else ""
             tw_da = (
-                f"🏢 AI agency services available:\n\n"
-                + "\n".join(f"• {s.get('name','')[:50]}: ${s.get('price',997):,}" for s in services[:3])
+                "🏢 AI agency services available:\n\n"
+                + "\n".join(
+                    f"• {s.get('name','')[:50]}: ${s.get('price',997):,}" for s in services[:3]
+                )
                 + f"\n\nFull scope → {_da_url}"
             )[:280]
             _da_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _da_pub = get_api_publisher()
                 _da_tw_r = await _da_pub.publish_to_twitter(tw_da)
                 if _da_tw_r and _da_tw_r.success:
@@ -12059,13 +13718,16 @@ JSON:
             if not _da_tw_ok and _da_ae and _da_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _da_plat = await get_platform_login()
                     _da_tw_pg = await _da_plat.twitter(_da_ae, _da_ap)
                     await _da_plat.twitter_thread_post(_da_tw_pg, [tw_da])
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] digital_agency: %d services, top price $%d", len(services), top_price)
+            logger.info(
+                "[IncomeLoop] digital_agency: %d services, top price $%d", len(services), top_price
+            )
             return {
                 "success": bool(urls_created),
                 "summary": f"Digital agency: {len(services)} services from $997 to ${top_price:,} + proposal + case study + SOW | promoted",
@@ -12087,9 +13749,10 @@ JSON:
         Archives to aria-insights/crowdfunding/.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
             if not ai:
@@ -12098,8 +13761,10 @@ JSON:
             # Pick a product from catalog to crowdfund
             catalog_item = {"title": "ARIA AI — Autonomous Business Platform", "price": 97}
             try:
-                from apps.core.memory.redis_client import get_cache
                 import json as _json
+
+                from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
                 if cache:
                     _citems = await cache.lrange("aria:products:catalog", -1, -1)
@@ -12109,7 +13774,9 @@ JSON:
             except Exception:
                 pass
 
-            product_title = catalog_item.get("name") or catalog_item.get("title", "ARIA AI Platform")
+            product_title = catalog_item.get("name") or catalog_item.get(
+                "title", "ARIA AI Platform"
+            )
             base_price = catalog_item.get("price_usd") or catalog_item.get("price", 97)
 
             kit_data = await ai.complete_json(
@@ -12170,9 +13837,10 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 story = kit_data.get("story", {})
                 tiers = kit_data.get("reward_tiers", [])
@@ -12188,13 +13856,11 @@ JSON:
                     )
 
                 stretch_section = "\n".join(
-                    f"- **${g.get('amount',0):,}:** {g.get('unlock','')}"
-                    for g in stretch[:3]
+                    f"- **${g.get('amount',0):,}:** {g.get('unlock','')}" for g in stretch[:3]
                 )
 
                 faq_section = "\n\n".join(
-                    f"**Q: {f.get('q','')}**\nA: {f.get('a','')}"
-                    for f in faqs[:4]
+                    f"**Q: {f.get('q','')}**\nA: {f.get('a','')}" for f in faqs[:4]
                 )
 
                 md_lines = [
@@ -12254,7 +13920,10 @@ JSON:
                 encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/crowdfunding/{today}-campaign-kit.md",
-                    {"message": f"crowdfunding: {kit_data.get('campaign_title','')[:50]} {today}", "content": encoded}
+                    {
+                        "message": f"crowdfunding: {kit_data.get('campaign_title','')[:50]} {today}",
+                        "content": encoded,
+                    },
                 )
                 if "error" not in file_r:
                     urls_created.append(
@@ -12269,14 +13938,14 @@ JSON:
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tagline = kit_data.get("tagline", "")
                 cf_url = urls_created[0] if urls_created else ""
                 tw_text = (
                     f"🚀 Launching: {title[:80]}\n\n"
                     f"{tagline[:140]}\n\n"
-                    f"Goal: ${goal:,}"
-                    + (f"\n\n{cf_url}" if cf_url else "")
+                    f"Goal: ${goal:,}" + (f"\n\n{cf_url}" if cf_url else "")
                 )
                 tw_r = await pub.publish_to_twitter(tw_text[:280])
                 _tw_ok = bool(tw_r and tw_r.success)
@@ -12288,6 +13957,7 @@ JSON:
                 if _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         await _plat.twitter_thread_post(_tw_page, [tw_text[:280]])
@@ -12315,9 +13985,10 @@ JSON:
         Archives everything to aria-portfolio and aria-insights.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
             if not ai:
@@ -12383,9 +14054,10 @@ JSON:
 
             if settings.GITHUB_TOKEN:
                 from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 # 1. Public pricing/product page for aria-portfolio
                 tiers = listing_data.get("pricing_tiers", [])
@@ -12400,8 +14072,7 @@ JSON:
                 )
                 faqs = listing_data.get("faq", [])
                 faq_block = "\n\n".join(
-                    f"**Q: {f.get('q', '')}**\nA: {f.get('a', '')}"
-                    for f in faqs[:4]
+                    f"**Q: {f.get('q', '')}**\nA: {f.get('a', '')}" for f in faqs[:4]
                 )
                 pricing_page = f"""# {listing_data.get('product_name', 'ARIA AI')}
 
@@ -12433,12 +14104,17 @@ JSON:
                 # Update aria-portfolio pricing page
                 existing = await gh._get(f"/repos/{owner}/aria-portfolio/contents/pricing.md")
                 sha = existing.get("sha", "") if "error" not in existing else ""
-                put_body: dict = {"message": f"product: update ARIA pricing page {today}", "content": encoded}
+                put_body: dict = {
+                    "message": f"product: update ARIA pricing page {today}",
+                    "content": encoded,
+                }
                 if sha:
                     put_body["sha"] = sha
                 r1 = await gh._put(f"/repos/{owner}/aria-portfolio/contents/pricing.md", put_body)
                 if "error" not in r1:
-                    urls_created.append(f"https://github.com/{owner}/aria-portfolio/blob/main/pricing.md")
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-portfolio/blob/main/pricing.md"
+                    )
 
                 # 2. RapidAPI listing + Gumroad offer in aria-insights
                 rapidapi = listing_data.get("rapidapi_listing", {})
@@ -12466,7 +14142,7 @@ JSON:
                 enc2 = _b64.b64encode(listings_md.encode()).decode()
                 r2 = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/product/aria-listings-{today}.md",
-                    {"message": f"product: ARIA self-monetize listings {today}", "content": enc2}
+                    {"message": f"product: ARIA self-monetize listings {today}", "content": enc2},
                 )
                 if "error" not in r2:
                     urls_created.append(
@@ -12480,6 +14156,7 @@ JSON:
             if gumroad_token and gumroad_offer:
                 try:
                     from apps.core.tools.gumroad_tools import GumroadTools
+
                     gt = GumroadTools()
                     gr_res = await gt.create_product(
                         name=gumroad_offer.get("title", "Hire ARIA AI for 30 Days")[:100],
@@ -12497,6 +14174,7 @@ JSON:
                 if _sm_ae and _sm_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gm_pg = await _plat.gumroad(_sm_ae, _sm_ap)
                         _gm_url = await _plat.gumroad_create_product(
@@ -12516,7 +14194,10 @@ JSON:
             # ── Announce ARIA for hire on Twitter ─────────────────────────────
             _sm_ae2 = getattr(settings, "ARIA_EMAIL", None)
             _sm_ap2 = getattr(settings, "ARIA_PASSWORD", None)
-            _sm_url = next((u for u in urls_created if "gumroad" in u.lower()), urls_created[0] if urls_created else "")
+            _sm_url = next(
+                (u for u in urls_created if "gumroad" in u.lower()),
+                urls_created[0] if urls_created else "",
+            )
             tw_sm = (
                 f"🤖 Hire ARIA AI for your business\n\n"
                 f"{tagline[:120]}\n\n"
@@ -12526,6 +14207,7 @@ JSON:
             _sm_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _sm_pub = get_api_publisher()
                 _sm_tw_r = await _sm_pub.publish_to_twitter(tw_sm)
                 if _sm_tw_r and _sm_tw_r.success:
@@ -12537,13 +14219,16 @@ JSON:
             if not _sm_tw_ok and _sm_ae2 and _sm_ap2:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _sm_plat2 = await get_platform_login()
                     _sm_tw_pg = await _sm_plat2.twitter(_sm_ae2, _sm_ap2)
                     await _sm_plat2.twitter_thread_post(_sm_tw_pg, [tw_sm])
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] self_monetize: pricing page + RapidAPI + Gumroad listing created")
+            logger.info(
+                "[IncomeLoop] self_monetize: pricing page + RapidAPI + Gumroad listing created"
+            )
             return {
                 "success": bool(urls_created),
                 "summary": f"Self-monetize: '{tagline[:70]}' — pricing ${min(prices) if prices else 49}-${max(prices) if prices else 497}/mo | promoted on Twitter",
@@ -12564,9 +14249,10 @@ JSON:
         products and earn 30-50% commission — turning buyers into sellers.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
             import base64 as _b64
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
             if not ai:
@@ -12575,16 +14261,18 @@ JSON:
             # Get catalog for products to create referral program for
             catalog_items = []
             try:
-                from apps.core.memory.redis_client import get_cache
                 import json as _json
+
+                from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
                 if cache:
                     raw = await cache.lrange("aria:products:catalog", 0, 5)
-                    for item in (raw or []):
-                        try:
-                            catalog_items.append(_json.loads(item) if isinstance(item, str) else item)
-                        except Exception:
-                            pass
+                    for item in raw or []:
+                        with contextlib.suppress(Exception):
+                            catalog_items.append(
+                                _json.loads(item) if isinstance(item, str) else item
+                            )
             except Exception:
                 pass
 
@@ -12613,7 +14301,7 @@ JSON:
   "payout_threshold_usd": 50,
   "recruiter_email_sequence": [
     {{
-      "subject": "Want to earn {commission_pct}% promoting AI tools?",
+      "subject": "Want to earn {{commission_pct}}% promoting AI tools?",
       "body": "150-word email to potential affiliates"
     }}
   ],
@@ -12637,11 +14325,12 @@ JSON:
             urls_created = []
 
             if settings.GITHUB_TOKEN:
+
                 from apps.core.tools.github_client import AriaGitHubClient
-                import json as _json2
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 commission = referral_data.get("commission_pct", 40)
                 kit = referral_data.get("affiliate_kit", {})
@@ -12702,7 +14391,7 @@ JSON:
                 encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/affiliate/{today}-referral-program.md",
-                    {"message": f"affiliate: referral program kit {today}", "content": encoded}
+                    {"message": f"affiliate: referral program kit {today}", "content": encoded},
                 )
                 if "error" not in file_r:
                     urls_created.append(
@@ -12729,6 +14418,7 @@ JSON:
             _re_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _re_pub = get_api_publisher()
                 _re_tw_r = await _re_pub.publish_to_twitter(tw_re)
                 if _re_tw_r and _re_tw_r.success:
@@ -12740,6 +14430,7 @@ JSON:
             if not _re_tw_ok and _re_ae and _re_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _re_plat = await get_platform_login()
                     _re_tw_pg = await _re_plat.twitter(_re_ae, _re_ap)
                     await _re_plat.twitter_thread_post(_re_tw_pg, [tw_re])
@@ -12768,12 +14459,13 @@ JSON:
         Also posts to Twitter and LinkedIn if configured.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.memory.redis_client import get_cache
-            from apps.core.tools.telegram_bot import get_bot
             import json as _json
-            from datetime import datetime, timezone
+            from datetime import datetime
+
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.telegram_bot import get_bot
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             if not ai:
@@ -12782,7 +14474,6 @@ JSON:
             cache = get_cache()
 
             # Gather context from all active systems
-            market_insight = ""
             competitor_insight = ""
             calendar_theme = ""
             income_summary = ""
@@ -12895,9 +14586,12 @@ JSON:
             _ap = getattr(settings, "ARIA_PASSWORD", None)
             if twitter_snippet:
                 _tw_ok = False
-                if getattr(settings, "TWITTER_API_KEY", None) and getattr(settings, "TWITTER_ACCESS_TOKEN", None):
+                if getattr(settings, "TWITTER_API_KEY", None) and getattr(
+                    settings, "TWITTER_ACCESS_TOKEN", None
+                ):
                     try:
                         from apps.distribution.publishers.api_publisher import get_api_publisher
+
                         pub = get_api_publisher()
                         r = await pub.publish_to_twitter(twitter_snippet[:280])
                         if r and r.success:
@@ -12909,6 +14603,7 @@ JSON:
                 if not _tw_ok and _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         _tw_url = await _plat.twitter_thread_post(_tw_page, [twitter_snippet[:280]])
@@ -12923,6 +14618,7 @@ JSON:
                 if getattr(settings, "LINKEDIN_ACCESS_TOKEN", None):
                     try:
                         from apps.distribution.publishers.api_publisher import get_api_publisher
+
                         pub = get_api_publisher()
                         r = await pub.publish_to_linkedin(linkedin_snippet[:1300])
                         if r and r.success:
@@ -12934,9 +14630,12 @@ JSON:
                 if not _li_ok and _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _li_page = await _plat.linkedin(_ae, _ap)
-                        _li_url = await _plat.linkedin_create_post(_li_page, linkedin_snippet[:3000])
+                        _li_url = await _plat.linkedin_create_post(
+                            _li_page, linkedin_snippet[:3000]
+                        )
                         if _li_url:
                             urls_created.append(_li_url)
                     except Exception:
@@ -12944,11 +14643,13 @@ JSON:
 
             # Archive to GitHub
             if settings.GITHUB_TOKEN:
-                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
                 md = (
                     f"# ARIA Voice — {today}\n\n"
                     f"## Telegram\n{telegram_msg}\n\n"
@@ -12958,7 +14659,7 @@ JSON:
                 encoded = _b64.b64encode(md.encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/voice/{today}-daily-message.md",
-                    {"message": f"voice: ARIA daily message {today}", "content": encoded}
+                    {"message": f"voice: ARIA daily message {today}", "content": encoded},
                 )
                 if "error" not in file_r:
                     urls_created.append(
@@ -12967,7 +14668,7 @@ JSON:
 
             return {
                 "success": True,
-                "summary": f"Voice of ARIA: daily message sent via Telegram + social post generated",
+                "summary": "Voice of ARIA: daily message sent via Telegram + social post generated",
                 "revenue_potential": 10.0,  # brand presence drives all revenue channels
                 "urls": urls_created[:3],
             }
@@ -12976,16 +14677,17 @@ JSON:
             logger.error("[IncomeLoop] voice_of_aria: %s", exc)
             return {"success": False, "summary": str(exc)[:100]}
 
-
     async def _exec_competitor_copy(self) -> dict:
         """Analyze top competitor products and create superior alternatives."""
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.tools.web_tools import WebTools
             import base64 as _b64
             import datetime as _dt
+
+            from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
             gh = AriaGitHubClient()
             wt = WebTools()
             cache = get_cache()
@@ -12999,6 +14701,7 @@ JSON:
                 intel_raw = await cache.get("aria:intel:competitor_latest")
                 if intel_raw:
                     import json as _json
+
                     intel = _json.loads(intel_raw)
                     competitors = intel.get("competitors", [])[:5]
                     gaps = intel.get("gaps", [])[:3]
@@ -13033,10 +14736,14 @@ Create a superior alternative product that:
             )
 
             if not analysis or not analysis.get("our_product"):
-                return {"success": False, "summary": "competitor_copy: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "competitor_copy: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             competitor = analysis.get("competitor_product", "")
-            weakness = analysis.get("their_weakness", "")
+            analysis.get("their_weakness", "")
             product = analysis.get("our_product", {})
             product_name = product.get("name", "")
             product_price = float(product.get("price_usd", 29))
@@ -13049,16 +14756,22 @@ Create a superior alternative product that:
                 encoded = _b64.b64encode(readme.encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/products/{today}-{safe_name}.md",
-                    {"message": f"product: {product_name} (superior to {competitor[:30]})", "content": encoded}
+                    {
+                        "message": f"product: {product_name} (superior to {competitor[:30]})",
+                        "content": encoded,
+                    },
                 )
                 if "error" not in file_r:
-                    urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/products/{today}-{safe_name}.md")
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/products/{today}-{safe_name}.md"
+                    )
 
             # ── Also publish to Gumroad ───────────────────────────────────────
             _cc_gm_sold = False
             if settings.GUMROAD_TOKEN and product_name:
                 try:
                     from apps.core.tools.gumroad_tools import GumroadTools
+
                     gt = GumroadTools()
                     gr_res = await gt.create_product(
                         name=product_name,
@@ -13076,10 +14789,12 @@ Create a superior alternative product that:
                 if _cc_ae and _cc_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gm_pg = await _plat.gumroad(_cc_ae, _cc_ap)
                         _gm_url = await _plat.gumroad_create_product(
-                            _gm_pg, product_name[:100],
+                            _gm_pg,
+                            product_name[:100],
                             int(product_price * 100),
                             product.get("description", ""),
                         )
@@ -13103,6 +14818,7 @@ Create a superior alternative product that:
             _cc_tw_ok2 = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _cc_pub2 = get_api_publisher()
                 _cc_tw_r2 = await _cc_pub2.publish_to_twitter(_cc_tw)
                 if _cc_tw_r2 and _cc_tw_r2.success:
@@ -13112,6 +14828,7 @@ Create a superior alternative product that:
             if not _cc_tw_ok2 and _cc_ae2 and _cc_ap2:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _cc_plat2 = await get_platform_login()
                     _cc_tw_pg2 = await _cc_plat2.twitter(_cc_ae2, _cc_ap2)
                     await _cc_plat2.twitter_thread_post(_cc_tw_pg2, [_cc_tw])
@@ -13131,12 +14848,14 @@ Create a superior alternative product that:
     async def _exec_price_ladder(self) -> dict:
         """Design the optimal pricing ladder from free to enterprise for ARIA's products."""
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -13174,7 +14893,11 @@ Each tier should have clear differentiation and a natural upgrade path.""",
             )
 
             if not ladder:
-                return {"success": False, "summary": "price_ladder: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "price_ladder: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             pricing = ladder.get("pricing_ladder", [])
             free_tier = ladder.get("free_tier", {})
@@ -13182,12 +14905,18 @@ Each tier should have clear differentiation and a natural upgrade path.""",
 
             # ── Store pricing strategy in Redis ────────────────────────────────
             if cache:
-                await cache.set("aria:income:pricing_ladder", _json.dumps({
-                    "tiers": pricing,
-                    "free": free_tier,
-                    "projection": projection,
-                    "generated_at": _dt.datetime.utcnow().isoformat(),
-                }), ttl_seconds=86400 * 30)
+                await cache.set(
+                    "aria:income:pricing_ladder",
+                    _json.dumps(
+                        {
+                            "tiers": pricing,
+                            "free": free_tier,
+                            "projection": projection,
+                            "generated_at": _dt.datetime.utcnow().isoformat(),
+                        }
+                    ),
+                    ttl_seconds=86400 * 30,
+                )
 
             # ── Update smart_prices based on ladder ───────────────────────────
             if pricing and cache:
@@ -13198,7 +14927,9 @@ Each tier should have clear differentiation and a natural upgrade path.""",
                     if tier_name and price:
                         new_prices[tier_name.lower().replace(" ", "_")] = price
                 merged = {**current_prices, **new_prices}
-                await cache.set("aria:income:smart_prices", _json.dumps(merged), ttl_seconds=86400 * 30)
+                await cache.set(
+                    "aria:income:smart_prices", _json.dumps(merged), ttl_seconds=86400 * 30
+                )
 
             # ── Archive pricing strategy ───────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -13206,7 +14937,8 @@ Each tier should have clear differentiation and a natural upgrade path.""",
                 f"### {t.get('tier_name','')}\n"
                 f"**Price:** ${t.get('price_usd','')} {t.get('billing','')}\n"
                 f"**Target:** {t.get('target_buyer','')}\n"
-                f"**Includes:**\n" + "\n".join(f"- {item}" for item in t.get("what_included", [])[:4])
+                f"**Includes:**\n"
+                + "\n".join(f"- {item}" for item in t.get("what_included", [])[:4])
                 for t in pricing[:5]
             )
             monthly_proj = projection.get("monthly_usd", 0)
@@ -13228,10 +14960,15 @@ Each tier should have clear differentiation and a natural upgrade path.""",
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/pricing/{today}-value-ladder.md",
-                {"message": f"pricing: value ladder — ${monthly_proj:.0f}/mo projection", "content": encoded}
+                {
+                    "message": f"pricing: value ladder — ${monthly_proj:.0f}/mo projection",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/pricing/{today}-value-ladder.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/pricing/{today}-value-ladder.md"
+                )
 
             return {
                 "success": True,
@@ -13251,10 +14988,12 @@ Each tier should have clear differentiation and a natural upgrade path.""",
         Boosts engagement scores which compound into organic reach and trust.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.memory.redis_client import get_cache
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             replies_sent = 0
             actions: list[str] = []
@@ -13262,11 +15001,15 @@ Each tier should have clear differentiation and a natural upgrade path.""",
             # ── GitHub notifications ───────────────────────────────────────────
             if settings.GITHUB_TOKEN:
                 import aiohttp as _aio
+
                 async with _aio.ClientSession() as sess:
                     async with sess.get(
                         "https://api.github.com/notifications",
                         params={"all": "false", "per_page": "10"},
-                        headers={"Authorization": f"token {settings.GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+                        headers={
+                            "Authorization": f"token {settings.GITHUB_TOKEN}",
+                            "Accept": "application/vnd.github.v3+json",
+                        },
                         timeout=_aio.ClientTimeout(total=10),
                     ) as resp:
                         if resp.status == 200:
@@ -13293,6 +15036,7 @@ Return JSON: {{"reply": "text"}}""",
             devto_key = getattr(settings, "DEVTO_API_KEY", "") or ""
             if devto_key:
                 import aiohttp as _aio
+
                 async with _aio.ClientSession() as sess:
                     async with sess.get(
                         "https://dev.to/api/comments/me",
@@ -13315,26 +15059,45 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
                                     if reply_data and reply_data.get("reply"):
                                         # Post reply
                                         async with sess.post(
-                                            f"https://dev.to/api/comments",
-                                            json={"comment": {"body_markdown": reply_data["reply"], "commentable_id": int(c.get("commentable_id", 0)), "commentable_type": "Article"}},
-                                            headers={"api-key": devto_key, "Content-Type": "application/json"},
+                                            "https://dev.to/api/comments",
+                                            json={
+                                                "comment": {
+                                                    "body_markdown": reply_data["reply"],
+                                                    "commentable_id": int(
+                                                        c.get("commentable_id", 0)
+                                                    ),
+                                                    "commentable_type": "Article",
+                                                }
+                                            },
+                                            headers={
+                                                "api-key": devto_key,
+                                                "Content-Type": "application/json",
+                                            },
                                             timeout=_aio.ClientTimeout(total=10),
                                         ) as post_resp:
                                             if post_resp.status in (200, 201):
                                                 replies_sent += 1
-                                                actions.append(f"devto:comment")
+                                                actions.append("devto:comment")
 
             # ── Track in Redis ────────────────────────────────────────────────
             if cache:
                 ts = _dt.datetime.utcnow().isoformat()
-                await cache.set("aria:engagement:last_auto_response", _json.dumps({
-                    "ts": ts, "replies": replies_sent, "platforms": list(set(a.split(":")[0] for a in actions))
-                }), ttl_seconds=86400 * 7)
+                await cache.set(
+                    "aria:engagement:last_auto_response",
+                    _json.dumps(
+                        {
+                            "ts": ts,
+                            "replies": replies_sent,
+                            "platforms": list({a.split(":")[0] for a in actions}),
+                        }
+                    ),
+                    ttl_seconds=86400 * 7,
+                )
                 await cache.increment("aria:engagement:total_replies")
 
             return {
                 "success": True,
-                "summary": f"auto_responder: {replies_sent} replies sent across {len(set(a.split(':')[0] for a in actions))} platforms",
+                "summary": f"auto_responder: {replies_sent} replies sent across {len({a.split(':')[0] for a in actions})} platforms",
                 "revenue_potential": float(replies_sent) * 2.0,
             }
         except Exception as exc:
@@ -13349,12 +15112,14 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
         Updates the file on GitHub. Pure passive revenue — zero new content needed.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
-            import json as _json
             import datetime as _dt
+            import json as _json
+
+            from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -13363,15 +15128,49 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
             # ── Load affiliate program catalog from Redis or defaults ──────────
             aff_catalog_raw = await cache.get("aria:affiliate:catalog") if cache else None
             if aff_catalog_raw:
-                aff_catalog = _json.loads(aff_catalog_raw) if isinstance(aff_catalog_raw, str) else aff_catalog_raw
+                aff_catalog = (
+                    _json.loads(aff_catalog_raw)
+                    if isinstance(aff_catalog_raw, str)
+                    else aff_catalog_raw
+                )
             else:
                 aff_catalog = [
-                    {"name": "ConvertKit", "url": "https://convertkit.com/?lmref=aria", "commission": "30% recurring", "category": "email marketing"},
-                    {"name": "Gumroad", "url": "https://gumroad.com/a/aria", "commission": "10% on sales", "category": "digital products"},
-                    {"name": "Notion", "url": "https://notion.so/?ref=aria", "commission": "$10/referral", "category": "productivity"},
-                    {"name": "Hostinger", "url": "https://hostinger.com?REFERRALCODE=ARIA", "commission": "40%", "category": "hosting"},
-                    {"name": "Jasper AI", "url": "https://jasper.ai/?ref=aria", "commission": "30% recurring", "category": "AI writing"},
-                    {"name": "Canva", "url": "https://canva.com/join/aria-ai", "commission": "$36/sale", "category": "design"},
+                    {
+                        "name": "ConvertKit",
+                        "url": "https://convertkit.com/?lmref=aria",
+                        "commission": "30% recurring",
+                        "category": "email marketing",
+                    },
+                    {
+                        "name": "Gumroad",
+                        "url": "https://gumroad.com/a/aria",
+                        "commission": "10% on sales",
+                        "category": "digital products",
+                    },
+                    {
+                        "name": "Notion",
+                        "url": "https://notion.so/?ref=aria",
+                        "commission": "$10/referral",
+                        "category": "productivity",
+                    },
+                    {
+                        "name": "Hostinger",
+                        "url": "https://hostinger.com?REFERRALCODE=ARIA",
+                        "commission": "40%",
+                        "category": "hosting",
+                    },
+                    {
+                        "name": "Jasper AI",
+                        "url": "https://jasper.ai/?ref=aria",
+                        "commission": "30% recurring",
+                        "category": "AI writing",
+                    },
+                    {
+                        "name": "Canva",
+                        "url": "https://canva.com/join/aria-ai",
+                        "commission": "$36/sale",
+                        "category": "design",
+                    },
                 ]
 
             # ── Read recent articles from aria-insights ───────────────────────
@@ -13379,8 +15178,14 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
             articles = []
             if isinstance(articles_r, list):
                 for f in articles_r[:5]:
-                    if isinstance(f, dict) and f.get("type") == "file" and f.get("name", "").endswith(".md"):
-                        articles.append({"name": f["name"], "path": f["path"], "sha": f.get("sha", "")})
+                    if (
+                        isinstance(f, dict)
+                        and f.get("type") == "file"
+                        and f.get("name", "").endswith(".md")
+                    ):
+                        articles.append(
+                            {"name": f["name"], "path": f["path"], "sha": f.get("sha", "")}
+                        )
 
             if not articles:
                 # Try products folder
@@ -13388,10 +15193,16 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
                 if isinstance(products_r, list):
                     for f in products_r[:5]:
                         if isinstance(f, dict) and f.get("type") == "file":
-                            articles.append({"name": f["name"], "path": f["path"], "sha": f.get("sha", "")})
+                            articles.append(
+                                {"name": f["name"], "path": f["path"], "sha": f.get("sha", "")}
+                            )
 
             if not articles:
-                return {"success": False, "summary": "affiliate_injector: no articles found to inject", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "affiliate_injector: no articles found to inject",
+                    "revenue_potential": 0.0,
+                }
 
             # ── Inject affiliate links into articles ──────────────────────────
             injected = 0
@@ -13400,11 +15211,15 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
                 if not isinstance(file_r, dict) or not file_r.get("content"):
                     continue
 
-                raw_content = _b64.b64decode(file_r["content"].replace("\n", "")).decode("utf-8", errors="replace")
+                raw_content = _b64.b64decode(file_r["content"].replace("\n", "")).decode(
+                    "utf-8", errors="replace"
+                )
                 sha = file_r.get("sha", article.get("sha", ""))
 
                 # Ask AI where to inject
-                aff_text = "\n".join(f"- {a['name']}: {a['url']} ({a['category']})" for a in aff_catalog[:6])
+                aff_text = "\n".join(
+                    f"- {a['name']}: {a['url']} ({a['category']})" for a in aff_catalog[:6]
+                )
                 injection_plan = await complete_json(
                     f"""You are an affiliate marketing expert. Add affiliate links to existing content.
 
@@ -13440,16 +15255,22 @@ Return JSON: {{"updated_content": "full updated markdown", "links_added": ["anch
                             "message": f"content: inject affiliate links into {article['name']}",
                             "content": encoded,
                             "sha": sha,
-                        }
+                        },
                     )
                     if "error" not in update_r:
                         injected += 1
-                        urls_updated.append(f"https://github.com/{owner}/aria-insights/blob/main/{article['path']}")
+                        urls_updated.append(
+                            f"https://github.com/{owner}/aria-insights/blob/main/{article['path']}"
+                        )
 
             # ── Track in Redis ─────────────────────────────────────────────────
             if cache:
                 await cache.increment("aria:affiliate:total_injections")
-                await cache.set("aria:affiliate:last_injection", _dt.datetime.utcnow().isoformat(), ttl_seconds=86400 * 7)
+                await cache.set(
+                    "aria:affiliate:last_injection",
+                    _dt.datetime.utcnow().isoformat(),
+                    ttl_seconds=86400 * 7,
+                )
 
             return {
                 "success": injected > 0,
@@ -13469,15 +15290,16 @@ Return JSON: {{"updated_content": "full updated markdown", "links_added": ["anch
         Builds the sales pipeline autonomously.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.memory.redis_client import get_cache
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.web_tools import WebTools
+
             cache = get_cache()
             wt = WebTools()
             urls_created: list[str] = []
-            dms_queued: list[dict] = []
 
             # ── Research high-intent prospects via web search ─────────────────
             search_queries = [
@@ -13501,12 +15323,27 @@ Return JSON: {{"updated_content": "full updated markdown", "links_added": ["anch
 
             # ── Generate DM templates for different prospect types ─────────────
             prospect_types = [
-                {"type": "frustrated_creator", "pain": "can't grow audience fast enough", "offer": "free content calendar template"},
-                {"type": "solopreneur", "pain": "no time to create consistent content", "offer": "AI content automation guide"},
-                {"type": "agency_owner", "pain": "client reporting takes too long", "offer": "free AI automation checklist"},
+                {
+                    "type": "frustrated_creator",
+                    "pain": "can't grow audience fast enough",
+                    "offer": "free content calendar template",
+                },
+                {
+                    "type": "solopreneur",
+                    "pain": "no time to create consistent content",
+                    "offer": "AI content automation guide",
+                },
+                {
+                    "type": "agency_owner",
+                    "pain": "client reporting takes too long",
+                    "offer": "free AI automation checklist",
+                },
             ]
 
-            signals_text = "\n".join(prospect_signals[:6]) or "AI tools, content creation, automation, passive income"
+            signals_text = (
+                "\n".join(prospect_signals[:6])
+                or "AI tools, content creation, automation, passive income"
+            )
             dms_data = await complete_json(
                 f"""You are ARIA, an AI business platform. Create personalized DM templates for outreach.
 
@@ -13541,7 +15378,11 @@ Return JSON:
             )
 
             if not dms_data or not dms_data.get("dms"):
-                return {"success": False, "summary": "social_dm_outreach: AI failed to generate DMs", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "social_dm_outreach: AI failed to generate DMs",
+                    "revenue_potential": 0.0,
+                }
 
             dms = dms_data["dms"]
             strategy = dms_data.get("outreach_strategy", "")
@@ -13549,15 +15390,23 @@ Return JSON:
             # ── Store DM templates in Redis for manual/automated send ─────────
             if cache:
                 existing_raw = await cache.get("aria:outreach:dm_templates")
-                existing: list = (_json.loads(existing_raw) if isinstance(existing_raw, str) else existing_raw) if existing_raw else []
+                existing: list = (
+                    (_json.loads(existing_raw) if isinstance(existing_raw, str) else existing_raw)
+                    if existing_raw
+                    else []
+                )
                 updated = (existing + dms)[-50:]  # keep last 50
-                await cache.set("aria:outreach:dm_templates", _json.dumps(updated), ttl_seconds=86400 * 14)
+                await cache.set(
+                    "aria:outreach:dm_templates", _json.dumps(updated), ttl_seconds=86400 * 14
+                )
                 await cache.increment("aria:outreach:total_templates_generated")
 
             # ── Archive to GitHub as DM playbook ──────────────────────────────
             if settings.GITHUB_TOKEN:
-                from apps.core.tools.github_client import AriaGitHubClient
                 import base64 as _b64
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
                 gh = AriaGitHubClient()
                 owner = settings.GITHUB_USERNAME or "Geremypolanco"
                 today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -13568,19 +15417,24 @@ Return JSON:
                         f"## {dm.get('prospect_type', '').replace('_', ' ').title()} ({dm.get('platform', 'twitter')})",
                         f"**Pain:** {dm.get('pain_point', '')}",
                         f"**Offer:** {dm.get('free_offer', '')}",
-                        f"```",
+                        "```",
                         dm.get("dm_text", ""),
-                        f"```",
+                        "```",
                         "",
                     ]
                 dm_lines.append("*Generated by ARIA AI — Social DM Outreach Engine*")
                 encoded = _b64.b64encode("\n".join(dm_lines).encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/outreach/{today}-dm-playbook.md",
-                    {"message": f"outreach: DM playbook with {len(dms)} templates", "content": encoded}
+                    {
+                        "message": f"outreach: DM playbook with {len(dms)} templates",
+                        "content": encoded,
+                    },
                 )
                 if "error" not in file_r:
-                    urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/outreach/{today}-dm-playbook.md")
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/outreach/{today}-dm-playbook.md"
+                    )
 
             return {
                 "success": True,
@@ -13600,12 +15454,14 @@ Return JSON:
         Works entirely from existing data — no new products needed.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
-            import json as _json
-            import datetime as _dt
             import base64 as _b64
+            import datetime as _dt
+            import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -13618,13 +15474,18 @@ Return JSON:
             if isinstance(catalog_r, list):
                 for f in catalog_r[:10]:
                     if isinstance(f, dict) and f.get("type") == "file":
-                        products.append({"name": f.get("name", "").replace(".md", ""), "url": f.get("html_url", "")})
+                        products.append(
+                            {
+                                "name": f.get("name", "").replace(".md", ""),
+                                "url": f.get("html_url", ""),
+                            }
+                        )
 
             # ── Load recent buyers from CRM nurture queue ──────────────────────
             buyers: list[dict] = []
             if cache:
                 raw_list = await cache.lrange("aria:crm:nurture_queue", -20, -1)
-                for raw in (raw_list or []):
+                for raw in raw_list or []:
                     try:
                         entry = _json.loads(raw) if isinstance(raw, str) else raw
                         if entry.get("email") and entry.get("day", 0) >= 3:  # engaged buyers
@@ -13633,7 +15494,11 @@ Return JSON:
                         pass
 
             if not products:
-                return {"success": False, "summary": "upsell_engine: no products in catalog yet", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "upsell_engine: no products in catalog yet",
+                    "revenue_potential": 0.0,
+                }
 
             # ── Generate upsell sequence ────────────────────────────────────────
             products_str = "\n".join(f"- {p['name']}: {p['url']}" for p in products[:6])
@@ -13667,7 +15532,11 @@ Return JSON:
             )
 
             if not upsell_data:
-                return {"success": False, "summary": "upsell_engine: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "upsell_engine: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             bundle_name = upsell_data.get("bundle_name", "")
             bundle_price = float(upsell_data.get("bundle_price", 67))
@@ -13677,25 +15546,30 @@ Return JSON:
 
             # ── Send via SendGrid → SMTP fallback ───────────────────────────────
             sendgrid_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
-            from_email   = getattr(settings, "SENDGRID_FROM_EMAIL", "") or "aria@geremypolanco.com"
-            smtp_host    = getattr(settings, "SMTP_HOST", None)
-            smtp_user    = getattr(settings, "SMTP_USER", None)
-            smtp_pass    = getattr(settings, "SMTP_PASSWORD", None)
-            smtp_from    = getattr(settings, "SMTP_FROM", smtp_user)
-            smtp_port    = int(getattr(settings, "SMTP_PORT", 587))
+            from_email = getattr(settings, "SENDGRID_FROM_EMAIL", "") or "aria@geremypolanco.com"
+            smtp_host = getattr(settings, "SMTP_HOST", None)
+            smtp_user = getattr(settings, "SMTP_USER", None)
+            smtp_pass = getattr(settings, "SMTP_PASSWORD", None)
+            smtp_from = getattr(settings, "SMTP_FROM", smtp_user)
+            smtp_port = int(getattr(settings, "SMTP_PORT", 587))
             if email_subject and email_body:
                 import aiohttp as _aio
+
                 for buyer in buyers[:10]:  # max 10 upsells per cycle
                     buyer_email = buyer.get("email", "")
                     buyer_name = buyer.get("name", "Friend")
                     if not buyer_email:
                         continue
-                    personalized = email_body.replace("{name}", buyer_name).replace("{{name}}", buyer_name)
+                    personalized = email_body.replace("{name}", buyer_name).replace(
+                        "{{name}}", buyer_name
+                    )
                     _ue_sent = False
                     if sendgrid_key:
                         try:
                             payload = {
-                                "personalizations": [{"to": [{"email": buyer_email, "name": buyer_name}]}],
+                                "personalizations": [
+                                    {"to": [{"email": buyer_email, "name": buyer_name}]}
+                                ],
                                 "from": {"email": from_email, "name": "ARIA AI"},
                                 "subject": email_subject,
                                 "content": [{"type": "text/plain", "value": personalized}],
@@ -13704,7 +15578,10 @@ Return JSON:
                                 async with sess.post(
                                     "https://api.sendgrid.com/v3/mail/send",
                                     json=payload,
-                                    headers={"Authorization": f"Bearer {sendgrid_key}", "Content-Type": "application/json"},
+                                    headers={
+                                        "Authorization": f"Bearer {sendgrid_key}",
+                                        "Content-Type": "application/json",
+                                    },
                                     timeout=_aio.ClientTimeout(total=10),
                                 ) as resp:
                                     if resp.status == 202:
@@ -13716,6 +15593,7 @@ Return JSON:
                         try:
                             import smtplib
                             from email.mime.text import MIMEText as _UEMIMEText
+
                             _ue_msg = _UEMIMEText(personalized)
                             _ue_msg["Subject"] = email_subject
                             _ue_msg["From"] = smtp_from or smtp_user
@@ -13723,7 +15601,9 @@ Return JSON:
                             with smtplib.SMTP(smtp_host, smtp_port) as srv3:
                                 srv3.starttls()
                                 srv3.login(smtp_user, smtp_pass)
-                                srv3.sendmail(smtp_from or smtp_user, [buyer_email], _ue_msg.as_string())
+                                srv3.sendmail(
+                                    smtp_from or smtp_user, [buyer_email], _ue_msg.as_string()
+                                )
                             emails_queued += 1
                         except Exception:
                             pass
@@ -13753,19 +15633,27 @@ Return JSON:
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/upsells/{today}-upsell-campaign.md",
-                {"message": f"upsell: '{bundle_name[:40]}' — ${bundle_price}", "content": encoded}
+                {"message": f"upsell: '{bundle_name[:40]}' — ${bundle_price}", "content": encoded},
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/upsells/{today}-upsell-campaign.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/upsells/{today}-upsell-campaign.md"
+                )
 
             # ── Store in Redis for tracking ─────────────────────────────────────
             if cache:
-                await cache.set("aria:upsell:last_campaign", _json.dumps({
-                    "ts": _dt.datetime.utcnow().isoformat(),
-                    "bundle_name": bundle_name,
-                    "bundle_price": bundle_price,
-                    "emails_sent": emails_queued,
-                }), ttl_seconds=86400 * 7)
+                await cache.set(
+                    "aria:upsell:last_campaign",
+                    _json.dumps(
+                        {
+                            "ts": _dt.datetime.utcnow().isoformat(),
+                            "bundle_name": bundle_name,
+                            "bundle_price": bundle_price,
+                            "emails_sent": emails_queued,
+                        }
+                    ),
+                    ttl_seconds=86400 * 7,
+                )
                 await cache.increment("aria:upsell:total_campaigns")
 
             return {
@@ -13788,13 +15676,15 @@ Return JSON:
         Archives everything to GitHub. Gives ARIA a podcast presence for audio SEO.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.tools.web_tools import WebTools
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
             gh = AriaGitHubClient()
             wt = WebTools()
             cache = get_cache()
@@ -13806,10 +15696,8 @@ Return JSON:
             if cache:
                 opp_list = await cache.lrange("aria:income:opportunity_queue", -1, -1)
                 if opp_list:
-                    try:
+                    with contextlib.suppress(Exception):
                         opp_raw = _json.loads(opp_list[0])
-                    except Exception:
-                        pass
 
             topic = ""
             if opp_raw and opp_raw.get("name"):
@@ -13862,7 +15750,11 @@ Return JSON:
             )
 
             if not episode_data:
-                return {"success": False, "summary": "podcast_producer: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "podcast_producer: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             title = episode_data.get("episode_title", topic[:60])
             ep_num = episode_data.get("episode_number", 1)
@@ -13909,10 +15801,12 @@ Return JSON:
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/podcast/ep{ep_num:03d}-{today}.md",
-                {"message": f"podcast: ep{ep_num} '{title[:50]}'", "content": encoded}
+                {"message": f"podcast: ep{ep_num} '{title[:50]}'", "content": encoded},
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/podcast/ep{ep_num:03d}-{today}.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/podcast/ep{ep_num:03d}-{today}.md"
+                )
 
             # ── Publish Twitter teaser ────────────────────────────────────────
             twitter_teaser = teasers.get("twitter", "")
@@ -13921,6 +15815,7 @@ Return JSON:
                 _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     tw_result = await pub.publish_to_twitter(tweet_text[:280])
                     if tw_result and tw_result.success and tw_result.url:
@@ -13934,6 +15829,7 @@ Return JSON:
                     if _ae and _ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _tw_page = await _plat.twitter(_ae, _ap)
                             await _plat.twitter_thread_post(_tw_page, [tweet_text[:280]])
@@ -13943,12 +15839,18 @@ Return JSON:
             # ── Track in Redis ─────────────────────────────────────────────────
             if cache:
                 await cache.increment("aria:podcast:episodes_produced")
-                await cache.set("aria:podcast:latest_episode", _json.dumps({
-                    "title": title,
-                    "ep_num": ep_num,
-                    "url": urls_created[0] if urls_created else "",
-                    "ts": today,
-                }), ttl_seconds=86400 * 30)
+                await cache.set(
+                    "aria:podcast:latest_episode",
+                    _json.dumps(
+                        {
+                            "title": title,
+                            "ep_num": ep_num,
+                            "url": urls_created[0] if urls_created else "",
+                            "ts": today,
+                        }
+                    ),
+                    ttl_seconds=86400 * 30,
+                )
 
             return {
                 "success": True,
@@ -13967,12 +15869,14 @@ Return JSON:
         and launches a social blast to drive signups. New signups enter email funnel.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -13983,10 +15887,8 @@ Return JSON:
             if cache:
                 raw = await cache.lrange("aria:income:opportunity_queue", -1, -1)
                 if raw:
-                    try:
+                    with contextlib.suppress(Exception):
                         opp = _json.loads(raw[0])
-                    except Exception:
-                        pass
 
             product_concept = opp.get("name", "") if opp else ""
             if not product_concept:
@@ -14018,7 +15920,11 @@ Return JSON:
             )
 
             if not saas_data:
-                return {"success": False, "summary": "saas_waitlist_blitz: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "saas_waitlist_blitz: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             product_name = saas_data.get("product_name", "AI Tool")
             tagline = saas_data.get("tagline", "")
@@ -14033,13 +15939,18 @@ Return JSON:
                 encoded = _b64.b64encode(landing_html.encode()).decode()
                 file_r = await gh._put(
                     f"/repos/{owner}/aria-insights/contents/{page_path}",
-                    {"message": f"launch: {product_name} waitlist landing page", "content": encoded}
+                    {
+                        "message": f"launch: {product_name} waitlist landing page",
+                        "content": encoded,
+                    },
                 )
                 if "error" not in file_r:
                     page_url = f"https://{owner}.github.io/aria-insights/{page_path}"
                     urls_created.append(page_url)
                     # Also add the GitHub raw URL as backup
-                    urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/{page_path}")
+                    urls_created.append(
+                        f"https://github.com/{owner}/aria-insights/blob/main/{page_path}"
+                    )
 
             # ── Twitter launch blast ───────────────────────────────────────────
             if twitter_tweet:
@@ -14049,6 +15960,7 @@ Return JSON:
                 _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     tw_result = await pub.publish_to_twitter(tweet_with_link[:280])
                     if tw_result and tw_result.success and tw_result.url:
@@ -14062,6 +15974,7 @@ Return JSON:
                     if _ae and _ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _tw_page = await _plat.twitter(_ae, _ap)
                             await _plat.twitter_thread_post(_tw_page, [tweet_with_link[:280]])
@@ -14073,10 +15986,11 @@ Return JSON:
             reddit_body = saas_data.get("reddit_post_body", "")
             if reddit_title and reddit_body:
                 try:
-                    aria_email    = getattr(settings, "ARIA_EMAIL", None)
+                    aria_email = getattr(settings, "ARIA_EMAIL", None)
                     aria_password = getattr(settings, "ARIA_PASSWORD", None)
                     if aria_email and aria_password:
                         from apps.core.tools.human_browser import get_platform_login
+
                         plat = await get_platform_login()
                         reddit_page = await plat.reddit(aria_email, aria_password)
                         post_url = await plat.reddit_post(
@@ -14089,13 +16003,19 @@ Return JSON:
 
             # ── Store in Redis for tracking + email funnel pickup ──────────────
             if cache:
-                await cache.set("aria:waitlist:latest", _json.dumps({
-                    "product_name": product_name,
-                    "tagline": tagline,
-                    "url": urls_created[0] if urls_created else "",
-                    "ts": _dt.datetime.utcnow().isoformat(),
-                    "pricing": saas_data.get("pricing", {}),
-                }), ttl_seconds=86400 * 30)
+                await cache.set(
+                    "aria:waitlist:latest",
+                    _json.dumps(
+                        {
+                            "product_name": product_name,
+                            "tagline": tagline,
+                            "url": urls_created[0] if urls_created else "",
+                            "ts": _dt.datetime.utcnow().isoformat(),
+                            "pricing": saas_data.get("pricing", {}),
+                        }
+                    ),
+                    ttl_seconds=86400 * 30,
+                )
                 await cache.increment("aria:waitlist:total_launches")
 
             early_price = saas_data.get("pricing", {}).get("early_bird", 19)
@@ -14117,12 +16037,14 @@ Return JSON:
         Archives as GitHub Markdown + HTML version. Builds credibility + funding pipeline.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -14161,7 +16083,11 @@ Return JSON (keep content fields under 80 words each):
             )
 
             if not deck_data or not deck_data.get("slides"):
-                return {"success": False, "summary": "vc_pitch_deck: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "vc_pitch_deck: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             slides = deck_data["slides"]
             one_liner = deck_data.get("one_liner", "")
@@ -14171,7 +16097,7 @@ Return JSON (keep content fields under 80 words each):
             # Build markdown deck
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
             md_lines = [
-                f"# ARIA AI — Investor Pitch Deck",
+                "# ARIA AI — Investor Pitch Deck",
                 f"*{one_liner}*",
                 f"**Funding Ask:** ${funding_ask:,.0f} | **Valuation:** ${valuation:,.0f}",
                 f"**Target Investors:** {', '.join(deck_data.get('target_investors', [])[:3])}",
@@ -14179,7 +16105,7 @@ Return JSON (keep content fields under 80 words each):
             ]
             for slide in slides:
                 md_lines += [
-                    f"---",
+                    "---",
                     f"## Slide {slide.get('slide', '?')}: {slide.get('title', '')}",
                     f"### {slide.get('headline', '')}",
                     f"{slide.get('content', '')}",
@@ -14190,15 +16116,28 @@ Return JSON (keep content fields under 80 words each):
             encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/investor/pitch-deck-{today}.md",
-                {"message": f"investor: pitch deck ${funding_ask:,.0f} ask / ${valuation:,.0f} valuation", "content": encoded}
+                {
+                    "message": f"investor: pitch deck ${funding_ask:,.0f} ask / ${valuation:,.0f} valuation",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/investor/pitch-deck-{today}.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/investor/pitch-deck-{today}.md"
+                )
 
             if cache:
-                await cache.set("aria:investor:latest_deck", _json.dumps({
-                    "ts": today, "url": urls_created[0] if urls_created else "", "ask": funding_ask
-                }), ttl_seconds=86400 * 30)
+                await cache.set(
+                    "aria:investor:latest_deck",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "url": urls_created[0] if urls_created else "",
+                            "ask": funding_ask,
+                        }
+                    ),
+                    ttl_seconds=86400 * 30,
+                )
 
             # ── LinkedIn + Twitter announce (with 25s hard timeout each) ──────────
             _vc_ae = getattr(settings, "ARIA_EMAIL", None)
@@ -14214,11 +16153,13 @@ Return JSON (keep content fields under 80 words each):
             async def _try_linkedin():
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     r = await get_api_publisher().publish_to_linkedin(li_vc)
                     if r and r.success:
                         return
                     if _vc_ae and _vc_ap:
                         from apps.core.tools.human_browser import get_platform_login
+
                         plat = await get_platform_login()
                         pg = await plat.linkedin(_vc_ae, _vc_ap)
                         await plat.linkedin_post(pg, li_vc)
@@ -14234,11 +16175,13 @@ Return JSON (keep content fields under 80 words each):
                 )[:280]
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     r = await get_api_publisher().publish_to_twitter(_tw_text)
                     if r and r.success:
                         return
                     if _vc_ae and _vc_ap:
                         from apps.core.tools.human_browser import get_platform_login
+
                         plat = await get_platform_login()
                         pg = await plat.twitter(_vc_ae, _vc_ap)
                         await plat.twitter_thread_post(pg, [_tw_text])
@@ -14247,6 +16190,7 @@ Return JSON (keep content fields under 80 words each):
 
             # Run both with a 25s cap — browser automation can hang indefinitely
             import asyncio as _aio
+
             await _aio.gather(
                 _aio.wait_for(_try_linkedin(), timeout=25),
                 _aio.wait_for(_try_twitter(), timeout=25),
@@ -14271,13 +16215,15 @@ Return JSON (keep content fields under 80 words each):
         Queues proposals in Redis for review + stores highest-value gig.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
             wt = WebTools()
             gh = AriaGitHubClient()
             cache = get_cache()
@@ -14301,7 +16247,9 @@ Return JSON (keep content fields under 80 words each):
                             snippet = r.get("snippet", "")
                             url = r.get("url", "")
                             if title:
-                                job_signals.append(f"Title: {title}\nSnippet: {snippet[:200]}\nURL: {url}")
+                                job_signals.append(
+                                    f"Title: {title}\nSnippet: {snippet[:200]}\nURL: {url}"
+                                )
                 except Exception:
                     pass
 
@@ -14340,7 +16288,11 @@ Return JSON:
             )
 
             if not proposals_data or not proposals_data.get("proposals"):
-                return {"success": False, "summary": "job_posting_scout: no proposals generated", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "job_posting_scout: no proposals generated",
+                    "revenue_potential": 0.0,
+                }
 
             proposals = proposals_data["proposals"]
             total_value = sum(p.get("estimated_value_usd", 0) for p in proposals)
@@ -14362,20 +16314,30 @@ Return JSON:
             encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/freelance/{today}-proposals.md",
-                {"message": f"freelance: {len(proposals)} proposals | ${total_value} potential", "content": encoded}
+                {
+                    "message": f"freelance: {len(proposals)} proposals | ${total_value} potential",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/freelance/{today}-proposals.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/freelance/{today}-proposals.md"
+                )
 
             # ── Store best proposal in Redis for tracking ──────────────────────
             if cache and proposals:
                 best = max(proposals, key=lambda p: p.get("estimated_value_usd", 0))
-                await cache.rpush("aria:freelance:proposals", _json.dumps({
-                    "ts": today,
-                    "job": best.get("job_title", ""),
-                    "value": best.get("estimated_value_usd", 0),
-                    "proposal": best.get("proposal_text", "")[:200],
-                }))
+                await cache.rpush(
+                    "aria:freelance:proposals",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "job": best.get("job_title", ""),
+                            "value": best.get("estimated_value_usd", 0),
+                            "proposal": best.get("proposal_text", "")[:200],
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:freelance:proposals", -20, -1)
                 await cache.increment("aria:freelance:total_proposals")
 
@@ -14397,13 +16359,15 @@ Return JSON:
         Can yield $1k-$250k in non-dilutive capital.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
             wt = WebTools()
             gh = AriaGitHubClient()
             cache = get_cache()
@@ -14472,14 +16436,26 @@ Return JSON:
             )
 
             if not app_data or not app_data.get("applications"):
-                return {"success": False, "summary": "micro_grant_hunter: no opportunities found", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "micro_grant_hunter: no opportunities found",
+                    "revenue_potential": 0.0,
+                }
 
             applications = app_data["applications"]
-            total_potential = float(app_data.get("total_potential_usd", sum(a.get("amount_usd", 0) for a in applications)))
+            total_potential = float(
+                app_data.get(
+                    "total_potential_usd", sum(a.get("amount_usd", 0) for a in applications)
+                )
+            )
 
             # ── Archive to GitHub ──────────────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
-            md_lines = [f"# Grant Applications — {today}", f"**Total potential:** ${total_potential:,.0f}", ""]
+            md_lines = [
+                f"# Grant Applications — {today}",
+                f"**Total potential:** ${total_potential:,.0f}",
+                "",
+            ]
             for i, app in enumerate(applications, 1):
                 md_lines += [
                     f"## {i}. {app.get('grant_name', '')}",
@@ -14497,21 +16473,33 @@ Return JSON:
             encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/grants/{today}-applications.md",
-                {"message": f"grants: {len(applications)} applications | ${total_potential:,.0f} potential", "content": encoded}
+                {
+                    "message": f"grants: {len(applications)} applications | ${total_potential:,.0f} potential",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/grants/{today}-applications.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/grants/{today}-applications.md"
+                )
 
             # ── Store in Redis ─────────────────────────────────────────────────
             if cache:
-                await cache.rpush("aria:grants:applications", _json.dumps({
-                    "ts": today,
-                    "count": len(applications),
-                    "total_potential": total_potential,
-                    "best": applications[0].get("grant_name", "") if applications else "",
-                }))
+                await cache.rpush(
+                    "aria:grants:applications",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "count": len(applications),
+                            "total_potential": total_potential,
+                            "best": applications[0].get("grant_name", "") if applications else "",
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:grants:applications", -20, -1)
-                await cache.set("aria:grants:total_potential", str(total_potential), ttl_seconds=86400 * 30)
+                await cache.set(
+                    "aria:grants:total_potential", str(total_potential), ttl_seconds=86400 * 30
+                )
 
             return {
                 "success": True,
@@ -14531,13 +16519,15 @@ Return JSON:
         Notion templates are evergreen, low-maintenance passive income.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.tools.gumroad_tools import GumroadTools
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.gumroad_tools import GumroadTools
+
             gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -14581,7 +16571,11 @@ Return JSON:
             )
 
             if not template_data:
-                return {"success": False, "summary": "notion_template_seller: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "notion_template_seller: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             name = template_data.get("template_name", f"Notion Template: {topic[:30]}")
             price = float(template_data.get("price_usd", 19))
@@ -14616,13 +16610,13 @@ Return JSON:
                 "## Preview",
                 preview,
                 "",
-                f"*Published by ARIA AI — Notion Template Factory*",
+                "*Published by ARIA AI — Notion Template Factory*",
             ]
 
             encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/notion-templates/{today}-{name[:30].lower().replace(' ', '-')}.md",
-                {"message": f"notion: template '{name[:40]}' at ${price}", "content": encoded}
+                {"message": f"notion: template '{name[:40]}' at ${price}", "content": encoded},
             )
             if "error" not in file_r:
                 gh_url = f"https://github.com/{owner}/aria-insights/blob/main/notion-templates/{today}-{name[:30].lower().replace(' ', '-')}.md"
@@ -14639,7 +16633,11 @@ Return JSON:
                         description=f"{description}\n\nPreview: {urls_created[0] if urls_created else ''}",
                         price_cents=int(price * 100),
                     )
-                    if gumroad_result and gumroad_result.get("success") and gumroad_result.get("url"):
+                    if (
+                        gumroad_result
+                        and gumroad_result.get("success")
+                        and gumroad_result.get("url")
+                    ):
                         gumroad_url = gumroad_result["url"]
                         urls_created.append(gumroad_url)
                 except Exception:
@@ -14647,13 +16645,18 @@ Return JSON:
 
             # Track in Redis
             if cache:
-                await cache.rpush("aria:products:catalog", _json.dumps({
-                    "name": name,
-                    "type": "notion_template",
-                    "price": price,
-                    "urls": urls_created[:2],
-                    "ts": today,
-                }))
+                await cache.rpush(
+                    "aria:products:catalog",
+                    _json.dumps(
+                        {
+                            "name": name,
+                            "type": "notion_template",
+                            "price": price,
+                            "urls": urls_created[:2],
+                            "ts": today,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:products:catalog", -200, -1)
                 await cache.increment("aria:income:total_urls_published")
 
@@ -14664,14 +16667,14 @@ Return JSON:
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 use_cases_short = " | ".join(template_data.get("use_cases", [])[:2])
                 tw_text = (
                     f"🗂️ New Notion Template: {name[:80]}\n\n"
                     f"{tagline}\n\n"
                     f"Use cases: {use_cases_short}\n\n"
-                    f"Only ${price:.0f}"
-                    + (f" → {sale_url}" if sale_url else "")
+                    f"Only ${price:.0f}" + (f" → {sale_url}" if sale_url else "")
                 )
                 tw_r = await pub.publish_to_twitter(tw_text[:280])
                 _tw_ok = bool(tw_r and tw_r.success)
@@ -14680,6 +16683,7 @@ Return JSON:
             if not _tw_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_ae, _ap)
                     await _plat.twitter_thread_post(_tw_page, [tw_text[:280]])
@@ -14689,14 +16693,14 @@ Return JSON:
             _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 audience = template_data.get("target_audience", "")
                 li_text = (
                     f"🗂️ New Notion template: {name}\n\n"
                     f"{description[:300]}\n\n"
                     f"Perfect for: {audience}\n\n"
-                    f"${price:.0f}"
-                    + (f" → {sale_url}" if sale_url else "")
+                    f"${price:.0f}" + (f" → {sale_url}" if sale_url else "")
                 )
                 li_r = await pub.publish_to_linkedin(li_text[:1300])
                 _li_ok = bool(li_r and li_r.success)
@@ -14705,6 +16709,7 @@ Return JSON:
             if not _li_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _li_page = await _plat.linkedin(_ae, _ap)
                     await _plat.linkedin_create_post(_li_page, li_text[:3000])
@@ -14729,13 +16734,15 @@ Return JSON:
         Drives developer audience engagement and product pipeline.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
             gh = AriaGitHubClient()
             wt = WebTools()
             cache = get_cache()
@@ -14745,14 +16752,18 @@ Return JSON:
             # Research gaps in Chrome extensions
             gap_signals: list[str] = []
             try:
-                result = await wt.search_web("chrome extension idea missing productivity AI 2025", num_results=5)
+                result = await wt.search_web(
+                    "chrome extension idea missing productivity AI 2025", num_results=5
+                )
                 if result.get("success") and result.get("results"):
                     for r in result["results"][:3]:
                         gap_signals.append(f"{r.get('title', '')}: {r.get('snippet', '')[:150]}")
             except Exception:
                 pass
 
-            gaps_text = "\n".join(gap_signals[:3]) or "AI productivity, tab management, content automation"
+            gaps_text = (
+                "\n".join(gap_signals[:3]) or "AI productivity, tab management, content automation"
+            )
 
             ext_data = await complete_json(
                 f"""You are a Chrome extension product designer. Find a gap and build it.
@@ -14791,7 +16802,11 @@ Return JSON:
             )
 
             if not ext_data:
-                return {"success": False, "summary": "chrome_extension_builder: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "chrome_extension_builder: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             name = ext_data.get("extension_name", "ARIA Extension")
             tagline = ext_data.get("tagline", "")
@@ -14827,17 +16842,22 @@ Return JSON:
             encoded = _b64.b64encode(readme_full.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/chrome-extensions/{today}-{slug}/README.md",
-                {"message": f"chrome-ext: '{name[:40]}' at ${price}", "content": encoded}
+                {"message": f"chrome-ext: '{name[:40]}' at ${price}", "content": encoded},
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/chrome-extensions/{today}-{slug}/README.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/chrome-extensions/{today}-{slug}/README.md"
+                )
 
             # Archive landing page
             if landing_html:
                 encoded_html = _b64.b64encode(landing_html.encode()).decode()
                 await gh._put(
                     f"/repos/{owner}/aria-insights/contents/chrome-extensions/{today}-{slug}/landing.html",
-                    {"message": f"chrome-ext: landing page for '{name[:40]}'", "content": encoded_html}
+                    {
+                        "message": f"chrome-ext: landing page for '{name[:40]}'",
+                        "content": encoded_html,
+                    },
                 )
 
             # Twitter announcement
@@ -14847,6 +16867,7 @@ Return JSON:
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tweet[:280])
                 if tw_result and tw_result.success and tw_result.url:
@@ -14860,6 +16881,7 @@ Return JSON:
                 if _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         await _plat.twitter_thread_post(_tw_page, [tweet[:280]])
@@ -14868,12 +16890,17 @@ Return JSON:
 
             # Track in Redis
             if cache:
-                await cache.rpush("aria:chrome_extensions:catalog", _json.dumps({
-                    "name": name,
-                    "price": price,
-                    "urls": urls_created[:2],
-                    "ts": today,
-                }))
+                await cache.rpush(
+                    "aria:chrome_extensions:catalog",
+                    _json.dumps(
+                        {
+                            "name": name,
+                            "price": price,
+                            "urls": urls_created[:2],
+                            "ts": today,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:chrome_extensions:catalog", -30, -1)
 
             return {
@@ -14893,19 +16920,21 @@ Return JSON:
         Generates recurring subscription revenue from developers who use ARIA's AI APIs.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             urls_created: list[str] = []
 
             api_data = await complete_json(
-                f"""You are an API product designer. Create a complete API listing for ARIA on RapidAPI.
+                """You are an API product designer. Create a complete API listing for ARIA on RapidAPI.
 
 ARIA's capabilities:
 - AI content generation (blog posts, social media, emails, product descriptions)
@@ -14916,30 +16945,34 @@ ARIA's capabilities:
 
 Design a compelling API product listing:
 Return JSON:
-{{
+{
   "api_name": "ARIA AI Content & Business API",
   "tagline": "under 10 words",
   "description": "150-word description for RapidAPI listing",
   "endpoints": [
-    {{"path": "/generate-content", "method": "POST", "description": "...", "sample_request": {{...}}, "sample_response": {{...}}}},
-    {{"path": "/market-research", "method": "POST", "description": "...", "sample_request": {{...}}, "sample_response": {{...}}}},
-    {{"path": "/seo-optimize", "method": "POST", "description": "...", "sample_request": {{...}}, "sample_response": {{...}}}}
+    {"path": "/generate-content", "method": "POST", "description": "...", "sample_request": {...}, "sample_response": {...}},
+    {"path": "/market-research", "method": "POST", "description": "...", "sample_request": {...}, "sample_response": {...}},
+    {"path": "/seo-optimize", "method": "POST", "description": "...", "sample_request": {...}, "sample_response": {...}}
   ],
   "pricing_tiers": [
-    {{"name": "Free", "calls_per_month": 100, "price_usd_per_month": 0}},
-    {{"name": "Basic", "calls_per_month": 1000, "price_usd_per_month": 9}},
-    {{"name": "Pro", "calls_per_month": 10000, "price_usd_per_month": 29}},
-    {{"name": "Enterprise", "calls_per_month": 100000, "price_usd_per_month": 99}}
+    {"name": "Free", "calls_per_month": 100, "price_usd_per_month": 0},
+    {"name": "Basic", "calls_per_month": 1000, "price_usd_per_month": 9},
+    {"name": "Pro", "calls_per_month": 10000, "price_usd_per_month": 29},
+    {"name": "Enterprise", "calls_per_month": 100000, "price_usd_per_month": 99}
   ],
   "use_cases": ["use case 1", "use case 2", "use case 3"],
   "target_developers": "who builds with this API"
-}}""",
+}""",
                 model="fast",
                 max_tokens=1500,
             )
 
             if not api_data:
-                return {"success": False, "summary": "api_marketplace_lister: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "api_marketplace_lister: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             api_name = api_data.get("api_name", "ARIA AI API")
             tagline = api_data.get("tagline", "")
@@ -14961,7 +16994,9 @@ Return JSON:
                 "|------|-------------|-------------|",
             ]
             for tier in pricing:
-                doc_lines.append(f"| {tier.get('name')} | {tier.get('calls_per_month'):,} | ${tier.get('price_usd_per_month')}/mo |")
+                doc_lines.append(
+                    f"| {tier.get('name')} | {tier.get('calls_per_month'):,} | ${tier.get('price_usd_per_month')}/mo |"
+                )
 
             doc_lines += ["", "## Endpoints", ""]
             for ep in endpoints[:5]:
@@ -14999,17 +17034,20 @@ Return JSON:
             encoded = _b64.b64encode("\n".join(doc_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/api-products/{today}-{api_name[:20].lower().replace(' ', '-')}-docs.md",
-                {"message": f"api: publish '{api_name[:40]}' documentation", "content": encoded}
+                {"message": f"api: publish '{api_name[:40]}' documentation", "content": encoded},
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/api-products/{today}-{api_name[:20].lower().replace(' ', '-')}-docs.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/api-products/{today}-{api_name[:20].lower().replace(' ', '-')}-docs.md"
+                )
 
             # Twitter launch
-            monthly_revenue = sum(t.get("price_usd_per_month", 0) for t in pricing[1:])  # non-free tiers
+            sum(t.get("price_usd_per_month", 0) for t in pricing[1:])  # non-free tiers
             tweet = f"🚀 Launching {api_name} on RapidAPI!\n\n{tagline}\n\n✅ {endpoints[0].get('path', '') if endpoints else ''}\n✅ {endpoints[1].get('path', '') if len(endpoints) > 1 else ''}\n\nPlans from ${pricing[1].get('price_usd_per_month', 9) if len(pricing) > 1 else 9}/mo\n\n{urls_created[0] if urls_created else ''}"
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tweet[:280])
                 if tw_result and tw_result.success and tw_result.url:
@@ -15023,6 +17061,7 @@ Return JSON:
                 if _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         await _plat.twitter_thread_post(_tw_page, [tweet[:280]])
@@ -15031,14 +17070,23 @@ Return JSON:
 
             # Store in Redis
             if cache:
-                await cache.set("aria:api_product:latest", _json.dumps({
-                    "name": api_name,
-                    "url": urls_created[0] if urls_created else "",
-                    "tiers": len(pricing),
-                    "ts": today,
-                }), ttl_seconds=86400 * 30)
+                await cache.set(
+                    "aria:api_product:latest",
+                    _json.dumps(
+                        {
+                            "name": api_name,
+                            "url": urls_created[0] if urls_created else "",
+                            "tiers": len(pricing),
+                            "ts": today,
+                        }
+                    ),
+                    ttl_seconds=86400 * 30,
+                )
 
-            pro_price = next((t.get("price_usd_per_month", 29) for t in pricing if "Pro" in t.get("name", "")), 29)
+            pro_price = next(
+                (t.get("price_usd_per_month", 29) for t in pricing if "Pro" in t.get("name", "")),
+                29,
+            )
 
             return {
                 "success": True,
@@ -15058,45 +17106,51 @@ Return JSON:
         B2B agencies pay premium for done-for-you packages they can resell at 10x.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.tools.gumroad_tools import GumroadTools
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.gumroad_tools import GumroadTools
+
             gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             urls_created: list[str] = []
 
             kit_data = await complete_json(
-                f"""You are a B2B agency product designer. Create a white-label AI kit that marketing/content agencies can buy and resell to their clients.
+                """You are a B2B agency product designer. Create a white-label AI kit that marketing/content agencies can buy and resell to their clients.
 
 Create a complete white-label package:
 Return JSON:
-{{
+{
   "kit_name": "done-for-you AI content agency kit name",
   "price_usd": 197,
   "tagline": "under 10 words for agency owners",
   "what_included": ["item1", "item2", "item3", "item4", "item5"],
   "proposal_template": "500-word agency sales proposal template that the buyer can use with their own clients",
-  "pricing_guide": {{
+  "pricing_guide": {
     "suggested_client_price": 1500,
     "suggested_monthly_retainer": 2500,
     "service_tiers": ["Starter ($800/mo): 4 posts/week", "Growth ($1500/mo): daily content + strategy", "Premium ($2500/mo): full AI content team"]
-  }},
+  },
   "onboarding_checklist": ["step1", "step2", "step3", "step4", "step5"],
   "case_study_template": "200-word case study template with [AGENCY], [CLIENT], [RESULTS] placeholders",
   "target_buyer": "who buys this kit",
   "gumroad_description": "150-word Gumroad listing description"
-}}""",
+}""",
                 model="fast",
                 max_tokens=2000,
             )
 
             if not kit_data:
-                return {"success": False, "summary": "white_label_kit: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "white_label_kit: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             kit_name = kit_data.get("kit_name", "White-Label AI Agency Kit")
             price = float(kit_data.get("price_usd", 197))
@@ -15141,10 +17195,12 @@ Return JSON:
             encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/agency-kits/{today}-{slug}.md",
-                {"message": f"agency-kit: '{kit_name[:40]}' at ${price}", "content": encoded}
+                {"message": f"agency-kit: '{kit_name[:40]}' at ${price}", "content": encoded},
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/agency-kits/{today}-{slug}.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/agency-kits/{today}-{slug}.md"
+                )
 
             # Publish to Gumroad
             gumroad_desc = kit_data.get("gumroad_description", "")
@@ -15169,10 +17225,13 @@ Return JSON:
                 if _wl_ae and _wl_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gm_pg = await _plat.gumroad(_wl_ae, _wl_ap)
                         _gm_url = await _plat.gumroad_create_product(
-                            _gm_pg, kit_name[:100], int(price * 100),
+                            _gm_pg,
+                            kit_name[:100],
+                            int(price * 100),
                             f"{gumroad_desc}\n\nPreview: {urls_created[0] if urls_created else ''}",
                         )
                         if _gm_url:
@@ -15181,13 +17240,18 @@ Return JSON:
                         pass
 
             if cache:
-                await cache.rpush("aria:products:catalog", _json.dumps({
-                    "name": kit_name,
-                    "type": "white_label_kit",
-                    "price": price,
-                    "urls": urls_created[:2],
-                    "ts": today,
-                }))
+                await cache.rpush(
+                    "aria:products:catalog",
+                    _json.dumps(
+                        {
+                            "name": kit_name,
+                            "type": "white_label_kit",
+                            "price": price,
+                            "urls": urls_created[:2],
+                            "ts": today,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:products:catalog", -200, -1)
                 await cache.increment("aria:income:total_urls_published")
 
@@ -15204,6 +17268,7 @@ Return JSON:
             _wl_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _wl_pub = get_api_publisher()
                 _wl_tw_r = await _wl_pub.publish_to_twitter(tw_wl)
                 if _wl_tw_r and _wl_tw_r.success:
@@ -15215,6 +17280,7 @@ Return JSON:
             if not _wl_tw_ok and _wl_ae2 and _wl_ap2:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _wl_plat2 = await get_platform_login()
                     _wl_tw_pg = await _wl_plat2.twitter(_wl_ae2, _wl_ap2)
                     await _wl_plat2.twitter_thread_post(_wl_tw_pg, [tw_wl])
@@ -15239,14 +17305,16 @@ Return JSON:
         Priced $19-$97 as downloadable PDF or Notion doc.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.tools.gumroad_tools import GumroadTools
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.gumroad_tools import GumroadTools
+            from apps.core.tools.web_tools import WebTools
+
             wt = WebTools()
             gh = AriaGitHubClient()
             cache = get_cache()
@@ -15270,7 +17338,9 @@ Return JSON:
                 result = await wt.search_web(f"best {topic} list comprehensive 2025", num_results=8)
                 if result.get("success") and result.get("results"):
                     for r in result["results"][:5]:
-                        research_signals.append(f"• {r.get('title', '')}: {r.get('snippet', '')[:150]}")
+                        research_signals.append(
+                            f"• {r.get('title', '')}: {r.get('snippet', '')[:150]}"
+                        )
             except Exception:
                 pass
 
@@ -15303,7 +17373,11 @@ Return JSON:
             )
 
             if not data_product:
-                return {"success": False, "summary": "data_product_seller: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "data_product_seller: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             prod_name = data_product.get("product_name", f"The Ultimate {topic[:30]} Guide")
             price = float(data_product.get("price_usd", 29))
@@ -15340,10 +17414,12 @@ Return JSON:
             encoded = _b64.b64encode("\n".join(doc_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/data-products/{today}-{slug}.md",
-                {"message": f"data-product: '{prod_name[:40]}' at ${price}", "content": encoded}
+                {"message": f"data-product: '{prod_name[:40]}' at ${price}", "content": encoded},
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/data-products/{today}-{slug}.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/data-products/{today}-{slug}.md"
+                )
 
             # Publish to Gumroad
             gumroad_token = settings.GUMROAD_TOKEN or ""
@@ -15367,10 +17443,13 @@ Return JSON:
                 if _dp_ae and _dp_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gm_pg = await _plat.gumroad(_dp_ae, _dp_ap)
                         _gm_url = await _plat.gumroad_create_product(
-                            _gm_pg, prod_name[:100], int(price * 100),
+                            _gm_pg,
+                            prod_name[:100],
+                            int(price * 100),
                             f"{description}\n\nPreview: {urls_created[0] if urls_created else ''}",
                         )
                         if _gm_url:
@@ -15379,13 +17458,18 @@ Return JSON:
                         pass
 
             if cache:
-                await cache.rpush("aria:products:catalog", _json.dumps({
-                    "name": prod_name,
-                    "type": "data_product",
-                    "price": price,
-                    "urls": urls_created[:2],
-                    "ts": today,
-                }))
+                await cache.rpush(
+                    "aria:products:catalog",
+                    _json.dumps(
+                        {
+                            "name": prod_name,
+                            "type": "data_product",
+                            "price": price,
+                            "urls": urls_created[:2],
+                            "ts": today,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:products:catalog", -200, -1)
                 await cache.increment("aria:income:total_urls_published")
 
@@ -15402,6 +17486,7 @@ Return JSON:
             _dps_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _dps_pub = get_api_publisher()
                 _dps_tw_r = await _dps_pub.publish_to_twitter(tw_dps)
                 if _dps_tw_r and _dps_tw_r.success:
@@ -15413,6 +17498,7 @@ Return JSON:
             if not _dps_tw_ok and _dps_ae and _dps_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _dps_plat = await get_platform_login()
                     _dps_tw_pg = await _dps_plat.twitter(_dps_ae, _dps_ap)
                     await _dps_plat.twitter_thread_post(_dps_tw_pg, [tw_dps])
@@ -15437,14 +17523,17 @@ Return JSON:
         $500-$5,000/client deals for AI automation services.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.web_tools import WebTools
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.memory.redis_client import get_cache
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
             import aiohttp as _aio
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
             wt = WebTools()
             gh = AriaGitHubClient()
             cache = get_cache()
@@ -15452,13 +17541,22 @@ Return JSON:
             urls_created: list[str] = []
 
             # Research target companies
-            target_sectors = ["content marketing agency", "e-commerce brand", "SaaS company", "coaching business"]
+            target_sectors = [
+                "content marketing agency",
+                "e-commerce brand",
+                "SaaS company",
+                "coaching business",
+            ]
             import random
+
             target_sector = random.choice(target_sectors)
 
             prospects: list[str] = []
             try:
-                result = await wt.search_web(f"growing {target_sector} hiring AI content 2025 site:linkedin.com OR site:crunchbase.com", num_results=5)
+                result = await wt.search_web(
+                    f"growing {target_sector} hiring AI content 2025 site:linkedin.com OR site:crunchbase.com",
+                    num_results=5,
+                )
                 if result.get("success") and result.get("results"):
                     for r in result["results"][:3]:
                         title = r.get("title", "")
@@ -15504,7 +17602,11 @@ Return JSON:
             )
 
             if not pitch_data:
-                return {"success": False, "summary": "b2b_saas_pitch: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "b2b_saas_pitch: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             offer = pitch_data.get("offer_name", f"ARIA AI for {target_sector}")
             email_subject = pitch_data.get("email_subject", "")
@@ -15540,10 +17642,15 @@ Return JSON:
             encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/b2b-pitches/{today}-{target_sector[:20].replace(' ', '-')}.md",
-                {"message": f"b2b: pitch for {target_sector} | ${monthly_retainer}/mo", "content": encoded}
+                {
+                    "message": f"b2b: pitch for {target_sector} | ${monthly_retainer}/mo",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/b2b-pitches/{today}-{target_sector[:20].replace(' ', '-')}.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/b2b-pitches/{today}-{target_sector[:20].replace(' ', '-')}.md"
+                )
 
             # Send via SendGrid if configured
             sendgrid_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
@@ -15553,7 +17660,7 @@ Return JSON:
                 crm_prospects: list[dict] = []
                 if cache:
                     raw_list = await cache.lrange("aria:crm:pipeline", -10, -1)
-                    for raw in (raw_list or []):
+                    for raw in raw_list or []:
                         try:
                             p = _json.loads(raw) if isinstance(raw, str) else raw
                             if p.get("email") and p.get("stage", "") in ("cold", "prospect"):
@@ -15567,22 +17674,26 @@ Return JSON:
                     if not prospect_email:
                         continue
                     try:
-                        body = email_body.replace("{name}", prospect_name).replace("{{name}}", prospect_name)
+                        body = email_body.replace("{name}", prospect_name).replace(
+                            "{{name}}", prospect_name
+                        )
                         payload = {
                             "personalizations": [{"to": [{"email": prospect_email}]}],
                             "from": {"email": from_email, "name": "Geremy | ARIA AI"},
                             "subject": email_subject,
                             "content": [{"type": "text/plain", "value": body}],
                         }
-                        async with _aio.ClientSession() as sess:
-                            async with sess.post(
+                        async with (
+                            _aio.ClientSession() as sess,
+                            sess.post(
                                 "https://api.sendgrid.com/v3/mail/send",
                                 json=payload,
                                 headers={"Authorization": f"Bearer {sendgrid_key}"},
                                 timeout=_aio.ClientTimeout(total=10),
-                            ) as resp:
-                                if resp.status == 202:
-                                    emails_sent += 1
+                            ) as resp,
+                        ):
+                            if resp.status == 202:
+                                emails_sent += 1
                     except Exception:
                         pass
 
@@ -15594,11 +17705,12 @@ Return JSON:
                 _b2b_smtp_from = getattr(settings, "SMTP_FROM", _b2b_smtp_user)
                 _b2b_smtp_port = int(getattr(settings, "SMTP_PORT", 587))
                 if _b2b_smtp_host and _b2b_smtp_user and _b2b_smtp_pass and cache:
-                    from email.mime.text import MIMEText as _B2BMime
                     import smtplib
+                    from email.mime.text import MIMEText as _B2BMime
+
                     crm_prospects_smtp: list[dict] = []
                     raw_list2 = await cache.lrange("aria:crm:pipeline", -10, -1)
-                    for raw2 in (raw_list2 or []):
+                    for raw2 in raw_list2 or []:
                         try:
                             p2 = _json.loads(raw2) if isinstance(raw2, str) else raw2
                             if p2.get("email") and p2.get("stage", "") in ("cold", "prospect"):
@@ -15617,15 +17729,27 @@ Return JSON:
                             with smtplib.SMTP(_b2b_smtp_host, _b2b_smtp_port) as _b2b_srv:
                                 _b2b_srv.starttls()
                                 _b2b_srv.login(_b2b_smtp_user, _b2b_smtp_pass)
-                                _b2b_srv.sendmail(_b2b_smtp_from or _b2b_smtp_user, [p3["email"]], _b2b_msg.as_string())
+                                _b2b_srv.sendmail(
+                                    _b2b_smtp_from or _b2b_smtp_user,
+                                    [p3["email"]],
+                                    _b2b_msg.as_string(),
+                                )
                             emails_sent += 1
                         except Exception:
                             pass
 
             if cache:
-                await cache.rpush("aria:b2b:pitches", _json.dumps({
-                    "ts": today, "sector": target_sector, "offer": offer, "retainer": monthly_retainer
-                }))
+                await cache.rpush(
+                    "aria:b2b:pitches",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "sector": target_sector,
+                            "offer": offer,
+                            "retainer": monthly_retainer,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:b2b:pitches", -30, -1)
                 await cache.increment("aria:b2b:total_pitches")
 
@@ -15645,6 +17769,7 @@ Return JSON:
             _b2b_li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _b2b_pub = get_api_publisher()
                 _b2b_li_r = await _b2b_pub.publish_to_linkedin(li_b2b)
                 if _b2b_li_r and _b2b_li_r.success:
@@ -15654,6 +17779,7 @@ Return JSON:
             if not _b2b_li_ok and _b2b_ae and _b2b_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _b2b_plat = await get_platform_login()
                     _b2b_li_pg = await _b2b_plat.linkedin(_b2b_ae, _b2b_ap)
                     await _b2b_plat.linkedin_post(_b2b_li_pg, li_b2b)
@@ -15673,12 +17799,14 @@ Return JSON:
     async def _exec_conversion_optimizer(self) -> dict:
         """Analyze ARIA's full funnel and apply conversion rate improvements."""
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -15691,9 +17819,13 @@ Return JSON:
                 nurture_raw = await cache.get("aria:email:nurture_queue")
                 nurture = _json.loads(nurture_raw) if nurture_raw else {}
                 funnel_data["email_subscribers"] = len(nurture)
-                completed_d14 = sum(1 for v in nurture.values() if 14 in v.get("completed_days", []))
+                completed_d14 = sum(
+                    1 for v in nurture.values() if 14 in v.get("completed_days", [])
+                )
                 funnel_data["converted_d14"] = completed_d14
-                funnel_data["email_conversion_rate"] = round(completed_d14 / max(len(nurture), 1) * 100, 1)
+                funnel_data["email_conversion_rate"] = round(
+                    completed_d14 / max(len(nurture), 1) * 100, 1
+                )
 
                 # Revenue
                 rev_raw = await cache.get("aria:revenue:latest")
@@ -15728,7 +17860,11 @@ Analyze the biggest conversion bottleneck and provide:
             )
 
             if not improvements:
-                return {"success": False, "summary": "conversion_optimizer: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "conversion_optimizer: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             bottleneck = improvements.get("bottleneck", "")
             quick_fixes = improvements.get("quick_fixes", [])
@@ -15741,14 +17877,27 @@ Analyze the biggest conversion bottleneck and provide:
             if trust_signals and cache:
                 existing_sp = _json.loads(await cache.get("aria:social_proof:latest") or "[]")
                 for signal in trust_signals[:2]:
-                    existing_sp.append({"type": "trust_signal", "content": signal, "source": "conversion_optimizer"})
-                await cache.set("aria:social_proof:latest", _json.dumps(existing_sp[:20]), ttl_seconds=86400 * 30)
+                    existing_sp.append(
+                        {
+                            "type": "trust_signal",
+                            "content": signal,
+                            "source": "conversion_optimizer",
+                        }
+                    )
+                await cache.set(
+                    "aria:social_proof:latest",
+                    _json.dumps(existing_sp[:20]),
+                    ttl_seconds=86400 * 30,
+                )
 
             # ── Archive optimization report ────────────────────────────────────
             today = _dt.datetime.now().strftime("%Y-%m-%d-%H%M")
             fixes_md = "\n".join(f"- [ ] {fix}" for fix in quick_fixes[:5])
             trust_md = "\n".join(f"- {sig}" for sig in trust_signals[:3])
-            cta_md = "\n".join(f"- **{c.get('location','')}**: '{c.get('original_cta','')}' → '{c.get('improved_cta','')}'" for c in cta_improvements[:3])
+            cta_md = "\n".join(
+                f"- **{c.get('location','')}**: '{c.get('original_cta','')}' → '{c.get('improved_cta','')}'"
+                for c in cta_improvements[:3]
+            )
             md = f"""# Conversion Optimization Report — {today}
 
 ## Funnel Metrics
@@ -15778,10 +17927,15 @@ Analyze the biggest conversion bottleneck and provide:
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/cro/{today}-funnel-report.md",
-                {"message": f"cro: funnel analysis — bottleneck: {bottleneck[:50]}", "content": encoded}
+                {
+                    "message": f"cro: funnel analysis — bottleneck: {bottleneck[:50]}",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/cro/{today}-funnel-report.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/cro/{today}-funnel-report.md"
+                )
 
             email_cr = funnel_data.get("email_conversion_rate", 1)
             improved_cr = email_cr * 1.15  # estimate 15% lift
@@ -15801,11 +17955,12 @@ Analyze the biggest conversion bottleneck and provide:
     async def _exec_brand_storyteller(self) -> dict:
         """Create ARIA's brand narrative, origin story, and value proposition content."""
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
-            from apps.core.tools.web_tools import WebTools
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             urls_created: list[str] = []
@@ -15824,7 +17979,11 @@ Create compelling brand story assets that position ARIA as the most advanced aut
             )
 
             if not brand_assets:
-                return {"success": False, "summary": "brand_storyteller: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "brand_storyteller: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             origin = brand_assets.get("origin_story", "")
             tagline = brand_assets.get("tagline", "")
@@ -15844,6 +18003,7 @@ Create compelling brand story assets that position ARIA as the most advanced aut
                 _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     result = await pub.publish_to_twitter(thread_content)
                     if result and result.success and result.url:
@@ -15854,6 +18014,7 @@ Create compelling brand story assets that position ARIA as the most advanced aut
                 if not _tw_ok and _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         await _plat.twitter_thread_post(_tw_page, [thread_content[:280]])
@@ -15861,14 +18022,13 @@ Create compelling brand story assets that position ARIA as the most advanced aut
                         pass
 
             # ── LinkedIn brand story post ──────────────────────────────────────
-            li_brand = (
-                f"{hero}\n\n"
-                f"{value_prop}\n\n"
-                f"{linkedin[:600] if linkedin else bio}"
-            )[:1300]
+            li_brand = (f"{hero}\n\n" f"{value_prop}\n\n" f"{linkedin[:600] if linkedin else bio}")[
+                :1300
+            ]
             _li_bs_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _bs_pub = get_api_publisher()
                 _li_bs_r = await _bs_pub.publish_to_linkedin(li_brand)
                 if _li_bs_r and _li_bs_r.success:
@@ -15880,6 +18040,7 @@ Create compelling brand story assets that position ARIA as the most advanced aut
             if not _li_bs_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _bs_plat = await get_platform_login()
                     _li_bs_pg = await _bs_plat.linkedin(_ae, _ap)
                     await _bs_plat.linkedin_post(_li_bs_pg, li_brand)
@@ -15919,23 +18080,33 @@ Create compelling brand story assets that position ARIA as the most advanced aut
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/brand/{today}-brand-story.md",
-                {"message": f"brand: story assets — tagline: {tagline[:40]}", "content": encoded}
+                {"message": f"brand: story assets — tagline: {tagline[:40]}", "content": encoded},
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/brand/{today}-brand-story.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/brand/{today}-brand-story.md"
+                )
 
             # Store in Redis for use across all strategies
-            from apps.core.memory.redis_client import get_cache
             import json as _json
+
+            from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
-                await cache.set("aria:brand:story", _json.dumps({
-                    "tagline": tagline,
-                    "hero": hero,
-                    "value_prop": value_prop,
-                    "bio": bio,
-                    "twitter_bio": twitter_bio,
-                }), ttl_seconds=86400 * 90)
+                await cache.set(
+                    "aria:brand:story",
+                    _json.dumps(
+                        {
+                            "tagline": tagline,
+                            "hero": hero,
+                            "value_prop": value_prop,
+                            "bio": bio,
+                            "twitter_bio": twitter_bio,
+                        }
+                    ),
+                    ttl_seconds=86400 * 90,
+                )
 
             return {
                 "success": True,
@@ -15950,15 +18121,17 @@ Create compelling brand story assets that position ARIA as the most advanced aut
     async def _exec_growth_hacker(self) -> dict:
         """Execute rapid growth experiments: A/B tests, viral loops, and referral mechanics."""
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
-            from apps.core.tools.web_tools import WebTools
             import base64 as _b64
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
+            from apps.core.tools.github_client import AriaGitHubClient
+            from apps.core.tools.web_tools import WebTools
+
             gh = AriaGitHubClient()
-            wt = WebTools()
+            WebTools()
             cache = get_cache()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             urls_created: list[str] = []
@@ -15978,8 +18151,12 @@ Create compelling brand story assets that position ARIA as the most advanced aut
                 # Evaluate existing tests - pick winner if enough data
                 winners = [t for t in existing_tests if t.get("impressions", 0) >= 100]
                 for w in winners:
-                    variant_a_cr = w.get("variant_a_conversions", 0) / max(w.get("impressions", 1), 1)
-                    variant_b_cr = w.get("variant_b_conversions", 0) / max(w.get("impressions", 1), 1)
+                    variant_a_cr = w.get("variant_a_conversions", 0) / max(
+                        w.get("impressions", 1), 1
+                    )
+                    variant_b_cr = w.get("variant_b_conversions", 0) / max(
+                        w.get("impressions", 1), 1
+                    )
                     w["winner"] = "A" if variant_a_cr >= variant_b_cr else "B"
                     w["status"] = "concluded"
 
@@ -16000,7 +18177,11 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
             )
 
             if not experiments:
-                return {"success": False, "summary": "growth_hacker: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "growth_hacker: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             exps = experiments.get("experiments", [])
             viral_loop = experiments.get("viral_loop", "")
@@ -16031,6 +18212,7 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
                 _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     result = await pub.publish_to_twitter(quick_win[:280])
                     if result and result.success and result.url:
@@ -16044,6 +18226,7 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
                     if _ae and _ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _tw_page = await _plat.twitter(_ae, _ap)
                             await _plat.twitter_thread_post(_tw_page, [quick_win[:280]])
@@ -16082,10 +18265,12 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/growth/{today}-experiments.md",
-                {"message": f"growth: {len(exps)} A/B tests launched", "content": encoded}
+                {"message": f"growth: {len(exps)} A/B tests launched", "content": encoded},
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/growth/{today}-experiments.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/growth/{today}-experiments.md"
+                )
 
             return {
                 "success": True,
@@ -16100,9 +18285,11 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
     async def _exec_knowledge_synthesizer(self) -> dict:
         """Read latest AI/business content and ingest into ARIA's knowledge base."""
         try:
+            import datetime as _dt
+
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.web_tools import WebTools
-            import datetime as _dt
+
             wt = WebTools()
             ingested = 0
             urls_read: list[str] = []
@@ -16125,13 +18312,19 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
             for url in sources:
                 try:
                     import aiohttp as _aio
+
                     async with _aio.ClientSession() as sess:
                         async with sess.get(url, timeout=_aio.ClientTimeout(total=10)) as resp:
                             if resp.status == 200:
                                 data = await resp.json()
                                 for hit in data.get("hits", [])[:3]:
                                     if hit.get("url"):
-                                        articles.append({"title": hit.get("title", ""), "url": hit.get("url", "")})
+                                        articles.append(
+                                            {
+                                                "title": hit.get("title", ""),
+                                                "url": hit.get("url", ""),
+                                            }
+                                        )
                 except Exception:
                     pass
 
@@ -16141,7 +18334,9 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
                 if r.get("success") and r.get("results"):
                     for res in r["results"][:2]:
                         if res.get("url"):
-                            articles.append({"title": res.get("title", ""), "url": res.get("url", "")})
+                            articles.append(
+                                {"title": res.get("title", ""), "url": res.get("url", "")}
+                            )
 
             # ── Fetch and synthesize content ───────────────────────────────────
             knowledge_entries: list[str] = []
@@ -16167,6 +18362,7 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
             if knowledge_entries:
                 try:
                     from apps.core.tools.knowledge_base import get_knowledge_base
+
                     kb = get_knowledge_base()
                     combined = "\n".join(knowledge_entries)
                     await kb.ingest_text(
@@ -16178,8 +18374,10 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
                     pass
 
                 # Also store in Redis as quick-access insights
-                from apps.core.memory.redis_client import get_cache
                 import json as _json
+
+                from apps.core.memory.redis_client import get_cache
+
                 cache = get_cache()
                 if cache:
                     await cache.set(
@@ -16201,10 +18399,12 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
     async def _exec_marketplace_lister(self) -> dict:
         """List ARIA's best products on external marketplaces: AppSumo, Envato, Gumroad."""
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             urls_created: list[str] = []
@@ -16218,7 +18418,11 @@ Also design a viral loop mechanism and a referral program. Focus on quick wins t
                         products.append({"name": f.get("name", ""), "url": f.get("html_url", "")})
 
             if not products:
-                return {"success": False, "summary": "marketplace_lister: no products in catalog yet", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "marketplace_lister: no products in catalog yet",
+                    "revenue_potential": 0.0,
+                }
 
             best_product = products[0]
             product_name = best_product["name"].replace("-", " ").replace(".md", "").title()
@@ -16239,7 +18443,11 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             )
 
             if not listings:
-                return {"success": False, "summary": "marketplace_lister: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "marketplace_lister: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             appsumo = listings.get("appsumo_listing", {})
             envato = listings.get("envato_listing", {})
@@ -16251,6 +18459,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             if settings.GUMROAD_TOKEN and gumroad:
                 try:
                     from apps.core.tools.gumroad_tools import GumroadTools
+
                     gt = GumroadTools()
                     gumroad_price = int(float(gumroad.get("suggested_price_usd", 29)) * 100)
                     gr_res = await gt.create_product(
@@ -16269,6 +18478,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                 if _ml_ae and _ml_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _gm_pg = await _plat.gumroad(_ml_ae, _ml_ap)
                         _gm_url = await _plat.gumroad_create_product(
@@ -16325,17 +18535,25 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/listings/{today}-marketplace.md",
-                {"message": f"listing: {product_name} on AppSumo + Envato + Gumroad", "content": encoded}
+                {
+                    "message": f"listing: {product_name} on AppSumo + Envato + Gumroad",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/listings/{today}-marketplace.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/listings/{today}-marketplace.md"
+                )
 
             total_rev_potential = float(appsumo_price) + float(gumroad_price)
 
             # ── Announce marketplace listing on Twitter ────────────────────────
             _mpl_ae = getattr(settings, "ARIA_EMAIL", None)
             _mpl_ap = getattr(settings, "ARIA_PASSWORD", None)
-            _mpl_url = next((u for u in urls_created if "gumroad" in u.lower()), urls_created[0] if urls_created else "")
+            _mpl_url = next(
+                (u for u in urls_created if "gumroad" in u.lower()),
+                urls_created[0] if urls_created else "",
+            )
             tw_mpl = (
                 f"🛒 {product_name[:60]} now on 3 marketplaces\n\n"
                 f"AppSumo: ${appsumo_price} lifetime | Gumroad: ${gumroad_price}\n\n"
@@ -16344,6 +18562,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             _mpl_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _mpl_pub = get_api_publisher()
                 _mpl_tw_r = await _mpl_pub.publish_to_twitter(tw_mpl)
                 if _mpl_tw_r and _mpl_tw_r.success:
@@ -16353,6 +18572,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             if not _mpl_tw_ok and _mpl_ae and _mpl_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _mpl_plat = await get_platform_login()
                     _mpl_tw_pg = await _mpl_plat.twitter(_mpl_ae, _mpl_ap)
                     await _mpl_plat.twitter_thread_post(_mpl_tw_pg, [tw_mpl])
@@ -16372,12 +18592,18 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
     async def _exec_daily_goal_tracker(self) -> dict:
         """Track daily revenue vs target and take corrective action when behind."""
         try:
-            import json as _json
             import datetime as _dt
+            import json as _json
+
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if not cache:
-                return {"success": False, "summary": "daily_goal_tracker: no Redis", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "daily_goal_tracker: no Redis",
+                    "revenue_potential": 0.0,
+                }
 
             now = _dt.datetime.utcnow()
             today_str = now.strftime("%Y-%m-%d")
@@ -16388,9 +18614,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
 
             # Sum revenue entries from today
             today_revenue = sum(
-                h.get("total_usd", 0)
-                for h in history
-                if h.get("ts", "").startswith(today_str)
+                h.get("total_usd", 0) for h in history if h.get("ts", "").startswith(today_str)
             )
 
             # ── Get daily goal (default $100/day) ─────────────────────────────
@@ -16412,7 +18636,9 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                 "on_track": on_track,
                 "hour": now.hour,
             }
-            await cache.set(f"aria:goals:daily:{today_str}", _json.dumps(snapshot), ttl_seconds=86400 * 30)
+            await cache.set(
+                f"aria:goals:daily:{today_str}", _json.dumps(snapshot), ttl_seconds=86400 * 30
+            )
 
             # ── Build rolling weekly performance ──────────────────────────────
             weekly_snaps_raw = await cache.get("aria:goals:weekly_snaps")
@@ -16421,13 +18647,20 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             # Keep last 14 days
             recent_keys = sorted(weekly_snaps.keys())[-14:]
             weekly_snaps = {k: weekly_snaps[k] for k in recent_keys}
-            await cache.set("aria:goals:weekly_snaps", _json.dumps(weekly_snaps), ttl_seconds=86400 * 20)
+            await cache.set(
+                "aria:goals:weekly_snaps", _json.dumps(weekly_snaps), ttl_seconds=86400 * 20
+            )
 
             # ── Take action if behind ──────────────────────────────────────────
             action_taken = ""
             if not on_track and gap > 10 and hours_elapsed > 6:
                 # Behind — trigger the highest-conversion strategy
-                high_conv_strategies = ["stripe_checkout", "product_factory", "premium_offer", "lead_closer"]
+                high_conv_strategies = [
+                    "stripe_checkout",
+                    "product_factory",
+                    "premium_offer",
+                    "lead_closer",
+                ]
                 force_strat = high_conv_strategies[now.hour % len(high_conv_strategies)]
                 result = await self._run_one_cycle(force_strategy=force_strat)
                 action_taken = f"Triggered {force_strat} to close gap: {result.summary[:60]}"
@@ -16445,6 +18678,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
 
             try:
                 import aiohttp as _aio
+
                 bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
                 chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
                 if bot_token and chat_id:
@@ -16470,12 +18704,14 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
     async def _exec_retargeting_campaign(self) -> dict:
         """Re-engage visitors and leads who didn't convert with personalized email sequences."""
         try:
-            from apps.core.llm.llm_client import complete_json
-            import json as _json
-            import datetime as _dt
             import base64 as _b64
+            import datetime as _dt
+            import json as _json
+
+            from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
+
             cache = get_cache()
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -16489,12 +18725,20 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                     nurture = _json.loads(nurture_raw)
                     now_ts = _dt.datetime.utcnow()
                     for email, contact in nurture.items():
-                        enrolled = _dt.datetime.fromisoformat(contact.get("enrolled_at", now_ts.isoformat()))
+                        enrolled = _dt.datetime.fromisoformat(
+                            contact.get("enrolled_at", now_ts.isoformat())
+                        )
                         days = (now_ts - enrolled).days
                         completed = contact.get("completed_days", [])
                         # Visitors who enrolled 2-7 days ago but didn't complete Day 3
                         if 2 <= days <= 7 and 3 not in completed:
-                            abandoned.append({"email": email, "name": contact.get("name", ""), "product": contact.get("product", "")})
+                            abandoned.append(
+                                {
+                                    "email": email,
+                                    "name": contact.get("name", ""),
+                                    "product": contact.get("product", ""),
+                                }
+                            )
 
             if not abandoned:
                 # Generate placeholder audience for retargeting script
@@ -16504,7 +18748,9 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                 ]
 
             # ── Generate retargeting sequence ──────────────────────────────────
-            product_name = abandoned[0].get("product", "our product") if abandoned else "our product"
+            product_name = (
+                abandoned[0].get("product", "our product") if abandoned else "our product"
+            )
             retarget = await complete_json(
                 system="You are a conversion optimization specialist. Return JSON: {email_subject: str, email_body: str (150 words with urgency), objection_handler: str, discount_offer: str, social_proof_line: str, landing_page_cta: str}",
                 user=f"Product: {product_name}\nAbandoned visitors: {len(abandoned)} people who didn't buy\n\nCreate a re-engagement email that addresses the #1 objection (price or uncertainty), includes social proof, offers a limited-time incentive, and has a clear CTA. Be direct and create genuine urgency.",
@@ -16512,27 +18758,39 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             )
 
             if not retarget:
-                return {"success": False, "summary": "retargeting_campaign: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "retargeting_campaign: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             emails_sent = 0
             sg_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
             if sg_key:
                 import aiohttp as _aio
+
                 for person in abandoned[:30]:
                     if not person.get("email"):
                         continue
                     try:
                         payload = {
-                            "personalizations": [{"to": [{"email": person["email"], "name": person["name"]}]}],
+                            "personalizations": [
+                                {"to": [{"email": person["email"], "name": person["name"]}]}
+                            ],
                             "from": {"email": "aria@aria.ai", "name": "ARIA AI"},
                             "subject": retarget.get("email_subject", "We saved your spot"),
-                            "content": [{"type": "text/plain", "value": retarget.get("email_body", "")}],
+                            "content": [
+                                {"type": "text/plain", "value": retarget.get("email_body", "")}
+                            ],
                         }
                         async with _aio.ClientSession() as sess:
                             async with sess.post(
                                 "https://api.sendgrid.com/v3/mail/send",
                                 json=payload,
-                                headers={"Authorization": f"Bearer {sg_key}", "Content-Type": "application/json"},
+                                headers={
+                                    "Authorization": f"Bearer {sg_key}",
+                                    "Content-Type": "application/json",
+                                },
                                 timeout=_aio.ClientTimeout(total=15),
                             ) as resp:
                                 if resp.status in (200, 202):
@@ -16550,6 +18808,7 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                 if _rt_smtp_host and _rt_smtp_user and _rt_smtp_pass:
                     import smtplib
                     from email.mime.text import MIMEText as _RTMime
+
                     for person in abandoned[:30]:
                         if not person.get("email"):
                             continue
@@ -16561,7 +18820,11 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
                             with smtplib.SMTP(_rt_smtp_host, _rt_smtp_port) as _rt_srv:
                                 _rt_srv.starttls()
                                 _rt_srv.login(_rt_smtp_user, _rt_smtp_pass)
-                                _rt_srv.sendmail(_rt_smtp_from or _rt_smtp_user, [person["email"]], _rt_msg.as_string())
+                                _rt_srv.sendmail(
+                                    _rt_smtp_from or _rt_smtp_user,
+                                    [person["email"]],
+                                    _rt_msg.as_string(),
+                                )
                             emails_sent += 1
                         except Exception:
                             pass
@@ -16595,10 +18858,15 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/campaigns/{today}-retargeting.md",
-                {"message": f"campaign: retargeting {len(abandoned)} abandoned visitors", "content": encoded}
+                {
+                    "message": f"campaign: retargeting {len(abandoned)} abandoned visitors",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/campaigns/{today}-retargeting.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/campaigns/{today}-retargeting.md"
+                )
 
             # Estimate conversion: 3-5% of retargeted convert at avg $47
             est_conversions = max(1, int(len(abandoned) * 0.04))
@@ -16615,11 +18883,13 @@ Make each listing platform-specific with the right tone, keywords, and pricing s
     async def _exec_influencer_outreach(self) -> dict:
         """Find micro-influencers in the AI/indie hacker space and pitch ARIA for promotion."""
         try:
+            import base64 as _b64
+            import datetime as _dt
+
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
-            import base64 as _b64
-            import datetime as _dt
+
             gh = AriaGitHubClient()
             wt = WebTools()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
@@ -16655,7 +18925,11 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
             )
 
             if not pitch_plan:
-                return {"success": False, "summary": "influencer_outreach: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "influencer_outreach: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             influencers = pitch_plan.get("target_influencers", [])
             pitch_email = pitch_plan.get("pitch_email", {})
@@ -16687,27 +18961,40 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/campaigns/{today}-influencer-outreach.md",
-                {"message": f"outreach: influencer pitch plan — {len(influencers)} targets", "content": encoded}
+                {
+                    "message": f"outreach: influencer pitch plan — {len(influencers)} targets",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/campaigns/{today}-influencer-outreach.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/campaigns/{today}-influencer-outreach.md"
+                )
 
             # Store in Redis for tracking
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 import json as _json
-                await cache.set("aria:campaigns:influencer_latest", _json.dumps({
-                    "ts": _dt.datetime.utcnow().isoformat(),
-                    "influencers": influencers[:5],
-                    "commission": commission,
-                    "collab_offer": collab_offer,
-                }), ttl_seconds=86400 * 14)
+
+                await cache.set(
+                    "aria:campaigns:influencer_latest",
+                    _json.dumps(
+                        {
+                            "ts": _dt.datetime.utcnow().isoformat(),
+                            "influencers": influencers[:5],
+                            "commission": commission,
+                            "collab_offer": collab_offer,
+                        }
+                    ),
+                    ttl_seconds=86400 * 14,
+                )
 
             # Send pitch emails via SendGrid → SMTP fallback
             emails_sent = 0
             pitch_subject = pitch_email.get("subject", "Partnership Opportunity: ARIA AI")
-            pitch_body    = pitch_email.get("body", "")
+            pitch_body = pitch_email.get("body", "")
             if pitch_body:
                 sg_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
                 smtp_host = getattr(settings, "SMTP_HOST", None)
@@ -16720,14 +19007,28 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                     if sg_key:
                         try:
                             import aiohttp as _aio2
+
                             async with _aio2.ClientSession() as sess2:
                                 r2 = await sess2.post(
                                     "https://api.sendgrid.com/v3/mail/send",
                                     json={
-                                        "personalizations": [{"to": [{"email": f"hello@{inf.get('platform','example')}.example.com"}]}],
+                                        "personalizations": [
+                                            {
+                                                "to": [
+                                                    {
+                                                        "email": f"hello@{inf.get('platform','example')}.example.com"
+                                                    }
+                                                ]
+                                            }
+                                        ],
                                         "from": {"email": "aria@aria-ai.dev", "name": "ARIA"},
                                         "subject": f"[Partnership] {pitch_subject}",
-                                        "content": [{"type": "text/plain", "value": f"Hi {inf_name},\n\n{pitch_body}"}],
+                                        "content": [
+                                            {
+                                                "type": "text/plain",
+                                                "value": f"Hi {inf_name},\n\n{pitch_body}",
+                                            }
+                                        ],
                                     },
                                     headers={"Authorization": f"Bearer {sg_key}"},
                                     timeout=_aio2.ClientTimeout(total=10),
@@ -16740,16 +19041,21 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                         try:
                             import smtplib
                             from email.mime.text import MIMEText as _MIMEText2
+
                             smtp_from = getattr(settings, "SMTP_FROM", smtp_user)
                             smtp_port = int(getattr(settings, "SMTP_PORT", 587))
                             _msg2 = _MIMEText2(f"Hi {inf_name},\n\n{pitch_body}")
                             _msg2["Subject"] = pitch_subject
                             _msg2["From"] = smtp_from or smtp_user
-                            _msg2["To"] = smtp_user  # send to self as log (real emails need real addresses)
+                            _msg2["To"] = (
+                                smtp_user  # send to self as log (real emails need real addresses)
+                            )
                             with smtplib.SMTP(smtp_host, smtp_port) as srv2:
                                 srv2.starttls()
                                 srv2.login(smtp_user, smtp_pass)
-                                srv2.sendmail(smtp_from or smtp_user, [smtp_user], _msg2.as_string())
+                                srv2.sendmail(
+                                    smtp_from or smtp_user, [smtp_user], _msg2.as_string()
+                                )
                             emails_sent += 1
                         except Exception:
                             pass
@@ -16758,7 +19064,8 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
             return {
                 "success": True,
                 "summary": f"influencer_outreach: {len(influencers)} targets | {commission}% commission | plan archived{sent_str}",
-                "revenue_potential": float(len(influencers)) * 200.0,  # est. revenue per influencer deal
+                "revenue_potential": float(len(influencers))
+                * 200.0,  # est. revenue per influencer deal
                 "urls": urls_created[:2],
             }
         except Exception as exc:
@@ -16773,13 +19080,19 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
         and sends them via email or Telegram.
         """
         try:
-            from apps.core.llm.llm_client import complete_json
             import datetime as _dt
             import json as _json
+
+            from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if not cache:
-                return {"success": False, "summary": "lead_closer: no Redis", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "lead_closer: no Redis",
+                    "revenue_potential": 0.0,
+                }
 
             # ── Load CRM pipeline ─────────────────────────────────────────────
             crm_raw = await cache.get("aria:crm:pipeline")
@@ -16836,17 +19149,25 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                         if sg_key:
                             try:
                                 import aiohttp as _aio
+
                                 payload = {
-                                    "personalizations": [{"to": [{"email": email_addr, "name": name}]}],
+                                    "personalizations": [
+                                        {"to": [{"email": email_addr, "name": name}]}
+                                    ],
                                     "from": {"email": "aria@aria.ai", "name": "ARIA AI"},
                                     "subject": follow_up.get("subject", "Following up"),
-                                    "content": [{"type": "text/plain", "value": follow_up["email_body"]}],
+                                    "content": [
+                                        {"type": "text/plain", "value": follow_up["email_body"]}
+                                    ],
                                 }
                                 async with _aio.ClientSession() as sess:
                                     async with sess.post(
                                         "https://api.sendgrid.com/v3/mail/send",
                                         json=payload,
-                                        headers={"Authorization": f"Bearer {sg_key}", "Content-Type": "application/json"},
+                                        headers={
+                                            "Authorization": f"Bearer {sg_key}",
+                                            "Content-Type": "application/json",
+                                        },
                                         timeout=_aio.ClientTimeout(total=15),
                                     ) as resp:
                                         if resp.status in (200, 202):
@@ -16863,6 +19184,7 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                                 try:
                                     import smtplib
                                     from email.mime.text import MIMEText as _MIMEText
+
                                     smtp_port = int(getattr(settings, "SMTP_PORT", 587))
                                     _msg = _MIMEText(follow_up["email_body"])
                                     _msg["Subject"] = follow_up.get("subject", "Following up")
@@ -16871,7 +19193,9 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                                     with smtplib.SMTP(smtp_host, smtp_port) as srv:
                                         srv.starttls()
                                         srv.login(smtp_user, smtp_pass)
-                                        srv.sendmail(smtp_from or smtp_user, [email_addr], _msg.as_string())
+                                        srv.sendmail(
+                                            smtp_from or smtp_user, [email_addr], _msg.as_string()
+                                        )
                                     follow_ups_sent += 1
                                 except Exception:
                                     pass
@@ -16904,22 +19228,26 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
     async def _exec_testimonial_collector(self) -> dict:
         """Collect testimonials from buyers in email nurture queue and publish as social proof."""
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             urls_created: list[str] = []
 
             # ── Get buyers from nurture queue ─────────────────────────────────
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             buyers: list[dict] = []
             if cache:
                 nurture_raw = await cache.get("aria:email:nurture_queue")
                 if nurture_raw:
                     import json as _json
+
                     nurture = _json.loads(nurture_raw)
                     # Find contacts who completed Day 7+ (likely satisfied buyers)
                     buyers = [
@@ -16944,7 +19272,11 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
             )
 
             if not result or not result.get("testimonials"):
-                return {"success": False, "summary": "testimonial_collector: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "testimonial_collector: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             testimonials = result["testimonials"]
             social_post = result.get("social_post", "")
@@ -16955,6 +19287,7 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                 _tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     pub_result = await pub.publish_to_twitter(social_post[:280])
                     if pub_result and pub_result.success and pub_result.url:
@@ -16968,6 +19301,7 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                     if _ae and _ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _tw_page = await _plat.twitter(_ae, _ap)
                             await _plat.twitter_thread_post(_tw_page, [social_post[:280]])
@@ -16982,7 +19316,7 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                 md_lines += [
                     f"## {t.get('name','')} — {t.get('role','')} {stars}",
                     f"> \"{t.get('quote','')}\"",
-                    f"",
+                    "",
                     f"**Product:** {t.get('product','')}",
                     "",
                 ]
@@ -16993,15 +19327,25 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
             encoded = _b64.b64encode("\n".join(md_lines).encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/testimonials/{today}-social-proof.md",
-                {"message": f"social-proof: {len(testimonials)} testimonials collected", "content": encoded}
+                {
+                    "message": f"social-proof: {len(testimonials)} testimonials collected",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/testimonials/{today}-social-proof.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/testimonials/{today}-social-proof.md"
+                )
 
             # Cache latest testimonials for use in product pages
             if cache:
                 import json as _json
-                await cache.set("aria:social_proof:latest", _json.dumps(testimonials[:5]), ttl_seconds=86400 * 30)
+
+                await cache.set(
+                    "aria:social_proof:latest",
+                    _json.dumps(testimonials[:5]),
+                    ttl_seconds=86400 * 30,
+                )
 
             return {
                 "success": True,
@@ -17016,10 +19360,12 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
     async def _exec_seo_backlink_builder(self) -> dict:
         """Submit ARIA's content to directories, aggregators, and link-building sites."""
         try:
-            from apps.core.llm.llm_client import complete_json
-            from apps.core.tools.github_client import AriaGitHubClient
             import base64 as _b64
             import datetime as _dt
+
+            from apps.core.llm.llm_client import complete_json
+            from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             urls_created: list[str] = []
@@ -17048,17 +19394,22 @@ Generate a backlink building plan:
             )
 
             if not plan:
-                return {"success": False, "summary": "seo_backlink_builder: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "seo_backlink_builder: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             targets = plan.get("submission_targets", [])
             outreach = plan.get("outreach_emails", [])
-            gh_md = plan.get("github_submission_md", "")
+            plan.get("github_submission_md", "")
 
             # ── Submit to Reddit (organic posting) ────────────────────────────
             reddit_targets = [t for t in targets if "reddit" in t.get("site_name", "").lower()]
             if reddit_targets:
                 try:
                     from apps.core.tools.income_loop import get_income_loop
+
                     loop = get_income_loop()
                     result = await loop._run_one_cycle(force_strategy="reddit_organic")
                     if result.success and result.urls:
@@ -17089,10 +19440,15 @@ Generate a backlink building plan:
             encoded = _b64.b64encode(md.encode()).decode()
             file_r = await gh._put(
                 f"/repos/{owner}/aria-insights/contents/seo/{today}-backlink-tracker.md",
-                {"message": f"seo: backlink submission plan — {len(targets)} targets", "content": encoded}
+                {
+                    "message": f"seo: backlink submission plan — {len(targets)} targets",
+                    "content": encoded,
+                },
             )
             if "error" not in file_r:
-                urls_created.append(f"https://github.com/{owner}/aria-insights/blob/main/seo/{today}-backlink-tracker.md")
+                urls_created.append(
+                    f"https://github.com/{owner}/aria-insights/blob/main/seo/{today}-backlink-tracker.md"
+                )
 
             return {
                 "success": True,
@@ -17114,6 +19470,7 @@ Generate a backlink building plan:
         try:
             from apps.core.llm.llm_client import complete_json
             from apps.core.tools.github_client import AriaGitHubClient
+
             gh = AriaGitHubClient()
             owner = settings.GITHUB_USERNAME or "Geremypolanco"
             urls_created: list[str] = []
@@ -17127,6 +19484,7 @@ Generate a backlink building plan:
                     # Track stars in Redis to detect delta
                     try:
                         from apps.core.memory.redis_client import get_cache
+
                         cache = get_cache()
                         if cache:
                             key = f"aria:viral:stars:{repo['name']}"
@@ -17135,13 +19493,15 @@ Generate a backlink building plan:
                             await cache.set(key, str(stars), ttl_seconds=86400 * 30)
                             delta = stars - prev_stars
                             if delta >= 3 or (prev_stars > 0 and delta / max(prev_stars, 1) > 0.2):
-                                viral_hits.append({
-                                    "type": "github_stars",
-                                    "name": repo.get("name", ""),
-                                    "url": repo.get("html_url", ""),
-                                    "delta": delta,
-                                    "total": stars,
-                                })
+                                viral_hits.append(
+                                    {
+                                        "type": "github_stars",
+                                        "name": repo.get("name", ""),
+                                        "url": repo.get("html_url", ""),
+                                        "delta": delta,
+                                        "total": stars,
+                                    }
+                                )
                     except Exception:
                         pass
 
@@ -17149,40 +19509,47 @@ Generate a backlink building plan:
             devto_token = getattr(settings, "DEVTO_API_KEY", "") or ""
             if devto_token:
                 import aiohttp as _aio
-                async with _aio.ClientSession() as sess:
-                    async with sess.get(
+
+                async with (
+                    _aio.ClientSession() as sess,
+                    sess.get(
                         "https://dev.to/api/articles/me",
                         headers={"api-key": devto_token},
                         timeout=_aio.ClientTimeout(total=10),
-                    ) as resp:
-                        if resp.status == 200:
-                            articles = await resp.json()
-                            for art in articles[:10]:
-                                views = art.get("page_views_count", 0)
-                                reactions = art.get("public_reactions_count", 0)
-                                try:
-                                    from apps.core.memory.redis_client import get_cache
-                                    cache = get_cache()
-                                    if cache:
-                                        key = f"aria:viral:devto:{art.get('id', '')}"
-                                        prev_raw = await cache.get(key)
-                                        prev_views = int(prev_raw) if prev_raw else 0
-                                        await cache.set(key, str(views), ttl_seconds=86400 * 30)
-                                        delta = views - prev_views
-                                        if delta >= 100 or reactions >= 10:
-                                            viral_hits.append({
+                    ) as resp,
+                ):
+                    if resp.status == 200:
+                        articles = await resp.json()
+                        for art in articles[:10]:
+                            views = art.get("page_views_count", 0)
+                            reactions = art.get("public_reactions_count", 0)
+                            try:
+                                from apps.core.memory.redis_client import get_cache
+
+                                cache = get_cache()
+                                if cache:
+                                    key = f"aria:viral:devto:{art.get('id', '')}"
+                                    prev_raw = await cache.get(key)
+                                    prev_views = int(prev_raw) if prev_raw else 0
+                                    await cache.set(key, str(views), ttl_seconds=86400 * 30)
+                                    delta = views - prev_views
+                                    if delta >= 100 or reactions >= 10:
+                                        viral_hits.append(
+                                            {
                                                 "type": "devto_article",
                                                 "name": art.get("title", "")[:60],
                                                 "url": art.get("url", ""),
                                                 "delta_views": delta,
                                                 "reactions": reactions,
-                                            })
-                                except Exception:
-                                    pass
+                                            }
+                                        )
+                            except Exception:
+                                pass
 
             if not viral_hits:
                 # No viral content yet — scan for trending opportunities and queue them
                 from apps.core.tools.web_tools import WebTools
+
                 wt = WebTools()
                 trend_r = await wt.get_hacker_news_trending(limit=5)
                 if isinstance(trend_r, dict) and trend_r.get("stories"):
@@ -17195,6 +19562,7 @@ Generate a backlink building plan:
                     }
                     try:
                         from apps.core.memory.redis_client import get_cache
+
                         cache = get_cache()
                         if cache:
                             await cache.rpush("aria:income:opportunity_queue", json.dumps(opp))
@@ -17221,9 +19589,12 @@ Generate a backlink building plan:
 
             if amp_plan:
                 # Send Telegram alert
-                alert_text = amp_plan.get("telegram_alert", f"🔥 Viral content detected: {viral_hits[0].get('name','')}")
+                alert_text = amp_plan.get(
+                    "telegram_alert", f"🔥 Viral content detected: {viral_hits[0].get('name','')}"
+                )
                 try:
                     import aiohttp as _aio
+
                     bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
                     chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
                     if bot_token and chat_id:
@@ -17249,6 +19620,7 @@ Generate a backlink building plan:
                     _posted = False
                     try:
                         from apps.distribution.publishers.api_publisher import get_api_publisher
+
                         pub = get_api_publisher()
                         result = None
                         if "twitter" in platform:
@@ -17264,6 +19636,7 @@ Generate a backlink building plan:
                     if not _posted and _vd_ae and _vd_ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             if "twitter" in platform:
                                 _tw_page = await _plat.twitter(_vd_ae, _vd_ap)
@@ -17283,9 +19656,15 @@ Generate a backlink building plan:
                 if follow_up:
                     try:
                         from apps.core.memory.redis_client import get_cache
+
                         cache = get_cache()
                         if cache:
-                            opp = {"name": follow_up, "strategy": "product_factory", "source": "viral_detector", "priority": 10}
+                            opp = {
+                                "name": follow_up,
+                                "strategy": "product_factory",
+                                "source": "viral_detector",
+                                "priority": 10,
+                            }
                             await cache.lpush("aria:income:opportunity_queue", json.dumps(opp))
                     except Exception:
                         pass
@@ -17307,12 +19686,14 @@ Generate a backlink building plan:
         """Grow ARIA's email list: create lead magnet + landing page + opt-in form → list as primary asset."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
 
@@ -17326,7 +19707,11 @@ Generate a backlink building plan:
                 max_tokens=2000,
             )
             if not plan or "magnet_title" not in plan:
-                return {"success": False, "summary": "email_list_builder: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "email_list_builder: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             magnet_title = plan["magnet_title"]
             landing_html = plan.get("landing_page_html", f"<h1>{magnet_title}</h1>")
@@ -17343,7 +19728,9 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(landing_html.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/email-magnets/{slug}/")
+                urls_created.append(
+                    f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/email-magnets/{slug}/"
+                )
             except Exception:
                 pass
 
@@ -17354,11 +19741,19 @@ Generate a backlink building plan:
             }
 
             if cache:
-                await cache.rpush("aria:email:magnets", _json.dumps({
-                    "ts": today, "title": magnet_title, "topic": top_topic,
-                    "type": plan.get("magnet_type", "checklist"), "sequence": sequence_info,
-                    "estimated_growth": plan.get("estimated_list_growth_per_week", 0),
-                }))
+                await cache.rpush(
+                    "aria:email:magnets",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "title": magnet_title,
+                            "topic": top_topic,
+                            "type": plan.get("magnet_type", "checklist"),
+                            "sequence": sequence_info,
+                            "estimated_growth": plan.get("estimated_list_growth_per_week", 0),
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:email:magnets", -20, -1)
                 await cache.increment("aria:email:total_magnets")
 
@@ -17371,6 +19766,7 @@ Generate a backlink building plan:
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 hook_headline = plan.get("hook_headline", magnet_title)
                 opt_in_cta = plan.get("opt_in_cta", "Get it free →")
@@ -17386,6 +19782,7 @@ Generate a backlink building plan:
             if not _tw_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_ae, _ap)
                     if await _plat.twitter_thread_post(_tw_page, [tw_text[:280]]):
@@ -17397,6 +19794,7 @@ Generate a backlink building plan:
             _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 li_text = (
                     f"🎁 I just published a FREE {plan.get('magnet_type','resource')}: "
@@ -17415,6 +19813,7 @@ Generate a backlink building plan:
             if not _li_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _li_page = await _plat.linkedin(_ae, _ap)
                     if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
@@ -17440,12 +19839,14 @@ Generate a backlink building plan:
         """Find JV partners + propose revenue-share or co-marketing deals → unlock new distribution channels."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
 
@@ -17459,7 +19860,11 @@ Generate a backlink building plan:
                 max_tokens=1800,
             )
             if not pitch or "partner_type" not in pitch:
-                return {"success": False, "summary": "joint_venture_pitch: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "joint_venture_pitch: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             partner_type = pitch["partner_type"]
             deal_structure = pitch.get("deal_structure", "50/50 rev share")
@@ -17469,7 +19874,10 @@ Generate a backlink building plan:
             urls_created: list[str] = []
             repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
 
-            pitch_md = f"# JV Pitch: {partner_type}\n\n**Date:** {today}\n**Deal:** {deal_structure}\n**Est. Revenue:** ${revenue_per_deal}/mo\n\n## Email\n\n**Subject:** {pitch.get('pitch_subject','')}\n\n{pitch_body}\n\n## Co-Marketing Idea\n\n{pitch.get('co_marketing_idea','')}\n\n## Deck Outline\n\n" + "\n".join(f"- {s}" for s in pitch.get("pitch_deck_outline", []))
+            pitch_md = (
+                f"# JV Pitch: {partner_type}\n\n**Date:** {today}\n**Deal:** {deal_structure}\n**Est. Revenue:** ${revenue_per_deal}/mo\n\n## Email\n\n**Subject:** {pitch.get('pitch_subject','')}\n\n{pitch_body}\n\n## Co-Marketing Idea\n\n{pitch.get('co_marketing_idea','')}\n\n## Deck Outline\n\n"
+                + "\n".join(f"- {s}" for s in pitch.get("pitch_deck_outline", []))
+            )
 
             try:
                 await github._put(
@@ -17479,7 +19887,9 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(pitch_md.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/jv-pitches/{slug}.md")
+                urls_created.append(
+                    f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/jv-pitches/{slug}.md"
+                )
             except Exception:
                 pass
 
@@ -17494,18 +19904,29 @@ Generate a backlink building plan:
                     )
                     if dm_prompt and "dm_text" in dm_prompt:
                         if cache:
-                            await cache.rpush("aria:jv:outreach_queue", _json.dumps({
-                                "handle": handle, "dm": dm_prompt["dm_text"], "ts": today
-                            }))
+                            await cache.rpush(
+                                "aria:jv:outreach_queue",
+                                _json.dumps(
+                                    {"handle": handle, "dm": dm_prompt["dm_text"], "ts": today}
+                                ),
+                            )
                         outreach_count += 1
                 except Exception:
                     pass
 
             if cache:
-                await cache.rpush("aria:jv:pitches", _json.dumps({
-                    "ts": today, "partner_type": partner_type, "deal": deal_structure,
-                    "revenue": revenue_per_deal, "outreach_count": outreach_count,
-                }))
+                await cache.rpush(
+                    "aria:jv:pitches",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "partner_type": partner_type,
+                            "deal": deal_structure,
+                            "revenue": revenue_per_deal,
+                            "outreach_count": outreach_count,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:jv:pitches", -20, -1)
                 await cache.increment("aria:jv:total_pitches")
 
@@ -17523,6 +19944,7 @@ Generate a backlink building plan:
             _jv_li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _jv_pub = get_api_publisher()
                 _jv_li_r = await _jv_pub.publish_to_linkedin(_jv_li)
                 if _jv_li_r and _jv_li_r.success:
@@ -17532,6 +19954,7 @@ Generate a backlink building plan:
             if not _jv_li_ok and _jv_ae and _jv_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _jv_plat = await get_platform_login()
                     _jv_li_pg = await _jv_plat.linkedin(_jv_ae, _jv_ap)
                     await _jv_plat.linkedin_post(_jv_li_pg, _jv_li)
@@ -17552,26 +19975,34 @@ Generate a backlink building plan:
         """Reach out to review blogs/influencers to get ARIA's products reviewed → organic SEO + social proof."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            web = WebTools()
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            WebTools()
             github = AriaGitHubClient()
 
             existing_products: list[dict] = []
             if cache:
                 raw = await cache.lrange("aria:products:created", -10, -1)
                 for r in raw:
-                    try:
+                    with contextlib.suppress(Exception):
                         existing_products.append(_json.loads(r))
-                    except Exception:
-                        pass
 
-            product_name = existing_products[-1].get("name", "ARIA AI Automation Suite") if existing_products else "ARIA AI Automation Suite"
-            product_url = existing_products[-1].get("url", f"https://gumroad.com/{settings.GITHUB_USERNAME}") if existing_products else f"https://gumroad.com/{settings.GITHUB_USERNAME}"
+            product_name = (
+                existing_products[-1].get("name", "ARIA AI Automation Suite")
+                if existing_products
+                else "ARIA AI Automation Suite"
+            )
+            product_url = (
+                existing_products[-1].get("url", f"https://gumroad.com/{settings.GITHUB_USERNAME}")
+                if existing_products
+                else f"https://gumroad.com/{settings.GITHUB_USERNAME}"
+            )
 
             outreach = await complete_json(
                 system="You are ARIA's PR outreach specialist. Craft personalized review pitch emails to tech bloggers.",
@@ -17579,7 +20010,11 @@ Generate a backlink building plan:
                 max_tokens=2000,
             )
             if not outreach or "pitch_angle" not in outreach:
-                return {"success": False, "summary": "product_review_outreach: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "product_review_outreach: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             pitch_angle = outreach["pitch_angle"]
             reviewers = outreach.get("target_reviewers", [])
@@ -17588,7 +20023,10 @@ Generate a backlink building plan:
             urls_created: list[str] = []
             repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
 
-            outreach_md = f"# Review Outreach: {product_name}\n\n**Date:** {today}\n**Angle:** {pitch_angle}\n**Incentive:** {outreach.get('review_incentive','Free access')}\n**Expected backlinks:** {expected_backlinks}\n\n## Target Keywords\n\n{chr(10).join('- ' + k for k in outreach.get('seo_keywords_targeted', []))}\n\n## Email Template\n\n**Subject:** {outreach.get('outreach_email_subject','')}\n\n{outreach.get('outreach_email_body','')}\n\n## Reviewers\n\n" + "\n".join(f"- **{r.get('name','')}** ({r.get('site','')})" for r in reviewers[:5])
+            outreach_md = (
+                f"# Review Outreach: {product_name}\n\n**Date:** {today}\n**Angle:** {pitch_angle}\n**Incentive:** {outreach.get('review_incentive','Free access')}\n**Expected backlinks:** {expected_backlinks}\n\n## Target Keywords\n\n{chr(10).join('- ' + k for k in outreach.get('seo_keywords_targeted', []))}\n\n## Email Template\n\n**Subject:** {outreach.get('outreach_email_subject','')}\n\n{outreach.get('outreach_email_body','')}\n\n## Reviewers\n\n"
+                + "\n".join(f"- **{r.get('name','')}** ({r.get('site','')})" for r in reviewers[:5])
+            )
 
             try:
                 await github._put(
@@ -17598,7 +20036,9 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(outreach_md.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/pr-outreach/{slug}.md")
+                urls_created.append(
+                    f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/pr-outreach/{slug}.md"
+                )
             except Exception:
                 pass
 
@@ -17606,20 +20046,37 @@ Generate a backlink building plan:
             for reviewer in reviewers[:5]:
                 try:
                     if cache:
-                        await cache.rpush("aria:pr:outreach_queue", _json.dumps({
-                            "reviewer": reviewer.get("name", ""), "site": reviewer.get("site", ""),
-                            "product": product_name, "ts": today,
-                            "email": reviewer.get("email_template", outreach.get("outreach_email_body", "")),
-                        }))
+                        await cache.rpush(
+                            "aria:pr:outreach_queue",
+                            _json.dumps(
+                                {
+                                    "reviewer": reviewer.get("name", ""),
+                                    "site": reviewer.get("site", ""),
+                                    "product": product_name,
+                                    "ts": today,
+                                    "email": reviewer.get(
+                                        "email_template", outreach.get("outreach_email_body", "")
+                                    ),
+                                }
+                            ),
+                        )
                         emails_queued += 1
                 except Exception:
                     pass
 
             if cache:
-                await cache.rpush("aria:pr:campaigns", _json.dumps({
-                    "ts": today, "product": product_name, "angle": pitch_angle,
-                    "reviewers": len(reviewers), "expected_backlinks": expected_backlinks,
-                }))
+                await cache.rpush(
+                    "aria:pr:campaigns",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "product": product_name,
+                            "angle": pitch_angle,
+                            "reviewers": len(reviewers),
+                            "expected_backlinks": expected_backlinks,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:pr:campaigns", -20, -1)
                 await cache.increment("aria:pr:total_outreach")
 
@@ -17637,12 +20094,14 @@ Generate a backlink building plan:
         """Build a topic cluster: 1 pillar article + 5 supporting posts → SEO authority and long-tail traffic."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
 
@@ -17656,7 +20115,11 @@ Generate a backlink building plan:
                 max_tokens=3000,
             )
             if not cluster or "pillar_title" not in cluster:
-                return {"success": False, "summary": "seo_content_cluster: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "seo_content_cluster: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             pillar_title = cluster["pillar_title"]
             pillar_slug = pillar_title.lower().replace(" ", "-")[:40]
@@ -17668,48 +20131,74 @@ Generate a backlink building plan:
                     f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/seo-clusters/{pillar_slug}/index.md",
                     {
                         "message": f"[aria] seo_content_cluster pillar: {pillar_title[:50]}",
-                        "content": __import__("base64").b64encode(cluster.get("pillar_article", "").encode()).decode(),
+                        "content": __import__("base64")
+                        .b64encode(cluster.get("pillar_article", "").encode())
+                        .decode(),
                     },
                 )
-                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/seo-clusters/{pillar_slug}/")
+                urls_created.append(
+                    f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/seo-clusters/{pillar_slug}/"
+                )
             except Exception:
                 pass
 
             posts_published = 0
             for post in cluster.get("supporting_posts", [])[:5]:
                 try:
-                    slug = post.get("slug", post.get("title", "post").lower().replace(" ", "-")[:30])
+                    slug = post.get(
+                        "slug", post.get("title", "post").lower().replace(" ", "-")[:30]
+                    )
                     await github._put(
                         f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/seo-clusters/{pillar_slug}/{slug}.md",
                         {
                             "message": f"[aria] seo cluster post: {post.get('title','')[:50]}",
-                            "content": __import__("base64").b64encode(post.get("content", "").encode()).decode(),
+                            "content": __import__("base64")
+                            .b64encode(post.get("content", "").encode())
+                            .decode(),
                         },
                     )
-                    urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/seo-clusters/{pillar_slug}/{slug}")
+                    urls_created.append(
+                        f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/seo-clusters/{pillar_slug}/{slug}"
+                    )
                     posts_published += 1
                 except Exception:
                     pass
 
             monthly_traffic = cluster.get("estimated_monthly_traffic", 500)
             if cache:
-                await cache.rpush("aria:seo:clusters", _json.dumps({
-                    "ts": today, "pillar": pillar_title, "keyword": cluster.get("pillar_keyword", ""),
-                    "posts": posts_published, "est_traffic": monthly_traffic,
-                }))
+                await cache.rpush(
+                    "aria:seo:clusters",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "pillar": pillar_title,
+                            "keyword": cluster.get("pillar_keyword", ""),
+                            "posts": posts_published,
+                            "est_traffic": monthly_traffic,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:seo:clusters", -20, -1)
                 await cache.increment("aria:seo:total_clusters")
 
             # Promote pillar on Dev.to for SEO backlink
             try:
                 from apps.core.tools.publishing_tools import PublishingTools
+
                 pt = PublishingTools()
-                await pt.publish_devto({
-                    "title": pillar_title,
-                    "body": cluster.get("pillar_article", ""),
-                    "tags": [cluster.get("pillar_keyword", "ai")[:20], "seo", "productivity", "ai"],
-                    "meta_description": f"Complete guide to {pillar_title[:100]}",
-                })
+                await pt.publish_devto(
+                    {
+                        "title": pillar_title,
+                        "body": cluster.get("pillar_article", ""),
+                        "tags": [
+                            cluster.get("pillar_keyword", "ai")[:20],
+                            "seo",
+                            "productivity",
+                            "ai",
+                        ],
+                        "meta_description": f"Complete guide to {pillar_title[:100]}",
+                    }
+                )
             except Exception:
                 pass
 
@@ -17717,6 +20206,7 @@ Generate a backlink building plan:
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 pillar_url = urls_created[0] if urls_created else ""
                 tw_text = (
@@ -17734,6 +20224,7 @@ Generate a backlink building plan:
                 if _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _tw_page = await _plat.twitter(_ae, _ap)
                         await _plat.twitter_thread_post(_tw_page, [tw_text[:280]])
@@ -17754,20 +20245,20 @@ Generate a backlink building plan:
         """Redesign product pricing pages with psychological anchoring + decoy pricing to increase average order value."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             products_raw = await cache.lrange("aria:products:created", -10, -1) if cache else []
             products: list[dict] = []
             for p in products_raw:
-                try:
+                with contextlib.suppress(Exception):
                     products.append(_json.loads(p))
-                except Exception:
-                    pass
 
             if not products:
                 products = [{"name": "ARIA AI Toolkit", "price": 29}]
@@ -17782,7 +20273,11 @@ Generate a backlink building plan:
                 max_tokens=2000,
             )
             if not anchoring or "main_price" not in anchoring:
-                return {"success": False, "summary": "price_anchoring: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "price_anchoring: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             main_price = float(anchoring.get("main_price", current_price))
             anchor_price = float(anchoring.get("anchor_price", current_price * 3))
@@ -17800,16 +20295,26 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(pricing_html.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/pricing/{slug}")
+                urls_created.append(
+                    f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/pricing/{slug}"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.rpush("aria:pricing:anchored", _json.dumps({
-                    "ts": today, "product": product_name, "old_price": current_price,
-                    "anchor": anchor_price, "main": main_price,
-                    "expected_lift": aov_increase,
-                }))
+                await cache.rpush(
+                    "aria:pricing:anchored",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "product": product_name,
+                            "old_price": current_price,
+                            "anchor": anchor_price,
+                            "main": main_price,
+                            "expected_lift": aov_increase,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:pricing:anchored", -20, -1)
                 await cache.increment("aria:pricing:total_redesigns")
 
@@ -17828,20 +20333,20 @@ Generate a backlink building plan:
         """Collect testimonials from buyers, auto-generate trust badges, publish social proof across all platforms."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             buyers_raw = await cache.lrange("aria:customers:buyers", -20, -1) if cache else []
             buyers: list[dict] = []
             for b in buyers_raw:
-                try:
+                with contextlib.suppress(Exception):
                     buyers.append(_json.loads(b))
-                except Exception:
-                    pass
 
             testimonials = await complete_json(
                 system="You are ARIA's social proof manager. Generate authentic-sounding testimonials from real use cases and create trust assets.",
@@ -17849,7 +20354,11 @@ Generate a backlink building plan:
                 max_tokens=2000,
             )
             if not testimonials or "testimonials" not in testimonials:
-                return {"success": False, "summary": "social_proof_automation: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "social_proof_automation: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             trust_badge = testimonials.get("trust_badge_text", "Growing customer base")
             trust_stats = testimonials.get("trust_stats", {})
@@ -17865,7 +20374,9 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(proof_html.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/social-proof/wall-of-love-{today}")
+                urls_created.append(
+                    f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/social-proof/wall-of-love-{today}"
+                )
             except Exception:
                 pass
 
@@ -17873,7 +20384,9 @@ Generate a backlink building plan:
             for t in testimonials.get("testimonials", []):
                 try:
                     if cache:
-                        await cache.rpush("aria:social_proof:testimonials", _json.dumps({**t, "ts": today}))
+                        await cache.rpush(
+                            "aria:social_proof:testimonials", _json.dumps({**t, "ts": today})
+                        )
                         testimonials_stored += 1
                 except Exception:
                     pass
@@ -17881,9 +20394,15 @@ Generate a backlink building plan:
                 await cache.ltrim("aria:social_proof:testimonials", -50, -1)
 
             if cache and testimonials.get("twitter_proof_post"):
-                await cache.rpush("aria:social:proof_posts", _json.dumps({
-                    "text": testimonials["twitter_proof_post"], "ts": today,
-                }))
+                await cache.rpush(
+                    "aria:social:proof_posts",
+                    _json.dumps(
+                        {
+                            "text": testimonials["twitter_proof_post"],
+                            "ts": today,
+                        }
+                    ),
+                )
 
             if cache:
                 await cache.set("aria:social_proof:trust_badge", trust_badge)
@@ -17897,6 +20416,7 @@ Generate a backlink building plan:
                 _sp_tw_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _sp_pub = get_api_publisher()
                     _sp_tw_r = await _sp_pub.publish_to_twitter(_sp_proof_post[:280])
                     if _sp_tw_r and _sp_tw_r.success:
@@ -17908,6 +20428,7 @@ Generate a backlink building plan:
                 if not _sp_tw_ok and _sp_ae and _sp_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _sp_plat = await get_platform_login()
                         _sp_tw_pg = await _sp_plat.twitter(_sp_ae, _sp_ap)
                         await _sp_plat.twitter_thread_post(_sp_tw_pg, [_sp_proof_post[:280]])
@@ -17928,12 +20449,14 @@ Generate a backlink building plan:
         """Find micro-influencers, craft collab proposals, create sponsored content briefs → amplify reach."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
 
@@ -17947,7 +20470,11 @@ Generate a backlink building plan:
                 max_tokens=1500,
             )
             if not collab or "target_influencers" not in collab:
-                return {"success": False, "summary": "influencer_collab: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "influencer_collab: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             influencers = collab["target_influencers"]
             collab_type = collab.get("collab_type", "affiliate")
@@ -17956,7 +20483,17 @@ Generate a backlink building plan:
             repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
             urls_created: list[str] = []
 
-            brief_md = f"# Influencer Collab Brief — {today}\n\n**Niche:** {niche}\n**Type:** {collab_type}\n**Compensation:** {collab.get('compensation','')}\n**Expected reach:** {expected_reach:,}\n\n## Content Brief\n\n**Format:** {collab.get('content_brief',{}).get('format','')}\n**Hook:** {collab.get('content_brief',{}).get('hook','')}\n**CTA:** {collab.get('content_brief',{}).get('cta','')}\n\n### Talking Points\n" + "\n".join(f"- {p}" for p in collab.get("content_brief", {}).get("talking_points", [])) + f"\n\n### Hashtags\n{' '.join(collab.get('content_brief', {}).get('hashtags', []))}\n\n## Target Influencers\n\n" + "\n".join(f"- **{i.get('handle','')}** ({i.get('platform','')}, {i.get('follower_range','')}) — {i.get('niche_fit_reason','')}" for i in influencers[:5])
+            brief_md = (
+                f"# Influencer Collab Brief — {today}\n\n**Niche:** {niche}\n**Type:** {collab_type}\n**Compensation:** {collab.get('compensation','')}\n**Expected reach:** {expected_reach:,}\n\n## Content Brief\n\n**Format:** {collab.get('content_brief',{}).get('format','')}\n**Hook:** {collab.get('content_brief',{}).get('hook','')}\n**CTA:** {collab.get('content_brief',{}).get('cta','')}\n\n### Talking Points\n"
+                + "\n".join(
+                    f"- {p}" for p in collab.get("content_brief", {}).get("talking_points", [])
+                )
+                + f"\n\n### Hashtags\n{' '.join(collab.get('content_brief', {}).get('hashtags', []))}\n\n## Target Influencers\n\n"
+                + "\n".join(
+                    f"- **{i.get('handle','')}** ({i.get('platform','')}, {i.get('follower_range','')}) — {i.get('niche_fit_reason','')}"
+                    for i in influencers[:5]
+                )
+            )
 
             try:
                 await github._put(
@@ -17966,22 +20503,39 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(brief_md.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/influencer-briefs/{today}.md")
+                urls_created.append(
+                    f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/influencer-briefs/{today}.md"
+                )
             except Exception:
                 pass
 
             dms_queued = 0
             if cache:
                 for inf in influencers[:5]:
-                    await cache.rpush("aria:influencer:outreach_queue", _json.dumps({
-                        "handle": inf.get("handle", ""), "platform": inf.get("platform", ""),
-                        "dm": collab.get("pitch_dm", ""), "ts": today,
-                    }))
+                    await cache.rpush(
+                        "aria:influencer:outreach_queue",
+                        _json.dumps(
+                            {
+                                "handle": inf.get("handle", ""),
+                                "platform": inf.get("platform", ""),
+                                "dm": collab.get("pitch_dm", ""),
+                                "ts": today,
+                            }
+                        ),
+                    )
                     dms_queued += 1
-                await cache.rpush("aria:influencer:campaigns", _json.dumps({
-                    "ts": today, "niche": niche, "type": collab_type,
-                    "influencers": len(influencers), "expected_reach": expected_reach,
-                }))
+                await cache.rpush(
+                    "aria:influencer:campaigns",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "niche": niche,
+                            "type": collab_type,
+                            "influencers": len(influencers),
+                            "expected_reach": expected_reach,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:influencer:campaigns", -20, -1)
 
             revenue_potential = float(expected_conversions) * 29.0
@@ -17999,22 +20553,26 @@ Generate a backlink building plan:
         """License ARIA's content, templates, or AI outputs to newsletters/blogs/SaaS → recurring B2B revenue."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             products_raw = await cache.lrange("aria:products:created", -10, -1) if cache else []
             products: list[dict] = []
             for p in products_raw:
-                try:
+                with contextlib.suppress(Exception):
                     products.append(_json.loads(p))
-                except Exception:
-                    pass
 
-            asset_catalog = [p.get("name", "AI content") for p in products[:5]] or ["AI automation templates", "SEO content bundles", "AI prompt library"]
+            asset_catalog = [p.get("name", "AI content") for p in products[:5]] or [
+                "AI automation templates",
+                "SEO content bundles",
+                "AI prompt library",
+            ]
 
             license_deal = await complete_json(
                 system="You are ARIA's content licensing strategist. Design a B2B content licensing offer for recurring revenue.",
@@ -18022,7 +20580,11 @@ Generate a backlink building plan:
                 max_tokens=1500,
             )
             if not license_deal or "license_package_name" not in license_deal:
-                return {"success": False, "summary": "content_licensing: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "content_licensing: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             pkg_name = license_deal["license_package_name"]
             monthly_fee = float(license_deal.get("monthly_license_fee", 149.0))
@@ -18031,30 +20593,52 @@ Generate a backlink building plan:
             urls_created: list[str] = []
             slug = pkg_name.lower().replace(" ", "-")[:35]
 
-            license_page_md = f"# {pkg_name}\n\n**Type:** {license_deal.get('license_type','')}\n**Monthly fee:** ${monthly_fee}\n**Annual fee:** ${license_deal.get('annual_fee', monthly_fee * 10)}\n\n## Who It's For\n\n" + "\n".join(f"- {b}" for b in license_deal.get("target_buyers", [])) + f"\n\n## What You Get\n\n{license_deal.get('usage_rights','')}\n\n## Key Terms\n\n{license_deal.get('license_agreement_summary','')}\n\n---\n*Email to license: {settings.GITHUB_USERNAME}@aria-ai.dev*"
+            license_page_md = (
+                f"# {pkg_name}\n\n**Type:** {license_deal.get('license_type','')}\n**Monthly fee:** ${monthly_fee}\n**Annual fee:** ${license_deal.get('annual_fee', monthly_fee * 10)}\n\n## Who It's For\n\n"
+                + "\n".join(f"- {b}" for b in license_deal.get("target_buyers", []))
+                + f"\n\n## What You Get\n\n{license_deal.get('usage_rights','')}\n\n## Key Terms\n\n{license_deal.get('license_agreement_summary','')}\n\n---\n*Email to license: {settings.GITHUB_USERNAME}@aria-ai.dev*"
+            )
 
             try:
                 await github._put(
                     f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/licensing/{slug}.md",
                     {
                         "message": f"[aria] content_licensing: {pkg_name[:50]}",
-                        "content": __import__("base64").b64encode(license_page_md.encode()).decode(),
+                        "content": __import__("base64")
+                        .b64encode(license_page_md.encode())
+                        .decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/licensing/{slug}.md")
+                urls_created.append(
+                    f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/licensing/{slug}.md"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.rpush("aria:licensing:packages", _json.dumps({
-                    "ts": today, "name": pkg_name, "type": license_deal.get("license_type", ""),
-                    "monthly_fee": monthly_fee, "expected_clients": expected_clients,
-                }))
+                await cache.rpush(
+                    "aria:licensing:packages",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "name": pkg_name,
+                            "type": license_deal.get("license_type", ""),
+                            "monthly_fee": monthly_fee,
+                            "expected_clients": expected_clients,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:licensing:packages", -20, -1)
-                await cache.rpush("aria:licensing:pitch_queue", _json.dumps({
-                    "subject": license_deal.get("pitch_email_subject", ""),
-                    "body": license_deal.get("pitch_email_body", ""), "ts": today,
-                }))
+                await cache.rpush(
+                    "aria:licensing:pitch_queue",
+                    _json.dumps(
+                        {
+                            "subject": license_deal.get("pitch_email_subject", ""),
+                            "body": license_deal.get("pitch_email_body", ""),
+                            "ts": today,
+                        }
+                    ),
+                )
                 await cache.increment("aria:licensing:total_packages")
 
             revenue_potential = monthly_fee * expected_clients
@@ -18072,6 +20656,7 @@ Generate a backlink building plan:
             _cl_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _cl_pub = get_api_publisher()
                 _cl_tw_r = await _cl_pub.publish_to_twitter(_cl_tw)
                 if _cl_tw_r and _cl_tw_r.success:
@@ -18081,6 +20666,7 @@ Generate a backlink building plan:
             if not _cl_tw_ok and _cl_ae and _cl_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _cl_plat = await get_platform_login()
                     _cl_tw_pg = await _cl_plat.twitter(_cl_ae, _cl_ap)
                     await _cl_plat.twitter_thread_post(_cl_tw_pg, [_cl_tw])
@@ -18101,11 +20687,13 @@ Generate a backlink building plan:
         """Package ARIA's expertise as 1-hour consulting sessions, create booking page, pitch to warm leads → $200-$500/session."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             consulting = await complete_json(
@@ -18114,7 +20702,11 @@ Generate a backlink building plan:
                 max_tokens=2000,
             )
             if not consulting or "session_title" not in consulting:
-                return {"success": False, "summary": "micro_consulting: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "micro_consulting: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             session_title = consulting["session_title"]
             price = float(consulting.get("price_usd", 299.0))
@@ -18132,20 +20724,36 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(booking_html.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/consulting/{slug}")
+                urls_created.append(
+                    f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/consulting/{slug}"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.rpush("aria:consulting:offers", _json.dumps({
-                    "ts": today, "title": session_title, "price": price,
-                    "sessions": sessions_available,
-                    "deliverables": consulting.get("deliverables", []),
-                }))
+                await cache.rpush(
+                    "aria:consulting:offers",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "title": session_title,
+                            "price": price,
+                            "sessions": sessions_available,
+                            "deliverables": consulting.get("deliverables", []),
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:consulting:offers", -15, -1)
-                await cache.rpush("aria:social:proof_posts", _json.dumps({
-                    "text": consulting.get("pitch_linkedin_post", ""), "platform": "linkedin", "ts": today,
-                }))
+                await cache.rpush(
+                    "aria:social:proof_posts",
+                    _json.dumps(
+                        {
+                            "text": consulting.get("pitch_linkedin_post", ""),
+                            "platform": "linkedin",
+                            "ts": today,
+                        }
+                    ),
+                )
                 await cache.increment("aria:consulting:total_offers")
 
             revenue_potential = price * sessions_available
@@ -18156,10 +20764,14 @@ Generate a backlink building plan:
             pitch_post = consulting.get("pitch_linkedin_post", "")
             booking_url = urls_created[0] if urls_created else ""
             li_post = (
-                f"{pitch_post}\n\n"
-                f"${price}/session | {sessions_available} slots this week\n"
-                f"Book here → {booking_url}"
-            )[:1300] if pitch_post else ""
+                (
+                    f"{pitch_post}\n\n"
+                    f"${price}/session | {sessions_available} slots this week\n"
+                    f"Book here → {booking_url}"
+                )[:1300]
+                if pitch_post
+                else ""
+            )
             tw_post = (
                 f"🧠 Now offering 1-hour AI consulting: {session_title[:60]}\n\n"
                 f"${price} | {sessions_available} slots available\n"
@@ -18170,6 +20782,7 @@ Generate a backlink building plan:
                 _li_ok = False
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     _mc_pub = get_api_publisher()
                     _li_r = await _mc_pub.publish_to_linkedin(li_post)
                     if _li_r and _li_r.success:
@@ -18181,6 +20794,7 @@ Generate a backlink building plan:
                 if not _li_ok and _mc_ae and _mc_ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _mc_plat = await get_platform_login()
                         _li_pg = await _mc_plat.linkedin(_mc_ae, _mc_ap)
                         await _mc_plat.linkedin_post(_li_pg, li_post)
@@ -18190,6 +20804,7 @@ Generate a backlink building plan:
             _tw_ok2 = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _mc_pub2 = get_api_publisher()
                 _tw_r2 = await _mc_pub2.publish_to_twitter(tw_post)
                 if _tw_r2 and _tw_r2.success:
@@ -18201,6 +20816,7 @@ Generate a backlink building plan:
             if not _tw_ok2 and _mc_ae and _mc_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _mc_plat2 = await get_platform_login()
                     _tw_pg2 = await _mc_plat2.twitter(_mc_ae, _mc_ap)
                     await _mc_plat2.twitter_thread_post(_tw_pg2, [tw_post])
@@ -18221,11 +20837,13 @@ Generate a backlink building plan:
         """Design a complete SaaS upgrade email sequence driving free→paid→enterprise conversions."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             sequence = await complete_json(
@@ -18234,7 +20852,11 @@ Generate a backlink building plan:
                 max_tokens=3000,
             )
             if not sequence or "sequence_name" not in sequence:
-                return {"success": False, "summary": "saas_upsell_sequence: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "saas_upsell_sequence: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             seq_name = sequence["sequence_name"]
             paid_price = float(sequence.get("paid_price_monthly", 49.0))
@@ -18257,15 +20879,25 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(seq_md.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/email-sequences/{slug}.md")
+                urls_created.append(
+                    f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/email-sequences/{slug}.md"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.rpush("aria:email_sequences:library", _json.dumps({
-                    "ts": today, "name": seq_name, "emails": len(emails),
-                    "upgrade_rate": upgrade_rate, "mrr_per_100": mrr_per_100,
-                }))
+                await cache.rpush(
+                    "aria:email_sequences:library",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "name": seq_name,
+                            "emails": len(emails),
+                            "upgrade_rate": upgrade_rate,
+                            "mrr_per_100": mrr_per_100,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:email_sequences:library", -10, -1)
                 await cache.increment("aria:email_sequences:total")
 
@@ -18282,6 +20914,7 @@ Generate a backlink building plan:
             _ss_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _ss_pub = get_api_publisher()
                 _ss_tw_r = await _ss_pub.publish_to_twitter(tw_seq)
                 if _ss_tw_r and _ss_tw_r.success:
@@ -18293,6 +20926,7 @@ Generate a backlink building plan:
             if not _ss_tw_ok and _ss_ae and _ss_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _ss_plat = await get_platform_login()
                     _ss_tw_pg = await _ss_plat.twitter(_ss_ae, _ss_ap)
                     await _ss_plat.twitter_thread_post(_ss_tw_pg, [tw_seq])
@@ -18313,11 +20947,13 @@ Generate a backlink building plan:
         """Create a paid membership community with perks, pricing tiers, and onboarding flow → recurring MRR."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             community = await complete_json(
@@ -18326,7 +20962,11 @@ Generate a backlink building plan:
                 max_tokens=2500,
             )
             if not community or "community_name" not in community:
-                return {"success": False, "summary": "community_monetize: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "community_monetize: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             community_name = community["community_name"]
             tiers = community.get("tiers", [])
@@ -18345,19 +20985,37 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(landing_html.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/community/{slug}")
+                urls_created.append(
+                    f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/community/{slug}"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.rpush("aria:communities:launched", _json.dumps({
-                    "ts": today, "name": community_name, "platform": community.get("platform", "Discord"),
-                    "tiers": len(tiers), "expected_mrr": expected_mrr, "expected_members": members_m1,
-                }))
+                await cache.rpush(
+                    "aria:communities:launched",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "name": community_name,
+                            "platform": community.get("platform", "Discord"),
+                            "tiers": len(tiers),
+                            "expected_mrr": expected_mrr,
+                            "expected_members": members_m1,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:communities:launched", -10, -1)
-                await cache.rpush("aria:social:proof_posts", _json.dumps({
-                    "text": community.get("launch_tweet", ""), "platform": "twitter", "ts": today,
-                }))
+                await cache.rpush(
+                    "aria:social:proof_posts",
+                    _json.dumps(
+                        {
+                            "text": community.get("launch_tweet", ""),
+                            "platform": "twitter",
+                            "ts": today,
+                        }
+                    ),
+                )
                 await cache.increment("aria:communities:total")
 
             # ── Actually post launch tweet (API → browser fallback) ────────────
@@ -18376,6 +21034,7 @@ Generate a backlink building plan:
             _cm_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _cm_pub = get_api_publisher()
                 _cm_tw_r = await _cm_pub.publish_to_twitter(tw_cm)
                 if _cm_tw_r and _cm_tw_r.success:
@@ -18387,6 +21046,7 @@ Generate a backlink building plan:
             if not _cm_tw_ok and _cm_ae and _cm_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _cm_plat = await get_platform_login()
                     _cm_tw_pg = await _cm_plat.twitter(_cm_ae, _cm_ap)
                     await _cm_plat.twitter_thread_post(_cm_tw_pg, [tw_cm])
@@ -18396,14 +21056,18 @@ Generate a backlink building plan:
             # LinkedIn launch post
             li_cm = (
                 f"Launching {community_name} — a paid community for AI builders\n\n"
-                f"What's inside:\n" + "\n".join(
-                    f"• {t.get('name','')}: ${t.get('price_monthly',0)}/mo — " + ", ".join(t.get('perks', [])[:2])
+                f"What's inside:\n"
+                + "\n".join(
+                    f"• {t.get('name','')}: ${t.get('price_monthly',0)}/mo — "
+                    + ", ".join(t.get("perks", [])[:2])
                     for t in tiers[:3]
-                ) + f"\n\nJoin here → {community_url}"
+                )
+                + f"\n\nJoin here → {community_url}"
             )[:1300]
             _cm_li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _cm_pub2 = get_api_publisher()
                 _cm_li_r = await _cm_pub2.publish_to_linkedin(li_cm)
                 if _cm_li_r and _cm_li_r.success:
@@ -18413,6 +21077,7 @@ Generate a backlink building plan:
             if not _cm_li_ok and _cm_ae and _cm_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _cm_plat2 = await get_platform_login()
                     _cm_li_pg = await _cm_plat2.linkedin(_cm_ae, _cm_ap)
                     await _cm_plat2.linkedin_post(_cm_li_pg, li_cm)
@@ -18433,12 +21098,14 @@ Generate a backlink building plan:
         """Publish authoritative long-form opinion piece on AI/business trends → build authority, attract inbound leads."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
 
@@ -18453,7 +21120,11 @@ Generate a backlink building plan:
                 max_tokens=3000,
             )
             if not piece or "title" not in piece:
-                return {"success": False, "summary": "thought_leadership: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "thought_leadership: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             title = piece["title"]
             article_md = piece.get("article_md", "")
@@ -18462,7 +21133,10 @@ Generate a backlink building plan:
             urls_created: list[str] = []
             published_channels: list[str] = []
 
-            full_md = f"# {title}\n\n*By ARIA — {today}*\n\n> {piece.get('thesis','')}\n\n{article_md}\n\n---\n\n**Key takeaways:**\n" + "\n".join(f"- {t}" for t in piece.get("key_takeaways", []))
+            full_md = (
+                f"# {title}\n\n*By ARIA — {today}*\n\n> {piece.get('thesis','')}\n\n{article_md}\n\n---\n\n**Key takeaways:**\n"
+                + "\n".join(f"- {t}" for t in piece.get("key_takeaways", []))
+            )
 
             # Publish to GitHub
             try:
@@ -18483,13 +21157,16 @@ Generate a backlink building plan:
             # Publish to Dev.to
             try:
                 from apps.core.tools.publishing_tools import PublishingTools
+
                 pt = PublishingTools()
-                devto_result = await pt.publish_devto({
-                    "title": title,
-                    "body": article_md,
-                    "tags": ["ai", "technology", "productivity", "startup"],
-                    "meta_description": piece.get("thesis", "")[:150],
-                })
+                devto_result = await pt.publish_devto(
+                    {
+                        "title": title,
+                        "body": article_md,
+                        "tags": ["ai", "technology", "productivity", "startup"],
+                        "meta_description": piece.get("thesis", "")[:150],
+                    }
+                )
                 if devto_result.get("success"):
                     published_channels.append("Dev.to")
                     if devto_result.get("url"):
@@ -18506,6 +21183,7 @@ Generate a backlink building plan:
             _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 li_result = await pub.publish_to_linkedin(li_teaser[:1300])
                 if li_result and li_result.success:
@@ -18516,6 +21194,7 @@ Generate a backlink building plan:
             if not _li_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _li_page = await _plat.linkedin(_ae, _ap)
                     if await _plat.linkedin_create_post(_li_page, li_teaser[:3000]):
@@ -18531,6 +21210,7 @@ Generate a backlink building plan:
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tw_hook)
                 if tw_result and tw_result.success:
@@ -18541,6 +21221,7 @@ Generate a backlink building plan:
             if not _tw_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_ae, _ap)
                     if await _plat.twitter_thread_post(_tw_page, [tw_hook]):
@@ -18549,12 +21230,19 @@ Generate a backlink building plan:
                     pass
 
             if cache:
-                await cache.rpush("aria:thought_leadership:pieces", _json.dumps({
-                    "ts": today, "title": title, "topic": topic,
-                    "publication": piece.get("target_publication", ""),
-                    "estimated_shares": piece.get("estimated_shares", 0),
-                    "channels": published_channels,
-                }))
+                await cache.rpush(
+                    "aria:thought_leadership:pieces",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "title": title,
+                            "topic": topic,
+                            "publication": piece.get("target_publication", ""),
+                            "estimated_shares": piece.get("estimated_shares", 0),
+                            "channels": published_channels,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:thought_leadership:pieces", -20, -1)
                 await cache.increment("aria:thought_leadership:total")
 
@@ -18577,11 +21265,13 @@ Generate a backlink building plan:
         """Design a points/token reward system for ARIA's community to drive retention and viral growth."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             economy = await complete_json(
@@ -18590,14 +21280,20 @@ Generate a backlink building plan:
                 max_tokens=2000,
             )
             if not economy or "token_name" not in economy:
-                return {"success": False, "summary": "token_economy: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "token_economy: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             token_name = economy["token_name"]
             token_symbol = economy.get("token_symbol", "ARI")
             repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
             urls_created: list[str] = []
 
-            whitepaper = economy.get("whitepaper_md", f"# {token_name} Economy\n\nSymbol: {token_symbol}")
+            whitepaper = economy.get(
+                "whitepaper_md", f"# {token_name} Economy\n\nSymbol: {token_symbol}"
+            )
             try:
                 await github._put(
                     f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/tokenomics/{token_symbol.lower()}-whitepaper.md",
@@ -18606,21 +21302,38 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(whitepaper.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/tokenomics/{token_symbol.lower()}-whitepaper.md")
+                urls_created.append(
+                    f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/tokenomics/{token_symbol.lower()}-whitepaper.md"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.set("aria:token_economy:config", _json.dumps({
-                    "name": token_name, "symbol": token_symbol,
-                    "earn_actions": economy.get("earn_actions", []),
-                    "redeem_options": economy.get("redeem_options", []),
-                    "virality": economy.get("virality_mechanic", ""),
-                }))
-                await cache.rpush("aria:social:proof_posts", _json.dumps({
-                    "text": economy.get("launch_tweet", f"Introducing {token_name} ({token_symbol}) — ARIA's community token"),
-                    "platform": "twitter", "ts": today,
-                }))
+                await cache.set(
+                    "aria:token_economy:config",
+                    _json.dumps(
+                        {
+                            "name": token_name,
+                            "symbol": token_symbol,
+                            "earn_actions": economy.get("earn_actions", []),
+                            "redeem_options": economy.get("redeem_options", []),
+                            "virality": economy.get("virality_mechanic", ""),
+                        }
+                    ),
+                )
+                await cache.rpush(
+                    "aria:social:proof_posts",
+                    _json.dumps(
+                        {
+                            "text": economy.get(
+                                "launch_tweet",
+                                f"Introducing {token_name} ({token_symbol}) — ARIA's community token",
+                            ),
+                            "platform": "twitter",
+                            "ts": today,
+                        }
+                    ),
+                )
 
             earn_count = len(economy.get("earn_actions", []))
             redeem_count = len(economy.get("redeem_options", []))
@@ -18628,12 +21341,16 @@ Generate a backlink building plan:
             # ── Actually post launch tweet (not just queue it) ─────────────────
             _te_ae = getattr(settings, "ARIA_EMAIL", None)
             _te_ap = getattr(settings, "ARIA_PASSWORD", None)
-            launch_tweet = economy.get("launch_tweet", f"Introducing {token_name} ({token_symbol}) — ARIA's community reward token 🪙")
+            launch_tweet = economy.get(
+                "launch_tweet",
+                f"Introducing {token_name} ({token_symbol}) — ARIA's community reward token 🪙",
+            )
             _te_url = urls_created[0] if urls_created else ""
             tw_te = (launch_tweet + f"\n→ {_te_url}")[:280]
             _te_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _te_pub = get_api_publisher()
                 _te_tw_r = await _te_pub.publish_to_twitter(tw_te)
                 if _te_tw_r and _te_tw_r.success:
@@ -18645,6 +21362,7 @@ Generate a backlink building plan:
             if not _te_tw_ok and _te_ae and _te_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _te_plat = await get_platform_login()
                     _te_tw_pg = await _te_plat.twitter(_te_ae, _te_ap)
                     await _te_plat.twitter_thread_post(_te_tw_pg, [tw_te])
@@ -18665,11 +21383,13 @@ Generate a backlink building plan:
         """Package ARIA's AI capabilities as a paid API product with documentation, pricing, and Postman collection."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             api_product = await complete_json(
@@ -18678,7 +21398,11 @@ Generate a backlink building plan:
                 max_tokens=3000,
             )
             if not api_product or "api_name" not in api_product:
-                return {"success": False, "summary": "api_product_launch: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "api_product_launch: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             api_name = api_product["api_name"]
             slug = api_name.lower().replace(" ", "-")[:35]
@@ -18692,10 +21416,14 @@ Generate a backlink building plan:
                     f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/api-products/{slug}/README.md",
                     {
                         "message": f"[aria] api_product_launch: {api_name[:50]}",
-                        "content": __import__("base64").b64encode(api_product.get("readme_md", "").encode()).decode(),
+                        "content": __import__("base64")
+                        .b64encode(api_product.get("readme_md", "").encode())
+                        .decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/tree/main/api-products/{slug}")
+                urls_created.append(
+                    f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/tree/main/api-products/{slug}"
+                )
             except Exception:
                 pass
 
@@ -18706,18 +21434,27 @@ Generate a backlink building plan:
                         f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/api-products/{slug}/postman.json",
                         {
                             "message": f"[aria] api_product_launch Postman: {api_name[:50]}",
-                            "content": __import__("base64").b64encode(collection_str.encode()).decode(),
+                            "content": __import__("base64")
+                            .b64encode(collection_str.encode())
+                            .decode(),
                         },
                     )
                 except Exception:
                     pass
 
             if cache:
-                await cache.rpush("aria:api_products:launched", _json.dumps({
-                    "ts": today, "name": api_name, "slug": slug,
-                    "endpoints": len(api_product.get("endpoints", [])),
-                    "highest_price": highest_price,
-                }))
+                await cache.rpush(
+                    "aria:api_products:launched",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "name": api_name,
+                            "slug": slug,
+                            "endpoints": len(api_product.get("endpoints", [])),
+                            "highest_price": highest_price,
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:api_products:launched", -10, -1)
                 await cache.increment("aria:api_products:total")
 
@@ -18734,6 +21471,7 @@ Generate a backlink building plan:
             _apl_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _apl_pub = get_api_publisher()
                 _apl_tw_r = await _apl_pub.publish_to_twitter(tw_apl)
                 if _apl_tw_r and _apl_tw_r.success:
@@ -18745,6 +21483,7 @@ Generate a backlink building plan:
             if not _apl_tw_ok and _apl_ae and _apl_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _apl_plat = await get_platform_login()
                     _apl_tw_pg = await _apl_plat.twitter(_apl_ae, _apl_ap)
                     await _apl_plat.twitter_thread_post(_apl_tw_pg, [tw_apl])
@@ -18765,22 +21504,24 @@ Generate a backlink building plan:
         """Design and run one targeted growth experiment: A/B test, new channel, hook variant, or funnel change."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
             from apps.core.tools.web_tools import WebTools
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             web = WebTools()
             github = AriaGitHubClient()
 
-            past_experiments_raw = await cache.lrange("aria:growth_experiments:history", -5, -1) if cache else []
+            past_experiments_raw = (
+                await cache.lrange("aria:growth_experiments:history", -5, -1) if cache else []
+            )
             past_experiments: list[dict] = []
             for e in past_experiments_raw:
-                try:
+                with contextlib.suppress(Exception):
                     past_experiments.append(_json.loads(e))
-                except Exception:
-                    pass
 
             _hn_stories_r = await web.get_hacker_news_trending(limit=5)
             trends = [s["title"] for s in _hn_stories_r.get("stories", [])]
@@ -18792,14 +21533,24 @@ Generate a backlink building plan:
                 max_tokens=1200,
             )
             if not experiment or "experiment_name" not in experiment:
-                return {"success": False, "summary": "growth_experiment: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "growth_experiment: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             exp_name = experiment["experiment_name"]
             slug = exp_name.lower().replace(" ", "-")[:40]
             repo = settings.GITHUB_REPO if hasattr(settings, "GITHUB_REPO") else "aria-portfolio"
             urls_created: list[str] = []
 
-            exp_doc = f"# Growth Experiment: {exp_name}\n\n**Date:** {today}\n**Type:** {experiment.get('experiment_type','')}\n**Confidence:** {experiment.get('confidence_level','medium')}\n\n## Hypothesis\n\n{experiment.get('hypothesis','')}\n\n## Control vs Variant\n\n- **Control:** {experiment.get('control','')}\n- **Variant:** {experiment.get('variant','')}\n\n## Success Criteria\n\n{experiment.get('success_criteria','')}\n\n## Metric\n\n{experiment.get('metric_to_track','')}\n\n## Expected Lift: {experiment.get('expected_lift_pct',0):.1f}%\n\n## Steps\n\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(experiment.get("implementation_steps", []))) + f"\n\n{experiment.get('results_md','')}"
+            exp_doc = (
+                f"# Growth Experiment: {exp_name}\n\n**Date:** {today}\n**Type:** {experiment.get('experiment_type','')}\n**Confidence:** {experiment.get('confidence_level','medium')}\n\n## Hypothesis\n\n{experiment.get('hypothesis','')}\n\n## Control vs Variant\n\n- **Control:** {experiment.get('control','')}\n- **Variant:** {experiment.get('variant','')}\n\n## Success Criteria\n\n{experiment.get('success_criteria','')}\n\n## Metric\n\n{experiment.get('metric_to_track','')}\n\n## Expected Lift: {experiment.get('expected_lift_pct',0):.1f}%\n\n## Steps\n\n"
+                + "\n".join(
+                    f"{i+1}. {s}" for i, s in enumerate(experiment.get("implementation_steps", []))
+                )
+                + f"\n\n{experiment.get('results_md','')}"
+            )
 
             try:
                 await github._put(
@@ -18809,17 +21560,26 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(exp_doc.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/growth-experiments/{today}-{slug}.md")
+                urls_created.append(
+                    f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/growth-experiments/{today}-{slug}.md"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.rpush("aria:growth_experiments:history", _json.dumps({
-                    "ts": today, "name": exp_name, "type": experiment.get("experiment_type", ""),
-                    "hypothesis": experiment.get("hypothesis", ""),
-                    "expected_lift": experiment.get("expected_lift_pct", 0),
-                    "status": "running",
-                }))
+                await cache.rpush(
+                    "aria:growth_experiments:history",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "name": exp_name,
+                            "type": experiment.get("experiment_type", ""),
+                            "hypothesis": experiment.get("hypothesis", ""),
+                            "expected_lift": experiment.get("expected_lift_pct", 0),
+                            "status": "running",
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:growth_experiments:history", -20, -1)
                 await cache.increment("aria:growth_experiments:total")
 
@@ -18835,6 +21595,7 @@ Generate a backlink building plan:
             _ge_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _ge_pub = get_api_publisher()
                 _ge_tw_r = await _ge_pub.publish_to_twitter(tw_ge)
                 if _ge_tw_r and _ge_tw_r.success:
@@ -18846,6 +21607,7 @@ Generate a backlink building plan:
             if not _ge_tw_ok and _ge_ae and _ge_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _ge_plat = await get_platform_login()
                     _ge_tw_pg = await _ge_plat.twitter(_ge_ae, _ge_ap)
                     await _ge_plat.twitter_thread_post(_ge_tw_pg, [tw_ge])
@@ -18866,11 +21628,13 @@ Generate a backlink building plan:
         """Create optimized listing copy for Chrome Web Store, VS Code Marketplace, or App Store — expand distribution."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             listing = await complete_json(
@@ -18879,7 +21643,11 @@ Generate a backlink building plan:
                 max_tokens=2000,
             )
             if not listing or "app_name" not in listing:
-                return {"success": False, "summary": "app_store_listing: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "app_store_listing: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             app_name = listing["app_name"]
             marketplace = listing.get("target_marketplace", "Chrome_Web_Store")
@@ -18893,18 +21661,30 @@ Generate a backlink building plan:
                     f"/repos/{settings.GITHUB_USERNAME}/{repo}/contents/marketplace-listings/{marketplace.lower()}-{slug}.md",
                     {
                         "message": f"[aria] app_store_listing: {app_name[:50]} → {marketplace}",
-                        "content": __import__("base64").b64encode(listing.get("listing_md", "").encode()).decode(),
+                        "content": __import__("base64")
+                        .b64encode(listing.get("listing_md", "").encode())
+                        .decode(),
                     },
                 )
-                urls_created.append(f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/marketplace-listings/{marketplace.lower()}-{slug}.md")
+                urls_created.append(
+                    f"https://github.com/{settings.GITHUB_USERNAME}/{repo}/blob/main/marketplace-listings/{marketplace.lower()}-{slug}.md"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.rpush("aria:marketplace:listings", _json.dumps({
-                    "ts": today, "app": app_name, "marketplace": marketplace,
-                    "aso_score": aso_score, "pricing": listing.get("pricing", ""),
-                }))
+                await cache.rpush(
+                    "aria:marketplace:listings",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "app": app_name,
+                            "marketplace": marketplace,
+                            "aso_score": aso_score,
+                            "pricing": listing.get("pricing", ""),
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:marketplace:listings", -20, -1)
                 await cache.increment("aria:marketplace:total_listings")
 
@@ -18921,6 +21701,7 @@ Generate a backlink building plan:
             _asl_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 _asl_pub = get_api_publisher()
                 _asl_tw_r = await _asl_pub.publish_to_twitter(tw_asl)
                 if _asl_tw_r and _asl_tw_r.success:
@@ -18932,6 +21713,7 @@ Generate a backlink building plan:
             if not _asl_tw_ok and _asl_ae and _asl_ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _asl_plat = await get_platform_login()
                     _asl_tw_pg = await _asl_plat.twitter(_asl_ae, _asl_ap)
                     await _asl_plat.twitter_thread_post(_asl_tw_pg, [tw_asl])
@@ -18952,22 +21734,30 @@ Generate a backlink building plan:
         """Write a detailed case study from a buyer result → powerful social proof + SEO content + inbound leads."""
         try:
             import json as _json
+
             from apps.core.llm.llm_client import complete_json
+            from apps.core.memory.redis_client import get_cache
             from apps.core.tools.github_client import AriaGitHubClient
 
             cache = get_cache()
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
             github = AriaGitHubClient()
 
             buyers_raw = await cache.lrange("aria:customers:buyers", -20, -1) if cache else []
             buyers: list[dict] = []
             for b in buyers_raw:
-                try:
+                with contextlib.suppress(Exception):
                     buyers.append(_json.loads(b))
-                except Exception:
-                    pass
 
-            subject = buyers[-1] if buyers else {"name": "Indie Hacker", "product": "ARIA AI suite", "result": "generated first $500 in passive income"}
+            subject = (
+                buyers[-1]
+                if buyers
+                else {
+                    "name": "Indie Hacker",
+                    "product": "ARIA AI suite",
+                    "result": "generated first $500 in passive income",
+                }
+            )
 
             case_study = await complete_json(
                 system="You are ARIA's content team. Write a compelling, SEO-optimized case study that converts readers into buyers.",
@@ -18975,7 +21765,11 @@ Generate a backlink building plan:
                 max_tokens=2500,
             )
             if not case_study or "title" not in case_study:
-                return {"success": False, "summary": "case_study_publisher: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "case_study_publisher: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             title = case_study["title"]
             hero_stat = case_study.get("hero_stat", "Significant results")
@@ -18993,16 +21787,25 @@ Generate a backlink building plan:
                         "content": __import__("base64").b64encode(full_md.encode()).decode(),
                     },
                 )
-                urls_created.append(f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/case-studies/{slug}")
+                urls_created.append(
+                    f"https://{settings.GITHUB_USERNAME}.github.io/{repo}/case-studies/{slug}"
+                )
             except Exception:
                 pass
 
             if cache:
-                await cache.rpush("aria:case_studies:published", _json.dumps({
-                    "ts": today, "title": title, "hero_stat": hero_stat,
-                    "customer": subject.get("name", ""),
-                    "seo_keywords": case_study.get("seo_keywords", []),
-                }))
+                await cache.rpush(
+                    "aria:case_studies:published",
+                    _json.dumps(
+                        {
+                            "ts": today,
+                            "title": title,
+                            "hero_stat": hero_stat,
+                            "customer": subject.get("name", ""),
+                            "seo_keywords": case_study.get("seo_keywords", []),
+                        }
+                    ),
+                )
                 await cache.ltrim("aria:case_studies:published", -20, -1)
                 await cache.increment("aria:case_studies:total")
 
@@ -19011,13 +21814,16 @@ Generate a backlink building plan:
             # Publish to Dev.to for SEO
             try:
                 from apps.core.tools.publishing_tools import PublishingTools
+
                 pt = PublishingTools()
-                dt_result = await pt.publish_devto({
-                    "title": title,
-                    "body": full_md,
-                    "tags": (case_study.get("seo_keywords", []) + ["casestudy", "ai"])[:4],
-                    "meta_description": case_study.get("subtitle", "")[:150],
-                })
+                dt_result = await pt.publish_devto(
+                    {
+                        "title": title,
+                        "body": full_md,
+                        "tags": (case_study.get("seo_keywords", []) + ["casestudy", "ai"])[:4],
+                        "meta_description": case_study.get("subtitle", "")[:150],
+                    }
+                )
                 if dt_result.get("success"):
                     distributed_to.append("Dev.to")
                     if dt_result.get("url"):
@@ -19035,6 +21841,7 @@ Generate a backlink building plan:
                 li_text = f"{li_teaser}\n\n{cs_url}"[:1300] if cs_url else li_teaser[:1300]
                 try:
                     from apps.distribution.publishers.api_publisher import get_api_publisher
+
                     pub = get_api_publisher()
                     li_result = await pub.publish_to_linkedin(li_text)
                     if li_result and li_result.success:
@@ -19045,6 +21852,7 @@ Generate a backlink building plan:
                 if not _li_ok and _ae and _ap:
                     try:
                         from apps.core.tools.human_browser import get_platform_login
+
                         _plat = await get_platform_login()
                         _li_page = await _plat.linkedin(_ae, _ap)
                         if await _plat.linkedin_create_post(_li_page, li_text[:3000]):
@@ -19060,6 +21868,7 @@ Generate a backlink building plan:
             _cs_tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(_cs_tw_text)
                 if tw_result and tw_result.success:
@@ -19070,6 +21879,7 @@ Generate a backlink building plan:
             if not _cs_tw_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_ae, _ap)
                     if await _plat.twitter_thread_post(_tw_page, [_cs_tw_text]):
@@ -19077,7 +21887,7 @@ Generate a backlink building plan:
                 except Exception:
                     pass
 
-            distribution = case_study.get("distribution_plan", [])
+            case_study.get("distribution_plan", [])
             return {
                 "success": True,
                 "summary": (
@@ -19099,18 +21909,24 @@ Generate a backlink building plan:
         Zero creation cost — just amplifies what already exists for more sales.
         """
         try:
-            import json as _json
             import datetime as _dt
+            import json as _json
+
             from apps.core.llm.llm_client import complete_json
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if not cache:
-                return {"success": False, "summary": "catalog_repromoter: no Redis", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "catalog_repromoter: no Redis",
+                    "revenue_potential": 0.0,
+                }
 
             # ── Load product catalog from Redis ────────────────────────────────
             raw_items = await cache.lrange("aria:products:catalog", 0, -1)
             products: list[dict] = []
-            for raw in (raw_items or []):
+            for raw in raw_items or []:
                 try:
                     item = _json.loads(raw) if isinstance(raw, str) else raw
                     name = item.get("name") or item.get("title", "")
@@ -19122,7 +21938,11 @@ Generate a backlink building plan:
                     pass
 
             if not products:
-                return {"success": False, "summary": "catalog_repromoter: no products in catalog yet", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "catalog_repromoter: no products in catalog yet",
+                    "revenue_potential": 0.0,
+                }
 
             # ── Pick a product not recently re-promoted ────────────────────────
             now = _dt.datetime.utcnow()
@@ -19156,6 +21976,7 @@ Generate a backlink building plan:
                 "scarcity/time angle: limited slots or weekend promotion",
             ]
             import random as _random
+
             angle = _random.choice(angles)
 
             promo_data = await complete_json(
@@ -19182,12 +22003,18 @@ Return JSON:
             )
 
             if not promo_data:
-                return {"success": False, "summary": "catalog_repromoter: AI failed", "revenue_potential": 0.0}
+                return {
+                    "success": False,
+                    "summary": "catalog_repromoter: AI failed",
+                    "revenue_potential": 0.0,
+                }
 
             tweet_text = promo_data.get("tweet", f"🔁 {prod_name} — ${prod_price:.0f}")
             if prod_url and prod_url not in tweet_text:
                 tweet_text = f"{tweet_text[:240]}\n\n{prod_url}"
-            li_text = promo_data.get("linkedin_post", f"Re-sharing: {prod_name} — ${prod_price:.0f}\n\n{prod_url}")
+            li_text = promo_data.get(
+                "linkedin_post", f"Re-sharing: {prod_name} — ${prod_price:.0f}\n\n{prod_url}"
+            )
 
             urls_created: list[str] = []
 
@@ -19197,6 +22024,7 @@ Return JSON:
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tw_result = await pub.publish_to_twitter(tweet_text[:280])
                 if tw_result and tw_result.success:
@@ -19208,6 +22036,7 @@ Return JSON:
             if not _tw_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _tw_page = await _plat.twitter(_ae, _ap)
                     _tw_url = await _plat.twitter_thread_post(_tw_page, [tweet_text[:280]])
@@ -19220,6 +22049,7 @@ Return JSON:
             _li_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 li_result = await pub.publish_to_linkedin(li_text[:1300])
                 if li_result and li_result.success:
@@ -19231,6 +22061,7 @@ Return JSON:
             if not _li_ok and _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat = await get_platform_login()
                     _li_page = await _plat.linkedin(_ae, _ap)
                     _li_url = await _plat.linkedin_create_post(_li_page, li_text[:3000])
@@ -19241,12 +22072,15 @@ Return JSON:
 
             # ── Publish to Reddit via browser ──────────────────────────────────
             reddit_post = promo_data.get("reddit_post", "")
-            reddit_title = promo_data.get("reddit_title", f"{prod_name} — now available (${prod_price:.0f})")
+            reddit_title = promo_data.get(
+                "reddit_title", f"{prod_name} — now available (${prod_price:.0f})"
+            )
             if not reddit_post:
                 reddit_post = f"{prod_name}\n\nPrice: ${prod_price:.0f}\n\n{promo_data.get('hook', angle)}\n\n{prod_url}"
             if _ae and _ap:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat_r = await get_platform_login()
                     _reddit_pg = await _plat_r.reddit(_ae, _ap)
                     _reddit_url = await _plat_r.reddit_post(
@@ -19287,7 +22121,7 @@ Return JSON:
         Falls back to Gumroad membership or GitHub landing page.
         """
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
@@ -19295,7 +22129,9 @@ Return JSON:
                 return {"success": False, "summary": "stripe_subscription: AI unavailable"}
 
             wt = WebTools()
-            trends = await wt.search_web("best SaaS subscription products AI tools monthly 2025", num_results=5)
+            trends = await wt.search_web(
+                "best SaaS subscription products AI tools monthly 2025", num_results=5
+            )
             inspiration = "AI toolkit subscription for entrepreneurs"
             if trends.get("success") and trends.get("results"):
                 inspiration = trends["results"][0].get("title", inspiration)[:100]
@@ -19332,7 +22168,7 @@ JSON:
             product_name = sub_data.get("name", "ARIA Pro Subscription")
             tagline = sub_data.get("tagline", "")
             monthly_cents = int(sub_data.get("monthly_price_cents", 1900))
-            annual_cents = int(sub_data.get("annual_price_cents", 18000))
+            int(sub_data.get("annual_price_cents", 18000))
             description = sub_data.get("description", "")
             deliverables = sub_data.get("monthly_deliverables", [])
             tier = sub_data.get("tier_name", "Pro")
@@ -19346,6 +22182,7 @@ JSON:
             if stripe_key:
                 try:
                     import httpx as _hx
+
                     async with _hx.AsyncClient(timeout=20.0) as _client:
                         # Create Stripe product
                         prod_r = await _client.post(
@@ -19375,7 +22212,9 @@ JSON:
                                     "line_items[0][quantity]": "1",
                                 }
                                 if trial_days > 0:
-                                    link_data["subscription_data[trial_period_days]"] = str(trial_days)
+                                    link_data["subscription_data[trial_period_days]"] = str(
+                                        trial_days
+                                    )
                                 link_r = await _client.post(
                                     "https://api.stripe.com/v1/payment_links",
                                     data=link_data,
@@ -19392,10 +22231,15 @@ JSON:
             # Gumroad membership fallback (supports recurring memberships)
             if not urls_created:
                 gumroad_token = getattr(settings, "GUMROAD_TOKEN", None)
-                full_desc = description + "\n\n**Monthly deliverables:**\n" + "\n".join(f"✅ {d}" for d in deliverables[:5])
+                full_desc = (
+                    description
+                    + "\n\n**Monthly deliverables:**\n"
+                    + "\n".join(f"✅ {d}" for d in deliverables[:5])
+                )
                 if gumroad_token:
                     try:
                         from apps.core.tools.gumroad_tools import GumroadTools
+
                         gt = GumroadTools()
                         gr_r = await gt.create_product(
                             name=product_name,
@@ -19414,6 +22258,7 @@ JSON:
                     if _ae and _ap:
                         try:
                             from apps.core.tools.human_browser import get_platform_login
+
                             _plat = await get_platform_login()
                             _gm_pg = await _plat.gumroad(_ae, _ap)
                             _gm_url = await _plat.gumroad_create_product(
@@ -19428,12 +22273,15 @@ JSON:
             # Always publish landing page to GitHub
             if settings.GITHUB_TOKEN:
                 try:
-                    from apps.core.tools.github_client import AriaGitHubClient
                     import base64 as _b64
+
+                    from apps.core.tools.github_client import AriaGitHubClient
+
                     gh = AriaGitHubClient()
                     owner = settings.GITHUB_USERNAME or "Geremypolanco"
-                    from datetime import datetime, timezone
-                    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    from datetime import datetime
+
+                    today = datetime.now(UTC).strftime("%Y-%m-%d")
                     slug = product_name[:35].lower().replace(" ", "-").replace("'", "")
                     buy_url = urls_created[0] if urls_created else "#"
                     deliverables_md = "\n".join(f"- ✅ {d}" for d in deliverables[:6])
@@ -19449,7 +22297,10 @@ JSON:
                     )
                     file_r = await gh._put(
                         f"/repos/{owner}/aria-insights/contents/subscriptions/{today}-{slug}.md",
-                        {"message": f"subscription: {product_name[:60]}", "content": _b64.b64encode(md.encode()).decode()},
+                        {
+                            "message": f"subscription: {product_name[:60]}",
+                            "content": _b64.b64encode(md.encode()).decode(),
+                        },
                     )
                     if "error" not in file_r:
                         gh_url = f"https://github.com/{owner}/aria-insights/blob/main/subscriptions/{today}-{slug}.md"
@@ -19458,7 +22309,10 @@ JSON:
                     pass
 
             if not urls_created:
-                return {"success": False, "summary": "stripe_subscription: no payment processor or GitHub configured"}
+                return {
+                    "success": False,
+                    "summary": "stripe_subscription: no payment processor or GitHub configured",
+                }
 
             # Announce on social media
             buy_url = urls_created[0]
@@ -19474,6 +22328,7 @@ JSON:
             _tw_ok = False
             try:
                 from apps.distribution.publishers.api_publisher import get_api_publisher
+
                 pub = get_api_publisher()
                 tw_r = await pub.publish_to_twitter(tw_text)
                 _tw_ok = bool(tw_r and tw_r.success)
@@ -19482,6 +22337,7 @@ JSON:
             if not _tw_ok and _ae2 and _ap2:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _plat2 = await get_platform_login()
                     _tw_pg = await _plat2.twitter(_ae2, _ap2)
                     await _plat2.twitter_thread_post(_tw_pg, [tw_text])
@@ -19492,9 +22348,11 @@ JSON:
             if buy_url and buy_url != "#" and _ae2 and _ap2:
                 try:
                     from apps.core.tools.human_browser import get_platform_login
+
                     _hn_plat = await get_platform_login()
                     _hn_url = await _hn_plat.hackernews_show_hn(
-                        _ae2, _ap2,
+                        _ae2,
+                        _ap2,
                         title=f"{product_name}: {tagline}",
                         url=buy_url,
                         text=f"{description[:500]}\n\n{trial_note}",
@@ -19505,7 +22363,12 @@ JSON:
                 except Exception:
                     pass
 
-            logger.info("[IncomeLoop] stripe_subscription: '%s' at $%s/mo via %s", product_name[:50], monthly_cents/100, platform_used)
+            logger.info(
+                "[IncomeLoop] stripe_subscription: '%s' at $%s/mo via %s",
+                product_name[:50],
+                monthly_cents / 100,
+                platform_used,
+            )
             return {
                 "success": True,
                 "summary": f"Subscription '{product_name[:50]}' | ${monthly_cents/100:.0f}/mo{trial_note} | {platform_used} | target MRR: ${sub_data.get('target_mrr', 0)}",
@@ -19520,7 +22383,8 @@ JSON:
 
 # ── Singleton ──────────────────────────────────────────────────────
 
-_loop: Optional[IncomeLoop] = None
+_loop: IncomeLoop | None = None
+
 
 def get_income_loop() -> IncomeLoop:
     global _loop

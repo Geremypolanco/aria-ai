@@ -2,9 +2,12 @@
 support_agent.py — Support Agent multilingüe con Google Translate + HuggingFace.
 Soporte en 133 idiomas, detección automática, sentiment analysis de tickets.
 """
+
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
 from apps.core.tools.ai_client import AIModel
 
@@ -17,16 +20,20 @@ class SupportAgent(BaseAgent):
             name="support",
             description="Soporte multilingüe — 133 idiomas, análisis de tickets, respuesta automática",
             capabilities=[
-                "customer_support", "multilingual_response", "ticket_analysis",
-                "faq_generation", "sentiment_escalation", "knowledge_base",
+                "customer_support",
+                "multilingual_response",
+                "ticket_analysis",
+                "faq_generation",
+                "sentiment_escalation",
+                "knowledge_base",
             ],
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        message   = context.get("message", "")
-        user_id   = context.get("user_id", "")
-        channel   = context.get("channel", "telegram")
-        auto_mode = context.get("auto_mode", False)
+        message = context.get("message", "")
+        user_id = context.get("user_id", "")
+        channel = context.get("channel", "telegram")
+        context.get("auto_mode", False)
 
         results: dict[str, Any] = {"success": True, "agent": "support_agent"}
 
@@ -53,14 +60,16 @@ class SupportAgent(BaseAgent):
             results["escalated"] = True
             await self._escalate_ticket(user_id, message, sentiment)
 
-        await self._log("support_response", f"Canal: {channel} | Idioma: {detected_lang} | Tipo: {ticket_type}")
+        await self._log(
+            "support_response", f"Canal: {channel} | Idioma: {detected_lang} | Tipo: {ticket_type}"
+        )
         return results
 
     async def _detect_language(self, text: str) -> str:
         """Detecta el idioma del mensaje usando HuggingFace o Google."""
-        import asyncio
         try:
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
             hf = HuggingFaceSuite()
             result = await hf.detect_language(text[:200])
             if result.get("success"):
@@ -69,6 +78,7 @@ class SupportAgent(BaseAgent):
             pass
         try:
             from apps.core.tools.google_suite import GoogleSuite
+
             google = GoogleSuite()
             result = await google.detect_language(text[:200])
             if result.get("success"):
@@ -81,6 +91,7 @@ class SupportAgent(BaseAgent):
         """Analiza sentimiento del ticket para priorización."""
         try:
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
             hf = HuggingFaceSuite()
             return await hf.analyze_sentiment(text[:512], multilingual=True)
         except Exception as exc:
@@ -91,12 +102,24 @@ class SupportAgent(BaseAgent):
         """Clasifica el tipo de ticket de soporte."""
         try:
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
             hf = HuggingFaceSuite()
             result = await hf.classify_zero_shot(
                 text[:512],
-                ["billing question", "technical issue", "feature request", "general inquiry", "complaint", "refund request"],
+                [
+                    "billing question",
+                    "technical issue",
+                    "feature request",
+                    "general inquiry",
+                    "complaint",
+                    "refund request",
+                ],
             )
-            return result.get("best_label", "general inquiry") if isinstance(result, dict) else "general inquiry"
+            return (
+                result.get("best_label", "general inquiry")
+                if isinstance(result, dict)
+                else "general inquiry"
+            )
         except Exception:
             return "general inquiry"
 
@@ -117,16 +140,24 @@ class SupportAgent(BaseAgent):
         )
 
         if not response_es:
-            return {"text": "Gracias por contactarnos. Un agente revisará tu mensaje pronto.", "language": "es"}
+            return {
+                "text": "Gracias por contactarnos. Un agente revisará tu mensaje pronto.",
+                "language": "es",
+            }
 
         # Si el idioma detectado no es español, traducir la respuesta
         if language and language not in ("es", "spa", "es-ES", "es-MX"):
             try:
                 from apps.core.tools.google_suite import GoogleSuite
+
                 google = GoogleSuite()
                 translated = await google.translate(response_es, target=language[:2], source="es")
                 if translated.get("success"):
-                    return {"text": translated["translated"], "original_es": response_es, "language": language}
+                    return {
+                        "text": translated["translated"],
+                        "original_es": response_es,
+                        "language": language,
+                    }
             except Exception as exc:
                 logger.warning("[SupportAgent] translate error: %s", exc)
 
@@ -136,6 +167,7 @@ class SupportAgent(BaseAgent):
         """Escala ticket muy negativo para revisión humana."""
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             await db.create_approval_request(
                 agent="support_agent",

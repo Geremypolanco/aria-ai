@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
 
@@ -169,17 +168,29 @@ class ExecutiveDashboard:
             "snapshot": snapshot.to_dict(),
             "recommendations": recommendations,
             "alerts": snapshot.alerts,
-            "health": "critical" if len(snapshot.alerts) >= 2 else "at_risk" if snapshot.alerts else "healthy",
+            "health": (
+                "critical"
+                if len(snapshot.alerts) >= 2
+                else "at_risk" if snapshot.alerts else "healthy"
+            ),
         }
 
     async def compare_periods(self, period1: str, period2: str) -> dict:
         await self._load()
         snap1 = next(
-            (BusinessSnapshot.from_dict(s) for s in reversed(self._snapshots) if s["period"] == period1),
+            (
+                BusinessSnapshot.from_dict(s)
+                for s in reversed(self._snapshots)
+                if s["period"] == period1
+            ),
             None,
         )
         snap2 = next(
-            (BusinessSnapshot.from_dict(s) for s in reversed(self._snapshots) if s["period"] == period2),
+            (
+                BusinessSnapshot.from_dict(s)
+                for s in reversed(self._snapshots)
+                if s["period"] == period2
+            ),
             None,
         )
         if not snap1 or not snap2:
@@ -195,9 +206,7 @@ class ExecutiveDashboard:
                 snap1.revenue_growth_pct - snap2.revenue_growth_pct, 2
             ),
             "customer_delta": snap1.customer_count - snap2.customer_count,
-            "conversion_rate_delta": round(
-                snap1.conversion_rate - snap2.conversion_rate, 4
-            ),
+            "conversion_rate_delta": round(snap1.conversion_rate - snap2.conversion_rate, 4),
             "churn_delta": round(snap1.churn_rate - snap2.churn_rate, 4),
             "net_profit_delta_usd": round(snap1.net_profit_usd - snap2.net_profit_usd, 2),
         }
@@ -237,7 +246,9 @@ class ExecutiveDashboard:
             "alerts": latest.alerts,
             "churn_rate": latest.churn_rate,
             "conversion_rate": latest.conversion_rate,
-            "health": "critical" if len(latest.alerts) >= 2 else "at_risk" if latest.alerts else "healthy",
+            "health": (
+                "critical" if len(latest.alerts) >= 2 else "at_risk" if latest.alerts else "healthy"
+            ),
             "generated_at": latest.generated_at,
         }
 

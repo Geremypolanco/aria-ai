@@ -9,12 +9,12 @@ Plataformas:
 - LinkedIn (ya en social_media.py para OAuth)
 - Todas las redes conectadas via social_media.py OAuth
 """
+
 from __future__ import annotations
 
 import base64
-import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -31,6 +31,7 @@ class SocialContentTools:
     async def post_to_all(self, text: str, article_url: str = "", title: str = "") -> dict:
         """Publica en todas las redes disponibles en paralelo."""
         import asyncio
+
         results = await asyncio.gather(
             self.post_twitter(text[:280]),
             self.post_reddit(title, text, article_url),
@@ -57,15 +58,25 @@ class SocialContentTools:
                   TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET
         Tier gratuito: 1,500 tweets/mes.
         """
-        if not all([settings.TWITTER_API_KEY, settings.TWITTER_API_SECRET,
-                    settings.TWITTER_ACCESS_TOKEN, settings.TWITTER_ACCESS_TOKEN_SECRET]):
-            return {"success": False, "skipped": True, "reason": "Twitter credentials no configuradas"}
+        if not all(
+            [
+                settings.TWITTER_API_KEY,
+                settings.TWITTER_API_SECRET,
+                settings.TWITTER_ACCESS_TOKEN,
+                settings.TWITTER_ACCESS_TOKEN_SECRET,
+            ]
+        ):
+            return {
+                "success": False,
+                "skipped": True,
+                "reason": "Twitter credentials no configuradas",
+            }
         try:
-            import hmac
             import hashlib
+            import hmac
+            import secrets as secrets_lib
             import time
             import urllib.parse
-            import secrets as secrets_lib
 
             method = "POST"
             url = "https://api.twitter.com/2/tweets"
@@ -73,12 +84,12 @@ class SocialContentTools:
             oauth_timestamp = str(int(time.time()))
 
             oauth_params = {
-                "oauth_consumer_key":     settings.TWITTER_API_KEY,
-                "oauth_nonce":            oauth_nonce,
+                "oauth_consumer_key": settings.TWITTER_API_KEY,
+                "oauth_nonce": oauth_nonce,
                 "oauth_signature_method": "HMAC-SHA1",
-                "oauth_timestamp":        oauth_timestamp,
-                "oauth_token":            settings.TWITTER_ACCESS_TOKEN,
-                "oauth_version":          "1.0",
+                "oauth_timestamp": oauth_timestamp,
+                "oauth_token": settings.TWITTER_ACCESS_TOKEN,
+                "oauth_version": "1.0",
             }
 
             param_str = "&".join(
@@ -87,12 +98,13 @@ class SocialContentTools:
             )
             base_str = f"{method}&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(param_str, safe='')}"
             signing_key = f"{urllib.parse.quote(settings.TWITTER_API_SECRET, safe='')}&{urllib.parse.quote(settings.TWITTER_ACCESS_TOKEN_SECRET, safe='')}"
-            signature = base64.b64encode(hmac.new(signing_key.encode(), base_str.encode(), hashlib.sha1).digest()).decode()
+            signature = base64.b64encode(
+                hmac.new(signing_key.encode(), base_str.encode(), hashlib.sha1).digest()
+            ).decode()
             oauth_params["oauth_signature"] = signature
 
             auth_header = "OAuth " + ", ".join(
-                f'{k}="{urllib.parse.quote(v, safe="")}"'
-                for k, v in sorted(oauth_params.items())
+                f'{k}="{urllib.parse.quote(v, safe="")}"' for k, v in sorted(oauth_params.items())
             )
 
             res = await self._http.post(
@@ -107,8 +119,7 @@ class SocialContentTools:
                 tweet_url = f"https://twitter.com/i/web/status/{tweet_id}"
                 logger.info("[Social] Twitter: %s", tweet_url)
                 return {"success": True, "platform": "twitter", "url": tweet_url, "id": tweet_id}
-            else:
-                return {"success": False, "error": res.text[:200]}
+            return {"success": False, "error": res.text[:200]}
 
         except Exception as exc:
             logger.error("[Social] Twitter error: %s", exc)
@@ -123,16 +134,30 @@ class SocialContentTools:
         Tier gratuito: generoso.
         Subreddits target: r/artificial, r/entrepreneur, etc.
         """
-        if not all([settings.REDDIT_CLIENT_ID, settings.REDDIT_CLIENT_SECRET,
-                    settings.REDDIT_USERNAME, settings.REDDIT_PASSWORD]):
-            return {"success": False, "skipped": True, "reason": "Reddit credentials no configuradas"}
+        if not all(
+            [
+                settings.REDDIT_CLIENT_ID,
+                settings.REDDIT_CLIENT_SECRET,
+                settings.REDDIT_USERNAME,
+                settings.REDDIT_PASSWORD,
+            ]
+        ):
+            return {
+                "success": False,
+                "skipped": True,
+                "reason": "Reddit credentials no configuradas",
+            }
 
         try:
             # Obtener access token
             token_res = await self._http.post(
                 "https://www.reddit.com/api/v1/access_token",
                 auth=(settings.REDDIT_CLIENT_ID, settings.REDDIT_CLIENT_SECRET),
-                data={"grant_type": "password", "username": settings.REDDIT_USERNAME, "password": settings.REDDIT_PASSWORD},
+                data={
+                    "grant_type": "password",
+                    "username": settings.REDDIT_USERNAME,
+                    "password": settings.REDDIT_PASSWORD,
+                },
                 headers={"User-Agent": "ARIA/1.0"},
             )
             if token_res.status_code != 200:
@@ -169,13 +194,17 @@ class SocialContentTools:
                 for item in data:
                     if isinstance(item, list):
                         for sub in item:
-                            if isinstance(sub, list) and any("reddit.com/r/" in str(s) for s in sub):
-                                post_url = next((s for s in sub if isinstance(s, str) and "reddit.com/r/" in s), "")
+                            if isinstance(sub, list) and any(
+                                "reddit.com/r/" in str(s) for s in sub
+                            ):
+                                post_url = next(
+                                    (s for s in sub if isinstance(s, str) and "reddit.com/r/" in s),
+                                    "",
+                                )
                                 break
                 logger.info("[Social] Reddit posted: %s", post_url)
                 return {"success": True, "platform": "reddit", "url": post_url}
-            else:
-                return {"success": False, "error": post_res.text[:200]}
+            return {"success": False, "error": post_res.text[:200]}
 
         except Exception as exc:
             logger.error("[Social] Reddit error: %s", exc)
@@ -190,7 +219,11 @@ class SocialContentTools:
         Tier gratuito: generoso.
         """
         if not settings.PINTEREST_ACCESS_TOKEN:
-            return {"success": False, "skipped": True, "reason": "PINTEREST_ACCESS_TOKEN no configurado"}
+            return {
+                "success": False,
+                "skipped": True,
+                "reason": "PINTEREST_ACCESS_TOKEN no configurado",
+            }
 
         try:
             board_id = settings.PINTEREST_BOARD_ID or ""
@@ -214,13 +247,17 @@ class SocialContentTools:
                 "link": link,
                 "media_source": {
                     "source_type": "image_url",
-                    "url": settings.PINTEREST_DEFAULT_IMAGE_URL or "https://via.placeholder.com/1000x1500",
+                    "url": settings.PINTEREST_DEFAULT_IMAGE_URL
+                    or "https://via.placeholder.com/1000x1500",
                 },
             }
 
             res = await self._http.post(
                 "https://api.pinterest.com/v5/pins",
-                headers={"Authorization": f"Bearer {settings.PINTEREST_ACCESS_TOKEN}", "Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {settings.PINTEREST_ACCESS_TOKEN}",
+                    "Content-Type": "application/json",
+                },
                 json=pin_payload,
             )
 
@@ -229,8 +266,7 @@ class SocialContentTools:
                 pin_url = f"https://pinterest.com/pin/{data.get('id', '')}"
                 logger.info("[Social] Pinterest: %s", pin_url)
                 return {"success": True, "platform": "pinterest", "url": pin_url}
-            else:
-                return {"success": False, "error": res.text[:200]}
+            return {"success": False, "error": res.text[:200]}
 
         except Exception as exc:
             logger.error("[Social] Pinterest error: %s", exc)
@@ -245,7 +281,11 @@ class SocialContentTools:
         Completamente gratuito.
         """
         if not settings.DISCORD_WEBHOOK_URL:
-            return {"success": False, "skipped": True, "reason": "DISCORD_WEBHOOK_URL no configurado"}
+            return {
+                "success": False,
+                "skipped": True,
+                "reason": "DISCORD_WEBHOOK_URL no configurado",
+            }
 
         try:
             summary = content[:300] + "..." if len(content) > 300 else content
@@ -256,7 +296,13 @@ class SocialContentTools:
             }
             if url:
                 embed["url"] = url
-                embed["fields"] = [{"name": "Leer artículo completo", "value": f"[Click aquí]({url})", "inline": False}]
+                embed["fields"] = [
+                    {
+                        "name": "Leer artículo completo",
+                        "value": f"[Click aquí]({url})",
+                        "inline": False,
+                    }
+                ]
 
             payload = {
                 "username": "ARIA Content Bot",
@@ -267,8 +313,7 @@ class SocialContentTools:
             res = await self._http.post(settings.DISCORD_WEBHOOK_URL, json=payload)
             if res.status_code in (200, 204):
                 return {"success": True, "platform": "discord"}
-            else:
-                return {"success": False, "error": res.text[:200]}
+            return {"success": False, "error": res.text[:200]}
 
         except Exception as exc:
             logger.error("[Social] Discord webhook error: %s", exc)
@@ -280,6 +325,7 @@ class SocialContentTools:
         """Publica en todas las cuentas conectadas via OAuth (Facebook, Instagram, LinkedIn, TikTok)."""
         try:
             from apps.core.tools.social_media import SocialMediaManager
+
             sm = SocialMediaManager()
             accounts = await sm.list_connected_accounts()
             if not accounts:

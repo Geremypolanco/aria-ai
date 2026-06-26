@@ -4,8 +4,7 @@ import math
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -13,7 +12,7 @@ _CACHE_KEY = "strategy:forecasts:v1"
 _CACHE_TTL = 86400 * 90  # 90 days
 
 
-class GrowthModel(str, Enum):
+class GrowthModel(StrEnum):
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
     S_CURVE = "s_curve"
@@ -88,12 +87,14 @@ def _compute_projections(
         if breakeven_month == 0 and cumulative >= breakeven_threshold:
             breakeven_month = m
 
-        projections.append({
-            "month": m,
-            "revenue_usd": round(revenue, 2),
-            "customers": customers,
-            "cumulative_revenue_usd": round(cumulative, 2),
-        })
+        projections.append(
+            {
+                "month": m,
+                "revenue_usd": round(revenue, 2),
+                "customers": customers,
+                "cumulative_revenue_usd": round(cumulative, 2),
+            }
+        )
 
     return projections, round(cumulative, 2), breakeven_month
 
@@ -164,10 +165,7 @@ class StrategicForecaster:
             # Get revenue at month 12 (or last month if < 12)
             if not s.projections:
                 return 0.0
-            target = next(
-                (p for p in s.projections if p["month"] == 12),
-                s.projections[-1]
-            )
+            target = next((p for p in s.projections if p["month"] == 12), s.projections[-1])
             return target["revenue_usd"]
 
         scored = sorted(scenarios, key=_get_12m_revenue, reverse=True)
@@ -178,7 +176,8 @@ class StrategicForecaster:
         # Recommended: balance of revenue and breakeven speed
         recommended = min(
             scenarios,
-            key=lambda s: (s.breakeven_month if s.breakeven_month > 0 else 9999) - _get_12m_revenue(s) / 1000
+            key=lambda s: (s.breakeven_month if s.breakeven_month > 0 else 9999)
+            - _get_12m_revenue(s) / 1000,
         )
 
         return {
@@ -213,12 +212,14 @@ class StrategicForecaster:
             if breakeven_month == 0 and cumulative >= breakeven_threshold:
                 breakeven_month = m
 
-            modified_projections.append({
-                "month": m,
-                "revenue_usd": round(revenue, 2),
-                "customers": customers,
-                "cumulative_revenue_usd": round(cumulative, 2),
-            })
+            modified_projections.append(
+                {
+                    "month": m,
+                    "revenue_usd": round(revenue, 2),
+                    "customers": customers,
+                    "cumulative_revenue_usd": round(cumulative, 2),
+                }
+            )
 
         return ForecastScenario(
             name=f"{base_forecast.name}_stressed_m{shock_month}_{int(shock_pct*100)}pct",
@@ -238,8 +239,7 @@ class StrategicForecaster:
         latest = self._scenarios[-1]
         projections = latest.get("projections", [])
         month_12 = next(
-            (p for p in projections if p["month"] == 12),
-            projections[-1] if projections else None
+            (p for p in projections if p["month"] == 12), projections[-1] if projections else None
         )
         latest_12m = month_12["revenue_usd"] if month_12 else 0.0
 
@@ -249,7 +249,7 @@ class StrategicForecaster:
         }
 
 
-_forecaster_instance: Optional[StrategicForecaster] = None
+_forecaster_instance: StrategicForecaster | None = None
 
 
 def get_strategic_forecaster() -> StrategicForecaster:

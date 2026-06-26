@@ -8,15 +8,15 @@ Capabilities:
   - Profile optimization
   - Bidding analytics
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 # ── Redis configuration ────────────────────────────────────────────────────────
 _REDIS_KEY = "acquisition:upwork:v1"
@@ -26,6 +26,7 @@ _TTL_90D = 60 * 60 * 24 * 90
 # ══════════════════════════════════════════════════════════════════════════════
 # Domain objects
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class UpworkJob:
@@ -89,6 +90,7 @@ class UpworkProposal:
 # Upwork Bidder
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class UpworkBidder:
     """
     AI-powered Upwork bidding system.
@@ -116,7 +118,7 @@ class UpworkBidder:
             ttl_seconds=_TTL_90D,
         )
 
-    def _find_job(self, job_id: str) -> Optional[dict]:
+    def _find_job(self, job_id: str) -> dict | None:
         for j in self._jobs:
             if j.get("job_id") == job_id:
                 return j
@@ -232,9 +234,7 @@ class UpworkBidder:
         await self._save()
         return proposal
 
-    async def generate_profile_optimization(
-        self, skills: list, specialization: str
-    ) -> dict:
+    async def generate_profile_optimization(self, skills: list, specialization: str) -> dict:
         """AI optimizes Upwork profile."""
         ai = get_ai_client()
         resp = await ai.complete(
@@ -262,19 +262,19 @@ class UpworkBidder:
             ],
         }
 
-    def filter_jobs(
-        self, min_fit_score: float = 0.6, min_budget: float = 50.0
-    ) -> list[dict]:
+    def filter_jobs(self, min_fit_score: float = 0.6, min_budget: float = 50.0) -> list[dict]:
         """Filter jobs by fit score and minimum budget."""
         return [
-            j for j in self._jobs
-            if j.get("fit_score", 0.0) >= min_fit_score
-            and j.get("budget_max", 0.0) >= min_budget
+            j
+            for j in self._jobs
+            if j.get("fit_score", 0.0) >= min_fit_score and j.get("budget_max", 0.0) >= min_budget
         ]
 
     def bidding_analytics(self) -> dict:
         """Return bidding analytics."""
-        bids_sent = sum(1 for j in self._jobs if j.get("status") in ("bid_sent", "interview", "won", "lost"))
+        bids_sent = sum(
+            1 for j in self._jobs if j.get("status") in ("bid_sent", "interview", "won", "lost")
+        )
         won = sum(1 for j in self._jobs if j.get("status") == "won")
         bid_amounts = [j.get("bid_price", 0.0) for j in self._jobs if j.get("bid_price", 0.0) > 0]
         won_values = [j.get("bid_price", 0.0) for j in self._jobs if j.get("status") == "won"]
@@ -292,7 +292,7 @@ class UpworkBidder:
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
-_instance: Optional[UpworkBidder] = None
+_instance: UpworkBidder | None = None
 
 
 def get_upwork_bidder() -> UpworkBidder:

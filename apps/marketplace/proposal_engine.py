@@ -2,16 +2,16 @@
 ARIA Proposal Engine — AI-powered project proposal generator for client acquisition.
 Generates Fiverr gigs, Upwork profiles, service pricing, and project proposals.
 """
+
 from __future__ import annotations
 
 import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _PROPOSALS_KEY = "marketplace:proposals:v1"
 _PROPOSALS_TTL = 86400 * 90  # 90 days
@@ -23,13 +23,13 @@ class Proposal:
     lead_id: str = ""
     title: str = ""
     executive_summary: str = ""
-    scope_of_work: list = field(default_factory=list)   # list of deliverable strings
+    scope_of_work: list = field(default_factory=list)  # list of deliverable strings
     timeline_days: int = 0
     price_usd: float = 0.0
     payment_terms: str = ""
     why_us: str = ""
     next_steps: list = field(default_factory=list)
-    status: str = "draft"   # "draft"|"sent"|"accepted"|"rejected"
+    status: str = "draft"  # "draft"|"sent"|"accepted"|"rejected"
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
@@ -90,11 +90,21 @@ class ProposalEngine:
 
         title = f"{service_type} Proposal"
         executive_summary = f"We propose to deliver {service_type} tailored to your requirements."
-        scope_of_work = ["Project setup and discovery", "Core development", "Testing and QA", "Delivery and support"]
+        scope_of_work = [
+            "Project setup and discovery",
+            "Core development",
+            "Testing and QA",
+            "Delivery and support",
+        ]
         timeline_days = 14
         payment_terms = "50% upfront, 50% on delivery"
         why_us = "Expert team with proven track record in AI-powered solutions."
-        next_steps = ["Review this proposal", "Schedule kickoff call", "Sign agreement", "Begin work"]
+        next_steps = [
+            "Review this proposal",
+            "Schedule kickoff call",
+            "Sign agreement",
+            "Begin work",
+        ]
 
         try:
             ai = get_ai_client()
@@ -110,14 +120,14 @@ class ProposalEngine:
                     f"Budget: ${budget_usd}\n"
                     f"Requirements: {requirements_text}\n\n"
                     f"Return JSON: {{\n"
-                    f"  \"title\": str,\n"
-                    f"  \"executive_summary\": str,\n"
-                    f"  \"scope_of_work\": [str, ...],\n"
-                    f"  \"timeline_days\": int,\n"
-                    f"  \"price_usd\": float,\n"
-                    f"  \"payment_terms\": str,\n"
-                    f"  \"why_us\": str,\n"
-                    f"  \"next_steps\": [str, ...]\n"
+                    f'  "title": str,\n'
+                    f'  "executive_summary": str,\n'
+                    f'  "scope_of_work": [str, ...],\n'
+                    f'  "timeline_days": int,\n'
+                    f'  "price_usd": float,\n'
+                    f'  "payment_terms": str,\n'
+                    f'  "why_us": str,\n'
+                    f'  "next_steps": [str, ...]\n'
                     f"}}"
                 ),
                 model=AIModel.STRATEGY,
@@ -163,11 +173,32 @@ class ProposalEngine:
             "title": f"Professional {service_category} for {niche}",
             "description": f"Expert {service_category} services tailored for {niche} businesses.",
             "packages": {
-                "basic": {"name": "Starter", "price_usd": 25, "delivery_days": 3, "description": "Basic package"},
-                "standard": {"name": "Professional", "price_usd": 75, "delivery_days": 5, "description": "Standard package"},
-                "premium": {"name": "Enterprise", "price_usd": 200, "delivery_days": 10, "description": "Full service"},
+                "basic": {
+                    "name": "Starter",
+                    "price_usd": 25,
+                    "delivery_days": 3,
+                    "description": "Basic package",
+                },
+                "standard": {
+                    "name": "Professional",
+                    "price_usd": 75,
+                    "delivery_days": 5,
+                    "description": "Standard package",
+                },
+                "premium": {
+                    "name": "Enterprise",
+                    "price_usd": 200,
+                    "delivery_days": 10,
+                    "description": "Full service",
+                },
             },
-            "tags": [service_category.lower(), niche.lower(), "professional", "quality", "fast-delivery"],
+            "tags": [
+                service_category.lower(),
+                niche.lower(),
+                "professional",
+                "quality",
+                "fast-delivery",
+            ],
         }
 
         try:
@@ -228,7 +259,7 @@ class ProposalEngine:
                     f"Create an Upwork profile for a freelancer with:\n"
                     f"Specialization: {specialization}\n"
                     f"Skills: {skills_str}\n\n"
-                    f"Return JSON: {{\"title\": str, \"overview\": str (200-300 words), \"skills\": [str, ...]}}"
+                    f'Return JSON: {{"title": str, "overview": str (200-300 words), "skills": [str, ...]}}'
                 ),
                 model=AIModel.CREATIVE,
                 max_tokens=500,
@@ -254,10 +285,12 @@ class ProposalEngine:
         self,
         service_type: str,
         complexity: str = "medium",
-        market_rate_research: dict = {},
+        market_rate_research: dict = None,
     ) -> dict:
         """AI suggests pricing with rationale."""
         # Base pricing by complexity
+        if market_rate_research is None:
+            market_rate_research = {}
         base_prices = {"low": 150, "medium": 500, "high": 1500, "enterprise": 5000}
         base_price = base_prices.get(complexity, 500)
 
@@ -270,7 +303,11 @@ class ProposalEngine:
 
         try:
             ai = get_ai_client()
-            research_text = json.dumps(market_rate_research) if market_rate_research else "No market data provided"
+            research_text = (
+                json.dumps(market_rate_research)
+                if market_rate_research
+                else "No market data provided"
+            )
             resp = await ai.complete(
                 system=(
                     "You are a pricing strategy expert for digital services. "
@@ -281,8 +318,8 @@ class ProposalEngine:
                     f"Service: {service_type}\n"
                     f"Complexity: {complexity}\n"
                     f"Market research: {research_text}\n\n"
-                    f"Return JSON: {{\"price_usd\": float, \"rationale\": str, "
-                    f"\"competitor_range\": str, \"positioning\": str}}"
+                    f'Return JSON: {{"price_usd": float, "rationale": str, '
+                    f'"competitor_range": str, "positioning": str}}'
                 ),
                 model=AIModel.STRATEGY,
                 max_tokens=300,
@@ -297,7 +334,9 @@ class ProposalEngine:
                     return {
                         "price_usd": float(data.get("price_usd", default_result["price_usd"])),
                         "rationale": str(data.get("rationale", default_result["rationale"])),
-                        "competitor_range": str(data.get("competitor_range", default_result["competitor_range"])),
+                        "competitor_range": str(
+                            data.get("competitor_range", default_result["competitor_range"])
+                        ),
                         "positioning": str(data.get("positioning", "competitive")),
                     }
         except Exception:
@@ -342,9 +381,7 @@ class ProposalEngine:
         win_rate = (accepted / max(sent, 1)) * 100
 
         pipeline_value = sum(
-            p.get("price_usd", 0.0)
-            for p in self._proposals
-            if p.get("status") not in ("rejected",)
+            p.get("price_usd", 0.0) for p in self._proposals if p.get("status") not in ("rejected",)
         )
 
         return {
@@ -360,7 +397,7 @@ class ProposalEngine:
         return sorted(self._proposals, key=lambda p: p.get("created_at", 0), reverse=True)[:limit]
 
 
-_instance: Optional[ProposalEngine] = None
+_instance: ProposalEngine | None = None
 
 
 def get_proposal_engine() -> ProposalEngine:

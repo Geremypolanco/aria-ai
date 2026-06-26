@@ -2,13 +2,15 @@
 zapier_connector.py — Dispatches automation events to Zapier webhooks.
 Reads ZAPIER_WEBHOOK_URL from environment. Degrades gracefully when unconfigured.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.tools.zapier")
@@ -20,10 +22,10 @@ class ZapierConnector:
     (Twitter, LinkedIn, Slack, email, etc.).
     """
 
-    EVENT_NEW_PRODUCT   = "NEW_PRODUCT"
+    EVENT_NEW_PRODUCT = "NEW_PRODUCT"
     EVENT_CONTENT_READY = "CONTENT_READY"
-    EVENT_SALE_ALERT    = "SALE_ALERT"
-    EVENT_SYSTEM_ERROR  = "SYSTEM_ERROR"
+    EVENT_SALE_ALERT = "SALE_ALERT"
+    EVENT_SYSTEM_ERROR = "SYSTEM_ERROR"
     EVENT_CREATION_READY = "CREATION_READY"
 
     def __init__(self) -> None:
@@ -45,7 +47,7 @@ class ZapierConnector:
         payload = {
             "source": "ARIA AI",
             "event_type": event_type,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "data": data,
         }
 

@@ -3,10 +3,11 @@ Email marketing connection para ARIA AI.
 Soporta Klaviyo, ActiveCampaign, ConvertKit (Kit), Brevo (Sendinblue), Postmark.
 Todos usan API key — no requieren OAuth web flow.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -18,8 +19,9 @@ class KlaviyoConnection:
 
     API = "https://a.klaviyo.com/api"
 
-    def _key(self) -> Optional[str]:
+    def _key(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "KLAVIYO_API_KEY", None)
 
     def _h(self) -> dict:
@@ -45,7 +47,9 @@ class KlaviyoConnection:
                 for l in r.json().get("data", [])
             ]
 
-    async def add_profile(self, email: str, first_name: str = "", last_name: str = "", list_id: str = "") -> dict:
+    async def add_profile(
+        self, email: str, first_name: str = "", last_name: str = "", list_id: str = ""
+    ) -> dict:
         key = self._key()
         if not key:
             return {"error": "KLAVIYO_API_KEY no configurado"}
@@ -107,6 +111,7 @@ class ActiveCampaignConnection:
 
     def _creds(self) -> tuple[str, str]:
         from apps.core.config import settings
+
         url = getattr(settings, "ACTIVECAMPAIGN_URL", "") or ""
         key = getattr(settings, "ACTIVECAMPAIGN_API_KEY", "") or ""
         return url.rstrip("/"), key
@@ -122,7 +127,11 @@ class ActiveCampaignConnection:
             r = await http.get(f"{url}/api/3/lists", headers=self._h(key))
             r.raise_for_status()
             return [
-                {"id": l.get("id"), "name": l.get("name"), "subscriber_count": l.get("subscriber_count")}
+                {
+                    "id": l.get("id"),
+                    "name": l.get("name"),
+                    "subscriber_count": l.get("subscriber_count"),
+                }
                 for l in r.json().get("lists", [])
             ]
 
@@ -164,8 +173,9 @@ class ConvertKitConnection:
 
     API = "https://api.convertkit.com/v3"
 
-    def _secret(self) -> Optional[str]:
+    def _secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "CONVERTKIT_API_SECRET", None)
 
     async def get_subscribers(self, from_date: str = "") -> dict:
@@ -206,7 +216,13 @@ class ConvertKitConnection:
                 json={"api_secret": secret, "email": email, "first_name": first_name},
             )
             if r.status_code in (200, 201):
-                return {"success": True, "subscriber_id": r.json().get("subscription", {}).get("subscriber", {}).get("id")}
+                return {
+                    "success": True,
+                    "subscriber_id": r.json()
+                    .get("subscription", {})
+                    .get("subscriber", {})
+                    .get("id"),
+                }
             return {"success": False, "status": r.status_code}
 
 
@@ -215,8 +231,9 @@ class BrevoConnection:
 
     API = "https://api.brevo.com/v3"
 
-    def _key(self) -> Optional[str]:
+    def _key(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "BREVO_API_KEY", None)
 
     def _h(self) -> dict:
@@ -234,7 +251,13 @@ class BrevoConnection:
                 for c in r.json().get("contacts", [])
             ]
 
-    async def create_contact(self, email: str, attributes: dict = {}, list_ids: list = []) -> dict:
+    async def create_contact(
+        self, email: str, attributes: dict = None, list_ids: list = None
+    ) -> dict:
+        if list_ids is None:
+            list_ids = []
+        if attributes is None:
+            attributes = {}
         key = self._key()
         if not key:
             return {"error": "BREVO_API_KEY no configurado"}
@@ -254,15 +277,20 @@ class BrevoConnection:
             return {"success": False, "status": r.status_code}
 
     async def send_transactional_email(
-        self, to_email: str, to_name: str,
-        subject: str, html_content: str,
-        from_email: str = "", from_name: str = "ARIA AI",
+        self,
+        to_email: str,
+        to_name: str,
+        subject: str,
+        html_content: str,
+        from_email: str = "",
+        from_name: str = "ARIA AI",
     ) -> dict:
         key = self._key()
         if not key:
             return {"error": "BREVO_API_KEY no configurado"}
         if not from_email:
             from apps.core.config import settings
+
             from_email = getattr(settings, "EMAIL_FROM", "") or "aria@aria-ai.fly.dev"
         payload = {
             "sender": {"email": from_email, "name": from_name},
@@ -283,7 +311,9 @@ class BrevoConnection:
         if not key:
             return [{"error": "BREVO_API_KEY no configurado"}]
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.get(f"{self.API}/emailCampaigns", headers=self._h(), params={"status": status})
+            r = await http.get(
+                f"{self.API}/emailCampaigns", headers=self._h(), params={"status": status}
+            )
             r.raise_for_status()
             return [
                 {
@@ -302,8 +332,9 @@ class PostmarkConnection:
 
     API = "https://api.postmarkapp.com"
 
-    def _token(self) -> Optional[str]:
+    def _token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "POSTMARK_SERVER_TOKEN", None)
 
     def _h(self) -> dict:
@@ -314,7 +345,10 @@ class PostmarkConnection:
         }
 
     async def send_email(
-        self, to: str, subject: str, html_body: str,
+        self,
+        to: str,
+        subject: str,
+        html_body: str,
         from_email: str = "aria@aria-ai.fly.dev",
         text_body: str = "",
     ) -> dict:
@@ -354,6 +388,8 @@ class PostmarkConnection:
         if not token:
             return [{"error": "POSTMARK_SERVER_TOKEN no configurado"}]
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.get(f"{self.API}/bounces", headers=self._h(), params={"count": limit, "offset": 0})
+            r = await http.get(
+                f"{self.API}/bounces", headers=self._h(), params={"count": limit, "offset": 0}
+            )
             r.raise_for_status()
             return r.json().get("Bounces", [])

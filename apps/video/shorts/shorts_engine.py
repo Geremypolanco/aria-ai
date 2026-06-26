@@ -9,15 +9,15 @@ Capabilities:
   - Batch creation
   - Algorithm optimization
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 # ── Redis configuration ────────────────────────────────────────────────────────
 _REDIS_KEY = "video:shorts:v1"
@@ -27,6 +27,7 @@ _TTL_90D = 60 * 60 * 24 * 90
 # ══════════════════════════════════════════════════════════════════════════════
 # Domain object
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class ShortsContent:
@@ -66,6 +67,7 @@ class ShortsContent:
 # Shorts Engine
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class ShortsEngine:
     """
     AI-powered short-form video engine.
@@ -101,17 +103,15 @@ class ShortsEngine:
         base = [f"#{niche.replace(' ', '')}", "#viral", "#fyp"]
         if platform == "tiktok":
             return base + ["#tiktok", "#foryou", "#trending"]
-        elif platform == "instagram_reels":
+        if platform == "instagram_reels":
             return base + ["#reels", "#instagram", "#explore"]
-        elif platform == "youtube_shorts":
+        if platform == "youtube_shorts":
             return base + ["#shorts", "#youtube", "#youtubeshorts"]
         return base
 
     # ── Public methods ─────────────────────────────────────────────────────────
 
-    async def create_short(
-        self, topic: str, niche: str, platform: str = "tiktok"
-    ) -> ShortsContent:
+    async def create_short(self, topic: str, niche: str, platform: str = "tiktok") -> ShortsContent:
         """AI creates full short: hook + script + overlays + hashtags."""
         await self._load()
         ai = get_ai_client()
@@ -170,7 +170,11 @@ class ShortsEngine:
                 f"I wish someone told me this about {topic}",
                 f"The real truth about {topic} (controversial)",
             ]
-        lines = [l.strip().lstrip("0123456789.-) ") for l in resp.content.strip().split("\n") if l.strip()]
+        lines = [
+            l.strip().lstrip("0123456789.-) ")
+            for l in resp.content.strip().split("\n")
+            if l.strip()
+        ]
         hooks = [l for l in lines if len(l) > 5][:count]
         # Pad if needed
         while len(hooks) < count:
@@ -191,7 +195,9 @@ class ShortsEngine:
             model=AIModel.CREATIVE,
             max_tokens=600,
         )
-        content = resp.content if resp.success else f"Riding the {trend} trend with {product_or_niche}"
+        content = (
+            resp.content if resp.success else f"Riding the {trend} trend with {product_or_niche}"
+        )
 
         hook = f"This {trend} trend is actually about {product_or_niche}... 🤯"
         short = ShortsContent(
@@ -202,7 +208,12 @@ class ShortsEngine:
                 {"time": 0, "text": f"#{trend} but make it {product_or_niche}"},
                 {"time": 30, "text": "Plot twist incoming..."},
             ],
-            hashtags=[f"#{trend.replace(' ', '')}", f"#{product_or_niche.replace(' ', '')}", "#viral", "#fyp"],
+            hashtags=[
+                f"#{trend.replace(' ', '')}",
+                f"#{product_or_niche.replace(' ', '')}",
+                "#viral",
+                "#fyp",
+            ],
             audio_suggestion=f"Use the trending '{trend}' audio",
             cta=f"Follow for more {product_or_niche} content!",
             duration_seconds=60,
@@ -274,7 +285,7 @@ class ShortsEngine:
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
-_instance: Optional[ShortsEngine] = None
+_instance: ShortsEngine | None = None
 
 
 def get_shorts_engine() -> ShortsEngine:

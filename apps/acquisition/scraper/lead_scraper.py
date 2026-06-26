@@ -10,6 +10,7 @@ Searches for businesses in a given niche using public signals:
 Uses only httpx (no external scraping libs required).
 Respects rate limits with polite delays between requests.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +20,6 @@ import time
 import urllib.parse
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 import httpx
 
@@ -32,6 +32,7 @@ _SCRAPER_TTL = 86400 * 30  # 30 days
 
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
+
 
 @dataclass
 class RawLead:
@@ -87,6 +88,7 @@ class ScrapedBatch:
 
 # ── Main class ────────────────────────────────────────────────────────────────
 
+
 class LeadScraper:
     """Web-based B2B lead discovery with graceful synthetic fallback."""
 
@@ -137,7 +139,14 @@ class LeadScraper:
     }
 
     _NICHE_BUSINESS_TYPES: dict[str, list[str]] = {
-        "fitness": ["CrossFit", "Yoga Studio", "Personal Training", "Gym", "Wellness Center", "Pilates"],
+        "fitness": [
+            "CrossFit",
+            "Yoga Studio",
+            "Personal Training",
+            "Gym",
+            "Wellness Center",
+            "Pilates",
+        ],
         "ecommerce": ["Online Store", "Boutique", "Shop", "Market", "Goods", "Supply"],
         "restaurant": ["Bistro", "Grill", "Kitchen", "Café", "Dining", "Eatery"],
         "saas": ["Software", "Solutions", "Platform", "Technologies", "Systems", "Labs"],
@@ -148,9 +157,24 @@ class LeadScraper:
 
     # Adjective/name prefixes for synthetic lead generation
     _NAME_PREFIXES: list[str] = [
-        "Peak", "Urban", "Summit", "Apex", "Bright", "Prime",
-        "Elite", "Core", "Nexus", "Venture", "Clear", "Bold",
-        "Swift", "Vivid", "True", "Solid", "Rise", "Forge",
+        "Peak",
+        "Urban",
+        "Summit",
+        "Apex",
+        "Bright",
+        "Prime",
+        "Elite",
+        "Core",
+        "Nexus",
+        "Venture",
+        "Clear",
+        "Bold",
+        "Swift",
+        "Vivid",
+        "True",
+        "Solid",
+        "Rise",
+        "Forge",
     ]
 
     def __init__(self) -> None:
@@ -193,7 +217,9 @@ class LeadScraper:
         These are NOT fabricated real companies — they are archetype leads
         used for pipeline seeding and testing when live data is unavailable.
         """
-        business_types = self._NICHE_BUSINESS_TYPES.get(niche, self._NICHE_BUSINESS_TYPES["default"])
+        business_types = self._NICHE_BUSINESS_TYPES.get(
+            niche, self._NICHE_BUSINESS_TYPES["default"]
+        )
         signals_pool = self._NICHE_SIGNALS.get(niche, self._NICHE_SIGNALS["default"])
 
         leads: list[RawLead] = []
@@ -266,7 +292,9 @@ class LeadScraper:
 
                         # Extract a company name from the first few words
                         words = text.split()
-                        company_name = " ".join(words[:3]).strip(".,;:") if words else "Unknown Business"
+                        company_name = (
+                            " ".join(words[:3]).strip(".,;:") if words else "Unknown Business"
+                        )
 
                         # Extract URL if present in the topic
                         first_url = topic.get("FirstURL", "")
@@ -322,7 +350,10 @@ class LeadScraper:
                     html = response.text.lower()
 
                     # Check for common missing elements
-                    if 'meta name="description"' not in html and "<meta name='description'" not in html:
+                    if (
+                        'meta name="description"' not in html
+                        and "<meta name='description'" not in html
+                    ):
                         if "missing meta description" not in raw_lead.signals:
                             raw_lead.signals.append("missing meta description")
 
@@ -331,7 +362,7 @@ class LeadScraper:
                     if not has_contact and "no contact form detected" not in raw_lead.signals:
                         raw_lead.signals.append("no contact form detected")
 
-                    form_indicators = ["<form", "type=\"submit\"", "type='submit'"]
+                    form_indicators = ["<form", 'type="submit"', "type='submit'"]
                     has_form = any(ind in html for ind in form_indicators)
                     if not has_form and "no web forms found" not in raw_lead.signals:
                         raw_lead.signals.append("no web forms found")
@@ -343,7 +374,10 @@ class LeadScraper:
                     # Check for analytics/tracking
                     tracking_indicators = ["google-analytics", "googletagmanager", "gtag(", "fbq("]
                     has_tracking = any(ind in html for ind in tracking_indicators)
-                    if not has_tracking and "no tracking/analytics detected" not in raw_lead.signals:
+                    if (
+                        not has_tracking
+                        and "no tracking/analytics detected" not in raw_lead.signals
+                    ):
                         raw_lead.signals.append("no tracking/analytics detected")
 
         except Exception as exc:
@@ -374,10 +408,7 @@ class LeadScraper:
         )
 
         # Qualify: keep leads with 2+ signals OR a website_url
-        qualified = [
-            lead for lead in raw_leads
-            if len(lead.signals) >= 2 or bool(lead.website_url)
-        ]
+        qualified = [lead for lead in raw_leads if len(lead.signals) >= 2 or bool(lead.website_url)]
 
         duration = time.time() - start_ts
 

@@ -2,15 +2,15 @@
 Strategic marketing intelligence — competitor analysis, channel scoring,
 opportunity identification, funnel health, and growth planning.
 """
+
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.marketing.intelligence")
 
@@ -20,9 +20,9 @@ _TTL = 86400 * 7  # 7 days
 # ── Funnel benchmarks ──────────────────────────────────────────────────────────
 
 _FUNNEL_BENCHMARKS = {
-    "awareness_ctr": 0.02,          # >2% CTR
+    "awareness_ctr": 0.02,  # >2% CTR
     "consideration_engagement": 0.05,  # >5% engagement
-    "conversion_rate": 0.02,        # >2% conversion
+    "conversion_rate": 0.02,  # >2% conversion
 }
 
 _FUNNEL_RECOMMENDATIONS: dict[str, str] = {
@@ -80,7 +80,7 @@ _DEFAULT_COMPETITOR_PATTERNS: dict[str, list[dict]] = {
 _CHANNEL_WEIGHTS = {
     "roi": 0.40,
     "volume": 0.30,
-    "effort": 0.20,       # lower effort = higher score
+    "effort": 0.20,  # lower effort = higher score
     "time_to_results": 0.10,  # faster = higher score
 }
 
@@ -113,7 +113,7 @@ _GROWTH_PLAN_TEMPLATES: dict[str, dict] = {
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
 
-class MarketingChannel(str, Enum):
+class MarketingChannel(StrEnum):
     SEO = "seo"
     PAID_SEARCH = "paid_search"
     SOCIAL_ORGANIC = "social_organic"
@@ -199,7 +199,7 @@ class MarketingIntelligence:
     async def analyze_market(
         self,
         niche: str,
-        competitors: Optional[list[str]] = None,
+        competitors: list[str] | None = None,
     ) -> dict:
         """Build competitor profiles and identify market gaps."""
         competitor_profiles: list[CompetitorProfile] = []
@@ -226,7 +226,12 @@ class MarketingIntelligence:
                 )
                 if response.success and response.content:
                     import json as _json
-                    parsed = _json.loads(response.content) if isinstance(response.content, str) else response.content
+
+                    parsed = (
+                        _json.loads(response.content)
+                        if isinstance(response.content, str)
+                        else response.content
+                    )
                     if isinstance(parsed, list):
                         for item in parsed:
                             competitor_profiles.append(
@@ -266,9 +271,7 @@ class MarketingIntelligence:
         gaps = list(dict.fromkeys(all_weaknesses))  # deduplicate preserving order
 
         # Derive opportunities from gaps
-        opportunities = [
-            f"Capitalize on competitor gap: {gap}" for gap in gaps[:5]
-        ]
+        opportunities = [f"Capitalize on competitor gap: {gap}" for gap in gaps[:5]]
 
         result = {
             "niche": niche,
@@ -289,9 +292,9 @@ class MarketingIntelligence:
         metrics: dict,
     ) -> float:
         """Score a marketing channel 0–100 based on weighted metrics."""
-        roi = float(metrics.get("roi", 0))             # expected 0–10 scale
-        volume = float(metrics.get("volume", 0))        # expected 0–10 scale
-        effort = float(metrics.get("effort", 5))        # 0 = low effort, 10 = high effort
+        roi = float(metrics.get("roi", 0))  # expected 0–10 scale
+        volume = float(metrics.get("volume", 0))  # expected 0–10 scale
+        effort = float(metrics.get("effort", 5))  # 0 = low effort, 10 = high effort
         time_to_results = float(metrics.get("time_to_results", 5))  # 0 = fast, 10 = slow
 
         # Invert effort and time (lower is better)
@@ -324,7 +327,11 @@ class MarketingIntelligence:
                 "medium",
                 "3-6 months to rank, sustained free traffic",
                 0.85,
-                ["Keyword research for niche terms", "Publish 2 SEO articles/week", "Build internal links"],
+                [
+                    "Keyword research for niche terms",
+                    "Publish 2 SEO articles/week",
+                    "Build internal links",
+                ],
             ),
             (
                 MarketingChannel.EMAIL,
@@ -340,7 +347,11 @@ class MarketingIntelligence:
                 "medium",
                 "High reach potential on TikTok/Reels",
                 0.75,
-                ["Produce 3 short videos/week", "Trend-jack relevant content", "Engage with comments daily"],
+                [
+                    "Produce 3 short videos/week",
+                    "Trend-jack relevant content",
+                    "Engage with comments daily",
+                ],
             ),
             (
                 MarketingChannel.CONTENT,
@@ -356,7 +367,11 @@ class MarketingIntelligence:
                 "low",
                 "Viral coefficient boost at low CAC",
                 0.80,
-                ["Launch refer-a-friend program", "Offer dual-sided incentives", "Track referral conversions"],
+                [
+                    "Launch refer-a-friend program",
+                    "Offer dual-sided incentives",
+                    "Track referral conversions",
+                ],
             ),
             (
                 MarketingChannel.INFLUENCER,
@@ -364,7 +379,11 @@ class MarketingIntelligence:
                 "medium",
                 "Trusted reach in target audience",
                 0.65,
-                ["Identify 10 micro-influencers", "Outreach with product seeding", "Track affiliate links"],
+                [
+                    "Identify 10 micro-influencers",
+                    "Outreach with product seeding",
+                    "Track affiliate links",
+                ],
             ),
             (
                 MarketingChannel.AFFILIATE,
@@ -372,7 +391,11 @@ class MarketingIntelligence:
                 "low",
                 "Pay-per-result with no upfront cost",
                 0.72,
-                ["Set up affiliate dashboard", "Recruit 20 affiliates", "Create promotional materials"],
+                [
+                    "Set up affiliate dashboard",
+                    "Recruit 20 affiliates",
+                    "Create promotional materials",
+                ],
             ),
             (
                 MarketingChannel.PAID_SOCIAL,
@@ -388,7 +411,11 @@ class MarketingIntelligence:
                 "low",
                 "Immediate traffic with strong intent",
                 0.60,
-                ["Identify high-intent keywords", "Write compelling ad copy", "Optimize landing pages"],
+                [
+                    "Identify high-intent keywords",
+                    "Write compelling ad copy",
+                    "Optimize landing pages",
+                ],
             ),
         ]
 
@@ -414,7 +441,11 @@ class MarketingIntelligence:
 
         checks = [
             ("awareness_ctr", "Awareness (CTR)", metrics.get("awareness_ctr", 0)),
-            ("consideration_engagement", "Consideration (Engagement)", metrics.get("consideration_engagement", 0)),
+            (
+                "consideration_engagement",
+                "Consideration (Engagement)",
+                metrics.get("consideration_engagement", 0),
+            ),
             ("conversion_rate", "Conversion (CVR)", metrics.get("conversion_rate", 0)),
         ]
 
@@ -443,7 +474,7 @@ class MarketingIntelligence:
         obj_lower = objective.lower()
 
         # Match objective to template
-        template: Optional[dict] = None
+        template: dict | None = None
         for key, tmpl in _GROWTH_PLAN_TEMPLATES.items():
             if key in obj_lower:
                 template = tmpl
@@ -517,7 +548,7 @@ class MarketingIntelligence:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_intel_instance: Optional[MarketingIntelligence] = None
+_intel_instance: MarketingIntelligence | None = None
 
 
 def get_marketing_intelligence() -> MarketingIntelligence:

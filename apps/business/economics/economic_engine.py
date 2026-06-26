@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
 
@@ -169,7 +168,9 @@ class EconomicEngine:
 
         return round(ltv_cac_score + roi_score + payback_score + risk_adj, 2)
 
-    async def rank_opportunities(self, opportunities: list[EconomicOpportunity]) -> list[EconomicOpportunity]:
+    async def rank_opportunities(
+        self, opportunities: list[EconomicOpportunity]
+    ) -> list[EconomicOpportunity]:
         scored = sorted(opportunities, key=lambda o: self.score_opportunity(o), reverse=True)
         top_10 = scored[:10]
         try:
@@ -212,7 +213,11 @@ class EconomicEngine:
             data = {}
 
         unit_economics_raw = data.get("unit_economics", {})
-        unit_economics = {k: UnitEconomics.from_dict(v) for k, v in unit_economics_raw.items()} if unit_economics_raw else {}
+        unit_economics = (
+            {k: UnitEconomics.from_dict(v) for k, v in unit_economics_raw.items()}
+            if unit_economics_raw
+            else {}
+        )
         top_opps = data.get("top_opportunities", [])
         forecast = self.forecast_revenue(100, 0.05, 200)
 
@@ -223,7 +228,9 @@ class EconomicEngine:
             "generated_at": time.time(),
         }
 
-    def optimal_budget_allocation(self, total_budget: float, channels_data: list[dict]) -> dict[str, float]:
+    def optimal_budget_allocation(
+        self, total_budget: float, channels_data: list[dict]
+    ) -> dict[str, float]:
         if not channels_data:
             return {}
 

@@ -2,6 +2,7 @@
 Enterprise image generation pipeline supporting multiple backends.
 Backends: Flux, SDXL (stub), Ideogram, DALL-E, and Mock (always available).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -10,20 +11,19 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 import httpx
 
-from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import get_ai_client
 
 logger = logging.getLogger("aria.image_generator")
 
 
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
-class ImageModel(str, Enum):
+
+class ImageModel(StrEnum):
     FLUX = "flux"
     SDXL = "sdxl"
     IDEOGRAM = "ideogram"
@@ -31,13 +31,13 @@ class ImageModel(str, Enum):
     MOCK = "mock"
 
 
-class ImageFormat(str, Enum):
+class ImageFormat(StrEnum):
     PNG = "png"
     JPEG = "jpeg"
     WEBP = "webp"
 
 
-class ImageSize(str, Enum):
+class ImageSize(StrEnum):
     SQUARE_512 = "512x512"
     SQUARE_1024 = "1024x1024"
     LANDSCAPE = "1792x1024"
@@ -46,6 +46,7 @@ class ImageSize(str, Enum):
 
 
 # ── Dataclasses ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class GenerationConfig:
@@ -110,6 +111,7 @@ class ImageJob:
 
 # ── ImageGenerator ─────────────────────────────────────────────────────────────
 
+
 class ImageGenerator:
     """Enterprise image generation pipeline with multi-backend support."""
 
@@ -136,9 +138,9 @@ class ImageGenerator:
     async def generate(
         self,
         prompt: str,
-        model: Optional[ImageModel] = None,
+        model: ImageModel | None = None,
         size: ImageSize = ImageSize.SQUARE_1024,
-        config: Optional[GenerationConfig] = None,
+        config: GenerationConfig | None = None,
         negative_prompt: str = "",
     ) -> ImageJob:
         """Generate an image and return the completed ImageJob."""
@@ -177,9 +179,7 @@ class ImageGenerator:
     async def _generate_mock(self, job: ImageJob, config: GenerationConfig) -> None:
         """Simulate generation with a short delay."""
         await asyncio.sleep(0.1)
-        job.result_url = (
-            f"https://placehold.co/{job.size.value}.png?text={job.job_id[:8]}"
-        )
+        job.result_url = f"https://placehold.co/{job.size.value}.png?text={job.job_id[:8]}"
         job.status = "completed"
         job.completed_at = time.time()
         job.metadata["backend"] = "mock"
@@ -274,7 +274,7 @@ class ImageGenerator:
         self,
         title: str,
         style: str = "modern",
-        brand_colors: Optional[list[str]] = None,
+        brand_colors: list[str] | None = None,
     ) -> ImageJob:
         """Generate a thumbnail-optimised image."""
         color_hint = ""
@@ -290,7 +290,7 @@ class ImageGenerator:
         self,
         product_name: str,
         background: str = "white studio",
-        features: Optional[list[str]] = None,
+        features: list[str] | None = None,
     ) -> ImageJob:
         """Generate a product shot."""
         feature_hint = ""
@@ -320,7 +320,7 @@ class ImageGenerator:
     async def batch_generate(
         self,
         prompts: list[str],
-        model: Optional[ImageModel] = None,
+        model: ImageModel | None = None,
     ) -> list[ImageJob]:
         """Generate multiple images in parallel."""
         tasks = [self.generate(p, model=model) for p in prompts]
@@ -330,16 +330,14 @@ class ImageGenerator:
 
     def queue_stats(self) -> dict:
         total = len(self._completed)
-        successes = sum(
-            1 for j in self._completed if j.get("status") == "completed"
-        )
+        successes = sum(1 for j in self._completed if j.get("status") == "completed")
         return {
             "queued": len(self._queue),
             "completed": total,
             "success_rate": round(successes / total, 3) if total else 0.0,
         }
 
-    def get_job(self, job_id: str) -> Optional[dict]:
+    def get_job(self, job_id: str) -> dict | None:
         """Search in-memory queue and completed list for a job."""
         for collection in (self._completed, self._queue):
             for job in collection:
@@ -349,6 +347,7 @@ class ImageGenerator:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 def _size_to_ideogram_ratio(size: ImageSize) -> str:
     mapping = {
@@ -375,7 +374,7 @@ def _size_to_dalle(size: ImageSize) -> str:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_generator_instance: Optional[ImageGenerator] = None
+_generator_instance: ImageGenerator | None = None
 
 
 def get_image_generator() -> ImageGenerator:

@@ -8,10 +8,10 @@ Dos modos:
 Para el modo webhook: ve a api.slack.com/apps → Incoming Webhooks → Add New Webhook
 Para OAuth: ve a api.slack.com/apps → Create App → OAuth & Permissions
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -26,19 +26,22 @@ SCOPES = "channels:read,channels:history,chat:write,files:read,users:read"
 
 class SlackConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "SLACK_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "SLACK_CLIENT_SECRET", None)
 
-    def _webhook_url(self) -> Optional[str]:
+    def _webhook_url(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "SLACK_WEBHOOK_URL", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -50,18 +53,21 @@ class SlackConnection:
         }
         return f"{AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("SLACK_CLIENT_ID / SLACK_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": REDIRECT_URI,
-            })
+            r = await http.post(
+                TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": REDIRECT_URI,
+                },
+            )
             r.raise_for_status()
             data = r.json()
             if not data.get("ok"):
@@ -77,7 +83,7 @@ class SlackConnection:
 
     # ── Modo webhook (simple) ──────────────────────────────────────────────
 
-    async def send_webhook(self, text: str, blocks: Optional[list] = None) -> dict:
+    async def send_webhook(self, text: str, blocks: list | None = None) -> dict:
         """Envía mensaje via Incoming Webhook (modo simple sin OAuth)."""
         url = self._webhook_url()
         if not url:
@@ -106,8 +112,12 @@ class SlackConnection:
             if not data.get("ok"):
                 raise RuntimeError(f"Slack error: {data.get('error')}")
             return [
-                {"id": c["id"], "name": c["name"], "is_private": c.get("is_private", False),
-                 "members": c.get("num_members", 0)}
+                {
+                    "id": c["id"],
+                    "name": c["name"],
+                    "is_private": c.get("is_private", False),
+                    "members": c.get("num_members", 0),
+                }
                 for c in data.get("channels", [])
             ]
 
@@ -134,8 +144,12 @@ class SlackConnection:
             if not data.get("ok"):
                 raise RuntimeError(f"Slack error: {data.get('error')}")
             return [
-                {"ts": m.get("ts"), "user": m.get("user", "bot"), "text": m.get("text", ""),
-                 "type": m.get("type")}
+                {
+                    "ts": m.get("ts"),
+                    "user": m.get("user", "bot"),
+                    "text": m.get("text", ""),
+                    "type": m.get("type"),
+                }
                 for m in data.get("messages", [])
                 if m.get("type") == "message"
             ]

@@ -8,17 +8,17 @@ The interface is intentionally minimal: get/set/delete/exists/increment.
 Complex ops (RPUSH/LRANGE) are on the underlying client for modules that
 need them explicitly.
 """
+
 from __future__ import annotations
 
-import json
 import time
-from typing import Any, Optional
+from typing import Any
 
 
 class CacheProvider:
     """Abstract async cache interface."""
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         raise NotImplementedError
 
     async def set(self, key: str, value: Any, ttl_seconds: int = 3600) -> bool:
@@ -40,7 +40,7 @@ class MemoryCacheProvider(CacheProvider):
     def __init__(self) -> None:
         self._store: dict[str, tuple[Any, float]] = {}  # (value, expire_at)
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         entry = self._store.get(key)
         if entry is None:
             return None
@@ -74,28 +74,33 @@ class MemoryCacheProvider(CacheProvider):
 class RedisCacheProvider(CacheProvider):
     """Production cache backed by Upstash Redis REST API."""
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         from apps.core.memory.redis_client import get_cache
+
         return await get_cache().get(key)
 
     async def set(self, key: str, value: Any, ttl_seconds: int = 3600) -> bool:
         from apps.core.memory.redis_client import get_cache
+
         return await get_cache().set(key, value, ttl_seconds=ttl_seconds)
 
     async def delete(self, key: str) -> bool:
         from apps.core.memory.redis_client import get_cache
+
         return await get_cache().delete(key)
 
     async def exists(self, key: str) -> bool:
         from apps.core.memory.redis_client import get_cache
+
         return await get_cache().exists(key)
 
     async def increment(self, key: str) -> int:
         from apps.core.memory.redis_client import get_cache
+
         return await get_cache().increment(key)
 
 
-_cache_provider: Optional[CacheProvider] = None
+_cache_provider: CacheProvider | None = None
 
 
 def get_cache_provider() -> CacheProvider:

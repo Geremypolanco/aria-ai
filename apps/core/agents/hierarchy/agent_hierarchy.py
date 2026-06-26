@@ -1,15 +1,19 @@
 """Agent organizational hierarchy with executive delegation and reporting chains."""
+
 from __future__ import annotations
 
 import asyncio
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Callable, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
-class AgentRole(str, Enum):
+class AgentRole(StrEnum):
     EXECUTIVE = "executive"
     DIRECTOR = "director"
     MANAGER = "manager"
@@ -17,7 +21,7 @@ class AgentRole(str, Enum):
     WORKER = "worker"
 
 
-class DelegationStatus(str, Enum):
+class DelegationStatus(StrEnum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     RUNNING = "running"
@@ -35,9 +39,9 @@ class DelegationRecord:
     context: dict[str, Any]
     status: DelegationStatus = DelegationStatus.PENDING
     result: Any = None
-    error: Optional[str] = None
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    finished_at: Optional[str] = None
+    error: str | None = None
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    finished_at: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -60,9 +64,9 @@ class HierarchyNode:
     name: str
     role: AgentRole
     capabilities: list[str] = field(default_factory=list)
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     child_ids: list[str] = field(default_factory=list)
-    handler: Optional[Callable] = None
+    handler: Callable | None = None
     active: bool = True
     delegations_handled: int = 0
     delegations_failed: int = 0
@@ -112,9 +116,9 @@ class AgentHierarchy:
         agent_id: str,
         name: str,
         role: AgentRole,
-        capabilities: Optional[list[str]] = None,
-        parent_id: Optional[str] = None,
-        handler: Optional[Callable] = None,
+        capabilities: list[str] | None = None,
+        parent_id: str | None = None,
+        handler: Callable | None = None,
     ) -> HierarchyNode:
         node = HierarchyNode(
             agent_id=agent_id,
@@ -131,10 +135,10 @@ class AgentHierarchy:
                 parent.child_ids.append(agent_id)
         return node
 
-    def get_node(self, agent_id: str) -> Optional[HierarchyNode]:
+    def get_node(self, agent_id: str) -> HierarchyNode | None:
         return self._nodes.get(agent_id)
 
-    def get_children(self, agent_id: str, role: Optional[AgentRole] = None) -> list[HierarchyNode]:
+    def get_children(self, agent_id: str, role: AgentRole | None = None) -> list[HierarchyNode]:
         node = self._nodes.get(agent_id)
         if node is None:
             return []
@@ -143,7 +147,7 @@ class AgentHierarchy:
             children = [c for c in children if c.role == role]
         return [c for c in children if c.active]
 
-    def best_delegate(self, from_agent_id: str, task: str) -> Optional[HierarchyNode]:
+    def best_delegate(self, from_agent_id: str, task: str) -> HierarchyNode | None:
         """Select the best direct report for a task, prioritizing success_rate then capability match."""
         children = self.get_children(from_agent_id)
         capable = [c for c in children if c.can_handle(task)]
@@ -158,7 +162,7 @@ class AgentHierarchy:
         from_agent_id: str,
         to_agent_id: str,
         task: str,
-        context: Optional[dict] = None,
+        context: dict | None = None,
     ) -> DelegationRecord:
         rec = DelegationRecord(
             id=f"del_{uuid.uuid4().hex[:10]}",
@@ -179,7 +183,7 @@ class AgentHierarchy:
         if to_node.handler is None:
             rec.status = DelegationStatus.DONE
             rec.result = f"Task '{task}' acknowledged by {to_node.name} (no handler)"
-            rec.finished_at = datetime.now(timezone.utc).isoformat()
+            rec.finished_at = datetime.now(UTC).isoformat()
             to_node.delegations_handled += 1
             return rec
 
@@ -198,7 +202,7 @@ class AgentHierarchy:
             to_node.delegations_handled += 1
             to_node.delegations_failed += 1
         finally:
-            rec.finished_at = datetime.now(timezone.utc).isoformat()
+            rec.finished_at = datetime.now(UTC).isoformat()
 
         return rec
 
@@ -206,7 +210,7 @@ class AgentHierarchy:
         self,
         from_agent_id: str,
         task: str,
-        context: Optional[dict] = None,
+        context: dict | None = None,
         max_depth: int = 3,
     ) -> DelegationRecord:
         """Auto-route task down the hierarchy to the best available agent."""
@@ -254,6 +258,7 @@ class AgentHierarchy:
 
     def reporting_structure(self) -> dict:
         """Tree representation of hierarchy."""
+
         def _subtree(agent_id: str) -> dict:
             node = self._nodes.get(agent_id)
             if node is None:
@@ -279,11 +284,14 @@ class AgentHierarchy:
             "total_delegations": total,
             "successful_delegations": done,
             "delegation_success_rate": round(done / total, 3) if total else 1.0,
-            "roles": {role.value: sum(1 for n in self._nodes.values() if n.role == role) for role in AgentRole},
+            "roles": {
+                role.value: sum(1 for n in self._nodes.values() if n.role == role)
+                for role in AgentRole
+            },
         }
 
 
-_hierarchy: Optional[AgentHierarchy] = None
+_hierarchy: AgentHierarchy | None = None
 
 
 def get_agent_hierarchy() -> AgentHierarchy:
@@ -297,19 +305,59 @@ def get_agent_hierarchy() -> AgentHierarchy:
 def _bootstrap_aria_hierarchy(h: AgentHierarchy) -> None:
     """Bootstrap the default ARIA agent organizational structure."""
     h.register("aria_executive", "ARIA Executive", AgentRole.EXECUTIVE)
-    h.register("dir_income", "Income Director", AgentRole.DIRECTOR,
-               capabilities=["income", "revenue", "monetize"], parent_id="aria_executive")
-    h.register("dir_content", "Content Director", AgentRole.DIRECTOR,
-               capabilities=["content", "write", "blog", "article"], parent_id="aria_executive")
-    h.register("dir_ops", "Operations Director", AgentRole.DIRECTOR,
-               capabilities=["deploy", "infra", "monitor", "system"], parent_id="aria_executive")
-    h.register("spec_shopify", "Shopify Specialist", AgentRole.SPECIALIST,
-               capabilities=["shopify", "ecommerce", "product"], parent_id="dir_income")
-    h.register("spec_affiliate", "Affiliate Specialist", AgentRole.SPECIALIST,
-               capabilities=["affiliate", "link", "commission"], parent_id="dir_income")
-    h.register("spec_writer", "Content Writer", AgentRole.SPECIALIST,
-               capabilities=["write", "draft", "article", "blog"], parent_id="dir_content")
-    h.register("spec_social", "Social Media Specialist", AgentRole.SPECIALIST,
-               capabilities=["social", "twitter", "instagram", "post"], parent_id="dir_content")
-    h.register("worker_scheduler", "Scheduler Worker", AgentRole.WORKER,
-               capabilities=["schedule", "cron", "interval"], parent_id="dir_ops")
+    h.register(
+        "dir_income",
+        "Income Director",
+        AgentRole.DIRECTOR,
+        capabilities=["income", "revenue", "monetize"],
+        parent_id="aria_executive",
+    )
+    h.register(
+        "dir_content",
+        "Content Director",
+        AgentRole.DIRECTOR,
+        capabilities=["content", "write", "blog", "article"],
+        parent_id="aria_executive",
+    )
+    h.register(
+        "dir_ops",
+        "Operations Director",
+        AgentRole.DIRECTOR,
+        capabilities=["deploy", "infra", "monitor", "system"],
+        parent_id="aria_executive",
+    )
+    h.register(
+        "spec_shopify",
+        "Shopify Specialist",
+        AgentRole.SPECIALIST,
+        capabilities=["shopify", "ecommerce", "product"],
+        parent_id="dir_income",
+    )
+    h.register(
+        "spec_affiliate",
+        "Affiliate Specialist",
+        AgentRole.SPECIALIST,
+        capabilities=["affiliate", "link", "commission"],
+        parent_id="dir_income",
+    )
+    h.register(
+        "spec_writer",
+        "Content Writer",
+        AgentRole.SPECIALIST,
+        capabilities=["write", "draft", "article", "blog"],
+        parent_id="dir_content",
+    )
+    h.register(
+        "spec_social",
+        "Social Media Specialist",
+        AgentRole.SPECIALIST,
+        capabilities=["social", "twitter", "instagram", "post"],
+        parent_id="dir_content",
+    )
+    h.register(
+        "worker_scheduler",
+        "Scheduler Worker",
+        AgentRole.WORKER,
+        capabilities=["schedule", "cron", "interval"],
+        parent_id="dir_ops",
+    )

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -20,12 +20,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class PricingStrategy(str, Enum):
-    PENETRATION = "penetration"       # Low price to gain market share
-    SKIMMING = "skimming"             # High price for early adopters
-    COMPETITIVE = "competitive"       # Match the market
-    VALUE_BASED = "value_based"       # Price on perceived value
-    DYNAMIC = "dynamic"               # Adjust based on demand signals
+class PricingStrategy(StrEnum):
+    PENETRATION = "penetration"  # Low price to gain market share
+    SKIMMING = "skimming"  # High price for early adopters
+    COMPETITIVE = "competitive"  # Match the market
+    VALUE_BASED = "value_based"  # Price on perceived value
+    DYNAMIC = "dynamic"  # Adjust based on demand signals
 
 
 @dataclass
@@ -112,9 +112,7 @@ class PricingOptimizer:
             reasoning=reasoning,
         )
 
-    async def batch_optimize(
-        self, products: list[dict]
-    ) -> list[PricePoint]:
+    async def batch_optimize(self, products: list[dict]) -> list[PricePoint]:
         """
         Run recommend_price for each product dict and return all PricePoints.
 
@@ -139,9 +137,7 @@ class PricingOptimizer:
                 )
         return results
 
-    def demand_elasticity_estimate(
-        self, price_changes: list[tuple[float, int]]
-    ) -> float:
+    def demand_elasticity_estimate(self, price_changes: list[tuple[float, int]]) -> float:
         """
         Estimate price elasticity of demand via simple linear regression.
 
@@ -158,10 +154,10 @@ class PricingOptimizer:
 
         sum_x = sum(xs)
         sum_y = sum(ys)
-        sum_xy = sum(x * y for x, y in zip(xs, ys))
+        sum_xy = sum(x * y for x, y in zip(xs, ys, strict=False))
         sum_x2 = sum(x * x for x in xs)
 
-        denominator = n * sum_x2 - sum_x ** 2
+        denominator = n * sum_x2 - sum_x**2
         if denominator == 0:
             return 0.0
 

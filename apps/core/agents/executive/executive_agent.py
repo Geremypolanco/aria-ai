@@ -18,32 +18,34 @@ Execution model:
   - Depth counter prevents A→B→A→B recursion
   - Conflict resolution: duplicate tasks are deduplicated by signature
 """
+
 from __future__ import annotations
 
 import asyncio
 import hashlib
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Callable, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 
-class TaskPriority(str, Enum):
+class TaskPriority(StrEnum):
     CRITICAL = "critical"
-    HIGH     = "high"
-    NORMAL   = "normal"
-    LOW      = "low"
+    HIGH = "high"
+    NORMAL = "normal"
+    LOW = "low"
 
 
-class TaskStatus(str, Enum):
-    QUEUED    = "queued"
-    RUNNING   = "running"
-    DONE      = "done"
-    FAILED    = "failed"
+class TaskStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
     CANCELLED = "cancelled"
-    REJECTED  = "rejected"
+    REJECTED = "rejected"
 
 
 @dataclass
@@ -52,7 +54,7 @@ class ExecutionBudget:
     max_agent_calls: int = 10
     max_cost_usd: float = 0.50
 
-    def clone(self) -> "ExecutionBudget":
+    def clone(self) -> ExecutionBudget:
         return ExecutionBudget(
             max_time_seconds=self.max_time_seconds,
             max_agent_calls=self.max_agent_calls,
@@ -70,9 +72,9 @@ class ExecTask:
     depth: int = 0
     status: TaskStatus = TaskStatus.QUEUED
     result: Any = None
-    error: Optional[str] = None
-    submitted_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    finished_at: Optional[str] = None
+    error: str | None = None
+    submitted_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    finished_at: str | None = None
     agent_calls: int = 0
     cost_usd: float = 0.0
     duration_ms: float = 0.0
@@ -105,9 +107,9 @@ DomainHandler = Callable[[ExecTask], Any]
 
 _PRIORITY_ORDER = {
     TaskPriority.CRITICAL: 0,
-    TaskPriority.HIGH:     1,
-    TaskPriority.NORMAL:   2,
-    TaskPriority.LOW:      3,
+    TaskPriority.HIGH: 1,
+    TaskPriority.NORMAL: 2,
+    TaskPriority.LOW: 3,
 }
 
 # Max delegation depth before automatic rejection
@@ -136,8 +138,12 @@ class ExecutiveAgent:
         )
 
         self._task_counts: dict[str, int] = {
-            "submitted": 0, "completed": 0, "failed": 0,
-            "rejected": 0, "cancelled": 0, "deduplicated": 0,
+            "submitted": 0,
+            "completed": 0,
+            "failed": 0,
+            "rejected": 0,
+            "cancelled": 0,
+            "deduplicated": 0,
         }
 
     # ── Registration ─────────────────────────────────────────────────────────
@@ -150,9 +156,9 @@ class ExecutiveAgent:
     async def submit(
         self,
         task: str,
-        context: Optional[dict] = None,
+        context: dict | None = None,
         priority: TaskPriority = TaskPriority.NORMAL,
-        budget: Optional[ExecutionBudget] = None,
+        budget: ExecutionBudget | None = None,
         depth: int = 0,
     ) -> ExecTask:
         exec_task = ExecTask(
@@ -170,7 +176,7 @@ class ExecutiveAgent:
         if rejection:
             exec_task.status = TaskStatus.REJECTED
             exec_task.error = rejection
-            exec_task.finished_at = datetime.now(timezone.utc).isoformat()
+            exec_task.finished_at = datetime.now(UTC).isoformat()
             self._task_counts["rejected"] += 1
             self._history.append(exec_task)
             return exec_task
@@ -179,7 +185,7 @@ class ExecutiveAgent:
         if self._is_duplicate(exec_task):
             exec_task.status = TaskStatus.CANCELLED
             exec_task.error = "Duplicate task within dedup window"
-            exec_task.finished_at = datetime.now(timezone.utc).isoformat()
+            exec_task.finished_at = datetime.now(UTC).isoformat()
             self._task_counts["deduplicated"] += 1
             self._history.append(exec_task)
             return exec_task
@@ -196,8 +202,8 @@ class ExecutiveAgent:
         self,
         task: str,
         to_domain: str,
-        context: Optional[dict] = None,
-        from_task: Optional[ExecTask] = None,
+        context: dict | None = None,
+        from_task: ExecTask | None = None,
         priority: TaskPriority = TaskPriority.NORMAL,
     ) -> ExecTask:
         """Explicit delegation from executive to a domain specialist."""
@@ -226,7 +232,7 @@ class ExecutiveAgent:
 
     # ── Governance ────────────────────────────────────────────────────────────
 
-    def _check_governance(self, task: ExecTask) -> Optional[str]:
+    def _check_governance(self, task: ExecTask) -> str | None:
         """Deterministic policy checks. Returns rejection reason or None."""
         if task.depth >= _MAX_DEPTH:
             return f"max_delegation_depth ({_MAX_DEPTH})"
@@ -243,8 +249,7 @@ class ExecutiveAgent:
         now = time.time()
         # Expire old dedup entries
         self._dedup_window = {
-            k: v for k, v in self._dedup_window.items()
-            if now - v < self._dedup_ttl
+            k: v for k, v in self._dedup_window.items() if now - v < self._dedup_ttl
         }
         if sig in self._dedup_window:
             return True
@@ -278,7 +283,7 @@ class ExecutiveAgent:
                         result = handler(task)
                     task.result = result
                     task.status = TaskStatus.DONE
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     task.status = TaskStatus.CANCELLED
                     task.error = f"Timed out after {task.budget.max_time_seconds}s"
                     self._task_counts["cancelled"] += 1
@@ -291,7 +296,7 @@ class ExecutiveAgent:
                 self._task_counts["completed"] += 1
         finally:
             task.duration_ms = (time.monotonic() - t0) * 1000
-            task.finished_at = datetime.now(timezone.utc).isoformat()
+            task.finished_at = datetime.now(UTC).isoformat()
             self._active.pop(task.id, None)
             self._history.append(task)
             if len(self._history) > 1000:
@@ -302,7 +307,9 @@ class ExecutiveAgent:
     def _classify(self, task_text: str) -> str:
         """Deterministic domain classification by keyword matching. No LLM."""
         text = task_text.lower()
-        if any(k in text for k in ["income", "revenue", "earn", "monetize", "shopify", "affiliate"]):
+        if any(
+            k in text for k in ["income", "revenue", "earn", "monetize", "shopify", "affiliate"]
+        ):
             return "income"
         if any(k in text for k in ["write", "content", "blog", "article", "post", "draft"]):
             return "content"
@@ -329,7 +336,7 @@ class ExecutiveAgent:
             "active": active,
         }
 
-    def get_task(self, task_id: str) -> Optional[ExecTask]:
+    def get_task(self, task_id: str) -> ExecTask | None:
         if task_id in self._active:
             return self._active[task_id]
         return next((t for t in reversed(self._history) if t.id == task_id), None)
@@ -340,7 +347,7 @@ class ExecutiveAgent:
                 setattr(self._default_budget, key, val)
 
 
-_executive: Optional[ExecutiveAgent] = None
+_executive: ExecutiveAgent | None = None
 
 
 def get_executive_agent() -> ExecutiveAgent:

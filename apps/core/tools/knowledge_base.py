@@ -6,6 +6,7 @@ y permite búsqueda semántica para enriquecer el contexto de ARIA.
 
 ARIA puede "aprender" de cualquier documento, web o texto y usarlo en futuras respuestas.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,17 +14,17 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 
 logger = logging.getLogger("aria.knowledge_base")
 
-CHUNK_SIZE    = 400   # words per chunk
-CHUNK_OVERLAP = 40    # overlap words between consecutive chunks
+CHUNK_SIZE = 400  # words per chunk
+CHUNK_OVERLAP = 40  # overlap words between consecutive chunks
 MIN_CHUNK_WORDS = 15  # discard tiny chunks
-HF_EMBED_MODEL  = "sentence-transformers/all-MiniLM-L6-v2"
+HF_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 SIMILARITY_THRESHOLD = 0.20
 
 
@@ -34,14 +35,14 @@ class KnowledgeChunk:
     category: str
     text: str
     embedding: list[float]
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def cosine_similarity(self, other: list[float]) -> float:
         if not self.embedding or not other:
             return 0.0
-        dot   = sum(a * b for a, b in zip(self.embedding, other))
-        norm1 = sum(a ** 2 for a in self.embedding) ** 0.5
-        norm2 = sum(b ** 2 for b in other) ** 0.5
+        dot = sum(a * b for a, b in zip(self.embedding, other, strict=False))
+        norm1 = sum(a**2 for a in self.embedding) ** 0.5
+        norm2 = sum(b**2 for b in other) ** 0.5
         return dot / (norm1 * norm2) if norm1 and norm2 else 0.0
 
 
@@ -76,7 +77,12 @@ class KnowledgeBase:
             added += 1
         await self._persist()
         logger.info("[KB] +%d chunks from '%s' (total=%d)", added, source, len(self._chunks))
-        return {"success": True, "chunks_added": added, "source": source, "total_chunks": len(self._chunks)}
+        return {
+            "success": True,
+            "chunks_added": added,
+            "source": source,
+            "total_chunks": len(self._chunks),
+        }
 
     async def ingest_url(self, url: str, category: str = "web") -> dict[str, Any]:
         """Descarga y procesa una URL."""
@@ -91,24 +97,26 @@ class KnowledgeBase:
 
     # ── BÚSQUEDA ──────────────────────────────────────────────────────────────
 
-    async def search(
-        self, query: str, top_k: int = 5, category: str = ""
-    ) -> list[dict]:
+    async def search(self, query: str, top_k: int = 5, category: str = "") -> list[dict]:
         """Búsqueda semántica. Retorna los top_k chunks más relevantes."""
         await self._ensure_loaded()
         if not self._chunks:
             return []
         q_emb = await self._embed(query)
-        pool  = list(self._chunks.values())
+        pool = list(self._chunks.values())
         if category:
             pool = [c for c in pool if c.category == category]
         scored = sorted(
-            [(c, c.cosine_similarity(q_emb)) for c in pool],
-            key=lambda x: x[1], reverse=True
+            [(c, c.cosine_similarity(q_emb)) for c in pool], key=lambda x: x[1], reverse=True
         )
         return [
-            {"text": c.text, "source": c.source, "category": c.category,
-             "score": round(s, 4), "id": c.id}
+            {
+                "text": c.text,
+                "source": c.source,
+                "category": c.category,
+                "score": round(s, 4),
+                "id": c.id,
+            }
             for c, s in scored[:top_k]
             if s >= SIMILARITY_THRESHOLD
         ]
@@ -130,8 +138,12 @@ class KnowledgeBase:
         seen: dict[str, dict] = {}
         for c in self._chunks.values():
             if c.source not in seen:
-                seen[c.source] = {"source": c.source, "category": c.category,
-                                   "chunks": 0, "added_at": c.created_at}
+                seen[c.source] = {
+                    "source": c.source,
+                    "category": c.category,
+                    "chunks": 0,
+                    "added_at": c.created_at,
+                }
             seen[c.source]["chunks"] += 1
         return sorted(seen.values(), key=lambda x: x["added_at"], reverse=True)
 
@@ -161,6 +173,7 @@ class KnowledgeBase:
 
     async def _embed(self, text: str) -> list[float]:
         from apps.core.config import settings
+
         if settings.hf_key:
             try:
                 resp = await self._http.post(
@@ -182,27 +195,40 @@ class KnowledgeBase:
     def _hash_embed(self, text: str) -> list[float]:
         """Deterministic 128-dim pseudo-embedding as offline fallback."""
         dims = 128
-        vec  = [0.0] * dims
+        vec = [0.0] * dims
         for w in text.lower().split():
             h = int(hashlib.md5(w.encode()).hexdigest(), 16)
             vec[h % dims] += 1.0
-        norm = (sum(v ** 2 for v in vec) ** 0.5) or 1.0
+        norm = (sum(v**2 for v in vec) ** 0.5) or 1.0
         return [v / norm for v in vec]
 
     def _html_to_text(self, html: str) -> str:
         html = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.DOTALL | re.I)
         html = re.sub(r"<[^>]+>", " ", html)
-        html = html.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&nbsp;", " ")
+        html = (
+            html.replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&nbsp;", " ")
+        )
         return re.sub(r"\s+", " ", html).strip()[:60000]
 
     async def _persist(self) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
-            payload = json.dumps({
-                k: {"source": v.source, "category": v.category, "text": v.text,
-                    "embedding": v.embedding, "created_at": v.created_at}
-                for k, v in self._chunks.items()
-            })
+
+            payload = json.dumps(
+                {
+                    k: {
+                        "source": v.source,
+                        "category": v.category,
+                        "text": v.text,
+                        "embedding": v.embedding,
+                        "created_at": v.created_at,
+                    }
+                    for k, v in self._chunks.items()
+                }
+            )
             await get_cache().set("aria:knowledge_base", payload, ttl_seconds=86400 * 30)
         except Exception:
             pass
@@ -213,21 +239,25 @@ class KnowledgeBase:
         self._loaded = True
         try:
             from apps.core.memory.redis_client import get_cache
+
             raw = await get_cache().get("aria:knowledge_base")
             if raw:
                 data = json.loads(raw) if isinstance(raw, str) else raw
                 for k, v in data.items():
                     self._chunks[k] = KnowledgeChunk(
-                        id=k, source=v["source"], category=v["category"],
-                        text=v["text"], embedding=v["embedding"],
-                        created_at=v.get("created_at", "")
+                        id=k,
+                        source=v["source"],
+                        category=v["category"],
+                        text=v["text"],
+                        embedding=v["embedding"],
+                        created_at=v.get("created_at", ""),
                     )
                 logger.info("[KB] Loaded %d chunks from Redis", len(self._chunks))
         except Exception:
             pass
 
 
-_kb: Optional[KnowledgeBase] = None
+_kb: KnowledgeBase | None = None
 
 
 def get_knowledge_base() -> KnowledgeBase:

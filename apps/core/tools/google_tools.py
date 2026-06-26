@@ -1,10 +1,14 @@
 """
 google_tools.py — Integración con Google APIs: YouTube, Search Console, Trends.
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Any, Optional
+from typing import Any
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.google_tools")
@@ -50,7 +54,10 @@ class GoogleTools:
                     for item in items
                 ]
                 return {"success": True, "query": query, "videos": videos, "count": len(videos)}
-            return {"success": False, "error": f"YouTube API HTTP {res.status_code}: {res.text[:200]}"}
+            return {
+                "success": False,
+                "error": f"YouTube API HTTP {res.status_code}: {res.text[:200]}",
+            }
         except Exception as exc:
             logger.error("[GoogleTools] youtube_search error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -95,11 +102,12 @@ class GoogleTools:
             )
             if res.status_code == 200:
                 import re
+
                 titles = re.findall(r"<title><!\[CDATA\[(.*?)\]\]></title>", res.text)
                 traffic = re.findall(r"<ht:approx_traffic>(.*?)</ht:approx_traffic>", res.text)
                 trends = [
                     {"topic": t, "traffic": tr}
-                    for t, tr in zip(titles[1:], traffic)  # Skip first (feed title)
+                    for t, tr in zip(titles[1:], traffic, strict=False)  # Skip first (feed title)
                 ]
                 return {"success": True, "geo": geo, "trends": trends[:20], "count": len(trends)}
             return {"success": False, "error": f"HTTP {res.status_code}"}
@@ -117,7 +125,7 @@ class GoogleTools:
             return search_res
 
         videos = search_res.get("videos", [])
-        channels = list(set(v["channel"] for v in videos))
+        channels = list({v["channel"] for v in videos})
         opportunity_score = min(10, max(1, 10 - len(channels) // 2))
 
         return {
@@ -127,5 +135,9 @@ class GoogleTools:
             "unique_channels": len(channels),
             "opportunity_score": opportunity_score,
             "top_channels": channels[:5],
-            "recommendation": "Alto potencial" if opportunity_score >= 7 else "Competencia moderada" if opportunity_score >= 4 else "Mercado saturado",
+            "recommendation": (
+                "Alto potencial"
+                if opportunity_score >= 7
+                else "Competencia moderada" if opportunity_score >= 4 else "Mercado saturado"
+            ),
         }

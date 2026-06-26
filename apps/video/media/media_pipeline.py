@@ -14,6 +14,7 @@ Pipeline stages:
 When credentials missing: pipeline runs in "dry-run" mode,
 generating metadata without actual media files.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -23,12 +24,11 @@ import shutil
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 import httpx
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.media_pipeline")
 
@@ -404,21 +404,30 @@ class MediaPipeline:
             output_path = os.path.join(self._output_dir, f"{audio.asset_id}.mp4")
 
             # Sanitize hook text for FFmpeg drawtext (escape special chars)
-            safe_hook = script.hook[:50].replace("'", "\\'").replace(":", "\\:").replace("\\", "\\\\")
+            safe_hook = (
+                script.hook[:50].replace("'", "\\'").replace(":", "\\:").replace("\\", "\\\\")
+            )
 
             cmd = [
-                "ffmpeg", "-y",
-                "-f", "lavfi",
-                "-i", f"color=c={background_color}:size=1080x1920:rate=30",
-                "-i", audio.file_path,
-                "-vf", (
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                f"color=c={background_color}:size=1080x1920:rate=30",
+                "-i",
+                audio.file_path,
+                "-vf",
+                (
                     f"drawtext=text='{safe_hook}':"
                     "fontsize=60:fontcolor=white:"
                     "x=(w-text_w)/2:y=(h-text_h)/2"
                 ),
                 "-shortest",
-                "-c:v", "libx264",
-                "-c:a", "aac",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
                 output_path,
             ]
 
@@ -432,7 +441,7 @@ class MediaPipeline:
 
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 proc.kill()
                 await proc.communicate()
                 raise RuntimeError("FFmpeg process timed out after 120s")
@@ -475,9 +484,9 @@ class MediaPipeline:
         await self._load()
         pipeline_start = time.time()
 
-        script: Optional[MediaScript] = None
-        audio: Optional[AudioAsset] = None
-        video: Optional[VideoAsset] = None
+        script: MediaScript | None = None
+        audio: AudioAsset | None = None
+        video: VideoAsset | None = None
         status = "success"
         error_msg = ""
 
@@ -548,7 +557,7 @@ class MediaPipeline:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         output: list[PipelineResult] = []
-        for topic, result in zip(topics, results):
+        for topic, result in zip(topics, results, strict=False):
             if isinstance(result, Exception):
                 logger.error("batch_pipeline exception for '%s': %s", topic, result)
                 fallback_script = MediaScript(

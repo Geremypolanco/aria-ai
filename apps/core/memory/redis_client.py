@@ -2,10 +2,14 @@
 Cliente Redis sobre Upstash para colas y caché.
 Usa REST API de Upstash — no requiere conexión persistente.
 """
+
+import contextlib
 import json
 import time
-from typing import Optional, Any
+from typing import Any
+
 import httpx
+
 from apps.core.config import settings
 
 
@@ -39,7 +43,7 @@ class AriaCache:
         result = await self._cmd("SET", key, serialized, "EX", ttl_seconds)
         return result == "OK"
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         result = await self._cmd("GET", key)
         if result is None:
             return None
@@ -66,7 +70,7 @@ class AriaCache:
         result = await self._cmd("RPUSH", f"queue:{queue}", serialized)
         return result is not None and result > 0
 
-    async def dequeue(self, queue: str) -> Optional[dict]:
+    async def dequeue(self, queue: str) -> dict | None:
         """Obtiene y elimina la primera tarea de la cola."""
         result = await self._cmd("LPOP", f"queue:{queue}")
         if result is None:
@@ -87,10 +91,8 @@ class AriaCache:
             return []
         tasks = []
         for item in result:
-            try:
+            with contextlib.suppress(Exception):
                 tasks.append(json.loads(item))
-            except Exception:
-                pass
         return tasks
 
     # ── LIST OPERATIONS ──────────────────────────────────
@@ -104,7 +106,7 @@ class AriaCache:
         result = await self._cmd("LPUSH", key, *values)
         return result or 0
 
-    async def lpop(self, key: str) -> Optional[str]:
+    async def lpop(self, key: str) -> str | None:
         """Remove and return the first element of the list."""
         return await self._cmd("LPOP", key)
 
@@ -132,15 +134,11 @@ class AriaCache:
     async def set_agent_status(self, agent_name: str, status: dict) -> bool:
         return await self.set(f"agent:{agent_name}:status", status, ttl_seconds=300)
 
-    async def get_agent_status(self, agent_name: str) -> Optional[dict]:
+    async def get_agent_status(self, agent_name: str) -> dict | None:
         return await self.get(f"agent:{agent_name}:status")
 
     async def set_agent_heartbeat(self, agent_name: str) -> bool:
-        return await self.set(
-            f"agent:{agent_name}:heartbeat",
-            int(time.time()),
-            ttl_seconds=120
-        )
+        return await self.set(f"agent:{agent_name}:heartbeat", int(time.time()), ttl_seconds=120)
 
     async def is_agent_alive(self, agent_name: str) -> bool:
         heartbeat = await self.get(f"agent:{agent_name}:heartbeat")
@@ -149,12 +147,7 @@ class AriaCache:
         return (int(time.time()) - int(heartbeat)) < 120
 
     # ── RATE LIMITING ─────────────────────────────────────
-    async def check_rate_limit(
-        self,
-        key: str,
-        max_calls: int,
-        window_seconds: int
-    ) -> bool:
+    async def check_rate_limit(self, key: str, max_calls: int, window_seconds: int) -> bool:
         """Retorna True si se puede hacer la llamada, False si excede el límite."""
         rate_key = f"ratelimit:{key}"
         current = await self._cmd("INCR", rate_key)
@@ -165,9 +158,7 @@ class AriaCache:
     # ── LOCKS DISTRIBUIDOS ────────────────────────────────
     async def acquire_lock(self, resource: str, ttl_seconds: int = 60) -> bool:
         """Adquiere un lock para evitar ejecuciones duplicadas."""
-        result = await self._cmd(
-            "SET", f"lock:{resource}", "1", "NX", "EX", ttl_seconds
-        )
+        result = await self._cmd("SET", f"lock:{resource}", "1", "NX", "EX", ttl_seconds)
         return result == "OK"
 
     async def release_lock(self, resource: str) -> bool:
@@ -186,7 +177,7 @@ class AriaCache:
 
 
 # ── SINGLETON ─────────────────────────────────────────────
-_cache: Optional[AriaCache] = None
+_cache: AriaCache | None = None
 
 
 def get_cache() -> AriaCache:
@@ -194,4 +185,3 @@ def get_cache() -> AriaCache:
     if _cache is None:
         _cache = AriaCache()
     return _cache
-

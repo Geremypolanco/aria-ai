@@ -39,7 +39,7 @@ SALES_TECHNIQUES = {
         "The 'Break-up' Email: Un último mensaje educado indicando que dejaremos de insistir (genera urgencia).",
         "Multi-channel Follow-up: Combinar email, LinkedIn y Telegram para mayor alcance.",
         "Automated Sequences: Usar Zapier + Mailchimp para secuencias de nurturing automatizadas.",
-    ]
+    ],
 }
 
 # ── ESTRATEGIAS DE MARKETING ──────────────────────────────────────────────────
@@ -65,11 +65,17 @@ MARKETING_STRATEGY = {
         "Behind-the-Scenes: Mostrar el proceso de creación del producto para generar confianza.",
     ],
     "distribution_channels": {
-        "organic": ["SEO Blogs", "X (Twitter) Threads", "LinkedIn Articles", "Reddit Communities", "TikTok Orgánico"],
+        "organic": [
+            "SEO Blogs",
+            "X (Twitter) Threads",
+            "LinkedIn Articles",
+            "Reddit Communities",
+            "TikTok Orgánico",
+        ],
         "paid": ["Meta Ads", "Google Search", "TikTok Spark Ads", "Google Shopping"],
         "direct": ["Email Newsletters", "Telegram Channel", "Direct Outreach", "WhatsApp Business"],
         "ecommerce": ["Shopify Store", "Google Shopping", "Instagram Shopping", "TikTok Shop"],
-    }
+    },
 }
 
 # ── CONOCIMIENTO DE SHOPIFY ───────────────────────────────────────────────────
@@ -119,7 +125,7 @@ SHOPIFY_KNOWLEDGE = {
         "SMS Marketing: Postscript o Attentive para notificaciones de alta apertura.",
         "Influencer Marketing: colaborar con micro-influencers (10K-100K) para mayor ROI.",
         "Retargeting Ads: Meta Pixel y Google Ads para recuperar visitantes que no compraron.",
-    ]
+    ],
 }
 
 # ── CONOCIMIENTO DE ZAPIER + SHOPIFY ─────────────────────────────────────────
@@ -152,7 +158,7 @@ ZAPIER_SHOPIFY_AUTOMATIONS = {
         "New Product → OpenAI → Social Post: generar post de redes sociales automáticamente.",
         "Sales Data → OpenAI → Weekly Report: reporte de ventas con insights de IA.",
         "Customer Query → OpenAI → Support Response: soporte al cliente con IA 24/7.",
-    ]
+    ],
 }
 
 # ── VENTAS HIGH-TICKET ────────────────────────────────────────────────────────
@@ -195,57 +201,104 @@ HIGH_TICKET_KNOWLEDGE = {
         "Crear productos digitales (ebooks, cursos) como entrada al embudo High-Ticket.",
         "Configurar Zapier para que nuevas compras de productos de entrada activen seguimiento de ventas.",
         "Usar Shopify Analytics para identificar clientes de alto valor (LTV) para ofertas premium.",
-    ]
+    ],
 }
 
 # ── VOCABULARIO EXPANDIDO ─────────────────────────────────────────────────────
 
 VOCABULARY_EXPANSION = {
     "persuasive_verbs": [
-        "Acelerar", "Desbloquear", "Dominar", "Escalar", "Transformar", "Maximizar",
-        "Automatizar", "Conquistar", "Simplificar", "Potenciar", "Optimizar", "Multiplicar"
+        "Acelerar",
+        "Desbloquear",
+        "Dominar",
+        "Escalar",
+        "Transformar",
+        "Maximizar",
+        "Automatizar",
+        "Conquistar",
+        "Simplificar",
+        "Potenciar",
+        "Optimizar",
+        "Multiplicar",
     ],
     "emotional_triggers": [
-        "Exclusivo", "Instantáneo", "Garantizado", "Revelado", "Limitado",
-        "Secreto", "Probado", "Poderoso", "Esencial", "Lucrativo", "Premium", "Elite"
+        "Exclusivo",
+        "Instantáneo",
+        "Garantizado",
+        "Revelado",
+        "Limitado",
+        "Secreto",
+        "Probado",
+        "Poderoso",
+        "Esencial",
+        "Lucrativo",
+        "Premium",
+        "Elite",
     ],
     "business_terms": [
-        "ROI (Retorno de Inversión)", "LTV (Lifetime Value)", "CAC (Costo de Adquisición)",
-        "Churn Rate", "Conversion Rate Optimization (CRO)", "Scalability", "Synergy",
-        "Average Order Value (AOV)", "Customer Retention Rate", "Net Promoter Score (NPS)",
-        "Gross Margin", "MRR (Monthly Recurring Revenue)", "ARR (Annual Recurring Revenue)"
+        "ROI (Retorno de Inversión)",
+        "LTV (Lifetime Value)",
+        "CAC (Costo de Adquisición)",
+        "Churn Rate",
+        "Conversion Rate Optimization (CRO)",
+        "Scalability",
+        "Synergy",
+        "Average Order Value (AOV)",
+        "Customer Retention Rate",
+        "Net Promoter Score (NPS)",
+        "Gross Margin",
+        "MRR (Monthly Recurring Revenue)",
+        "ARR (Annual Recurring Revenue)",
     ],
     "ecommerce_terms": [
-        "Listing Optimization", "Product-Market Fit", "Abandoned Cart Recovery",
-        "Upsell", "Cross-sell", "Bundle", "Flash Sale", "BFCM (Black Friday Cyber Monday)",
-        "Dropshipping", "Print-on-Demand", "Private Label", "White Label",
-        "SKU (Stock Keeping Unit)", "COGS (Cost of Goods Sold)", "Fulfillment"
-    ]
+        "Listing Optimization",
+        "Product-Market Fit",
+        "Abandoned Cart Recovery",
+        "Upsell",
+        "Cross-sell",
+        "Bundle",
+        "Flash Sale",
+        "BFCM (Black Friday Cyber Monday)",
+        "Dropshipping",
+        "Print-on-Demand",
+        "Private Label",
+        "White Label",
+        "SKU (Stock Keeping Unit)",
+        "COGS (Cost of Goods Sold)",
+        "Fulfillment",
+    ],
 }
 
 
 # ── FUNCIONES DE ACCESO ───────────────────────────────────────────────────────
 
+
 def get_sales_advice(category: str = "closing") -> list:
     return SALES_TECHNIQUES.get(category, [])
+
 
 def get_marketing_strategy() -> dict:
     return MARKETING_STRATEGY
 
+
 def get_vocab() -> dict:
     return VOCABULARY_EXPANSION
+
 
 def get_shopify_knowledge(category: str = "listing_optimization") -> list:
     """Obtiene conocimiento específico de Shopify por categoría."""
     return SHOPIFY_KNOWLEDGE.get(category, [])
 
+
 def get_zapier_automations(category: str = "revenue_generation") -> list:
     """Obtiene automatizaciones de Zapier recomendadas por categoría."""
     return ZAPIER_SHOPIFY_AUTOMATIONS.get(category, [])
 
+
 def get_high_ticket_knowledge(category: str = "service_categories") -> list:
     """Obtiene conocimiento de ventas High-Ticket por categoría."""
     return HIGH_TICKET_KNOWLEDGE.get(category, [])
+
 
 def get_full_ecommerce_playbook() -> dict:
     """Retorna el playbook completo de e-commerce para Aria."""

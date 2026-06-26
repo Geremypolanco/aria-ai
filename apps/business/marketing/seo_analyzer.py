@@ -2,11 +2,11 @@
 SEO analysis and keyword intelligence — page scoring, keyword research,
 content gap analysis, trending topics, and internal linking opportunities.
 """
+
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
 
@@ -60,6 +60,7 @@ _TRENDING_BY_NICHE: dict[str, list[str]] = {
 }
 
 # ── Volume decay by term length ────────────────────────────────────────────────
+
 
 def _estimate_volume(term: str) -> int:
     """Shorter terms have higher search volume (deterministic heuristic)."""
@@ -165,14 +166,14 @@ class SEOAnalyzer:
             issues.append(f"Description length {desc_len} chars — optimal 120–160")
         else:
             description_score += 4
-            issues.append(f"Description length {desc_len} chars is outside recommended range (120–160)")
+            issues.append(
+                f"Description length {desc_len} chars is outside recommended range (120–160)"
+            )
 
         score += description_score
 
         # Word count
-        if word_count >= 1500:
-            score += 20
-        elif word_count >= 500:
+        if word_count >= 1500 or word_count >= 500:
             score += 20
         elif word_count >= 300:
             score += 10
@@ -298,14 +299,14 @@ class SEOAnalyzer:
         for i, source in enumerate(pages):
             source_url = source.get("url", "")
             source_keywords = {kw.lower() for kw in source.get("keywords", [])}
-            source_title = source.get("title", "")
+            source.get("title", "")
 
             for j, target in enumerate(pages):
                 if i == j:
                     continue
                 target_url = target.get("url", "")
                 target_keywords = {kw.lower() for kw in target.get("keywords", [])}
-                target_title = target.get("title", "")
+                target.get("title", "")
 
                 # Find shared keywords
                 shared = source_keywords & target_keywords
@@ -318,7 +319,7 @@ class SEOAnalyzer:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_seo_instance: Optional[SEOAnalyzer] = None
+_seo_instance: SEOAnalyzer | None = None
 
 
 def get_seo_analyzer() -> SEOAnalyzer:

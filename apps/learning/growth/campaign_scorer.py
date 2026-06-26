@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -93,10 +93,7 @@ class CampaignScorer:
         efficiency_score = min(100.0, max(0.0, 100.0 - (metrics.cpa / 50 * 100)))
 
         composite = (
-            roas_score * 0.4
-            + ctr_score * 0.2
-            + conversion_score * 0.3
-            + efficiency_score * 0.1
+            roas_score * 0.4 + ctr_score * 0.2 + conversion_score * 0.3 + efficiency_score * 0.1
         )
 
         return CampaignScore(
@@ -114,10 +111,14 @@ class CampaignScorer:
         scores = [self.score_campaign(m) for m in campaigns]
         return sorted(scores, key=lambda s: s.composite_score, reverse=True)
 
-    def identify_winners(self, campaigns: list[CampaignMetrics], threshold: float = 70.0) -> list[CampaignScore]:
+    def identify_winners(
+        self, campaigns: list[CampaignMetrics], threshold: float = 70.0
+    ) -> list[CampaignScore]:
         return [s for s in self.rank_campaigns(campaigns) if s.composite_score >= threshold]
 
-    def identify_losers(self, campaigns: list[CampaignMetrics], threshold: float = 40.0) -> list[CampaignScore]:
+    def identify_losers(
+        self, campaigns: list[CampaignMetrics], threshold: float = 40.0
+    ) -> list[CampaignScore]:
         return [s for s in self.rank_campaigns(campaigns) if s.composite_score < threshold]
 
     async def benchmark_report(self, campaigns: list[CampaignMetrics]) -> dict:
@@ -140,12 +141,16 @@ class CampaignScorer:
 
         # best channel by average score
         channel_scores: dict[str, list[float]] = {}
-        for m, s in zip(campaigns, [self.score_campaign(m) for m in campaigns]):
+        for m, s in zip(campaigns, [self.score_campaign(m) for m in campaigns], strict=False):
             channel_scores.setdefault(m.channel, []).append(s.composite_score)
-        best_channel = max(
-            channel_scores,
-            key=lambda c: sum(channel_scores[c]) / max(len(channel_scores[c]), 1),
-        ) if channel_scores else None
+        best_channel = (
+            max(
+                channel_scores,
+                key=lambda c: sum(channel_scores[c]) / max(len(channel_scores[c]), 1),
+            )
+            if channel_scores
+            else None
+        )
 
         total_revenue = sum(m.revenue_usd for m in campaigns)
         total_spend = sum(m.cost_usd for m in campaigns)

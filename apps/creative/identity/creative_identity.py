@@ -2,22 +2,57 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _TTL = 365 * 24 * 3600
 _CACHE_KEY = "creative:identity:v1"
 
 _NICHE_ARCHETYPES: dict[str, list[str]] = {
-    "tech": ["How-to tutorials", "Tool reviews", "Industry analysis", "Case studies", "Opinion pieces"],
-    "fashion": ["Lookbooks", "Trend forecasts", "Style guides", "Behind-the-scenes", "Brand spotlights"],
-    "food": ["Recipe features", "Restaurant reviews", "Ingredient deep-dives", "Chef interviews", "Technique guides"],
-    "fitness": ["Workout programmes", "Transformation stories", "Nutrition breakdowns", "Coach Q&As", "Equipment reviews"],
-    "finance": ["Market commentary", "Personal finance guides", "Investment case studies", "Myth-busting", "Tool comparisons"],
-    "default": ["Educational guides", "Opinion pieces", "Case studies", "How-tos", "Community spotlights"],
+    "tech": [
+        "How-to tutorials",
+        "Tool reviews",
+        "Industry analysis",
+        "Case studies",
+        "Opinion pieces",
+    ],
+    "fashion": [
+        "Lookbooks",
+        "Trend forecasts",
+        "Style guides",
+        "Behind-the-scenes",
+        "Brand spotlights",
+    ],
+    "food": [
+        "Recipe features",
+        "Restaurant reviews",
+        "Ingredient deep-dives",
+        "Chef interviews",
+        "Technique guides",
+    ],
+    "fitness": [
+        "Workout programmes",
+        "Transformation stories",
+        "Nutrition breakdowns",
+        "Coach Q&As",
+        "Equipment reviews",
+    ],
+    "finance": [
+        "Market commentary",
+        "Personal finance guides",
+        "Investment case studies",
+        "Myth-busting",
+        "Tool comparisons",
+    ],
+    "default": [
+        "Educational guides",
+        "Opinion pieces",
+        "Case studies",
+        "How-tos",
+        "Community spotlights",
+    ],
 }
 
 _NICHE_VOICES: dict[str, str] = {
@@ -40,9 +75,17 @@ _NICHE_VISUAL: dict[str, str] = {
 
 _NICHE_AVOID: dict[str, list[str]] = {
     "tech": ["over-hyped buzzwords", "vague product promises", "unexplained jargon"],
-    "fashion": ["generic stock photography", "trend-chasing without editorial voice", "unclear brand positioning"],
+    "fashion": [
+        "generic stock photography",
+        "trend-chasing without editorial voice",
+        "unclear brand positioning",
+    ],
     "food": ["inauthentic sourcing claims", "over-styled unrealistic shots", "recipe vagueness"],
-    "fitness": ["before/after without context", "miracle-claim language", "generic motivation quotes"],
+    "fitness": [
+        "before/after without context",
+        "miracle-claim language",
+        "generic motivation quotes",
+    ],
     "finance": ["get-rich-quick framing", "unverified statistics", "fear-based marketing"],
     "default": ["AI clichés", "vague benefit claims", "generic stock imagery"],
 }
@@ -107,10 +150,7 @@ class CreativeIdentity:
 
     @classmethod
     def from_dict(cls, data: dict) -> CreativeIdentity:
-        evolutions = [
-            CreativeEvolution.from_dict(e)
-            for e in data.get("evolution_history", [])
-        ]
+        evolutions = [CreativeEvolution.from_dict(e) for e in data.get("evolution_history", [])]
         return cls(
             identity_id=data["identity_id"],
             brand_name=data["brand_name"],
@@ -175,9 +215,7 @@ class CreativeIdentityManager:
         await self._save()
         return identity
 
-    async def refresh_identity(
-        self, identity_id: str, inspiration: str = ""
-    ) -> CreativeIdentity:
+    async def refresh_identity(self, identity_id: str, inspiration: str = "") -> CreativeIdentity:
         await self._load()
         raw = self._identities.get(identity_id)
         if not raw:
@@ -187,7 +225,9 @@ class CreativeIdentityManager:
         old_novelty = identity.novelty_score
         if inspiration:
             changes["inspiration_applied"] = inspiration
-            changes["voice_refined"] = f"{identity.voice_signature}, inspired by: {inspiration[:80]}"
+            changes["voice_refined"] = (
+                f"{identity.voice_signature}, inspired by: {inspiration[:80]}"
+            )
             identity.voice_signature = changes["voice_refined"]
         identity.novelty_score = min(1.0, identity.novelty_score + 0.1)
         identity.last_refreshed_at = time.time()
@@ -204,7 +244,7 @@ class CreativeIdentityManager:
         await self._save()
         return identity
 
-    async def get_identity(self, identity_id: str) -> Optional[CreativeIdentity]:
+    async def get_identity(self, identity_id: str) -> CreativeIdentity | None:
         await self._load()
         raw = self._identities.get(identity_id)
         if not raw:

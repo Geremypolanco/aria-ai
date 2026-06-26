@@ -10,21 +10,20 @@ Architecture:
 
 This is the "what ARIA knows" layer — distinct from episodic memory ("what happened").
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import math
-import time
 import uuid
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
-from typing import Any, Optional
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 
 logger = logging.getLogger("aria.semantic_memory")
 
-FACT_TTL_REDIS = 3600 * 24 * 30   # 30 days in Redis
-MAX_WORKING_MEMORY = 500           # in-process limit before eviction
+FACT_TTL_REDIS = 3600 * 24 * 30  # 30 days in Redis
+MAX_WORKING_MEMORY = 500  # in-process limit before eviction
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
@@ -32,9 +31,9 @@ class FactCategory(str):
     USER_PREFERENCE = "user_preference"
     WORLD_FACT = "world_fact"
     SKILL = "skill"
-    OUTCOME = "outcome"          # what worked / didn't work
-    CONSTRAINT = "constraint"    # hard limits ARIA must respect
-    PROCEDURE = "procedure"      # how to do something
+    OUTCOME = "outcome"  # what worked / didn't work
+    CONSTRAINT = "constraint"  # hard limits ARIA must respect
+    PROCEDURE = "procedure"  # how to do something
 
 
 @dataclass
@@ -42,20 +41,20 @@ class Fact:
     id: str
     content: str
     category: str
-    source: str                  # where this fact came from
-    confidence: float            # 0.0–1.0
-    embedding: list[float]       # vector representation
+    source: str  # where this fact came from
+    confidence: float  # 0.0–1.0
+    embedding: list[float]  # vector representation
     tags: list[str]
     created_at: str
     accessed_at: str
     access_count: int = 0
-    decay_factor: float = 1.0   # decreases over time if not accessed
+    decay_factor: float = 1.0  # decreases over time if not accessed
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Fact":
+    def from_dict(cls, d: dict) -> Fact:
         return cls(**d)
 
     def relevance_score(self, query_embedding: list[float]) -> float:
@@ -69,7 +68,7 @@ class Fact:
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     mag_a = math.sqrt(sum(x * x for x in a))
     mag_b = math.sqrt(sum(x * x for x in b))
     if mag_a == 0 or mag_b == 0:
@@ -88,7 +87,7 @@ class SemanticMemory:
     """
 
     def __init__(self) -> None:
-        self._working: dict[str, Fact] = {}   # in-process working memory
+        self._working: dict[str, Fact] = {}  # in-process working memory
         self._embed_client = None
         self._loaded = False
 
@@ -103,7 +102,7 @@ class SemanticMemory:
         tags: list[str] | None = None,
     ) -> str:
         fact_id = str(uuid.uuid4())[:12]
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         embedding = await self._embed(content)
 
@@ -149,29 +148,23 @@ class SemanticMemory:
         query_embedding = await self._embed(query)
 
         candidates = [
-            f for f in self._working.values()
-            if f.confidence >= min_confidence
-            and (category is None or f.category == category)
+            f
+            for f in self._working.values()
+            if f.confidence >= min_confidence and (category is None or f.category == category)
         ]
 
         if query_embedding:
-            scored = [
-                (f, f.relevance_score(query_embedding))
-                for f in candidates
-            ]
+            scored = [(f, f.relevance_score(query_embedding)) for f in candidates]
         else:
             # Keyword fallback
             query_tokens = set(query.lower().split())
-            scored = [
-                (f, self._keyword_score(f.content, query_tokens))
-                for f in candidates
-            ]
+            scored = [(f, self._keyword_score(f.content, query_tokens)) for f in candidates]
 
         scored.sort(key=lambda x: x[1], reverse=True)
         results = [f for f, score in scored[:top_k] if score > 0.0]
 
         # Update access metadata
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         for f in results:
             f.accessed_at = now
             f.access_count += 1
@@ -187,7 +180,7 @@ class SemanticMemory:
 
     # ── Retrieve by ID ───────────────────────────────────────────────────
 
-    async def get(self, fact_id: str) -> Optional[Fact]:
+    async def get(self, fact_id: str) -> Fact | None:
         if fact_id in self._working:
             return self._working[fact_id]
         return await self._load_fact_from_redis(fact_id)
@@ -236,7 +229,8 @@ class SemanticMemory:
             "by_category": cats,
             "avg_confidence": (
                 sum(f.confidence for f in self._working.values()) / len(self._working)
-                if self._working else 0.0
+                if self._working
+                else 0.0
             ),
         }
 
@@ -245,11 +239,13 @@ class SemanticMemory:
     async def _embed(self, text: str) -> list[float]:
         try:
             from apps.core.config import settings
+
             hf_token = getattr(settings, "HF_TOKEN", None) or getattr(settings, "HF_API_KEY", None)
             if not hf_token:
                 return []
 
             import httpx
+
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     f"https://api-inference.huggingface.co/pipeline/feature-extraction/{EMBED_MODEL}",
@@ -263,7 +259,7 @@ class SemanticMemory:
                     if isinstance(raw, list) and raw and isinstance(raw[0], list):
                         # Sentence-level output — take mean pool
                         vectors = raw[0] if isinstance(raw[0][0], float) else raw
-                        return [sum(col) / len(col) for col in zip(*vectors)]
+                        return [sum(col) / len(col) for col in zip(*vectors, strict=False)]
         except Exception as exc:
             logger.debug("[SemanticMem] Embed failed (will use keyword fallback): %s", exc)
         return []
@@ -273,6 +269,7 @@ class SemanticMemory:
     async def _persist_fact(self, fact: Fact) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 key = f"aria:semantic:{fact.id}"
@@ -289,9 +286,10 @@ class SemanticMemory:
         # For now, working memory is populated as facts come in
         logger.debug("[SemanticMem] Semantic memory initialized")
 
-    async def _load_fact_from_redis(self, fact_id: str) -> Optional[Fact]:
+    async def _load_fact_from_redis(self, fact_id: str) -> Fact | None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 raw = await cache.get(f"aria:semantic:{fact_id}")
@@ -304,6 +302,7 @@ class SemanticMemory:
     async def _remove_fact(self, fact_id: str) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 await cache.delete(f"aria:semantic:{fact_id}")
@@ -323,7 +322,7 @@ class SemanticMemory:
             del self._working[fact_id]
 
 
-_semantic_memory: Optional[SemanticMemory] = None
+_semantic_memory: SemanticMemory | None = None
 
 
 def get_semantic_memory() -> SemanticMemory:

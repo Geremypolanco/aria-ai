@@ -2,15 +2,15 @@
 Priority Engine — Dynamically prioritizes actions based on economic signals,
 learning history, and urgency.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _PRIORITY_KEY = "learning:priority:v1"
 _PRIORITY_TTL = 86400 * 30  # 30 days
@@ -21,15 +21,15 @@ class PriorityItem:
     item_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     title: str = ""
     action_type: str = ""
-    base_score: float = 0.0       # raw score before adjustments
-    urgency_boost: float = 0.0    # 0-1 urgency adjustment
-    roi_multiplier_boost: float = 0.0   # from learning history
-    final_score: float = 0.0      # computed: base + urgency + roi_boost
+    base_score: float = 0.0  # raw score before adjustments
+    urgency_boost: float = 0.0  # 0-1 urgency adjustment
+    roi_multiplier_boost: float = 0.0  # from learning history
+    final_score: float = 0.0  # computed: base + urgency + roi_boost
     rank: int = 0
     reasoning: str = ""
     estimated_revenue: float = 0.0
     estimated_hours: float = 0.0
-    deadline_hours: float = 0.0   # 0 = no deadline
+    deadline_hours: float = 0.0  # 0 = no deadline
 
     def to_dict(self) -> dict:
         return {
@@ -81,6 +81,7 @@ class PriorityEngine:
         """Look up ROI multiplier boost from learning history if available."""
         try:
             from apps.learning.roi.roi_learner import get_roi_learner
+
             learner = get_roi_learner()
             best = learner.best_actions(top_n=10)
             for a in best:
@@ -193,9 +194,30 @@ class PriorityEngine:
         # We don't store full items in history, so create a prioritized daily plan
         # based on available hours using common high-value actions
         default_items = [
-            {"title": "Create content", "action_type": "content", "estimated_revenue": 500, "estimated_hours": 2.0, "urgency": 0.5, "deadline_hours": 24},
-            {"title": "Email campaign", "action_type": "email", "estimated_revenue": 300, "estimated_hours": 1.0, "urgency": 0.6, "deadline_hours": 8},
-            {"title": "Social media", "action_type": "ad", "estimated_revenue": 200, "estimated_hours": 1.5, "urgency": 0.3, "deadline_hours": 0},
+            {
+                "title": "Create content",
+                "action_type": "content",
+                "estimated_revenue": 500,
+                "estimated_hours": 2.0,
+                "urgency": 0.5,
+                "deadline_hours": 24,
+            },
+            {
+                "title": "Email campaign",
+                "action_type": "email",
+                "estimated_revenue": 300,
+                "estimated_hours": 1.0,
+                "urgency": 0.6,
+                "deadline_hours": 8,
+            },
+            {
+                "title": "Social media",
+                "action_type": "ad",
+                "estimated_revenue": 200,
+                "estimated_hours": 1.5,
+                "urgency": 0.3,
+                "deadline_hours": 0,
+            },
         ]
 
         all_items = await self.prioritize(default_items)
@@ -241,25 +263,23 @@ class PriorityEngine:
             try:
                 import json
                 import re
+
                 content = resp.content.strip()
-                match = re.search(r'\[.*\]', content, re.DOTALL)
+                match = re.search(r"\[.*\]", content, re.DOTALL)
                 if match:
                     ai_order = json.loads(match.group())
                     priority_map = {
-                        item.get("action_type", ""): i
-                        for i, item in enumerate(ai_order)
+                        item.get("action_type", ""): i for i, item in enumerate(ai_order)
                     }
                     reordered_items = sorted(
-                        current_queue,
-                        key=lambda x: priority_map.get(x.get("action_type", ""), 999)
+                        current_queue, key=lambda x: priority_map.get(x.get("action_type", ""), 999)
                     )
             except Exception:
                 pass
 
         # Give all items max urgency for emergency
         emergency_items = [
-            {**item, "urgency": 1.0, "deadline_hours": 4.0}
-            for item in reordered_items
+            {**item, "urgency": 1.0, "deadline_hours": 4.0} for item in reordered_items
         ]
 
         result = await self.prioritize(emergency_items)
@@ -297,7 +317,7 @@ class PriorityEngine:
 
 
 # ── SINGLETON ─────────────────────────────────────────────
-_instance: Optional[PriorityEngine] = None
+_instance: PriorityEngine | None = None
 
 
 def get_priority_engine() -> PriorityEngine:

@@ -10,14 +10,11 @@ Proporciona:
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
 import json
 import logging
-import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from cryptography.fernet import Fernet
 
@@ -36,7 +33,7 @@ class SecretsManager:
         self.cipher = self._load_or_create_cipher()
 
         # Almacén en memoria (caché)
-        self._secrets_cache: Dict[str, str] = {}
+        self._secrets_cache: dict[str, str] = {}
         self._access_log: list = []
 
         # Cargar secretos existentes
@@ -93,7 +90,7 @@ class SecretsManager:
             logger.error(f"[Secrets] Error estableciendo secreto: {exc}")
             return False
 
-    def get_secret(self, key: str) -> Optional[str]:
+    def get_secret(self, key: str) -> str | None:
         """Obtiene un secreto."""
         try:
             value = self._secrets_cache.get(key)
@@ -101,9 +98,8 @@ class SecretsManager:
                 self._log_access("get", key)
                 logger.debug(f"[Secrets] Secreto obtenido: {key}")
                 return value
-            else:
-                logger.warning(f"[Secrets] Secreto no encontrado: {key}")
-                return None
+            logger.warning(f"[Secrets] Secreto no encontrado: {key}")
+            return None
         except Exception as exc:
             logger.error(f"[Secrets] Error obteniendo secreto: {exc}")
             return None
@@ -117,29 +113,30 @@ class SecretsManager:
                 self._log_access("delete", key)
                 logger.info(f"[Secrets] Secreto eliminado: {key}")
                 return True
-            else:
-                logger.warning(f"[Secrets] Secreto no encontrado para eliminar: {key}")
-                return False
+            logger.warning(f"[Secrets] Secreto no encontrado para eliminar: {key}")
+            return False
         except Exception as exc:
             logger.error(f"[Secrets] Error eliminando secreto: {exc}")
             return False
 
-    def list_secrets(self, pattern: str = None) -> Dict[str, str]:
+    def list_secrets(self, pattern: str = None) -> dict[str, str]:
         """Lista secretos (sin mostrar valores)."""
         secrets = {}
-        for key in self._secrets_cache.keys():
+        for key in self._secrets_cache:
             if pattern is None or pattern.lower() in key.lower():
                 secrets[key] = "***"  # Enmascarar valores
         return secrets
 
     def _log_access(self, action: str, key: str, tags: list = None):
         """Registra acceso a secretos para auditoría."""
-        self._access_log.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "action": action,
-            "key": key,
-            "tags": tags or [],
-        })
+        self._access_log.append(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "action": action,
+                "key": key,
+                "tags": tags or [],
+            }
+        )
 
     def get_audit_log(self) -> list:
         """Obtiene el registro de auditoría."""
@@ -152,7 +149,7 @@ class EnvironmentManager:
     def __init__(self, config_dir: str = ".aria/config"):
         self.config_dir = Path(config_dir)
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        self.environments: Dict[str, Dict[str, str]] = {}
+        self.environments: dict[str, dict[str, str]] = {}
         self.current_environment = "default"
         self._load_environments()
 
@@ -163,22 +160,21 @@ class EnvironmentManager:
             self.environments[env_name] = self._parse_env_file(env_file)
             logger.info(f"[Env] Entorno cargado: {env_name}")
 
-    def _parse_env_file(self, file_path: Path) -> Dict[str, str]:
+    def _parse_env_file(self, file_path: Path) -> dict[str, str]:
         """Parsea un archivo .env."""
         env_vars = {}
         try:
             with open(file_path) as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith("#"):
-                        if "=" in line:
-                            key, value = line.split("=", 1)
-                            env_vars[key.strip()] = value.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
+                        env_vars[key.strip()] = value.strip()
         except Exception as exc:
             logger.error(f"[Env] Error parseando {file_path}: {exc}")
         return env_vars
 
-    def create_environment(self, name: str, variables: Dict[str, str]) -> bool:
+    def create_environment(self, name: str, variables: dict[str, str]) -> bool:
         """Crea un nuevo entorno."""
         try:
             self.environments[name] = variables
@@ -206,11 +202,10 @@ class EnvironmentManager:
             self.current_environment = name
             logger.info(f"[Env] Entorno establecido: {name}")
             return True
-        else:
-            logger.warning(f"[Env] Entorno no encontrado: {name}")
-            return False
+        logger.warning(f"[Env] Entorno no encontrado: {name}")
+        return False
 
-    def get_variable(self, key: str, default: str = None) -> Optional[str]:
+    def get_variable(self, key: str, default: str = None) -> str | None:
         """Obtiene una variable del entorno actual."""
         env_vars = self.environments.get(self.current_environment, {})
         return env_vars.get(key, default)
@@ -226,7 +221,7 @@ class EnvironmentManager:
         logger.info(f"[Env] Variable establecida: {key} en {env_name}")
         return True
 
-    def get_environment_variables(self, environment: str = None) -> Dict[str, str]:
+    def get_environment_variables(self, environment: str = None) -> dict[str, str]:
         """Obtiene todas las variables de un entorno."""
         env_name = environment or self.current_environment
         return self.environments.get(env_name, {})
@@ -242,9 +237,9 @@ class ConfigurationManager:
     def __init__(self):
         self.secrets = SecretsManager()
         self.env = EnvironmentManager()
-        self.config_cache: Dict[str, Any] = {}
+        self.config_cache: dict[str, Any] = {}
 
-    def load_config_file(self, file_path: str) -> Dict[str, Any]:
+    def load_config_file(self, file_path: str) -> dict[str, Any]:
         """Carga un archivo de configuración JSON."""
         try:
             with open(file_path) as f:

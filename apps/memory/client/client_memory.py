@@ -1,13 +1,13 @@
 """ClientMemory — Customer profiles, interaction history, segmentation, and personalization."""
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "memory:clients:v1"
 _TTL = 86400 * 365
@@ -31,7 +31,7 @@ class ClientProfile:
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items()}
+        return dict(self.__dict__.items())
 
 
 @dataclass
@@ -45,7 +45,7 @@ class ClientInteraction:
     ts: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items()}
+        return dict(self.__dict__.items())
 
 
 class ClientMemory:
@@ -69,24 +69,44 @@ class ClientMemory:
     async def _save(self) -> None:
         try:
             cache = get_cache()
-            await cache.set(_KEY, {"profiles": self._profiles[-1000:], "interactions": self._interactions[-2000:]}, ttl_seconds=_TTL)
+            await cache.set(
+                _KEY,
+                {"profiles": self._profiles[-1000:], "interactions": self._interactions[-2000:]},
+                ttl_seconds=_TTL,
+            )
         except Exception:
             pass
 
-    async def upsert_profile(self, name: str, email: str, company: str = "", industry: str = "") -> ClientProfile:
+    async def upsert_profile(
+        self, name: str, email: str, company: str = "", industry: str = ""
+    ) -> ClientProfile:
         await self._load()
         for i, p in enumerate(self._profiles):
             if p.get("email") == email:
                 self._profiles[i].update({"name": name, "company": company, "industry": industry})
                 await self._save()
-                return ClientProfile(**{k: v for k, v in self._profiles[i].items() if k in ClientProfile.__dataclass_fields__})
-        profile = ClientProfile(name=name, email=email, company=company, industry=industry,
-                                ltv_estimate=0.0, last_interaction_at=time.time())
+                return ClientProfile(
+                    **{
+                        k: v
+                        for k, v in self._profiles[i].items()
+                        if k in ClientProfile.__dataclass_fields__
+                    }
+                )
+        profile = ClientProfile(
+            name=name,
+            email=email,
+            company=company,
+            industry=industry,
+            ltv_estimate=0.0,
+            last_interaction_at=time.time(),
+        )
         self._profiles.append(profile.to_dict())
         await self._save()
         return profile
 
-    async def record_interaction(self, profile_id: str, interaction_type: str, summary: str, value_usd: float = 0.0) -> ClientInteraction:
+    async def record_interaction(
+        self, profile_id: str, interaction_type: str, summary: str, value_usd: float = 0.0
+    ) -> ClientInteraction:
         await self._load()
         sentiment = "neutral"
         try:
@@ -94,7 +114,8 @@ class ClientMemory:
             resp = await ai.complete(
                 system="Sentiment classifier. Reply with ONE word: positive, neutral, or negative.",
                 user=f"Sentiment of: '{summary[:200]}'",
-                model=AIModel.FAST, max_tokens=10,
+                model=AIModel.FAST,
+                max_tokens=10,
             )
             if resp.success and resp.content:
                 word = resp.content.strip().lower()
@@ -103,8 +124,13 @@ class ClientMemory:
         except Exception:
             pass
 
-        interaction = ClientInteraction(profile_id=profile_id, interaction_type=interaction_type,
-                                        summary=summary, sentiment=sentiment, value_usd=value_usd)
+        interaction = ClientInteraction(
+            profile_id=profile_id,
+            interaction_type=interaction_type,
+            summary=summary,
+            sentiment=sentiment,
+            value_usd=value_usd,
+        )
         self._interactions.append(interaction.to_dict())
 
         for i, p in enumerate(self._profiles):
@@ -150,17 +176,26 @@ class ClientMemory:
             resp = await ai.complete(
                 system="Product recommendation engine.",
                 user=f"Client: {profile.get('name')}, spent ${profile.get('total_spent_usd',0)}, segment: {profile.get('segment')}. Products: {available_products[:5]}. Pick best offer.",
-                model=AIModel.FAST, max_tokens=100,
+                model=AIModel.FAST,
+                max_tokens=100,
             )
             if resp.success and resp.content:
-                return {"recommended_product": available_products[0] if available_products else "premium_plan",
-                        "offer": "15% loyalty discount", "reasoning": resp.content[:150]}
+                return {
+                    "recommended_product": (
+                        available_products[0] if available_products else "premium_plan"
+                    ),
+                    "offer": "15% loyalty discount",
+                    "reasoning": resp.content[:150],
+                }
         except Exception:
             pass
-        return {"recommended_product": available_products[0] if available_products else "starter_plan",
-                "offer": "10% discount", "reasoning": "Based on purchase history"}
+        return {
+            "recommended_product": available_products[0] if available_products else "starter_plan",
+            "offer": "10% discount",
+            "reasoning": "Based on purchase history",
+        }
 
-    def get_profile(self, email: str) -> Optional[dict]:
+    def get_profile(self, email: str) -> dict | None:
         return next((p for p in self._profiles if p.get("email") == email), None)
 
     def vip_clients(self) -> list[dict]:
@@ -183,7 +218,7 @@ class ClientMemory:
         }
 
 
-_instance: Optional[ClientMemory] = None
+_instance: ClientMemory | None = None
 
 
 def get_client_memory() -> ClientMemory:

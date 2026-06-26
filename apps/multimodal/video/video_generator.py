@@ -6,15 +6,14 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 logger = logging.getLogger("aria.video_generator")
 
 # ── Enums ────────────────────────────────────────────────────
 
 
-class VideoModel(str, Enum):
+class VideoModel(StrEnum):
     RUNWAY = "runway"
     KLING = "kling"
     PIKA = "pika"
@@ -22,13 +21,13 @@ class VideoModel(str, Enum):
     MOCK = "mock"
 
 
-class VideoFormat(str, Enum):
+class VideoFormat(StrEnum):
     MP4 = "mp4"
     MOV = "mov"
     WEBM = "webm"
 
 
-class VideoResolution(str, Enum):
+class VideoResolution(StrEnum):
     HD_720P = "1280x720"
     FHD_1080P = "1920x1080"
     PORTRAIT_9_16 = "1080x1920"
@@ -103,7 +102,7 @@ class VideoGenerator:
 
     # ── Model selection ──────────────────────────────────────
 
-    def _best_model(self, requested: Optional[VideoModel]) -> VideoModel:
+    def _best_model(self, requested: VideoModel | None) -> VideoModel:
         if requested and requested != VideoModel.MOCK:
             if requested == VideoModel.RUNWAY and self._runway_key:
                 return VideoModel.RUNWAY
@@ -120,7 +119,7 @@ class VideoGenerator:
     async def generate(
         self,
         prompt: str,
-        model: Optional[VideoModel] = None,
+        model: VideoModel | None = None,
         duration: int = 5,
         resolution: VideoResolution = VideoResolution.HD_720P,
     ) -> VideoJob:
@@ -150,9 +149,7 @@ class VideoGenerator:
 
     async def _generate_mock(self, job: VideoJob) -> None:
         await asyncio.sleep(0.1)
-        job.result_url = (
-            f"https://storage.aria.ai/videos/mock/{job.job_id}.{job.format.value}"
-        )
+        job.result_url = f"https://storage.aria.ai/videos/mock/{job.job_id}.{job.format.value}"
         job.status = "completed"
         job.completed_at = time.time()
         job.estimated_cost_usd = 0.0
@@ -303,7 +300,7 @@ class VideoGenerator:
 
 # ── Singleton ────────────────────────────────────────────────
 
-_video_generator: Optional[VideoGenerator] = None
+_video_generator: VideoGenerator | None = None
 
 
 def get_video_generator() -> VideoGenerator:

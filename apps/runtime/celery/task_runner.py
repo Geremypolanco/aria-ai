@@ -4,37 +4,46 @@ Falls back to async direct execution when Celery not available.
 
 Broker: Redis (REDIS_URL env var → same Redis as cache)
 """
+
 from __future__ import annotations
+
 import asyncio
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable, Optional
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 try:
     from celery import Celery
+
     _CELERY_AVAILABLE = True
 except ImportError:
     _CELERY_AVAILABLE = False
 
 from apps.core.memory.redis_client import get_cache
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 _TASKS_KEY = "runtime:tasks:v1"
 _TASKS_TTL = 86400 * 7
 
-class TaskStatus(str, Enum):
+
+class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
-class TaskPriority(str, Enum):
+
+class TaskPriority(StrEnum):
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
     CRITICAL = "critical"
+
 
 @dataclass
 class TaskRecord:
@@ -61,14 +70,19 @@ class TaskRecord:
             "created_at": self.created_at,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
-            "duration_ms": round((self.completed_at - self.started_at) * 1000, 1) if self.completed_at else None,
+            "duration_ms": (
+                round((self.completed_at - self.started_at) * 1000, 1)
+                if self.completed_at
+                else None
+            ),
         }
 
 
-def _create_celery_app() -> Optional[Any]:
+def _create_celery_app() -> Any | None:
     if not _CELERY_AVAILABLE:
         return None
     import os
+
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     try:
         app = Celery(
@@ -88,6 +102,7 @@ def _create_celery_app() -> Optional[Any]:
         return app
     except Exception:
         return None
+
 
 _celery_app = _create_celery_app()
 
@@ -130,11 +145,15 @@ class TaskRunner:
     async def submit(
         self,
         name: str,
-        args: list = [],
-        kwargs: dict = {},
+        args: list = None,
+        kwargs: dict = None,
         priority: TaskPriority = TaskPriority.NORMAL,
     ) -> TaskRecord:
         """Submit a task for execution."""
+        if kwargs is None:
+            kwargs = {}
+        if args is None:
+            args = []
         await self._load()
         record = TaskRecord(name=name, args=args, kwargs=kwargs, priority=priority)
         self._tasks.append(record.to_dict())
@@ -174,7 +193,7 @@ class TaskRunner:
         finally:
             record.completed_at = time.time()
 
-    async def get_task(self, task_id: str) -> Optional[dict]:
+    async def get_task(self, task_id: str) -> dict | None:
         await self._load()
         for t in self._tasks:
             if t.get("task_id") == task_id:
@@ -187,10 +206,7 @@ class TaskRunner:
         for t in self._tasks:
             s = t.get("status", "unknown")
             by_status[s] = by_status.get(s, 0) + 1
-        durations = [
-            t["duration_ms"] for t in self._tasks
-            if t.get("duration_ms") is not None
-        ]
+        durations = [t["duration_ms"] for t in self._tasks if t.get("duration_ms") is not None]
         return {
             "total_tasks": len(self._tasks),
             "by_status": by_status,
@@ -200,7 +216,9 @@ class TaskRunner:
             "registered_tasks": list(self._registry.keys()),
         }
 
-_runner_instance: Optional[TaskRunner] = None
+
+_runner_instance: TaskRunner | None = None
+
 
 def get_task_runner() -> TaskRunner:
     global _runner_instance

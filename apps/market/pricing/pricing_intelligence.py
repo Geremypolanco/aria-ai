@@ -2,15 +2,15 @@
 PricingIntelligence — Market pricing analysis, competitor benchmarking,
 and dynamic price recommendations for ARIA AI.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "market:pricing:v1"
 _TTL = 86400 * 14  # 14 days
@@ -22,13 +22,15 @@ class PricePoint:
     product_name: str = ""
     category: str = ""
     our_price: float = 0.0
-    competitor_prices: list = field(default_factory=list)   # list of {"competitor": str, "price": float}
+    competitor_prices: list = field(
+        default_factory=list
+    )  # list of {"competitor": str, "price": float}
     market_avg: float = 0.0
     market_min: float = 0.0
     market_max: float = 0.0
-    positioning: str = ""    # "premium", "competitive", "budget", "value"
+    positioning: str = ""  # "premium", "competitive", "budget", "value"
     recommended_price: float = 0.0
-    price_elasticity: str = "medium"   # "low"|"medium"|"high"
+    price_elasticity: str = "medium"  # "low"|"medium"|"high"
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
@@ -51,12 +53,12 @@ class PricePoint:
 @dataclass
 class PricingStrategy:
     strategy_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    strategy_type: str = ""   # "penetration", "skimming", "competitive", "value_based", "dynamic"
+    strategy_type: str = ""  # "penetration", "skimming", "competitive", "value_based", "dynamic"
     niche: str = ""
     rationale: str = ""
     initial_price: float = 0.0
     target_price: float = 0.0
-    price_increases: list = field(default_factory=list)    # [{"at_customers": 100, "new_price": 79}]
+    price_increases: list = field(default_factory=list)  # [{"at_customers": 100, "new_price": 79}]
     discount_thresholds: list = field(default_factory=list)  # [{"min_qty": 5, "discount_pct": 10}]
     created_at: float = field(default_factory=time.time)
 
@@ -108,8 +110,10 @@ class PricingIntelligence:
         product_name: str,
         category: str,
         our_price: float,
-        competitor_data: list = [],
+        competitor_data: list = None,
     ) -> PricePoint:
+        if competitor_data is None:
+            competitor_data = []
         await self._load()
         pp = PricePoint(product_name=product_name, category=category, our_price=our_price)
         pp.competitor_prices = list(competitor_data)
@@ -133,7 +137,8 @@ class PricingIntelligence:
                 )
                 if resp.success:
                     import re
-                    nums = re.findall(r'\$?([\d.]+)', resp.content)
+
+                    nums = re.findall(r"\$?([\d.]+)", resp.content)
                     if nums:
                         pp.market_avg = float(nums[0])
                         pp.market_min = pp.market_avg * 0.7
@@ -165,7 +170,8 @@ class PricingIntelligence:
             )
             if resp.success:
                 import re
-                nums = re.findall(r'\$?([\d.]+)', resp.content)
+
+                nums = re.findall(r"\$?([\d.]+)", resp.content)
                 if nums:
                     pp.recommended_price = float(nums[0])
         except Exception:
@@ -200,6 +206,7 @@ class PricingIntelligence:
                 strategy.rationale = content
 
                 import re
+
                 # Extract strategy type
                 for st in ["penetration", "skimming", "competitive", "value_based", "dynamic"]:
                     if st in content.lower():
@@ -209,7 +216,7 @@ class PricingIntelligence:
                     strategy.strategy_type = "competitive"
 
                 # Extract prices
-                prices = re.findall(r'\$?([\d.]+)', content)
+                prices = re.findall(r"\$?([\d.]+)", content)
                 if len(prices) >= 2:
                     strategy.initial_price = float(prices[0])
                     strategy.target_price = float(prices[1])
@@ -217,7 +224,9 @@ class PricingIntelligence:
                     strategy.initial_price = float(prices[0])
                     strategy.target_price = strategy.initial_price * 1.3
 
-                strategy.price_increases = [{"at_customers": 100, "new_price": strategy.target_price}]
+                strategy.price_increases = [
+                    {"at_customers": 100, "new_price": strategy.target_price}
+                ]
                 strategy.discount_thresholds = [{"min_qty": 5, "discount_pct": 10}]
         except Exception:
             strategy.strategy_type = "competitive"
@@ -306,7 +315,8 @@ class PricingIntelligence:
             if resp.success:
                 reasoning = resp.content
                 import re
-                nums = re.findall(r'([+-]?[\d.]+)%', resp.content)
+
+                nums = re.findall(r"([+-]?[\d.]+)%", resp.content)
                 if nums:
                     adjustment_pct = float(nums[0])
         except Exception:
@@ -338,17 +348,20 @@ class PricingIntelligence:
     def competitive_gaps(self) -> list[dict]:
         """Returns price_points where our_price > recommended_price * 1.1 (overpriced)."""
         return [
-            pp for pp in self._price_points
+            pp
+            for pp in self._price_points
             if pp.get("recommended_price", 0.0) > 0
             and pp.get("our_price", 0.0) > pp.get("recommended_price", 0.0) * 1.1
         ]
 
     def recent_analyses(self, limit: int = 10) -> list[dict]:
-        return sorted(self._price_points, key=lambda x: x.get("created_at", 0), reverse=True)[:limit]
+        return sorted(self._price_points, key=lambda x: x.get("created_at", 0), reverse=True)[
+            :limit
+        ]
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
-_instance: Optional[PricingIntelligence] = None
+_instance: PricingIntelligence | None = None
 
 
 def get_pricing_intelligence() -> PricingIntelligence:

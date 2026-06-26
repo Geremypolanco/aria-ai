@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -12,7 +12,7 @@ _OUTREACH_QUEUE_KEY = "retention:outreach_queue:v1"
 _CAMPAIGNS_TTL = 86400 * 90
 
 
-class RetentionAction(str, Enum):
+class RetentionAction(StrEnum):
     WIN_BACK_EMAIL = "win_back_email"
     DISCOUNT_OFFER = "discount_offer"
     PERSONAL_OUTREACH = "personal_outreach"
@@ -83,7 +83,11 @@ class RetentionEngine:
     async def _save_campaigns(self, campaigns: dict[str, RetentionCampaign]) -> None:
         try:
             cache = get_cache()
-            await cache.set(_CAMPAIGNS_KEY, {k: v.to_dict() for k, v in campaigns.items()}, ttl_seconds=_CAMPAIGNS_TTL)
+            await cache.set(
+                _CAMPAIGNS_KEY,
+                {k: v.to_dict() for k, v in campaigns.items()},
+                ttl_seconds=_CAMPAIGNS_TTL,
+            )
         except Exception:
             pass
 
@@ -119,7 +123,9 @@ class RetentionEngine:
         return campaign
 
     async def run_win_back(self, customers: list[dict]) -> dict:
-        inactive = [c for c in customers if (time.time() - c.get("last_purchase_ts", 0)) / 86400 > 60]
+        inactive = [
+            c for c in customers if (time.time() - c.get("last_purchase_ts", 0)) / 86400 > 60
+        ]
         if not inactive:
             return {"campaign_id": None, "targeted": 0, "queued": 0}
 
@@ -154,7 +160,11 @@ class RetentionEngine:
         }
 
     async def run_loyalty_rewards(self, customers: list[dict]) -> dict:
-        eligible = [c for c in customers if c.get("segment") in ("VIP", "Loyal") or c.get("total_spent_usd", 0) > 200]
+        eligible = [
+            c
+            for c in customers
+            if c.get("segment") in ("VIP", "Loyal") or c.get("total_spent_usd", 0) > 200
+        ]
         if not eligible:
             return {"campaign_id": None, "targeted": 0}
 
@@ -205,18 +215,22 @@ class RetentionEngine:
                 action = RetentionAction.PERSONAL_OUTREACH
                 actions_scheduled["escalated"].append(email)
 
-            outreach_items.append({
-                "action": action.value,
-                "customer_email": email,
-                "churn_risk": risk,
-                "queued_at": time.time(),
-            })
+            outreach_items.append(
+                {
+                    "action": action.value,
+                    "customer_email": email,
+                    "churn_risk": risk,
+                    "queued_at": time.time(),
+                }
+            )
 
         await self._queue_outreach(outreach_items)
         actions_scheduled["total_scheduled"] = len(outreach_items)  # type: ignore[assignment]
         return actions_scheduled
 
-    async def record_campaign_result(self, campaign_id: str, responses: int, revenue: float) -> bool:
+    async def record_campaign_result(
+        self, campaign_id: str, responses: int, revenue: float
+    ) -> bool:
         campaigns = await self._load_campaigns()
         campaign = campaigns.get(campaign_id)
         if not campaign:
@@ -244,7 +258,11 @@ class RetentionEngine:
             key = c.action.value
             by_action.setdefault(key, []).append(c.response_rate)
 
-        best_action = max(by_action, key=lambda k: sum(by_action[k]) / max(len(by_action[k]), 1)) if by_action else None
+        best_action = (
+            max(by_action, key=lambda k: sum(by_action[k]) / max(len(by_action[k]), 1))
+            if by_action
+            else None
+        )
 
         return {
             "active_campaigns": len(campaigns),

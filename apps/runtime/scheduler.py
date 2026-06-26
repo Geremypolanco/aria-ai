@@ -11,14 +11,13 @@ Runs daily business operations on schedule:
 State persisted in Redis so schedule survives restarts.
 Start with: asyncio.run(start_scheduler()) or as background task.
 """
+
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -63,7 +62,7 @@ class ARIAScheduler:
     """
 
     def __init__(self) -> None:
-        self._scheduler: Optional[AsyncIOScheduler] = None
+        self._scheduler: AsyncIOScheduler | None = None
         self._job_log: list[dict] = []
         self._running: bool = False
 
@@ -191,21 +190,23 @@ class ARIAScheduler:
             )
         except Exception as exc:
             logger.error("ARIAScheduler [lead_discovery] failed: %s", exc)
-            await self._log_job(
-                job_name, "Lead Discovery", False, time.time() - start, str(exc)
-            )
+            await self._log_job(job_name, "Lead Discovery", False, time.time() - start, str(exc))
 
     async def _run_autonomous_objectives(self) -> None:
         job_name = "autonomous_objectives"
         start = time.time()
         try:
-            from apps.runtime.autonomy.autonomous_scheduler import get_autonomous_scheduler  # noqa: PLC0415
+            from apps.runtime.autonomy.autonomous_scheduler import (
+                get_autonomous_scheduler,  # noqa: PLC0415
+            )
 
             sched = get_autonomous_scheduler()
             results = await sched.run_due_objectives()
             done = sum(1 for r in results if r.success)
             logger.info("ARIAScheduler [autonomous]: %d/%d objectives ran", done, len(results))
-            await self._log_job(job_name, "Autonomous Strategic Objectives", True, time.time() - start)
+            await self._log_job(
+                job_name, "Autonomous Strategic Objectives", True, time.time() - start
+            )
         except Exception as exc:
             logger.error("ARIAScheduler [autonomous] failed: %s", exc)
             await self._log_job(
@@ -216,7 +217,9 @@ class ARIAScheduler:
         job_name = "analytics_refresh"
         start = time.time()
         try:
-            from apps.economics.economic_intelligence import get_economic_intelligence  # noqa: PLC0415
+            from apps.economics.economic_intelligence import (
+                get_economic_intelligence,  # noqa: PLC0415
+            )
 
             intel = get_economic_intelligence()
             await intel._load()
@@ -255,9 +258,7 @@ class ARIAScheduler:
             data = await cache.get(_SCHEDULER_KEY)
             if isinstance(data, dict):
                 self._job_log = data.get("job_log", [])
-                logger.info(
-                    "ARIAScheduler: restored %d job records from Redis", len(self._job_log)
-                )
+                logger.info("ARIAScheduler: restored %d job records from Redis", len(self._job_log))
         except Exception as exc:
             logger.warning("ARIAScheduler: could not load state from Redis: %s", exc)
 

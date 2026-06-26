@@ -1,14 +1,13 @@
 """
 Email Capture Engine — Captures emails and syncs to Klaviyo for marketing automation.
 """
+
 from __future__ import annotations
 
 import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
-from apps.core.tools.ai_client import get_ai_client, AIModel
 
 from apps.core.memory.redis_client import get_cache
 
@@ -69,8 +68,10 @@ class EmailCaptureEngine:
         self,
         email: str,
         source: str,
-        lead_data: dict = {},
+        lead_data: dict = None,
     ) -> EmailCaptureEvent:
+        if lead_data is None:
+            lead_data = {}
         await self._load()
 
         valid = _is_valid_email(email)
@@ -100,6 +101,7 @@ class EmailCaptureEngine:
             return False
         try:
             import httpx
+
             headers = {
                 "Authorization": f"Klaviyo-API-Key {self._klaviyo_key}",
                 "revision": "2024-10-15",
@@ -131,17 +133,14 @@ class EmailCaptureEngine:
             return False
         try:
             import httpx
+
             # First, find or create profile to get profile_id
             headers = {
                 "Authorization": f"Klaviyo-API-Key {self._klaviyo_key}",
                 "revision": "2024-10-15",
                 "Content-Type": "application/json",
             }
-            payload = {
-                "data": [
-                    {"type": "profile", "attributes": {"email": email}}
-                ]
-            }
+            payload = {"data": [{"type": "profile", "attributes": {"email": email}}]}
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
                     f"https://a.klaviyo.com/api/lists/{list_id}/relationships/profiles/",
@@ -157,13 +156,16 @@ class EmailCaptureEngine:
         self,
         email: str,
         flow_trigger: str,
-        properties: dict = {},
+        properties: dict = None,
     ) -> bool:
         """Trigger a Klaviyo flow via event tracking."""
+        if properties is None:
+            properties = {}
         if not self._klaviyo_key:
             return False
         try:
             import httpx
+
             headers = {
                 "Authorization": f"Klaviyo-API-Key {self._klaviyo_key}",
                 "revision": "2024-10-15",
@@ -173,7 +175,9 @@ class EmailCaptureEngine:
                 "data": {
                     "type": "event",
                     "attributes": {
-                        "metric": {"data": {"type": "metric", "attributes": {"name": flow_trigger}}},
+                        "metric": {
+                            "data": {"type": "metric", "attributes": {"name": flow_trigger}}
+                        },
                         "profile": {"data": {"type": "profile", "attributes": {"email": email}}},
                         "properties": properties,
                         "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -216,7 +220,7 @@ class EmailCaptureEngine:
         return list(reversed(self._captures[-limit:]))
 
 
-_email_capture_instance: Optional[EmailCaptureEngine] = None
+_email_capture_instance: EmailCaptureEngine | None = None
 
 
 def get_email_capture_engine() -> EmailCaptureEngine:

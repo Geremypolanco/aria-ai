@@ -11,14 +11,18 @@ Equipos predefinidos:
   - sales_crew:     Analista de Mercado → Sales Strategist → Copywriter
   - launch_crew:    Estratega → Marketing Director → Analista Financiero
 """
+
 from __future__ import annotations
 
-import asyncio
+import contextlib
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Coroutine, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger("aria.crew")
 
@@ -27,8 +31,8 @@ logger = logging.getLogger("aria.crew")
 class CrewMember:
     role: str
     goal: str
-    agent_type: str     # Maps to BusinessHub: research|content|marketing|sales|developer|finance|ceo
-    output: Optional[str] = None
+    agent_type: str  # Maps to BusinessHub: research|content|marketing|sales|developer|finance|ceo
+    output: str | None = None
 
 
 @dataclass
@@ -37,11 +41,11 @@ class CrewRun:
     crew_name: str
     mission: str
     members: list[CrewMember]
-    final_output: Optional[str] = None
-    started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    completed_at: Optional[str] = None
+    final_output: str | None = None
+    started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    completed_at: str | None = None
     success: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
     def summary(self) -> dict:
         return {
@@ -57,34 +61,106 @@ class CrewRun:
 
 CREW_TEMPLATES: dict[str, list[dict]] = {
     "research_crew": [
-        {"role": "Investigador Senior",    "goal": "Investiga el tema a fondo: datos, tendencias, fuentes clave, estadísticas relevantes y contexto actual.",                      "agent_type": "research"},
-        {"role": "Analista Estratégico",   "goal": "Analiza los hallazgos del investigador. Identifica patrones, oportunidades, riesgos y conclusiones accionables.",              "agent_type": "ceo"},
-        {"role": "Redactor Ejecutivo",     "goal": "Transforma el análisis en un informe final claro, estructurado y listo para usar. Resumen ejecutivo + puntos clave + próximos pasos.", "agent_type": "content"},
+        {
+            "role": "Investigador Senior",
+            "goal": "Investiga el tema a fondo: datos, tendencias, fuentes clave, estadísticas relevantes y contexto actual.",
+            "agent_type": "research",
+        },
+        {
+            "role": "Analista Estratégico",
+            "goal": "Analiza los hallazgos del investigador. Identifica patrones, oportunidades, riesgos y conclusiones accionables.",
+            "agent_type": "ceo",
+        },
+        {
+            "role": "Redactor Ejecutivo",
+            "goal": "Transforma el análisis en un informe final claro, estructurado y listo para usar. Resumen ejecutivo + puntos clave + próximos pasos.",
+            "agent_type": "content",
+        },
     ],
     "content_crew": [
-        {"role": "Investigador de Contenido", "goal": "Investiga el tema, encuentra ángulos únicos, datos de soporte y ejemplos reales para enriquecer el contenido.",               "agent_type": "research"},
-        {"role": "Estratega SEO",             "goal": "Define estructura, keywords principales, ángulo de marketing y formato óptimo para máxima visibilidad.",                     "agent_type": "marketing"},
-        {"role": "Redactor y Editor",         "goal": "Crea el contenido final pulido: introducción ganadora, cuerpo estructurado, CTA y optimizado para publicar.",                "agent_type": "content"},
+        {
+            "role": "Investigador de Contenido",
+            "goal": "Investiga el tema, encuentra ángulos únicos, datos de soporte y ejemplos reales para enriquecer el contenido.",
+            "agent_type": "research",
+        },
+        {
+            "role": "Estratega SEO",
+            "goal": "Define estructura, keywords principales, ángulo de marketing y formato óptimo para máxima visibilidad.",
+            "agent_type": "marketing",
+        },
+        {
+            "role": "Redactor y Editor",
+            "goal": "Crea el contenido final pulido: introducción ganadora, cuerpo estructurado, CTA y optimizado para publicar.",
+            "agent_type": "content",
+        },
     ],
     "dev_crew": [
-        {"role": "Product Manager",     "goal": "Define requisitos técnicos detallados, casos de uso, arquitectura del sistema y criterios de éxito.",                             "agent_type": "ceo"},
-        {"role": "Desarrollador Senior", "goal": "Implementa la solución técnica completa basada en los requisitos del PM. Código funcional y documentado.",                       "agent_type": "developer"},
-        {"role": "QA Engineer",          "goal": "Revisa el código, identifica bugs, casos edge, sugiere mejoras y crea documentación de la solución.",                            "agent_type": "research"},
+        {
+            "role": "Product Manager",
+            "goal": "Define requisitos técnicos detallados, casos de uso, arquitectura del sistema y criterios de éxito.",
+            "agent_type": "ceo",
+        },
+        {
+            "role": "Desarrollador Senior",
+            "goal": "Implementa la solución técnica completa basada en los requisitos del PM. Código funcional y documentado.",
+            "agent_type": "developer",
+        },
+        {
+            "role": "QA Engineer",
+            "goal": "Revisa el código, identifica bugs, casos edge, sugiere mejoras y crea documentación de la solución.",
+            "agent_type": "research",
+        },
     ],
     "sales_crew": [
-        {"role": "Analista de Mercado",    "goal": "Investiga mercado objetivo, segmentos de clientes, competidores, precios y oportunidades de penetración.",                     "agent_type": "research"},
-        {"role": "Estratega de Ventas",    "goal": "Diseña estrategia de venta completa: propuesta de valor, objeciones, pipeline y proceso de conversión.",                      "agent_type": "sales"},
-        {"role": "Copywriter de Conversión","goal": "Crea el copy de ventas: emails, página de ventas, scripts y materiales de marketing de alta conversión.",                    "agent_type": "marketing"},
+        {
+            "role": "Analista de Mercado",
+            "goal": "Investiga mercado objetivo, segmentos de clientes, competidores, precios y oportunidades de penetración.",
+            "agent_type": "research",
+        },
+        {
+            "role": "Estratega de Ventas",
+            "goal": "Diseña estrategia de venta completa: propuesta de valor, objeciones, pipeline y proceso de conversión.",
+            "agent_type": "sales",
+        },
+        {
+            "role": "Copywriter de Conversión",
+            "goal": "Crea el copy de ventas: emails, página de ventas, scripts y materiales de marketing de alta conversión.",
+            "agent_type": "marketing",
+        },
     ],
     "launch_crew": [
-        {"role": "Estratega de Producto",    "goal": "Define posicionamiento, propuesta de valor única, go-to-market strategy y mensajes clave del lanzamiento.",                 "agent_type": "ceo"},
-        {"role": "Director de Marketing",    "goal": "Crea la campaña de lanzamiento completa: redes sociales, email marketing, content calendar y PR.",                           "agent_type": "marketing"},
-        {"role": "Analista Financiero",      "goal": "Proyecta métricas de éxito, modelo de pricing, costos de adquisición, break-even y proyecciones de revenue.",               "agent_type": "finance"},
+        {
+            "role": "Estratega de Producto",
+            "goal": "Define posicionamiento, propuesta de valor única, go-to-market strategy y mensajes clave del lanzamiento.",
+            "agent_type": "ceo",
+        },
+        {
+            "role": "Director de Marketing",
+            "goal": "Crea la campaña de lanzamiento completa: redes sociales, email marketing, content calendar y PR.",
+            "agent_type": "marketing",
+        },
+        {
+            "role": "Analista Financiero",
+            "goal": "Proyecta métricas de éxito, modelo de pricing, costos de adquisición, break-even y proyecciones de revenue.",
+            "agent_type": "finance",
+        },
     ],
     "venture_crew": [
-        {"role": "Analista de Negocio",   "goal": "Valida el modelo de negocio, analiza viabilidad, TAM, competencia y barreras de entrada.",                                     "agent_type": "research"},
-        {"role": "Estratega Financiero",  "goal": "Proyecta financials: runway, pricing, unidad económica, valoración y escenarios de crecimiento.",                              "agent_type": "finance"},
-        {"role": "Pitch Specialist",      "goal": "Crea el pitch deck completo y materiales para inversores. Historia convincente con datos sólidos.",                             "agent_type": "content"},
+        {
+            "role": "Analista de Negocio",
+            "goal": "Valida el modelo de negocio, analiza viabilidad, TAM, competencia y barreras de entrada.",
+            "agent_type": "research",
+        },
+        {
+            "role": "Estratega Financiero",
+            "goal": "Proyecta financials: runway, pricing, unidad económica, valoración y escenarios de crecimiento.",
+            "agent_type": "finance",
+        },
+        {
+            "role": "Pitch Specialist",
+            "goal": "Crea el pitch deck completo y materiales para inversores. Historia convincente con datos sólidos.",
+            "agent_type": "content",
+        },
     ],
 }
 
@@ -103,29 +179,30 @@ class CrewEngine:
         mission: str,
         crew_name: str = "research_crew",
         context: str = "",
-        on_progress: Optional[Callable] = None,
+        on_progress: Callable | None = None,
     ) -> CrewRun:
         """
         Ejecuta un equipo predefinido secuencialmente.
         on_progress(step_num, total, member_role) → called after each step.
         """
         template = CREW_TEMPLATES.get(crew_name, CREW_TEMPLATES["research_crew"])
-        members  = [CrewMember(**m) for m in template]
-        run = CrewRun(id=str(uuid.uuid4())[:8], crew_name=crew_name, mission=mission, members=members)
+        members = [CrewMember(**m) for m in template]
+        run = CrewRun(
+            id=str(uuid.uuid4())[:8], crew_name=crew_name, mission=mission, members=members
+        )
         self._runs[run.id] = run
 
         accumulated = context
         all_outputs: list[str] = []
 
         from apps.core.agents.business_hub import BusinessHub
+
         hub = BusinessHub()
 
         for i, member in enumerate(members):
             if on_progress:
-                try:
+                with contextlib.suppress(Exception):
                     await on_progress(i + 1, len(members), member.role)
-                except Exception:
-                    pass
 
             agent_prompt = (
                 f"MISIÓN DEL EQUIPO: {mission}\n\n"
@@ -136,8 +213,13 @@ class CrewEngine:
                 agent_prompt += f"\nTRABAJO PREVIO DEL EQUIPO:\n{accumulated[:3500]}"
 
             try:
-                result    = await hub.dispatch(member.agent_type, agent_prompt, {})
-                output    = result.get("output") or result.get("result") or result.get("plan") or str(result)
+                result = await hub.dispatch(member.agent_type, agent_prompt, {})
+                output = (
+                    result.get("output")
+                    or result.get("result")
+                    or result.get("plan")
+                    or str(result)
+                )
                 member.output = str(output)[:3000]
             except Exception as exc:
                 member.output = f"[Error: {exc}]"
@@ -147,8 +229,8 @@ class CrewEngine:
             accumulated = "\n\n".join(all_outputs)
 
         run.final_output = await self._synthesize(mission, members)
-        run.completed_at = datetime.now(timezone.utc).isoformat()
-        run.success      = True
+        run.completed_at = datetime.now(UTC).isoformat()
+        run.success = True
         return run
 
     async def run_custom(
@@ -162,13 +244,13 @@ class CrewEngine:
         Mapea automáticamente cada rol al agente de negocio más adecuado.
         """
         role_to_agent = [
-            (["invest", "research", "analiz"],         "research"),
-            (["market", "seo", "social", "campañ"],    "marketing"),
-            (["venta", "sales", "negoci"],              "sales"),
-            (["develop", "código", "program", "tech"],  "developer"),
-            (["content", "redact", "escrib", "copy"],   "content"),
+            (["invest", "research", "analiz"], "research"),
+            (["market", "seo", "social", "campañ"], "marketing"),
+            (["venta", "sales", "negoci"], "sales"),
+            (["develop", "código", "program", "tech"], "developer"),
+            (["content", "redact", "escrib", "copy"], "content"),
             (["finanz", "cfo", "contab", "presupuest"], "finance"),
-            (["ceo", "director", "estrateg", "product"],"ceo"),
+            (["ceo", "director", "estrateg", "product"], "ceo"),
         ]
 
         def map_role(role: str) -> str:
@@ -179,21 +261,25 @@ class CrewEngine:
             return "ceo"
 
         members = [
-            CrewMember(role=r, goal=f"Ejecutar tu parte de la misión como {r}", agent_type=map_role(r))
+            CrewMember(
+                role=r, goal=f"Ejecutar tu parte de la misión como {r}", agent_type=map_role(r)
+            )
             for r in roles[:5]
         ]
-        run = CrewRun(id=str(uuid.uuid4())[:8], crew_name="custom", mission=mission, members=members)
+        run = CrewRun(
+            id=str(uuid.uuid4())[:8], crew_name="custom", mission=mission, members=members
+        )
         self._runs[run.id] = run
 
         from apps.core.agents.business_hub import BusinessHub
+
         hub = BusinessHub()
         accumulated = context
         all_outputs: list[str] = []
 
         for member in members:
-            prompt = (
-                f"Misión: {mission}\nRol: {member.role}\n"
-                + (f"\nContexto previo:\n{accumulated[:2500]}" if accumulated else "")
+            prompt = f"Misión: {mission}\nRol: {member.role}\n" + (
+                f"\nContexto previo:\n{accumulated[:2500]}" if accumulated else ""
             )
             try:
                 result = await hub.dispatch(member.agent_type, prompt, {})
@@ -204,20 +290,24 @@ class CrewEngine:
             accumulated = "\n\n".join(all_outputs)
 
         run.final_output = await self._synthesize(mission, members)
-        run.completed_at = datetime.now(timezone.utc).isoformat()
-        run.success      = True
+        run.completed_at = datetime.now(UTC).isoformat()
+        run.success = True
         return run
 
     def list_crews(self) -> list[str]:
         return list(CREW_TEMPLATES.keys())
 
     def list_runs(self, limit: int = 10) -> list[dict]:
-        return [r.summary() for r in sorted(self._runs.values(), key=lambda r: r.started_at, reverse=True)[:limit]]
+        return [
+            r.summary()
+            for r in sorted(self._runs.values(), key=lambda r: r.started_at, reverse=True)[:limit]
+        ]
 
     # ── PRIVADO ───────────────────────────────────────────────────────────────
 
     async def _synthesize(self, mission: str, members: list[CrewMember]) -> str:
-        from apps.core.tools.ai_client import get_ai_client, AIModel
+        from apps.core.tools.ai_client import AIModel, get_ai_client
+
         client = get_ai_client()
         contributions = "\n\n".join(f"**{m.role}:**\n{m.output or 'N/A'}" for m in members)
         resp = await client.complete(
@@ -236,7 +326,7 @@ class CrewEngine:
         return resp.content if hasattr(resp, "content") else str(resp)
 
 
-_engine: Optional[CrewEngine] = None
+_engine: CrewEngine | None = None
 
 
 def get_crew_engine() -> CrewEngine:

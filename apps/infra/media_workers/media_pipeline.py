@@ -1,14 +1,14 @@
 """
 Media processing pipeline — deduplication, caching, artifact management.
 """
+
 from __future__ import annotations
 
 import hashlib
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -16,7 +16,7 @@ _PIPELINE_KEY = "infra:media_pipeline:v1"
 _PIPELINE_TTL = 86400 * 30
 
 
-class ArtifactType(str, Enum):
+class ArtifactType(StrEnum):
     IMAGE = "image"
     VIDEO = "video"
     AUDIO = "audio"
@@ -24,7 +24,7 @@ class ArtifactType(str, Enum):
     AD_CREATIVE = "ad_creative"
 
 
-class ProcessingStatus(str, Enum):
+class ProcessingStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -118,7 +118,7 @@ class MediaPipeline:
     async def process_image(
         self,
         source_url: str,
-        transforms: Optional[dict] = None,
+        transforms: dict | None = None,
     ) -> MediaArtifact:
         await self._load()
         transforms = transforms or {}
@@ -151,7 +151,7 @@ class MediaPipeline:
     async def process_video(
         self,
         source_url: str,
-        operations: Optional[list[str]] = None,
+        operations: list[str] | None = None,
     ) -> MediaArtifact:
         await self._load()
         operations = operations or []
@@ -183,7 +183,8 @@ class MediaPipeline:
         await self._load()
         total = len(self._artifacts)
         completed = sum(
-            1 for a in self._artifacts.values()
+            1
+            for a in self._artifacts.values()
             if a.get("status") in (ProcessingStatus.COMPLETED.value, ProcessingStatus.CACHED.value)
         )
         return {
@@ -195,7 +196,7 @@ class MediaPipeline:
         }
 
 
-_pipeline_instance: Optional[MediaPipeline] = None
+_pipeline_instance: MediaPipeline | None = None
 
 
 def get_media_pipeline() -> MediaPipeline:

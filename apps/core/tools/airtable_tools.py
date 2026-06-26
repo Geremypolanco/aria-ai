@@ -2,10 +2,14 @@
 airtable_tools.py — Base de datos flexible via Airtable API.
 Gestiona registros de productos, leads, campañas y métricas.
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Any, Optional
+from typing import Any
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.airtable_tools")
@@ -28,15 +32,22 @@ class AirtableTools:
         if not self._configured():
             return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}
         try:
-            res = await self._http.get("https://api.airtable.com/v0/meta/bases", headers=self._headers)
+            res = await self._http.get(
+                "https://api.airtable.com/v0/meta/bases", headers=self._headers
+            )
             if res.status_code == 200:
                 bases = res.json().get("bases", [])
-                return {"success": True, "bases": [{"id": b["id"], "name": b["name"]} for b in bases]}
+                return {
+                    "success": True,
+                    "bases": [{"id": b["id"], "name": b["name"]} for b in bases],
+                }
             return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def create_record(self, base_id: str, table: str, fields: dict[str, Any]) -> dict[str, Any]:
+    async def create_record(
+        self, base_id: str, table: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
         """Crea un registro en una tabla de Airtable."""
         if not self._configured():
             return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}
@@ -54,7 +65,9 @@ class AirtableTools:
             logger.error("[AirtableTools] create_record error: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def list_records(self, base_id: str, table: str, max_records: int = 20, filter_formula: str = "") -> dict[str, Any]:
+    async def list_records(
+        self, base_id: str, table: str, max_records: int = 20, filter_formula: str = ""
+    ) -> dict[str, Any]:
         """Lista registros de una tabla."""
         if not self._configured():
             return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}
@@ -64,7 +77,8 @@ class AirtableTools:
                 params["filterByFormula"] = filter_formula
             res = await self._http.get(
                 f"{AIRTABLE_API}/{base_id}/{table}",
-                headers=self._headers, params=params,
+                headers=self._headers,
+                params=params,
             )
             if res.status_code == 200:
                 records = res.json().get("records", [])
@@ -73,7 +87,9 @@ class AirtableTools:
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def update_record(self, base_id: str, table: str, record_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    async def update_record(
+        self, base_id: str, table: str, record_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
         """Actualiza un registro existente."""
         if not self._configured():
             return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}

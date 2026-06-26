@@ -2,13 +2,14 @@
 Customer Acquisition System — Phase 5
 Tracks leads, campaigns, and attribution across acquisition channels.
 """
+
 from __future__ import annotations
 
+import logging
 import time
 import uuid
-import logging
-from dataclasses import dataclass, field, asdict
-from enum import Enum
+from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 from typing import Any
 
 from apps.core.memory.redis_client import get_cache
@@ -19,7 +20,7 @@ _LEADS_KEY = "acquisition:leads:v1"
 _LEADS_TTL = 86400 * 60  # 60 days
 
 
-class AcquisitionChannel(str, Enum):
+class AcquisitionChannel(StrEnum):
     ORGANIC_SEARCH = "organic_search"
     SOCIAL_ORGANIC = "social_organic"
     EMAIL = "email"
@@ -30,8 +31,8 @@ class AcquisitionChannel(str, Enum):
     CONTENT = "content"
 
 
-class LeadQuality(str, Enum):
-    HOT = "hot"    # score >= 80
+class LeadQuality(StrEnum):
+    HOT = "hot"  # score >= 80
     WARM = "warm"  # score 50-79
     COLD = "cold"  # score < 50
 
@@ -143,8 +144,11 @@ class AcquisitionEngine:
 
         # Known high-value domains
         high_value_domains = {
-            "gmail.com", "yahoo.com", "hotmail.com",
-            "outlook.com", "icloud.com",
+            "gmail.com",
+            "yahoo.com",
+            "hotmail.com",
+            "outlook.com",
+            "icloud.com",
         }
         domain = email.split("@")[-1].lower() if "@" in email else ""
         if domain and domain not in high_value_domains:
@@ -157,9 +161,7 @@ class AcquisitionEngine:
         # Channel-based scoring
         if source == AcquisitionChannel.REFERRAL:
             score += 25.0
-        elif source == AcquisitionChannel.PAID_SEARCH:
-            score += 10.0
-        elif source == AcquisitionChannel.AFFILIATE:
+        elif source == AcquisitionChannel.PAID_SEARCH or source == AcquisitionChannel.AFFILIATE:
             score += 10.0
         elif source == AcquisitionChannel.EMAIL:
             score += 5.0
@@ -187,8 +189,7 @@ class AcquisitionEngine:
                 return existing
 
         computed_score = (
-            score if score is not None
-            else self._score_lead(email, source, utm_campaign)
+            score if score is not None else self._score_lead(email, source, utm_campaign)
         )
 
         if computed_score >= 80:
@@ -253,9 +254,7 @@ class AcquisitionEngine:
         converted = [lp for lp in self._leads.values() if lp.converted]
         total_revenue = sum(lp.revenue_attributed for lp in converted)
         conversion_rate = len(converted) / total if total > 0 else 0.0
-        avg_cac = (
-            total_revenue / len(converted) if converted and total_revenue > 0 else 0.0
-        )
+        avg_cac = total_revenue / len(converted) if converted and total_revenue > 0 else 0.0
         return {
             "total_leads": total,
             "hot_count": hot,

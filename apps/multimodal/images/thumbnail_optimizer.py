@@ -2,14 +2,14 @@
 AI-powered thumbnail optimization for YouTube and social media.
 Provides deterministic scoring and variant generation without external API calls.
 """
+
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
-
 
 # ── Dataclasses ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class ThumbnailScore:
@@ -33,6 +33,7 @@ class ThumbnailVariant:
 
 
 # ── ThumbnailOptimizer ─────────────────────────────────────────────────────────
+
 
 class ThumbnailOptimizer:
     """Deterministic thumbnail scoring and variant generation."""
@@ -184,9 +185,9 @@ class ThumbnailOptimizer:
             ),
         ]
 
-        return variants[:max(1, min(count, 4))]
+        return variants[: max(1, min(count, 4))]
 
-    def best_variant(self, variants: list[ThumbnailVariant]) -> Optional[ThumbnailVariant]:
+    def best_variant(self, variants: list[ThumbnailVariant]) -> ThumbnailVariant | None:
         """Return the variant with the highest estimated CTR."""
         if not variants:
             return None
@@ -200,7 +201,7 @@ class ThumbnailOptimizer:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_optimizer_instance: Optional[ThumbnailOptimizer] = None
+_optimizer_instance: ThumbnailOptimizer | None = None
 
 
 def get_thumbnail_optimizer() -> ThumbnailOptimizer:

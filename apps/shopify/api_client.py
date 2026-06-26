@@ -8,17 +8,15 @@ Reads credentials from environment:
 Uses Shopify Admin REST API 2024-01 and GraphQL Admin API.
 Gracefully degrades when credentials absent.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 import httpx
-
-from apps.core.memory.redis_client import get_cache
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +25,7 @@ _SHOPIFY_TTL = 86400 * 7
 
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
+
 
 @dataclass
 class ShopifyProduct:
@@ -96,6 +95,7 @@ class ShopifyAnalytics:
 
 # ── Client ────────────────────────────────────────────────────────────────────
 
+
 class ShopifyAPIClient:
     """
     Real Shopify Admin API client.
@@ -124,7 +124,9 @@ class ShopifyAPIClient:
 
     # ── HTTP helpers ──────────────────────────────────────────────────────────
 
-    async def _get(self, path: str, params: dict = {}) -> dict:
+    async def _get(self, path: str, params: dict = None) -> dict:
+        if params is None:
+            params = {}
         if not self.is_configured:
             return {"error": "Shopify not configured"}
         try:
@@ -203,9 +205,7 @@ class ShopifyAPIClient:
                 # Extract price from first variant if present
                 variants = raw.get("variants", [])
                 price = float(variants[0].get("price", 0.0)) if variants else 0.0
-                inventory_qty = sum(
-                    int(v.get("inventory_quantity", 0)) for v in variants
-                )
+                inventory_qty = sum(int(v.get("inventory_quantity", 0)) for v in variants)
 
                 tags_raw = raw.get("tags", "")
                 tags = [t.strip() for t in tags_raw.split(",")] if tags_raw else []
@@ -232,7 +232,7 @@ class ShopifyAPIClient:
             logger.error("get_products error: %s", exc)
             return []
 
-    async def update_product(self, product_id: str, updates: dict) -> Optional[ShopifyProduct]:
+    async def update_product(self, product_id: str, updates: dict) -> ShopifyProduct | None:
         try:
             data = await self._put(f"/products/{product_id}.json", body={"product": updates})
             if "error" in data or "product" not in data:
@@ -312,7 +312,8 @@ class ShopifyAPIClient:
                 created_str = raw.get("created_at", "")
                 # Parse ISO 8601 date cheaply
                 try:
-                    from datetime import datetime, timezone  # noqa: PLC0415
+                    from datetime import datetime  # noqa: PLC0415
+
                     dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
                     if dt.timestamp() >= cutoff_ts:
                         recent_orders.append(raw)
@@ -356,7 +357,9 @@ class ShopifyAPIClient:
 
     # ── GraphQL ───────────────────────────────────────────────────────────────
 
-    async def graphql_query(self, query: str, variables: dict = {}) -> dict:
+    async def graphql_query(self, query: str, variables: dict = None) -> dict:
+        if variables is None:
+            variables = {}
         return await self._post("/graphql.json", body={"query": query, "variables": variables})
 
     # ── SEO helpers ───────────────────────────────────────────────────────────

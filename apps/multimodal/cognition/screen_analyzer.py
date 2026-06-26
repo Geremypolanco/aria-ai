@@ -1,13 +1,13 @@
 """
 Screen and landing page analysis for conversion optimization.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.screen_analyzer")
 
@@ -55,7 +55,14 @@ class ScreenAnalyzer:
         try:
             lower = html_snippet.lower()
             # Heuristic CTA detection
-            cta_keywords = ["buy now", "get started", "sign up", "subscribe", "add to cart", "shop now"]
+            cta_keywords = [
+                "buy now",
+                "get started",
+                "sign up",
+                "subscribe",
+                "add to cart",
+                "shop now",
+            ]
             analysis.cta_count = sum(1 for kw in cta_keywords if kw in lower)
 
             # Trust signals
@@ -72,13 +79,16 @@ class ScreenAnalyzer:
             if analysis.cta_count == 0:
                 analysis.friction_points.append("No visible CTA")
 
-            analysis.conversion_score = min(1.0, round(
-                (analysis.cta_count * 0.2)
-                + (len(analysis.trust_signals) * 0.15)
-                - (len(analysis.friction_points) * 0.1)
-                + 0.3,
-                3,
-            ))
+            analysis.conversion_score = min(
+                1.0,
+                round(
+                    (analysis.cta_count * 0.2)
+                    + (len(analysis.trust_signals) * 0.15)
+                    - (len(analysis.friction_points) * 0.1)
+                    + 0.3,
+                    3,
+                ),
+            )
             analysis.seo_score = 0.6 if "<title>" in lower else 0.3
 
             if self._ai:
@@ -105,6 +115,7 @@ class ScreenAnalyzer:
     async def _fetch_html(self, url: str) -> str:
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=10.0) as client:
                 r = await client.get(url, headers={"User-Agent": "ARIA-Bot/1.0"})
                 return r.text[:5000]
@@ -129,7 +140,7 @@ class ScreenAnalyzer:
         return recs
 
 
-_screen_analyzer_instance: Optional[ScreenAnalyzer] = None
+_screen_analyzer_instance: ScreenAnalyzer | None = None
 
 
 def get_screen_analyzer() -> ScreenAnalyzer:

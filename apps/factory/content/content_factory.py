@@ -1,22 +1,22 @@
 """
 Industrial-scale content production factory.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _FACTORY_KEY = "factory:content:v1"
 _FACTORY_TTL = 86400 * 30
 
 
-class ProductionStatus(str, Enum):
+class ProductionStatus(StrEnum):
     QUEUED = "queued"
     PRODUCING = "producing"
     COMPLETE = "complete"
@@ -184,7 +184,7 @@ class ContentFactory:
         }
 
 
-_factory_instance: Optional[ContentFactory] = None
+_factory_instance: ContentFactory | None = None
 
 
 def get_content_factory() -> ContentFactory:

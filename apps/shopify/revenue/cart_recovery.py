@@ -2,16 +2,13 @@
 Abandoned cart recovery system — registers abandoned carts and generates
 multi-step email + SMS recovery sequences with progressive discounts.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
-
-from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +58,7 @@ class AbandonedCart:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "AbandonedCart":
+    def from_dict(cls, d: dict) -> AbandonedCart:
         return cls(**d)
 
 
@@ -164,7 +161,7 @@ class CartRecoveryEngine:
                 "step": 2,
                 "delay_hours": 24,
                 "discount_pct": 0.05,
-                "subject_template": f"Still thinking about it? Here's 5% off",
+                "subject_template": "Still thinking about it? Here's 5% off",
                 "body_template": (
                     f"Hi there,\n\nYour cart with {items_str} is still waiting. "
                     "As a thank you for your interest, we're offering you 5% off your order.\n\n"
@@ -175,7 +172,7 @@ class CartRecoveryEngine:
                 "step": 3,
                 "delay_hours": 72,
                 "discount_pct": 0.10,
-                "subject_template": f"Last chance — 10% off your cart",
+                "subject_template": "Last chance — 10% off your cart",
                 "body_template": (
                     f"Hi there,\n\nThis is your last chance to grab {items_str} at a discount. "
                     "We're offering 10% off — but this offer expires in 24 hours.\n\n"
@@ -189,7 +186,7 @@ class CartRecoveryEngine:
             body = tmpl["body_template"]
 
             try:
-                from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+                from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 
                 ai = get_ai_client()
                 if ai is not None:
@@ -212,7 +209,7 @@ class CartRecoveryEngine:
                     resp = await ai.complete(system, user, AIModel.CREATIVE, 250)
                     if resp and resp.success and resp.content:
                         lines = resp.content.strip().splitlines()
-                        ai_subject = ai_body_lines = None
+                        ai_subject = None
                         body_started = False
                         body_parts: list[str] = []
                         for line in lines:
@@ -232,12 +229,14 @@ class CartRecoveryEngine:
             except Exception:
                 logger.debug("AI email generation failed for step %s", tmpl["step"])
 
-            emails.append({
-                "subject": subject,
-                "body": body,
-                "delay_hours": tmpl["delay_hours"],
-                "discount_pct": tmpl["discount_pct"],
-            })
+            emails.append(
+                {
+                    "subject": subject,
+                    "body": body,
+                    "delay_hours": tmpl["delay_hours"],
+                    "discount_pct": tmpl["discount_pct"],
+                }
+            )
 
         return emails
 
@@ -253,7 +252,7 @@ class CartRecoveryEngine:
             fallback = f"Your cart ({value_str}) is waiting! Complete your order now: [link]"
 
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+            from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 
             ai = get_ai_client()
             if ai is not None:
@@ -293,7 +292,7 @@ class CartRecoveryEngine:
             if attempts >= 3:
                 continue
 
-            last_ts = cart.get("last_attempt_ts", 0.0)
+            cart.get("last_attempt_ts", 0.0)
             abandoned_at = cart.get("abandoned_at", now)
 
             if attempts == 0:
@@ -331,9 +330,7 @@ class CartRecoveryEngine:
         recovered = [c for c in self._carts if c.get("status") == "recovered"]
         recovery_rate = len(recovered) / max(total, 1)
         revenue_recovered = sum(c.get("cart_value", 0.0) for c in recovered)
-        avg_cart_value = (
-            sum(c.get("cart_value", 0.0) for c in self._carts) / max(total, 1)
-        )
+        avg_cart_value = sum(c.get("cart_value", 0.0) for c in self._carts) / max(total, 1)
         return {
             "total_abandoned": total,
             "recovered": len(recovered),
@@ -347,7 +344,7 @@ class CartRecoveryEngine:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_engine: Optional[CartRecoveryEngine] = None
+_engine: CartRecoveryEngine | None = None
 
 
 def get_cart_recovery_engine() -> CartRecoveryEngine:

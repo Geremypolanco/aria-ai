@@ -7,10 +7,10 @@ Requires: LEMONSQUEEZY_API_KEY and LEMONSQUEEZY_STORE_ID in Fly.io secrets.
 Get API key at: https://app.lemonsqueezy.com/settings/api
 Get Store ID at: https://app.lemonsqueezy.com/settings/general
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import httpx
 
@@ -25,8 +25,8 @@ class LemonSqueezyTools:
     """Create and manage digital products on LemonSqueezy."""
 
     def __init__(self) -> None:
-        self._http     = httpx.AsyncClient(timeout=20.0)
-        self._api_key  = getattr(settings, "LEMONSQUEEZY_API_KEY", None)
+        self._http = httpx.AsyncClient(timeout=20.0)
+        self._api_key = getattr(settings, "LEMONSQUEEZY_API_KEY", None)
         self._store_id = getattr(settings, "LEMONSQUEEZY_STORE_ID", None)
 
     def _configured(self) -> bool:
@@ -44,7 +44,7 @@ class LemonSqueezyTools:
         name: str,
         description: str,
         price_cents: int = 997,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
     ) -> dict:
         """
         Create a digital product on LemonSqueezy.
@@ -73,9 +73,7 @@ class LemonSqueezyTools:
                         "buy_now_url": None,
                     },
                     "relationships": {
-                        "store": {
-                            "data": {"type": "stores", "id": str(self._store_id)}
-                        }
+                        "store": {"data": {"type": "stores", "id": str(self._store_id)}}
                     },
                 }
             }
@@ -86,10 +84,13 @@ class LemonSqueezyTools:
                 headers=self._headers(),
             )
             if r.status_code not in (200, 201):
-                return {"success": False, "error": f"LemonSqueezy product error: HTTP {r.status_code}: {r.text[:200]}"}
+                return {
+                    "success": False,
+                    "error": f"LemonSqueezy product error: HTTP {r.status_code}: {r.text[:200]}",
+                }
 
             product_data = r.json().get("data", {})
-            product_id   = product_data.get("id", "")
+            product_id = product_data.get("id", "")
             product_attrs = product_data.get("attributes", {})
 
             # Step 2: Create a variant (required — price lives on variant)
@@ -104,9 +105,7 @@ class LemonSqueezyTools:
                         "status": "published",
                     },
                     "relationships": {
-                        "product": {
-                            "data": {"type": "products", "id": str(product_id)}
-                        }
+                        "product": {"data": {"type": "products", "id": str(product_id)}}
                     },
                 }
             }
@@ -120,9 +119,17 @@ class LemonSqueezyTools:
                 logger.warning("[LemonSqueezy] Variant creation: HTTP %d", r2.status_code)
 
             # Build checkout URL from store + product slug
-            store_url = product_attrs.get("buy_now_url") or f"https://app.lemonsqueezy.com/products/{product_id}"
+            store_url = (
+                product_attrs.get("buy_now_url")
+                or f"https://app.lemonsqueezy.com/products/{product_id}"
+            )
 
-            logger.info("[LemonSqueezy] Product created: '%s' | ID: %s | $%.2f", name, product_id, price_cents / 100)
+            logger.info(
+                "[LemonSqueezy] Product created: '%s' | ID: %s | $%.2f",
+                name,
+                product_id,
+                price_cents / 100,
+            )
             return {
                 "success": True,
                 "product_id": product_id,
@@ -164,9 +171,7 @@ class LemonSqueezyTools:
             )
             if r.status_code == 200:
                 orders = r.json().get("data", [])
-                total  = sum(
-                    o.get("attributes", {}).get("total", 0) for o in orders
-                )
+                total = sum(o.get("attributes", {}).get("total", 0) for o in orders)
                 return {
                     "total_orders": len(orders),
                     "total_revenue_usd": round(total / 100, 2),

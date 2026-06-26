@@ -5,6 +5,7 @@ Defines the shared state that flows through all LangGraph nodes.
 Uses Annotated with operator.add for list fields so partial updates
 append rather than replace.
 """
+
 from __future__ import annotations
 
 import operator

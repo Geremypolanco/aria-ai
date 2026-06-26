@@ -1,13 +1,13 @@
 """DistributionEngine — Multi-channel content adaptation and distribution."""
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "content:distribution:v1"
 _TTL = 86400 * 60
@@ -27,7 +27,7 @@ class DistributionJob:
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items()}
+        return dict(self.__dict__.items())
 
 
 class DistributionEngine:
@@ -59,9 +59,10 @@ class DistributionEngine:
             resp = await ai.complete(
                 system="Content adaptation expert.",
                 user=f"Adapt this content for {channel}. Type: {content_type}. Content: {content[:500]}. "
-                     f"For Twitter: thread of 3 tweets <280 chars each. For LinkedIn: professional post. "
-                     f"For Reddit: community-friendly. For Email: newsletter format.",
-                model=AIModel.CREATIVE, max_tokens=300,
+                f"For Twitter: thread of 3 tweets <280 chars each. For LinkedIn: professional post. "
+                f"For Reddit: community-friendly. For Email: newsletter format.",
+                model=AIModel.CREATIVE,
+                max_tokens=300,
             )
             if resp.success and resp.content:
                 return resp.content.strip()
@@ -76,17 +77,28 @@ class DistributionEngine:
         }
         return channel_formats.get(channel, content[:300])
 
-    async def prepare_distribution(self, content_title: str, content_body: str, content_type: str, channels: list) -> DistributionJob:
+    async def prepare_distribution(
+        self, content_title: str, content_body: str, content_type: str, channels: list
+    ) -> DistributionJob:
         await self._load()
         adaptations = {}
         for channel in channels:
             adaptations[channel] = await self.adapt_for_channel(content_body, channel, content_type)
-        reach_per_channel = {"twitter": 500, "linkedin": 800, "reddit": 1200, "email": 2000, "medium": 300}
+        reach_per_channel = {
+            "twitter": 500,
+            "linkedin": 800,
+            "reddit": 1200,
+            "email": 2000,
+            "medium": 300,
+        }
         reach = sum(reach_per_channel.get(c, 200) for c in channels)
         job = DistributionJob(
-            content_title=content_title, content_type=content_type,
-            content_body=content_body[:1000], channels=channels,
-            adaptations=adaptations, reach_estimate=reach,
+            content_title=content_title,
+            content_type=content_type,
+            content_body=content_body[:1000],
+            channels=channels,
+            adaptations=adaptations,
+            reach_estimate=reach,
         )
         self._jobs.append(job.to_dict())
         await self._save()
@@ -108,7 +120,11 @@ class DistributionEngine:
             if j.get("job_id") == job_id:
                 self._jobs[i]["status"] = "distributed"
                 await self._save()
-                return {"status": "distributed", "channels_reached": j.get("channels", []), "reach_estimate": j.get("reach_estimate", 0)}
+                return {
+                    "status": "distributed",
+                    "channels_reached": j.get("channels", []),
+                    "reach_estimate": j.get("reach_estimate", 0),
+                }
         return {"status": "not_found"}
 
     async def cross_post_strategy(self, niche: str, content_type: str) -> dict:
@@ -117,13 +133,24 @@ class DistributionEngine:
             resp = await ai.complete(
                 system="Content distribution strategist.",
                 user=f"Best channels for {content_type} in {niche}. Return primary_channel, channel_mix %, timing.",
-                model=AIModel.STRATEGY, max_tokens=200,
+                model=AIModel.STRATEGY,
+                max_tokens=200,
             )
             if resp.success and resp.content:
-                return {"primary_channel": "linkedin", "channel_mix": {"linkedin": 0.4, "twitter": 0.3, "email": 0.3}, "best_times": ["9am", "12pm", "5pm"], "reasoning": resp.content[:200]}
+                return {
+                    "primary_channel": "linkedin",
+                    "channel_mix": {"linkedin": 0.4, "twitter": 0.3, "email": 0.3},
+                    "best_times": ["9am", "12pm", "5pm"],
+                    "reasoning": resp.content[:200],
+                }
         except Exception:
             pass
-        return {"primary_channel": "linkedin", "channel_mix": {"linkedin": 0.4, "twitter": 0.3, "email": 0.3}, "best_times": ["9am", "12pm", "5pm"], "reasoning": f"Optimal mix for {niche} {content_type}"}
+        return {
+            "primary_channel": "linkedin",
+            "channel_mix": {"linkedin": 0.4, "twitter": 0.3, "email": 0.3},
+            "best_times": ["9am", "12pm", "5pm"],
+            "reasoning": f"Optimal mix for {niche} {content_type}",
+        }
 
     def distribution_stats(self) -> dict:
         by_channel: dict = {}
@@ -144,7 +171,7 @@ class DistributionEngine:
         return list(reversed(self._jobs[-limit:]))
 
 
-_instance: Optional[DistributionEngine] = None
+_instance: DistributionEngine | None = None
 
 
 def get_distribution_engine() -> DistributionEngine:

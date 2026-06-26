@@ -1,15 +1,15 @@
 """
 CTO Agent — Technology evaluation, architecture review, and engineering metrics.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "executive:cto:v1"
 _TTL = 90 * 24 * 3600  # 90 days
@@ -41,7 +41,7 @@ class TechDecision:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "TechDecision":
+    def from_dict(cls, data: dict) -> TechDecision:
         return cls(
             decision_id=data["decision_id"],
             title=data["title"],
@@ -73,7 +73,7 @@ class SystemHealth:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SystemHealth":
+    def from_dict(cls, data: dict) -> SystemHealth:
         return cls(
             component=data["component"],
             status=data.get("status", "healthy"),
@@ -103,9 +103,9 @@ class CTOAgent:
                 if isinstance(data, dict):
                     self._decisions = data.get("decisions", [])
                     self._health_checks = data.get("health_checks", [])
-                    self._tech_radar = data.get("tech_radar", {
-                        "adopt": [], "trial": [], "hold": [], "avoid": []
-                    })
+                    self._tech_radar = data.get(
+                        "tech_radar", {"adopt": [], "trial": [], "hold": [], "avoid": []}
+                    )
             except Exception:
                 pass
             self._loaded = True
@@ -215,6 +215,7 @@ class CTOAgent:
         if content:
             try:
                 import json
+
                 data = json.loads(content)
                 risks = data.get("risks", [])
                 recommendations = data.get("recommendations", [])
@@ -259,14 +260,8 @@ class CTOAgent:
         }
 
     def technical_debt_report(self) -> dict:
-        high_risk = [
-            d for d in self._decisions
-            if d.get("risk_level") == "high"
-        ]
-        high_complexity = [
-            d for d in self._decisions
-            if d.get("complexity") == "high"
-        ]
+        high_risk = [d for d in self._decisions if d.get("risk_level") == "high"]
+        high_complexity = [d for d in self._decisions if d.get("complexity") == "high"]
         return {
             "total_decisions": len(self._decisions),
             "high_risk_decisions": len(high_risk),
@@ -282,7 +277,8 @@ class CTOAgent:
         complexity_map = {"low": 1, "medium": 2, "high": 3}
         avg_complexity = (
             sum(complexity_map.get(d.complexity, 2) for d in decisions) / len(decisions)
-            if decisions else 0.0
+            if decisions
+            else 0.0
         )
         high_risk_count = sum(1 for d in decisions if d.risk_level == "high")
         return {
@@ -292,7 +288,7 @@ class CTOAgent:
         }
 
 
-_instance: Optional[CTOAgent] = None
+_instance: CTOAgent | None = None
 
 
 def get_cto_agent() -> CTOAgent:

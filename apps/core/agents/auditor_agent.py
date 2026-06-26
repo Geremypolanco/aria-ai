@@ -5,12 +5,13 @@ Actúa como tech lead senior de Google/Anthropic: criterioso, directo, sin conte
 Detecta errores, gaps lógicos y problemas de calidad ANTES de que lleguen a producción.
 Siempre responde en JSON estructurado.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from apps.core.agents.base_agent import BaseAgent
 from apps.core.tools.ai_client import AIModel
@@ -27,17 +28,17 @@ _SYSTEM_PROMPT = (
 
 @dataclass
 class AuditIssue:
-    severity: str   # "critical" | "high" | "medium" | "low"
-    category: str   # e.g. "security", "logic", "performance", "completeness"
+    severity: str  # "critical" | "high" | "medium" | "low"
+    category: str  # e.g. "security", "logic", "performance", "completeness"
     description: str
     fix: str
 
 
 @dataclass
 class AuditResult:
-    score: int                              # 0-100
+    score: int  # 0-100
     passed: bool
-    verdict: str                            # "PASS" | "WARN" | "FAIL"
+    verdict: str  # "PASS" | "WARN" | "FAIL"
     issues: list[AuditIssue] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
     reasoning: str = ""
@@ -119,7 +120,11 @@ class AuditorAgent(BaseAgent):
         Revisa trabajo completado.
         Detecta: tarea incompleta, baja calidad, imprecisiones, partes faltantes.
         """
-        output_str = json.dumps(output, ensure_ascii=False, default=str) if not isinstance(output, str) else output
+        output_str = (
+            json.dumps(output, ensure_ascii=False, default=str)
+            if not isinstance(output, str)
+            else output
+        )
         plan_section = f"\nPLAN ORIGINAL:\n{original_plan}\n" if original_plan else ""
 
         user_prompt = (
@@ -192,9 +197,7 @@ class AuditorAgent(BaseAgent):
             cleaned = response.strip()
             if cleaned.startswith("```"):
                 lines = cleaned.splitlines()
-                cleaned = "\n".join(
-                    line for line in lines if not line.startswith("```")
-                ).strip()
+                cleaned = "\n".join(line for line in lines if not line.startswith("```")).strip()
 
             data = json.loads(cleaned)
 

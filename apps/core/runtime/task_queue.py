@@ -15,19 +15,24 @@ Why Redis Streams vs Celery:
   - Persistent log — tasks survives broker restart
   - Simpler ops — one fewer service to manage on Fly.io
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
 import uuid
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Callable, Optional
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 from apps.core.memory.redis_client import get_cache
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger("aria.task_queue")
 
@@ -41,19 +46,19 @@ CONSUMER_NAME = "aria-worker-1"
 BLOCK_MS = 2000  # stream read block timeout
 
 
-class TaskPriority(str, Enum):
+class TaskPriority(StrEnum):
     CRITICAL = "critical"
     HIGH = "high"
     NORMAL = "normal"
     LOW = "low"
 
 
-class TaskState(str, Enum):
+class TaskState(StrEnum):
     QUEUED = "queued"
     PROCESSING = "processing"
     DONE = "done"
     FAILED = "failed"
-    DEAD = "dead"          # exhausted retries → DLQ
+    DEAD = "dead"  # exhausted retries → DLQ
 
 
 @dataclass
@@ -65,16 +70,16 @@ class Task:
     state: TaskState = TaskState.QUEUED
     attempts: int = 0
     created_at: str = ""
-    started_at: Optional[str] = None
-    finished_at: Optional[str] = None
-    result: Optional[dict] = None
-    error: Optional[str] = None
-    scheduled_for: Optional[str] = None  # ISO timestamp for deferred tasks
+    started_at: str | None = None
+    finished_at: str | None = None
+    result: dict | None = None
+    error: str | None = None
+    scheduled_for: str | None = None  # ISO timestamp for deferred tasks
     metadata: dict[str, Any] = None
 
     def __post_init__(self):
         if not self.created_at:
-            self.created_at = datetime.now(timezone.utc).isoformat()
+            self.created_at = datetime.now(UTC).isoformat()
         if self.metadata is None:
             self.metadata = {}
 
@@ -85,7 +90,7 @@ class Task:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Task":
+    def from_dict(cls, d: dict) -> Task:
         d = dict(d)
         d["priority"] = TaskPriority(d.get("priority", "normal"))
         d["state"] = TaskState(d.get("state", "queued"))
@@ -120,9 +125,8 @@ class TaskQueue:
     def __init__(self) -> None:
         self._handlers: dict[str, Callable] = {}
         self._running = False
-        self._worker_task: Optional[asyncio.Task] = None
-        self._stats = {p.value: {"enqueued": 0, "processed": 0, "failed": 0}
-                       for p in TaskPriority}
+        self._worker_task: asyncio.Task | None = None
+        self._stats = {p.value: {"enqueued": 0, "processed": 0, "failed": 0} for p in TaskPriority}
 
     # ── Publishing ───────────────────────────────────────────────────────
 
@@ -159,10 +163,12 @@ class TaskQueue:
 
     def handler(self, task_name: str):
         """Decorator to register a task handler."""
+
         def decorator(fn: Callable):
             self._handlers[task_name] = fn
             logger.debug("[TaskQueue] Registered handler for '%s'", task_name)
             return fn
+
         return decorator
 
     def register(self, task_name: str, fn: Callable) -> None:
@@ -185,10 +191,8 @@ class TaskQueue:
         self._running = False
         if self._worker_task:
             self._worker_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._worker_task
-            except asyncio.CancelledError:
-                pass
         logger.info("[TaskQueue] Worker stopped")
 
     async def _worker_loop(self, priorities: list[TaskPriority]) -> None:
@@ -230,7 +234,7 @@ class TaskQueue:
             return
 
         task.state = TaskState.PROCESSING
-        task.started_at = datetime.now(timezone.utc).isoformat()
+        task.started_at = datetime.now(UTC).isoformat()
         task.attempts += 1
 
         handler = self._handlers.get(task.name)
@@ -248,13 +252,13 @@ class TaskQueue:
 
             task.state = TaskState.DONE
             task.result = result if isinstance(result, dict) else {"output": str(result)}
-            task.finished_at = datetime.now(timezone.utc).isoformat()
+            task.finished_at = datetime.now(UTC).isoformat()
             task.metadata["elapsed_ms"] = elapsed_ms
 
             self._stats[task.priority.value]["processed"] += 1
             logger.info("[TaskQueue] Task %s:%s done in %dms", task.name, task.id, elapsed_ms)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             task.error = "Task timed out after 300s"
             await self._handle_failure(task, cache)
         except Exception as exc:
@@ -269,12 +273,16 @@ class TaskQueue:
         if task.attempts >= MAX_ATTEMPTS:
             task.state = TaskState.DEAD
             await self._write_to_dlq(task)
-            logger.error("[TaskQueue] Task %s:%s moved to DLQ after %d attempts",
-                         task.name, task.id, task.attempts)
+            logger.error(
+                "[TaskQueue] Task %s:%s moved to DLQ after %d attempts",
+                task.name,
+                task.id,
+                task.attempts,
+            )
         else:
             task.state = TaskState.QUEUED
             # Re-enqueue with backoff delay (fire and forget)
-            backoff = 2 ** task.attempts
+            backoff = 2**task.attempts
             asyncio.create_task(self._delayed_requeue(task, backoff))
 
         await self._store_result(cache, task)
@@ -285,12 +293,16 @@ class TaskQueue:
 
     # ── Results ──────────────────────────────────────────────────────────
 
-    async def get_result(self, task_id: str, timeout: float = 30) -> Optional[dict]:
+    async def get_result(self, task_id: str, timeout: float = 30) -> dict | None:
         """Poll for task result until done or timeout."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             result = await self._load_result(task_id)
-            if result and result.get("state") in (TaskState.DONE.value, TaskState.FAILED.value, TaskState.DEAD.value):
+            if result and result.get("state") in (
+                TaskState.DONE.value,
+                TaskState.FAILED.value,
+                TaskState.DEAD.value,
+            ):
                 return result
             await asyncio.sleep(0.5)
         return None
@@ -302,7 +314,7 @@ class TaskQueue:
         except Exception as exc:
             logger.debug("[TaskQueue] Cannot store result for %s: %s", task.id, exc)
 
-    async def _load_result(self, task_id: str) -> Optional[dict]:
+    async def _load_result(self, task_id: str) -> dict | None:
         try:
             cache = get_cache()
             if cache:
@@ -371,7 +383,7 @@ class TaskQueue:
         return depths
 
 
-_queue: Optional[TaskQueue] = None
+_queue: TaskQueue | None = None
 
 
 def get_task_queue() -> TaskQueue:

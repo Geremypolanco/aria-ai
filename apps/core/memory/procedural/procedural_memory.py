@@ -21,15 +21,15 @@ Without procedural memory:
   - Successful patterns are lost between sessions
   - ARIA cannot improve systematically
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import time
 import uuid
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from typing import Any, Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.memory.procedural")
 
@@ -41,7 +41,7 @@ MIN_EXECUTIONS_TO_TRUST = 3
 @dataclass
 class ProcedureStep:
     step: int
-    action: str                  # tool name or action description
+    action: str  # tool name or action description
     args: dict[str, Any]
     expected_output: str
     failure_count: int = 0
@@ -58,18 +58,18 @@ class ProcedureStep:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ProcedureStep":
+    def from_dict(cls, d: dict) -> ProcedureStep:
         return cls(**d)
 
 
 @dataclass
 class Procedure:
     id: str
-    name: str                          # human-readable: "publish_blog_post"
-    goal_pattern: str                  # trigger: "publish.*blog|write.*article"
+    name: str  # human-readable: "publish_blog_post"
+    goal_pattern: str  # trigger: "publish.*blog|write.*article"
     steps: list[ProcedureStep]
     created_at: str
-    last_used: Optional[str] = None
+    last_used: str | None = None
     execution_count: int = 0
     success_count: int = 0
     total_revenue_generated: float = 0.0
@@ -87,7 +87,9 @@ class Procedure:
 
     @property
     def avg_revenue_per_run(self) -> float:
-        return self.total_revenue_generated / self.execution_count if self.execution_count > 0 else 0.0
+        return (
+            self.total_revenue_generated / self.execution_count if self.execution_count > 0 else 0.0
+        )
 
     def utility_score(self) -> float:
         """Composite score for procedure selection: success × revenue × recency."""
@@ -95,7 +97,7 @@ class Procedure:
         revenue_factor = min(1.0, self.avg_revenue_per_run / 100.0)  # normalize at $100
         return self.success_rate * (0.6 + 0.3 * revenue_factor + 0.1 * recency)
 
-    def weakest_step(self) -> Optional[ProcedureStep]:
+    def weakest_step(self) -> ProcedureStep | None:
         if not self.steps:
             return None
         return min(self.steps, key=lambda s: s.success_rate)
@@ -105,7 +107,7 @@ class Procedure:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Procedure":
+    def from_dict(cls, d: dict) -> Procedure:
         d = dict(d)
         d["steps"] = [ProcedureStep.from_dict(s) for s in d.get("steps", [])]
         return cls(**d)
@@ -152,7 +154,7 @@ class ProceduralMemory:
         tags: list[str] | None = None,
     ) -> str:
         proc_id = f"proc_{uuid.uuid4().hex[:10]}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         proc = Procedure(
             id=proc_id,
             name=name,
@@ -181,7 +183,7 @@ class ProceduralMemory:
         self,
         goal: str,
         require_trusted: bool = False,
-    ) -> Optional[Procedure]:
+    ) -> Procedure | None:
         """Return best procedure matching the goal description."""
         await self._lazy_load()
         candidates = self._find_matching(goal)
@@ -191,7 +193,7 @@ class ProceduralMemory:
             return None
         return max(candidates, key=lambda p: p.utility_score())
 
-    async def retrieve_by_id(self, proc_id: str) -> Optional[Procedure]:
+    async def retrieve_by_id(self, proc_id: str) -> Procedure | None:
         await self._lazy_load()
         return self._procedures.get(proc_id)
 
@@ -204,6 +206,7 @@ class ProceduralMemory:
 
     def _find_matching(self, goal: str) -> list[Procedure]:
         import re
+
         goal_lower = goal.lower()
         matches = []
         for proc in self._procedures.values():
@@ -231,7 +234,7 @@ class ProceduralMemory:
             return
 
         proc.execution_count += 1
-        proc.last_used = datetime.now(timezone.utc).isoformat()
+        proc.last_used = datetime.now(UTC).isoformat()
         if success:
             proc.success_count += 1
         proc.total_revenue_generated += revenue
@@ -246,7 +249,9 @@ class ProceduralMemory:
             proc.steps[failed_step].failure_count += 1
             logger.warning(
                 "[ProceduralMem] Step %d of '%s' failed — success rate now %.0f%%",
-                failed_step, proc.name, proc.steps[failed_step].success_rate * 100,
+                failed_step,
+                proc.name,
+                proc.steps[failed_step].success_rate * 100,
             )
         elif success:
             for step in proc.steps:
@@ -254,9 +259,7 @@ class ProceduralMemory:
 
         await self._persist(proc)
 
-    async def reinforce_step(
-        self, proc_id: str, step_idx: int, duration_ms: float = 0.0
-    ) -> None:
+    async def reinforce_step(self, proc_id: str, step_idx: int, duration_ms: float = 0.0) -> None:
         proc = self._procedures.get(proc_id)
         if proc and 0 <= step_idx < len(proc.steps):
             proc.steps[step_idx].success_count += 1
@@ -272,7 +275,8 @@ class ProceduralMemory:
     async def prune_failing_procedures(self, min_success_rate: float = 0.2) -> int:
         """Remove procedures that consistently fail below threshold."""
         to_remove = [
-            pid for pid, proc in self._procedures.items()
+            pid
+            for pid, proc in self._procedures.items()
             if proc.execution_count >= MIN_EXECUTIONS_TO_TRUST
             and proc.success_rate < min_success_rate
         ]
@@ -286,9 +290,7 @@ class ProceduralMemory:
         return {
             "total_procedures": len(procs),
             "trusted": sum(1 for p in procs if p.is_trusted),
-            "avg_success_rate": (
-                sum(p.success_rate for p in procs) / len(procs) if procs else 0.0
-            ),
+            "avg_success_rate": (sum(p.success_rate for p in procs) / len(procs) if procs else 0.0),
             "total_executions": sum(p.execution_count for p in procs),
             "total_revenue": sum(p.total_revenue_generated for p in procs),
         }
@@ -298,6 +300,7 @@ class ProceduralMemory:
     async def _persist(self, proc: Procedure) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 await cache.set(
@@ -315,7 +318,7 @@ class ProceduralMemory:
         logger.debug("[ProceduralMem] Initialized")
 
 
-_memory: Optional[ProceduralMemory] = None
+_memory: ProceduralMemory | None = None
 
 
 def get_procedural_memory() -> ProceduralMemory:

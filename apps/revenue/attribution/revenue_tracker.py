@@ -1,13 +1,13 @@
 """
 Revenue attribution and conversion tracking across channels.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -15,7 +15,7 @@ _TRACKER_KEY = "revenue:tracker:v1"
 _TRACKER_TTL = 86400 * 90
 
 
-class AttributionModel(str, Enum):
+class AttributionModel(StrEnum):
     LAST_TOUCH = "last_touch"
     FIRST_TOUCH = "first_touch"
     LINEAR = "linear"
@@ -98,7 +98,7 @@ class RevenueTracker:
         customer_id: str,
         channel: str,
         amount_usd: float,
-        touchpoints: Optional[list[str]] = None,
+        touchpoints: list[str] | None = None,
         product_id: str = "",
         campaign_id: str = "",
     ) -> ConversionEvent:
@@ -136,13 +136,15 @@ class RevenueTracker:
         result = []
         for ch, data in by_channel.items():
             count = max(data["count"], 1)
-            result.append(ChannelAttribution(
-                channel=ch,
-                attributed_revenue=data["revenue"],
-                conversion_count=data["count"],
-                avg_order_value=data["revenue"] / count,
-                attribution_model=model.value,
-            ))
+            result.append(
+                ChannelAttribution(
+                    channel=ch,
+                    attributed_revenue=data["revenue"],
+                    conversion_count=data["count"],
+                    avg_order_value=data["revenue"] / count,
+                    attribution_model=model.value,
+                )
+            )
         result.sort(key=lambda r: r.attributed_revenue, reverse=True)
         return result
 
@@ -164,7 +166,7 @@ class RevenueTracker:
             return credit
         # TIME_DECAY: later touchpoints get more credit
         n = len(touchpoints)
-        weights = [2 ** i for i in range(n)]
+        weights = [2**i for i in range(n)]
         total_w = sum(weights)
         credit = {}
         for i, tp in enumerate(touchpoints):
@@ -200,7 +202,7 @@ class RevenueTracker:
         }
 
 
-_tracker_instance: Optional[RevenueTracker] = None
+_tracker_instance: RevenueTracker | None = None
 
 
 def get_revenue_tracker() -> RevenueTracker:

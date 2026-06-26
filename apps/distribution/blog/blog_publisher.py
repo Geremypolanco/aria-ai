@@ -3,16 +3,16 @@ ARIA AI — SEO Blog Publisher
 Phase 13: Automated SEO blog post creation, optimization, and multi-platform distribution.
 Drives organic traffic through keyword-targeted long-form content.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.distribution.blog")
 
@@ -86,7 +86,9 @@ class BlogPublisher:
     def _make_slug(self, title: str) -> str:
         return title.lower().replace(" ", "-").replace("'", "")[:60]
 
-    def _build_fallback_post(self, topic: str, target_keyword: str, word_target: int) -> tuple[str, str]:
+    def _build_fallback_post(
+        self, topic: str, target_keyword: str, word_target: int
+    ) -> tuple[str, str]:
         title = f"The Complete Guide to {topic}: Everything You Need to Know"
         body = (
             f"# {title}\n\n"
@@ -234,11 +236,13 @@ class BlogPublisher:
                             raw = line[7:].strip()
                             key_points = [p.strip() for p in raw.split("|") if p.strip()]
                     if heading:
-                        outline.append({
-                            "heading": heading,
-                            "word_target": word_target,
-                            "key_points": key_points,
-                        })
+                        outline.append(
+                            {
+                                "heading": heading,
+                                "word_target": word_target,
+                                "key_points": key_points,
+                            }
+                        )
                     if len(outline) >= num_sections:
                         break
         except Exception as exc:
@@ -250,7 +254,7 @@ class BlogPublisher:
                 f"Why {keyword} Matters",
                 f"How to Get Started with {topic}",
                 f"Best Practices for {keyword}",
-                f"Common Mistakes to Avoid",
+                "Common Mistakes to Avoid",
             ]
             outline = [
                 {"heading": h, "word_target": 200, "key_points": [f"Key insight about {h}"]}
@@ -290,14 +294,18 @@ class BlogPublisher:
                 body_idx = content.upper().find("BODY:")
 
                 if meta_idx != -1:
-                    end = links_idx if links_idx != -1 else (body_idx if body_idx != -1 else len(content))
-                    optimized_meta_desc = content[meta_idx + 5:end].strip()[:155]
+                    end = (
+                        links_idx
+                        if links_idx != -1
+                        else (body_idx if body_idx != -1 else len(content))
+                    )
+                    optimized_meta_desc = content[meta_idx + 5 : end].strip()[:155]
                 if links_idx != -1:
                     end = body_idx if body_idx != -1 else len(content)
-                    raw_links = content[links_idx + 15:end].strip()
+                    raw_links = content[links_idx + 15 : end].strip()
                     internal_links = [l.strip() for l in raw_links.split("|") if l.strip()][:3]
                 if body_idx != -1:
-                    optimized_body = content[body_idx + 5:].strip()
+                    optimized_body = content[body_idx + 5 :].strip()
         except Exception as exc:
             logger.warning("BlogPublisher.optimize_for_seo AI call failed: %s", exc)
 
@@ -367,10 +375,16 @@ class BlogPublisher:
                             entry["keyword"] = line[8:].strip()
                         elif line.upper().startswith("INTENT:"):
                             raw = line[7:].strip().lower()
-                            entry["search_intent"] = raw if raw in {"informational", "commercial", "transactional"} else "informational"
+                            entry["search_intent"] = (
+                                raw
+                                if raw in {"informational", "commercial", "transactional"}
+                                else "informational"
+                            )
                         elif line.upper().startswith("DIFFICULTY:"):
                             raw = line[11:].strip().lower()
-                            entry["difficulty"] = raw if raw in {"low", "medium", "high"} else "medium"
+                            entry["difficulty"] = (
+                                raw if raw in {"low", "medium", "high"} else "medium"
+                            )
                     if entry.get("title") and entry.get("keyword"):
                         cluster.append(entry)
                     if len(cluster) >= num_posts:
@@ -379,15 +393,23 @@ class BlogPublisher:
             logger.warning("BlogPublisher.generate_topic_cluster AI call failed: %s", exc)
 
         if not cluster:
-            intents = ["informational", "commercial", "informational", "transactional", "informational"]
+            intents = [
+                "informational",
+                "commercial",
+                "informational",
+                "transactional",
+                "informational",
+            ]
             difficulties = ["low", "medium", "low", "medium", "high"]
             for i in range(num_posts):
-                cluster.append({
-                    "title": f"Complete Guide to {pillar_topic} — Part {i + 1}",
-                    "keyword": f"{pillar_topic} guide {i + 1}",
-                    "search_intent": intents[i % len(intents)],
-                    "difficulty": difficulties[i % len(difficulties)],
-                })
+                cluster.append(
+                    {
+                        "title": f"Complete Guide to {pillar_topic} — Part {i + 1}",
+                        "keyword": f"{pillar_topic} guide {i + 1}",
+                        "search_intent": intents[i % len(intents)],
+                        "difficulty": difficulties[i % len(difficulties)],
+                    }
+                )
 
         return cluster[:num_posts]
 
@@ -415,7 +437,7 @@ class BlogPublisher:
         return self._posts[-limit:]
 
 
-_instance: Optional[BlogPublisher] = None
+_instance: BlogPublisher | None = None
 
 
 def get_blog_publisher() -> BlogPublisher:

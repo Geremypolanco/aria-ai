@@ -1,15 +1,15 @@
 """
 CEO Agent — Strategic decision-making, growth targets, and vision.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "executive:ceo:v1"
 _TTL = 90 * 24 * 3600  # 90 days
@@ -43,7 +43,7 @@ class StrategicDecision:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "StrategicDecision":
+    def from_dict(cls, data: dict) -> StrategicDecision:
         return cls(
             decision_id=data["decision_id"],
             title=data["title"],
@@ -78,7 +78,7 @@ class GrowthTarget:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "GrowthTarget":
+    def from_dict(cls, data: dict) -> GrowthTarget:
         return cls(
             target_id=data["target_id"],
             metric=data["metric"],
@@ -138,9 +138,7 @@ class CEOAgent:
         await self._save()
         return gt
 
-    async def make_strategic_decision(
-        self, context: dict, options: list[str]
-    ) -> StrategicDecision:
+    async def make_strategic_decision(self, context: dict, options: list[str]) -> StrategicDecision:
         await self._load()
         options_text = "\n".join(f"{i+1}. {o}" for i, o in enumerate(options))
         context_text = "; ".join(f"{k}: {v}" for k, v in context.items())
@@ -179,10 +177,14 @@ class CEOAgent:
                         priority = max(1, min(10, priority))
                     elif part.startswith("REVENUE_IMPACT:"):
                         val = part.split("REVENUE_IMPACT:")[-1].strip()
-                        revenue_impact = float("".join(c for c in val if c.isdigit() or c == ".") or "1000")
+                        revenue_impact = float(
+                            "".join(c for c in val if c.isdigit() or c == ".") or "1000"
+                        )
                     elif part.startswith("EFFORT_HOURS:"):
                         val = part.split("EFFORT_HOURS:")[-1].strip()
-                        effort_hours = float("".join(c for c in val if c.isdigit() or c == ".") or "10")
+                        effort_hours = float(
+                            "".join(c for c in val if c.isdigit() or c == ".") or "10"
+                        )
             except Exception:
                 pass
 
@@ -236,12 +238,14 @@ class CEOAgent:
 
         result = []
         for rank, dept in enumerate(dept_names, 1):
-            result.append({
-                "rank": rank,
-                "department": dept,
-                "metrics": department_metrics.get(dept, {}),
-                "priority_score": round(10 - (rank - 1) * (10 / max(len(dept_names), 1)), 1),
-            })
+            result.append(
+                {
+                    "rank": rank,
+                    "department": dept,
+                    "metrics": department_metrics.get(dept, {}),
+                    "priority_score": round(10 - (rank - 1) * (10 / max(len(dept_names), 1)), 1),
+                }
+            )
         return result
 
     async def weekly_vision_statement(self, niche: str) -> str:
@@ -255,7 +259,11 @@ class CEOAgent:
             model=AIModel.CREATIVE,
             max_tokens=200,
         )
-        return resp.content if resp.success else f"This week we dominate {niche} through relentless execution."
+        return (
+            resp.content
+            if resp.success
+            else f"This week we dominate {niche} through relentless execution."
+        )
 
     def active_targets(self) -> list[dict]:
         return [t for t in self._targets if t.get("status") == "active"]
@@ -266,9 +274,7 @@ class CEOAgent:
     def strategic_summary(self) -> dict:
         decisions = [StrategicDecision.from_dict(d) for d in self._decisions]
         approved = [d for d in decisions if d.approved]
-        avg_roi = (
-            sum(d.roi_score for d in decisions) / len(decisions) if decisions else 0.0
-        )
+        avg_roi = sum(d.roi_score for d in decisions) / len(decisions) if decisions else 0.0
         return {
             "total_decisions": len(decisions),
             "approved_ratio": round(len(approved) / max(len(decisions), 1), 2),
@@ -277,7 +283,7 @@ class CEOAgent:
         }
 
 
-_instance: Optional[CEOAgent] = None
+_instance: CEOAgent | None = None
 
 
 def get_ceo_agent() -> CEOAgent:

@@ -3,16 +3,16 @@ ARIA AI — TikTok/Reels/Shorts Content Engine
 Phase 13: Viral short-form video scripts for maximum reach and engagement.
 Covers TikTok, Instagram Reels, YouTube Shorts.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.distribution.tiktok")
 
@@ -99,7 +99,9 @@ class TikTokEngine:
         except Exception as exc:
             logger.warning("TikTokEngine._save failed: %s", exc)
 
-    def _build_fallback_script(self, topic: str, niche: str, platform: str) -> tuple[str, str, str, list, str]:
+    def _build_fallback_script(
+        self, topic: str, niche: str, platform: str
+    ) -> tuple[str, str, str, list, str]:
         hook = f"Wait — you NEED to hear this about {topic}"
         main_content = (
             f"Here's what nobody tells you about {topic} in the {niche} space.\n\n"
@@ -109,7 +111,13 @@ class TikTokEngine:
             f"I spent months learning this so you don't have to."
         )
         cta = f"Follow for more {niche} tips. Drop a comment if this helped!"
-        hashtags = [f"#{niche.replace(' ', '')}", f"#{topic.replace(' ', '')}", "#viral", "#tips", "#fyp"]
+        hashtags = [
+            f"#{niche.replace(' ', '')}",
+            f"#{topic.replace(' ', '')}",
+            "#viral",
+            "#tips",
+            "#fyp",
+        ]
         sound_suggestion = "trending pop"
         return hook, main_content, cta, hashtags, sound_suggestion
 
@@ -185,7 +193,11 @@ class TikTokEngine:
                 main_content = sections.get("MAIN", "").strip()
                 cta = sections.get("CTA", "").strip()
                 raw_tags = sections.get("HASHTAGS", "")
-                hashtags = [t.strip() for t in raw_tags.replace(",", " ").split() if t.strip().startswith("#")][:7]
+                hashtags = [
+                    t.strip()
+                    for t in raw_tags.replace(",", " ").split()
+                    if t.strip().startswith("#")
+                ][:7]
                 sound_suggestion = sections.get("SOUND", "trending pop").strip() or "trending pop"
 
                 if not hook and lines:
@@ -194,10 +206,18 @@ class TikTokEngine:
             logger.warning("TikTokEngine.generate_script AI call failed: %s", exc)
 
         if not hook:
-            hook, main_content, cta, hashtags, sound_suggestion = self._build_fallback_script(topic, niche, platform)
+            hook, main_content, cta, hashtags, sound_suggestion = self._build_fallback_script(
+                topic, niche, platform
+            )
 
         if not hashtags:
-            hashtags = [f"#{niche.replace(' ', '')}", f"#{topic.replace(' ', '')}", "#viral", "#fyp", "#trending"]
+            hashtags = [
+                f"#{niche.replace(' ', '')}",
+                f"#{topic.replace(' ', '')}",
+                "#viral",
+                "#fyp",
+                "#trending",
+            ]
 
         hook_words = hook.split()
         viral_potential = round(min(0.4 + len(hook_words) / 20, 0.95), 3)
@@ -262,17 +282,19 @@ class TikTokEngine:
                             candidate = line[1:end].lower()
                             if candidate in hook_types:
                                 hook_type = candidate
-                            hook_text = line[end + 1:].strip()
+                            hook_text = line[end + 1 :].strip()
                     words = hook_text.split()
                     if not hook_text or len(words) > 20:
                         continue
                     viral_score = round(min(0.5 + len(words) / 30, 0.95), 3)
-                    hooks.append(TrendHook(
-                        hook_text=hook_text,
-                        niche=niche,
-                        hook_type=hook_type,
-                        viral_score=viral_score,
-                    ))
+                    hooks.append(
+                        TrendHook(
+                            hook_text=hook_text,
+                            niche=niche,
+                            hook_type=hook_type,
+                            viral_score=viral_score,
+                        )
+                    )
                     if len(hooks) >= count:
                         break
         except Exception as exc:
@@ -281,18 +303,23 @@ class TikTokEngine:
         if not hooks:
             templates = [
                 ("curiosity", f"Nobody's talking about this {niche} secret and it's wild"),
-                ("shock", f"I tried every {niche} hack so you don't have to — here's what happened"),
+                (
+                    "shock",
+                    f"I tried every {niche} hack so you don't have to — here's what happened",
+                ),
                 ("relatability", f"POV: you're just starting out in {niche} and overwhelmed"),
                 ("value", f"3 {niche} tips that changed everything for me"),
                 ("controversy", f"Unpopular opinion: most {niche} advice is completely wrong"),
             ]
             for hook_type, text in templates[:count]:
-                hooks.append(TrendHook(
-                    hook_text=text,
-                    niche=niche,
-                    hook_type=hook_type,
-                    viral_score=round(0.6 + len(hooks) * 0.05, 3),
-                ))
+                hooks.append(
+                    TrendHook(
+                        hook_text=text,
+                        niche=niche,
+                        hook_type=hook_type,
+                        viral_score=round(0.6 + len(hooks) * 0.05, 3),
+                    )
+                )
 
         return hooks[:count]
 
@@ -329,7 +356,9 @@ class TikTokEngine:
             "shorts": "YouTube Shorts: educational tone, value-first, searchable hashtags",
             "tiktok": "TikTok: raw and authentic, trending audio, 5-7 hashtags",
         }
-        note = platform_notes.get(target_platform, f"{target_platform}: adapt tone and hashtags appropriately")
+        note = platform_notes.get(
+            target_platform, f"{target_platform}: adapt tone and hashtags appropriately"
+        )
 
         new_hook = script.hook
         new_main = script.main_content
@@ -358,8 +387,13 @@ class TikTokEngine:
             )
             if resp.success and resp.content:
                 content = resp.content
-                for label, attr in [("HOOK:", "hook"), ("MAIN:", "main"), ("CTA:", "cta"),
-                                    ("HASHTAGS:", "hashtags"), ("SOUND:", "sound")]:
+                for label, attr in [
+                    ("HOOK:", "hook"),
+                    ("MAIN:", "main"),
+                    ("CTA:", "cta"),
+                    ("HASHTAGS:", "hashtags"),
+                    ("SOUND:", "sound"),
+                ]:
                     idx = content.upper().find(label)
                     if idx != -1:
                         end = len(content)
@@ -367,7 +401,7 @@ class TikTokEngine:
                             o_idx = content.upper().find(other, idx + 1)
                             if o_idx != -1 and o_idx < end:
                                 end = o_idx
-                        val = content[idx + len(label):end].strip().strip("|").strip()
+                        val = content[idx + len(label) : end].strip().strip("|").strip()
                         if attr == "hook":
                             new_hook = val
                         elif attr == "main":
@@ -375,7 +409,11 @@ class TikTokEngine:
                         elif attr == "cta":
                             new_cta = val
                         elif attr == "hashtags":
-                            new_hashtags = [t.strip() for t in val.replace(",", " ").split() if t.startswith("#")][:7]
+                            new_hashtags = [
+                                t.strip()
+                                for t in val.replace(",", " ").split()
+                                if t.startswith("#")
+                            ][:7]
                         elif attr == "sound":
                             new_sound = val
         except Exception as exc:
@@ -425,7 +463,7 @@ class TikTokEngine:
         return self._scripts[-limit:]
 
 
-_instance: Optional[TikTokEngine] = None
+_instance: TikTokEngine | None = None
 
 
 def get_tiktok_engine() -> TikTokEngine:

@@ -10,11 +10,12 @@ Used for:
 - Schema enforcement without Pydantic overhead
 - Budget / capability guardrails
 """
+
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 class ConstraintViolation(Exception):
@@ -34,7 +35,7 @@ class ConstraintResult:
             msg = "; ".join(v["message"] for v in self.violations)
             raise ConstraintViolation("composite", msg)
 
-    def merge(self, other: "ConstraintResult") -> "ConstraintResult":
+    def merge(self, other: ConstraintResult) -> ConstraintResult:
         return ConstraintResult(
             valid=self.valid and other.valid,
             violations=self.violations + other.violations,
@@ -43,57 +44,106 @@ class ConstraintResult:
 
 # ── Primitive validators ──────────────────────────────────────────────────────
 
-def require_str(value: Any, field_name: str, min_len: int = 1, max_len: int = 10_000) -> ConstraintResult:
+
+def require_str(
+    value: Any, field_name: str, min_len: int = 1, max_len: int = 10_000
+) -> ConstraintResult:
     if not isinstance(value, str):
-        return ConstraintResult(False, [{"field": field_name, "message": f"{field_name} must be a string"}])
+        return ConstraintResult(
+            False, [{"field": field_name, "message": f"{field_name} must be a string"}]
+        )
     if len(value) < min_len:
-        return ConstraintResult(False, [{"field": field_name, "message": f"{field_name} is too short (min {min_len})"}])
+        return ConstraintResult(
+            False, [{"field": field_name, "message": f"{field_name} is too short (min {min_len})"}]
+        )
     if len(value) > max_len:
-        return ConstraintResult(False, [{"field": field_name, "message": f"{field_name} is too long (max {max_len})"}])
+        return ConstraintResult(
+            False, [{"field": field_name, "message": f"{field_name} is too long (max {max_len})"}]
+        )
     return ConstraintResult(True)
 
 
-def require_float(value: Any, field_name: str, min_val: float = 0.0, max_val: float = 1e12) -> ConstraintResult:
+def require_float(
+    value: Any, field_name: str, min_val: float = 0.0, max_val: float = 1e12
+) -> ConstraintResult:
     try:
         v = float(value)
     except (TypeError, ValueError):
-        return ConstraintResult(False, [{"field": field_name, "message": f"{field_name} must be numeric"}])
+        return ConstraintResult(
+            False, [{"field": field_name, "message": f"{field_name} must be numeric"}]
+        )
     if v < min_val:
-        return ConstraintResult(False, [{"field": field_name, "message": f"{field_name} must be >= {min_val}"}])
+        return ConstraintResult(
+            False, [{"field": field_name, "message": f"{field_name} must be >= {min_val}"}]
+        )
     if v > max_val:
-        return ConstraintResult(False, [{"field": field_name, "message": f"{field_name} must be <= {max_val}"}])
+        return ConstraintResult(
+            False, [{"field": field_name, "message": f"{field_name} must be <= {max_val}"}]
+        )
     return ConstraintResult(True)
 
 
 def require_in(value: Any, allowed: set, field_name: str) -> ConstraintResult:
     if value not in allowed:
-        return ConstraintResult(False, [{"field": field_name, "message": f"{field_name} must be one of {sorted(str(a) for a in allowed)}"}])
+        return ConstraintResult(
+            False,
+            [
+                {
+                    "field": field_name,
+                    "message": f"{field_name} must be one of {sorted(str(a) for a in allowed)}",
+                }
+            ],
+        )
     return ConstraintResult(True)
 
 
 def require_pattern(value: str, pattern: str, field_name: str) -> ConstraintResult:
     if not re.fullmatch(pattern, str(value)):
-        return ConstraintResult(False, [{"field": field_name, "message": f"{field_name} must match pattern {pattern!r}"}])
+        return ConstraintResult(
+            False,
+            [{"field": field_name, "message": f"{field_name} must match pattern {pattern!r}"}],
+        )
     return ConstraintResult(True)
 
 
-def require_dict_keys(d: Any, required_keys: set[str], field_name: str = "payload") -> ConstraintResult:
+def require_dict_keys(
+    d: Any, required_keys: set[str], field_name: str = "payload"
+) -> ConstraintResult:
     if not isinstance(d, dict):
-        return ConstraintResult(False, [{"field": field_name, "message": f"{field_name} must be a dict"}])
+        return ConstraintResult(
+            False, [{"field": field_name, "message": f"{field_name} must be a dict"}]
+        )
     missing = required_keys - set(d.keys())
     if missing:
-        return ConstraintResult(False, [{"field": field_name, "message": f"Missing required keys: {sorted(missing)}"}])
+        return ConstraintResult(
+            False, [{"field": field_name, "message": f"Missing required keys: {sorted(missing)}"}]
+        )
     return ConstraintResult(True)
 
 
 # ── Domain constraint sets ────────────────────────────────────────────────────
 
+
 def validate_opportunity_input(data: dict) -> ConstraintResult:
     results = [
         require_str(data.get("name", ""), "name", min_len=2, max_len=200),
-        require_in(data.get("category", ""), {"content", "ecommerce", "affiliate", "saas", "service", "general"}, "category"),
-        require_float(data.get("estimated_revenue_usd", -1), "estimated_revenue_usd", min_val=0.0, max_val=1_000_000),
-        require_float(data.get("estimated_effort_hours", -1), "estimated_effort_hours", min_val=0.1, max_val=10_000),
+        require_in(
+            data.get("category", ""),
+            {"content", "ecommerce", "affiliate", "saas", "service", "general"},
+            "category",
+        ),
+        require_float(
+            data.get("estimated_revenue_usd", -1),
+            "estimated_revenue_usd",
+            min_val=0.0,
+            max_val=1_000_000,
+        ),
+        require_float(
+            data.get("estimated_effort_hours", -1),
+            "estimated_effort_hours",
+            min_val=0.1,
+            max_val=10_000,
+        ),
         require_float(data.get("risk_level", -1), "risk_level", min_val=0.0, max_val=1.0),
         require_float(data.get("confidence", -1), "confidence", min_val=0.0, max_val=1.0),
     ]

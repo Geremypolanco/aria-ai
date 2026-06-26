@@ -2,16 +2,15 @@
 Product page optimizer and rewriter.
 Rewrites Shopify product descriptions for maximum SEO and conversion performance.
 """
+
 from __future__ import annotations
 
 import logging
-import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.content.product_pages")
 
@@ -44,13 +43,39 @@ _CONVERSION_ELEMENTS = [
     "quality",
 ]
 
-_BENEFIT_WORDS = ["benefit", "improve", "boost", "increase", "reduce", "save", "transform", "achieve"]
-_SOCIAL_PROOF_WORDS = ["reviews", "customers", "rated", "stars", "trusted", "popular", "best seller"]
-_URGENCY_WORDS = ["limited", "last chance", "only", "hurry", "exclusive", "today only", "ending soon"]
+_BENEFIT_WORDS = [
+    "benefit",
+    "improve",
+    "boost",
+    "increase",
+    "reduce",
+    "save",
+    "transform",
+    "achieve",
+]
+_SOCIAL_PROOF_WORDS = [
+    "reviews",
+    "customers",
+    "rated",
+    "stars",
+    "trusted",
+    "popular",
+    "best seller",
+]
+_URGENCY_WORDS = [
+    "limited",
+    "last chance",
+    "only",
+    "hurry",
+    "exclusive",
+    "today only",
+    "ending soon",
+]
 _PRICE_ANCHORING_WORDS = ["was", "save", "off", "discount", "% off", "deal", "compare at"]
 
 
 # ── Data models ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class ProductPageAnalysis:
@@ -81,6 +106,7 @@ class ProductPageAnalysis:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 def _score_description(description: str) -> tuple[float, list[str]]:
     """Score a product description by counting conversion elements present."""
@@ -142,6 +168,7 @@ def _default_cta(category: str) -> str:
 
 
 # ── Main class ─────────────────────────────────────────────────────────────────
+
 
 class ProductWriter:
     """Product page optimizer and rewriter for Shopify and e-commerce stores."""
@@ -309,11 +336,26 @@ class ProductWriter:
 
         # Fallback FAQ
         return [
-            {"question": f"What is {title}?", "answer": f"{title} is a premium {category} product designed for maximum performance."},
-            {"question": "What is the return policy?", "answer": "We offer a 30-day money-back guarantee on all products."},
-            {"question": "How fast is shipping?", "answer": "Standard shipping takes 3-5 business days. Express options available."},
-            {"question": f"Is {title} right for me?", "answer": f"{title} is perfect for anyone looking for quality {category} solutions."},
-            {"question": "Do you offer bulk discounts?", "answer": "Yes! Contact us for bulk pricing on orders of 10+ units."},
+            {
+                "question": f"What is {title}?",
+                "answer": f"{title} is a premium {category} product designed for maximum performance.",
+            },
+            {
+                "question": "What is the return policy?",
+                "answer": "We offer a 30-day money-back guarantee on all products.",
+            },
+            {
+                "question": "How fast is shipping?",
+                "answer": "Standard shipping takes 3-5 business days. Express options available.",
+            },
+            {
+                "question": f"Is {title} right for me?",
+                "answer": f"{title} is perfect for anyone looking for quality {category} solutions.",
+            },
+            {
+                "question": "Do you offer bulk discounts?",
+                "answer": "Yes! Contact us for bulk pricing on orders of 10+ units.",
+            },
         ]
 
     async def create_collection_description(
@@ -360,8 +402,7 @@ class ProductWriter:
             return {"total_optimized": 0, "avg_seo_improvement": 0.0}
         total = len(self._analyses)
         improvements = [
-            a.get("seo_score_after", 0) - a.get("seo_score_before", 0)
-            for a in self._analyses
+            a.get("seo_score_after", 0) - a.get("seo_score_before", 0) for a in self._analyses
         ]
         avg_improvement = round(sum(improvements) / total, 3)
         return {
@@ -372,7 +413,7 @@ class ProductWriter:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_product_writer: Optional[ProductWriter] = None
+_product_writer: ProductWriter | None = None
 
 
 def get_product_writer() -> ProductWriter:

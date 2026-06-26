@@ -1,16 +1,16 @@
 """
 SMS Capture Engine — SMS opt-in capture with Klaviyo SMS integration stub.
 """
+
 from __future__ import annotations
 
 import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _SMS_KEY = "conversion:sms:v1"
 _SMS_TTL = 86400 * 90  # 90 days
@@ -23,7 +23,7 @@ class SMSSubscriber:
     phone: str = ""
     name: str = ""
     opted_in: bool = True
-    source: str = ""         # "popup", "checkout", "quiz", "campaign"
+    source: str = ""  # "popup", "checkout", "quiz", "campaign"
     tags: list = field(default_factory=list)
     klaviyo_synced: bool = False
     created_at: float = field(default_factory=time.time)
@@ -45,8 +45,8 @@ class SMSSubscriber:
 class SMSMessage:
     message_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     subscriber_id: str = ""
-    message_type: str = ""    # "welcome", "promo", "cart_recovery", "reengagement", "flash_sale"
-    body: str = ""             # MAX 160 chars for single SMS
+    message_type: str = ""  # "welcome", "promo", "cart_recovery", "reengagement", "flash_sale"
+    body: str = ""  # MAX 160 chars for single SMS
     sent: bool = False
     sent_at: float = 0.0
     created_at: float = field(default_factory=time.time)
@@ -102,9 +102,11 @@ class SMSCaptureEngine:
         phone: str,
         source: str,
         name: str = "",
-        tags: list = [],
+        tags: list = None,
     ) -> SMSSubscriber:
         """Capture an SMS opt-in subscriber."""
+        if tags is None:
+            tags = []
         await self._load()
 
         klaviyo_synced = False
@@ -133,6 +135,7 @@ class SMSCaptureEngine:
             return False
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     "https://a.klaviyo.com/api/profiles/",
@@ -146,7 +149,7 @@ class SMSCaptureEngine:
                                     "source": subscriber.source,
                                     "tags": subscriber.tags,
                                 },
-                            }
+                            },
                         }
                     },
                     headers={
@@ -178,7 +181,11 @@ class SMSCaptureEngine:
         if resp.success and resp.content:
             body = resp.content.strip()[:160]
         else:
-            body = f"Welcome to {brand_name}! Get {offer} on your first order. Reply STOP to opt out."[:160]
+            body = (
+                f"Welcome to {brand_name}! Get {offer} on your first order. Reply STOP to opt out."[
+                    :160
+                ]
+            )
 
         msg = SMSMessage(
             subscriber_id=subscriber_id,
@@ -208,7 +215,9 @@ class SMSCaptureEngine:
         if resp.success and resp.content:
             body = resp.content.strip()[:160]
         else:
-            body = f"You left {product_name} (${cart_value:.0f}) in your cart! Complete your order and save 10%. Limited time."[:160]
+            body = f"You left {product_name} (${cart_value:.0f}) in your cart! Complete your order and save 10%. Limited time."[
+                :160
+            ]
 
         msg = SMSMessage(
             subscriber_id=subscriber_id,
@@ -219,9 +228,7 @@ class SMSCaptureEngine:
         await self._save()
         return msg
 
-    async def generate_flash_sale_sms(
-        self, subscriber_id: str, sale_details: dict
-    ) -> SMSMessage:
+    async def generate_flash_sale_sms(self, subscriber_id: str, sale_details: dict) -> SMSMessage:
         """Generate flash sale announcement SMS."""
         sale_name = sale_details.get("name", "Flash Sale")
         discount = sale_details.get("discount", "30% off")
@@ -242,7 +249,9 @@ class SMSCaptureEngine:
         if resp.success and resp.content:
             body = resp.content.strip()[:160]
         else:
-            body = f"FLASH SALE: {discount} on everything! Ends in {expires}. Shop now before it's gone!"[:160]
+            body = f"FLASH SALE: {discount} on everything! Ends in {expires}. Shop now before it's gone!"[
+                :160
+            ]
 
         msg = SMSMessage(
             subscriber_id=subscriber_id,
@@ -260,7 +269,8 @@ class SMSCaptureEngine:
         await self._load()
 
         tagged_subs = [
-            s for s in self._subscribers
+            s
+            for s in self._subscribers
             if segment_tag in s.get("tags", []) and s.get("opted_in", False)
         ]
 
@@ -308,7 +318,7 @@ class SMSCaptureEngine:
 
 
 # ── SINGLETON ─────────────────────────────────────────────
-_instance: Optional[SMSCaptureEngine] = None
+_instance: SMSCaptureEngine | None = None
 
 
 def get_sms_capture_engine() -> SMSCaptureEngine:

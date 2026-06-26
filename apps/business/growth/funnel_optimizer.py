@@ -2,13 +2,14 @@
 Funnel Analysis and Conversion Optimization — Phase 5
 Tracks user journey events, identifies drop points, and recommends improvements.
 """
+
 from __future__ import annotations
 
+import logging
 import time
 import uuid
-import logging
-from dataclasses import dataclass, field, asdict
-from enum import Enum
+from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 from typing import Any
 
 from apps.core.memory.redis_client import get_cache
@@ -20,7 +21,7 @@ _EVENTS_TTL = 86400 * 30  # 30 days
 _MAX_EVENTS = 10_000
 
 
-class FunnelStage(str, Enum):
+class FunnelStage(StrEnum):
     AWARENESS = "awareness"
     INTEREST = "interest"
     CONSIDERATION = "consideration"
@@ -226,9 +227,7 @@ class FunnelOptimizer:
             sessions_here = len(stage_sessions[stage])
             if i + 1 < len(_STAGE_ORDER):
                 next_stage = _STAGE_ORDER[i + 1]
-                progressed = len(
-                    stage_sessions[stage] & stage_sessions[next_stage]
-                )
+                progressed = len(stage_sessions[stage] & stage_sessions[next_stage])
             else:
                 progressed = 0
 

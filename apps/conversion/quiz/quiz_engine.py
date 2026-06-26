@@ -1,15 +1,15 @@
 """
 Quiz Engine — Interactive product quiz system for lead capture and segmentation.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _QUIZ_KEY = "conversion:quizzes:v1"
 _QUIZ_TTL = 86400 * 90  # 90 days
@@ -38,7 +38,9 @@ class QuizResult:
     result_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     session_id: str = ""
     answers: dict = field(default_factory=dict)
-    segment: str = "beginner"  # "beginner"|"advanced"|"professional"|"budget"|"premium"|"impulse"|"researcher"
+    segment: str = (
+        "beginner"  # "beginner"|"advanced"|"professional"|"budget"|"premium"|"impulse"|"researcher"
+    )
     archetype_scores: dict = field(default_factory=dict)
     recommended_products: list[str] = field(default_factory=list)
     lead_score: float = 0.0
@@ -66,7 +68,9 @@ class ProductQuiz:
     niche: str = ""
     questions: list[QuizQuestion] = field(default_factory=list)
     intro_text: str = ""
-    result_segments: dict = field(default_factory=dict)  # segment → {description, recommended_products, cta}
+    result_segments: dict = field(
+        default_factory=dict
+    )  # segment → {description, recommended_products, cta}
 
     def to_dict(self) -> dict:
         return {
@@ -90,13 +94,23 @@ def _template_quiz(niche: str, product_names: list[str]) -> list[QuizQuestion]:
         ),
         QuizQuestion(
             text=f"What is your experience level with {niche}?",
-            options=["Complete beginner", "Some experience", "Intermediate", "Advanced/Professional"],
+            options=[
+                "Complete beginner",
+                "Some experience",
+                "Intermediate",
+                "Advanced/Professional",
+            ],
             question_type="single",
             tag="experience",
         ),
         QuizQuestion(
             text=f"What is your primary goal with {niche}?",
-            options=["Learn the basics", "Improve results", "Optimize performance", "Achieve mastery"],
+            options=[
+                "Learn the basics",
+                "Improve results",
+                "Optimize performance",
+                "Achieve mastery",
+            ],
             question_type="single",
             tag="goal",
         ),
@@ -108,7 +122,12 @@ def _template_quiz(niche: str, product_names: list[str]) -> list[QuizQuestion]:
         ),
         QuizQuestion(
             text=f"What is your biggest challenge with {niche}?",
-            options=["Not knowing where to start", "Consistency", "Finding the right products", "Budget constraints"],
+            options=[
+                "Not knowing where to start",
+                "Consistency",
+                "Finding the right products",
+                "Budget constraints",
+            ],
             question_type="single",
             tag="pain_point",
         ),
@@ -117,7 +136,11 @@ def _template_quiz(niche: str, product_names: list[str]) -> list[QuizQuestion]:
 
 def _build_result_segments(product_names: list[str]) -> dict:
     """Build default result segments mapping."""
-    products = product_names if product_names else ["starter pack", "pro bundle", "value kit", "premium collection"]
+    products = (
+        product_names
+        if product_names
+        else ["starter pack", "pro bundle", "value kit", "premium collection"]
+    )
     return {
         "beginner": {
             "description": "You're just getting started — we've got the perfect entry-level solution for you.",
@@ -174,7 +197,7 @@ def _parse_ai_questions(ai_content: str, niche: str) -> list[QuizQuestion]:
             # Extract question text
             for prefix in ("QUESTION:", "Q1:", "Q2:", "Q3:", "Q4:", "Q5:"):
                 if line.upper().startswith(prefix):
-                    q_text = line[len(prefix):].strip()
+                    q_text = line[len(prefix) :].strip()
                     break
             if not q_text and line and line[0].isdigit():
                 q_text = line[2:].strip() if len(line) > 2 else ""
@@ -188,21 +211,30 @@ def _parse_ai_questions(ai_content: str, niche: str) -> list[QuizQuestion]:
             j = i + 1
             while j < len(lines):
                 next_line = lines[j].strip()
-                if next_line.upper().startswith("OPTIONS:") or next_line.upper().startswith("OPTION:"):
-                    opts_str = next_line[next_line.index(":") + 1:].strip()
+                if next_line.upper().startswith("OPTIONS:") or next_line.upper().startswith(
+                    "OPTION:"
+                ):
+                    opts_str = next_line[next_line.index(":") + 1 :].strip()
                     # Parse A) ... B) ... C) ... style
                     import re
+
                     opts = re.split(r"\s+[A-D]\)", " " + opts_str)
                     options = [o.strip() for o in opts if o.strip()]
                 elif next_line.upper().startswith("TAG:"):
                     tag = next_line[4:].strip().lower()
-                elif next_line and next_line[0] in ("A", "B", "C", "D") and len(next_line) > 1 and next_line[1] in (".", ")"):
+                elif (
+                    next_line
+                    and next_line[0] in ("A", "B", "C", "D")
+                    and len(next_line) > 1
+                    and next_line[1] in (".", ")")
+                ):
                     options.append(next_line[2:].strip())
                 elif next_line and next_line[0].isdigit() and next_line[1] in (".", ")"):
                     # Start of next question
                     break
                 elif next_line.upper().startswith("Q") and any(
-                    next_line.upper().startswith(p) for p in ("Q1:", "Q2:", "Q3:", "Q4:", "Q5:", "QUESTION")
+                    next_line.upper().startswith(p)
+                    for p in ("Q1:", "Q2:", "Q3:", "Q4:", "Q5:", "QUESTION")
                 ):
                     break
                 j += 1
@@ -210,12 +242,14 @@ def _parse_ai_questions(ai_content: str, niche: str) -> list[QuizQuestion]:
             if not options:
                 options = ["Option A", "Option B", "Option C", "Option D"]
 
-            questions.append(QuizQuestion(
-                text=q_text,
-                options=options[:4],
-                question_type="single",
-                tag=tag,
-            ))
+            questions.append(
+                QuizQuestion(
+                    text=q_text,
+                    options=options[:4],
+                    question_type="single",
+                    tag=tag,
+                )
+            )
             i = j
             continue
         i += 1
@@ -302,7 +336,9 @@ class QuizEngine:
         except Exception:
             pass
 
-    async def create_quiz(self, niche: str, product_names: list[str] = []) -> ProductQuiz:
+    async def create_quiz(self, niche: str, product_names: list[str] = None) -> ProductQuiz:
+        if product_names is None:
+            product_names = []
         await self._load()
 
         questions: list[QuizQuestion] = []
@@ -400,12 +436,14 @@ class QuizEngine:
         await self._save()
         return result
 
-    async def get_quiz(self, quiz_id: str) -> Optional[dict]:
+    async def get_quiz(self, quiz_id: str) -> dict | None:
         await self._load()
         return self._quizzes.get(quiz_id)
 
     def quiz_analytics(self, quiz_id: str) -> dict:
-        results = [r for r in self._results if r.get("session_id", "").startswith(quiz_id[:8]) or True]
+        results = [
+            r for r in self._results if r.get("session_id", "").startswith(quiz_id[:8]) or True
+        ]
         # Filter by quiz (approximation — we store all results together)
         total = len(results)
         if total == 0:
@@ -445,7 +483,7 @@ class QuizEngine:
         return list(self._quizzes.values())
 
 
-_quiz_engine_instance: Optional[QuizEngine] = None
+_quiz_engine_instance: QuizEngine | None = None
 
 
 def get_quiz_engine() -> QuizEngine:

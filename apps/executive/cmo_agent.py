@@ -1,15 +1,15 @@
 """
 CMO Agent — Campaign strategy, brand positioning, and growth marketing.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "executive:cmo:v1"
 _TTL = 90 * 24 * 3600  # 90 days
@@ -43,7 +43,7 @@ class CampaignBrief:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "CampaignBrief":
+    def from_dict(cls, data: dict) -> CampaignBrief:
         return cls(
             brief_id=data["brief_id"],
             campaign_name=data["campaign_name"],
@@ -80,7 +80,7 @@ class BrandPosition:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "BrandPosition":
+    def from_dict(cls, data: dict) -> BrandPosition:
         return cls(
             position_id=data["position_id"],
             niche=data["niche"],
@@ -165,10 +165,14 @@ class CMOAgent:
                         key_message = part.split("MESSAGE:")[-1].strip()
                     elif part.startswith("KPI_CTR:"):
                         val = part.split(":")[-1].strip()
-                        kpis["ctr_pct"] = float("".join(c for c in val if c.isdigit() or c == ".") or "2.5")
+                        kpis["ctr_pct"] = float(
+                            "".join(c for c in val if c.isdigit() or c == ".") or "2.5"
+                        )
                     elif part.startswith("KPI_CONV:"):
                         val = part.split(":")[-1].strip()
-                        kpis["conversion_pct"] = float("".join(c for c in val if c.isdigit() or c == ".") or "3.0")
+                        kpis["conversion_pct"] = float(
+                            "".join(c for c in val if c.isdigit() or c == ".") or "3.0"
+                        )
                     elif part.startswith("TIMELINE:"):
                         val = part.split(":")[-1].strip()
                         timeline_days = int("".join(c for c in val if c.isdigit()) or "30")
@@ -215,7 +219,9 @@ class CMOAgent:
         positioning_statement = f"The #1 {niche} solution for serious professionals"
         unique_value = f"Combining {strengths_text} to deliver unmatched results"
         tone = "professional"
-        differentiation = f"Superior {strengths[0] if strengths else 'quality'} at competitive price"
+        differentiation = (
+            f"Superior {strengths[0] if strengths else 'quality'} at competitive price"
+        )
 
         if content:
             try:
@@ -289,7 +295,7 @@ class CMOAgent:
         }
 
 
-_instance: Optional[CMOAgent] = None
+_instance: CMOAgent | None = None
 
 
 def get_cmo_agent() -> CMOAgent:

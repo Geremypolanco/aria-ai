@@ -3,9 +3,12 @@ MarketingAgent — Crea y distribuye contenido automatizado.
 Usa: Buffer (redes sociales), Mailchimp (email), Google Trends (tendencias),
      Pexels (imágenes), ElevenLabs (voz), Canva (diseño), Cloudinary (CDN).
 """
+
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 from apps.core.agents.base_agent import BaseAgent
 from apps.core.tools.ai_client import AIModel
 
@@ -18,8 +21,12 @@ class MarketingAgent(BaseAgent):
             name="marketing",
             description="Marketing y redes sociales — contenido automatizado",
             capabilities=[
-                "content_creation", "social_posting", "email_campaigns",
-                "trend_analysis", "image_generation", "seo_content",
+                "content_creation",
+                "social_posting",
+                "email_campaigns",
+                "trend_analysis",
+                "image_generation",
+                "seo_content",
             ],
         )
 
@@ -52,7 +59,10 @@ class MarketingAgent(BaseAgent):
         # Guardar en Supabase
         await self._save_campaign(niche, content_pack, results)
 
-        await self._log("marketing_executed", f"Nicho: {niche} | Posts: {len(content_pack.get('social_posts', []))}")
+        await self._log(
+            "marketing_executed",
+            f"Nicho: {niche} | Posts: {len(content_pack.get('social_posts', []))}",
+        )
         return results
 
     async def _get_trending_topics(self, niche: str) -> list[str]:
@@ -60,6 +70,7 @@ class MarketingAgent(BaseAgent):
         trends = []
         try:
             from apps.core.tools.google_tools import GoogleTools
+
             google = GoogleTools()
             trending = await google.get_trending_searches(geo="US")
             if trending.get("success"):
@@ -69,6 +80,7 @@ class MarketingAgent(BaseAgent):
 
         try:
             from apps.core.tools.market_tools import MarketTools
+
             market = MarketTools()
             news = await market.fetch_niche_news(niche)
             if news:
@@ -99,7 +111,7 @@ class MarketingAgent(BaseAgent):
             '    {"platform": "twitter", "text": "tweet de 280 chars con hashtags"},\n'
             '    {"platform": "linkedin", "text": "post profesional de 500 chars"},\n'
             '    {"platform": "instagram", "text": "caption con emojis y hashtags"}\n'
-            '  ],\n'
+            "  ],\n"
             '  "email_subject": "Asunto del email",\n'
             '  "email_body": "Cuerpo del email en HTML básico",\n'
             '  "blog_title": "Título de artículo de blog SEO",\n'
@@ -116,7 +128,9 @@ class MarketingAgent(BaseAgent):
         )
 
         try:
-            import json, re
+            import json
+            import re
+
             match = re.search(r"\{.*\}", content_json or "", re.DOTALL)
             if match:
                 return json.loads(match.group())
@@ -126,8 +140,14 @@ class MarketingAgent(BaseAgent):
         # Fallback básico
         return {
             "social_posts": [
-                {"platform": "twitter", "text": f"🚀 Descubre lo mejor en {niche}. #digitalproducts #{niche.replace(' ', '')}"},
-                {"platform": "linkedin", "text": f"Nuevo contenido sobre {niche} disponible. Aprende cómo monetizar este nicho."},
+                {
+                    "platform": "twitter",
+                    "text": f"🚀 Descubre lo mejor en {niche}. #digitalproducts #{niche.replace(' ', '')}",
+                },
+                {
+                    "platform": "linkedin",
+                    "text": f"Nuevo contenido sobre {niche} disponible. Aprende cómo monetizar este nicho.",
+                },
             ],
             "email_subject": f"Oportunidad en {niche} — Actúa ahora",
             "email_body": f"<h2>Oportunidad en {niche}</h2><p>Hemos identificado una gran oportunidad en este mercado.</p>",
@@ -141,6 +161,7 @@ class MarketingAgent(BaseAgent):
         """Publica posts en redes sociales via Buffer."""
         try:
             from apps.core.tools.buffer_tools import BufferTools
+
             buffer = BufferTools()
             results = []
             for post in posts:
@@ -148,17 +169,30 @@ class MarketingAgent(BaseAgent):
                 if not text:
                     continue
                 res = await buffer.post_update(text=text, now=False)
-                results.append({"platform": post.get("platform", "?"), "success": res.get("success", False)})
+                results.append(
+                    {"platform": post.get("platform", "?"), "success": res.get("success", False)}
+                )
                 logger.info("[MarketingAgent] Buffer post: %s", res)
-            return {"success": True, "posts_queued": len([r for r in results if r["success"]]), "results": results}
+            return {
+                "success": True,
+                "posts_queued": len([r for r in results if r["success"]]),
+                "results": results,
+            }
         except Exception as exc:
             logger.error("[MarketingAgent] Buffer error: %s", exc)
-            return {"success": False, "error": str(exc), "note": "BUFFER_TOKEN no configurado o error de API"}
+            return {
+                "success": False,
+                "error": str(exc),
+                "note": "BUFFER_TOKEN no configurado o error de API",
+            }
 
-    async def _send_email_campaign(self, product: dict, content_pack: dict, language: str) -> dict[str, Any]:
+    async def _send_email_campaign(
+        self, product: dict, content_pack: dict, language: str
+    ) -> dict[str, Any]:
         """Envía campaña de email via Mailchimp."""
         try:
             from apps.core.tools.mailchimp_tools import MailchimpTools
+
             mailchimp = MailchimpTools()
 
             # Obtener primera lista disponible
@@ -170,7 +204,9 @@ class MarketingAgent(BaseAgent):
 
             result = await mailchimp.create_campaign(
                 list_id=list_id,
-                subject=content_pack.get("email_subject", f"Oferta especial — {product.get('name', 'Producto')}"),
+                subject=content_pack.get(
+                    "email_subject", f"Oferta especial — {product.get('name', 'Producto')}"
+                ),
                 from_name="ARIA AI",
                 reply_to="noreply@aria-ai.com",
                 body_html=content_pack.get("email_body", "<p>Nuevo producto disponible.</p>"),
@@ -185,6 +221,7 @@ class MarketingAgent(BaseAgent):
         """Guarda la campaña en Supabase."""
         try:
             from apps.core.memory.supabase_client import get_db
+
             db = get_db()
             posts = content_pack.get("social_posts", [])
             if posts:

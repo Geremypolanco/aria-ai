@@ -3,16 +3,16 @@ ARIA AI — LinkedIn Publisher
 Phase 13: Authority content creation and distribution on LinkedIn.
 Drives B2B leads, thought leadership, and brand awareness.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.distribution.linkedin")
 
@@ -73,9 +73,7 @@ class LinkedInPublisher:
         except Exception as exc:
             logger.warning("LinkedInPublisher._save failed: %s", exc)
 
-    async def create_post(
-        self, topic: str, objective: str = "thought_leadership"
-    ) -> LinkedInPost:
+    async def create_post(self, topic: str, objective: str = "thought_leadership") -> LinkedInPost:
         await self._load()
 
         content = ""
@@ -121,8 +119,7 @@ class LinkedInPublisher:
                 f"→ It's not about working harder, it's about working smarter.\n"
                 f"→ The fundamentals matter more than any hack.\n"
                 f"→ Consistency beats intensity every single time.\n\n"
-                f"{cta}\n\n"
-                + " ".join(hashtags)
+                f"{cta}\n\n" + " ".join(hashtags)
             )
 
         lines = content.split("\n")
@@ -193,9 +190,7 @@ class LinkedInPublisher:
         await self._save()
         return optimized
 
-    async def generate_carousel_outline(
-        self, topic: str, num_slides: int = 7
-    ) -> dict:
+    async def generate_carousel_outline(self, topic: str, num_slides: int = 7) -> dict:
         await self._load()
 
         try:
@@ -214,6 +209,7 @@ class LinkedInPublisher:
             )
             if resp.success:
                 import json
+
                 raw = resp.content.strip()
                 # Strip markdown code fences if model includes them despite instructions
                 if raw.startswith("```"):
@@ -226,7 +222,11 @@ class LinkedInPublisher:
             logger.warning("LinkedInPublisher.generate_carousel_outline AI call failed: %s", exc)
 
         slides = [
-            {"slide": i + 1, "headline": f"Point {i + 1} about {topic}", "content": f"Key insight #{i + 1} on {topic}."}
+            {
+                "slide": i + 1,
+                "headline": f"Point {i + 1} about {topic}",
+                "content": f"Key insight #{i + 1} on {topic}.",
+            }
             for i in range(num_slides)
         ]
         return {
@@ -297,7 +297,7 @@ class LinkedInPublisher:
         return self._posts[-limit:]
 
 
-_instance: Optional[LinkedInPublisher] = None
+_instance: LinkedInPublisher | None = None
 
 
 def get_linkedin_publisher() -> LinkedInPublisher:

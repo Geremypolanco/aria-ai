@@ -46,15 +46,17 @@ AGENTS:
   - Search Agent estilo smolagents (plan → search → reason → synthesize)
   - Code Generation (Qwen2.5-Coder-32B)
 """
+
 from __future__ import annotations
+
 import asyncio
 import base64
-import io
 import json
 import logging
-import time
-from typing import Any, Optional
+from typing import Any
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.huggingface_suite")
@@ -93,17 +95,21 @@ class HuggingFaceSuite:
 
         base_url = f"{HF_ROUTER}/hf-inference/models" if provider else HF_API
         url = f"{base_url}/{model}"
-        headers = self._headers({
-            "Content-Type": "application/json",
-            "X-Wait-For-Model": "true" if wait_for_model else "false",
-        })
+        headers = self._headers(
+            {
+                "Content-Type": "application/json",
+                "X-Wait-For-Model": "true" if wait_for_model else "false",
+            }
+        )
         if binary:
             headers.pop("Content-Type", None)
 
         for attempt in range(3):
             try:
                 if isinstance(payload, bytes):
-                    res = await self._http.post(url, headers=headers, content=payload, timeout=timeout)
+                    res = await self._http.post(
+                        url, headers=headers, content=payload, timeout=timeout
+                    )
                 else:
                     res = await self._http.post(url, headers=headers, json=payload, timeout=timeout)
 
@@ -178,7 +184,9 @@ class HuggingFaceSuite:
             logger.error("[HF] generate_image error: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def generate_product_image(self, product_name: str, niche: str, style: str = "professional product photography") -> dict[str, Any]:
+    async def generate_product_image(
+        self, product_name: str, niche: str, style: str = "professional product photography"
+    ) -> dict[str, Any]:
         """Genera imagen de producto para marketing/ecommerce."""
         prompt = (
             f"{style}, {product_name} for {niche} market, "
@@ -187,9 +195,16 @@ class HuggingFaceSuite:
         )
         return await self.generate_image(prompt, model="black-forest-labs/FLUX.1-schnell")
 
-    async def generate_social_media_image(self, text: str, niche: str, platform: str = "instagram") -> dict[str, Any]:
+    async def generate_social_media_image(
+        self, text: str, niche: str, platform: str = "instagram"
+    ) -> dict[str, Any]:
         """Genera imagen optimizada para redes sociales."""
-        size_map = {"instagram": (1024, 1024), "twitter": (1200, 628), "linkedin": (1200, 628), "tiktok": (1080, 1920)}
+        size_map = {
+            "instagram": (1024, 1024),
+            "twitter": (1200, 628),
+            "linkedin": (1200, 628),
+            "tiktok": (1080, 1920),
+        }
         w, h = size_map.get(platform, (1024, 1024))
         prompt = (
             f"Social media post for {platform}, {niche} niche, "
@@ -233,7 +248,12 @@ class HuggingFaceSuite:
             # Fallback: try multilingual model
             result2 = await self._call("Helsinki-NLP/opus-mt-tc-big-en-es", {"inputs": text})
             if result2:
-                return {"success": True, "translated": result2[0].get("translation_text",""), "source": source, "target": target}
+                return {
+                    "success": True,
+                    "translated": result2[0].get("translation_text", ""),
+                    "source": source,
+                    "target": target,
+                }
             return {"success": False, "error": "Traducción no disponible para este par de idiomas"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -243,21 +263,23 @@ class HuggingFaceSuite:
         tasks = [self.translate(text, source, t) for t in targets]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return {
-            lang: (r.get("translated","") if isinstance(r, dict) and r.get("success") else text)
-            for lang, r in zip(targets, results)
+            lang: (r.get("translated", "") if isinstance(r, dict) and r.get("success") else text)
+            for lang, r in zip(targets, results, strict=False)
         }
 
-    async def translate_product_listing(self, listing: dict, source: str = "es", targets: list[str] | None = None) -> dict[str, Any]:
+    async def translate_product_listing(
+        self, listing: dict, source: str = "es", targets: list[str] | None = None
+    ) -> dict[str, Any]:
         """Traduce un listing de producto completo a múltiples idiomas."""
         if not targets:
             targets = ["en", "fr", "de", "pt", "it", "ja", "zh"]
         results: dict[str, dict] = {}
         for lang in targets:
-            name = await self.translate(listing.get("name",""), source, lang)
-            desc = await self.translate(listing.get("description",""), source, lang)
+            name = await self.translate(listing.get("name", ""), source, lang)
+            desc = await self.translate(listing.get("description", ""), source, lang)
             results[lang] = {
-                "name": name.get("translated",""),
-                "description": desc.get("translated",""),
+                "name": name.get("translated", ""),
+                "description": desc.get("translated", ""),
             }
         return {"success": True, "listings": results}
 
@@ -285,14 +307,21 @@ class HuggingFaceSuite:
         try:
             if language != "en":
                 model = "csebuetnlp/mT5_multilingual_XLSum"
-            result = await self._call(model, {
-                "inputs": text[:3000],
-                "parameters": {"max_length": max_length, "min_length": min_length, "do_sample": False},
-            })
+            result = await self._call(
+                model,
+                {
+                    "inputs": text[:3000],
+                    "parameters": {
+                        "max_length": max_length,
+                        "min_length": min_length,
+                        "do_sample": False,
+                    },
+                },
+            )
             if result and isinstance(result, list):
                 return {
                     "success": True,
-                    "summary": result[0].get("summary_text",""),
+                    "summary": result[0].get("summary_text", ""),
                     "original_length": len(text),
                     "model": model,
                 }
@@ -304,7 +333,10 @@ class HuggingFaceSuite:
         """Resume múltiples artículos en paralelo."""
         tasks = [self.summarize(a, language=language) for a in articles]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        return [r.get("summary","") if isinstance(r,dict) and r.get("success") else "" for r in results]
+        return [
+            r.get("summary", "") if isinstance(r, dict) and r.get("success") else ""
+            for r in results
+        ]
 
     # ══════════════════════════════════════════════════════════════
     # 4. ANÁLISIS DE SENTIMIENTO
@@ -324,19 +356,24 @@ class HuggingFaceSuite:
         if not self._ok():
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
-            model = ("lxyuan/distilbert-base-multilingual-cased-sentiments-student"
-                     if multilingual else "cardiffnlp/twitter-roberta-base-sentiment-latest")
+            model = (
+                "lxyuan/distilbert-base-multilingual-cased-sentiments-student"
+                if multilingual
+                else "cardiffnlp/twitter-roberta-base-sentiment-latest"
+            )
             result = await self._call(model, {"inputs": text[:512]})
             if result and isinstance(result, list):
                 scores = result[0] if isinstance(result[0], list) else result
                 best = max(scores, key=lambda x: x.get("score", 0))
-                label = best.get("label","").lower()
-                normalized = "positivo" if "pos" in label else "negativo" if "neg" in label else "neutro"
+                label = best.get("label", "").lower()
+                normalized = (
+                    "positivo" if "pos" in label else "negativo" if "neg" in label else "neutro"
+                )
                 return {
                     "success": True,
                     "sentiment": normalized,
-                    "confidence": round(best.get("score",0), 3),
-                    "all_scores": {s.get("label",""):round(s.get("score",0),3) for s in scores},
+                    "confidence": round(best.get("score", 0), 3),
+                    "all_scores": {s.get("label", ""): round(s.get("score", 0), 3) for s in scores},
                 }
             return {"success": False, "error": "Sin respuesta del modelo"}
         except Exception as exc:
@@ -361,9 +398,9 @@ class HuggingFaceSuite:
             "success": True,
             "niche": niche,
             "total_analyzed": total,
-            "positive_pct": round(pos/total*100, 1),
-            "negative_pct": round(neg/total*100, 1),
-            "neutral_pct": round(neu/total*100, 1),
+            "positive_pct": round(pos / total * 100, 1),
+            "negative_pct": round(neg / total * 100, 1),
+            "neutral_pct": round(neu / total * 100, 1),
             "overall": "positivo" if pos > neg else "negativo" if neg > pos else "neutro",
         }
 
@@ -385,16 +422,24 @@ class HuggingFaceSuite:
         if not self._ok():
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
-            result = await self._call(model, {
-                "inputs": text[:1000],
-                "parameters": {"candidate_labels": candidate_labels, "hypothesis_template": hypothesis_template},
-            })
+            result = await self._call(
+                model,
+                {
+                    "inputs": text[:1000],
+                    "parameters": {
+                        "candidate_labels": candidate_labels,
+                        "hypothesis_template": hypothesis_template,
+                    },
+                },
+            )
             if result and "labels" in result:
                 return {
                     "success": True,
                     "best_label": result["labels"][0],
                     "best_score": round(result["scores"][0], 3),
-                    "all_labels": dict(zip(result["labels"], [round(s,3) for s in result["scores"]])),
+                    "all_labels": dict(
+                        zip(result["labels"], [round(s, 3) for s in result["scores"]], strict=False)
+                    ),
                 }
             return {"success": False, "error": "Sin resultado de clasificación"}
         except Exception as exc:
@@ -403,17 +448,31 @@ class HuggingFaceSuite:
     async def classify_product_niche(self, product_description: str) -> dict[str, Any]:
         """Clasifica un producto en su nicho de mercado automáticamente."""
         niches = [
-            "health and wellness", "personal finance", "digital marketing",
-            "technology and software", "education and online courses",
-            "fitness and sports", "beauty and fashion", "food and cooking",
-            "travel and lifestyle", "business and entrepreneurship",
-            "entertainment and gaming", "relationships and dating",
+            "health and wellness",
+            "personal finance",
+            "digital marketing",
+            "technology and software",
+            "education and online courses",
+            "fitness and sports",
+            "beauty and fashion",
+            "food and cooking",
+            "travel and lifestyle",
+            "business and entrepreneurship",
+            "entertainment and gaming",
+            "relationships and dating",
         ]
         return await self.classify_zero_shot(product_description, niches)
 
     async def classify_content_type(self, content: str) -> dict[str, Any]:
         """Clasifica el tipo de contenido."""
-        types = ["educational", "promotional", "entertaining", "informational", "inspirational", "controversial"]
+        types = [
+            "educational",
+            "promotional",
+            "entertaining",
+            "informational",
+            "inspirational",
+            "controversial",
+        ]
         return await self.classify_zero_shot(content, types)
 
     # ══════════════════════════════════════════════════════════════
@@ -437,8 +496,12 @@ class HuggingFaceSuite:
             if result and isinstance(result, list):
                 entities: dict[str, list] = {}
                 for e in result:
-                    entity_type = e.get("entity_group", e.get("entity","")).replace("B-","").replace("I-","")
-                    word = e.get("word","").replace("##","")
+                    entity_type = (
+                        e.get("entity_group", e.get("entity", ""))
+                        .replace("B-", "")
+                        .replace("I-", "")
+                    )
+                    word = e.get("word", "").replace("##", "")
                     if entity_type not in entities:
                         entities[entity_type] = []
                     if word and word not in entities[entity_type]:
@@ -465,14 +528,16 @@ class HuggingFaceSuite:
         if not self._ok():
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
-            result = await self._call(model, {"inputs": {"question": question, "context": context[:3000]}})
+            result = await self._call(
+                model, {"inputs": {"question": question, "context": context[:3000]}}
+            )
             if result and isinstance(result, dict):
                 return {
                     "success": True,
-                    "answer": result.get("answer",""),
-                    "confidence": round(result.get("score",0), 3),
-                    "start": result.get("start",0),
-                    "end": result.get("end",0),
+                    "answer": result.get("answer", ""),
+                    "confidence": round(result.get("score", 0), 3),
+                    "start": result.get("start", 0),
+                    "end": result.get("end", 0),
                 }
             return {"success": False, "error": "Sin respuesta"}
         except Exception as exc:
@@ -498,7 +563,12 @@ class HuggingFaceSuite:
         try:
             result = await self._call(model, {"inputs": texts})
             if result and isinstance(result, list):
-                return {"success": True, "embeddings": result, "model": model, "dimensions": len(result[0]) if result else 0}
+                return {
+                    "success": True,
+                    "embeddings": result,
+                    "model": model,
+                    "dimensions": len(result[0]) if result else 0,
+                }
             return {"success": False, "error": "Sin embeddings"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -509,13 +579,19 @@ class HuggingFaceSuite:
         if not result.get("success"):
             return result
         import math
+
         emb = result["embeddings"]
         e1, e2 = emb[0], emb[1]
-        dot = sum(a*b for a, b in zip(e1, e2))
+        dot = sum(a * b for a, b in zip(e1, e2, strict=False))
         norm1 = math.sqrt(sum(a**2 for a in e1))
         norm2 = math.sqrt(sum(b**2 for b in e2))
         similarity = dot / (norm1 * norm2) if norm1 * norm2 > 0 else 0
-        return {"success": True, "similarity": round(similarity, 4), "text1": text1[:100], "text2": text2[:100]}
+        return {
+            "success": True,
+            "similarity": round(similarity, 4),
+            "text1": text1[:100],
+            "text2": text2[:100],
+        }
 
     async def find_most_similar(self, query: str, candidates: list[str]) -> dict[str, Any]:
         """Encuentra el texto más similar a un query entre una lista de candidatos."""
@@ -524,14 +600,21 @@ class HuggingFaceSuite:
         if not result.get("success"):
             return result
         import math
+
         embs = result["embeddings"]
         q_emb = embs[0]
+
         def cosine(a, b):
-            d = sum(x*y for x,y in zip(a,b))
+            d = sum(x * y for x, y in zip(a, b, strict=False))
             return d / (math.sqrt(sum(x**2 for x in a)) * math.sqrt(sum(y**2 for y in b)) + 1e-9)
-        scores = [(candidates[i], cosine(q_emb, embs[i+1])) for i in range(len(candidates))]
+
+        scores = [(candidates[i], cosine(q_emb, embs[i + 1])) for i in range(len(candidates))]
         scores.sort(key=lambda x: x[1], reverse=True)
-        return {"success": True, "query": query, "ranked": [(t, round(s,4)) for t,s in scores[:10]]}
+        return {
+            "success": True,
+            "query": query,
+            "ranked": [(t, round(s, 4)) for t, s in scores[:10]],
+        }
 
     # ══════════════════════════════════════════════════════════════
     # 9. TEXT-TO-SPEECH — Bark (voces realistas)
@@ -594,7 +677,7 @@ class HuggingFaceSuite:
             if result and isinstance(result, dict):
                 return {
                     "success": True,
-                    "transcript": result.get("text",""),
+                    "transcript": result.get("text", ""),
                     "language": language,
                     "model": model,
                 }
@@ -625,7 +708,7 @@ class HuggingFaceSuite:
 
             result = await self._call(model, image_bytes, binary=False, timeout=60.0)
             if result and isinstance(result, list):
-                description = result[0].get("generated_text","")
+                description = result[0].get("generated_text", "")
                 return {"success": True, "description": description, "model": model}
             return {"success": False, "error": "Sin descripción generada"}
         except Exception as exc:
@@ -651,11 +734,21 @@ class HuggingFaceSuite:
             result = await self._call(model, image_bytes, binary=False, timeout=60.0)
             if result and isinstance(result, list):
                 detected = [
-                    {"label": o.get("label",""), "confidence": round(o.get("score",0),3), "box": o.get("box",{})}
-                    for o in result if o.get("score",0) >= threshold
+                    {
+                        "label": o.get("label", ""),
+                        "confidence": round(o.get("score", 0), 3),
+                        "box": o.get("box", {}),
+                    }
+                    for o in result
+                    if o.get("score", 0) >= threshold
                 ]
-                labels = list(set(o["label"] for o in detected))
-                return {"success": True, "objects": detected, "unique_labels": labels, "count": len(detected)}
+                labels = list({o["label"] for o in detected})
+                return {
+                    "success": True,
+                    "objects": detected,
+                    "unique_labels": labels,
+                    "count": len(detected),
+                }
             return {"success": False, "error": "Sin objetos detectados"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -680,9 +773,12 @@ class HuggingFaceSuite:
             if result and isinstance(result, list):
                 return {
                     "success": True,
-                    "top_label": result[0].get("label",""),
-                    "top_score": round(result[0].get("score",0),3),
-                    "all": [{"label":r.get("label",""),"score":round(r.get("score",0),3)} for r in result[:5]],
+                    "top_label": result[0].get("label", ""),
+                    "top_score": round(result[0].get("score", 0), 3),
+                    "all": [
+                        {"label": r.get("label", ""), "score": round(r.get("score", 0), 3)}
+                        for r in result[:5]
+                    ],
                 }
             return {"success": False, "error": "Sin clasificación"}
         except Exception as exc:
@@ -704,7 +800,14 @@ class HuggingFaceSuite:
             if result and isinstance(result, list):
                 return {
                     "success": True,
-                    "predictions": [{"text":r.get("sequence",""),"token":r.get("token_str",""),"score":round(r.get("score",0),3)} for r in result[:5]],
+                    "predictions": [
+                        {
+                            "text": r.get("sequence", ""),
+                            "token": r.get("token_str", ""),
+                            "score": round(r.get("score", 0), 3),
+                        }
+                        for r in result[:5]
+                    ],
                 }
             return {"success": False, "error": "Sin predicciones"}
         except Exception as exc:
@@ -719,10 +822,19 @@ class HuggingFaceSuite:
         if not self._ok():
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
-            result = await self._call("papluca/xlm-roberta-base-language-detection", {"inputs": text[:512]})
+            result = await self._call(
+                "papluca/xlm-roberta-base-language-detection", {"inputs": text[:512]}
+            )
             if result and isinstance(result, list):
-                best = max(result[0] if isinstance(result[0],list) else result, key=lambda x: x.get("score",0))
-                return {"success": True, "language": best.get("label",""), "confidence": round(best.get("score",0),3)}
+                best = max(
+                    result[0] if isinstance(result[0], list) else result,
+                    key=lambda x: x.get("score", 0),
+                )
+                return {
+                    "success": True,
+                    "language": best.get("label", ""),
+                    "confidence": round(best.get("score", 0), 3),
+                }
             return {"success": False, "error": "Sin resultado"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -731,7 +843,11 @@ class HuggingFaceSuite:
     # 16. CLASIFICACIÓN DE AUDIO
     # ══════════════════════════════════════════════════════════════
 
-    async def classify_audio(self, audio_bytes: bytes, model: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition") -> dict[str, Any]:
+    async def classify_audio(
+        self,
+        audio_bytes: bytes,
+        model: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition",
+    ) -> dict[str, Any]:
         """
         Clasifica audio por emoción o tipo.
         Modelos: ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition (emociones)
@@ -742,7 +858,13 @@ class HuggingFaceSuite:
         try:
             result = await self._call(model, audio_bytes, binary=False, timeout=60.0)
             if result and isinstance(result, list):
-                return {"success": True, "classifications": [{"label":r.get("label",""),"score":round(r.get("score",0),3)} for r in result[:5]]}
+                return {
+                    "success": True,
+                    "classifications": [
+                        {"label": r.get("label", ""), "score": round(r.get("score", 0), 3)}
+                        for r in result[:5]
+                    ],
+                }
             return {"success": False, "error": "Sin clasificación de audio"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -751,14 +873,20 @@ class HuggingFaceSuite:
     # 17. ESTIMACIÓN DE PROFUNDIDAD
     # ══════════════════════════════════════════════════════════════
 
-    async def estimate_depth(self, image_bytes: bytes, model: str = "depth-anything/Depth-Anything-V2-Small-hf") -> dict[str, Any]:
+    async def estimate_depth(
+        self, image_bytes: bytes, model: str = "depth-anything/Depth-Anything-V2-Small-hf"
+    ) -> dict[str, Any]:
         """Estima profundidad de una imagen — útil para análisis de producto."""
         if not self._ok():
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
             result = await self._call(model, image_bytes, binary=True, timeout=60.0)
             if result:
-                return {"success": True, "depth_image_bytes": result, "depth_b64": base64.b64encode(result).decode()}
+                return {
+                    "success": True,
+                    "depth_image_bytes": result,
+                    "depth_b64": base64.b64encode(result).decode(),
+                }
             return {"success": False, "error": "Sin resultado"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -782,6 +910,7 @@ class HuggingFaceSuite:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
+
             ai = get_ai_client()
             response = await ai.complete(
                 system=f"You are an expert {language} developer. Generate clean, production-ready code. Return only code, no explanations unless asked.",
@@ -789,7 +918,12 @@ class HuggingFaceSuite:
                 model=AIModel.CODE,
             )
             if response and response.success:
-                return {"success": True, "code": response.content, "language": language, "model": response.model}
+                return {
+                    "success": True,
+                    "code": response.content,
+                    "language": language,
+                    "model": response.model,
+                }
             return {"success": False, "error": "Sin código generado"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -828,12 +962,18 @@ class HuggingFaceSuite:
         sentiment_task = self.analyze_sentiment(product_description)
         translate_task = self.translate_product_listing(
             {"name": product_name, "description": product_description},
-            source="es", targets=languages
+            source="es",
+            targets=languages,
         )
 
         results = await asyncio.gather(
-            img_task, social_task, thumb_task, summary_task,
-            niche_task, sentiment_task, translate_task,
+            img_task,
+            social_task,
+            thumb_task,
+            summary_task,
+            niche_task,
+            sentiment_task,
+            translate_task,
             return_exceptions=True,
         )
         img, social, thumb, summary, niche_cls, sentiment, translations = results
@@ -842,13 +982,37 @@ class HuggingFaceSuite:
             "success": True,
             "product_name": product_name,
             "niche": niche,
-            "product_image": {"b64": img.get("image_b64","")[:100]+"..." if isinstance(img,dict) and img.get("success") else None},
-            "social_image": {"b64": social.get("image_b64","")[:100]+"..." if isinstance(social,dict) and social.get("success") else None},
-            "blog_thumbnail": {"b64": thumb.get("image_b64","")[:100]+"..." if isinstance(thumb,dict) and thumb.get("success") else None},
-            "summary": summary.get("summary","") if isinstance(summary,dict) else "",
-            "niche_classification": niche_cls.get("best_label","") if isinstance(niche_cls,dict) else niche,
-            "market_sentiment": sentiment.get("sentiment","") if isinstance(sentiment,dict) else "",
-            "translations": translations.get("listings",{}) if isinstance(translations,dict) else {},
+            "product_image": {
+                "b64": (
+                    img.get("image_b64", "")[:100] + "..."
+                    if isinstance(img, dict) and img.get("success")
+                    else None
+                )
+            },
+            "social_image": {
+                "b64": (
+                    social.get("image_b64", "")[:100] + "..."
+                    if isinstance(social, dict) and social.get("success")
+                    else None
+                )
+            },
+            "blog_thumbnail": {
+                "b64": (
+                    thumb.get("image_b64", "")[:100] + "..."
+                    if isinstance(thumb, dict) and thumb.get("success")
+                    else None
+                )
+            },
+            "summary": summary.get("summary", "") if isinstance(summary, dict) else "",
+            "niche_classification": (
+                niche_cls.get("best_label", "") if isinstance(niche_cls, dict) else niche
+            ),
+            "market_sentiment": (
+                sentiment.get("sentiment", "") if isinstance(sentiment, dict) else ""
+            ),
+            "translations": (
+                translations.get("listings", {}) if isinstance(translations, dict) else {}
+            ),
         }
 
     # ══════════════════════════════════════════════════════════════
@@ -883,7 +1047,10 @@ class HuggingFaceSuite:
                     "success": True,
                     "answer": best.get("answer", ""),
                     "confidence": round(best.get("score", 0), 3),
-                    "all_answers": [{"answer": r.get("answer", ""), "score": round(r.get("score", 0), 3)} for r in result[:5]],
+                    "all_answers": [
+                        {"answer": r.get("answer", ""), "score": round(r.get("score", 0), 3)}
+                        for r in result[:5]
+                    ],
                     "question": question,
                 }
             return {"success": False, "error": "Sin respuesta del modelo VQA"}
@@ -1001,7 +1168,10 @@ class HuggingFaceSuite:
                     "success": True,
                     "top_label": result[0].get("label", ""),
                     "top_score": round(result[0].get("score", 0), 3),
-                    "all": [{"label": r.get("label", ""), "score": round(r.get("score", 0), 3)} for r in result[:5]],
+                    "all": [
+                        {"label": r.get("label", ""), "score": round(r.get("score", 0), 3)}
+                        for r in result[:5]
+                    ],
                 }
             return {"success": False, "error": "Sin resultado de clasificación CLIP"}
         except Exception as exc:
@@ -1073,8 +1243,12 @@ class HuggingFaceSuite:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
             from huggingface_hub import AsyncInferenceClient
+
             client = AsyncInferenceClient(provider="hf-inference", api_key=self._token)
-            sys_msg = system or "You are a structured data extraction assistant. Always respond with valid JSON following the provided schema exactly."
+            sys_msg = (
+                system
+                or "You are a structured data extraction assistant. Always respond with valid JSON following the provided schema exactly."
+            )
             messages = [
                 {"role": "system", "content": sys_msg},
                 {"role": "user", "content": prompt},
@@ -1115,8 +1289,8 @@ class HuggingFaceSuite:
         if not self._ok():
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
-            from apps.core.tools.web_tools import WebTools
             from apps.core.tools.ai_client import AIModel, get_ai_client
+            from apps.core.tools.web_tools import WebTools
 
             ai = get_ai_client()
             wt = WebTools()
@@ -1136,7 +1310,7 @@ class HuggingFaceSuite:
                 raw = plan_resp.content.strip()
                 if "[" in raw:
                     try:
-                        raw = raw[raw.index("["):raw.rindex("]") + 1]
+                        raw = raw[raw.index("[") : raw.rindex("]") + 1]
                         queries = json.loads(raw)[:2]
                     except Exception:
                         pass
@@ -1151,7 +1325,9 @@ class HuggingFaceSuite:
                         for res in r["results"][:4]
                     )
                     context += f"\nSearch: '{query}':\n{snippets}\n"
-                    steps_log.append({"step": "search", "query": query, "results": len(r["results"])})
+                    steps_log.append(
+                        {"step": "search", "query": query, "results": len(r["results"])}
+                    )
 
             # Step 3: Reason + Synthesize
             synth_resp = await ai.complete(
@@ -1161,7 +1337,11 @@ class HuggingFaceSuite:
                 max_tokens=800,
                 temperature=0.3,
             )
-            answer = synth_resp.content if (synth_resp and synth_resp.success) else "No se pudo sintetizar la respuesta."
+            answer = (
+                synth_resp.content
+                if (synth_resp and synth_resp.success)
+                else "No se pudo sintetizar la respuesta."
+            )
             steps_log.append({"step": "synthesize", "answer_length": len(answer)})
 
             return {
@@ -1196,18 +1376,24 @@ class HuggingFaceSuite:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
             from huggingface_hub import AsyncInferenceClient
+
             img_b64 = base64.b64encode(image_bytes).decode()
             client = AsyncInferenceClient(provider="hf-inference", api_key=self._token)
             response = await asyncio.wait_for(
                 client.chat.completions.create(
                     model=model,
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-                            {"type": "text", "text": question},
-                        ],
-                    }],
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                                },
+                                {"type": "text", "text": question},
+                            ],
+                        }
+                    ],
                     max_tokens=512,
                     temperature=0.4,
                 ),
@@ -1296,8 +1482,13 @@ class HuggingFaceSuite:
                 )
             if result and isinstance(result, list):
                 detected = [
-                    {"label": o.get("label", ""), "score": round(o.get("score", 0), 3), "box": o.get("box", {})}
-                    for o in result if o.get("score", 0) >= threshold
+                    {
+                        "label": o.get("label", ""),
+                        "score": round(o.get("score", 0), 3),
+                        "box": o.get("box", {}),
+                    }
+                    for o in result
+                    if o.get("score", 0) >= threshold
                 ]
                 return {
                     "success": True,
@@ -1363,7 +1554,10 @@ class HuggingFaceSuite:
             result = await self._call(model, {"inputs": pairs})
             if result and isinstance(result, list):
                 scored = sorted(
-                    [(passages[i], float(result[i])) for i in range(min(len(passages), len(result)))],
+                    [
+                        (passages[i], float(result[i]))
+                        for i in range(min(len(passages), len(result)))
+                    ],
                     key=lambda x: x[1],
                     reverse=True,
                 )
@@ -1482,7 +1676,9 @@ class HuggingFaceSuite:
             logger.error("[HF] generate_masks error: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def analyze_competitor_content(self, content_list: list[str], niche: str) -> dict[str, Any]:
+    async def analyze_competitor_content(
+        self, content_list: list[str], niche: str
+    ) -> dict[str, Any]:
         """Analiza contenido de competidores para extraer insights."""
         if not content_list:
             return {"success": False, "error": "Sin contenido para analizar"}
@@ -1499,16 +1695,24 @@ class HuggingFaceSuite:
         combined = " ".join(content_list[:3])[:3000]
         summary = await self.summarize(combined)
 
-        pos = sum(1 for s in sentiments if isinstance(s,dict) and s.get("sentiment") == "positivo")
-        neg = sum(1 for s in sentiments if isinstance(s,dict) and s.get("sentiment") == "negativo")
+        pos = sum(1 for s in sentiments if isinstance(s, dict) and s.get("sentiment") == "positivo")
+        neg = sum(1 for s in sentiments if isinstance(s, dict) and s.get("sentiment") == "negativo")
 
         return {
             "success": True,
             "niche": niche,
             "analyzed": len(content_list),
-            "sentiment_distribution": {"positive": pos, "negative": neg, "neutral": len(sentiments)-pos-neg},
-            "dominant_content_type": content_types[0].get("best_label","") if content_types and isinstance(content_types[0],dict) else "",
-            "key_insights": summary.get("summary",""),
+            "sentiment_distribution": {
+                "positive": pos,
+                "negative": neg,
+                "neutral": len(sentiments) - pos - neg,
+            },
+            "dominant_content_type": (
+                content_types[0].get("best_label", "")
+                if content_types and isinstance(content_types[0], dict)
+                else ""
+            ),
+            "key_insights": summary.get("summary", ""),
         }
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -1597,11 +1801,9 @@ class HuggingFaceSuite:
     async def _poll_gradio_sse(self, url: str, timeout: float = 120.0) -> list | None:
         """Read a Gradio SSE stream and return the 'complete' event's data list."""
         result = None
-        current_event: Optional[str] = None
+        current_event: str | None = None
         try:
-            async with self._http.stream(
-                "GET", url, headers=self._headers(), timeout=timeout
-            ) as r:
+            async with self._http.stream("GET", url, headers=self._headers(), timeout=timeout) as r:
                 async for line in r.aiter_lines():
                     line = line.strip()
                     if line.startswith("event:"):
@@ -1710,9 +1912,7 @@ class HuggingFaceSuite:
         try:
             audio_data = self._gradio_audio_data(ref_audio_bytes)
             data = [audio_data, ref_text, gen_text, True]  # True = remove silence
-            result = await self._gradio_call(
-                "mrfakename/E2-F5-TTS", "infer", data, timeout=120.0
-            )
+            result = await self._gradio_call("mrfakename/E2-F5-TTS", "infer", data, timeout=120.0)
             if result:
                 for item in result:
                     resolved = await self._resolve_gradio_item(item)
@@ -1745,9 +1945,7 @@ class HuggingFaceSuite:
             logger.error("[HF Space] upscale_image: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def ocr_document_space(
-        self, image_bytes: bytes, task: str = "Text"
-    ) -> dict[str, Any]:
+    async def ocr_document_space(self, image_bytes: bytes, task: str = "Text") -> dict[str, Any]:
         """
         OCR: extract text, formulas, or table data from images (GLM-OCR).
         Space: prithivMLmods/GLM-OCR-Demo — handles plain text, math, tables.
@@ -1785,9 +1983,7 @@ class HuggingFaceSuite:
             if result and len(result) >= 1:
                 annotated = await self._resolve_gradio_item(result[0])
                 keypoints = (
-                    result[1]
-                    if len(result) > 1 and isinstance(result[1], (dict, list))
-                    else {}
+                    result[1] if len(result) > 1 and isinstance(result[1], (dict, list)) else {}
                 )
                 return {
                     "success": True,
@@ -1800,7 +1996,7 @@ class HuggingFaceSuite:
             return {"success": False, "error": str(exc)}
 
     async def generate_3d_model(
-        self, image_bytes: Optional[bytes] = None, prompt: str = ""
+        self, image_bytes: bytes | None = None, prompt: str = ""
     ) -> dict[str, Any]:
         """
         Generate 3D mesh from image or text prompt (Hunyuan3D-2).
@@ -1870,8 +2066,12 @@ class HuggingFaceSuite:
         try:
             data = [
                 self._gradio_image_data(image_bytes),
-                target_width, target_height,
-                "Middle", 60, 8, prompt,
+                target_width,
+                target_height,
+                "Middle",
+                60,
+                8,
+                prompt,
             ]
             result = await self._gradio_call(
                 "fffiloni/diffusers-image-outpaint", "infer", data, timeout=120.0
@@ -1886,9 +2086,7 @@ class HuggingFaceSuite:
             logger.error("[HF Space] outpaint_image: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def colorize_image(
-        self, image_bytes: bytes, description: str = ""
-    ) -> dict[str, Any]:
+    async def colorize_image(self, image_bytes: bytes, description: str = "") -> dict[str, Any]:
         """
         Colorize a grayscale image with text-guided color choices.
         Space: fffiloni/text-guided-image-colorization — only running colorization Space.
@@ -1914,7 +2112,7 @@ class HuggingFaceSuite:
     async def generate_video_space(
         self,
         prompt: str,
-        image_bytes: Optional[bytes] = None,
+        image_bytes: bytes | None = None,
         width: int = 832,
         height: int = 480,
     ) -> dict[str, Any]:

@@ -10,6 +10,7 @@ Tracks:
 Events are recorded via track_event() and aggregated on demand.
 Provides daily/weekly/monthly breakdowns.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -17,22 +18,22 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.economics.dashboard")
 
 _EVENTS_KEY = "economics:events:v1"
 _SNAPSHOTS_KEY = "economics:snapshots:v1"
-_EVENTS_TTL = 86400 * 90       # 90 days
-_SNAPSHOTS_TTL = 86400 * 365   # 365 days
+_EVENTS_TTL = 86400 * 90  # 90 days
+_SNAPSHOTS_TTL = 86400 * 365  # 365 days
 
 _VALID_EVENT_TYPES = {"impression", "click", "lead", "purchase", "spend"}
 
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
+
 
 @dataclass
 class MetricEvent:
@@ -146,6 +147,7 @@ class DashboardSnapshot:
 
 # ── Main class ────────────────────────────────────────────────────────────────
 
+
 class EconomicDashboard:
     """Real business metrics tracking for ARIA AI."""
 
@@ -191,9 +193,11 @@ class EconomicDashboard:
         event_type: str,
         channel: str,
         amount: float = 0.0,
-        metadata: dict = {},
+        metadata: dict = None,
     ) -> MetricEvent:
         """Record a single metric event and persist to Redis."""
+        if metadata is None:
+            metadata = {}
         await self._load()
 
         if event_type not in _VALID_EVENT_TYPES:

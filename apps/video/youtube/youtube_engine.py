@@ -11,16 +11,16 @@ Capabilities:
   - SEO auditing
   - Retention optimization
 """
+
 from __future__ import annotations
 
 import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 # ── Redis configuration ────────────────────────────────────────────────────────
 _REDIS_KEY = "video:youtube:v1"
@@ -30,6 +30,7 @@ _TTL_90D = 60 * 60 * 24 * 90
 # ══════════════════════════════════════════════════════════════════════════════
 # Domain objects
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class VideoMetadata:
@@ -94,6 +95,7 @@ class VideoScript:
 # ══════════════════════════════════════════════════════════════════════════════
 # YouTube Engine
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class YouTubeEngine:
     """
@@ -242,7 +244,11 @@ class YouTubeEngine:
 
         # Build body sections from content
         body = [
-            {"timestamp": f"{i}:00", "content": f"Section {i+1}: {topic} part {i+1}", "visual": f"Slide {i+1}"}
+            {
+                "timestamp": f"{i}:00",
+                "content": f"Section {i+1}: {topic} part {i+1}",
+                "visual": f"Slide {i+1}",
+            }
             for i in range(5)
         ]
 
@@ -284,13 +290,11 @@ class YouTubeEngine:
             "analysis": content,
         }
 
-    async def generate_content_calendar(
-        self, niche: str, videos_per_week: int = 3
-    ) -> list[dict]:
+    async def generate_content_calendar(self, niche: str, videos_per_week: int = 3) -> list[dict]:
         """4-week content calendar with topics, keywords, types."""
         ai = get_ai_client()
         total_videos = 4 * videos_per_week
-        resp = await ai.complete(
+        await ai.complete(
             system=(
                 "You are a YouTube content strategist. Generate a 4-week content calendar. "
                 f"Include {total_videos} video ideas with: week number, topic, target keyword, "
@@ -301,30 +305,33 @@ class YouTubeEngine:
             model=AIModel.STRATEGY,
             max_tokens=1000,
         )
-        content = resp.content if resp.success else ""
 
         # Generate structured calendar
         content_types = ["tutorial", "listicle", "review", "shorts", "vlog"]
         calendar = []
         for week in range(1, 5):
             for day in range(videos_per_week):
-                calendar.append({
-                    "week": week,
-                    "day": day + 1,
-                    "topic": f"{niche} — Week {week} Video {day + 1}",
-                    "keyword": f"{niche} week {week}",
-                    "content_type": content_types[(week + day) % len(content_types)],
-                    "estimated_views": 1000 + week * 500,
-                    "posting_day": ["Monday", "Wednesday", "Friday", "Saturday"][day % 4],
-                })
+                calendar.append(
+                    {
+                        "week": week,
+                        "day": day + 1,
+                        "topic": f"{niche} — Week {week} Video {day + 1}",
+                        "keyword": f"{niche} week {week}",
+                        "content_type": content_types[(week + day) % len(content_types)],
+                        "estimated_views": 1000 + week * 500,
+                        "posting_day": ["Monday", "Wednesday", "Friday", "Saturday"][day % 4],
+                    }
+                )
         return calendar
 
-    async def seo_audit(
-        self, channel_niche: str, competitor_channels: list = []
-    ) -> dict:
+    async def seo_audit(self, channel_niche: str, competitor_channels: list = None) -> dict:
         """AI SEO audit with keyword gaps and opportunities."""
+        if competitor_channels is None:
+            competitor_channels = []
         ai = get_ai_client()
-        competitors_str = ", ".join(competitor_channels) if competitor_channels else "none specified"
+        competitors_str = (
+            ", ".join(competitor_channels) if competitor_channels else "none specified"
+        )
         resp = await ai.complete(
             system=(
                 "You are a YouTube SEO expert. Conduct a comprehensive channel SEO audit. "
@@ -359,7 +366,7 @@ class YouTubeEngine:
     async def optimize_retention(self, script_body: list) -> list:
         """AI adds retention hooks between sections."""
         ai = get_ai_client()
-        resp = await ai.complete(
+        await ai.complete(
             system=(
                 "You are a YouTube retention expert. Add pattern interrupt hooks between script sections "
                 "to keep viewers watching. Add preview hooks, curiosity gaps, and re-engagement lines."
@@ -383,12 +390,14 @@ class YouTubeEngine:
             optimized.append(dict(section))
             if i < len(script_body) - 1:
                 hook = retention_hooks[i % len(retention_hooks)]
-                optimized.append({
-                    "timestamp": "",
-                    "content": hook,
-                    "visual": "retention_hook",
-                    "is_hook": True,
-                })
+                optimized.append(
+                    {
+                        "timestamp": "",
+                        "content": hook,
+                        "visual": "retention_hook",
+                        "is_hook": True,
+                    }
+                )
         return optimized
 
     def channel_analytics(self) -> dict:
@@ -414,7 +423,7 @@ class YouTubeEngine:
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
-_instance: Optional[YouTubeEngine] = None
+_instance: YouTubeEngine | None = None
 
 
 def get_youtube_engine() -> YouTubeEngine:

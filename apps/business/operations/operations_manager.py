@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
 
@@ -137,15 +136,17 @@ class OperationsManager:
                     status = "at_risk"
                 else:
                     status = "off_track"
-                cat_items.append({
-                    "name": m["name"],
-                    "current": value,
-                    "target": m["target"],
-                    "gap_pct": gap_pct,
-                    "status": status,
-                    "unit": m.get("unit", ""),
-                    "trend": m.get("trend", "stable"),
-                })
+                cat_items.append(
+                    {
+                        "name": m["name"],
+                        "current": value,
+                        "target": m["target"],
+                        "gap_pct": gap_pct,
+                        "status": status,
+                        "unit": m.get("unit", ""),
+                        "trend": m.get("trend", "stable"),
+                    }
+                )
             dashboard[cat] = cat_items
         return dashboard
 
@@ -200,16 +201,18 @@ class OperationsManager:
             if ratio < 0.7:
                 gap = m["target"] - m["value"]
                 estimated_impact = round(gap * 0.5, 2)
-                opportunities.append({
-                    "metric": m["name"],
-                    "current": m["value"],
-                    "target": m["target"],
-                    "unit": m.get("unit", ""),
-                    "gap": round(gap, 2),
-                    "gap_pct": round((1 - ratio) * 100, 1),
-                    "estimated_impact": estimated_impact,
-                    "recommendation": f"Improve {m['name']} by {round((1 - ratio) * 100, 0):.0f}% to reach target",
-                })
+                opportunities.append(
+                    {
+                        "metric": m["name"],
+                        "current": m["value"],
+                        "target": m["target"],
+                        "unit": m.get("unit", ""),
+                        "gap": round(gap, 2),
+                        "gap_pct": round((1 - ratio) * 100, 1),
+                        "estimated_impact": estimated_impact,
+                        "recommendation": f"Improve {m['name']} by {round((1 - ratio) * 100, 0):.0f}% to reach target",
+                    }
+                )
         opportunities.sort(key=lambda o: -o["gap_pct"])
         return opportunities
 
@@ -219,10 +222,7 @@ class OperationsManager:
         latest: dict[str, dict] = {}
         for m in self._metrics:
             latest[m["name"]] = m
-        on_track = sum(
-            1 for m in latest.values()
-            if m["value"] / max(m["target"], 0.01) >= 0.9
-        )
+        on_track = sum(1 for m in latest.values() if m["value"] / max(m["target"], 0.01) >= 0.9)
         health_score = round(on_track / len(latest), 3) if latest else 1.0
         return {
             "total_metrics": len(latest),

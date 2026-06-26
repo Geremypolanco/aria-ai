@@ -2,13 +2,12 @@
 Ecommerce connection para ARIA AI.
 Soporta Amazon (Product Advertising API), Etsy (OAuth), WooCommerce (API key).
 """
+
 from __future__ import annotations
 
 import hashlib
-import hmac
 import logging
 import time
-from typing import Any, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -24,25 +23,29 @@ ETSY_SCOPES = "listings_r listings_w shops_r transactions_r"
 
 class EtsyConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ETSY_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ETSY_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
-        import secrets
-        import hashlib
         import base64
+        import secrets
+
         verifier = secrets.token_urlsafe(64)
-        challenge = base64.urlsafe_b64encode(
-            hashlib.sha256(verifier.encode()).digest()
-        ).rstrip(b"=").decode()
+        challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+            .rstrip(b"=")
+            .decode()
+        )
         params = {
             "response_type": "code",
             "redirect_uri": ETSY_REDIRECT,
@@ -54,18 +57,21 @@ class EtsyConnection:
         }
         return f"{ETSY_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         if not cid:
             raise ValueError("ETSY_CLIENT_ID no configurado")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(ETSY_TOKEN_URL, json={
-                "grant_type": "authorization_code",
-                "client_id": cid,
-                "redirect_uri": ETSY_REDIRECT,
-                "code": code,
-                "code_verifier": "",
-            })
+            r = await http.post(
+                ETSY_TOKEN_URL,
+                json={
+                    "grant_type": "authorization_code",
+                    "client_id": cid,
+                    "redirect_uri": ETSY_REDIRECT,
+                    "code": code,
+                    "code_verifier": "",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -135,6 +141,7 @@ class WooCommerceConnection:
 
     def _creds(self) -> tuple[str, str, str]:
         from apps.core.config import settings
+
         url = getattr(settings, "WOOCOMMERCE_URL", "") or ""
         key = getattr(settings, "WOOCOMMERCE_CONSUMER_KEY", "") or ""
         secret = getattr(settings, "WOOCOMMERCE_CONSUMER_SECRET", "") or ""
@@ -211,6 +218,7 @@ class AmazonConnection:
 
     def _creds(self) -> tuple[str, str, str]:
         from apps.core.config import settings
+
         key = getattr(settings, "AMAZON_ACCESS_KEY", "") or ""
         secret = getattr(settings, "AMAZON_SECRET_KEY", "") or ""
         tag = getattr(settings, "AMAZON_ASSOCIATE_TAG", "") or ""
@@ -219,7 +227,11 @@ class AmazonConnection:
     async def search_products(self, keywords: str, max_results: int = 10) -> list[dict]:
         key, secret, tag = self._creds()
         if not key or not secret or not tag:
-            return [{"error": "AMAZON_ACCESS_KEY / AMAZON_SECRET_KEY / AMAZON_ASSOCIATE_TAG no configurados"}]
+            return [
+                {
+                    "error": "AMAZON_ACCESS_KEY / AMAZON_SECRET_KEY / AMAZON_ASSOCIATE_TAG no configurados"
+                }
+            ]
         payload = {
             "Keywords": keywords,
             "PartnerTag": tag,
@@ -233,7 +245,7 @@ class AmazonConnection:
             "ItemCount": min(max_results, 10),
         }
         now = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-        date = now[:8]
+        now[:8]
         headers = {
             "content-encoding": "amz-1.0",
             "content-type": "application/json; charset=utf-8",
@@ -243,6 +255,7 @@ class AmazonConnection:
         }
         # Simplified signing — in production use full AWS SigV4
         import json
+
         body = json.dumps(payload)
         try:
             async with httpx.AsyncClient(timeout=15.0) as http:
@@ -257,9 +270,15 @@ class AmazonConnection:
                     {
                         "asin": item.get("ASIN"),
                         "title": item.get("ItemInfo", {}).get("Title", {}).get("DisplayValue", ""),
-                        "price": item.get("Offers", {}).get("Listings", [{}])[0].get("Price", {}).get("DisplayAmount", "N/A"),
+                        "price": item.get("Offers", {})
+                        .get("Listings", [{}])[0]
+                        .get("Price", {})
+                        .get("DisplayAmount", "N/A"),
                         "url": item.get("DetailPageURL", ""),
-                        "image": item.get("Images", {}).get("Primary", {}).get("Medium", {}).get("URL", ""),
+                        "image": item.get("Images", {})
+                        .get("Primary", {})
+                        .get("Medium", {})
+                        .get("URL", ""),
                     }
                     for item in items
                 ]

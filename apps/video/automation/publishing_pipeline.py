@@ -8,15 +8,15 @@ Capabilities:
   - Optimal publish time recommendations
   - Pipeline analytics
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 # ── Redis configuration ────────────────────────────────────────────────────────
 _REDIS_KEY = "video:pipeline:v1"
@@ -26,6 +26,7 @@ _TTL_90D = 60 * 60 * 24 * 90
 # ══════════════════════════════════════════════════════════════════════════════
 # Domain object
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class PublishJob:
@@ -54,6 +55,7 @@ class PublishJob:
 # ══════════════════════════════════════════════════════════════════════════════
 # Publishing Pipeline
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class PublishingPipeline:
     """
@@ -91,9 +93,11 @@ class PublishingPipeline:
         platform: str,
         title: str,
         scheduled_at: float,
-        metadata: dict = {},
+        metadata: dict = None,
     ) -> PublishJob:
         """Schedule a video for publishing."""
+        if metadata is None:
+            metadata = {}
         await self._load()
         job = PublishJob(
             content_id=content_id,
@@ -118,7 +122,9 @@ class PublishingPipeline:
                 job_dict.get("status") == "scheduled"
                 and job_dict.get("scheduled_at", float("inf")) <= now
             ):
-                job = PublishJob(**{k: job_dict[k] for k in PublishJob.__dataclass_fields__ if k in job_dict})
+                job = PublishJob(
+                    **{k: job_dict[k] for k in PublishJob.__dataclass_fields__ if k in job_dict}
+                )
                 success = self._publish_stub(job)
                 job_dict["status"] = "published" if success else "failed"
                 job_dict["published_at"] = now
@@ -178,7 +184,7 @@ class PublishingPipeline:
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
-_instance: Optional[PublishingPipeline] = None
+_instance: PublishingPipeline | None = None
 
 
 def get_publishing_pipeline() -> PublishingPipeline:

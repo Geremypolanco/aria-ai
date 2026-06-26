@@ -2,15 +2,15 @@
 Strategic content planning — topic research, strategy building, SEO clustering,
 and content repurposing maps.
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
-from apps.core.memory.redis_client import get_cache
 from apps.content.content_os import ContentPlatform, ContentType
+from apps.core.memory.redis_client import get_cache
 
 logger = logging.getLogger("aria.content.planner")
 
@@ -21,40 +21,77 @@ _STRATEGY_TTL = 86400 * 90  # 90 days
 
 _NICHE_TOPICS: dict[str, list[str]] = {
     "ecommerce": [
-        "product reviews", "buying guides", "unboxing", "best deals",
-        "comparison shopping", "dropshipping tips", "store setup",
-        "customer retention", "abandoned cart recovery", "upsell strategies",
+        "product reviews",
+        "buying guides",
+        "unboxing",
+        "best deals",
+        "comparison shopping",
+        "dropshipping tips",
+        "store setup",
+        "customer retention",
+        "abandoned cart recovery",
+        "upsell strategies",
     ],
     "fitness": [
-        "workout tutorials", "nutrition tips", "transformation stories",
-        "supplement reviews", "home gym setup", "meal prep ideas",
-        "weight loss strategies", "muscle building", "recovery techniques",
+        "workout tutorials",
+        "nutrition tips",
+        "transformation stories",
+        "supplement reviews",
+        "home gym setup",
+        "meal prep ideas",
+        "weight loss strategies",
+        "muscle building",
+        "recovery techniques",
         "fitness challenges",
     ],
     "tech": [
-        "how-to guides", "product comparisons", "tutorials",
-        "software reviews", "AI tools", "productivity hacks",
-        "cybersecurity basics", "developer tips", "gadget unboxing",
+        "how-to guides",
+        "product comparisons",
+        "tutorials",
+        "software reviews",
+        "AI tools",
+        "productivity hacks",
+        "cybersecurity basics",
+        "developer tips",
+        "gadget unboxing",
         "tech news roundup",
     ],
     "finance": [
-        "investing basics", "budgeting tips", "passive income ideas",
-        "side hustles", "debt payoff strategies", "crypto explained",
-        "real estate investing", "tax saving tips", "financial independence",
+        "investing basics",
+        "budgeting tips",
+        "passive income ideas",
+        "side hustles",
+        "debt payoff strategies",
+        "crypto explained",
+        "real estate investing",
+        "tax saving tips",
+        "financial independence",
         "money mindset",
     ],
     "marketing": [
-        "growth hacking", "email marketing", "SEO strategies",
-        "social media tips", "content strategy", "copywriting secrets",
-        "funnel optimization", "brand building", "influencer outreach",
+        "growth hacking",
+        "email marketing",
+        "SEO strategies",
+        "social media tips",
+        "content strategy",
+        "copywriting secrets",
+        "funnel optimization",
+        "brand building",
+        "influencer outreach",
         "paid ads guide",
     ],
 }
 
 _DEFAULT_TOPICS = [
-    "content strategy", "audience building", "brand story",
-    "growth tactics", "engagement tips", "platform mastery",
-    "monetization ideas", "community building", "analytics insights",
+    "content strategy",
+    "audience building",
+    "brand story",
+    "growth tactics",
+    "engagement tips",
+    "platform mastery",
+    "monetization ideas",
+    "community building",
+    "analytics insights",
     "content repurposing",
 ]
 
@@ -324,10 +361,7 @@ class ContentPlanner:
             ContentPlatform.BLOG.value: 300,
             ContentPlatform.EMAIL.value: 400,
         }
-        expected_reach = sum(
-            cadence.get(p, 0) * reach_per_platform.get(p, 200)
-            for p in cadence
-        )
+        expected_reach = sum(cadence.get(p, 0) * reach_per_platform.get(p, 200) for p in cadence)
 
         return ContentStrategy(
             strategy_id=str(uuid.uuid4()),
@@ -347,7 +381,7 @@ class ContentPlanner:
             logger.warning("ContentPlanner.save_strategy: %s", exc)
             return False
 
-    async def load_strategy(self) -> Optional[ContentStrategy]:
+    async def load_strategy(self) -> ContentStrategy | None:
         """Load current strategy from Redis, or return None."""
         try:
             data = await self._cache.get(_STRATEGY_KEY)
@@ -377,14 +411,12 @@ class ContentPlanner:
     def repurposing_plan(self, content_piece_type: ContentType) -> dict[str, list[str]]:
         """Return mapping of original type to list of repurposed types."""
         repurposed = _REPURPOSING_MAP.get(content_piece_type, [])
-        return {
-            content_piece_type.value: [ct.value for ct in repurposed]
-        }
+        return {content_piece_type.value: [ct.value for ct in repurposed]}
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_planner_instance: Optional[ContentPlanner] = None
+_planner_instance: ContentPlanner | None = None
 
 
 def get_content_planner() -> ContentPlanner:

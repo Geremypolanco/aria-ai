@@ -10,9 +10,11 @@ Ejecuta Python y JavaScript con:
 ARIA puede escribir código, ejecutarlo, ver el output real, y corregirlo.
 Esto habilita el loop: escribir → ejecutar → depurar → iterar.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import re
@@ -24,13 +26,17 @@ logger = logging.getLogger("aria.code_runner")
 
 # Imports que no se permiten en el sandbox de Python
 _BLOCKED_IMPORTS = {
-    "subprocess", "os.system", "shutil.rmtree",
-    "socket", "ctypes", "multiprocessing",
+    "subprocess",
+    "os.system",
+    "shutil.rmtree",
+    "socket",
+    "ctypes",
+    "multiprocessing",
 }
 
 # Tamaño máximo de output para no saturar el contexto
 MAX_OUTPUT_CHARS = 4000
-DEFAULT_TIMEOUT  = 15  # segundos
+DEFAULT_TIMEOUT = 15  # segundos
 
 
 class CodeRunner:
@@ -50,13 +56,12 @@ class CodeRunner:
 
         if language in ("python", "python3", "py"):
             return await self._run_python(code, timeout, packages)
-        elif language in ("javascript", "js", "node", "nodejs"):
+        if language in ("javascript", "js", "node", "nodejs"):
             return await self._run_javascript(code, timeout)
-        elif language in ("bash", "shell", "sh"):
+        if language in ("bash", "shell", "sh"):
             return await self._run_bash(code, timeout)
-        else:
-            # Intentar como Python por defecto
-            return await self._run_python(code, timeout, packages)
+        # Intentar como Python por defecto
+        return await self._run_python(code, timeout, packages)
 
     async def _run_python(
         self, code: str, timeout: int, packages: list[str] | None
@@ -82,10 +87,8 @@ class CodeRunner:
                 [sys.executable, tmp_path], timeout, cwd=os.path.dirname(tmp_path)
             )
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
     async def _run_javascript(self, code: str, timeout: int) -> dict[str, Any]:
         """Ejecuta JavaScript con Node.js si está disponible."""
@@ -98,10 +101,8 @@ class CodeRunner:
         try:
             return await self._exec(["node", tmp_path], timeout)
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
     async def _run_bash(self, code: str, timeout: int) -> dict[str, Any]:
         """Ejecuta bash. Solo para comandos de lectura/análisis."""
@@ -112,15 +113,15 @@ class CodeRunner:
                 return {
                     "success": False,
                     "stderr": f"Comando peligroso bloqueado: '{d}'",
-                    "stdout": "", "exit_code": -1,
+                    "stdout": "",
+                    "exit_code": -1,
                 }
         return await self._exec(["bash", "-c", code], timeout)
 
-    async def _exec(
-        self, cmd: list[str], timeout: int, cwd: str | None = None
-    ) -> dict[str, Any]:
+    async def _exec(self, cmd: list[str], timeout: int, cwd: str | None = None) -> dict[str, Any]:
         """Ejecuta comando y captura output con timeout."""
         import time
+
         start = time.monotonic()
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -131,10 +132,8 @@ class CodeRunner:
                 env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
             )
             try:
-                stdout_b, stderr_b = await asyncio.wait_for(
-                    proc.communicate(), timeout=timeout
-                )
-            except asyncio.TimeoutError:
+                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except TimeoutError:
                 proc.kill()
                 await proc.communicate()
                 return {
@@ -168,7 +167,13 @@ class CodeRunner:
             }
         except Exception as exc:
             logger.error("[CodeRunner] exec error: %s", exc)
-            return {"success": False, "stdout": "", "stderr": str(exc), "exit_code": -1, "runtime_ms": 0}
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": str(exc),
+                "exit_code": -1,
+                "runtime_ms": 0,
+            }
 
     async def _install_packages(self, packages: list[str]) -> None:
         """Instala paquetes pip necesarios para el script."""
@@ -203,10 +208,13 @@ class CodeRunner:
         # Código falló — intentar auto-fix con IA
         for attempt in range(max_iterations):
             error = result.get("stderr", "")[:500]
-            logger.info("[CodeRunner] Auto-fix attempt %d/%d: %s", attempt + 1, max_iterations, error[:80])
+            logger.info(
+                "[CodeRunner] Auto-fix attempt %d/%d: %s", attempt + 1, max_iterations, error[:80]
+            )
 
             try:
                 from apps.core.tools.ai_client import AIModel, get_ai_client
+
                 ai = get_ai_client()
                 if not ai:
                     break

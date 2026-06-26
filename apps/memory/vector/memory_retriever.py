@@ -1,11 +1,11 @@
 """
 MemoryRetriever — Smart semantic retrieval with context injection.
 """
+
 from __future__ import annotations
-import time
-from typing import Optional
-from apps.memory.vector.vector_store import VectorStore, MemoryPoint, get_vector_store
+
 from apps.core.memory.redis_client import get_cache
+from apps.memory.vector.vector_store import MemoryPoint, get_vector_store
 
 _RETRIEVER_KEY = "memory:retriever:v1"
 
@@ -19,12 +19,16 @@ class MemoryRetriever:
         self,
         content: str,
         category: str = "general",
-        tags: list[str] = [],
+        tags: list[str] = None,
         source: str = "",
         score: float = 1.0,
-        metadata: dict = {},
+        metadata: dict = None,
     ) -> MemoryPoint:
         """Store a memory point."""
+        if metadata is None:
+            metadata = {}
+        if tags is None:
+            tags = []
         point = MemoryPoint(
             content=content,
             category=category,
@@ -48,14 +52,11 @@ class MemoryRetriever:
         self,
         query: str,
         top_k: int = 5,
-        category: Optional[str] = None,
+        category: str | None = None,
     ) -> list[dict]:
         """Retrieve relevant memories for a query."""
         results = self._store.search(query, top_k=top_k, category=category, score_threshold=0.3)
-        return [
-            {**p.to_dict(), "similarity": round(sim, 4)}
-            for p, sim in results
-        ]
+        return [{**p.to_dict(), "similarity": round(sim, 4)} for p, sim in results]
 
     async def inject_context(self, task: str, max_tokens: int = 500) -> str:
         """Build context string from relevant memories for a task."""
@@ -79,7 +80,7 @@ class MemoryRetriever:
         }
 
 
-_retriever_instance: Optional[MemoryRetriever] = None
+_retriever_instance: MemoryRetriever | None = None
 
 
 def get_memory_retriever() -> MemoryRetriever:

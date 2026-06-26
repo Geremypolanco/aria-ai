@@ -21,22 +21,23 @@ Design:
   - The world model is updated by agents as they learn new facts
   - Queries return subgraphs, shortest paths, dependency chains
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import uuid
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger("aria.world_model")
 
 ENTITY_TTL = 86400 * 90  # 90 days
 
 
-class EntityType(str, Enum):
+class EntityType(StrEnum):
     USER = "user"
     PROJECT = "project"
     TOOL = "tool"
@@ -48,7 +49,7 @@ class EntityType(str, Enum):
     REVENUE_STREAM = "revenue_stream"
 
 
-class RelationType(str, Enum):
+class RelationType(StrEnum):
     OWNS = "owns"
     USES = "uses"
     DEPENDS_ON = "depends_on"
@@ -69,7 +70,7 @@ class Entity:
     properties: dict[str, Any]
     created_at: str
     updated_at: str
-    confidence: float = 1.0       # how certain ARIA is this entity exists
+    confidence: float = 1.0  # how certain ARIA is this entity exists
     active: bool = True
 
     def to_dict(self) -> dict:
@@ -78,14 +79,14 @@ class Entity:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Entity":
+    def from_dict(cls, d: dict) -> Entity:
         d = dict(d)
         d["entity_type"] = EntityType(d["entity_type"])
         return cls(**d)
 
     def update(self, **props) -> None:
         self.properties.update(props)
-        self.updated_at = datetime.now(timezone.utc).isoformat()
+        self.updated_at = datetime.now(UTC).isoformat()
 
 
 @dataclass
@@ -93,11 +94,9 @@ class Relationship:
     source_id: str
     target_id: str
     relation_type: RelationType
-    weight: float = 1.0          # strength of relationship
+    weight: float = 1.0  # strength of relationship
     properties: dict[str, Any] = field(default_factory=dict)
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -105,7 +104,7 @@ class Relationship:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Relationship":
+    def from_dict(cls, d: dict) -> Relationship:
         d = dict(d)
         d["relation_type"] = RelationType(d["relation_type"])
         return cls(**d)
@@ -147,6 +146,7 @@ class EntityRegistry:
     def _init_graph(self) -> None:
         try:
             import networkx as nx
+
             self._graph = nx.DiGraph()
         except ImportError:
             logger.warning("[WorldModel] NetworkX not available — graph traversal disabled")
@@ -161,11 +161,14 @@ class EntityRegistry:
         entity_id: str | None = None,
     ) -> str:
         eid = entity_id or f"{entity_type.value}_{uuid.uuid4().hex[:8]}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         entity = Entity(
-            id=eid, name=name, entity_type=entity_type,
+            id=eid,
+            name=name,
+            entity_type=entity_type,
             properties=properties or {},
-            created_at=now, updated_at=now,
+            created_at=now,
+            updated_at=now,
         )
         self._entities[eid] = entity
         if self._graph is not None:
@@ -191,7 +194,7 @@ class EntityRegistry:
         if not entity:
             return False
         entity.active = False
-        entity.updated_at = datetime.now(timezone.utc).isoformat()
+        entity.updated_at = datetime.now(UTC).isoformat()
         await self._persist_entity(entity)
         return True
 
@@ -207,7 +210,8 @@ class EntityRegistry:
     ) -> None:
         # Avoid duplicates
         existing = any(
-            r.source_id == source_id and r.target_id == target_id
+            r.source_id == source_id
+            and r.target_id == target_id
             and r.relation_type == relation_type
             for r in self._relationships
         )
@@ -215,24 +219,32 @@ class EntityRegistry:
             return
 
         rel = Relationship(
-            source_id=source_id, target_id=target_id,
-            relation_type=relation_type, weight=weight,
+            source_id=source_id,
+            target_id=target_id,
+            relation_type=relation_type,
+            weight=weight,
             properties=props,
         )
         self._relationships.append(rel)
         if self._graph is not None:
             self._graph.add_edge(
-                source_id, target_id,
-                relation_type=relation_type.value, weight=weight,
+                source_id,
+                target_id,
+                relation_type=relation_type.value,
+                weight=weight,
             )
         await self._persist_relationships()
 
     async def unrelate(self, source_id: str, target_id: str, relation_type: RelationType) -> bool:
         before = len(self._relationships)
         self._relationships = [
-            r for r in self._relationships
-            if not (r.source_id == source_id and r.target_id == target_id
-                    and r.relation_type == relation_type)
+            r
+            for r in self._relationships
+            if not (
+                r.source_id == source_id
+                and r.target_id == target_id
+                and r.relation_type == relation_type
+            )
         ]
         if self._graph is not None and self._graph.has_edge(source_id, target_id):
             self._graph.remove_edge(source_id, target_id)
@@ -240,13 +252,15 @@ class EntityRegistry:
 
     # ── Queries ───────────────────────────────────────────────────────────
 
-    def get_entity(self, entity_id: str) -> Optional[Entity]:
+    def get_entity(self, entity_id: str) -> Entity | None:
         return self._entities.get(entity_id)
 
     def get_by_name(self, name: str, entity_type: EntityType | None = None) -> list[Entity]:
         return [
-            e for e in self._entities.values()
-            if e.name.lower() == name.lower() and e.active
+            e
+            for e in self._entities.values()
+            if e.name.lower() == name.lower()
+            and e.active
             and (entity_type is None or e.entity_type == entity_type)
         ]
 
@@ -254,13 +268,15 @@ class EntityRegistry:
         return [e for e in self._entities.values() if e.entity_type == entity_type and e.active]
 
     async def get_neighbors(
-        self, entity_id: str,
+        self,
+        entity_id: str,
         relation_type: RelationType | None = None,
         direction: str = "out",  # "out", "in", "both"
     ) -> list[Entity]:
         if direction in ("out", "both"):
             targets = [
-                r.target_id for r in self._relationships
+                r.target_id
+                for r in self._relationships
                 if r.source_id == entity_id
                 and (relation_type is None or r.relation_type == relation_type)
             ]
@@ -269,7 +285,8 @@ class EntityRegistry:
 
         if direction in ("in", "both"):
             sources = [
-                r.source_id for r in self._relationships
+                r.source_id
+                for r in self._relationships
                 if r.target_id == entity_id
                 and (relation_type is None or r.relation_type == relation_type)
             ]
@@ -277,14 +294,13 @@ class EntityRegistry:
 
         return [self._entities[tid] for tid in set(targets) if tid in self._entities]
 
-    async def find_path(
-        self, source_id: str, target_id: str
-    ) -> list[Entity]:
+    async def find_path(self, source_id: str, target_id: str) -> list[Entity]:
         """Shortest path between two entities through the relationship graph."""
         if not self._graph:
             return []
         try:
             import networkx as nx
+
             path_ids = nx.shortest_path(self._graph, source=source_id, target=target_id)
             return [self._entities[eid] for eid in path_ids if eid in self._entities]
         except Exception:
@@ -293,15 +309,21 @@ class EntityRegistry:
     async def get_subgraph(self, entity_id: str, depth: int = 2) -> dict:
         """Return ego graph (entity + N-hop neighborhood)."""
         if not self._graph:
-            return {"entity": self._entities.get(entity_id, {}).to_dict() if entity_id in self._entities else {}}
+            return {
+                "entity": (
+                    self._entities.get(entity_id, {}).to_dict()
+                    if entity_id in self._entities
+                    else {}
+                )
+            }
         try:
             import networkx as nx
+
             ego = nx.ego_graph(self._graph, entity_id, radius=depth)
-            nodes = {nid: self._entities[nid].to_dict() for nid in ego.nodes if nid in self._entities}
-            edges = [
-                {"source": u, "target": v, **data}
-                for u, v, data in ego.edges(data=True)
-            ]
+            nodes = {
+                nid: self._entities[nid].to_dict() for nid in ego.nodes if nid in self._entities
+            }
+            edges = [{"source": u, "target": v, **data} for u, v, data in ego.edges(data=True)]
             return {"nodes": nodes, "edges": edges}
         except Exception:
             return {}
@@ -338,6 +360,7 @@ class EntityRegistry:
     async def _persist_entity(self, entity: Entity) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 await cache.set(
@@ -351,6 +374,7 @@ class EntityRegistry:
     async def _persist_relationships(self) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 data = [r.to_dict() for r in self._relationships[-200:]]  # keep last 200
@@ -372,7 +396,7 @@ class EntityRegistry:
         logger.debug("[WorldModel] World model initialized")
 
 
-_registry: Optional[EntityRegistry] = None
+_registry: EntityRegistry | None = None
 
 
 def get_entity_registry() -> EntityRegistry:

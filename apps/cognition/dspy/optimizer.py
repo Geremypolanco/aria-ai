@@ -4,10 +4,11 @@ ARIA DSPy — PromptOptimizer.
 Wraps DSPy Predict modules for marketing tasks.
 Provides graceful fallback responses when DSPy is not installed.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from apps.cognition.dspy.signatures import (
     _DSPY_AVAILABLE,
@@ -24,7 +25,7 @@ except ImportError:
     _dspy_module = None  # type: ignore[assignment]
 
 # Module-level singleton
-_prompt_optimizer: Optional["PromptOptimizer"] = None
+_prompt_optimizer: PromptOptimizer | None = None
 
 
 class PromptOptimizer:
@@ -81,6 +82,7 @@ class PromptOptimizer:
             # BootstrapFewShot or simple Predict if no teleprompter available
             try:
                 from dspy.teleprompt import BootstrapFewShot  # type: ignore[import]
+
                 teleprompter = BootstrapFewShot(max_bootstrapped_demos=2)
                 student = _dspy_module.Predict(ContentQuality)
                 optimized = teleprompter.compile(student, trainset=trainset)
@@ -108,9 +110,8 @@ class PromptOptimizer:
                 "improvement": "Use more specific data points and a clear call-to-action.",
             }
 
-        predictor = (
-            self._optimized.get("content_quality")
-            or self._predictors.get("content_quality")
+        predictor = self._optimized.get("content_quality") or self._predictors.get(
+            "content_quality"
         )
         if predictor is None:
             return {
@@ -231,6 +232,7 @@ class PromptOptimizer:
 
 
 # ── singleton factory ─────────────────────────────────────────────────────────
+
 
 def get_prompt_optimizer() -> PromptOptimizer:
     """Return the module-level PromptOptimizer singleton."""

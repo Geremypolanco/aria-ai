@@ -9,10 +9,11 @@ Required secrets (Fly.io):
   ATLASSIAN_CLIENT_ID, ATLASSIAN_CLIENT_SECRET
   MONDAY_API_KEY, MONDAY_CLIENT_ID, MONDAY_CLIENT_SECRET
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -22,6 +23,7 @@ logger = logging.getLogger("aria.connections.pm")
 
 # ── ASANA ─────────────────────────────────────────────────────────────────────
 
+
 class AsanaConnection:
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/asana"
@@ -29,19 +31,22 @@ class AsanaConnection:
     TOKEN_URL = "https://app.asana.com/-/oauth_token"
     BASE = "https://app.asana.com/api/1.0"
 
-    def _token(self) -> Optional[str]:
+    def _token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ASANA_ACCESS_TOKEN", None)
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ASANA_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ASANA_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -53,19 +58,22 @@ class AsanaConnection:
         }
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("ASANA_CLIENT_ID / ASANA_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(self.TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": self.REDIRECT_URI,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                self.TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": self.REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -88,7 +96,7 @@ class AsanaConnection:
             r.raise_for_status()
             return r.json().get("data", [])
 
-    async def list_projects(self, tok: str, workspace_gid: Optional[str] = None) -> list[dict]:
+    async def list_projects(self, tok: str, workspace_gid: str | None = None) -> list[dict]:
         """List projects, optionally filtered by workspace."""
         async with httpx.AsyncClient(timeout=15.0) as http:
             params: dict[str, Any] = {"opt_fields": "gid,name,current_status"}
@@ -174,17 +182,20 @@ class AsanaConnection:
 
 # ── TRELLO ────────────────────────────────────────────────────────────────────
 
+
 class TrelloConnection:
     """Trello uses API key + token query params — no OAuth flow needed."""
 
     BASE = "https://api.trello.com/1"
 
-    def _key(self) -> Optional[str]:
+    def _key(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "TRELLO_API_KEY", None)
 
-    def _token(self) -> Optional[str]:
+    def _token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "TRELLO_TOKEN", None)
 
     def _auth_params(self) -> dict:
@@ -199,8 +210,7 @@ class TrelloConnection:
             )
             r.raise_for_status()
             return [
-                {"id": b.get("id"), "name": b.get("name"), "url": b.get("url")}
-                for b in r.json()
+                {"id": b.get("id"), "name": b.get("name"), "url": b.get("url")} for b in r.json()
             ]
 
     async def list_lists(self, board_id: str) -> list[dict]:
@@ -237,7 +247,7 @@ class TrelloConnection:
         list_id: str,
         name: str,
         desc: str = "",
-        due: Optional[str] = None,
+        due: str | None = None,
     ) -> dict:
         """Create a new card in a Trello list."""
         payload = {**self._auth_params(), "idList": list_id, "name": name, "desc": desc}
@@ -271,6 +281,7 @@ class TrelloConnection:
 
 # ── LINEAR ────────────────────────────────────────────────────────────────────
 
+
 class LinearConnection:
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/linear"
@@ -278,19 +289,22 @@ class LinearConnection:
     TOKEN_URL = "https://api.linear.app/oauth/token"
     GRAPHQL_URL = "https://api.linear.app/graphql"
 
-    def _key(self) -> Optional[str]:
+    def _key(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "LINEAR_API_KEY", None)
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "LINEAR_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "LINEAR_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -303,19 +317,22 @@ class LinearConnection:
         }
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("LINEAR_CLIENT_ID / LINEAR_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(self.TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": self.REDIRECT_URI,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                self.TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": self.REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -328,7 +345,7 @@ class LinearConnection:
         # Linear does not use "Bearer" prefix
         return {"Authorization": tok, "Content-Type": "application/json"}
 
-    async def graphql(self, tok: str, query: str, variables: Optional[dict] = None) -> dict:
+    async def graphql(self, tok: str, query: str, variables: dict | None = None) -> dict:
         """Execute a GraphQL query against the Linear API."""
         payload: dict[str, Any] = {"query": query}
         if variables:
@@ -411,6 +428,7 @@ class LinearConnection:
 
 # ── JIRA ──────────────────────────────────────────────────────────────────────
 
+
 class JiraConnection:
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/jira"
@@ -418,15 +436,17 @@ class JiraConnection:
     TOKEN_URL = "https://auth.atlassian.com/oauth/token"
     SCOPES = "read:jira-user read:jira-work write:jira-work offline_access"
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ATLASSIAN_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ATLASSIAN_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -441,19 +461,22 @@ class JiraConnection:
         }
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("ATLASSIAN_CLIENT_ID / ATLASSIAN_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(self.TOKEN_URL, json={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": self.REDIRECT_URI,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                self.TOKEN_URL,
+                json={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": self.REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             # Retrieve cloud_id from accessible resources
@@ -557,6 +580,7 @@ class JiraConnection:
 
 # ── MONDAY ────────────────────────────────────────────────────────────────────
 
+
 class MondayConnection:
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/monday"
@@ -564,19 +588,22 @@ class MondayConnection:
     TOKEN_URL = "https://auth.monday.com/oauth2/token"
     GRAPHQL_URL = "https://api.monday.com/v2"
 
-    def _token(self) -> Optional[str]:
+    def _token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "MONDAY_API_KEY", None)
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "MONDAY_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "MONDAY_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -589,19 +616,22 @@ class MondayConnection:
         }
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("MONDAY_CLIENT_ID / MONDAY_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(self.TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": self.REDIRECT_URI,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                self.TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": self.REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -656,10 +686,11 @@ class MondayConnection:
         board_id: str,
         group_id: str,
         item_name: str,
-        column_values: Optional[dict] = None,
+        column_values: dict | None = None,
     ) -> dict:
         """Create a new item on a Monday.com board."""
         import json as _json
+
         cv_str = _json.dumps(_json.dumps(column_values or {}))
         query = f"""
         mutation {{
@@ -684,6 +715,7 @@ class MondayConnection:
     ) -> dict:
         """Update the status column of a Monday.com item."""
         import json as _json
+
         col_val = _json.dumps(_json.dumps({column_id: {"label": value}}))
         query = f"""
         mutation {{

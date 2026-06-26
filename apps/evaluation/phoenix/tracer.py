@@ -4,15 +4,17 @@ CognitionTracer — Trace AI calls for evaluation with Arize Phoenix.
 When PHOENIX_ENDPOINT env var is set → sends traces to Phoenix server.
 Otherwise → in-memory trace collection with local analysis.
 """
+
 from __future__ import annotations
+
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 try:
-    import phoenix as px
-    from openinference.instrumentation.openai import OpenAIInstrumentor
+    import phoenix as px  # noqa: F401
+    from openinference.instrumentation.openai import OpenAIInstrumentor  # noqa: F401
+
     _PHOENIX_AVAILABLE = True
 except ImportError:
     _PHOENIX_AVAILABLE = False
@@ -21,6 +23,7 @@ from apps.core.memory.redis_client import get_cache
 
 _TRACE_KEY = "evaluation:traces:v1"
 _TRACE_TTL = 86400 * 30
+
 
 @dataclass
 class AITrace:
@@ -76,13 +79,14 @@ class CognitionTracer:
         if not _PHOENIX_AVAILABLE:
             return
         import os
+
         endpoint = os.environ.get("PHOENIX_ENDPOINT", "")
         if endpoint:
             try:
                 # Set up Phoenix tracing
-                import opentelemetry.sdk.trace as trace_sdk
                 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-                exporter = OTLPSpanExporter(endpoint=endpoint)
+
+                OTLPSpanExporter(endpoint=endpoint)
                 self._phoenix_active = True
             except Exception:
                 pass
@@ -101,7 +105,7 @@ class CognitionTracer:
     async def _save(self) -> None:
         try:
             cache = get_cache()
-            await cache.set(_TRACE_KEY, self._traces[-self.MAX_TRACES:], ttl_seconds=_TRACE_TTL)
+            await cache.set(_TRACE_KEY, self._traces[-self.MAX_TRACES :], ttl_seconds=_TRACE_TTL)
         except Exception:
             pass
 
@@ -114,8 +118,10 @@ class CognitionTracer:
         model: str = "",
         latency_ms: float = 0.0,
         success: bool = True,
-        metadata: dict = {},
+        metadata: dict = None,
     ) -> AITrace:
+        if metadata is None:
+            metadata = {}
         await self._load()
         trace = AITrace(
             agent_name=agent_name,
@@ -131,7 +137,7 @@ class CognitionTracer:
         )
         self._traces.append(trace.to_dict())
         if len(self._traces) > self.MAX_TRACES:
-            self._traces = self._traces[-self.MAX_TRACES:]
+            self._traces = self._traces[-self.MAX_TRACES :]
         await self._save()
         return trace
 
@@ -162,7 +168,8 @@ class CognitionTracer:
         risk = 0.1
         # Specific numbers without context are risky
         import re
-        if re.search(r'\b\d{4,}\b', response):
+
+        if re.search(r"\b\d{4,}\b", response):
             risk += 0.1
         # Highly confident claims
         overconfident = ["definitely", "certainly", "100%", "guaranteed", "always", "never"]
@@ -183,8 +190,12 @@ class CognitionTracer:
         total_hallucination = 0.0
 
         for t in self._traces:
-            by_agent[t.get("agent_name", "unknown")] = by_agent.get(t.get("agent_name", "unknown"), 0) + 1
-            by_task[t.get("task_type", "unknown")] = by_task.get(t.get("task_type", "unknown"), 0) + 1
+            by_agent[t.get("agent_name", "unknown")] = (
+                by_agent.get(t.get("agent_name", "unknown"), 0) + 1
+            )
+            by_task[t.get("task_type", "unknown")] = (
+                by_task.get(t.get("task_type", "unknown"), 0) + 1
+            )
             total_latency += t.get("latency_ms", 0)
             if not t.get("success", True):
                 failed += 1
@@ -222,7 +233,9 @@ class CognitionTracer:
             "avg_latency_ms": sum(t.get("latency_ms", 0) for t in agent_traces) / n,
         }
 
-_tracer_instance: Optional[CognitionTracer] = None
+
+_tracer_instance: CognitionTracer | None = None
+
 
 def get_cognition_tracer() -> CognitionTracer:
     global _tracer_instance

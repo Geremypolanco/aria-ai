@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
 
@@ -91,10 +90,14 @@ class PriorityEngine:
         leverage_component = action.leverage_score * 0.30
         effort_component = (10.0 - action.effort_score) * 0.02
         compounding_component = 0.10 if action.compounding else 0.0
-        speed_component = (
-            max(0.0, 30.0 - action.time_to_result_days) / 30.0 * 0.15
+        speed_component = max(0.0, 30.0 - action.time_to_result_days) / 30.0 * 0.15
+        raw = (
+            roi_component
+            + leverage_component
+            + effort_component
+            + compounding_component
+            + speed_component
         )
-        raw = roi_component + leverage_component + effort_component + compounding_component + speed_component
         return max(0.0, min(100.0, raw))
 
     async def add_action(self, action: StrategyAction) -> StrategyAction:
@@ -105,7 +108,7 @@ class PriorityEngine:
         return action
 
     async def rank_actions(
-        self, actions: Optional[list[StrategyAction]] = None
+        self, actions: list[StrategyAction] | None = None
     ) -> list[StrategyAction]:
         if actions is None:
             await self._load()
@@ -120,24 +123,28 @@ class PriorityEngine:
         ranked = await self.rank_actions()
         return ranked[:limit]
 
-    async def allocate_resources(
-        self, total_hours: int, total_budget_usd: float
-    ) -> dict:
+    async def allocate_resources(self, total_hours: int, total_budget_usd: float) -> dict:
         top = await self.top_priorities(limit=10)
         if not top:
-            return {"allocations": [], "total_hours": total_hours, "total_budget_usd": total_budget_usd}
+            return {
+                "allocations": [],
+                "total_hours": total_hours,
+                "total_budget_usd": total_budget_usd,
+            }
 
         total_score = sum(a.priority_score for a in top)
         allocations = []
         for action in top:
             share = action.priority_score / total_score if total_score > 0 else 1.0 / len(top)
-            allocations.append({
-                "action_id": action.action_id,
-                "title": action.title,
-                "priority_score": action.priority_score,
-                "allocated_hours": round(total_hours * share, 1),
-                "allocated_budget_usd": round(total_budget_usd * share, 2),
-            })
+            allocations.append(
+                {
+                    "action_id": action.action_id,
+                    "title": action.title,
+                    "priority_score": action.priority_score,
+                    "allocated_hours": round(total_hours * share, 1),
+                    "allocated_budget_usd": round(total_budget_usd * share, 2),
+                }
+            )
 
         return {
             "allocations": allocations,
@@ -148,10 +155,7 @@ class PriorityEngine:
     async def quick_wins(self) -> list[StrategyAction]:
         await self._load()
         actions = [StrategyAction.from_dict(d) for d in self._actions]
-        wins = [
-            a for a in actions
-            if a.effort_score <= 3 and a.time_to_result_days <= 14
-        ]
+        wins = [a for a in actions if a.effort_score <= 3 and a.time_to_result_days <= 14]
         return sorted(wins, key=lambda a: self._score(a), reverse=True)
 
     async def compounding_actions(self) -> list[StrategyAction]:
@@ -172,10 +176,7 @@ class PriorityEngine:
         actions = [StrategyAction.from_dict(d) for d in self._actions]
         scored = [self._score(a) for a in actions]
         avg_score = sum(scored) / len(scored)
-        quick_wins = sum(
-            1 for a in actions
-            if a.effort_score <= 3 and a.time_to_result_days <= 14
-        )
+        quick_wins = sum(1 for a in actions if a.effort_score <= 3 and a.time_to_result_days <= 14)
         compounding_count = sum(1 for a in actions if a.compounding)
 
         return {
@@ -186,7 +187,7 @@ class PriorityEngine:
         }
 
 
-_engine_instance: Optional[PriorityEngine] = None
+_engine_instance: PriorityEngine | None = None
 
 
 def get_priority_engine() -> PriorityEngine:

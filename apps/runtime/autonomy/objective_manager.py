@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -12,14 +11,14 @@ _OBJECTIVES_KEY = "objectives:long:v1"
 _OBJECTIVES_TTL = 86400 * 365
 
 
-class Horizon(str, Enum):
+class Horizon(StrEnum):
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
     QUARTERLY = "quarterly"
 
 
-class MilestoneStatus(str, Enum):
+class MilestoneStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     ACHIEVED = "achieved"
@@ -124,7 +123,9 @@ class ObjectiveManager:
                 cache = get_cache()
                 data = await cache.get(_OBJECTIVES_KEY)
                 if data and isinstance(data, dict):
-                    self._objectives = {k: LongHorizonObjective.from_dict(v) for k, v in data.items()}
+                    self._objectives = {
+                        k: LongHorizonObjective.from_dict(v) for k, v in data.items()
+                    }
             except Exception:
                 pass
             self._loaded = True
@@ -134,7 +135,11 @@ class ObjectiveManager:
         self._objectives = objectives
         try:
             cache = get_cache()
-            await cache.set(_OBJECTIVES_KEY, {k: v.to_dict() for k, v in objectives.items()}, ttl_seconds=_OBJECTIVES_TTL)
+            await cache.set(
+                _OBJECTIVES_KEY,
+                {k: v.to_dict() for k, v in objectives.items()},
+                ttl_seconds=_OBJECTIVES_TTL,
+            )
         except Exception:
             pass
 
@@ -174,7 +179,9 @@ class ObjectiveManager:
         await self._save(objectives)
         return obj
 
-    async def update_milestone(self, obj_id: str, milestone_id: str, current_value: float) -> Optional[Milestone]:
+    async def update_milestone(
+        self, obj_id: str, milestone_id: str, current_value: float
+    ) -> Milestone | None:
         objectives = await self._load()
         obj = objectives.get(obj_id)
         if not obj:
@@ -192,7 +199,9 @@ class ObjectiveManager:
                 return ms
         return None
 
-    async def get_objectives(self, horizon_filter: Optional[Horizon] = None) -> list[LongHorizonObjective]:
+    async def get_objectives(
+        self, horizon_filter: Horizon | None = None
+    ) -> list[LongHorizonObjective]:
         objectives = await self._load()
         result = list(objectives.values())
         if horizon_filter:
@@ -241,9 +250,24 @@ class ObjectiveManager:
                 "description": "Reach $10,000 in revenue within the quarter across all channels",
                 "target_revenue": 10_000.0,
                 "milestones": [
-                    {"title": "First $1K", "target_date_ts": now + 86400 * 14, "metric": "revenue_usd", "target_value": 1000},
-                    {"title": "Mid-quarter $5K", "target_date_ts": now + 86400 * 45, "metric": "revenue_usd", "target_value": 5000},
-                    {"title": "$10K achieved", "target_date_ts": now + 86400 * 90, "metric": "revenue_usd", "target_value": 10000},
+                    {
+                        "title": "First $1K",
+                        "target_date_ts": now + 86400 * 14,
+                        "metric": "revenue_usd",
+                        "target_value": 1000,
+                    },
+                    {
+                        "title": "Mid-quarter $5K",
+                        "target_date_ts": now + 86400 * 45,
+                        "metric": "revenue_usd",
+                        "target_value": 5000,
+                    },
+                    {
+                        "title": "$10K achieved",
+                        "target_date_ts": now + 86400 * 90,
+                        "metric": "revenue_usd",
+                        "target_value": 10000,
+                    },
                 ],
             },
             {
@@ -252,8 +276,18 @@ class ObjectiveManager:
                 "description": "Publish a full month of content across all brand channels",
                 "target_revenue": 0.0,
                 "milestones": [
-                    {"title": "Week 1 content live", "target_date_ts": now + 86400 * 7, "metric": "posts_published", "target_value": 7},
-                    {"title": "Full month published", "target_date_ts": now + 86400 * 30, "metric": "posts_published", "target_value": 28},
+                    {
+                        "title": "Week 1 content live",
+                        "target_date_ts": now + 86400 * 7,
+                        "metric": "posts_published",
+                        "target_value": 7,
+                    },
+                    {
+                        "title": "Full month published",
+                        "target_date_ts": now + 86400 * 30,
+                        "metric": "posts_published",
+                        "target_value": 28,
+                    },
                 ],
             },
             {
@@ -262,8 +296,18 @@ class ObjectiveManager:
                 "description": "Execute at least 3 growth loops this week",
                 "target_revenue": 0.0,
                 "milestones": [
-                    {"title": "Loop 1 complete", "target_date_ts": now + 86400 * 2, "metric": "loops_run", "target_value": 1},
-                    {"title": "3 loops complete", "target_date_ts": now + 86400 * 7, "metric": "loops_run", "target_value": 3},
+                    {
+                        "title": "Loop 1 complete",
+                        "target_date_ts": now + 86400 * 2,
+                        "metric": "loops_run",
+                        "target_value": 1,
+                    },
+                    {
+                        "title": "3 loops complete",
+                        "target_date_ts": now + 86400 * 7,
+                        "metric": "loops_run",
+                        "target_value": 3,
+                    },
                 ],
             },
             {
@@ -272,8 +316,18 @@ class ObjectiveManager:
                 "description": "Complete daily Shopify store optimization tasks",
                 "target_revenue": 0.0,
                 "milestones": [
-                    {"title": "Price optimization done", "target_date_ts": now + 86400, "metric": "tasks_complete", "target_value": 1},
-                    {"title": "All daily tasks done", "target_date_ts": now + 86400, "metric": "tasks_complete", "target_value": 3},
+                    {
+                        "title": "Price optimization done",
+                        "target_date_ts": now + 86400,
+                        "metric": "tasks_complete",
+                        "target_value": 1,
+                    },
+                    {
+                        "title": "All daily tasks done",
+                        "target_date_ts": now + 86400,
+                        "metric": "tasks_complete",
+                        "target_value": 3,
+                    },
                 ],
             },
         ]

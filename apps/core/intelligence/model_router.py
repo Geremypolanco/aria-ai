@@ -16,78 +16,185 @@ Ciclo de descubrimiento (corre cada 24h via scheduler):
   4. Actualizar tabla de enrutamiento en Redis
   5. ai_client.py carga la tabla actualizada al arrancar o cada ciclo
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import time
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
-from typing import Any, Optional
-
-from apps.core.config import settings
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.model_router")
 
 # ── CLAVES REDIS ─────────────────────────────────────────────
-ROUTING_TABLE_KEY   = "aria:model_router:routing_table:v3"
-BENCHMARK_KEY       = "aria:model_router:benchmark:{model_id}"
-DISCOVERY_LOG_KEY   = "aria:model_router:discovery_log"
-LAST_DISCOVERY_KEY  = "aria:model_router:last_discovery"
-ROUTING_TTL         = 60 * 60 * 24 * 7   # 7 días
-DISCOVERY_INTERVAL  = 60 * 60 * 24       # 24 horas
+ROUTING_TABLE_KEY = "aria:model_router:routing_table:v3"
+BENCHMARK_KEY = "aria:model_router:benchmark:{model_id}"
+DISCOVERY_LOG_KEY = "aria:model_router:discovery_log"
+LAST_DISCOVERY_KEY = "aria:model_router:last_discovery"
+ROUTING_TTL = 60 * 60 * 24 * 7  # 7 días
+DISCOVERY_INTERVAL = 60 * 60 * 24  # 24 horas
 
 
 # ── MAPA DE FUNCIONES DE ARIA ─────────────────────────────────
 # Cada función/agente de Aria → task_type HF más adecuado + descripción
 ARIA_FUNCTION_MAP: dict[str, dict] = {
     # Conversación y comprensión
-    "telegram_conversation":    {"hf_task": "text-generation",        "priority": "speed",   "desc": "Respuestas conversacionales libres"},
-    "telegram_analysis":        {"hf_task": "text-generation",        "priority": "quality", "desc": "Análisis interno antes de responder"},
-    "support_agent":            {"hf_task": "text-generation",        "priority": "quality", "desc": "Soporte y resolución de problemas"},
-
+    "telegram_conversation": {
+        "hf_task": "text-generation",
+        "priority": "speed",
+        "desc": "Respuestas conversacionales libres",
+    },
+    "telegram_analysis": {
+        "hf_task": "text-generation",
+        "priority": "quality",
+        "desc": "Análisis interno antes de responder",
+    },
+    "support_agent": {
+        "hf_task": "text-generation",
+        "priority": "quality",
+        "desc": "Soporte y resolución de problemas",
+    },
     # Análisis y clasificación
-    "intent_detection":         {"hf_task": "zero-shot-classification","priority": "speed",   "desc": "Detectar intención del usuario"},
-    "topic_classification":     {"hf_task": "zero-shot-classification","priority": "speed",   "desc": "Clasificar tema de una interacción"},
-    "sentiment_analysis":       {"hf_task": "sentiment-analysis",     "priority": "speed",   "desc": "Analizar sentimiento de textos"},
-    "compliance_check":         {"hf_task": "zero-shot-classification","priority": "quality", "desc": "Verificar cumplimiento ético"},
-
+    "intent_detection": {
+        "hf_task": "zero-shot-classification",
+        "priority": "speed",
+        "desc": "Detectar intención del usuario",
+    },
+    "topic_classification": {
+        "hf_task": "zero-shot-classification",
+        "priority": "speed",
+        "desc": "Clasificar tema de una interacción",
+    },
+    "sentiment_analysis": {
+        "hf_task": "sentiment-analysis",
+        "priority": "speed",
+        "desc": "Analizar sentimiento de textos",
+    },
+    "compliance_check": {
+        "hf_task": "zero-shot-classification",
+        "priority": "quality",
+        "desc": "Verificar cumplimiento ético",
+    },
     # Generación y contenido
-    "content_agent":            {"hf_task": "text-generation",        "priority": "creative","desc": "Crear contenido para redes sociales"},
-    "creative_engine":          {"hf_task": "text-generation",        "priority": "creative","desc": "Generación de ideas y creatividad"},
-    "marketing_agent":          {"hf_task": "text-generation",        "priority": "quality", "desc": "Estrategia y copy de marketing"},
-
+    "content_agent": {
+        "hf_task": "text-generation",
+        "priority": "creative",
+        "desc": "Crear contenido para redes sociales",
+    },
+    "creative_engine": {
+        "hf_task": "text-generation",
+        "priority": "creative",
+        "desc": "Generación de ideas y creatividad",
+    },
+    "marketing_agent": {
+        "hf_task": "text-generation",
+        "priority": "quality",
+        "desc": "Estrategia y copy de marketing",
+    },
     # Código y técnico
-    "dev_agent":                {"hf_task": "text-generation",        "priority": "code",    "desc": "Desarrollo y revisión de código"},
-    "enhanced_dev_agent":       {"hf_task": "text-generation",        "priority": "code",    "desc": "Desarrollo avanzado con refactoring"},
-    "code_reflector":           {"hf_task": "text-generation",        "priority": "code",    "desc": "Análisis y mejora del propio código"},
-
+    "dev_agent": {
+        "hf_task": "text-generation",
+        "priority": "code",
+        "desc": "Desarrollo y revisión de código",
+    },
+    "enhanced_dev_agent": {
+        "hf_task": "text-generation",
+        "priority": "code",
+        "desc": "Desarrollo avanzado con refactoring",
+    },
+    "code_reflector": {
+        "hf_task": "text-generation",
+        "priority": "code",
+        "desc": "Análisis y mejora del propio código",
+    },
     # Investigación y datos
-    "research_agent":           {"hf_task": "summarization",          "priority": "quality", "desc": "Investigación y síntesis de información"},
-    "market_intelligence":      {"hf_task": "zero-shot-classification","priority": "quality", "desc": "Análisis de tendencias de mercado"},
-    "web_search_synthesis":     {"hf_task": "summarization",          "priority": "speed",   "desc": "Resumir resultados de búsqueda web"},
-
+    "research_agent": {
+        "hf_task": "summarization",
+        "priority": "quality",
+        "desc": "Investigación y síntesis de información",
+    },
+    "market_intelligence": {
+        "hf_task": "zero-shot-classification",
+        "priority": "quality",
+        "desc": "Análisis de tendencias de mercado",
+    },
+    "web_search_synthesis": {
+        "hf_task": "summarization",
+        "priority": "speed",
+        "desc": "Resumir resultados de búsqueda web",
+    },
     # Finanzas y negocio
-    "cfo_agent":                {"hf_task": "text-generation",        "priority": "quality", "desc": "Análisis financiero y CFO"},
-    "pm_agent":                 {"hf_task": "text-generation",        "priority": "quality", "desc": "Gestión de producto y roadmap"},
-    "ecommerce_agent":          {"hf_task": "text-generation",        "priority": "quality", "desc": "E-commerce y shopify"},
-
+    "cfo_agent": {
+        "hf_task": "text-generation",
+        "priority": "quality",
+        "desc": "Análisis financiero y CFO",
+    },
+    "pm_agent": {
+        "hf_task": "text-generation",
+        "priority": "quality",
+        "desc": "Gestión de producto y roadmap",
+    },
+    "ecommerce_agent": {
+        "hf_task": "text-generation",
+        "priority": "quality",
+        "desc": "E-commerce y shopify",
+    },
     # Procesamiento de texto especializado
-    "entity_extraction":        {"hf_task": "named-entity-recognition","priority": "speed",  "desc": "Extraer personas, empresas, lugares"},
-    "text_summarization":       {"hf_task": "summarization",          "priority": "quality", "desc": "Resumir documentos largos"},
-    "translation":              {"hf_task": "translation",            "priority": "speed",   "desc": "Traducción entre idiomas"},
-    "document_qa":              {"hf_task": "document-question-answering","priority": "quality","desc": "Preguntas sobre documentos"},
-
+    "entity_extraction": {
+        "hf_task": "named-entity-recognition",
+        "priority": "speed",
+        "desc": "Extraer personas, empresas, lugares",
+    },
+    "text_summarization": {
+        "hf_task": "summarization",
+        "priority": "quality",
+        "desc": "Resumir documentos largos",
+    },
+    "translation": {
+        "hf_task": "translation",
+        "priority": "speed",
+        "desc": "Traducción entre idiomas",
+    },
+    "document_qa": {
+        "hf_task": "document-question-answering",
+        "priority": "quality",
+        "desc": "Preguntas sobre documentos",
+    },
     # Multimedia
-    "image_description":        {"hf_task": "image-to-text",          "priority": "quality", "desc": "Describir imágenes"},
-    "image_generation":         {"hf_task": "image-generation",       "priority": "quality", "desc": "Generar imágenes con IA"},
-    "audio_transcription":      {"hf_task": "automatic-speech-recognition","priority": "quality","desc": "Transcribir audio (Whisper)"},
-    "text_to_speech":           {"hf_task": "text-to-speech",         "priority": "quality", "desc": "Convertir texto a voz"},
-
+    "image_description": {
+        "hf_task": "image-to-text",
+        "priority": "quality",
+        "desc": "Describir imágenes",
+    },
+    "image_generation": {
+        "hf_task": "image-generation",
+        "priority": "quality",
+        "desc": "Generar imágenes con IA",
+    },
+    "audio_transcription": {
+        "hf_task": "automatic-speech-recognition",
+        "priority": "quality",
+        "desc": "Transcribir audio (Whisper)",
+    },
+    "text_to_speech": {
+        "hf_task": "text-to-speech",
+        "priority": "quality",
+        "desc": "Convertir texto a voz",
+    },
     # Embeddings y similitud
-    "semantic_search":          {"hf_task": "feature-extraction",     "priority": "speed",   "desc": "Búsqueda semántica y similitud"},
-    "knowledge_retrieval":      {"hf_task": "feature-extraction",     "priority": "speed",   "desc": "Recuperar conocimiento relevante"},
+    "semantic_search": {
+        "hf_task": "feature-extraction",
+        "priority": "speed",
+        "desc": "Búsqueda semántica y similitud",
+    },
+    "knowledge_retrieval": {
+        "hf_task": "feature-extraction",
+        "priority": "speed",
+        "desc": "Recuperar conocimiento relevante",
+    },
 }
 
 # Modelos candidatos extra por tipo de prioridad (para benchmarking)
@@ -162,7 +269,7 @@ class ModelScore:
     hf_task: str
     latency_ms: int
     success: bool
-    quality_score: float   # 0-1
+    quality_score: float  # 0-1
     response_len: int
     timestamp: str
 
@@ -220,18 +327,20 @@ class ModelRouter:
     def _get_cache(self):
         if not self._cache:
             from apps.core.memory.redis_client import get_cache
+
             self._cache = get_cache()
         return self._cache
 
     def _get_hf(self):
         if not self._hf:
             from apps.core.tools.hf_discovery import HFDiscovery
+
             self._hf = HFDiscovery()
         return self._hf
 
     # ── API PÚBLICA ──────────────────────────────────────────
 
-    async def get_best_model(self, function_name: str) -> Optional[str]:
+    async def get_best_model(self, function_name: str) -> str | None:
         """
         Retorna el mejor modelo HF para una función de Aria.
         Si no hay benchmark, retorna el modelo preferido por defecto.
@@ -249,10 +358,7 @@ class ModelRouter:
     async def get_routing_table(self) -> dict[str, Any]:
         """Retorna la tabla de enrutamiento completa."""
         await self._ensure_table_loaded()
-        return {
-            k: v.to_dict()
-            for k, v in self._routing_table.items()
-        }
+        return {k: v.to_dict() for k, v in self._routing_table.items()}
 
     async def get_hf_rotation_config(self) -> dict[str, list[str]]:
         """
@@ -264,16 +370,16 @@ class ModelRouter:
 
         # Mapear prioridades a AIModel
         priority_to_model = {
-            "speed":    AIModel.FAST,
-            "quality":  AIModel.STRATEGY,
-            "code":     AIModel.CODE,
+            "speed": AIModel.FAST,
+            "quality": AIModel.STRATEGY,
+            "code": AIModel.CODE,
             "creative": AIModel.CREATIVE,
         }
 
         rotation: dict[str, list[str]] = {
-            AIModel.FAST.value:     [],
+            AIModel.FAST.value: [],
             AIModel.STRATEGY.value: [],
-            AIModel.CODE.value:     [],
+            AIModel.CODE.value: [],
             AIModel.CREATIVE.value: [],
         }
 
@@ -284,9 +390,11 @@ class ModelRouter:
                 continue
             model_key = priority_to_model[priority].value
             # Agregar modelo si no está ya y es un modelo text-generation
-            if (entry.hf_task == "text-generation" and
-                    entry.best_model and
-                    entry.best_model not in rotation[model_key]):
+            if (
+                entry.hf_task == "text-generation"
+                and entry.best_model
+                and entry.best_model not in rotation[model_key]
+            ):
                 rotation[model_key].insert(0, entry.best_model)
                 for fb in entry.fallback_models[:2]:
                     if fb not in rotation[model_key]:
@@ -334,7 +442,9 @@ class ModelRouter:
         # Benchmarkear cada task_type
         task_results: dict[str, list[ModelScore]] = {}
         for task_type, func_names in task_groups.items():
-            logger.info("[ModelRouter] Benchmarkeando task: %s (%d funciones)", task_type, len(func_names))
+            logger.info(
+                "[ModelRouter] Benchmarkeando task: %s (%d funciones)", task_type, len(func_names)
+            )
             scores = await self._benchmark_task(task_type)
             task_results[task_type] = scores
             results["tasks_benchmarked"] += 1
@@ -350,7 +460,9 @@ class ModelRouter:
             ranked = sorted(scores, key=lambda s: s.composite_score(), reverse=True)
             successful = [s for s in ranked if s.success]
 
-            best_model = successful[0].model_id if successful else (BENCHMARK_CANDIDATES.get(task, [""])[0])
+            best_model = (
+                successful[0].model_id if successful else (BENCHMARK_CANDIDATES.get(task, [""])[0])
+            )
             fallbacks = [s.model_id for s in successful[1:4]]
 
             entry = RoutingEntry(
@@ -360,7 +472,7 @@ class ModelRouter:
                 best_model=best_model,
                 fallback_models=fallbacks,
                 composite_score=successful[0].composite_score() if successful else 0.0,
-                last_benchmarked=datetime.now(timezone.utc).isoformat(),
+                last_benchmarked=datetime.now(UTC).isoformat(),
                 desc=func_def["desc"],
             )
             new_table[func_name] = entry
@@ -382,7 +494,7 @@ class ModelRouter:
 
         # Log de descubrimiento
         log_entry = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "functions": results["functions_discovered"],
             "tasks": results["tasks_benchmarked"],
             "models": results["models_evaluated"],
@@ -395,7 +507,9 @@ class ModelRouter:
         results["duration_s"] = round(time.time() - t0, 1)
         logger.info(
             "[ModelRouter] ═══ Descubrimiento completado: %d funciones, %d modelos evaluados en %.1fs ═══",
-            results["functions_discovered"], results["models_evaluated"], results["duration_s"],
+            results["functions_discovered"],
+            results["models_evaluated"],
+            results["duration_s"],
         )
         return results
 
@@ -429,13 +543,16 @@ class ModelRouter:
                     text = ""
                     if isinstance(raw, list) and raw:
                         first = raw[0]
-                        text = (first.get("generated_text", "") or
-                                first.get("summary_text", "") or
-                                first.get("translation_text", "") or
-                                str(first))
+                        text = (
+                            first.get("generated_text", "")
+                            or first.get("summary_text", "")
+                            or first.get("translation_text", "")
+                            or str(first)
+                        )
                     elif isinstance(raw, dict):
-                        text = (raw.get("generated_text", "") or
-                                raw.get("summary_text", "") or str(raw))
+                        text = (
+                            raw.get("generated_text", "") or raw.get("summary_text", "") or str(raw)
+                        )
                     elif isinstance(raw, str):
                         text = raw
                     elif isinstance(raw, (list, dict)):
@@ -447,7 +564,7 @@ class ModelRouter:
                 else:
                     latency_ms = int((time.time() - t0) * 1000)
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 latency_ms = 25000
             except Exception as exc:
                 latency_ms = int((time.time() - t0) * 1000)
@@ -460,7 +577,7 @@ class ModelRouter:
                 success=success,
                 quality_score=quality,
                 response_len=response_len,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
             )
             scores.append(score)
 
@@ -478,7 +595,8 @@ class ModelRouter:
 
             logger.info(
                 "[ModelRouter] %s | %s → %s | lat=%dms | score=%.2f",
-                task_type, model_id.split("/")[-1],
+                task_type,
+                model_id.split("/")[-1],
                 "✓" if success else "✗",
                 latency_ms,
                 score.composite_score(),
@@ -493,8 +611,12 @@ class ModelRouter:
         try:
             cache = self._get_cache()
             serialized = {k: v.to_dict() for k, v in self._routing_table.items()}
-            await cache.set(ROUTING_TABLE_KEY, json.dumps(serialized, ensure_ascii=False), ttl=ROUTING_TTL)
-            logger.info("[ModelRouter] Tabla de enrutamiento guardada (%d entradas)", len(serialized))
+            await cache.set(
+                ROUTING_TABLE_KEY, json.dumps(serialized, ensure_ascii=False), ttl=ROUTING_TTL
+            )
+            logger.info(
+                "[ModelRouter] Tabla de enrutamiento guardada (%d entradas)", len(serialized)
+            )
         except Exception as exc:
             logger.error("[ModelRouter] Error guardando tabla: %s", exc)
 
@@ -506,13 +628,16 @@ class ModelRouter:
             raw = await cache.get(ROUTING_TABLE_KEY)
             if raw:
                 data = json.loads(raw)
-                self._routing_table = {
-                    k: RoutingEntry(**v) for k, v in data.items()
-                }
+                self._routing_table = {k: RoutingEntry(**v) for k, v in data.items()}
                 self._table_loaded = True
-                logger.info("[ModelRouter] Tabla de enrutamiento cargada: %d entradas", len(self._routing_table))
+                logger.info(
+                    "[ModelRouter] Tabla de enrutamiento cargada: %d entradas",
+                    len(self._routing_table),
+                )
         except Exception as exc:
-            logger.warning("[ModelRouter] No se pudo cargar tabla: %s — se generará en próximo ciclo", exc)
+            logger.warning(
+                "[ModelRouter] No se pudo cargar tabla: %s — se generará en próximo ciclo", exc
+            )
             self._table_loaded = True  # evitar reintentos en bucle
 
     # ── REPORTE ──────────────────────────────────────────────
@@ -525,7 +650,7 @@ class ModelRouter:
         last_raw = await cache.get(LAST_DISCOVERY_KEY)
         last_disc = "Nunca"
         if last_raw:
-            dt = datetime.fromtimestamp(float(last_raw), tz=timezone.utc)
+            dt = datetime.fromtimestamp(float(last_raw), tz=UTC)
             last_disc = dt.strftime("%Y-%m-%d %H:%M UTC")
 
         top_entries = sorted(
@@ -551,7 +676,7 @@ class ModelRouter:
 
 
 # ── SINGLETON ────────────────────────────────────────────────
-_router: Optional[ModelRouter] = None
+_router: ModelRouter | None = None
 
 
 def get_model_router() -> ModelRouter:

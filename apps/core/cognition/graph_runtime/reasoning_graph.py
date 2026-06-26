@@ -20,30 +20,30 @@ Edge types:
   DERIVED     — weight neutral      (logical derivation)
   REFINES     — weight small +      (sub-hypothesis of parent)
 """
+
 from __future__ import annotations
 
-import math
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
 
 try:
     import networkx as nx
+
     _NX_AVAILABLE = True
 except ImportError:
     _NX_AVAILABLE = False
     nx = None
 
 
-class NodeType(str, Enum):
+class NodeType(StrEnum):
     ROOT = "root"
     HYPOTHESIS = "hypothesis"
     EVIDENCE = "evidence"
     CONCLUSION = "conclusion"
 
 
-class EdgeType(str, Enum):
+class EdgeType(StrEnum):
     SUPPORTS = "supports"
     CONTRADICTS = "contradicts"
     DERIVED = "derived"
@@ -55,9 +55,9 @@ class ReasoningNode:
     id: str
     content: str
     node_type: NodeType
-    confidence: float          # 0.0–1.0; updated by propagation
-    raw_confidence: float      # original LLM-assigned confidence (immutable)
-    depth: int = 0             # 0 = root, 1 = first-order hypotheses, etc.
+    confidence: float  # 0.0–1.0; updated by propagation
+    raw_confidence: float  # original LLM-assigned confidence (immutable)
+    depth: int = 0  # 0 = root, 1 = first-order hypotheses, etc.
     metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -77,7 +77,7 @@ class ReasoningEdge:
     source: str
     target: str
     edge_type: EdgeType
-    weight: float              # 0.0–1.0; how strong is this relationship
+    weight: float  # 0.0–1.0; how strong is this relationship
 
 
 class ReasoningGraph:
@@ -103,14 +103,16 @@ class ReasoningGraph:
 
         # Root node
         root_id = "root"
-        self._add_node(ReasoningNode(
-            id=root_id,
-            content=question,
-            node_type=NodeType.ROOT,
-            confidence=1.0,
-            raw_confidence=1.0,
-            depth=0,
-        ))
+        self._add_node(
+            ReasoningNode(
+                id=root_id,
+                content=question,
+                node_type=NodeType.ROOT,
+                confidence=1.0,
+                raw_confidence=1.0,
+                depth=0,
+            )
+        )
         self._root_id = root_id
 
     # ── Node Operations ──────────────────────────────────────────────────
@@ -118,9 +120,11 @@ class ReasoningGraph:
     def add_hypothesis(self, content: str, confidence: float = 0.5) -> str:
         node_id = f"h_{uuid.uuid4().hex[:8]}"
         node = ReasoningNode(
-            id=node_id, content=content,
+            id=node_id,
+            content=content,
             node_type=NodeType.HYPOTHESIS,
-            confidence=confidence, raw_confidence=confidence,
+            confidence=confidence,
+            raw_confidence=confidence,
             depth=1,
         )
         self._add_node(node)
@@ -135,9 +139,11 @@ class ReasoningGraph:
     ) -> str:
         node_id = f"e_{uuid.uuid4().hex[:8]}"
         node = ReasoningNode(
-            id=node_id, content=content,
+            id=node_id,
+            content=content,
             node_type=NodeType.EVIDENCE,
-            confidence=confidence, raw_confidence=confidence,
+            confidence=confidence,
+            raw_confidence=confidence,
             depth=depth,
         )
         self._add_node(node)
@@ -148,9 +154,11 @@ class ReasoningGraph:
         node_id = f"sh_{uuid.uuid4().hex[:8]}"
         depth = (parent.depth + 1) if parent else 2
         node = ReasoningNode(
-            id=node_id, content=content,
+            id=node_id,
+            content=content,
             node_type=NodeType.HYPOTHESIS,
-            confidence=confidence, raw_confidence=confidence,
+            confidence=confidence,
+            raw_confidence=confidence,
             depth=depth,
         )
         self._add_node(node)
@@ -164,9 +172,11 @@ class ReasoningGraph:
             raise ValueError(f"Node {hypothesis_id} not found")
         conc_id = f"conc_{uuid.uuid4().hex[:6]}"
         conc = ReasoningNode(
-            id=conc_id, content=node.content,
+            id=conc_id,
+            content=node.content,
             node_type=NodeType.CONCLUSION,
-            confidence=node.confidence, raw_confidence=node.raw_confidence,
+            confidence=node.confidence,
+            raw_confidence=node.raw_confidence,
             depth=node.depth + 1,
         )
         self._add_node(conc)
@@ -182,13 +192,14 @@ class ReasoningGraph:
         edge_type: EdgeType,
         weight: float = 0.5,
     ) -> None:
-        edge = ReasoningEdge(source=source_id, target=target_id,
-                             edge_type=edge_type, weight=weight)
+        edge = ReasoningEdge(source=source_id, target=target_id, edge_type=edge_type, weight=weight)
         self._edges.append(edge)
         if self._graph is not None:
             self._graph.add_edge(
-                source_id, target_id,
-                edge_type=edge_type.value, weight=weight,
+                source_id,
+                target_id,
+                edge_type=edge_type.value,
+                weight=weight,
             )
 
     # ── Confidence Propagation ────────────────────────────────────────────
@@ -224,7 +235,8 @@ class ReasoningGraph:
     def prune_weak_branches(self, threshold: float = 0.2) -> int:
         """Remove hypothesis nodes below confidence threshold. Returns count pruned."""
         to_remove = [
-            nid for nid, node in self._nodes.items()
+            nid
+            for nid, node in self._nodes.items()
             if node.node_type == NodeType.HYPOTHESIS and node.confidence < threshold
         ]
         for nid in to_remove:
@@ -243,7 +255,7 @@ class ReasoningGraph:
             reverse=True,
         )
 
-    def dominant_hypothesis(self) -> Optional[ReasoningNode]:
+    def dominant_hypothesis(self) -> ReasoningNode | None:
         hyps = self.hypotheses()
         return hyps[0] if hyps else None
 
@@ -276,7 +288,9 @@ class ReasoningGraph:
 
         try:
             path_ids = nx.shortest_path(
-                self._graph, source=self._root_id, target=target,
+                self._graph,
+                source=self._root_id,
+                target=target,
                 weight=lambda u, v, d: 1.0 - d.get("weight", 0.5),
             )
             return [self._nodes[nid] for nid in path_ids if nid in self._nodes]
@@ -299,8 +313,12 @@ class ReasoningGraph:
             "question": self.question,
             "nodes": {nid: n.to_dict() for nid, n in self._nodes.items()},
             "edges": [
-                {"source": e.source, "target": e.target,
-                 "edge_type": e.edge_type.value, "weight": e.weight}
+                {
+                    "source": e.source,
+                    "target": e.target,
+                    "edge_type": e.edge_type.value,
+                    "weight": e.weight,
+                }
                 for e in self._edges
             ],
             "node_count": len(self._nodes),

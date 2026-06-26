@@ -2,15 +2,12 @@
 Product recommendation engine — collaborative/content-based filtering,
 upsell and cross-sell recommendations with context awareness.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
-
-from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +45,7 @@ class RecommendationSet:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RecommendationSet":
+    def from_dict(cls, d: dict) -> RecommendationSet:
         return cls(**d)
 
 
@@ -193,7 +190,14 @@ class ProductRecommender:
         if context == "post_purchase":
             strategy = "content"
             # Boost consumables and accessories
-            consumable_keywords = {"refill", "accessory", "accessories", "consumable", "replacement", "add-on"}
+            consumable_keywords = {
+                "refill",
+                "accessory",
+                "accessories",
+                "consumable",
+                "replacement",
+                "add-on",
+            }
             boosted: list[tuple[dict, float]] = []
             for product, score in scored:
                 tags = product.get("tags", [])
@@ -203,7 +207,9 @@ class ProductRecommender:
                     tags = [t.lower() for t in tags]
                 tag_set = set(tags)
                 title_lower = product.get("title", "").lower()
-                if tag_set & consumable_keywords or any(k in title_lower for k in consumable_keywords):
+                if tag_set & consumable_keywords or any(
+                    k in title_lower for k in consumable_keywords
+                ):
                     score = min(score + 0.3, 1.0)
                 boosted.append((product, score))
             scored = boosted
@@ -244,13 +250,12 @@ class ProductRecommender:
         low = product_price * 1.5
         high = product_price * 2.0
         candidates = [
-            p for p in catalog
+            p
+            for p in catalog
             if p.get("id") != product_id and low <= float(p.get("price", 0)) <= high
         ]
         # Sort by popularity
-        candidates.sort(
-            key=lambda p: self._popularity.get(p.get("id", ""), 0), reverse=True
-        )
+        candidates.sort(key=lambda p: self._popularity.get(p.get("id", ""), 0), reverse=True)
         return candidates[:5]
 
     async def cross_sell_recommendations(
@@ -262,14 +267,12 @@ class ProductRecommender:
         cart_categories = {item.get("category", "") for item in cart_items}
 
         candidates = [
-            p for p in catalog
-            if p.get("id") not in cart_ids
-            and p.get("category", "") not in cart_categories
+            p
+            for p in catalog
+            if p.get("id") not in cart_ids and p.get("category", "") not in cart_categories
         ]
         # Sort by popularity
-        candidates.sort(
-            key=lambda p: self._popularity.get(p.get("id", ""), 0), reverse=True
-        )
+        candidates.sort(key=lambda p: self._popularity.get(p.get("id", ""), 0), reverse=True)
         return candidates[:5]
 
     # ------------------------------------------------------------------
@@ -279,15 +282,12 @@ class ProductRecommender:
     def recommendation_stats(self) -> dict:
         users_tracked = len(self._interaction_data)
         total_interactions = sum(len(v) for v in self._interaction_data.values())
-        top_products = sorted(
-            self._popularity.items(), key=lambda x: x[1], reverse=True
-        )[:5]
+        top_products = sorted(self._popularity.items(), key=lambda x: x[1], reverse=True)[:5]
         return {
             "total_recommendations": total_interactions,
             "users_tracked": users_tracked,
             "top_recommended_products": [
-                {"product_id": pid, "interaction_count": count}
-                for pid, count in top_products
+                {"product_id": pid, "interaction_count": count} for pid, count in top_products
             ],
         }
 
@@ -296,7 +296,7 @@ class ProductRecommender:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_recommender: Optional[ProductRecommender] = None
+_recommender: ProductRecommender | None = None
 
 
 def get_product_recommender() -> ProductRecommender:

@@ -1,12 +1,13 @@
 """
 AIEvaluator — Evaluate AI response quality across multiple dimensions.
 """
+
 from __future__ import annotations
-import time
+
 import re
+import time
 from dataclasses import dataclass, field
-from typing import Optional
-from apps.core.tools.ai_client import get_ai_client, AIModel
+
 
 @dataclass
 class EvaluationResult:
@@ -44,18 +45,29 @@ class AIEvaluator:
     """
 
     GENERIC_PATTERNS = [
-        r"as an AI", r"I cannot", r"I don't have access",
-        r"as of my knowledge cutoff", r"I apologize",
-        r"it's important to note", r"in conclusion",
-        r"great question", r"absolutely",
+        r"as an AI",
+        r"I cannot",
+        r"I don't have access",
+        r"as of my knowledge cutoff",
+        r"I apologize",
+        r"it's important to note",
+        r"in conclusion",
+        r"great question",
+        r"absolutely",
     ]
 
     TOXIC_PATTERNS = [
-        r"\bhate\b", r"\bkill\b", r"\bharm\b", r"\bviolence\b",
+        r"\bhate\b",
+        r"\bkill\b",
+        r"\bharm\b",
+        r"\bviolence\b",
     ]
 
-    def evaluate(self, content: str, prompt: str = "", expected_type: str = "general") -> EvaluationResult:
+    def evaluate(
+        self, content: str, prompt: str = "", expected_type: str = "general"
+    ) -> EvaluationResult:
         import uuid
+
         scores = {
             "relevance": self._score_relevance(content, prompt),
             "coherence": self._score_coherence(content),
@@ -88,21 +100,21 @@ class AIEvaluator:
     def _score_coherence(self, content: str) -> float:
         if not content:
             return 0.0
-        sentences = [s.strip() for s in content.split('.') if s.strip()]
+        sentences = [s.strip() for s in content.split(".") if s.strip()]
         if len(sentences) < 2:
             return 0.6
         # Simple coherence: consistent length distribution
         lengths = [len(s) for s in sentences]
         avg = sum(lengths) / len(lengths)
-        variance = sum((l - avg)**2 for l in lengths) / len(lengths)
+        variance = sum((l - avg) ** 2 for l in lengths) / len(lengths)
         coherence = 1.0 - min(1.0, variance / (avg**2 + 1))
         return max(0.3, min(1.0, 0.5 + coherence * 0.5))
 
     def _score_specificity(self, content: str) -> float:
         score = 0.5
-        if re.search(r'\d+', content):
+        if re.search(r"\d+", content):
             score += 0.15
-        if re.search(r'\b(specifically|exactly|precisely|for example|such as)\b', content, re.I):
+        if re.search(r"\b(specifically|exactly|precisely|for example|such as)\b", content, re.I):
             score += 0.15
         for pattern in self.GENERIC_PATTERNS:
             if re.search(pattern, content, re.I):
@@ -124,7 +136,18 @@ class AIEvaluator:
         return max(0.1, 1.0 - min(0.9, risk))
 
     def _score_actionability(self, content: str) -> float:
-        action_words = ["do", "create", "build", "implement", "start", "use", "add", "run", "try", "go to"]
+        action_words = [
+            "do",
+            "create",
+            "build",
+            "implement",
+            "start",
+            "use",
+            "add",
+            "run",
+            "try",
+            "go to",
+        ]
         count = sum(1 for w in action_words if w.lower() in content.lower())
         return min(1.0, 0.3 + count * 0.1)
 
@@ -174,7 +197,9 @@ class AIEvaluator:
             "low_quality": sum(1 for r in results if r.overall_score < 0.4),
         }
 
-_evaluator_instance: Optional[AIEvaluator] = None
+
+_evaluator_instance: AIEvaluator | None = None
+
 
 def get_ai_evaluator() -> AIEvaluator:
     global _evaluator_instance

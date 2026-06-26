@@ -15,14 +15,14 @@ Usage:
     log = get_logger(__name__)
     log.info("Income cycle completed", extra={"strategy": "content_pipeline", "revenue": 42.0})
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import os
 import sys
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -31,7 +31,8 @@ class _TraceInjectingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
-            from apps.core.observability.tracing import get_trace_id, get_span_id
+            from apps.core.observability.tracing import get_span_id, get_trace_id
+
             record.trace_id = get_trace_id()
             record.span_id = get_span_id()
         except Exception:
@@ -49,19 +50,38 @@ class _JSONFormatter(logging.Formatter):
       + any extras added via record.__dict__
     """
 
-    _SKIP_FIELDS = frozenset({
-        "name", "msg", "args", "levelname", "levelno", "pathname",
-        "filename", "module", "exc_info", "exc_text", "stack_info",
-        "lineno", "funcName", "created", "msecs", "relativeCreated",
-        "thread", "threadName", "processName", "process", "message",
-        "taskName",
-    })
+    _SKIP_FIELDS = frozenset(
+        {
+            "name",
+            "msg",
+            "args",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "message",
+            "taskName",
+        }
+    )
 
     def format(self, record: logging.LogRecord) -> str:
         record.message = record.getMessage()
 
         payload: dict[str, Any] = {
-            "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "ts": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.message,
@@ -89,11 +109,11 @@ class _DevFormatter(logging.Formatter):
     """Human-readable formatter for local development."""
 
     COLORS = {
-        "DEBUG":    "\033[36m",   # cyan
-        "INFO":     "\033[32m",   # green
-        "WARNING":  "\033[33m",   # yellow
-        "ERROR":    "\033[31m",   # red
-        "CRITICAL": "\033[35m",   # magenta
+        "DEBUG": "\033[36m",  # cyan
+        "INFO": "\033[32m",  # green
+        "WARNING": "\033[33m",  # yellow
+        "ERROR": "\033[31m",  # red
+        "CRITICAL": "\033[35m",  # magenta
     }
     RESET = "\033[0m"
 

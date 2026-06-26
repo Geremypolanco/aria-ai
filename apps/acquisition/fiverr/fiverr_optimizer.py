@@ -9,15 +9,15 @@ Capabilities:
   - Portfolio descriptions
   - Gig analytics
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 # ── Redis configuration ────────────────────────────────────────────────────────
 _REDIS_KEY = "acquisition:fiverr:v1"
@@ -27,6 +27,7 @@ _TTL_90D = 60 * 60 * 24 * 90
 # ══════════════════════════════════════════════════════════════════════════════
 # Domain object
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class FiverrGig:
@@ -59,6 +60,7 @@ class FiverrGig:
 # ══════════════════════════════════════════════════════════════════════════════
 # Fiverr Optimizer
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class FiverrOptimizer:
     """
@@ -103,13 +105,24 @@ class FiverrOptimizer:
                 "name": f"Standard {service_type}",
                 "price": 75,
                 "delivery_days": 5,
-                "features": [f"3 {niche} deliverables", "Unlimited revisions", "Priority support", "Commercial rights"],
+                "features": [
+                    f"3 {niche} deliverables",
+                    "Unlimited revisions",
+                    "Priority support",
+                    "Commercial rights",
+                ],
             },
             "premium": {
                 "name": f"Premium {service_type}",
                 "price": 150,
                 "delivery_days": 7,
-                "features": [f"5 {niche} deliverables", "Unlimited revisions", "VIP support", "Commercial rights", "Strategy call"],
+                "features": [
+                    f"5 {niche} deliverables",
+                    "Unlimited revisions",
+                    "VIP support",
+                    "Commercial rights",
+                    "Strategy call",
+                ],
             },
         }
 
@@ -151,11 +164,26 @@ class FiverrOptimizer:
             packages=packages,
             tags=tags,
             faq=[
-                {"q": "How many revisions do you offer?", "a": "Unlimited revisions until you're satisfied."},
-                {"q": "What do you need to get started?", "a": f"Just share your {niche} requirements and any examples."},
-                {"q": "Do you offer rush delivery?", "a": "Yes! Contact me before ordering for rush options."},
-                {"q": "What format will I receive files in?", "a": "All standard formats — ask me for specifics."},
-                {"q": "Do I own the commercial rights?", "a": "Yes, full commercial rights included with Standard and Premium."},
+                {
+                    "q": "How many revisions do you offer?",
+                    "a": "Unlimited revisions until you're satisfied.",
+                },
+                {
+                    "q": "What do you need to get started?",
+                    "a": f"Just share your {niche} requirements and any examples.",
+                },
+                {
+                    "q": "Do you offer rush delivery?",
+                    "a": "Yes! Contact me before ordering for rush options.",
+                },
+                {
+                    "q": "What format will I receive files in?",
+                    "a": "All standard formats — ask me for specifics.",
+                },
+                {
+                    "q": "Do I own the commercial rights?",
+                    "a": "Yes, full commercial rights included with Standard and Premium.",
+                },
             ],
             seo_score=self._seo_score(title, content, tags),
             status="draft",
@@ -181,9 +209,7 @@ class FiverrOptimizer:
         optimized = resp.content.strip().split("\n")[0]
         return optimized[:80] if len(optimized) > 80 else optimized
 
-    async def price_packages(
-        self, service_type: str, complexity_range: str = "low-high"
-    ) -> dict:
+    async def price_packages(self, service_type: str, complexity_range: str = "low-high") -> dict:
         """AI suggests competitive pricing for basic/standard/premium."""
         ai = get_ai_client()
         resp = await ai.complete(
@@ -201,9 +227,21 @@ class FiverrOptimizer:
         )
         # Return structured pricing regardless of AI response
         return {
-            "basic": {"price": 25, "delivery_days": 3, "reasoning": "Entry-level to attract first orders"},
-            "standard": {"price": 75, "delivery_days": 5, "reasoning": "Most popular tier — best value"},
-            "premium": {"price": 150, "delivery_days": 7, "reasoning": "High-touch for serious buyers"},
+            "basic": {
+                "price": 25,
+                "delivery_days": 3,
+                "reasoning": "Entry-level to attract first orders",
+            },
+            "standard": {
+                "price": 75,
+                "delivery_days": 5,
+                "reasoning": "Most popular tier — best value",
+            },
+            "premium": {
+                "price": 150,
+                "delivery_days": 7,
+                "reasoning": "High-touch for serious buyers",
+            },
             "ai_analysis": resp.content if resp.success else "",
         }
 
@@ -245,7 +283,7 @@ class FiverrOptimizer:
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
-_instance: Optional[FiverrOptimizer] = None
+_instance: FiverrOptimizer | None = None
 
 
 def get_fiverr_optimizer() -> FiverrOptimizer:

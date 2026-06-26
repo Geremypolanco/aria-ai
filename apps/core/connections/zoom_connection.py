@@ -6,11 +6,11 @@ Requiere en Fly.io secrets:
   ZOOM_CLIENT_ID     → desde marketplace.zoom.us → Develop → Build App
   ZOOM_CLIENT_SECRET → mismo lugar
 """
+
 from __future__ import annotations
 
 import base64
 import logging
-from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -27,12 +27,14 @@ ZOOM_BASE = "https://api.zoom.us/v2"
 
 class ZoomConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ZOOM_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "ZOOM_CLIENT_SECRET", None)
 
     def _basic_auth_header(self) -> str:
@@ -42,7 +44,7 @@ class ZoomConnection:
         credentials = base64.b64encode(f"{cid}:{sec}".encode()).decode()
         return f"Basic {credentials}"
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -54,7 +56,7 @@ class ZoomConnection:
         }
         return f"{AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
@@ -132,8 +134,9 @@ class ZoomConnection:
                 for m in meetings
             ]
 
-    async def create_meeting(self, tokens: dict, topic: str, start_time: str,
-                              duration_min: int = 60, agenda: str = "") -> dict:
+    async def create_meeting(
+        self, tokens: dict, topic: str, start_time: str, duration_min: int = 60, agenda: str = ""
+    ) -> dict:
         """Create a Zoom meeting.
 
         start_time: ISO 8601 UTC string, e.g. '2024-06-01T14:00:00Z'.

@@ -12,16 +12,16 @@ Design:
 This replaces ad-hoc "let me think step by step" prompting with a
 structured, auditable reasoning loop that ARIA can introspect on.
 """
+
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from typing import Any, Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.reasoning")
 
@@ -34,9 +34,9 @@ REASON_TTL = 3600 * 24  # 24 hours
 class ReasoningStep:
     step: int
     thought: str
-    evidence: list[str]            # supporting facts cited
-    uncertainty: float             # 0.0 = certain, 1.0 = complete guess
-    leads_to: str                  # what this step concludes
+    evidence: list[str]  # supporting facts cited
+    uncertainty: float  # 0.0 = certain, 1.0 = complete guess
+    leads_to: str  # what this step concludes
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -45,10 +45,10 @@ class ReasoningStep:
 @dataclass
 class Critique:
     round: int
-    issues: list[str]              # logical gaps, assumptions, missing info
-    strengths: list[str]           # what the reasoning got right
-    confidence_adjustment: float   # -1.0 to +1.0
-    recommendation: str            # how to improve
+    issues: list[str]  # logical gaps, assumptions, missing info
+    strengths: list[str]  # what the reasoning got right
+    confidence_adjustment: float  # -1.0 to +1.0
+    recommendation: str  # how to improve
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -62,13 +62,11 @@ class ReasoningResult:
     steps: list[ReasoningStep]
     critiques: list[Critique]
     conclusion: str
-    confidence: float              # 0.0 to 1.0
-    uncertainty_flags: list[str]   # areas where ARIA is uncertain
-    action_recommendation: str     # concrete next action
+    confidence: float  # 0.0 to 1.0
+    uncertainty_flags: list[str]  # areas where ARIA is uncertain
+    action_recommendation: str  # concrete next action
     reasoning_time_ms: int
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict:
         return {
@@ -91,7 +89,9 @@ class ReasoningResult:
 
     @property
     def summary(self) -> str:
-        conf_label = "HIGH" if self.confidence >= 0.75 else ("MEDIUM" if self.confidence >= 0.5 else "LOW")
+        conf_label = (
+            "HIGH" if self.confidence >= 0.75 else ("MEDIUM" if self.confidence >= 0.5 else "LOW")
+        )
         return (
             f"[{conf_label} confidence={self.confidence:.0%}] {self.conclusion}\n"
             f"Action: {self.action_recommendation}"
@@ -175,15 +175,15 @@ class ReasoningEngine:
 
         logger.info(
             "[Reasoning] Done in %dms — confidence=%.0f%% — %s",
-            elapsed_ms, confidence * 100, conclusion[:80],
+            elapsed_ms,
+            confidence * 100,
+            conclusion[:80],
         )
         return result
 
     # ── Phase 1: Think ───────────────────────────────────────────────────
 
-    async def _think(
-        self, question: str, context: dict, max_steps: int
-    ) -> list[ReasoningStep]:
+    async def _think(self, question: str, context: dict, max_steps: int) -> list[ReasoningStep]:
         system = (
             "You are ARIA's reasoning module. Generate a structured chain of thought.\n\n"
             "For each step, identify:\n"
@@ -194,7 +194,7 @@ class ReasoningEngine:
             "Return JSON:\n"
             "{\n"
             '  "steps": [\n'
-            '    {\n'
+            "    {\n"
             '      "thought": "<the reasoning>",\n'
             '      "evidence": ["<fact1>", "<fact2>"],\n'
             '      "uncertainty": 0.2,\n'
@@ -207,8 +207,7 @@ class ReasoningEngine:
         )
 
         user_msg = (
-            f"Question: {question}\n\n"
-            f"Context: {json.dumps(context, ensure_ascii=False)[:3000]}"
+            f"Question: {question}\n\n" f"Context: {json.dumps(context, ensure_ascii=False)[:3000]}"
         )
 
         try:
@@ -226,13 +225,15 @@ class ReasoningEngine:
             ]
         except Exception as exc:
             logger.warning("[Reasoning] Think phase failed: %s", exc)
-            return [ReasoningStep(
-                step=0,
-                thought=f"Unable to complete full reasoning chain: {exc}",
-                evidence=[],
-                uncertainty=0.9,
-                leads_to="Reasoning degraded — low confidence conclusion",
-            )]
+            return [
+                ReasoningStep(
+                    step=0,
+                    thought=f"Unable to complete full reasoning chain: {exc}",
+                    evidence=[],
+                    uncertainty=0.9,
+                    leads_to="Reasoning degraded — low confidence conclusion",
+                )
+            ]
 
     # ── Phase 2: Critique ────────────────────────────────────────────────
 
@@ -362,13 +363,15 @@ class ReasoningEngine:
             id=reason_id,
             question=question,
             context=context,
-            steps=[ReasoningStep(
-                step=0,
-                thought="AI client not available — cannot reason.",
-                evidence=[],
-                uncertainty=1.0,
-                leads_to="No conclusion available",
-            )],
+            steps=[
+                ReasoningStep(
+                    step=0,
+                    thought="AI client not available — cannot reason.",
+                    evidence=[],
+                    uncertainty=1.0,
+                    leads_to="No conclusion available",
+                )
+            ],
             critiques=[],
             conclusion="AI client unavailable. Cannot reason about this question.",
             confidence=0.0,
@@ -382,6 +385,7 @@ class ReasoningEngine:
     async def _persist(self, result: ReasoningResult) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 key = f"aria:reasoning:{result.id}"
@@ -394,9 +398,10 @@ class ReasoningEngine:
     async def get_history(self, limit: int = 10) -> list[dict]:
         return [r.to_dict() for r in self._history[-limit:]]
 
-    async def load_from_redis(self, reason_id: str) -> Optional[ReasoningResult]:
+    async def load_from_redis(self, reason_id: str) -> ReasoningResult | None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 raw = await cache.get(f"aria:reasoning:{reason_id}")
@@ -422,7 +427,7 @@ class ReasoningEngine:
         return None
 
 
-_engine: Optional[ReasoningEngine] = None
+_engine: ReasoningEngine | None = None
 
 
 def get_reasoning_engine(ai_client=None) -> ReasoningEngine:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -74,7 +74,13 @@ class CACLTVAnalyzer:
         gross_margin_pct: float,
         avg_customer_lifespan_years: float,
     ) -> float:
-        return round(avg_purchase_value * purchase_frequency_yearly * gross_margin_pct * avg_customer_lifespan_years, 2)
+        return round(
+            avg_purchase_value
+            * purchase_frequency_yearly
+            * gross_margin_pct
+            * avg_customer_lifespan_years,
+            2,
+        )
 
     def compute_churn(self, lost_customers: int, start_customers: int) -> ChurnAnalysis:
         start = max(start_customers, 1)
@@ -108,7 +114,9 @@ class CACLTVAnalyzer:
                 "churned": {"count": 0, "total_ltv": 0.0},
             }
 
-        sorted_by_ltv = sorted(customers, key=lambda c: c.get("ltv", c.get("total_spent_usd", 0)), reverse=True)
+        sorted_by_ltv = sorted(
+            customers, key=lambda c: c.get("ltv", c.get("total_spent_usd", 0)), reverse=True
+        )
         n = len(sorted_by_ltv)
         champion_cut = max(1, int(n * 0.20))
         loyal_cut = champion_cut + max(1, int(n * 0.30))

@@ -11,13 +11,14 @@ Ciclo:
   4. Persiste las decisiones en Redis/Supabase
   5. Los agentes consultan estas decisiones antes de ejecutar
 """
+
 from __future__ import annotations
+
 import json
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Any, Optional
-from apps.core.config import settings
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.reflection")
 
@@ -45,14 +46,23 @@ class ReflectionEngine:
         now = time.time()
         if now - self._last_reflection < self.MIN_REFLECTION_INTERVAL:
             remaining = int(self.MIN_REFLECTION_INTERVAL - (now - self._last_reflection))
-            return {"skipped": True, "reason": f"Próxima reflexión en {remaining}s", "decisions": self._decisions}
+            return {
+                "skipped": True,
+                "reason": f"Próxima reflexión en {remaining}s",
+                "decisions": self._decisions,
+            }
 
         self._last_reflection = now
         logger.info("[Reflection] Iniciando ciclo de reflexión...")
 
         evidence = await self._gather_evidence(context or {})
         if not evidence.get("has_issues"):
-            return {"reflected": True, "issues": 0, "decisions": [], "message": "Sistema saludable — sin cambios necesarios"}
+            return {
+                "reflected": True,
+                "issues": 0,
+                "decisions": [],
+                "message": "Sistema saludable — sin cambios necesarios",
+            }
 
         decisions = await self._analyze_and_decide(evidence)
         self._decisions = decisions
@@ -60,7 +70,7 @@ class ReflectionEngine:
 
         reflection = {
             "reflected": True,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "issues_found": len(evidence.get("issues", [])),
             "decisions": decisions,
             "evidence_summary": {
@@ -85,6 +95,7 @@ class ReflectionEngine:
         # 1. Skill scores del trainer
         try:
             from apps.core.training.continuous_trainer import get_trainer
+
             trainer = get_trainer()
             status = trainer.get_status()
             weak_skills = [k for k, v in status.get("skill_scores", {}).items() if v < 50]
@@ -97,6 +108,7 @@ class ReflectionEngine:
         # 2. Tareas fallidas del WorldState
         try:
             from apps.core.cognition.world_state import get_world_state
+
             ws = get_world_state()
             failed = ws.get_failed_tasks()
             if failed:
@@ -108,8 +120,11 @@ class ReflectionEngine:
         # 3. Experiencias negativas del trainer
         try:
             from apps.core.training.continuous_trainer import get_trainer
+
             trainer = get_trainer()
-            errors = [e for e in trainer._experiences if e.get("type") in ("training_error", "env_issue")]
+            errors = [
+                e for e in trainer._experiences if e.get("type") in ("training_error", "env_issue")
+            ]
             if errors:
                 patterns = list({e.get("error", "")[:50] for e in errors[-20:] if e.get("error")})
                 evidence["error_patterns"] = patterns[:5]
@@ -120,6 +135,7 @@ class ReflectionEngine:
         # 4. Logs de Fly.io
         try:
             from apps.core.training.environment_monitor import get_env_monitor
+
             monitor = get_env_monitor()
             snapshot = await monitor.get_cached_snapshot()
             fly_issues = snapshot.get("critical_issues", [])
@@ -162,7 +178,8 @@ REASON: [why this matters]
 
         decisions = []
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel
+            from apps.core.tools.ai_client import AIModel, get_ai_client
+
             client = get_ai_client()
             response = await client.complete(prompt, model=AIModel.STRATEGY, max_tokens=600)
 
@@ -178,24 +195,28 @@ REASON: [why this matters]
                             if line.startswith(f"{key}:"):
                                 d[key.lower()] = line.split(":", 1)[1].strip()
                     if d.get("decision"):
-                        decisions.append({
-                            **d,
-                            "created_at": datetime.now(timezone.utc).isoformat(),
-                            "applied": False,
-                        })
+                        decisions.append(
+                            {
+                                **d,
+                                "created_at": datetime.now(UTC).isoformat(),
+                                "applied": False,
+                            }
+                        )
         except Exception as exc:
             logger.error("[Reflection] AI analysis failed: %s", exc)
             # Fallback: generate rule-based decisions
             if weak:
                 for skill in weak[:3]:
-                    decisions.append({
-                        "decision": f"Investigate and fix {skill} — currently scoring <50%",
-                        "priority": "high",
-                        "target": skill,
-                        "reason": "Skill score below acceptable threshold",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "applied": False,
-                    })
+                    decisions.append(
+                        {
+                            "decision": f"Investigate and fix {skill} — currently scoring <50%",
+                            "priority": "high",
+                            "target": skill,
+                            "reason": "Skill score below acceptable threshold",
+                            "created_at": datetime.now(UTC).isoformat(),
+                            "applied": False,
+                        }
+                    )
 
         return decisions
 
@@ -204,9 +225,12 @@ REASON: [why this matters]
     async def _persist_decisions(self, decisions: list[dict]) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache and decisions:
-                await cache.set("aria:reflection:decisions", json.dumps(decisions, ttl_seconds=86400))
+                await cache.set(
+                    "aria:reflection:decisions", json.dumps(decisions, ttl_seconds=86400)
+                )
         except Exception as exc:
             logger.warning("[Reflection] Redis persist failed: %s", exc)
 
@@ -214,6 +238,7 @@ REASON: [why this matters]
         """Carga las decisiones de reflexión desde Redis (para que agentes las consulten)."""
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 raw = await cache.get("aria:reflection:decisions")
@@ -225,14 +250,19 @@ REASON: [why this matters]
 
     def get_status(self) -> dict:
         return {
-            "last_reflection": datetime.fromtimestamp(self._last_reflection, tz=timezone.utc).isoformat() if self._last_reflection else None,
+            "last_reflection": (
+                datetime.fromtimestamp(self._last_reflection, tz=UTC).isoformat()
+                if self._last_reflection
+                else None
+            ),
             "active_decisions": len(self._decisions),
             "reflection_count": len(self._reflection_history),
             "pending_decisions": [d for d in self._decisions if not d.get("applied")],
         }
 
 
-_reflection_engine: Optional[ReflectionEngine] = None
+_reflection_engine: ReflectionEngine | None = None
+
 
 def get_reflection_engine() -> ReflectionEngine:
     global _reflection_engine

@@ -3,17 +3,16 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _CACHE_KEY = "psychology:personas:v1"
 _CACHE_TTL = 86400 * 365  # 365 days
 
 
-class PersonaArchetype(str, Enum):
+class PersonaArchetype(StrEnum):
     ACHIEVER = "achiever"
     EXPLORER = "explorer"
     SOCIALIZER = "socializer"
@@ -99,7 +98,11 @@ _ARCHETYPE_DEFAULTS: dict[str, dict] = {
         "primary_pain": "making the wrong decision with incomplete information",
         "primary_desire": "complete understanding before committing",
         "content_preferences": ["in-depth articles", "whitepapers", "expert interviews"],
-        "buying_triggers": ["comprehensive documentation", "expert endorsement", "peer-reviewed data"],
+        "buying_triggers": [
+            "comprehensive documentation",
+            "expert endorsement",
+            "peer-reviewed data",
+        ],
         "objections": ["I need more information", "let me compare all options first"],
         "platforms": ["Google", "LinkedIn", "YouTube"],
         "age_range": "28-50",
@@ -189,7 +192,9 @@ class PersonaEngine:
     ) -> AudiencePersona:
         await self._load()
 
-        defaults = _ARCHETYPE_DEFAULTS.get(archetype, _ARCHETYPE_DEFAULTS[PersonaArchetype.ACHIEVER])
+        defaults = _ARCHETYPE_DEFAULTS.get(
+            archetype, _ARCHETYPE_DEFAULTS[PersonaArchetype.ACHIEVER]
+        )
 
         # Try to generate with AI; fall back to template defaults
         persona_name = name or f"{archetype.value.replace('_', ' ').title()} in {niche}"
@@ -205,8 +210,10 @@ class PersonaEngine:
                 )
                 result = await ai.complete(prompt, model=AIModel.FAST, max_tokens=200)
                 if result:
-                    import json, re
-                    match = re.search(r'\{.*\}', result, re.DOTALL)
+                    import json
+                    import re
+
+                    match = re.search(r"\{.*\}", result, re.DOTALL)
                     if match:
                         data = json.loads(match.group())
                         persona_name = name or data.get("name", persona_name)
@@ -234,7 +241,7 @@ class PersonaEngine:
         await self._save()
         return persona
 
-    async def get_persona(self, persona_id: str) -> Optional[AudiencePersona]:
+    async def get_persona(self, persona_id: str) -> AudiencePersona | None:
         await self._load()
         data = self._personas.get(persona_id)
         if data:
@@ -294,9 +301,7 @@ class PersonaEngine:
             "suggested_tweaks": tweaks[:3],
         }
 
-    async def generate_niche_personas(
-        self, niche: str, count: int = 3
-    ) -> list[AudiencePersona]:
+    async def generate_niche_personas(self, niche: str, count: int = 3) -> list[AudiencePersona]:
         archetypes = list(PersonaArchetype)[:count]
         personas = []
         for archetype in archetypes:
@@ -305,16 +310,14 @@ class PersonaEngine:
         return personas
 
     def summary(self) -> dict:
-        archetypes = list({
-            d.get("archetype", "") for d in self._personas.values()
-        })
+        archetypes = list({d.get("archetype", "") for d in self._personas.values()})
         return {
             "total_personas": len(self._personas),
             "archetypes": archetypes,
         }
 
 
-_engine_instance: Optional[PersonaEngine] = None
+_engine_instance: PersonaEngine | None = None
 
 
 def get_persona_engine() -> PersonaEngine:

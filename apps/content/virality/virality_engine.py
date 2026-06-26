@@ -2,21 +2,22 @@
 Advanced virality analysis and title optimization engine.
 Detects viral patterns, scores shareability, and generates title alternatives.
 """
+
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.content.virality")
 
 
 # ── Enums ──────────────────────────────────────────────────────────────────────
 
-class ViralPattern(str, Enum):
+
+class ViralPattern(StrEnum):
     SHOCK_VALUE = "shock_value"
     CURIOSITY_GAP = "curiosity_gap"
     SOCIAL_PROOF = "social_proof"
@@ -32,23 +33,89 @@ class ViralPattern(str, Enum):
 # ── Pattern keyword triggers ───────────────────────────────────────────────────
 
 _PATTERN_KEYWORDS: dict[ViralPattern, list[str]] = {
-    ViralPattern.SHOCK_VALUE: ["shocking", "unbelievable", "exposed", "scandal", "jaw-dropping", "disturbing"],
-    ViralPattern.CURIOSITY_GAP: ["you won't believe", "the reason why", "what nobody tells you", "the truth about", "this is why"],
-    ViralPattern.SOCIAL_PROOF: ["everyone is", "millions of", "experts agree", "studies show", "trending", "going viral"],
-    ViralPattern.FEAR_OF_MISSING_OUT: ["don't miss", "before it's gone", "last chance", "limited time", "running out", "fomo"],
+    ViralPattern.SHOCK_VALUE: [
+        "shocking",
+        "unbelievable",
+        "exposed",
+        "scandal",
+        "jaw-dropping",
+        "disturbing",
+    ],
+    ViralPattern.CURIOSITY_GAP: [
+        "you won't believe",
+        "the reason why",
+        "what nobody tells you",
+        "the truth about",
+        "this is why",
+    ],
+    ViralPattern.SOCIAL_PROOF: [
+        "everyone is",
+        "millions of",
+        "experts agree",
+        "studies show",
+        "trending",
+        "going viral",
+    ],
+    ViralPattern.FEAR_OF_MISSING_OUT: [
+        "don't miss",
+        "before it's gone",
+        "last chance",
+        "limited time",
+        "running out",
+        "fomo",
+    ],
     ViralPattern.HOW_TO: ["how to", "step by step", "tutorial", "guide", "learn", "master"],
-    ViralPattern.LIST_FORMAT: ["top 10", "5 ways", "7 tips", "3 secrets", "10 things", "reasons why"],
-    ViralPattern.CONTROVERSY: ["controversial", "unpopular opinion", "hot take", "debate", "disagree", "wrong about"],
-    ViralPattern.TRANSFORMATION: ["went from", "transformed", "lost 30", "made $", "changed my life", "before and after"],
-    ViralPattern.INSIDER_SECRET: ["secret", "insider", "behind the scenes", "what they don't want", "hidden", "classified"],
-    ViralPattern.CHALLENGE: ["challenge", "try this", "dare you", "impossible", "can you", "attempt"],
+    ViralPattern.LIST_FORMAT: [
+        "top 10",
+        "5 ways",
+        "7 tips",
+        "3 secrets",
+        "10 things",
+        "reasons why",
+    ],
+    ViralPattern.CONTROVERSY: [
+        "controversial",
+        "unpopular opinion",
+        "hot take",
+        "debate",
+        "disagree",
+        "wrong about",
+    ],
+    ViralPattern.TRANSFORMATION: [
+        "went from",
+        "transformed",
+        "lost 30",
+        "made $",
+        "changed my life",
+        "before and after",
+    ],
+    ViralPattern.INSIDER_SECRET: [
+        "secret",
+        "insider",
+        "behind the scenes",
+        "what they don't want",
+        "hidden",
+        "classified",
+    ],
+    ViralPattern.CHALLENGE: [
+        "challenge",
+        "try this",
+        "dare you",
+        "impossible",
+        "can you",
+        "attempt",
+    ],
 }
 
 # Platform virality multipliers (some patterns work better on certain platforms)
 _PLATFORM_PATTERN_FIT: dict[str, list[ViralPattern]] = {
     "tiktok": [ViralPattern.CHALLENGE, ViralPattern.TRANSFORMATION, ViralPattern.SHOCK_VALUE],
     "youtube": [ViralPattern.CURIOSITY_GAP, ViralPattern.HOW_TO, ViralPattern.LIST_FORMAT],
-    "instagram": [ViralPattern.TRANSFORMATION, ViralPattern.SOCIAL_PROOF, ViralPattern.INSIDER_SECRET],
+    "instagram": [
+        ViralPattern.TRANSFORMATION,
+        ViralPattern.SOCIAL_PROOF,
+        ViralPattern.INSIDER_SECRET,
+    ],
     "twitter": [ViralPattern.CONTROVERSY, ViralPattern.SHOCK_VALUE, ViralPattern.HOW_TO],
     "linkedin": [ViralPattern.HOW_TO, ViralPattern.SOCIAL_PROOF, ViralPattern.TRANSFORMATION],
     "blog": [ViralPattern.HOW_TO, ViralPattern.LIST_FORMAT, ViralPattern.CURIOSITY_GAP],
@@ -111,6 +178,7 @@ _TITLE_TEMPLATES: dict[ViralPattern, list[str]] = {
 
 # ── Data models ────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ViralAnalysis:
     content: str
@@ -140,6 +208,7 @@ class ViralAnalysis:
 
 
 # ── Main class ─────────────────────────────────────────────────────────────────
+
 
 class ViralityEngine:
     """Detects viral patterns and optimizes content for maximum shareability."""
@@ -204,7 +273,11 @@ class ViralityEngine:
             topic = "this topic"
 
         # Pick top 3 templates from detected patterns (or defaults)
-        used_patterns = patterns[:3] if patterns else [ViralPattern.HOW_TO, ViralPattern.CURIOSITY_GAP, ViralPattern.LIST_FORMAT]
+        used_patterns = (
+            patterns[:3]
+            if patterns
+            else [ViralPattern.HOW_TO, ViralPattern.CURIOSITY_GAP, ViralPattern.LIST_FORMAT]
+        )
         titles: list[str] = []
         for pattern in used_patterns[:3]:
             templates = _TITLE_TEMPLATES.get(pattern, _TITLE_TEMPLATES[ViralPattern.HOW_TO])
@@ -227,7 +300,7 @@ class ViralityEngine:
                 prompt = (
                     f"Generate 3 viral title/hook alternatives for this {platform} content:\n"
                     f"{content[:500]}\n\n"
-                    "Return JSON: {\"titles\": [\"title1\", \"title2\", \"title3\"]}"
+                    'Return JSON: {"titles": ["title1", "title2", "title3"]}'
                 )
                 result = await self._ai.generate(prompt, model=AIModel.FAST, json_mode=True)
                 if result and isinstance(result, dict):
@@ -265,7 +338,7 @@ class ViralityEngine:
             if self._ai:
                 prompt = (
                     f"Rewrite this {platform} title into 3 more viral versions:\n'{title}'\n\n"
-                    "Return JSON: {\"titles\": [\"v1\", \"v2\", \"v3\"]}"
+                    'Return JSON: {"titles": ["v1", "v2", "v3"]}'
                 )
                 result = await self._ai.generate(prompt, model=AIModel.FAST, json_mode=True)
                 if result and isinstance(result, dict):
@@ -362,7 +435,7 @@ class ViralityEngine:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_virality_engine_instance: Optional[ViralityEngine] = None
+_virality_engine_instance: ViralityEngine | None = None
 
 
 def get_virality_engine() -> ViralityEngine:

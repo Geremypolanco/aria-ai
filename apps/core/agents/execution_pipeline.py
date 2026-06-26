@@ -4,14 +4,15 @@ ExecutionPipeline — Pipeline de ejecución con auditoría integrada para ARIA 
 Arquitectura Plan → Audit → Execute → Audit → (Iterate | Complete).
 Garantiza calidad mínima antes de entregar resultados a producción.
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 
 from apps.core.agents.auditor_agent import AuditorAgent
 from apps.core.agents.business_hub import BusinessHub
@@ -20,7 +21,7 @@ from apps.core.tools.ai_client import AIModel
 logger = logging.getLogger("aria.execution_pipeline")
 
 
-class PipelineStage(str, Enum):
+class PipelineStage(StrEnum):
     PLAN = "plan"
     AUDIT_PLAN = "audit_plan"
     EXECUTE = "execute"
@@ -36,14 +37,14 @@ class PipelineRun:
     mission: str
     agent_name: str
     stage: PipelineStage
-    plan: Optional[str] = None
-    output: Optional[dict] = None
+    plan: str | None = None
+    output: dict | None = None
     audit_results: list = field(default_factory=list)
     iterations: int = 0
     started_at: datetime = field(default_factory=datetime.utcnow)
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     success: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
     def summary(self) -> dict:
         """Returns a fully serializable dict of all fields."""
@@ -232,7 +233,7 @@ class ExecutionPipeline:
 
     # ── RUN CACHE ──────────────────────────────────────────
 
-    def get_run(self, run_id: str) -> Optional[PipelineRun]:
+    def get_run(self, run_id: str) -> PipelineRun | None:
         """Returns a cached PipelineRun by ID, or None if not found."""
         return self._runs.get(run_id)
 

@@ -1,16 +1,15 @@
 """
 Content calendar management for scheduling and tracking content across all channels.
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
 
 logger = logging.getLogger("aria.content.blog.calendar")
 
@@ -70,6 +69,7 @@ _TEMPLATES: dict[str, list[str]] = {
 
 # ── Data models ────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ContentSlot:
     slot_id: str
@@ -95,6 +95,7 @@ class ContentSlot:
 
 
 # ── Main class ─────────────────────────────────────────────────────────────────
+
 
 class ContentCalendar:
     """Content calendar for planning and tracking multi-channel content."""
@@ -193,7 +194,8 @@ class ContentCalendar:
         week_start = today - timedelta(days=today.weekday())
         week_end = week_start + timedelta(days=6)
         return [
-            s for s in self._slots
+            s
+            for s in self._slots
             if week_start.strftime("%Y-%m-%d") <= s.get("date", "") <= week_end.strftime("%Y-%m-%d")
         ]
 
@@ -201,10 +203,7 @@ class ContentCalendar:
         """Return upcoming slots within the next N days."""
         today = datetime.utcnow().strftime("%Y-%m-%d")
         cutoff = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
-        return [
-            s for s in self._slots
-            if today <= s.get("date", "") <= cutoff
-        ]
+        return [s for s in self._slots if today <= s.get("date", "") <= cutoff]
 
     def mark_published(self, slot_id: str) -> bool:
         """Mark a slot as published by its ID."""
@@ -228,7 +227,7 @@ class ContentCalendar:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_content_calendar: Optional[ContentCalendar] = None
+_content_calendar: ContentCalendar | None = None
 
 
 def get_content_calendar() -> ContentCalendar:

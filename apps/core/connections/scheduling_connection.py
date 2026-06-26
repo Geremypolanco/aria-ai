@@ -2,10 +2,10 @@
 Scheduling connection para ARIA AI.
 Soporta Calendly (OAuth) y Cal.com (API key).
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -23,15 +23,17 @@ CALCOM_API = "https://api.cal.com/v1"
 
 class CalendlyConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "CALENDLY_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "CALENDLY_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -43,19 +45,22 @@ class CalendlyConnection:
         }
         return f"{CALENDLY_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("CALENDLY_CLIENT_ID / CALENDLY_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(CALENDLY_TOKEN_URL, data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": CALENDLY_REDIRECT,
-                "client_id": cid,
-                "client_secret": sec,
-            })
+            r = await http.post(
+                CALENDLY_TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": CALENDLY_REDIRECT,
+                    "client_id": cid,
+                    "client_secret": sec,
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -113,7 +118,9 @@ class CalendlyConnection:
                     "status": e.get("status"),
                     "start_time": e.get("start_time"),
                     "end_time": e.get("end_time"),
-                    "location": e.get("location", {}).get("join_url", e.get("location", {}).get("location", "")),
+                    "location": e.get("location", {}).get(
+                        "join_url", e.get("location", {}).get("location", "")
+                    ),
                 }
                 for e in events
             ]
@@ -131,8 +138,9 @@ class CalendlyConnection:
 class CalComConnection:
     """Cal.com usando API key (CALCOM_API_KEY) — no requiere OAuth."""
 
-    def _api_key(self) -> Optional[str]:
+    def _api_key(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "CALCOM_API_KEY", None)
 
     def _h(self) -> dict:

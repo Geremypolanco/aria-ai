@@ -4,13 +4,13 @@ ARIA LangGraph — CognitiveAgent high-level interface.
 Wraps the compiled LangGraph workflow with a clean async API.
 Falls back to a direct single AI call when LangGraph is not available.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
 import uuid
-from typing import Any, Optional
 
 from apps.cognition.langgraph.agent_state import AgentState
 from apps.cognition.langgraph.workflow import build_cognitive_workflow
@@ -19,7 +19,7 @@ from apps.core.tools.ai_client import get_ai_client
 logger = logging.getLogger("aria.cognition.agent")
 
 # Module-level singleton
-_cognitive_agent: Optional["CognitiveAgent"] = None
+_cognitive_agent: CognitiveAgent | None = None
 
 
 class CognitiveAgent:
@@ -185,6 +185,7 @@ class CognitiveAgent:
 
 
 # ── singleton factory ─────────────────────────────────────────────────────────
+
 
 def get_cognitive_agent(agent_id: str = "", max_iterations: int = 3) -> CognitiveAgent:
     """

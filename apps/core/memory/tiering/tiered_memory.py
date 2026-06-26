@@ -13,6 +13,7 @@ Write-through on store: writes to COLD, promotes to WARM and HOT.
 Semantic compression: summaries are stored instead of full payloads when
 items would overflow WARM tier, reducing token usage in downstream LLM calls.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,14 +21,13 @@ import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
 
-_HOT_CAPACITY   = 100
-_WARM_TTL       = 60 * 60 * 24 * 7   # 7 days
-_WARM_KEY_PFX   = "tmem_warm:"
+_HOT_CAPACITY = 100
+_WARM_TTL = 60 * 60 * 24 * 7  # 7 days
+_WARM_KEY_PFX = "tmem_warm:"
 _WARM_INDEX_KEY = "tmem_warm_index"
-_WARM_MAX       = 10_000
+_WARM_MAX = 10_000
 
 
 @dataclass
@@ -58,7 +58,7 @@ class MemoryItem:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "MemoryItem":
+    def from_dict(cls, d: dict) -> MemoryItem:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
     @property
@@ -78,7 +78,7 @@ class HotTier:
         self._cache: OrderedDict[str, MemoryItem] = OrderedDict()
         self._capacity = capacity
 
-    def get(self, item_id: str) -> Optional[MemoryItem]:
+    def get(self, item_id: str) -> MemoryItem | None:
         item = self._cache.get(item_id)
         if item:
             self._cache.move_to_end(item_id)
@@ -96,9 +96,10 @@ class HotTier:
 
     def search(self, query_lower: str, top_k: int = 10) -> list[MemoryItem]:
         results = [
-            item for item in self._cache.values()
-            if query_lower in item.content.lower() or
-               any(query_lower in tag.lower() for tag in item.tags)
+            item
+            for item in self._cache.values()
+            if query_lower in item.content.lower()
+            or any(query_lower in tag.lower() for tag in item.tags)
         ]
         return sorted(results, key=lambda i: i.tier_score(), reverse=True)[:top_k]
 
@@ -115,9 +116,10 @@ class HotTier:
 class WarmTier:
     """Redis-backed tier for medium-term storage."""
 
-    async def get(self, item_id: str) -> Optional[MemoryItem]:
+    async def get(self, item_id: str) -> MemoryItem | None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             raw = await get_cache().get(f"{_WARM_KEY_PFX}{item_id}")
             if raw is None:
                 return None
@@ -128,14 +130,22 @@ class WarmTier:
     async def put(self, item: MemoryItem) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             await cache.set(f"{_WARM_KEY_PFX}{item.id}", item.to_dict(), ttl_seconds=_WARM_TTL)
             # Update searchable index
             idx = await cache.get(_WARM_INDEX_KEY)
             entries: list[dict] = idx if isinstance(idx, list) else []
             entries = [e for e in entries if e.get("id") != item.id]
-            entries.append({"id": item.id, "content_lower": item.content.lower()[:200],
-                            "category": item.category, "ts": item.ts, "score": item.tier_score()})
+            entries.append(
+                {
+                    "id": item.id,
+                    "content_lower": item.content.lower()[:200],
+                    "category": item.category,
+                    "ts": item.ts,
+                    "score": item.tier_score(),
+                }
+            )
             if len(entries) > _WARM_MAX:
                 entries.sort(key=lambda e: e.get("score", 0))
                 entries = entries[-_WARM_MAX:]
@@ -146,6 +156,7 @@ class WarmTier:
     async def search(self, query_lower: str, top_k: int = 20) -> list[MemoryItem]:
         try:
             from apps.core.memory.redis_client import get_cache
+
             idx = await get_cache().get(_WARM_INDEX_KEY)
             entries: list[dict] = idx if isinstance(idx, list) else []
             matching = [e for e in entries if query_lower in e.get("content_lower", "")]
@@ -162,6 +173,7 @@ class WarmTier:
     async def size(self) -> int:
         try:
             from apps.core.memory.redis_client import get_cache
+
             idx = await get_cache().get(_WARM_INDEX_KEY)
             return len(idx) if isinstance(idx, list) else 0
         except Exception:
@@ -175,10 +187,10 @@ class TieredMemory:
     """
 
     def __init__(self) -> None:
-        self._hot  = HotTier()
+        self._hot = HotTier()
         self._warm = WarmTier()
         self._write_count = 0
-        self._hot_hits  = 0
+        self._hot_hits = 0
         self._warm_hits = 0
         self._cold_hits = 0
 
@@ -189,8 +201,8 @@ class TieredMemory:
         source: str = "aria",
         confidence: float = 0.8,
         importance: float = 0.5,
-        tags: Optional[list[str]] = None,
-        item_id: Optional[str] = None,
+        tags: list[str] | None = None,
+        item_id: str | None = None,
     ) -> str:
         now = time.time()
         item = MemoryItem(
@@ -201,7 +213,7 @@ class TieredMemory:
             confidence=confidence,
             importance=importance,
             ts=now,
-            ts_iso=datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
+            ts_iso=datetime.fromtimestamp(now, tz=UTC).isoformat(),
             tags=tags or [],
         )
         self._hot.put(item)
@@ -209,7 +221,7 @@ class TieredMemory:
         self._write_count += 1
         return item.id
 
-    async def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    async def retrieve(self, item_id: str) -> MemoryItem | None:
         item = self._hot.get(item_id)
         if item:
             self._hot_hits += 1
@@ -227,11 +239,11 @@ class TieredMemory:
         self,
         query: str,
         top_k: int = 10,
-        category: Optional[str] = None,
+        category: str | None = None,
     ) -> list[MemoryItem]:
         query_lower = query.lower()
 
-        hot_results  = self._hot.search(query_lower, top_k=top_k)
+        hot_results = self._hot.search(query_lower, top_k=top_k)
         warm_results = await self._warm.search(query_lower, top_k=top_k * 2)
 
         # Merge, deduplicate by id, filter by category, re-rank by tier_score
@@ -260,11 +272,13 @@ class TieredMemory:
             "hot_hits": self._hot_hits,
             "warm_hits": self._warm_hits,
             "cold_hits": self._cold_hits,
-            "hot_hit_rate": round(self._hot_hits / max(self._hot_hits + self._warm_hits + self._cold_hits, 1), 3),
+            "hot_hit_rate": round(
+                self._hot_hits / max(self._hot_hits + self._warm_hits + self._cold_hits, 1), 3
+            ),
         }
 
 
-_tiered: Optional[TieredMemory] = None
+_tiered: TieredMemory | None = None
 
 
 def get_tiered_memory() -> TieredMemory:

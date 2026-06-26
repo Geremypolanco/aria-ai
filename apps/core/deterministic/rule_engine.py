@@ -15,16 +15,17 @@ Design:
   - Rules can be tagged for selective evaluation (e.g. "income", "security")
   - Engine returns a RuleEvalResult with all matched rules and their outcomes
 """
+
 from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
-
+from typing import Any
 
 Condition = Callable[[dict[str, Any]], bool]
-Action    = Callable[[dict[str, Any]], Any]
+Action = Callable[[dict[str, Any]], Any]
 
 
 @dataclass
@@ -78,16 +79,18 @@ class RuleEngine:
         condition: Condition,
         action: Action,
         priority: int = 100,
-        tags: Optional[list[str]] = None,
-    ) -> "RuleEngine":
-        self._rules.append(Rule(
-            id=rule_id,
-            description=description,
-            condition=condition,
-            action=action,
-            priority=priority,
-            tags=tags or [],
-        ))
+        tags: list[str] | None = None,
+    ) -> RuleEngine:
+        self._rules.append(
+            Rule(
+                id=rule_id,
+                description=description,
+                condition=condition,
+                action=action,
+                priority=priority,
+                tags=tags or [],
+            )
+        )
         self._rules.sort(key=lambda r: r.priority)
         return self
 
@@ -99,7 +102,11 @@ class RuleEngine:
     def enable(self, rule_id: str) -> None:
         for r in self._rules:
             if r.id == rule_id:
-                object.__setattr__(r, "enabled", True) if hasattr(r, "__slots__") else setattr(r, "enabled", True)
+                (
+                    object.__setattr__(r, "enabled", True)
+                    if hasattr(r, "__slots__")
+                    else setattr(r, "enabled", True)
+                )
 
     def disable(self, rule_id: str) -> None:
         for r in self._rules:
@@ -109,7 +116,7 @@ class RuleEngine:
     def evaluate(
         self,
         context: dict[str, Any],
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         stop_on_first: bool = False,
     ) -> RuleEvalResult:
         """Evaluate all enabled rules against context. Returns all matches."""
@@ -126,11 +133,13 @@ class RuleEngine:
             try:
                 if rule.condition(context):
                     result = rule.action(context)
-                    matches.append(RuleMatch(
-                        rule_id=rule.id,
-                        description=rule.description,
-                        action_result=result,
-                    ))
+                    matches.append(
+                        RuleMatch(
+                            rule_id=rule.id,
+                            description=rule.description,
+                            action_result=result,
+                        )
+                    )
                     if stop_on_first:
                         break
             except Exception:
@@ -143,16 +152,16 @@ class RuleEngine:
             duration_ms=(time.monotonic() - t0) * 1000,
         )
 
-    def first_match(self, context: dict[str, Any], tags: Optional[list[str]] = None) -> Optional[Any]:
+    def first_match(self, context: dict[str, Any], tags: list[str] | None = None) -> Any | None:
         """Convenience: evaluate and return the first action result, or None."""
         result = self.evaluate(context, tags=tags, stop_on_first=True)
         return result.first_result
 
-    def all_match(self, context: dict[str, Any], tags: Optional[list[str]] = None) -> list[Any]:
+    def all_match(self, context: dict[str, Any], tags: list[str] | None = None) -> list[Any]:
         result = self.evaluate(context, tags=tags)
         return [m.action_result for m in result.matches]
 
-    def rule_count(self, tag: Optional[str] = None) -> int:
+    def rule_count(self, tag: str | None = None) -> int:
         if tag is None:
             return len(self._rules)
         return sum(1 for r in self._rules if tag in r.tags)
@@ -167,6 +176,7 @@ class RuleEngine:
 
 # ── Built-in rule builders ────────────────────────────────────────────────────
 
+
 def threshold_rule(
     rule_id: str,
     field: str,
@@ -175,11 +185,17 @@ def threshold_rule(
     action: Action,
     description: str = "",
     priority: int = 50,
-    tags: Optional[list[str]] = None,
+    tags: list[str] | None = None,
 ) -> Rule:
     """Factory for numeric threshold rules: field >/</>=/<=/==/!= threshold."""
-    ops = {">": float.__gt__, "<": float.__lt__, ">=": float.__ge__,
-           "<=": float.__le__, "==": float.__eq__, "!=": float.__ne__}
+    ops = {
+        ">": float.__gt__,
+        "<": float.__lt__,
+        ">=": float.__ge__,
+        "<=": float.__le__,
+        "==": float.__eq__,
+        "!=": float.__ne__,
+    }
     op_fn = ops.get(operator, float.__gt__)
 
     def condition(ctx: dict) -> bool:
@@ -203,7 +219,7 @@ def pattern_rule(
     action: Action,
     description: str = "",
     priority: int = 50,
-    tags: Optional[list[str]] = None,
+    tags: list[str] | None = None,
 ) -> Rule:
     """Factory for regex pattern rules on string fields."""
     compiled = re.compile(pattern, re.IGNORECASE)
@@ -233,7 +249,8 @@ def build_aria_rules() -> RuleEngine:
     engine.add_rule(
         rule_id="budget_hard_cap",
         description="Block execution if daily spend exceeds hard cap",
-        condition=lambda ctx: float(ctx.get("daily_spend_usd", 0)) >= float(ctx.get("budget_cap_usd", 50)),
+        condition=lambda ctx: float(ctx.get("daily_spend_usd", 0))
+        >= float(ctx.get("budget_cap_usd", 50)),
         action=lambda ctx: {"blocked": True, "reason": "daily_budget_exceeded"},
         priority=1,
         tags=["budget", "safety"],
@@ -292,7 +309,7 @@ def build_aria_rules() -> RuleEngine:
     return engine
 
 
-_engine: Optional[RuleEngine] = None
+_engine: RuleEngine | None = None
 
 
 def get_rule_engine() -> RuleEngine:

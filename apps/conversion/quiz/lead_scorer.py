@@ -1,13 +1,12 @@
 """
 Lead Scoring — Scores and segments leads based on behavior and quiz results.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
-from apps.core.tools.ai_client import get_ai_client, AIModel
 
 from apps.core.memory.redis_client import get_cache
 
@@ -117,10 +116,14 @@ class LeadScorer:
         self,
         email: str,
         source: str,
-        behaviors: list[str] = [],
+        behaviors: list[str] = None,
         quiz_segment: str = "",
-        metadata: dict = {},
+        metadata: dict = None,
     ) -> LeadProfile:
+        if metadata is None:
+            metadata = {}
+        if behaviors is None:
+            behaviors = []
         await self._load()
 
         phone = metadata.get("phone", "")
@@ -209,10 +212,7 @@ class LeadScorer:
 
     def hot_leads(self) -> list[dict]:
         """Return leads with buy_probability > 0.7, sorted by probability desc."""
-        hot = [
-            lead for lead in self._leads.values()
-            if lead.get("buy_probability", 0.0) > 0.7
-        ]
+        hot = [lead for lead in self._leads.values() if lead.get("buy_probability", 0.0) > 0.7]
         return sorted(hot, key=lambda l: l.get("buy_probability", 0.0), reverse=True)
 
     def leads_by_segment(self) -> dict[str, list]:
@@ -259,7 +259,7 @@ class LeadScorer:
         }
 
 
-_lead_scorer_instance: Optional[LeadScorer] = None
+_lead_scorer_instance: LeadScorer | None = None
 
 
 def get_lead_scorer() -> LeadScorer:

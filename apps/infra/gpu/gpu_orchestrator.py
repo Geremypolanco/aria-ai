@@ -1,13 +1,13 @@
 """
 GPU job orchestration — Modal, RunPod, and MOCK backends.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import Enum, StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -22,7 +22,7 @@ class JobPriority(int, Enum):
     CRITICAL = 20
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -30,7 +30,7 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class GPUBackend(str, Enum):
+class GPUBackend(StrEnum):
     MODAL = "modal"
     RUNPOD = "runpod"
     MOCK = "mock"
@@ -117,6 +117,7 @@ class GPUOrchestrator:
 
     def _select_backend(self) -> GPUBackend:
         import os
+
         if os.environ.get("MODAL_TOKEN_ID"):
             return GPUBackend.MODAL
         if os.environ.get("RUNPOD_API_KEY"):
@@ -183,14 +184,18 @@ class GPUOrchestrator:
 
     async def _run_modal(self, job: GPUJob) -> dict:
         try:
-            import modal  # type: ignore
+            import modal  # type: ignore  # noqa: F401
+
             return {"backend": "modal", "status": "submitted"}
         except ImportError:
             return {"backend": "modal", "error": "modal not installed", "fallback": "mock"}
 
     async def _run_runpod(self, job: GPUJob) -> dict:
         try:
-            import httpx, os
+            import os
+
+            import httpx
+
             api_key = os.environ.get("RUNPOD_API_KEY", "")
             async with httpx.AsyncClient(timeout=30) as client:
                 r = await client.post(
@@ -222,7 +227,7 @@ class GPUOrchestrator:
         }
 
 
-_orchestrator_instance: Optional[GPUOrchestrator] = None
+_orchestrator_instance: GPUOrchestrator | None = None
 
 
 def get_gpu_orchestrator() -> GPUOrchestrator:

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 
-class PersuasionPrinciple(str, Enum):
+class PersuasionPrinciple(StrEnum):
     RECIPROCITY = "reciprocity"
     COMMITMENT = "commitment"
     SOCIAL_PROOF = "social_proof"
@@ -129,11 +128,31 @@ class PersuasionEngine:
         scored: list[tuple[float, PersuasionTactic]] = []
 
         emotion_principle_map: dict[str, list[PersuasionPrinciple]] = {
-            "desire": [PersuasionPrinciple.SCARCITY, PersuasionPrinciple.SOCIAL_PROOF, PersuasionPrinciple.LOSS_AVERSION],
-            "trust": [PersuasionPrinciple.AUTHORITY, PersuasionPrinciple.SOCIAL_PROOF, PersuasionPrinciple.COMMITMENT],
-            "urgency": [PersuasionPrinciple.SCARCITY, PersuasionPrinciple.LOSS_AVERSION, PersuasionPrinciple.COMMITMENT],
-            "belonging": [PersuasionPrinciple.UNITY, PersuasionPrinciple.SOCIAL_PROOF, PersuasionPrinciple.LIKING],
-            "fear": [PersuasionPrinciple.LOSS_AVERSION, PersuasionPrinciple.AUTHORITY, PersuasionPrinciple.SCARCITY],
+            "desire": [
+                PersuasionPrinciple.SCARCITY,
+                PersuasionPrinciple.SOCIAL_PROOF,
+                PersuasionPrinciple.LOSS_AVERSION,
+            ],
+            "trust": [
+                PersuasionPrinciple.AUTHORITY,
+                PersuasionPrinciple.SOCIAL_PROOF,
+                PersuasionPrinciple.COMMITMENT,
+            ],
+            "urgency": [
+                PersuasionPrinciple.SCARCITY,
+                PersuasionPrinciple.LOSS_AVERSION,
+                PersuasionPrinciple.COMMITMENT,
+            ],
+            "belonging": [
+                PersuasionPrinciple.UNITY,
+                PersuasionPrinciple.SOCIAL_PROOF,
+                PersuasionPrinciple.LIKING,
+            ],
+            "fear": [
+                PersuasionPrinciple.LOSS_AVERSION,
+                PersuasionPrinciple.AUTHORITY,
+                PersuasionPrinciple.SCARCITY,
+            ],
         }
         preferred = emotion_principle_map.get(target_emotion, [])
 
@@ -158,9 +177,7 @@ class PersuasionEngine:
         self, principle: PersuasionPrinciple, product: str, audience: str
     ) -> str:
         # Find matching tactic template
-        tactic = next(
-            (t for t in self._DEFAULT_TACTICS if t.principle == principle), None
-        )
+        tactic = next((t for t in self._DEFAULT_TACTICS if t.principle == principle), None)
         template = tactic.copy_template if tactic else "[value proposition for {product}]"
 
         try:
@@ -190,12 +207,54 @@ class PersuasionEngine:
         score = 0.0
 
         principle_keywords: dict[PersuasionPrinciple, list[str]] = {
-            PersuasionPrinciple.SCARCITY: ["only", "limited", "last", "few", "spots", "expires", "ending"],
-            PersuasionPrinciple.SOCIAL_PROOF: ["customers", "users", "reviews", "rated", "trusted", "join", "people"],
-            PersuasionPrinciple.AUTHORITY: ["expert", "certified", "proven", "endorsed", "featured", "award"],
-            PersuasionPrinciple.LOSS_AVERSION: ["don't miss", "lose", "cost you", "risk", "without", "before it's gone"],
-            PersuasionPrinciple.RECIPROCITY: ["free", "gift", "bonus", "complimentary", "no charge"],
-            PersuasionPrinciple.COMMITMENT: ["start", "try", "begin", "first step", "no obligation"],
+            PersuasionPrinciple.SCARCITY: [
+                "only",
+                "limited",
+                "last",
+                "few",
+                "spots",
+                "expires",
+                "ending",
+            ],
+            PersuasionPrinciple.SOCIAL_PROOF: [
+                "customers",
+                "users",
+                "reviews",
+                "rated",
+                "trusted",
+                "join",
+                "people",
+            ],
+            PersuasionPrinciple.AUTHORITY: [
+                "expert",
+                "certified",
+                "proven",
+                "endorsed",
+                "featured",
+                "award",
+            ],
+            PersuasionPrinciple.LOSS_AVERSION: [
+                "don't miss",
+                "lose",
+                "cost you",
+                "risk",
+                "without",
+                "before it's gone",
+            ],
+            PersuasionPrinciple.RECIPROCITY: [
+                "free",
+                "gift",
+                "bonus",
+                "complimentary",
+                "no charge",
+            ],
+            PersuasionPrinciple.COMMITMENT: [
+                "start",
+                "try",
+                "begin",
+                "first step",
+                "no obligation",
+            ],
             PersuasionPrinciple.LIKING: ["you", "your", "we", "together", "story", "journey"],
             PersuasionPrinciple.UNITY: ["us", "community", "we believe", "our mission", "together"],
         }
@@ -210,7 +269,9 @@ class PersuasionEngine:
                 principle_scores[principle.value] = p_score
 
         score = min(1.0, score)
-        strongest = max(principle_scores, key=lambda k: principle_scores[k]) if principle_scores else ""
+        strongest = (
+            max(principle_scores, key=lambda k: principle_scores[k]) if principle_scores else ""
+        )
 
         improvement = (
             "Add urgency (scarcity) and social proof to increase conversion rate."
@@ -226,9 +287,7 @@ class PersuasionEngine:
             "improvement": improvement,
         }
 
-    async def optimize_cta(
-        self, current_cta: str, principle: PersuasionPrinciple
-    ) -> list[str]:
+    async def optimize_cta(self, current_cta: str, principle: PersuasionPrinciple) -> list[str]:
         variations: list[str] = []
 
         try:
@@ -249,31 +308,34 @@ class PersuasionEngine:
         if not variations:
             fallbacks: dict[PersuasionPrinciple, list[str]] = {
                 PersuasionPrinciple.SCARCITY: [
-                    f"Claim Your Spot — Only 3 Left",
-                    f"Get Access Before It's Gone",
+                    "Claim Your Spot — Only 3 Left",
+                    "Get Access Before It's Gone",
                     f"⚡ Limited Time: {current_cta}",
                 ],
                 PersuasionPrinciple.SOCIAL_PROOF: [
-                    f"Join 10,000+ Happy Customers",
-                    f"See Why Everyone Is Switching",
+                    "Join 10,000+ Happy Customers",
+                    "See Why Everyone Is Switching",
                     f"{current_cta} — 4.9★ Rated",
                 ],
                 PersuasionPrinciple.LOSS_AVERSION: [
                     f"Stop Losing Money — {current_cta}",
-                    f"Don't Fall Behind — Act Now",
-                    f"Every Day You Wait Costs You More",
+                    "Don't Fall Behind — Act Now",
+                    "Every Day You Wait Costs You More",
                 ],
             }
-            variations = fallbacks.get(principle, [
-                f"Yes, I Want This!",
-                f"Get Instant Access",
-                f"Start My Free Trial",
-            ])
+            variations = fallbacks.get(
+                principle,
+                [
+                    "Yes, I Want This!",
+                    "Get Instant Access",
+                    "Start My Free Trial",
+                ],
+            )
 
         return variations[:3]
 
 
-_engine_instance: Optional[PersuasionEngine] = None
+_engine_instance: PersuasionEngine | None = None
 
 
 def get_persuasion_engine() -> PersuasionEngine:

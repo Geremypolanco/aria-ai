@@ -2,11 +2,12 @@
 content_tools.py — Herramientas de creación de contenido multimedia.
 Cloudinary, Pexels, ElevenLabs, FLUX.1, Airtable.
 """
+
 from __future__ import annotations
 
 import base64
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -26,14 +27,16 @@ class ContentTools:
     async def cloudinary_upload(
         self,
         image_data: bytes,
-        public_id: Optional[str] = None,
+        public_id: str | None = None,
         folder: str = "aria-ai",
     ) -> dict[str, Any]:
         """Sube una imagen a Cloudinary y devuelve la URL pública."""
         if not settings.CLOUDINARY_CLOUD_NAME or not settings.CLOUDINARY_API_KEY:
             return {"success": False, "error": "Cloudinary no configurado"}
         try:
-            import hashlib, hmac, time as _time
+            import hashlib
+            import hmac
+            import time as _time
 
             timestamp = str(int(_time.time()))
             params_to_sign = f"folder={folder}&timestamp={timestamp}"
@@ -66,19 +69,24 @@ class ContentTools:
                 url = result.get("secure_url", "")
                 logger.info("[ContentTools] Imagen subida a Cloudinary: %s", url[:80])
                 return {"success": True, "url": url, "public_id": result.get("public_id")}
-            return {"success": False, "error": f"Cloudinary HTTP {res.status_code}: {res.text[:200]}"}
+            return {
+                "success": False,
+                "error": f"Cloudinary HTTP {res.status_code}: {res.text[:200]}",
+            }
         except Exception as exc:
             logger.error("[ContentTools] Error Cloudinary upload: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def cloudinary_upload_url(
-        self, image_url: str, folder: str = "aria-ai", public_id: Optional[str] = None
+        self, image_url: str, folder: str = "aria-ai", public_id: str | None = None
     ) -> dict[str, Any]:
         """Sube una imagen desde URL a Cloudinary."""
         if not settings.CLOUDINARY_CLOUD_NAME or not settings.CLOUDINARY_API_KEY:
             return {"success": False, "error": "Cloudinary no configurado"}
         try:
-            import hashlib, hmac, time as _time
+            import hashlib
+            import hmac
+            import time as _time
 
             timestamp = str(int(_time.time()))
             params_to_sign = f"folder={folder}&timestamp={timestamp}"
@@ -100,7 +108,11 @@ class ContentTools:
             )
             if res.status_code == 200:
                 result = res.json()
-                return {"success": True, "url": result.get("secure_url"), "public_id": result.get("public_id")}
+                return {
+                    "success": True,
+                    "url": result.get("secure_url"),
+                    "public_id": result.get("public_id"),
+                }
             return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -210,7 +222,10 @@ class ContentTools:
                     "size_bytes": len(audio_bytes),
                     "content_type": "audio/mpeg",
                 }
-            return {"success": False, "error": f"ElevenLabs HTTP {res.status_code}: {res.text[:200]}"}
+            return {
+                "success": False,
+                "error": f"ElevenLabs HTTP {res.status_code}: {res.text[:200]}",
+            }
         except Exception as exc:
             logger.error("[ContentTools] Error ElevenLabs: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -271,13 +286,16 @@ class ContentTools:
                 }
             if res.status_code == 503:
                 return {"success": False, "error": "Modelo en cold start (503) — reintentar en 30s"}
-            return {"success": False, "error": f"HuggingFace HTTP {res.status_code}: {res.text[:200]}"}
+            return {
+                "success": False,
+                "error": f"HuggingFace HTTP {res.status_code}: {res.text[:200]}",
+            }
         except Exception as exc:
             logger.error("[ContentTools] Error FLUX.1: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def generate_and_upload_image(
-        self, prompt: str, public_id: Optional[str] = None
+        self, prompt: str, public_id: str | None = None
     ) -> dict[str, Any]:
         """Genera una imagen con FLUX.1 y la sube a Cloudinary."""
         flux_result = await self.flux_generate_image(prompt)
@@ -322,7 +340,7 @@ class ContentTools:
         base_id: str,
         table_name: str,
         max_records: int = 20,
-        filter_formula: Optional[str] = None,
+        filter_formula: str | None = None,
     ) -> dict[str, Any]:
         """Lista registros de una tabla de Airtable."""
         if not settings.AIRTABLE_TOKEN:
@@ -370,7 +388,7 @@ class ContentTools:
 
 
 # ── SINGLETON ─────────────────────────────────────────────
-_instance: Optional[ContentTools] = None
+_instance: ContentTools | None = None
 
 
 def get_content_tools() -> ContentTools:

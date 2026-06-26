@@ -1,15 +1,15 @@
 """
 AudienceSegmenter — Ad targeting audience creation and CAC estimation.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "ads:audiences:v1"
 _TTL = 86400 * 60
@@ -74,8 +74,10 @@ class AudienceSegmenter:
         self,
         name: str,
         criteria: dict,
-        platforms: list[str] = ["meta"],
+        platforms: list[str] = None,
     ) -> AudienceSegment:
+        if platforms is None:
+            platforms = ["meta"]
         await self._load()
         specificity = len(criteria)
         cpm_range = _CPM_BY_PLATFORM.get(platforms[0] if platforms else "meta", (8.0, 15.0))
@@ -121,11 +123,21 @@ class AudienceSegmenter:
         except Exception:
             pass
         return [
-            f"{niche}", f"online {niche}", f"{product} tips",
-            "entrepreneurship", "passive income", "digital marketing",
-            "online business", "ecommerce", "social media marketing",
-            "content creation", "AI tools", "productivity",
-            "make money online", "side hustle", "business growth",
+            f"{niche}",
+            f"online {niche}",
+            f"{product} tips",
+            "entrepreneurship",
+            "passive income",
+            "digital marketing",
+            "online business",
+            "ecommerce",
+            "social media marketing",
+            "content creation",
+            "AI tools",
+            "productivity",
+            "make money online",
+            "side hustle",
+            "business growth",
         ]
 
     def generate_exclusion_audiences(self) -> list[str]:
@@ -164,7 +176,8 @@ class AudienceSegmenter:
                 by_platform[p] = by_platform.get(p, 0) + 1
         avg_cpm = (
             sum(s.get("estimated_cpm", 0) for s in self._segments) / len(self._segments)
-            if self._segments else 0.0
+            if self._segments
+            else 0.0
         )
         return {
             "total_segments": len(self._segments),
@@ -173,7 +186,7 @@ class AudienceSegmenter:
         }
 
 
-_instance: Optional[AudienceSegmenter] = None
+_instance: AudienceSegmenter | None = None
 
 
 def get_audience_segmenter() -> AudienceSegmenter:

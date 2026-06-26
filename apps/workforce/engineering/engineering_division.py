@@ -10,15 +10,15 @@ Six engineering agents:
   - qa_engineer: Test suites
   - automation_engineer: Automation scripts
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 # ── Redis configuration ────────────────────────────────────────────────────────
 _REDIS_KEY = "workforce:engineering:v1"
@@ -38,6 +38,7 @@ _TASK_COSTS: dict[str, float] = {
 # ══════════════════════════════════════════════════════════════════════════════
 # Domain object
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class WorkTask:
@@ -72,6 +73,7 @@ class WorkTask:
 # ══════════════════════════════════════════════════════════════════════════════
 # Engineering Division
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class EngineeringDivision:
     """
@@ -220,9 +222,7 @@ class EngineeringDivision:
             model=AIModel.STRATEGY,
         )
 
-    async def api_integration_task(
-        self, title: str, api_name: str, endpoints: list
-    ) -> WorkTask:
+    async def api_integration_task(self, title: str, api_name: str, endpoints: list) -> WorkTask:
         """Generate API integration code for a third-party service."""
         system = (
             "You are a senior integration engineer. Generate production-quality Python "
@@ -333,9 +333,7 @@ class EngineeringDivision:
                     )
                 results.append(wt)
             except Exception as exc:
-                results.append(
-                    WorkTask(title=title, status="failed", output=str(exc))
-                )
+                results.append(WorkTask(title=title, status="failed", output=str(exc)))
         return results
 
     def engineering_stats(self) -> dict:
@@ -360,7 +358,7 @@ class EngineeringDivision:
         """Return the most recent tasks, newest first."""
         return list(reversed(self._tasks))[:limit]
 
-    def task_by_id(self, task_id: str) -> Optional[dict]:
+    def task_by_id(self, task_id: str) -> dict | None:
         """Look up a task by its ID."""
         for t in self._tasks:
             if t.get("task_id") == task_id:
@@ -370,7 +368,7 @@ class EngineeringDivision:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_instance: Optional[EngineeringDivision] = None
+_instance: EngineeringDivision | None = None
 
 
 def get_engineering_division() -> EngineeringDivision:

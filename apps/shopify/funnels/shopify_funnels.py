@@ -3,15 +3,15 @@ ARIA AI — Shopify Funnel Engine
 Phase 12: Upsell flows, abandoned cart sequences, landing pages, checkout optimization.
 Drives AOV, conversion rate, and repeat purchase rate.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "shopify:funnels:v1"
 _TTL = 86400 * 30
@@ -20,7 +20,7 @@ _TTL = 86400 * 30
 @dataclass
 class ShopifyFunnel:
     funnel_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    funnel_type: str = ""       # "upsell", "abandoned_cart", "landing", "cross_sell", "post_purchase"
+    funnel_type: str = ""  # "upsell", "abandoned_cart", "landing", "cross_sell", "post_purchase"
     product_name: str = ""
     stages: list = field(default_factory=list)
     headline: str = ""
@@ -279,8 +279,16 @@ class ShopifyFunnelEngine:
 
         funnel.stages = [
             {"stage": "hero", "element": "headline", "content": funnel.headline},
-            {"stage": "benefits", "element": "bullets", "content": ["Save time", "Increase results", "Zero risk"]},
-            {"stage": "social_proof", "element": "testimonial", "content": "Join 1,000+ happy customers"},
+            {
+                "stage": "benefits",
+                "element": "bullets",
+                "content": ["Save time", "Increase results", "Zero risk"],
+            },
+            {
+                "stage": "social_proof",
+                "element": "testimonial",
+                "content": "Join 1,000+ happy customers",
+            },
             {"stage": "cta", "element": "button", "content": f"Get {product_name} Now"},
         ]
         funnel.cta = f"Get {product_name} Now"
@@ -312,7 +320,8 @@ class ShopifyFunnelEngine:
 
         return {
             "product": product_name,
-            "friction_points": pain_points or ["too many steps", "no trust signals", "unclear shipping"],
+            "friction_points": pain_points
+            or ["too many steps", "no trust signals", "unclear shipping"],
             "fixes": [
                 "Add trust badges near payment fields",
                 "Show shipping cost upfront (no surprise at checkout)",
@@ -343,9 +352,27 @@ class ShopifyFunnelEngine:
             pass
 
         funnel.stages = [
-            {"email": 1, "delay": "immediately", "type": "thank_you", "subject": f"Your {product_name} is on its way!", "includes_upsell": True},
-            {"email": 2, "delay": "5 days", "type": "review_request", "subject": f"How's your {product_name}?", "includes_upsell": False},
-            {"email": 3, "delay": "14 days", "type": "referral", "subject": "Share the love — get rewarded", "includes_upsell": False},
+            {
+                "email": 1,
+                "delay": "immediately",
+                "type": "thank_you",
+                "subject": f"Your {product_name} is on its way!",
+                "includes_upsell": True,
+            },
+            {
+                "email": 2,
+                "delay": "5 days",
+                "type": "review_request",
+                "subject": f"How's your {product_name}?",
+                "includes_upsell": False,
+            },
+            {
+                "email": 3,
+                "delay": "14 days",
+                "type": "referral",
+                "subject": "Share the love — get rewarded",
+                "includes_upsell": False,
+            },
         ]
         funnel.headline = f"Turn every {product_name} buyer into a loyal customer"
         funnel.cta = "Share with a friend"
@@ -366,7 +393,9 @@ class ShopifyFunnelEngine:
             "total_upsells": len(self._upsells),
             "by_type": by_type,
             "avg_expected_cvr_pct": round(
-                sum(f.get("expected_cvr_pct", 0.0) for f in self._funnels) / max(len(self._funnels), 1), 1
+                sum(f.get("expected_cvr_pct", 0.0) for f in self._funnels)
+                / max(len(self._funnels), 1),
+                1,
             ),
         }
 
@@ -375,7 +404,7 @@ class ShopifyFunnelEngine:
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_instance: Optional[ShopifyFunnelEngine] = None
+_instance: ShopifyFunnelEngine | None = None
 
 
 def get_shopify_funnel_engine() -> ShopifyFunnelEngine:

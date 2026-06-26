@@ -2,28 +2,38 @@
 SEO analysis and optimization engine.
 Researches keywords, analyzes content, optimizes meta tags, and generates content briefs.
 """
+
 from __future__ import annotations
 
 import logging
 import random
 import re
-import time
-import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.content.seo")
 
 _CACHE_KEY = "content:seo:v1"
 _CACHE_TTL = 86400 * 30  # 30 days
 
-_BUYER_INTENT_WORDS = {"buy", "best", "review", "vs", "cheap", "top", "discount", "deal", "price", "purchase"}
+_BUYER_INTENT_WORDS = {
+    "buy",
+    "best",
+    "review",
+    "vs",
+    "cheap",
+    "top",
+    "discount",
+    "deal",
+    "price",
+    "purchase",
+}
 
 
 # ── Data models ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class KeywordMetrics:
@@ -73,6 +83,7 @@ class SEOAnalysis:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _buyer_intent(keyword: str) -> float:
     words = set(keyword.lower().split())
     hits = words & _BUYER_INTENT_WORDS
@@ -101,7 +112,7 @@ def _simulate_keyword_metrics(keyword: str) -> dict:
 
 def _readability_score(content: str) -> float:
     """Flesch-style readability approximation (0-1, higher = more readable)."""
-    sentences = re.split(r'[.!?]+', content)
+    sentences = re.split(r"[.!?]+", content)
     sentences = [s.strip() for s in sentences if s.strip()]
     if not sentences:
         return 0.5
@@ -111,13 +122,13 @@ def _readability_score(content: str) -> float:
     avg_sentence_len = len(words) / max(1, len(sentences))
     if avg_sentence_len < 20:
         return 0.9
-    elif avg_sentence_len < 30:
+    if avg_sentence_len < 30:
         return 0.7
-    else:
-        return 0.5
+    return 0.5
 
 
 # ── Main class ─────────────────────────────────────────────────────────────────
+
 
 class SEOEngine:
     """Full SEO analysis and optimization engine with keyword research and content briefs."""
@@ -229,9 +240,13 @@ class SEOEngine:
             if 1.0 <= density <= 3.0:
                 seo_score += 0.2
             elif density < 1.0:
-                recommendations.append(f"Increase keyword density for '{target_keyword}' (aim for 1–3%).")
+                recommendations.append(
+                    f"Increase keyword density for '{target_keyword}' (aim for 1–3%)."
+                )
             else:
-                recommendations.append(f"Reduce keyword stuffing for '{target_keyword}' (currently {density:.1f}%).")
+                recommendations.append(
+                    f"Reduce keyword stuffing for '{target_keyword}' (currently {density:.1f}%)."
+                )
         else:
             seo_score += 0.1  # partial credit if no target keyword given
 
@@ -240,23 +255,29 @@ class SEOEngine:
         if read_score >= 0.8:
             seo_score += 0.2
         else:
-            recommendations.append("Shorten sentences — aim for average sentence length under 20 words.")
+            recommendations.append(
+                "Shorten sentences — aim for average sentence length under 20 words."
+            )
 
         # Header structure
-        has_h1 = bool(re.search(r'^#{1,2}\s', content, re.MULTILINE))
-        has_headers = bool(re.search(r'^#{2,3}\s', content, re.MULTILINE))
+        has_h1 = bool(re.search(r"^#{1,2}\s", content, re.MULTILINE))
+        has_headers = bool(re.search(r"^#{2,3}\s", content, re.MULTILINE))
         if has_h1 or has_headers:
             seo_score += 0.2
         else:
-            recommendations.append("Add H2/H3 headers to structure content and improve crawlability.")
+            recommendations.append(
+                "Add H2/H3 headers to structure content and improve crawlability."
+            )
 
         # Extract title and h1
-        title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+        title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
         title = title_match.group(1).strip() if title_match else ""
         h1 = title
 
         # Extract first paragraph as meta candidate
-        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip() and not p.startswith("#")]
+        paragraphs = [
+            p.strip() for p in content.split("\n\n") if p.strip() and not p.startswith("#")
+        ]
         meta_description = paragraphs[0][:160] if paragraphs else ""
 
         # Find keywords in content
@@ -340,7 +361,9 @@ class SEOEngine:
                 h2s = []
                 for line in lines:
                     if line.startswith("SECONDARY:"):
-                        secondary = [k.strip() for k in line.replace("SECONDARY:", "").split(",")][:5]
+                        secondary = [k.strip() for k in line.replace("SECONDARY:", "").split(",")][
+                            :5
+                        ]
                     elif line.startswith("TONE:"):
                         tone = line.replace("TONE:", "").strip()
                     elif line.startswith("H2_"):
@@ -349,11 +372,13 @@ class SEOEngine:
                         cta = line.replace("CTA:", "").strip()
                 return {
                     "target_keyword": keyword,
-                    "secondary_keywords": secondary or [f"{keyword} guide", f"best {keyword}", f"{keyword} tips"],
+                    "secondary_keywords": secondary
+                    or [f"{keyword} guide", f"best {keyword}", f"{keyword} tips"],
                     "word_count_target": 1200,
                     "tone": tone,
                     "cta_suggestions": [cta],
-                    "outline": h2s or [
+                    "outline": h2s
+                    or [
                         f"What Is {keyword}?",
                         f"Benefits of {keyword}",
                         f"How to Get Started with {keyword}",
@@ -368,7 +393,13 @@ class SEOEngine:
 
         return {
             "target_keyword": keyword,
-            "secondary_keywords": [f"{keyword} guide", f"best {keyword}", f"{keyword} tips", f"{keyword} review", f"{keyword} tools"],
+            "secondary_keywords": [
+                f"{keyword} guide",
+                f"best {keyword}",
+                f"{keyword} tips",
+                f"{keyword} review",
+                f"{keyword} tools",
+            ],
             "word_count_target": 1200,
             "tone": "conversational",
             "cta_suggestions": [f"Try {keyword} free today", f"Learn more about {keyword}"],
@@ -391,17 +422,18 @@ class SEOEngine:
         if len(self._keywords) < 10:
             await self.research_keywords(niche, count=20)
 
-        all_kw = [
-            KeywordMetrics(**{k: v for k, v in kwd.items()})
-            for kwd in self._keywords.values()
-        ]
+        all_kw = [KeywordMetrics(**dict(kwd.items())) for kwd in self._keywords.values()]
         # Sort by opportunity score descending
         all_kw.sort(key=lambda k: k.opportunity_score, reverse=True)
         return all_kw[:10]
 
     def stats(self) -> dict:
         if not self._keywords:
-            return {"total_keywords_researched": 0, "avg_opportunity_score": 0.0, "top_keyword": None}
+            return {
+                "total_keywords_researched": 0,
+                "avg_opportunity_score": 0.0,
+                "top_keyword": None,
+            }
 
         scores = [v["opportunity_score"] for v in self._keywords.values()]
         avg_score = round(sum(scores) / len(scores), 3)
@@ -415,7 +447,7 @@ class SEOEngine:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_seo_engine: Optional[SEOEngine] = None
+_seo_engine: SEOEngine | None = None
 
 
 def get_seo_engine() -> SEOEngine:

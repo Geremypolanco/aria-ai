@@ -7,13 +7,13 @@ Requiere en Fly.io secrets:
   GOOGLE_CLIENT_SECRET → mismo lugar
   (GOOGLE_API_KEY ya existe — esto es DIFERENTE, es OAuth para cuentas de usuario)
 """
+
 from __future__ import annotations
 
 import base64
-import json
 import logging
+from datetime import UTC
 from email.mime.text import MIMEText
-from typing import Any, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -23,27 +23,31 @@ logger = logging.getLogger("aria.connections.google")
 REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/google"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
-SCOPES = " ".join([
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/calendar.readonly",
-    "https://www.googleapis.com/auth/calendar.events",
-    "https://www.googleapis.com/auth/drive.readonly",
-    "https://www.googleapis.com/auth/userinfo.email",
-])
+SCOPES = " ".join(
+    [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/userinfo.email",
+    ]
+)
 
 
 class GoogleConnection:
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "GOOGLE_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "GOOGLE_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -58,19 +62,22 @@ class GoogleConnection:
         }
         return f"{AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": REDIRECT_URI,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             # Get user email
@@ -87,12 +94,15 @@ class GoogleConnection:
         cid = self._client_id()
         sec = self._client_secret()
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(TOKEN_URL, data={
-                "refresh_token": tokens["refresh_token"],
-                "client_id": cid,
-                "client_secret": sec,
-                "grant_type": "refresh_token",
-            })
+            r = await http.post(
+                TOKEN_URL,
+                data={
+                    "refresh_token": tokens["refresh_token"],
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "grant_type": "refresh_token",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             tokens["access_token"] = data["access_token"]
@@ -117,7 +127,8 @@ class GoogleConnection:
             params = {"maxResults": max_results, "q": query or "is:unread"}
             r = await http.get(
                 "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-                headers=self._headers(tokens), params=params,
+                headers=self._headers(tokens),
+                params=params,
             )
             if r.status_code != 200:
                 raise RuntimeError(f"Gmail error {r.status_code}: {r.text[:200]}")
@@ -131,14 +142,18 @@ class GoogleConnection:
                 )
                 if detail.status_code == 200:
                     d = detail.json()
-                    headers = {h["name"]: h["value"] for h in d.get("payload", {}).get("headers", [])}
-                    results.append({
-                        "id": m["id"],
-                        "subject": headers.get("Subject", "(sin asunto)"),
-                        "from": headers.get("From", ""),
-                        "date": headers.get("Date", ""),
-                        "snippet": d.get("snippet", ""),
-                    })
+                    headers = {
+                        h["name"]: h["value"] for h in d.get("payload", {}).get("headers", [])
+                    }
+                    results.append(
+                        {
+                            "id": m["id"],
+                            "subject": headers.get("Subject", "(sin asunto)"),
+                            "from": headers.get("From", ""),
+                            "date": headers.get("Date", ""),
+                            "snippet": d.get("snippet", ""),
+                        }
+                    )
             return results
 
     async def gmail_send(self, tokens: dict, to: str, subject: str, body: str) -> dict:
@@ -172,10 +187,14 @@ class GoogleConnection:
             body = ""
             for p in parts:
                 if p.get("mimeType") == "text/plain" and p.get("body", {}).get("data"):
-                    body = base64.urlsafe_b64decode(p["body"]["data"]).decode("utf-8", errors="replace")
+                    body = base64.urlsafe_b64decode(p["body"]["data"]).decode(
+                        "utf-8", errors="replace"
+                    )
                     break
             if not body and data.get("payload", {}).get("body", {}).get("data"):
-                body = base64.urlsafe_b64decode(data["payload"]["body"]["data"]).decode("utf-8", errors="replace")
+                body = base64.urlsafe_b64decode(data["payload"]["body"]["data"]).decode(
+                    "utf-8", errors="replace"
+                )
             return {
                 "id": message_id,
                 "subject": headers.get("Subject", ""),
@@ -188,14 +207,19 @@ class GoogleConnection:
 
     async def calendar_list(self, tokens: dict, max_results: int = 10) -> list[dict]:
         """Lista próximos eventos del calendario."""
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
+        from datetime import datetime
+
+        now = datetime.now(UTC).isoformat()
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 "https://www.googleapis.com/calendar/v3/calendars/primary/events",
                 headers=self._headers(tokens),
-                params={"maxResults": max_results, "orderBy": "startTime",
-                        "singleEvents": True, "timeMin": now},
+                params={
+                    "maxResults": max_results,
+                    "orderBy": "startTime",
+                    "singleEvents": True,
+                    "timeMin": now,
+                },
             )
             if r.status_code != 200:
                 raise RuntimeError(f"Calendar error {r.status_code}: {r.text[:200]}")
@@ -212,8 +236,15 @@ class GoogleConnection:
                 for e in events
             ]
 
-    async def calendar_create(self, tokens: dict, title: str, start: str, end: str,
-                               description: str = "", location: str = "") -> dict:
+    async def calendar_create(
+        self,
+        tokens: dict,
+        title: str,
+        start: str,
+        end: str,
+        description: str = "",
+        location: str = "",
+    ) -> dict:
         """Crea un evento en Google Calendar."""
         event = {
             "summary": title,

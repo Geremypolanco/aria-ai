@@ -4,14 +4,13 @@ tool_registry.py — Per-tool reliability intelligence layer for ARIA AI.
 Tracks call counts, success rates, latency, and error patterns per tool.
 Persists to Redis under key "tool_registry:v1".
 """
+
 from __future__ import annotations
 
 import json
 import logging
-from collections import deque
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from typing import Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 
 logger = logging.getLogger("aria.tool_registry")
 
@@ -24,15 +23,13 @@ class ToolRecord:
     name: str
     category: str = "general"
     tags: list[str] = field(default_factory=list)
-    registered_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    registered_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     call_count: int = 0
     success_count: int = 0
     failure_count: int = 0
     total_latency_ms: float = 0.0
-    last_used: Optional[str] = None
+    last_used: str | None = None
     error_patterns: list[str] = field(default_factory=list)
 
     @property
@@ -55,7 +52,7 @@ class ToolRecord:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ToolRecord":
+    def from_dict(cls, d: dict) -> ToolRecord:
         return cls(**d)
 
 
@@ -79,6 +76,7 @@ class ToolRegistry:
     def _get_cache(self):
         if self._cache is None:
             from apps.core.memory.redis_client import get_cache
+
             self._cache = get_cache()
         return self._cache
 
@@ -90,10 +88,7 @@ class ToolRegistry:
             raw = await cache.get(_REGISTRY_KEY)
             if raw:
                 data = json.loads(raw) if isinstance(raw, str) else raw
-                self._tools = {
-                    name: ToolRecord.from_dict(record)
-                    for name, record in data.items()
-                }
+                self._tools = {name: ToolRecord.from_dict(record) for name, record in data.items()}
                 logger.info("[ToolRegistry] Loaded %d tools from Redis", len(self._tools))
         except Exception as exc:
             logger.warning("[ToolRegistry] Could not load from Redis: %s", exc)
@@ -111,7 +106,7 @@ class ToolRegistry:
 
     # ── PUBLIC API ────────────────────────────────────────────
 
-    def register(self, name: str, category: str = "general", tags: Optional[list[str]] = None) -> None:
+    def register(self, name: str, category: str = "general", tags: list[str] | None = None) -> None:
         if name in self._tools:
             return
         self._tools[name] = ToolRecord(
@@ -125,7 +120,7 @@ class ToolRegistry:
         name: str,
         success: bool,
         latency_ms: float,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         if name not in self._tools:
             self.register(name)
@@ -133,7 +128,7 @@ class ToolRegistry:
         record = self._tools[name]
         record.call_count += 1
         record.total_latency_ms += latency_ms
-        record.last_used = datetime.now(timezone.utc).isoformat()
+        record.last_used = datetime.now(UTC).isoformat()
 
         if success:
             record.success_count += 1
@@ -147,12 +142,13 @@ class ToolRegistry:
 
     def best_tools(
         self,
-        category: Optional[str] = None,
+        category: str | None = None,
         min_success_rate: float = 0.5,
         top_k: int = 5,
     ) -> list[ToolRecord]:
         candidates = [
-            r for r in self._tools.values()
+            r
+            for r in self._tools.values()
             if (category is None or r.category == category)
             and r.call_count > 0
             and r.success_rate >= min_success_rate
@@ -161,12 +157,9 @@ class ToolRegistry:
         return candidates[:top_k]
 
     def failing_tools(self, threshold: float = 0.3) -> list[ToolRecord]:
-        return [
-            r for r in self._tools.values()
-            if r.call_count >= 3 and r.success_rate < threshold
-        ]
+        return [r for r in self._tools.values() if r.call_count >= 3 and r.success_rate < threshold]
 
-    def get_stats(self, name: str) -> Optional[dict]:
+    def get_stats(self, name: str) -> dict | None:
         record = self._tools.get(name)
         if record is None:
             return None
@@ -181,9 +174,7 @@ class ToolRegistry:
         all_records = list(self._tools.values())
         active = [r for r in all_records if r.call_count > 0]
 
-        avg_success = (
-            sum(r.success_rate for r in active) / len(active) if active else 0.0
-        )
+        avg_success = sum(r.success_rate for r in active) / len(active) if active else 0.0
 
         sorted_active = sorted(active, key=lambda r: r.success_rate, reverse=True)
         most_reliable = sorted_active[0].name if sorted_active else None
@@ -205,7 +196,7 @@ class ToolRegistry:
 
 
 # ── SINGLETON ─────────────────────────────────────────────────
-_registry: Optional[ToolRegistry] = None
+_registry: ToolRegistry | None = None
 
 
 def get_tool_registry() -> ToolRegistry:

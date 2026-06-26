@@ -2,9 +2,13 @@
 gumroad_tools.py — Crea y gestiona productos digitales en Gumroad automáticamente.
 ARIA genera el contenido con IA y lo pone a la venta sin intervención manual.
 """
+
 from __future__ import annotations
+
 import logging
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.gumroad")
@@ -67,7 +71,9 @@ class GumroadTools:
 
             logger.info(
                 "[Gumroad] Producto creado: '%s' | URL: %s | $%.2f",
-                name, product_url, price_cents / 100,
+                name,
+                product_url,
+                price_cents / 100,
             )
             return {
                 "success": True,

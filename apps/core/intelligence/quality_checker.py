@@ -2,12 +2,12 @@
 quality_checker.py — Control de calidad para artículos generados por IA.
 Verifica longitud, keywords, estructura de encabezados y keyword stuffing.
 """
+
 from __future__ import annotations
 
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger("aria.quality_checker")
 
@@ -26,7 +26,7 @@ class QualityReport:
 class QualityChecker:
     """Verifica la calidad de artículos antes de publicarlos."""
 
-    def check(self, article: dict, keywords: Optional[list[str]] = None) -> QualityReport:
+    def check(self, article: dict, keywords: list[str] | None = None) -> QualityReport:
         """
         Evalúa un artículo y retorna un QualityReport.
         article debe tener al menos: 'content' y opcionalmente 'title'.
@@ -41,9 +41,7 @@ class QualityChecker:
         words = content.split()
         word_count = len(words)
         if word_count < MIN_WORD_COUNT:
-            issues.append(
-                f"Longitud insuficiente: {word_count} palabras (mínimo {MIN_WORD_COUNT})"
-            )
+            issues.append(f"Longitud insuficiente: {word_count} palabras (mínimo {MIN_WORD_COUNT})")
             score -= 30
 
         # 2. Presencia de keywords objetivo
@@ -90,7 +88,7 @@ class QualityChecker:
         return QualityReport(passed=passed, score=score, issues=issues, warnings=warnings)
 
 
-_instance: Optional[QualityChecker] = None
+_instance: QualityChecker | None = None
 
 
 def get_quality_checker() -> QualityChecker:

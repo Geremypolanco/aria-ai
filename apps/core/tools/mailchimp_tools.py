@@ -2,11 +2,15 @@
 mailchimp_tools.py — Email marketing automatizado via Mailchimp.
 Crea campañas, gestiona listas y envía emails de forma autónoma.
 """
+
 from __future__ import annotations
+
 import base64
 import logging
-from typing import Any, Optional
+from typing import Any
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.mailchimp_tools")
@@ -34,11 +38,15 @@ class MailchimpTools:
         if not self._configured():
             return {"success": False, "error": "MAILCHIMP no configurado"}
         try:
-            res = await self._http.get(f"{self._base}/lists", headers=self._headers, params={"count": 20})
+            res = await self._http.get(
+                f"{self._base}/lists", headers=self._headers, params={"count": 20}
+            )
             if res.status_code == 200:
                 data = res.json()
-                lists = [{"id": l["id"], "name": l["name"], "members": l["stats"]["member_count"]}
-                         for l in data.get("lists", [])]
+                lists = [
+                    {"id": l["id"], "name": l["name"], "members": l["stats"]["member_count"]}
+                    for l in data.get("lists", [])
+                ]
                 return {"success": True, "lists": lists, "total": len(lists)}
             return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
@@ -69,9 +77,14 @@ class MailchimpTools:
                     "reply_to": reply_to,
                 },
             }
-            res = await self._http.post(f"{self._base}/campaigns", headers=self._headers, json=campaign_payload)
+            res = await self._http.post(
+                f"{self._base}/campaigns", headers=self._headers, json=campaign_payload
+            )
             if res.status_code not in (200, 201):
-                return {"success": False, "error": f"Create campaign HTTP {res.status_code}: {res.text[:200]}"}
+                return {
+                    "success": False,
+                    "error": f"Create campaign HTTP {res.status_code}: {res.text[:200]}",
+                }
             campaign_id = res.json()["id"]
 
             # 2. Agregar contenido HTML
@@ -90,14 +103,21 @@ class MailchimpTools:
             )
             if send_res.status_code == 204:
                 logger.info("[Mailchimp] Campaign %s sent", campaign_id)
-                return {"success": True, "campaign_id": campaign_id, "subject": subject, "list_id": list_id}
+                return {
+                    "success": True,
+                    "campaign_id": campaign_id,
+                    "subject": subject,
+                    "list_id": list_id,
+                }
 
             return {"success": False, "error": f"Send HTTP {send_res.status_code}"}
         except Exception as exc:
             logger.error("[Mailchimp] create_campaign error: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    async def add_subscriber(self, list_id: str, email: str, first_name: str = "", last_name: str = "") -> dict[str, Any]:
+    async def add_subscriber(
+        self, list_id: str, email: str, first_name: str = "", last_name: str = ""
+    ) -> dict[str, Any]:
         """Añade un suscriptor a una lista."""
         if not self._configured():
             return {"success": False, "error": "MAILCHIMP no configurado"}
@@ -107,7 +127,9 @@ class MailchimpTools:
                 "status": "subscribed",
                 "merge_fields": {"FNAME": first_name, "LNAME": last_name},
             }
-            res = await self._http.post(f"{self._base}/lists/{list_id}/members", headers=self._headers, json=payload)
+            res = await self._http.post(
+                f"{self._base}/lists/{list_id}/members", headers=self._headers, json=payload
+            )
             if res.status_code in (200, 201):
                 return {"success": True, "email": email, "list_id": list_id}
             return {"success": False, "error": f"HTTP {res.status_code}: {res.text[:200]}"}

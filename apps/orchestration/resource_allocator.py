@@ -2,12 +2,12 @@
 ResourceAllocator — Budget and effort allocation across growth channels.
 Uses performance data to shift resources toward highest-ROAS channels.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
 
@@ -65,8 +65,10 @@ class ResourceAllocator:
             pass
 
     async def allocate(
-        self, total_budget: float, total_hours: float, performance_data: dict = {}
+        self, total_budget: float, total_hours: float, performance_data: dict = None
     ) -> ResourceAllocation:
+        if performance_data is None:
+            performance_data = {}
         await self._load()
         split = dict(_DEFAULT_SPLIT)
 
@@ -111,9 +113,8 @@ class ResourceAllocator:
                 performance_data[ch] = {
                     "spend": c.get("spend", 0),
                     "revenue": c.get("revenue", 0),
-                    "roas": c.get("roas", 0.0) or (
-                        c["revenue"] / c["spend"] if c.get("spend", 0) > 0 else 0.0
-                    ),
+                    "roas": c.get("roas", 0.0)
+                    or (c["revenue"] / c["spend"] if c.get("spend", 0) > 0 else 0.0),
                 }
         total_budget = sum(c.get("spend", 0) for c in campaigns)
         total_hours = len(campaigns) * 5.0
@@ -144,14 +145,19 @@ class ResourceAllocator:
         allocs = latest.get("allocations", {})
         by_channel = {
             ch: {
-                "budget_pct": round(a["budget_usd"] / latest["total_budget_usd"] * 100, 1)
-                if latest["total_budget_usd"] > 0 else 0,
+                "budget_pct": (
+                    round(a["budget_usd"] / latest["total_budget_usd"] * 100, 1)
+                    if latest["total_budget_usd"] > 0
+                    else 0
+                ),
                 "roas": a.get("current_roas", 0.0),
                 "priority": a.get("priority", "medium"),
             }
             for ch, a in allocs.items()
         }
-        top_channel = max(allocs, key=lambda ch: allocs[ch].get("budget_usd", 0)) if allocs else "none"
+        top_channel = (
+            max(allocs, key=lambda ch: allocs[ch].get("budget_usd", 0)) if allocs else "none"
+        )
         return {
             "total_allocations": len(self._allocations),
             "by_channel": by_channel,
@@ -159,7 +165,7 @@ class ResourceAllocator:
         }
 
 
-_instance: Optional[ResourceAllocator] = None
+_instance: ResourceAllocator | None = None
 
 
 def get_resource_allocator() -> ResourceAllocator:

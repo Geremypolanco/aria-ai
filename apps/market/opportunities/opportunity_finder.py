@@ -2,16 +2,16 @@
 Business opportunity synthesis.
 Combines trend, demand, and competition signals into actionable opportunities ranked by ROI.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.market.opportunities")
 
@@ -26,7 +26,8 @@ _OPPORTUNITY_TEMPLATES: dict[str, list[dict]] = {
             "title_tpl": "{niche} YouTube Channel",
             "description_tpl": "Build a YouTube channel focused on {niche} education and tutorials.",
             "ease": 65.0,
-            "rev_min": 200, "rev_max": 3000,
+            "rev_min": 200,
+            "rev_max": 3000,
             "ttfr": 45,
             "actions": [
                 "Research top 10 {niche} videos",
@@ -40,7 +41,8 @@ _OPPORTUNITY_TEMPLATES: dict[str, list[dict]] = {
             "title_tpl": "{niche} Newsletter",
             "description_tpl": "Curate weekly {niche} insights and monetize through sponsorships.",
             "ease": 80.0,
-            "rev_min": 100, "rev_max": 2000,
+            "rev_min": 100,
+            "rev_max": 2000,
             "ttfr": 30,
             "actions": [
                 "Set up newsletter on Beehiiv or Substack",
@@ -55,7 +57,8 @@ _OPPORTUNITY_TEMPLATES: dict[str, list[dict]] = {
             "title_tpl": "{niche} Digital Template Pack",
             "description_tpl": "Create and sell premium templates for {niche} practitioners.",
             "ease": 70.0,
-            "rev_min": 150, "rev_max": 2500,
+            "rev_min": 150,
+            "rev_max": 2500,
             "ttfr": 14,
             "actions": [
                 "Identify top 5 recurring needs in {niche}",
@@ -70,7 +73,8 @@ _OPPORTUNITY_TEMPLATES: dict[str, list[dict]] = {
             "title_tpl": "{niche} Consulting Package",
             "description_tpl": "Offer 1-on-1 consulting for {niche} businesses and creators.",
             "ease": 55.0,
-            "rev_min": 500, "rev_max": 5000,
+            "rev_min": 500,
+            "rev_max": 5000,
             "ttfr": 7,
             "actions": [
                 "Define 3 consulting tiers ($99/$299/$999)",
@@ -85,7 +89,8 @@ _OPPORTUNITY_TEMPLATES: dict[str, list[dict]] = {
             "title_tpl": "{niche} Affiliate Review Site",
             "description_tpl": "Build SEO-optimized review content for top {niche} products.",
             "ease": 60.0,
-            "rev_min": 50, "rev_max": 2000,
+            "rev_min": 50,
+            "rev_max": 2000,
             "ttfr": 60,
             "actions": [
                 "Choose 5 high-commission {niche} affiliate programs",
@@ -99,6 +104,7 @@ _OPPORTUNITY_TEMPLATES: dict[str, list[dict]] = {
 
 
 # ── Data models ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class BusinessOpportunity:
@@ -154,6 +160,7 @@ class BusinessOpportunity:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _compute_total_score(demand: float, competition: float, ease: float) -> float:
     """Weighted aggregate: demand 40%, ease 35%, low-competition bonus 25%."""
     competition_inv = 100.0 - competition
@@ -192,6 +199,7 @@ def _build_from_template(
 
 
 # ── Main class ─────────────────────────────────────────────────────────────────
+
 
 class OpportunityFinder:
     """Synthesizes market signals into ranked business opportunities."""
@@ -238,7 +246,7 @@ class OpportunityFinder:
                     "For each include: title, description, opportunity_type (content/product/service/affiliate), "
                     "demand_score (0-100), competition_score (0-100), ease_score (0-100), "
                     "estimated_monthly_revenue_usd, time_to_first_revenue_days, action_items (list of 4). "
-                    "Return JSON: {\"opportunities\": [...]}"
+                    'Return JSON: {"opportunities": [...]}'
                 )
                 result = await ai.generate(prompt, model=AIModel.FAST, json_mode=True)
                 if result and isinstance(result, dict):
@@ -317,8 +325,7 @@ class OpportunityFinder:
     def summary(self) -> dict:
         total = len(self._opportunities)
         avg_score = (
-            sum(o.get("total_score", 0) for o in self._opportunities) / total
-            if total else 0.0
+            sum(o.get("total_score", 0) for o in self._opportunities) / total if total else 0.0
         )
         return {
             "total_opportunities": total,
@@ -328,7 +335,7 @@ class OpportunityFinder:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_opportunity_finder_instance: Optional[OpportunityFinder] = None
+_opportunity_finder_instance: OpportunityFinder | None = None
 
 
 def get_opportunity_finder() -> OpportunityFinder:

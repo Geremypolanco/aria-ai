@@ -12,9 +12,11 @@ Simulates a real human interacting with a browser:
 
 Drop-in replacement for browser_sandbox.py when stealth is required.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import math
@@ -23,7 +25,6 @@ import random
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("aria.human_browser")
 
@@ -136,14 +137,15 @@ _STEALTH_JS = """
 
 # ── Human timing profiles ─────────────────────────────────────────────────────
 
+
 def _human_typing_delay(char: str) -> float:
     """Returns delay in seconds before typing this character."""
     base = random.gauss(0.12, 0.04)  # ~120ms avg, 40ms std
     # Space and punctuation are faster
-    if char in (' ', '.', ',', '!', '?'):
+    if char in (" ", ".", ",", "!", "?"):
         base *= 0.7
     # Numbers and special chars are slower
-    if char.isdigit() or char in ('@', '#', '$', '%', '&'):
+    if char.isdigit() or char in ("@", "#", "$", "%", "&"):
         base *= 1.3
     # Occasional burst (thinking paused, then types fast)
     if random.random() < 0.05:
@@ -156,15 +158,15 @@ def _human_typing_delay(char: str) -> float:
 
 def _human_pause(mode: str = "action") -> float:
     """Returns a human-realistic pause duration in seconds."""
-    if mode == "micro":       # between actions
+    if mode == "micro":  # between actions
         return random.uniform(0.1, 0.4)
-    if mode == "read":        # reading content
+    if mode == "read":  # reading content
         return random.uniform(0.8, 2.5)
-    if mode == "think":       # deciding what to do
+    if mode == "think":  # deciding what to do
         return random.uniform(1.5, 4.0)
-    if mode == "action":      # before clicking/typing
+    if mode == "action":  # before clicking/typing
         return random.uniform(0.3, 0.9)
-    if mode == "navigate":    # waiting for page
+    if mode == "navigate":  # waiting for page
         return random.uniform(0.5, 1.5)
     return random.uniform(0.2, 0.6)
 
@@ -192,8 +194,8 @@ def _bezier_points(
     for i in range(n + 1):
         t = i / n
         # Cubic bezier formula
-        x = (1-t)**3*sx + 3*(1-t)**2*t*cp1x + 3*(1-t)*t**2*cp2x + t**3*ex
-        y = (1-t)**3*sy + 3*(1-t)**2*t*cp1y + 3*(1-t)*t**2*cp2y + t**3*ey
+        x = (1 - t) ** 3 * sx + 3 * (1 - t) ** 2 * t * cp1x + 3 * (1 - t) * t**2 * cp2x + t**3 * ex
+        y = (1 - t) ** 3 * sy + 3 * (1 - t) ** 2 * t * cp1y + 3 * (1 - t) * t**2 * cp2y + t**3 * ey
         # Add micro jitter to simulate hand tremor
         x += random.gauss(0, 0.8)
         y += random.gauss(0, 0.8)
@@ -233,7 +235,7 @@ class SessionData:
         )
 
 
-def _load_session(name: str) -> Optional[SessionData]:
+def _load_session(name: str) -> SessionData | None:
     path = _SESSION_DIR / f"{name}.json"
     if not path.exists():
         return None
@@ -250,6 +252,7 @@ def _save_session(name: str, data: SessionData) -> None:
 
 
 # ── Core classes ──────────────────────────────────────────────────────────────
+
 
 class HumanPage:
     """
@@ -277,8 +280,7 @@ class HumanPage:
 
     async def _move_mouse_human(self, x: float, y: float) -> None:
         """Move mouse from current position to (x, y) along a Bezier curve."""
-        points = _bezier_points((self._mouse_x, self._mouse_y), (x, y),
-                                n=random.randint(15, 30))
+        points = _bezier_points((self._mouse_x, self._mouse_y), (x, y), n=random.randint(15, 30))
         # Accelerate in middle, decelerate at end (easing)
         for i, (px, py) in enumerate(points):
             progress = i / len(points)
@@ -299,7 +301,7 @@ class HumanPage:
         if not box:
             raise ValueError(f"Element has no bounding box: {selector}")
         # Aim slightly off-center (humans don't click exactly center)
-        x = box["x"] + box["width"]  * random.uniform(0.35, 0.65)
+        x = box["x"] + box["width"] * random.uniform(0.35, 0.65)
         y = box["y"] + box["height"] * random.uniform(0.35, 0.65)
         return x, y
 
@@ -322,8 +324,7 @@ class HumanPage:
 
     # ── Typing ────────────────────────────────────────────────────────────────
 
-    async def type_human(self, selector: str, text: str,
-                          clear_first: bool = True) -> None:
+    async def type_human(self, selector: str, text: str, clear_first: bool = True) -> None:
         """Click field, then type character by character with human timing."""
         await self.click(selector)
         await asyncio.sleep(random.uniform(0.1, 0.3))
@@ -439,14 +440,18 @@ class HumanPage:
                 storage = await self._page.evaluate(
                     "() => Object.fromEntries(Object.entries(localStorage))"
                 )
-                domain = self._page.url.split("/")[2] if self._page.url.startswith("http") else "unknown"
+                domain = (
+                    self._page.url.split("/")[2] if self._page.url.startswith("http") else "unknown"
+                )
                 local_storage[domain] = storage or {}
             except Exception:
                 pass
 
             session = SessionData(cookies=cookies, local_storage=local_storage)
             _save_session(self._session_name, session)
-            logger.info("[HumanBrowser] session saved: %s (%d cookies)", self._session_name, len(cookies))
+            logger.info(
+                "[HumanBrowser] session saved: %s (%d cookies)", self._session_name, len(cookies)
+            )
         except Exception as exc:
             logger.warning("[HumanBrowser] save_session failed: %s", exc)
 
@@ -461,12 +466,16 @@ class HumanPage:
                 await context.add_cookies(session.cookies)
 
             # Restore localStorage after navigating to the domain
-            for domain, storage in session.local_storage.items():
+            for _domain, storage in session.local_storage.items():
                 if storage:
                     js = "items => { for (const [k,v] of Object.entries(items)) localStorage.setItem(k, v); }"
                     await self._page.evaluate(js, storage)
 
-            logger.info("[HumanBrowser] session loaded: %s (%d cookies)", self._session_name, len(session.cookies))
+            logger.info(
+                "[HumanBrowser] session loaded: %s (%d cookies)",
+                self._session_name,
+                len(session.cookies),
+            )
             return True
         except Exception as exc:
             logger.warning("[HumanBrowser] load_session failed: %s", exc)
@@ -502,6 +511,7 @@ class HumanBrowser:
 
     async def start(self) -> None:
         from playwright.async_api import async_playwright
+
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(
             headless=True,
@@ -570,7 +580,7 @@ class HumanBrowser:
             await self._playwright.stop()
         logger.info("[HumanBrowser] closed")
 
-    async def __aenter__(self) -> "HumanBrowser":
+    async def __aenter__(self) -> HumanBrowser:
         await self.start()
         return self
 
@@ -579,6 +589,7 @@ class HumanBrowser:
 
 
 # ── High-level login flows ────────────────────────────────────────────────────
+
 
 class PlatformLogin:
     """
@@ -710,7 +721,9 @@ class PlatformLogin:
             logger.info("[HumanBrowser] LinkedIn: login successful")
             await page.save_session()
         else:
-            logger.warning("[HumanBrowser] LinkedIn: may require CAPTCHA verification at %s", page.url)
+            logger.warning(
+                "[HumanBrowser] LinkedIn: may require CAPTCHA verification at %s", page.url
+            )
         return page
 
     async def twitter(self, email: str, password: str, username: str = "") -> HumanPage:
@@ -738,7 +751,9 @@ class PlatformLogin:
 
         # Step 2: Twitter may ask for username if it detects unusual login
         try:
-            username_input = await page.wait_for_selector("input[data-testid='ocfEnterTextTextInput']", timeout=4_000)
+            username_input = await page.wait_for_selector(
+                "input[data-testid='ocfEnterTextTextInput']", timeout=4_000
+            )
             if username_input and username:
                 await page.type_human("input[data-testid='ocfEnterTextTextInput']", username)
                 await page.click("text=Next")
@@ -791,7 +806,9 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] Reddit: login may have failed at %s", page.url)
         return page
 
-    async def hackernews_show_hn(self, email: str, password: str, title: str, url: str, text: str = "") -> str:
+    async def hackernews_show_hn(
+        self, email: str, password: str, title: str, url: str, text: str = ""
+    ) -> str:
         """
         Submit a 'Show HN:' post to Hacker News. Returns the post URL or empty string.
         HN is the best single source of tech early-adopter traffic.
@@ -841,7 +858,9 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] HN submission failed: %s", exc)
             return ""
 
-    async def hackernews_comment(self, email: str, password: str, item_id: str, comment_text: str) -> bool:
+    async def hackernews_comment(
+        self, email: str, password: str, item_id: str, comment_text: str
+    ) -> bool:
         """
         Post a comment on a Hacker News item. Returns True on success.
         Reuses session from hackernews_show_hn if available.
@@ -864,7 +883,9 @@ class PlatformLogin:
 
             # Find the reply textarea on the top-level comment form
             try:
-                await page.type_human("form[action='comment'] textarea[name='text']", comment_text[:2000])
+                await page.type_human(
+                    "form[action='comment'] textarea[name='text']", comment_text[:2000]
+                )
                 await page._random_pause("think")
                 await page.click("form[action='comment'] input[type='submit'][value='add comment']")
                 await page._random_pause("navigate")
@@ -872,7 +893,9 @@ class PlatformLogin:
                 logger.info("[HumanBrowser] HN: commented on item %s", item_id)
                 return True
             except Exception as _fe:
-                logger.debug("[HumanBrowser] HN comment form not found for item %s: %s", item_id, _fe)
+                logger.debug(
+                    "[HumanBrowser] HN comment form not found for item %s: %s", item_id, _fe
+                )
                 return False
         except Exception as exc:
             logger.warning("[HumanBrowser] HN comment failed for item %s: %s", item_id, exc)
@@ -894,16 +917,16 @@ class PlatformLogin:
 
             # Fill body — Reddit uses a draft.js / prosemirror editor
             try:
-                body_selector = "div[contenteditable='true'], .public-DraftEditor-content, div[role='textbox']"
+                body_selector = (
+                    "div[contenteditable='true'], .public-DraftEditor-content, div[role='textbox']"
+                )
                 await page.click(body_selector)
                 await page._random_pause("action")
                 await page.type_human(body_selector, body[:5000])
             except Exception:
                 # Fallback: try textarea for legacy editor
-                try:
+                with contextlib.suppress(Exception):
                     await page.type_human("textarea[name='text']", body[:5000])
-                except Exception:
-                    pass
 
             await page._random_pause("think")
 
@@ -1081,7 +1104,11 @@ class PlatformLogin:
             await page._random_pause("read")
 
             # Fill title
-            for title_sel in ["textarea[placeholder*='Title']", "div[role='textbox'][data-testid='title']", "input[placeholder*='Title']"]:
+            for title_sel in [
+                "textarea[placeholder*='Title']",
+                "div[role='textbox'][data-testid='title']",
+                "input[placeholder*='Title']",
+            ]:
                 try:
                     await page.click(title_sel)
                     await page._random_pause("action")
@@ -1170,7 +1197,8 @@ class PlatformLogin:
                                 el.dispatchEvent(new Event('change', {bubbles: true}));
                             }
                         }""",
-                        sel, full_md[:8000],
+                        sel,
+                        full_md[:8000],
                     )
                     injected = True
                     break
@@ -1442,7 +1470,7 @@ class PlatformLogin:
                 await page.save_session()
                 return url
             # Return profile page as evidence of interaction
-            return f"https://www.pinterest.com/{email.split('@')[0]}/" if "@" in email else ""
+            return "https://www.pinterest.com/"
         except Exception as exc:
             logger.warning("[HumanBrowser] Pinterest create_pin failed: %s", exc)
             return ""
@@ -1454,7 +1482,11 @@ class PlatformLogin:
             await page.goto("https://substack.com/sign-in")
             if not await page.load_session():
                 await page._random_pause("read")
-                for sel in ["input[name='email']", "input[type='email']", "input[placeholder*='mail' i]"]:
+                for sel in [
+                    "input[name='email']",
+                    "input[type='email']",
+                    "input[placeholder*='mail' i]",
+                ]:
                     try:
                         await page.type_human(sel, email)
                         break
@@ -1603,7 +1635,7 @@ class PlatformLogin:
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 
-_browser_instance: Optional[HumanBrowser] = None
+_browser_instance: HumanBrowser | None = None
 _browser_lock = asyncio.Lock()
 
 

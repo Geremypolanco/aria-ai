@@ -2,9 +2,13 @@
 db_setup.py — Verifica y crea las tablas de Supabase que ARIA necesita.
 Se ejecuta automáticamente al inicio de la aplicación.
 """
+
 from __future__ import annotations
+
 import logging
+
 import httpx
+
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.db_setup")
@@ -17,8 +21,13 @@ async def setup_database() -> dict:
         return {"status": "skipped", "reason": "no credentials"}
 
     tables = [
-        "autonomous_cycles", "content_published", "products",
-        "market_opportunities", "system_logs", "revenue_events", "self_improvements"
+        "autonomous_cycles",
+        "content_published",
+        "products",
+        "market_opportunities",
+        "system_logs",
+        "revenue_events",
+        "self_improvements",
     ]
     results = {}
     headers = {

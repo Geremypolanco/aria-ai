@@ -3,8 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -13,7 +12,7 @@ _LEARNER_TTL = 86400 * 180
 _MAX_EXPERIMENTS = 500
 
 
-class StrategyOutcome(str, Enum):
+class StrategyOutcome(StrEnum):
     WIN = "win"
     LOSS = "loss"
     PARTIAL = "partial"
@@ -213,8 +212,8 @@ class GrowthLearner:
 
     async def get_knowledge(
         self,
-        strategy: Optional[str] = None,
-        channel: Optional[str] = None,
+        strategy: str | None = None,
+        channel: str | None = None,
     ) -> list[StrategyKnowledge]:
         data = await self._load()
         knowledge = data.get("knowledge", {})
@@ -233,7 +232,8 @@ class GrowthLearner:
     async def failing_strategies(self, min_attempts: int = 3) -> list[StrategyKnowledge]:
         knowledge = await self.get_knowledge()
         return [
-            k for k in knowledge
+            k
+            for k in knowledge
             if (k.win_count + k.loss_count) >= min_attempts and k.win_rate < 0.2
         ]
 
@@ -287,7 +287,7 @@ class GrowthLearner:
     async def learning_report(self) -> dict:
         data = await self._load()
         experiments = [GrowthExperiment.from_dict(e) for e in data.get("experiments", [])]
-        knowledge = await self.get_knowledge()
+        await self.get_knowledge()
 
         wins = [e for e in experiments if e.result == StrategyOutcome.WIN]
         overall_win_rate = len(wins) / max(len(experiments), 1)

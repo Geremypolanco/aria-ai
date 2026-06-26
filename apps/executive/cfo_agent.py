@@ -1,15 +1,14 @@
 """
 CFO Agent — Financial modeling, budget allocation, and ROI analysis.
 """
+
 from __future__ import annotations
 
-import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "executive:cfo:v1"
 _TTL = 90 * 24 * 3600  # 90 days
@@ -39,7 +38,7 @@ class FinancialScenario:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "FinancialScenario":
+    def from_dict(cls, data: dict) -> FinancialScenario:
         return cls(
             scenario_id=data["scenario_id"],
             name=data["name"],
@@ -70,7 +69,7 @@ class BudgetAllocation:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "BudgetAllocation":
+    def from_dict(cls, data: dict) -> BudgetAllocation:
         return cls(
             dept=data["dept"],
             allocated_usd=data.get("allocated_usd", 0.0),
@@ -118,7 +117,9 @@ class CFOAgent:
         await self._load()
 
         # Compute base financials
-        total_revenue = sum(float(v) for v in revenue_drivers.values() if isinstance(v, (int, float)))
+        total_revenue = sum(
+            float(v) for v in revenue_drivers.values() if isinstance(v, (int, float))
+        )
         total_cost = sum(float(v) for v in cost_drivers.values() if isinstance(v, (int, float)))
 
         if total_revenue == 0:
@@ -144,7 +145,9 @@ class CFOAgent:
             model=AIModel.FAST,
             max_tokens=150,
         )
-        assumptions_text = resp.content if resp.success else "Market conditions stable, customer growth on track"
+        assumptions_text = (
+            resp.content if resp.success else "Market conditions stable, customer growth on track"
+        )
         assumptions = [a.strip() for a in assumptions_text.split(",") if a.strip()][:5]
 
         scenario = FinancialScenario(
@@ -224,10 +227,9 @@ class CFOAgent:
         npv = round(total_return / (1 + discount_rate) - investment_usd, 2)
 
         recommendation = (
-            "Strong buy" if roi_pct > 100
-            else "Buy" if roi_pct > 30
-            else "Hold" if roi_pct > 0
-            else "Avoid"
+            "Strong buy"
+            if roi_pct > 100
+            else "Buy" if roi_pct > 30 else "Hold" if roi_pct > 0 else "Avoid"
         )
 
         return {
@@ -273,8 +275,7 @@ class CFOAgent:
         avg_roi = round(sum(s.roi for s in scenarios) / len(scenarios), 2)
         budgets = [BudgetAllocation.from_dict(b) for b in self._budgets]
         avg_efficiency = (
-            round(sum(b.efficiency_ratio for b in budgets) / len(budgets), 2)
-            if budgets else 0.0
+            round(sum(b.efficiency_ratio for b in budgets) / len(budgets), 2) if budgets else 0.0
         )
         return {
             "total_scenarios": len(scenarios),
@@ -284,7 +285,7 @@ class CFOAgent:
         }
 
 
-_instance: Optional[CFOAgent] = None
+_instance: CFOAgent | None = None
 
 
 def get_cfo_agent() -> CFOAgent:

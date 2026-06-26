@@ -10,15 +10,15 @@ Six design agents:
   - video_producer: Video scripts with scenes
   - figma_specialist: Figma-ready component specs (stub)
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 # ── Redis configuration ────────────────────────────────────────────────────────
 _REDIS_KEY = "workforce:design:v1"
@@ -28,6 +28,7 @@ _TTL_90D = 60 * 60 * 24 * 90
 # ══════════════════════════════════════════════════════════════════════════════
 # Domain object
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class DesignAsset:
@@ -39,7 +40,7 @@ class DesignAsset:
     specs: dict = field(default_factory=dict)
     ai_prompt: str = ""
     output_description: str = ""
-    figma_url: Optional[str] = None
+    figma_url: str | None = None
     quality_score: float = 0.0
     created_at: float = field(default_factory=time.time)
 
@@ -62,6 +63,7 @@ class DesignAsset:
 # ══════════════════════════════════════════════════════════════════════════════
 # Design Division
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class DesignDivision:
     """
@@ -102,7 +104,7 @@ class DesignDivision:
         system_prompt: str,
         user_prompt: str,
         model: AIModel = AIModel.CREATIVE,
-        figma_url: Optional[str] = None,
+        figma_url: str | None = None,
     ) -> DesignAsset:
         asset = DesignAsset(
             asset_type=asset_type,
@@ -279,9 +281,7 @@ class DesignDivision:
             model=AIModel.CREATIVE,
         )
 
-    async def figma_design_task(
-        self, title: str, component_spec: dict
-    ) -> DesignAsset:
+    async def figma_design_task(self, title: str, component_spec: dict) -> DesignAsset:
         """
         Produce a Figma-ready component specification.
         (Stub — no actual Figma API call; produces detailed AI spec instead.)
@@ -318,9 +318,7 @@ class DesignDivision:
             figma_url=stub_figma_url,
         )
 
-    async def motion_design_task(
-        self, title: str, animation_brief: dict
-    ) -> DesignAsset:
+    async def motion_design_task(self, title: str, animation_brief: dict) -> DesignAsset:
         """Produce animation spec with timing details."""
         system = (
             "You are a motion designer and animation director. "
@@ -438,7 +436,7 @@ def _extract_section(content: str, keyword: str, fallback: str) -> str:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_instance: Optional[DesignDivision] = None
+_instance: DesignDivision | None = None
 
 
 def get_design_division() -> DesignDivision:

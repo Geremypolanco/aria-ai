@@ -11,17 +11,17 @@ Design:
 This is NOT a toy planner. ARIA uses real LLM reasoning to decompose
 goals and adapts the plan as execution reveals new information.
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import time
 import uuid
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger("aria.planner")
 
@@ -30,7 +30,7 @@ MAX_TASKS_PER_PLAN = 20
 PLAN_TTL_SECONDS = 86400 * 7  # 7 days
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     DONE = "done"
@@ -38,7 +38,7 @@ class TaskStatus(str, Enum):
     SKIPPED = "skipped"
 
 
-class PlanStatus(str, Enum):
+class PlanStatus(StrEnum):
     DRAFT = "draft"
     ACTIVE = "active"
     DONE = "done"
@@ -51,16 +51,16 @@ class PlanTask:
     id: str
     title: str
     description: str
-    tool: str                          # aria_mind tool name to invoke
+    tool: str  # aria_mind tool name to invoke
     tool_args: dict[str, Any]
-    depends_on: list[str]              # task IDs that must complete first
+    depends_on: list[str]  # task IDs that must complete first
     status: TaskStatus = TaskStatus.PENDING
-    result: Optional[dict] = None
-    error: Optional[str] = None
+    result: dict | None = None
+    error: str | None = None
     attempts: int = 0
-    started_at: Optional[str] = None
-    finished_at: Optional[str] = None
-    priority: int = 5                  # 1=highest
+    started_at: str | None = None
+    finished_at: str | None = None
+    priority: int = 5  # 1=highest
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -68,7 +68,7 @@ class PlanTask:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "PlanTask":
+    def from_dict(cls, d: dict) -> PlanTask:
         d = dict(d)
         d["status"] = TaskStatus(d.get("status", "pending"))
         return cls(**d)
@@ -82,13 +82,9 @@ class Plan:
     tasks: list[PlanTask]
     status: PlanStatus = PlanStatus.DRAFT
     replan_count: int = 0
-    reasoning: str = ""                # LLM chain-of-thought for this plan
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
-    updated_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    reasoning: str = ""  # LLM chain-of-thought for this plan
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     @property
     def pending_tasks(self) -> list[PlanTask]:
@@ -99,9 +95,9 @@ class Plan:
         """Tasks whose dependencies are all done and which are not yet started."""
         done_ids = {t.id for t in self.tasks if t.status == TaskStatus.DONE}
         return [
-            t for t in self.tasks
-            if t.status == TaskStatus.PENDING
-            and all(dep in done_ids for dep in t.depends_on)
+            t
+            for t in self.tasks
+            if t.status == TaskStatus.PENDING and all(dep in done_ids for dep in t.depends_on)
         ]
 
     @property
@@ -137,7 +133,7 @@ class Plan:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Plan":
+    def from_dict(cls, d: dict) -> Plan:
         tasks = [PlanTask.from_dict(t) for t in d.get("tasks", [])]
         return cls(
             id=d["id"],
@@ -199,7 +195,9 @@ class ARIAPlanner:
 
         logger.info(
             "[Planner] Plan %s created: %d tasks for goal: %s",
-            plan_id, len(tasks), goal[:80],
+            plan_id,
+            len(tasks),
+            goal[:80],
         )
         return plan
 
@@ -223,7 +221,7 @@ class ARIAPlanner:
             "{\n"
             '  "reasoning": "<chain-of-thought: why this decomposition>",\n'
             '  "tasks": [\n'
-            '    {\n'
+            "    {\n"
             '      "title": "<action title>",\n'
             '      "description": "<what this task does and why>",\n'
             '      "tool": "<tool_name>",\n'
@@ -238,10 +236,7 @@ class ARIAPlanner:
             "Be explicit about WHY each task is needed."
         )
 
-        user_msg = (
-            f"Goal: {goal}\n\n"
-            f"Context: {json.dumps(context, ensure_ascii=False)[:2000]}"
-        )
+        user_msg = f"Goal: {goal}\n\n" f"Context: {json.dumps(context, ensure_ascii=False)[:2000]}"
 
         try:
             raw = await ai_client.complete_json(system=system, user=user_msg)
@@ -256,15 +251,17 @@ class ARIAPlanner:
                     for idx in dep_indices
                     if isinstance(idx, int) and 0 <= idx < len(raw_tasks)
                 ]
-                tasks.append(PlanTask(
-                    id=f"{plan_id}-{i}",
-                    title=rt.get("title", f"Task {i}"),
-                    description=rt.get("description", ""),
-                    tool=rt.get("tool", "none"),
-                    tool_args=rt.get("tool_args", {}),
-                    depends_on=dep_ids,
-                    priority=int(rt.get("priority", 5)),
-                ))
+                tasks.append(
+                    PlanTask(
+                        id=f"{plan_id}-{i}",
+                        title=rt.get("title", f"Task {i}"),
+                        description=rt.get("description", ""),
+                        tool=rt.get("tool", "none"),
+                        tool_args=rt.get("tool_args", {}),
+                        depends_on=dep_ids,
+                        priority=int(rt.get("priority", 5)),
+                    )
+                )
 
             if not tasks:
                 return self._single_task_plan(goal, plan_id)
@@ -272,20 +269,24 @@ class ARIAPlanner:
             return reasoning, tasks
 
         except Exception as exc:
-            logger.warning("[Planner] AI decomposition failed: %s — using single-task fallback", exc)
+            logger.warning(
+                "[Planner] AI decomposition failed: %s — using single-task fallback", exc
+            )
             return self._single_task_plan(goal, plan_id)
 
     def _single_task_plan(self, goal: str, plan_id: str) -> tuple[str, list[PlanTask]]:
         return (
             "Single-task fallback: AI unavailable for decomposition.",
-            [PlanTask(
-                id=f"{plan_id}-0",
-                title=goal[:80],
-                description=goal,
-                tool="none",
-                tool_args={"goal": goal},
-                depends_on=[],
-            )],
+            [
+                PlanTask(
+                    id=f"{plan_id}-0",
+                    title=goal[:80],
+                    description=goal,
+                    tool="none",
+                    tool_args={"goal": goal},
+                    depends_on=[],
+                )
+            ],
         )
 
     # ── Plan Execution ───────────────────────────────────────────────────
@@ -293,8 +294,8 @@ class ARIAPlanner:
     async def execute_plan(
         self,
         plan: Plan,
-        executor_fn,           # async (task: PlanTask) -> dict
-        on_task_done=None,     # optional async callback(task, result)
+        executor_fn,  # async (task: PlanTask) -> dict
+        on_task_done=None,  # optional async callback(task, result)
     ):
         """
         Execute a plan, yielding status dicts as tasks complete.
@@ -331,7 +332,7 @@ class ARIAPlanner:
                 return_exceptions=True,
             )
 
-            for task, result in zip(batch, results):
+            for task, result in zip(batch, results, strict=False):
                 if isinstance(result, Exception):
                     task.status = TaskStatus.FAILED
                     task.error = str(result)
@@ -341,8 +342,8 @@ class ARIAPlanner:
                     if not result.get("success"):
                         task.error = result.get("error", "Unknown failure")
 
-                task.finished_at = datetime.now(timezone.utc).isoformat()
-                plan.updated_at = datetime.now(timezone.utc).isoformat()
+                task.finished_at = datetime.now(UTC).isoformat()
+                plan.updated_at = datetime.now(UTC).isoformat()
                 await self._persist_plan(plan)
 
                 if on_task_done:
@@ -351,13 +352,13 @@ class ARIAPlanner:
                 yield {"event": "task_done", "task": task.to_dict(), "plan": plan.to_dict()}
 
         plan.status = PlanStatus.DONE
-        plan.updated_at = datetime.now(timezone.utc).isoformat()
+        plan.updated_at = datetime.now(UTC).isoformat()
         await self._persist_plan(plan)
         yield {"event": "plan_done", "plan": plan.to_dict()}
 
     async def _execute_task(self, plan: Plan, task: PlanTask, executor_fn) -> dict:
         task.status = TaskStatus.RUNNING
-        task.started_at = datetime.now(timezone.utc).isoformat()
+        task.started_at = datetime.now(UTC).isoformat()
         task.attempts += 1
 
         logger.info("[Planner] Plan %s — executing task %s: %s", plan.id, task.id, task.title)
@@ -374,13 +375,14 @@ class ARIAPlanner:
             if task.attempts < 3:
                 task.status = TaskStatus.PENDING
                 task.error = None
-                await asyncio.sleep(2 ** task.attempts)  # exponential backoff
+                await asyncio.sleep(2**task.attempts)  # exponential backoff
 
     # ── Persistence ──────────────────────────────────────────────────────
 
     async def _persist_plan(self, plan: Plan) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 key = f"aria:plan:{plan.id}"
@@ -388,9 +390,10 @@ class ARIAPlanner:
         except Exception as exc:
             logger.debug("[Planner] Could not persist plan %s: %s", plan.id, exc)
 
-    async def load_plan(self, plan_id: str) -> Optional[Plan]:
+    async def load_plan(self, plan_id: str) -> Plan | None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 raw = await cache.get(f"aria:plan:{plan_id}")
@@ -404,7 +407,7 @@ class ARIAPlanner:
         return [p.to_dict() for p in self._active_plans.values() if p.status == PlanStatus.ACTIVE]
 
 
-_planner: Optional[ARIAPlanner] = None
+_planner: ARIAPlanner | None = None
 
 
 def get_planner() -> ARIAPlanner:

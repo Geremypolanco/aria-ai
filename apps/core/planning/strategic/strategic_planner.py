@@ -21,15 +21,16 @@ Design:
   - Output feeds directly into the tactical planner
   - All decisions are logged with reasoning for audit and learning
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import uuid
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger("aria.planning.strategic")
 
@@ -37,28 +38,26 @@ HORIZON_DAYS = 30
 MAX_OBJECTIVES = 5
 
 
-class StrategicPriority(str, Enum):
-    CRITICAL = "critical"    # existential — must execute
-    HIGH = "high"            # significant ROI
-    MEDIUM = "medium"        # worthwhile but deferrable
-    LOW = "low"              # nice to have
+class StrategicPriority(StrEnum):
+    CRITICAL = "critical"  # existential — must execute
+    HIGH = "high"  # significant ROI
+    MEDIUM = "medium"  # worthwhile but deferrable
+    LOW = "low"  # nice to have
 
 
 @dataclass
 class StrategicObjective:
     id: str
     title: str
-    rationale: str                # WHY this objective matters
-    success_criteria: list[str]   # how we know it's achieved
+    rationale: str  # WHY this objective matters
+    success_criteria: list[str]  # how we know it's achieved
     priority: StrategicPriority
     estimated_effort_days: float
     estimated_revenue_impact: float  # USD, can be 0 for foundational work
-    risk_level: float                # 0.0–1.0
-    dependencies: list[str]         # other objective IDs that must precede this
+    risk_level: float  # 0.0–1.0
+    dependencies: list[str]  # other objective IDs that must precede this
     horizon_days: int = HORIZON_DAYS
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -67,7 +66,7 @@ class StrategicObjective:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "StrategicObjective":
+    def from_dict(cls, d: dict) -> StrategicObjective:
         d = dict(d)
         d["priority"] = StrategicPriority(d.get("priority", "medium"))
         return cls(**d)
@@ -82,12 +81,10 @@ class StrategicObjective:
 @dataclass
 class StrategicPlan:
     id: str
-    context_summary: str          # what ARIA knows about the current situation
+    context_summary: str  # what ARIA knows about the current situation
     objectives: list[StrategicObjective]
-    reasoning: str                # LLM chain-of-thought for this plan
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    reasoning: str  # LLM chain-of-thought for this plan
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict:
         return {
@@ -100,7 +97,7 @@ class StrategicPlan:
             "total_revenue_potential": sum(o.estimated_revenue_impact for o in self.objectives),
         }
 
-    def top_priority(self) -> Optional[StrategicObjective]:
+    def top_priority(self) -> StrategicObjective | None:
         critical = [o for o in self.objectives if o.priority == StrategicPriority.CRITICAL]
         if critical:
             return max(critical, key=lambda o: o.roi_score())
@@ -145,9 +142,7 @@ class StrategicPlanner:
         current_metrics = current_metrics or {}
         plan_id = uuid.uuid4().hex[:8]
 
-        context_summary = self._build_context_summary(
-            owner_goals, constraints, current_metrics
-        )
+        context_summary = self._build_context_summary(owner_goals, constraints, current_metrics)
 
         reasoning, objectives = await self._generate_objectives(
             owner_goals, constraints, current_metrics, context_summary
@@ -163,14 +158,13 @@ class StrategicPlanner:
         await self._persist(plan)
         logger.info(
             "[Strategic] Plan %s: %d objectives, top=%s",
-            plan_id, len(objectives),
+            plan_id,
+            len(objectives),
             plan.top_priority().title if plan.top_priority() else "none",
         )
         return plan
 
-    def _build_context_summary(
-        self, goals: list[str], constraints: dict, metrics: dict
-    ) -> str:
+    def _build_context_summary(self, goals: list[str], constraints: dict, metrics: dict) -> str:
         lines = [
             f"Owner goals: {'; '.join(goals)}",
             f"Constraints: {json.dumps(constraints)}",
@@ -199,7 +193,7 @@ class StrategicPlanner:
             "{\n"
             '  "reasoning": "<strategic analysis>",\n'
             '  "objectives": [\n'
-            '    {\n'
+            "    {\n"
             '      "title": "<objective>",\n'
             '      "rationale": "<why this matters>",\n'
             '      "success_criteria": ["<criterion 1>", "<criterion 2>"],\n'
@@ -232,44 +226,48 @@ class StrategicPlanner:
             for i, ro in enumerate(raw_objs):
                 dep_indices = ro.get("dependencies", [])
                 dep_ids = [all_ids[j] for j in dep_indices if isinstance(j, int) and j < i]
-                objectives.append(StrategicObjective(
-                    id=all_ids[i],
-                    title=ro.get("title", f"Objective {i}"),
-                    rationale=ro.get("rationale", ""),
-                    success_criteria=ro.get("success_criteria", []),
-                    priority=StrategicPriority(ro.get("priority", "medium")),
-                    estimated_effort_days=float(ro.get("estimated_effort_days", 7)),
-                    estimated_revenue_impact=float(ro.get("estimated_revenue_impact", 0)),
-                    risk_level=float(ro.get("risk_level", 0.5)),
-                    dependencies=dep_ids,
-                ))
+                objectives.append(
+                    StrategicObjective(
+                        id=all_ids[i],
+                        title=ro.get("title", f"Objective {i}"),
+                        rationale=ro.get("rationale", ""),
+                        success_criteria=ro.get("success_criteria", []),
+                        priority=StrategicPriority(ro.get("priority", "medium")),
+                        estimated_effort_days=float(ro.get("estimated_effort_days", 7)),
+                        estimated_revenue_impact=float(ro.get("estimated_revenue_impact", 0)),
+                        risk_level=float(ro.get("risk_level", 0.5)),
+                        dependencies=dep_ids,
+                    )
+                )
             return reasoning, objectives
 
         except Exception as exc:
             logger.warning("[Strategic] LLM generation failed: %s", exc)
             return self._fallback_objectives(goals)
 
-    def _fallback_objectives(
-        self, goals: list[str]
-    ) -> tuple[str, list[StrategicObjective]]:
+    def _fallback_objectives(self, goals: list[str]) -> tuple[str, list[StrategicObjective]]:
         return (
             "Fallback: AI unavailable for strategic analysis.",
-            [StrategicObjective(
-                id="obj_0",
-                title=goal[:100],
-                rationale="User-specified goal",
-                success_criteria=["Goal achieved"],
-                priority=StrategicPriority.HIGH,
-                estimated_effort_days=7.0,
-                estimated_revenue_impact=0.0,
-                risk_level=0.3,
-                dependencies=[],
-            ) for goal in goals[:MAX_OBJECTIVES]],
+            [
+                StrategicObjective(
+                    id="obj_0",
+                    title=goal[:100],
+                    rationale="User-specified goal",
+                    success_criteria=["Goal achieved"],
+                    priority=StrategicPriority.HIGH,
+                    estimated_effort_days=7.0,
+                    estimated_revenue_impact=0.0,
+                    risk_level=0.3,
+                    dependencies=[],
+                )
+                for goal in goals[:MAX_OBJECTIVES]
+            ],
         )
 
     async def _persist(self, plan: StrategicPlan) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 await cache.set(
@@ -286,9 +284,10 @@ class StrategicPlanner:
         except Exception as exc:
             logger.debug("[Strategic] Persist failed: %s", exc)
 
-    async def load_current(self) -> Optional[StrategicPlan]:
+    async def load_current(self) -> StrategicPlan | None:
         try:
             from apps.core.memory.redis_client import get_cache
+
             cache = get_cache()
             if cache:
                 raw = await cache.get("aria:planning:strategic:current")
@@ -307,7 +306,7 @@ class StrategicPlanner:
         return None
 
 
-_planner: Optional[StrategicPlanner] = None
+_planner: StrategicPlanner | None = None
 
 
 def get_strategic_planner(ai_client=None) -> StrategicPlanner:

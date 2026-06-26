@@ -15,6 +15,7 @@ This produces BETTER answers than linear CoT because:
   - Branching: a hypothesis can recursively generate sub-hypotheses
   - Learning: archived losers prevent repeating failed reasoning paths
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,11 +23,13 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from apps.core.cognition.graph_runtime.reasoning_graph import (
-    EdgeType, NodeType, ReasoningGraph, ReasoningNode,
+    EdgeType,
+    NodeType,
+    ReasoningGraph,
 )
 
 logger = logging.getLogger("aria.hypothesis_engine")
@@ -39,16 +42,15 @@ PRUNE_THRESHOLD = 0.2
 @dataclass
 class HypothesisBranch:
     """A self-contained reasoning branch built around one hypothesis."""
+
     id: str
     hypothesis: str
     graph: ReasoningGraph
     final_confidence: float = 0.0
-    verdict: str = ""          # short conclusion if this hypothesis wins
+    verdict: str = ""  # short conclusion if this hypothesis wins
     evidence_count: int = 0
-    archived: bool = False     # True = this branch lost the competition
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    archived: bool = False  # True = this branch lost the competition
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def score(self) -> float:
         """Composite branch score: confidence × evidence richness."""
@@ -71,15 +73,14 @@ class HypothesisBranch:
 @dataclass
 class HypothesisCompetition:
     """The full multi-branch reasoning session for one question."""
+
     id: str
     question: str
     branches: list[HypothesisBranch]
-    winner: Optional[HypothesisBranch]
+    winner: HypothesisBranch | None
     context: dict[str, Any]
     total_time_ms: int = 0
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict:
         return {
@@ -122,6 +123,7 @@ class HypothesisManager:
         n_hypotheses: int = 3,
     ) -> HypothesisCompetition:
         import time
+
         start = time.monotonic()
         context = context or {}
         comp_id = uuid.uuid4().hex[:8]
@@ -156,8 +158,7 @@ class HypothesisManager:
             dom = branch.graph.dominant_hypothesis()
             branch.final_confidence = dom.confidence if dom else 0.1
             branch.evidence_count = sum(
-                1 for n in branch.graph._nodes.values()
-                if n.node_type == NodeType.EVIDENCE
+                1 for n in branch.graph._nodes.values() if n.node_type == NodeType.EVIDENCE
             )
 
         valid_branches.sort(key=lambda b: b.score(), reverse=True)
@@ -181,16 +182,16 @@ class HypothesisManager:
         self._archive.append(competition)
         logger.info(
             "[HypothesisEngine] Competition %s done in %dms — winner: %.0f%% — %s",
-            comp_id, elapsed_ms, winner.final_confidence * 100,
+            comp_id,
+            elapsed_ms,
+            winner.final_confidence * 100,
             winner.hypothesis[:60],
         )
         return competition
 
     # ── Phase 1: Hypothesis Generation ──────────────────────────────────
 
-    async def _generate_hypotheses(
-        self, question: str, context: dict, n: int
-    ) -> list[str]:
+    async def _generate_hypotheses(self, question: str, context: dict, n: int) -> list[str]:
         if not self._ai:
             return [f"Default hypothesis: {question}"]
 
@@ -198,12 +199,11 @@ class HypothesisManager:
             "You are a reasoning engine. Generate competing hypotheses for a question.\n"
             "Each hypothesis should be a DISTINCT framing — different assumptions, angles.\n"
             "Avoid hypotheses that are trivially related.\n\n"
-            "Return JSON: {\"hypotheses\": [\"<h1>\", \"<h2>\", ...]}\n"
+            'Return JSON: {"hypotheses": ["<h1>", "<h2>", ...]}\n'
             f"Generate exactly {n} hypotheses. Be concrete and specific."
         )
         user_msg = (
-            f"Question: {question}\n\n"
-            f"Context: {json.dumps(context, ensure_ascii=False)[:1500]}"
+            f"Question: {question}\n\n" f"Context: {json.dumps(context, ensure_ascii=False)[:1500]}"
         )
         try:
             raw = await self._ai.complete_json(system=system, user=user_msg)
@@ -225,10 +225,7 @@ class HypothesisManager:
         evidence_list = await self._gather_evidence(question, hypothesis, context)
         for ev_content, ev_conf, ev_relation in evidence_list:
             ev_id = graph.add_evidence(ev_content, confidence=ev_conf)
-            edge_type = (
-                EdgeType.SUPPORTS if ev_relation == "supports"
-                else EdgeType.CONTRADICTS
-            )
+            edge_type = EdgeType.SUPPORTS if ev_relation == "supports" else EdgeType.CONTRADICTS
             graph.add_edge(ev_id, hyp_node_id, edge_type, weight=ev_conf)
 
         return HypothesisBranch(
@@ -263,9 +260,11 @@ class HypothesisManager:
             raw = await self._ai.complete_json(system=system, user=user_msg)
             items = raw.get("evidence", [])[:MAX_EVIDENCE_PER_BRANCH]
             return [
-                (str(item.get("content", "")),
-                 float(item.get("confidence", 0.5)),
-                 str(item.get("relation", "supports")))
+                (
+                    str(item.get("content", "")),
+                    float(item.get("confidence", 0.5)),
+                    str(item.get("relation", "supports")),
+                )
                 for item in items
                 if item.get("content")
             ]
@@ -281,9 +280,12 @@ class HypothesisManager:
         if not self._ai:
             return winner.hypothesis
 
-        ev_for = [n.content for n in winner.graph.evidence_for(
-            list(winner.graph._nodes.keys())[1] if len(winner.graph._nodes) > 1 else "root"
-        )]
+        ev_for = [
+            n.content
+            for n in winner.graph.evidence_for(
+                list(winner.graph._nodes.keys())[1] if len(winner.graph._nodes) > 1 else "root"
+            )
+        ]
         system = (
             "Synthesize a winning hypothesis into a crisp, actionable conclusion.\n"
             "1-2 sentences max. Be direct. Include the key evidence that decided it."
@@ -295,9 +297,7 @@ class HypothesisManager:
             f"Confidence: {winner.final_confidence:.0%}"
         )
         try:
-            resp = await self._ai.complete(
-                system=system, user=user_msg, max_tokens=150
-            )
+            resp = await self._ai.complete(system=system, user=user_msg, max_tokens=150)
             return resp.content if resp and resp.success else winner.hypothesis
         except Exception:
             return winner.hypothesis
@@ -308,9 +308,7 @@ class HypothesisManager:
         self, comp_id: str, question: str, context: dict
     ) -> HypothesisCompetition:
         fallback_graph = ReasoningGraph(question=question)
-        fallback_hyp_id = fallback_graph.add_hypothesis(
-            f"Cannot reason about: {question}", confidence=0.1
-        )
+        fallback_graph.add_hypothesis(f"Cannot reason about: {question}", confidence=0.1)
         branch = HypothesisBranch(
             id="fallback",
             hypothesis=f"Cannot reason about: {question}",
@@ -319,15 +317,18 @@ class HypothesisManager:
             verdict="AI unavailable — cannot run hypothesis competition.",
         )
         return HypothesisCompetition(
-            id=comp_id, question=question,
-            branches=[branch], winner=branch, context=context,
+            id=comp_id,
+            question=question,
+            branches=[branch],
+            winner=branch,
+            context=context,
         )
 
     def get_archive(self, limit: int = 10) -> list[dict]:
         return [c.to_dict() for c in self._archive[-limit:]]
 
 
-_manager: Optional[HypothesisManager] = None
+_manager: HypothesisManager | None = None
 
 
 def get_hypothesis_manager(ai_client=None) -> HypothesisManager:

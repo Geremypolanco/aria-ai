@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -12,7 +11,7 @@ _TTL = 365 * 24 * 3600
 _CACHE_KEY = "autonomy:goals:v1"
 
 
-class GoalHorizon(str, Enum):
+class GoalHorizon(StrEnum):
     DAILY = "DAILY"
     WEEKLY = "WEEKLY"
     MONTHLY = "MONTHLY"
@@ -20,7 +19,7 @@ class GoalHorizon(str, Enum):
     ANNUAL = "ANNUAL"
 
 
-class GoalStatus(str, Enum):
+class GoalStatus(StrEnum):
     ACTIVE = "ACTIVE"
     ACHIEVED = "ACHIEVED"
     PAUSED = "PAUSED"
@@ -172,7 +171,7 @@ class GoalManager:
 
     async def update_metric(
         self, goal_id: str, metric_name: str, current_value: float
-    ) -> Optional[AutonomousGoal]:
+    ) -> AutonomousGoal | None:
         await self._load()
         raw = self._goals.get(goal_id)
         if not raw:
@@ -189,9 +188,7 @@ class GoalManager:
         await self._save()
         return goal
 
-    async def get_active_goals(
-        self, horizon: GoalHorizon | None = None
-    ) -> list[AutonomousGoal]:
+    async def get_active_goals(self, horizon: GoalHorizon | None = None) -> list[AutonomousGoal]:
         await self._load()
         goals: list[AutonomousGoal] = []
         for raw in self._goals.values():
@@ -211,28 +208,41 @@ class GoalManager:
             {
                 "title": "First $1K Revenue",
                 "horizon": GoalHorizon.MONTHLY,
-                "metrics": [{"name": "revenue_usd", "target": 1000.0, "current": 0.0, "unit": "USD"}],
+                "metrics": [
+                    {"name": "revenue_usd", "target": 1000.0, "current": 0.0, "unit": "USD"}
+                ],
                 "priority": 10,
                 "description": "Generate first $1,000 in revenue through product or service sales",
             },
             {
                 "title": "100 Content Pieces",
                 "horizon": GoalHorizon.QUARTERLY,
-                "metrics": [{"name": "content_count", "target": 100.0, "current": 0.0, "unit": "pieces"}],
+                "metrics": [
+                    {"name": "content_count", "target": 100.0, "current": 0.0, "unit": "pieces"}
+                ],
                 "priority": 7,
                 "description": "Publish 100 pieces of content across all channels",
             },
             {
                 "title": "1,000 Email Subscribers",
                 "horizon": GoalHorizon.QUARTERLY,
-                "metrics": [{"name": "subscriber_count", "target": 1000.0, "current": 0.0, "unit": "subscribers"}],
+                "metrics": [
+                    {
+                        "name": "subscriber_count",
+                        "target": 1000.0,
+                        "current": 0.0,
+                        "unit": "subscribers",
+                    }
+                ],
                 "priority": 8,
                 "description": "Build an email list of 1,000 engaged subscribers",
             },
             {
                 "title": "Launch First Product",
                 "horizon": GoalHorizon.MONTHLY,
-                "metrics": [{"name": "products_launched", "target": 1.0, "current": 0.0, "unit": "products"}],
+                "metrics": [
+                    {"name": "products_launched", "target": 1.0, "current": 0.0, "unit": "products"}
+                ],
                 "priority": 9,
                 "description": "Launch first digital product or service offering",
             },
@@ -255,13 +265,15 @@ class GoalManager:
         achieved = 0
         at_risk: list[str] = []
         next_milestone = ""
-        highest_priority: Optional[AutonomousGoal] = None
+        highest_priority: AutonomousGoal | None = None
         for raw in self._goals.values():
             goal = AutonomousGoal.from_dict(raw)
             if goal.status == GoalStatus.ACTIVE:
                 active += 1
                 if goal.days_remaining < 7 and goal.overall_progress_pct < 50.0:
-                    at_risk.append(f"{goal.title} ({goal.days_remaining}d left, {goal.overall_progress_pct:.0f}% done)")
+                    at_risk.append(
+                        f"{goal.title} ({goal.days_remaining}d left, {goal.overall_progress_pct:.0f}% done)"
+                    )
                 if highest_priority is None or goal.priority > highest_priority.priority:
                     highest_priority = goal
             elif goal.status == GoalStatus.ACHIEVED:
@@ -284,9 +296,7 @@ class GoalManager:
             return {"total_goals": 0, "active_goals": 0, "avg_progress_pct": 0.0}
         goals = [AutonomousGoal.from_dict(v) for v in self._goals.values()]
         active = [g for g in goals if g.status == GoalStatus.ACTIVE]
-        avg_progress = (
-            sum(g.overall_progress_pct for g in active) / len(active) if active else 0.0
-        )
+        avg_progress = sum(g.overall_progress_pct for g in active) / len(active) if active else 0.0
         return {
             "total_goals": len(goals),
             "active_goals": len(active),

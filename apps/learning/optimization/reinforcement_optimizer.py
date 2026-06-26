@@ -5,14 +5,14 @@ Treats each growth action type as an arm. Uses Upper Confidence Bound (UCB1)
 to balance exploration (trying underused actions) vs exploitation (doubling
 down on proven winners).
 """
+
 from __future__ import annotations
 
 import math
 import random
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
 
@@ -131,11 +131,13 @@ class ReinforcementOptimizer:
             )
         arm = self._arms[action_type]
         arm.update(reward)
-        self._history.append({
-            "action_type": action_type,
-            "reward": reward,
-            "ts": time.time(),
-        })
+        self._history.append(
+            {
+                "action_type": action_type,
+                "reward": reward,
+                "ts": time.time(),
+            }
+        )
         self._update_ucb_scores()
         await self._save()
         return arm
@@ -181,7 +183,7 @@ class ReinforcementOptimizer:
         }
 
 
-_instance: Optional[ReinforcementOptimizer] = None
+_instance: ReinforcementOptimizer | None = None
 
 
 def get_reinforcement_optimizer() -> ReinforcementOptimizer:

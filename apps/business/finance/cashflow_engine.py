@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from apps.core.memory.redis_client import get_cache
 
@@ -50,7 +49,7 @@ class CashflowEntry:
 
 
 def _month_key(ts: float) -> str:
-    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+    dt = datetime.fromtimestamp(ts, tz=UTC)
     return dt.strftime("%Y-%m")
 
 
@@ -134,13 +133,15 @@ class CashflowEngine:
             expenses = vals["expenses"]
             net = income - expenses
             margin = round(net / max(income, 0.01) * 100, 2)
-            result.append({
-                "month": month,
-                "income_usd": round(income, 2),
-                "expenses_usd": round(expenses, 2),
-                "net_usd": round(net, 2),
-                "net_margin_pct": margin,
-            })
+            result.append(
+                {
+                    "month": month,
+                    "income_usd": round(income, 2),
+                    "expenses_usd": round(expenses, 2),
+                    "net_usd": round(net, 2),
+                    "net_margin_pct": margin,
+                }
+            )
         return result
 
     async def forecast_cashflow(self, months_ahead: int = 3) -> list[dict]:
@@ -167,13 +168,15 @@ class CashflowEngine:
         for i in range(1, months_ahead + 1):
             net = monthly_income_est - monthly_expense_est
             cumulative += net
-            forecast.append({
-                "month": i,
-                "projected_income": round(monthly_income_est, 2),
-                "projected_expenses": round(monthly_expense_est, 2),
-                "projected_net": round(net, 2),
-                "cumulative_net": round(cumulative, 2),
-            })
+            forecast.append(
+                {
+                    "month": i,
+                    "projected_income": round(monthly_income_est, 2),
+                    "projected_expenses": round(monthly_expense_est, 2),
+                    "projected_net": round(net, 2),
+                    "cumulative_net": round(cumulative, 2),
+                }
+            )
         return forecast
 
     async def runway_months(self, monthly_burn_usd: float | None = None) -> float:
@@ -203,17 +206,25 @@ class CashflowEngine:
                 income_categories[cat] = income_categories.get(cat, 0) + e["amount_usd"]
         if expense_categories:
             top_expense_cat = max(expense_categories, key=lambda k: expense_categories[k])
-            tips.append(f"Largest expense category is '{top_expense_cat}' — review for optimisation opportunities")
+            tips.append(
+                f"Largest expense category is '{top_expense_cat}' — review for optimisation opportunities"
+            )
         recurring_count = sum(1 for e in self._entries if e.get("recurring"))
         if recurring_count > 5:
-            tips.append(f"You have {recurring_count} recurring entries — audit subscriptions for unused services")
+            tips.append(
+                f"You have {recurring_count} recurring entries — audit subscriptions for unused services"
+            )
         balance = await self.current_balance()
         if balance < 0:
-            tips.append("Negative balance detected — prioritise revenue generation over new expenses")
+            tips.append(
+                "Negative balance detected — prioritise revenue generation over new expenses"
+            )
         elif balance > 0 and len(income_categories) < 2:
             tips.append("Single income stream detected — diversify revenue sources to reduce risk")
         tips.append("Set up automatic monthly savings to build a 3-month cash reserve")
-        tips.append("Review expense-to-revenue ratio monthly; target below 60% for sustainable margins")
+        tips.append(
+            "Review expense-to-revenue ratio monthly; target below 60% for sustainable margins"
+        )
         return tips[:5]
 
     def summary(self) -> dict:
@@ -221,7 +232,8 @@ class CashflowEngine:
         expenses = sum(e["amount_usd"] for e in self._entries if e["type"] == "expense")
         cutoff = time.time() - 30 * 86400
         monthly_burn = sum(
-            e["amount_usd"] for e in self._entries
+            e["amount_usd"]
+            for e in self._entries
             if e["type"] == "expense" and e["date_ts"] >= cutoff
         )
         return {

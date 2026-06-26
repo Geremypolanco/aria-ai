@@ -2,17 +2,16 @@
 Market trend analysis and forecasting.
 Detects emerging topics, volume signals, and growth trajectories per niche.
 """
+
 from __future__ import annotations
 
 import logging
 import math
 import time
-import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.market.trends")
 
@@ -22,27 +21,88 @@ _CACHE_TTL = 86400 * 7  # 7 days
 # ── Default keyword seeds per niche ───────────────────────────────────────────
 
 _NICHE_KEYWORDS: dict[str, list[str]] = {
-    "ecommerce": ["dropshipping", "print on demand", "affiliate marketing", "product reviews", "buying guide"],
-    "fitness": ["home workout", "meal prep", "weight loss tips", "muscle building", "supplement review"],
-    "tech": ["AI tools", "productivity apps", "coding tutorial", "gadget review", "software comparison"],
-    "finance": ["passive income", "investing basics", "side hustle", "budgeting tips", "crypto explained"],
-    "marketing": ["growth hacking", "email marketing", "SEO strategy", "content marketing", "social media tips"],
-    "health": ["mental health tips", "natural remedies", "sleep improvement", "stress management", "nutrition guide"],
-    "travel": ["budget travel", "travel hacks", "hidden gems", "solo travel tips", "travel packing"],
-    "food": ["easy recipes", "meal planning", "healthy eating", "cooking tips", "restaurant reviews"],
+    "ecommerce": [
+        "dropshipping",
+        "print on demand",
+        "affiliate marketing",
+        "product reviews",
+        "buying guide",
+    ],
+    "fitness": [
+        "home workout",
+        "meal prep",
+        "weight loss tips",
+        "muscle building",
+        "supplement review",
+    ],
+    "tech": [
+        "AI tools",
+        "productivity apps",
+        "coding tutorial",
+        "gadget review",
+        "software comparison",
+    ],
+    "finance": [
+        "passive income",
+        "investing basics",
+        "side hustle",
+        "budgeting tips",
+        "crypto explained",
+    ],
+    "marketing": [
+        "growth hacking",
+        "email marketing",
+        "SEO strategy",
+        "content marketing",
+        "social media tips",
+    ],
+    "health": [
+        "mental health tips",
+        "natural remedies",
+        "sleep improvement",
+        "stress management",
+        "nutrition guide",
+    ],
+    "travel": [
+        "budget travel",
+        "travel hacks",
+        "hidden gems",
+        "solo travel tips",
+        "travel packing",
+    ],
+    "food": [
+        "easy recipes",
+        "meal planning",
+        "healthy eating",
+        "cooking tips",
+        "restaurant reviews",
+    ],
 }
 
-_DEFAULT_KEYWORDS = ["trending topics", "viral content", "growth strategy", "audience building", "monetization"]
+_DEFAULT_KEYWORDS = [
+    "trending topics",
+    "viral content",
+    "growth strategy",
+    "audience building",
+    "monetization",
+]
 
 _HIGH_VOLUME_KEYWORDS = [
-    "how to make money online", "best AI tools 2024", "passive income ideas",
-    "weight loss tips", "ChatGPT tutorial", "stock market beginners",
-    "home workout routine", "meal prep for week", "dropshipping guide",
+    "how to make money online",
+    "best AI tools 2024",
+    "passive income ideas",
+    "weight loss tips",
+    "ChatGPT tutorial",
+    "stock market beginners",
+    "home workout routine",
+    "meal prep for week",
+    "dropshipping guide",
     "YouTube automation",
 ]
 
 
 # ── Data models ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class TrendSignal:
@@ -97,6 +157,7 @@ class TrendReport:
 
 # ── Main class ─────────────────────────────────────────────────────────────────
 
+
 class TrendAnalyzer:
     """Analyzes market trends and forecasts keyword trajectories."""
 
@@ -134,14 +195,18 @@ class TrendAnalyzer:
             for platform in platforms:
                 vol = ((seed + i * 13) % 70 + 30) / 100.0  # 0.30-0.99
                 growth = ((seed + i * 7) % 60 - 20) / 100.0  # -0.20 to 0.40
-                sentiment = "positive" if growth > 0.1 else ("negative" if growth < -0.05 else "neutral")
-                signals.append(TrendSignal(
-                    keyword=kw,
-                    platform=platform,
-                    volume_score=round(vol, 3),
-                    growth_rate=round(growth, 3),
-                    sentiment=sentiment,
-                ))
+                sentiment = (
+                    "positive" if growth > 0.1 else ("negative" if growth < -0.05 else "neutral")
+                )
+                signals.append(
+                    TrendSignal(
+                        keyword=kw,
+                        platform=platform,
+                        volume_score=round(vol, 3),
+                        growth_rate=round(growth, 3),
+                        sentiment=sentiment,
+                    )
+                )
         return signals
 
     async def analyze_niche(
@@ -159,7 +224,7 @@ class TrendAnalyzer:
             if ai:
                 prompt = (
                     f"List 5 trending keywords for the '{niche}' niche. "
-                    "Return JSON: {{\"keywords\": [\"kw1\", ...], \"emerging\": [\"t1\", ...], \"declining\": [\"d1\", ...]}}"
+                    'Return JSON: {{"keywords": ["kw1", ...], "emerging": ["t1", ...], "declining": ["d1", ...]}}'
                 )
                 result = await ai.generate(prompt, model=AIModel.FAST, json_mode=True)
                 if result and isinstance(result, dict):
@@ -168,13 +233,15 @@ class TrendAnalyzer:
                     declining = result.get("declining", [])
                     for kw in ai_keywords[:5]:
                         for platform in platforms:
-                            signals.append(TrendSignal(
-                                keyword=str(kw),
-                                platform=platform,
-                                volume_score=round(0.5 + len(kw) % 5 * 0.08, 3),
-                                growth_rate=round(0.05 + len(kw) % 10 * 0.03, 3),
-                                sentiment="positive",
-                            ))
+                            signals.append(
+                                TrendSignal(
+                                    keyword=str(kw),
+                                    platform=platform,
+                                    volume_score=round(0.5 + len(kw) % 5 * 0.08, 3),
+                                    growth_rate=round(0.05 + len(kw) % 10 * 0.03, 3),
+                                    sentiment="positive",
+                                )
+                            )
                     top_keywords = ai_keywords[:5]
                     emerging_topics = emerging[:5]
                     decline_topics = declining[:3]
@@ -221,7 +288,7 @@ class TrendAnalyzer:
             if ai:
                 prompt = (
                     f"What are 5 emerging topics in the '{niche}' niche right now? "
-                    "Return JSON: {{\"topics\": [\"t1\", \"t2\", ...]}}"
+                    'Return JSON: {{"topics": ["t1", "t2", ...]}}'
                 )
                 result = await ai.generate(prompt, model=AIModel.FAST, json_mode=True)
                 if result and isinstance(result, dict):
@@ -251,8 +318,10 @@ class TrendAnalyzer:
             score = round(min(1.0, max(0.0, base_score + wave + trend_drift)), 3)
             forecast_scores.append(score)
 
-        direction = "up" if forecast_scores[-1] > forecast_scores[0] + 0.05 else (
-            "down" if forecast_scores[-1] < forecast_scores[0] - 0.05 else "stable"
+        direction = (
+            "up"
+            if forecast_scores[-1] > forecast_scores[0] + 0.05
+            else ("down" if forecast_scores[-1] < forecast_scores[0] - 0.05 else "stable")
         )
         confidence = round(0.55 + (seed % 20) / 100, 2)
 
@@ -279,13 +348,15 @@ class TrendAnalyzer:
             vol = min(1.0, 0.60 + (seed % 30) / 100)
             growth = (seed % 40 - 10) / 100.0
             sentiment = "positive" if growth > 0.05 else "neutral"
-            signals.append(TrendSignal(
-                keyword=kw,
-                platform=platforms[i % len(platforms)],
-                volume_score=round(vol, 3),
-                growth_rate=round(growth, 3),
-                sentiment=sentiment,
-            ))
+            signals.append(
+                TrendSignal(
+                    keyword=kw,
+                    platform=platforms[i % len(platforms)],
+                    volume_score=round(vol, 3),
+                    growth_rate=round(growth, 3),
+                    sentiment=sentiment,
+                )
+            )
 
         # Persist so next call is fast
         data["trending_signals"] = [s.to_dict() for s in signals]
@@ -295,9 +366,7 @@ class TrendAnalyzer:
     def summary(self) -> dict:
         """Sync summary of tracked data."""
         niches = self._data.get("niches", {})
-        total_signals = sum(
-            len(n.get("signals", [])) for n in niches.values()
-        )
+        total_signals = sum(len(n.get("signals", [])) for n in niches.values())
         return {
             "niches_tracked": len(niches),
             "signals_count": total_signals,
@@ -306,7 +375,7 @@ class TrendAnalyzer:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_trend_analyzer_instance: Optional[TrendAnalyzer] = None
+_trend_analyzer_instance: TrendAnalyzer | None = None
 
 
 def get_trend_analyzer() -> TrendAnalyzer:

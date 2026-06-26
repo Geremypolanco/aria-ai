@@ -1,17 +1,24 @@
 """
 VectorStore — Qdrant production backend with in-memory fallback.
 """
+
 from __future__ import annotations
+
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 try:
     from qdrant_client import QdrantClient
     from qdrant_client.models import (
-        Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
+        Distance,
+        FieldCondition,
+        Filter,
+        MatchValue,
+        PointStruct,
+        VectorParams,
     )
+
     _QDRANT_AVAILABLE = True
 except ImportError:
     _QDRANT_AVAILABLE = False
@@ -66,6 +73,7 @@ class VectorStore:
         if not _QDRANT_AVAILABLE:
             return
         import os
+
         url = os.environ.get("QDRANT_URL", "")
         api_key = os.environ.get("QDRANT_API_KEY", "")
         if url:
@@ -106,11 +114,13 @@ class VectorStore:
                 payload = point.to_dict()
                 self._client.upsert(
                     collection_name=self._collection,
-                    points=[PointStruct(
-                        id=point.id,
-                        vector=point.embedding,
-                        payload=payload,
-                    )],
+                    points=[
+                        PointStruct(
+                            id=point.id,
+                            vector=point.embedding,
+                            payload=payload,
+                        )
+                    ],
                 )
                 return True
             except Exception:
@@ -128,7 +138,7 @@ class VectorStore:
         self,
         query: str,
         top_k: int = 5,
-        category: Optional[str] = None,
+        category: str | None = None,
         score_threshold: float = 0.0,
     ) -> list[tuple[MemoryPoint, float]]:
         """Semantic search returning (point, similarity_score) tuples."""
@@ -207,7 +217,7 @@ class VectorStore:
         }
 
 
-_store_instance: Optional[VectorStore] = None
+_store_instance: VectorStore | None = None
 
 
 def get_vector_store() -> VectorStore:

@@ -1,19 +1,19 @@
 """
 Multimodal visual analysis — understands images, thumbnails, and ad creatives.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.visual_analyzer")
 
 
-class VisualContentType(str, Enum):
+class VisualContentType(StrEnum):
     PRODUCT_IMAGE = "product_image"
     THUMBNAIL = "thumbnail"
     AD_CREATIVE = "ad_creative"
@@ -159,11 +159,15 @@ class VisualAnalyzer:
             + (1.0 - len(insight.issues) * 0.1) * 0.2,
             3,
         )
-        grade = "A" if composite >= 0.8 else "B" if composite >= 0.6 else "C" if composite >= 0.4 else "D"
+        grade = (
+            "A"
+            if composite >= 0.8
+            else "B" if composite >= 0.6 else "C" if composite >= 0.4 else "D"
+        )
         return {"url": image_url, "composite_score": composite, "grade": grade, **insight.to_dict()}
 
 
-_analyzer_instance: Optional[VisualAnalyzer] = None
+_analyzer_instance: VisualAnalyzer | None = None
 
 
 def get_visual_analyzer() -> VisualAnalyzer:

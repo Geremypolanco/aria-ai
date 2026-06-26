@@ -2,10 +2,11 @@
 Analytics connection para ARIA AI.
 Soporta Google Analytics 4 (OAuth), Mixpanel (API secret), Amplitude (API key), DataDog (API key).
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -22,15 +23,17 @@ GA4_SCOPES = "https://www.googleapis.com/auth/analytics.readonly"
 class GoogleAnalyticsConnection:
     """Google Analytics 4 via OAuth (reutiliza Google OAuth infraestructura)."""
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "GOOGLE_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "GOOGLE_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -44,19 +47,22 @@ class GoogleAnalyticsConnection:
         }
         return f"{GA4_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET no configurados")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(GA4_TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": GA4_REDIRECT,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                GA4_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": GA4_REDIRECT,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             return {
@@ -69,8 +75,11 @@ class GoogleAnalyticsConnection:
         return {"Authorization": f"Bearer {tokens['access_token']}"}
 
     async def run_report(
-        self, tokens: dict, property_id: str,
-        metrics: list[str], dimensions: list[str],
+        self,
+        tokens: dict,
+        property_id: str,
+        metrics: list[str],
+        dimensions: list[str],
         date_range: tuple[str, str] = ("30daysAgo", "today"),
     ) -> dict:
         body = {
@@ -108,12 +117,14 @@ class MixpanelConnection:
     API = "https://data.mixpanel.com/api/2.0"
     EXPORT_API = "https://mixpanel.com/api/2.0"
 
-    def _secret(self) -> Optional[str]:
+    def _secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "MIXPANEL_API_SECRET", None)
 
-    def _project_token(self) -> Optional[str]:
+    def _project_token(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "MIXPANEL_PROJECT_TOKEN", None)
 
     async def get_events(self, event_names: list[str], from_date: str, to_date: str) -> list[dict]:
@@ -168,6 +179,7 @@ class AmplitudeConnection:
 
     def _creds(self) -> tuple[str, str]:
         from apps.core.config import settings
+
         key = getattr(settings, "AMPLITUDE_API_KEY", "") or ""
         secret = getattr(settings, "AMPLITUDE_SECRET_KEY", "") or ""
         return key, secret
@@ -206,6 +218,7 @@ class DataDogConnection:
 
     def _creds(self) -> tuple[str, str]:
         from apps.core.config import settings
+
         api_key = getattr(settings, "DATADOG_API_KEY", "") or ""
         app_key = getattr(settings, "DATADOG_APP_KEY", "") or ""
         return api_key, app_key

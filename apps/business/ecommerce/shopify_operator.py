@@ -7,9 +7,10 @@ listing optimization, and autonomous improvement cycles.
 
 from __future__ import annotations
 
-import time
+import contextlib
 import logging
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -130,14 +131,10 @@ class ShopifyOperator:
             if shop and token:
                 from apps.core.integrations.shopify_engine import ShopifyEngine  # type: ignore
 
-                self._engine = ShopifyEngine(
-                    shop_name=shop, access_token=token
-                )
+                self._engine = ShopifyEngine(shop_name=shop, access_token=token)
                 logger.info("ShopifyOperator: engine initialised for %s", shop)
             else:
-                logger.info(
-                    "ShopifyOperator: no credentials — running in mock mode"
-                )
+                logger.info("ShopifyOperator: no credentials — running in mock mode")
         except Exception:
             logger.exception("ShopifyOperator: failed to initialise engine")
 
@@ -230,17 +227,13 @@ class ShopifyOperator:
         results.sort(key=lambda x: x.seo_score, reverse=True)
         return results
 
-    async def optimize_listing(
-        self, product_id: str, product_data: dict
-    ) -> bool:
+    async def optimize_listing(self, product_id: str, product_data: dict) -> bool:
         """
         Use AI to improve a product title and description, then push the
         update via the engine.  Returns True on success.
         """
         if self._engine is None:
-            logger.info(
-                "ShopifyOperator.optimize_listing: no engine, skipping update"
-            )
+            logger.info("ShopifyOperator.optimize_listing: no engine, skipping update")
             return False
 
         try:
@@ -249,22 +242,16 @@ class ShopifyOperator:
             features_raw = product_data.get("tags", "")
             features = [t.strip() for t in features_raw.split(",") if t.strip()]
 
-            new_description = await self.generate_seo_description(
-                title, category, features
-            )
+            new_description = await self.generate_seo_description(title, category, features)
 
             updated = dict(product_data)
             updated["body_html"] = new_description
 
             await self._engine.update_product_listing(product_id, updated)
-            logger.info(
-                "ShopifyOperator.optimize_listing: updated product %s", product_id
-            )
+            logger.info("ShopifyOperator.optimize_listing: updated product %s", product_id)
             return True
         except Exception:
-            logger.exception(
-                "ShopifyOperator.optimize_listing: failed for %s", product_id
-            )
+            logger.exception("ShopifyOperator.optimize_listing: failed for %s", product_id)
             return False
 
     async def generate_seo_description(
@@ -277,17 +264,12 @@ class ShopifyOperator:
         Use AI to write a 200–300 word SEO-optimised product description.
         Returns a plain-text fallback when AI is unavailable.
         """
-        fallback = (
-            f"{product_title} — a quality {category} product. "
-            + (
-                "Features include: " + ", ".join(features) + "."
-                if features
-                else ""
-            )
+        fallback = f"{product_title} — a quality {category} product. " + (
+            "Features include: " + ", ".join(features) + "." if features else ""
         )
 
         try:
-            from apps.core.tools.ai_client import get_ai_client, AIModel  # type: ignore
+            from apps.core.tools.ai_client import AIModel, get_ai_client  # type: ignore
 
             ai = get_ai_client()
             features_str = ", ".join(features) if features else "various useful features"
@@ -301,9 +283,7 @@ class ShopifyOperator:
             result = await ai.complete(prompt, model=AIModel.DEFAULT)
             return result.strip() if result else fallback
         except Exception:
-            logger.debug(
-                "ShopifyOperator.generate_seo_description: AI unavailable, using fallback"
-            )
+            logger.debug("ShopifyOperator.generate_seo_description: AI unavailable, using fallback")
             return fallback
 
     async def pricing_analysis(self) -> dict[str, Any]:
@@ -324,10 +304,8 @@ class ShopifyOperator:
         prices: list[float] = []
         for p in products:
             for variant in p.get("variants", []):
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     prices.append(float(variant.get("price", 0)))
-                except (TypeError, ValueError):
-                    pass
 
         if not prices:
             return {
@@ -350,7 +328,11 @@ class ShopifyOperator:
                     price = float(variant.get("price", 0))
                 except (TypeError, ValueError):
                     continue
-                entry = {"product_id": str(p.get("id", "")), "title": p.get("title", ""), "price": price}
+                entry = {
+                    "product_id": str(p.get("id", "")),
+                    "title": p.get("title", ""),
+                    "price": price,
+                }
                 if price < lower_bound:
                     under_priced.append(entry)
                 elif price > upper_bound:
@@ -374,9 +356,7 @@ class ShopifyOperator:
             try:
                 products = await self._engine.get_all_products() or []
             except Exception:
-                logger.exception(
-                    "ShopifyOperator.identify_opportunities: engine error"
-                )
+                logger.exception("ShopifyOperator.identify_opportunities: engine error")
 
         if not products:
             products = _MOCK_PRODUCTS
@@ -389,10 +369,7 @@ class ShopifyOperator:
             body = p.get("body_html", "") or ""
             tags = p.get("tags", "") or ""
             images = p.get("images", []) or []
-            inventory = sum(
-                int(v.get("inventory_quantity", 0) or 0)
-                for v in p.get("variants", [])
-            )
+            inventory = sum(int(v.get("inventory_quantity", 0) or 0) for v in p.get("variants", []))
 
             if not body.strip():
                 opportunities.append(
@@ -462,25 +439,19 @@ class ShopifyOperator:
                 if opp.opportunity_type == "seo_optimize" and self._engine is not None:
                     # Find the raw product data to pass to optimize_listing
                     raw_products: list[dict] = []
-                    try:
+                    with contextlib.suppress(Exception):
                         raw_products = await self._engine.get_all_products() or []
-                    except Exception:
-                        pass
                     product_data = next(
                         (p for p in raw_products if str(p.get("id", "")) == opp.product_id),
                         {"title": opp.title, "product_type": "general", "tags": ""},
                     )
                     success = await self.optimize_listing(opp.product_id, product_data)
                     if success:
-                        actions_taken.append(
-                            f"seo_optimize:{opp.product_id}"
-                        )
+                        actions_taken.append(f"seo_optimize:{opp.product_id}")
                         products_updated.append(opp.product_id)
                 else:
                     # Log the opportunity without automated action
-                    actions_taken.append(
-                        f"flagged:{opp.opportunity_type}:{opp.product_id}"
-                    )
+                    actions_taken.append(f"flagged:{opp.opportunity_type}:{opp.product_id}")
             except Exception:
                 logger.exception(
                     "ShopifyOperator.run_autonomous_cycle: error on opportunity %s",
@@ -507,9 +478,7 @@ class ShopifyOperator:
             avg_seo = sum(scores) / len(scores)
             opt_opportunities = sum(1 for s in scores if s < 50.0)
 
-        health_label = (
-            "good" if avg_seo >= 70 else "fair" if avg_seo >= 40 else "needs_work"
-        )
+        health_label = "good" if avg_seo >= 70 else "fair" if avg_seo >= 40 else "needs_work"
 
         return {
             "catalog_health": health_label,

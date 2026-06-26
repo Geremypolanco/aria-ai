@@ -1,20 +1,20 @@
 """
 Executive Council — Coordinates all C-suite agents for unified strategic output.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 from apps.executive.ceo_agent import get_ceo_agent
-from apps.executive.coo_agent import get_coo_agent
-from apps.executive.cto_agent import get_cto_agent
 from apps.executive.cfo_agent import get_cfo_agent
 from apps.executive.cmo_agent import get_cmo_agent
+from apps.executive.coo_agent import get_coo_agent
+from apps.executive.cto_agent import get_cto_agent
 
 _KEY = "executive:council:v1"
 _TTL = 90 * 24 * 3600  # 90 days
@@ -46,7 +46,7 @@ class ExecutiveReport:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ExecutiveReport":
+    def from_dict(cls, data: dict) -> ExecutiveReport:
         return cls(
             report_id=data["report_id"],
             period=data["period"],
@@ -104,13 +104,15 @@ class ExecutiveCouncil:
         # COO: operational health
         coo = get_coo_agent()
         coo._loaded = True
-        dept_health = coo.department_health()
+        coo.department_health()
         ops_report = coo.operations_report()
 
         # CFO: financial outlook
         cfo = get_cfo_agent()
         cfo._loaded = True
-        revenue_val = float(current_metrics.get("revenue", current_metrics.get("revenue_usd", 5000)))
+        revenue_val = float(
+            current_metrics.get("revenue", current_metrics.get("revenue_usd", 5000))
+        )
         scenario = await cfo.model_scenario(
             name=f"Q-{niche}",
             revenue_drivers={"primary": revenue_val},
@@ -180,7 +182,9 @@ class ExecutiveCouncil:
                 line = line.strip()
                 for prefix in ("STEP1:", "STEP2:", "STEP3:", "1.", "2.", "3."):
                     if line.startswith(prefix):
-                        steps.append(line.split(":", 1)[-1].strip() if ":" in line else line[2:].strip())
+                        steps.append(
+                            line.split(":", 1)[-1].strip() if ":" in line else line[2:].strip()
+                        )
                         break
 
         if not steps:
@@ -210,7 +214,11 @@ class ExecutiveCouncil:
             model=AIModel.STRATEGY,
             max_tokens=400,
         )
-        plan_text = resp.content if resp.success else "Execute objectives in priority order across 13 weeks."
+        plan_text = (
+            resp.content
+            if resp.success
+            else "Execute objectives in priority order across 13 weeks."
+        )
 
         return {
             "objectives": objectives,
@@ -234,7 +242,7 @@ class ExecutiveCouncil:
         }
 
 
-_instance: Optional[ExecutiveCouncil] = None
+_instance: ExecutiveCouncil | None = None
 
 
 def get_executive_council() -> ExecutiveCouncil:

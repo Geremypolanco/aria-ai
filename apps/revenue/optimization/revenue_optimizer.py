@@ -1,12 +1,12 @@
 """
 Revenue optimization — identifies quick wins and builds growth scenarios.
 """
+
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from apps.core.memory.redis_client import get_cache
 
@@ -14,7 +14,7 @@ _OPTIMIZER_KEY = "revenue:optimizer:v1"
 _OPTIMIZER_TTL = 86400 * 30
 
 
-class ActionType(str, Enum):
+class ActionType(StrEnum):
     PRICE_INCREASE = "price_increase"
     BUNDLE_OFFER = "bundle_offer"
     UPSELL = "upsell"
@@ -110,50 +110,57 @@ class RevenueOptimizer:
         monthly_visitors: int,
     ) -> list[OptimizationAction]:
         import uuid as _uuid
+
         actions: list[OptimizationAction] = []
 
         # Price increase opportunity (if conversion rate is healthy)
         if conversion_rate > 0.02:
             lift = current_revenue_usd * 0.05
-            actions.append(OptimizationAction(
-                action_id=str(_uuid.uuid4()),
-                action_type=ActionType.PRICE_INCREASE,
-                title="5% Price Increase",
-                description="Conversion rate supports a modest price increase without volume loss",
-                estimated_revenue_lift_usd=lift,
-                effort_days=1,
-                confidence=0.75,
-                priority=1,
-            ))
+            actions.append(
+                OptimizationAction(
+                    action_id=str(_uuid.uuid4()),
+                    action_type=ActionType.PRICE_INCREASE,
+                    title="5% Price Increase",
+                    description="Conversion rate supports a modest price increase without volume loss",
+                    estimated_revenue_lift_usd=lift,
+                    effort_days=1,
+                    confidence=0.75,
+                    priority=1,
+                )
+            )
 
         # Bundle offer
         if avg_order_value < 100:
             lift = current_revenue_usd * 0.08
-            actions.append(OptimizationAction(
-                action_id=str(_uuid.uuid4()),
-                action_type=ActionType.BUNDLE_OFFER,
-                title="Product Bundle Offer",
-                description="Bundle complementary products to increase average order value",
-                estimated_revenue_lift_usd=lift,
-                effort_days=3,
-                confidence=0.70,
-                priority=2,
-            ))
+            actions.append(
+                OptimizationAction(
+                    action_id=str(_uuid.uuid4()),
+                    action_type=ActionType.BUNDLE_OFFER,
+                    title="Product Bundle Offer",
+                    description="Bundle complementary products to increase average order value",
+                    estimated_revenue_lift_usd=lift,
+                    effort_days=3,
+                    confidence=0.70,
+                    priority=2,
+                )
+            )
 
         # Conversion lift
         if monthly_visitors > 0 and conversion_rate < 0.03:
             potential_conversions = monthly_visitors * 0.01
             lift = potential_conversions * avg_order_value
-            actions.append(OptimizationAction(
-                action_id=str(_uuid.uuid4()),
-                action_type=ActionType.CONVERSION_LIFT,
-                title="1% Conversion Rate Lift",
-                description="A/B test checkout flow and CTA to improve conversion rate",
-                estimated_revenue_lift_usd=lift,
-                effort_days=7,
-                confidence=0.60,
-                priority=3,
-            ))
+            actions.append(
+                OptimizationAction(
+                    action_id=str(_uuid.uuid4()),
+                    action_type=ActionType.CONVERSION_LIFT,
+                    title="1% Conversion Rate Lift",
+                    description="A/B test checkout flow and CTA to improve conversion rate",
+                    estimated_revenue_lift_usd=lift,
+                    effort_days=7,
+                    confidence=0.60,
+                    priority=3,
+                )
+            )
 
         actions.sort(key=lambda a: a.estimated_revenue_lift_usd, reverse=True)
         return actions
@@ -186,7 +193,12 @@ class RevenueOptimizer:
                 growth_rate=2.0,
                 required_investment_usd=current_monthly_revenue * 0.80,
                 time_to_achieve_months=12,
-                actions=["Influencer partnerships", "PR campaign", "New channel expansion", "Product launch"],
+                actions=[
+                    "Influencer partnerships",
+                    "PR campaign",
+                    "New channel expansion",
+                    "Product launch",
+                ],
             ),
         ]
 
@@ -225,7 +237,7 @@ class RevenueOptimizer:
         }
 
 
-_optimizer_instance: Optional[RevenueOptimizer] = None
+_optimizer_instance: RevenueOptimizer | None = None
 
 
 def get_revenue_optimizer() -> RevenueOptimizer:

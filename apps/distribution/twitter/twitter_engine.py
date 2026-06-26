@@ -3,16 +3,16 @@ ARIA AI — Twitter/X Thread Engine
 Phase 13: Viral thread creation, tweet optimization, and X distribution.
 Drives traffic, followers, and brand authority.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.distribution.twitter")
 
@@ -97,28 +97,37 @@ class TwitterEngine:
             content = para[:280]
             hashtags = [w for w in content.split() if w.startswith("#")]
             is_cta = i == len(paragraphs) - 1
-            tweets.append(Tweet(
-                content=content,
-                thread_position=i,
-                hashtags=hashtags,
-                has_cta=is_cta,
-            ))
+            tweets.append(
+                Tweet(
+                    content=content,
+                    thread_position=i,
+                    hashtags=hashtags,
+                    has_cta=is_cta,
+                )
+            )
         return tweets
 
     def _build_fallback_thread(self, topic: str, num_tweets: int) -> list[Tweet]:
         items = [
-            Tweet(content=f"🧵 {num_tweets} things about {topic} that will change how you think:\n\n(thread)", thread_position=0),
+            Tweet(
+                content=f"🧵 {num_tweets} things about {topic} that will change how you think:\n\n(thread)",
+                thread_position=0,
+            ),
         ]
         for i in range(1, num_tweets - 1):
-            items.append(Tweet(
-                content=f"{i}/ Key insight about {topic}: understanding this will save you months of trial and error.",
-                thread_position=i,
-            ))
-        items.append(Tweet(
-            content=f"If this thread on {topic} helped you, follow me for more.\n\nRetweet the first tweet to help others too. 🙏",
-            thread_position=num_tweets - 1,
-            has_cta=True,
-        ))
+            items.append(
+                Tweet(
+                    content=f"{i}/ Key insight about {topic}: understanding this will save you months of trial and error.",
+                    thread_position=i,
+                )
+            )
+        items.append(
+            Tweet(
+                content=f"If this thread on {topic} helped you, follow me for more.\n\nRetweet the first tweet to help others too. 🙏",
+                thread_position=num_tweets - 1,
+                has_cta=True,
+            )
+        )
         return items
 
     async def create_thread(
@@ -199,9 +208,7 @@ class TwitterEngine:
         num = 7
         return f"🧵 {num} things about {topic} that will change how you think:"
 
-    async def generate_tweet(
-        self, topic: str, tweet_type: str = "insight"
-    ) -> Tweet:
+    async def generate_tweet(self, topic: str, tweet_type: str = "insight") -> Tweet:
         await self._load()
 
         content = ""
@@ -245,9 +252,7 @@ class TwitterEngine:
             has_cta=has_cta,
         )
 
-    async def repurpose_to_thread(
-        self, long_content: str, topic: str
-    ) -> TwitterThread:
+    async def repurpose_to_thread(self, long_content: str, topic: str) -> TwitterThread:
         await self._load()
 
         tweets: list[Tweet] = []
@@ -310,7 +315,7 @@ class TwitterEngine:
         return self._threads[-limit:]
 
 
-_instance: Optional[TwitterEngine] = None
+_instance: TwitterEngine | None = None
 
 
 def get_twitter_engine() -> TwitterEngine:

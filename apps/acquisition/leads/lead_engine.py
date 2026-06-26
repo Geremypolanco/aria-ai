@@ -3,15 +3,15 @@ ARIA AI — Lead Discovery Engine
 Phase 13: Autonomous lead generation, scoring, and proposal briefing.
 Identifies businesses that need ARIA's services and ranks them by opportunity.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "acquisition:leads:v1"
 _TTL = 86400 * 60
@@ -26,11 +26,11 @@ class Lead:
     contact_name: str = ""
     contact_email: str = ""
     pain_points: list = field(default_factory=list)
-    opportunity_score: float = 0.0     # 0-1, how likely to convert
+    opportunity_score: float = 0.0  # 0-1, how likely to convert
     estimated_value_usd: float = 0.0
     services_needed: list = field(default_factory=list)
-    status: str = "new"                # new | contacted | qualified | proposal | closed | lost
-    source: str = ""                   # "organic" | "referral" | "outreach" | "inbound"
+    status: str = "new"  # new | contacted | qualified | proposal | closed | lost
+    source: str = ""  # "organic" | "referral" | "outreach" | "inbound"
     notes: str = ""
     created_at: float = field(default_factory=time.time)
 
@@ -189,7 +189,8 @@ class LeadEngine:
             )
             if resp.success:
                 import re
-                nums = re.findall(r'\b([0-9](?:\.[0-9])?|10)\b', resp.content)
+
+                nums = re.findall(r"\b([0-9](?:\.[0-9])?|10)\b", resp.content)
                 if nums:
                     score = float(nums[0]) / 10.0
                     lead.opportunity_score = min(score, 1.0)
@@ -233,11 +234,21 @@ class LeadEngine:
             )
             if resp.success:
                 lines = [l.strip() for l in resp.content.strip().split("\n") if l.strip()]
-                brief.subject_line = lines[0][:100] if lines else f"Quick question about {lead.company_name}'s growth"
-                brief.opening_hook = lines[1] if len(lines) > 1 else f"I noticed {lead.company_name} could benefit from better automation."
+                brief.subject_line = (
+                    lines[0][:100]
+                    if lines
+                    else f"Quick question about {lead.company_name}'s growth"
+                )
+                brief.opening_hook = (
+                    lines[1]
+                    if len(lines) > 1
+                    else f"I noticed {lead.company_name} could benefit from better automation."
+                )
                 brief.pain_identified = ", ".join(lead.pain_points[:2])
                 brief.solution_summary = resp.content[:300]
-                brief.social_proof = "We've helped 50+ businesses in your industry increase revenue by 3x."
+                brief.social_proof = (
+                    "We've helped 50+ businesses in your industry increase revenue by 3x."
+                )
                 brief.cta = "Would a 15-minute call this week make sense?"
         except Exception:
             pass
@@ -245,11 +256,17 @@ class LeadEngine:
         if not brief.subject_line:
             brief.subject_line = f"Quick question about {lead.company_name}'s growth"
         if not brief.opening_hook:
-            brief.opening_hook = f"I came across {lead.company_name} and noticed a quick win opportunity."
+            brief.opening_hook = (
+                f"I came across {lead.company_name} and noticed a quick win opportunity."
+            )
         if not brief.pain_identified:
-            brief.pain_identified = ", ".join(lead.pain_points[:2]) if lead.pain_points else "growth challenges"
+            brief.pain_identified = (
+                ", ".join(lead.pain_points[:2]) if lead.pain_points else "growth challenges"
+            )
         if not brief.solution_summary:
-            brief.solution_summary = f"We can help {lead.company_name} with {', '.join(lead.services_needed[:2])}."
+            brief.solution_summary = (
+                f"We can help {lead.company_name} with {', '.join(lead.services_needed[:2])}."
+            )
         if not brief.social_proof:
             brief.social_proof = "We've helped 50+ businesses like yours grow faster."
         if not brief.cta:
@@ -291,9 +308,7 @@ class LeadEngine:
             n = lead.get("niche", "unknown")
             by_niche[n] = by_niche.get(n, 0) + 1
             total_value += lead.get("estimated_value_usd", 0.0)
-        avg_score = (
-            sum(l.get("opportunity_score", 0.0) for l in self._leads) / max(total, 1)
-        )
+        avg_score = sum(l.get("opportunity_score", 0.0) for l in self._leads) / max(total, 1)
         return {
             "total_leads": total,
             "qualified_leads": len(self.qualified_leads()),
@@ -309,7 +324,7 @@ class LeadEngine:
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_instance: Optional[LeadEngine] = None
+_instance: LeadEngine | None = None
 
 
 def get_lead_engine() -> LeadEngine:

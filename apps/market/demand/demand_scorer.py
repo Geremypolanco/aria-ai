@@ -2,15 +2,15 @@
 Market demand scoring and opportunity detection.
 Scores keywords by demand/supply ratio to surface high-opportunity gaps.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.market.demand")
 
@@ -19,19 +19,43 @@ _CACHE_TTL = 86400 * 7  # 7 days
 
 # Words that indicate commercial intent / high demand
 _COMMERCIAL_WORDS = {
-    "buy", "best", "review", "reviews", "top", "how to", "guide", "cheap",
-    "price", "discount", "deal", "vs", "compare", "comparison", "recommended",
-    "tutorial", "learn", "free", "affordable",
+    "buy",
+    "best",
+    "review",
+    "reviews",
+    "top",
+    "how to",
+    "guide",
+    "cheap",
+    "price",
+    "discount",
+    "deal",
+    "vs",
+    "compare",
+    "comparison",
+    "recommended",
+    "tutorial",
+    "learn",
+    "free",
+    "affordable",
 }
 
 # Niches considered saturated (high supply)
 _HIGH_SUPPLY_NICHES = {
-    "fitness", "weight loss", "make money online", "crypto", "dating",
-    "personal finance", "diet", "tech reviews", "gaming",
+    "fitness",
+    "weight loss",
+    "make money online",
+    "crypto",
+    "dating",
+    "personal finance",
+    "diet",
+    "tech reviews",
+    "gaming",
 }
 
 
 # ── Data models ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class DemandScore:
@@ -74,6 +98,7 @@ class DemandScore:
 
 
 # ── Heuristic scoring logic ────────────────────────────────────────────────────
+
 
 def _heuristic_demand(keyword: str) -> float:
     """Estimate demand 0-100 using keyword length and commercial intent signals."""
@@ -128,6 +153,7 @@ def _competition_level(supply: float) -> str:
 
 # ── Main class ─────────────────────────────────────────────────────────────────
 
+
 class DemandScorer:
     """Scores keywords by demand/supply ratio to surface opportunities."""
 
@@ -171,7 +197,7 @@ class DemandScorer:
             if ai:
                 prompt = (
                     f"Score this keyword for market opportunity: '{keyword}' in niche '{niche or 'general'}'. "
-                    "Return JSON: {\"demand_score\": 75, \"supply_score\": 40, \"search_volume_est\": 12000}"
+                    'Return JSON: {"demand_score": 75, "supply_score": 40, "search_volume_est": 12000}'
                 )
                 result = await ai.generate(prompt, model=AIModel.FAST, json_mode=True)
                 if result and isinstance(result, dict):
@@ -210,11 +236,7 @@ class DemandScorer:
     async def top_opportunities(self, niche: str, limit: int = 10) -> list[DemandScore]:
         """Return top-scored keywords for a niche sorted by opportunity_score."""
         await self._load()
-        niche_scores = [
-            DemandScore.from_dict(s)
-            for s in self._scores
-            if s.get("niche") == niche
-        ]
+        niche_scores = [DemandScore.from_dict(s) for s in self._scores if s.get("niche") == niche]
         niche_scores.sort(key=lambda x: x.opportunity_score, reverse=True)
         return niche_scores[:limit]
 
@@ -231,10 +253,7 @@ class DemandScorer:
 
     def summary(self) -> dict:
         total = len(self._scores)
-        avg_opp = (
-            sum(s.get("opportunity_score", 0) for s in self._scores) / total
-            if total else 0.0
-        )
+        avg_opp = sum(s.get("opportunity_score", 0) for s in self._scores) / total if total else 0.0
         top_kw = ""
         if self._scores:
             best = max(self._scores, key=lambda s: s.get("opportunity_score", 0))
@@ -248,7 +267,7 @@ class DemandScorer:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_demand_scorer_instance: Optional[DemandScorer] = None
+_demand_scorer_instance: DemandScorer | None = None
 
 
 def get_demand_scorer() -> DemandScorer:

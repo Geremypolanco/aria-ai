@@ -7,10 +7,11 @@ Requires in Fly.io secrets:
   BOX_CLIENT_ID         → from developer.box.com
   BOX_CLIENT_SECRET     → same place
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -20,21 +21,24 @@ logger = logging.getLogger("aria.connections.storage")
 
 # ── DROPBOX ───────────────────────────────────────────────────────────────────
 
+
 class DropboxConnection:
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/dropbox"
     AUTH_URL = "https://www.dropbox.com/oauth2/authorize"
     TOKEN_URL = "https://api.dropbox.com/oauth2/token"
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "DROPBOX_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "DROPBOX_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -47,19 +51,22 @@ class DropboxConnection:
         }
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("DROPBOX_CLIENT_ID / DROPBOX_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(self.TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": self.REDIRECT_URI,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                self.TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": self.REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             # Get account email
@@ -76,12 +83,15 @@ class DropboxConnection:
         cid = self._client_id()
         sec = self._client_secret()
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(self.TOKEN_URL, data={
-                "refresh_token": tokens["refresh_token"],
-                "client_id": cid,
-                "client_secret": sec,
-                "grant_type": "refresh_token",
-            })
+            r = await http.post(
+                self.TOKEN_URL,
+                data={
+                    "refresh_token": tokens["refresh_token"],
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "grant_type": "refresh_token",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             tokens["access_token"] = data["access_token"]
@@ -126,6 +136,7 @@ class DropboxConnection:
     async def upload_file(self, tokens: dict, content_bytes: bytes, path: str) -> dict:
         """Upload bytes to the given Dropbox path."""
         import json as _json
+
         async with httpx.AsyncClient(timeout=30.0) as http:
             r = await http.post(
                 "https://content.dropboxapi.com/2/files/upload",
@@ -147,6 +158,7 @@ class DropboxConnection:
     async def download_file(self, tokens: dict, path: str) -> bytes:
         """Download file content from Dropbox."""
         import json as _json
+
         async with httpx.AsyncClient(timeout=30.0) as http:
             r = await http.post(
                 "https://content.dropboxapi.com/2/files/download",
@@ -161,7 +173,9 @@ class DropboxConnection:
     async def search_files(self, tokens: dict, query: str, path: str = "") -> list[dict]:
         """Search for files matching query in Dropbox."""
         async with httpx.AsyncClient(timeout=15.0) as http:
-            body: dict[str, Any] = {"query": query, "options": {"path": path}} if path else {"query": query}
+            body: dict[str, Any] = (
+                {"query": query, "options": {"path": path}} if path else {"query": query}
+            )
             r = await http.post(
                 "https://api.dropboxapi.com/2/files/search_v2",
                 headers={**self._headers(tokens), "Content-Type": "application/json"},
@@ -172,13 +186,15 @@ class DropboxConnection:
             results = []
             for m in matches:
                 meta = m.get("metadata", {}).get("metadata", {})
-                results.append({
-                    "name": meta.get("name"),
-                    "path": meta.get("path_display"),
-                    "size": meta.get("size"),
-                    "modified": meta.get("client_modified") or meta.get("server_modified"),
-                    "type": "folder" if meta.get(".tag") == "folder" else "file",
-                })
+                results.append(
+                    {
+                        "name": meta.get("name"),
+                        "path": meta.get("path_display"),
+                        "size": meta.get("size"),
+                        "modified": meta.get("client_modified") or meta.get("server_modified"),
+                        "type": "folder" if meta.get(".tag") == "folder" else "file",
+                    }
+                )
             return results
 
     async def create_shared_link(self, tokens: dict, path: str) -> str:
@@ -205,21 +221,24 @@ class DropboxConnection:
 
 # ── BOX ───────────────────────────────────────────────────────────────────────
 
+
 class BoxConnection:
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/box"
     AUTH_URL = "https://account.box.com/api/oauth2/authorize"
     TOKEN_URL = "https://api.box.com/oauth2/token"
 
-    def _client_id(self) -> Optional[str]:
+    def _client_id(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "BOX_CLIENT_ID", None)
 
-    def _client_secret(self) -> Optional[str]:
+    def _client_secret(self) -> str | None:
         from apps.core.config import settings
+
         return getattr(settings, "BOX_CLIENT_SECRET", None)
 
-    def get_auth_url(self, chat_id: str) -> Optional[str]:
+    def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
             return None
@@ -231,19 +250,22 @@ class BoxConnection:
         }
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, chat_id: str) -> Optional[dict]:
+    async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
             raise ValueError("BOX_CLIENT_ID / BOX_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(self.TOKEN_URL, data={
-                "code": code,
-                "client_id": cid,
-                "client_secret": sec,
-                "redirect_uri": self.REDIRECT_URI,
-                "grant_type": "authorization_code",
-            })
+            r = await http.post(
+                self.TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": cid,
+                    "client_secret": sec,
+                    "redirect_uri": self.REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            )
             r.raise_for_status()
             data = r.json()
             # Get user email from token introspection

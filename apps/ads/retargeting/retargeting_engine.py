@@ -1,15 +1,15 @@
 """
 Retargeting Engine — Manages retargeting audiences, campaigns, and optimization.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _RETARGETING_KEY = "ads:retargeting:v1"
 _RETARGETING_TTL = 86400 * 60  # 60 days
@@ -19,7 +19,9 @@ _RETARGETING_TTL = 86400 * 60  # 60 days
 class RetargetingAudience:
     audience_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
-    audience_type: str = "product_viewers"  # "cart_abandoners"|"product_viewers"|"purchasers"|"email_subscribers"|"lookalike"
+    audience_type: str = (
+        "product_viewers"  # "cart_abandoners"|"product_viewers"|"purchasers"|"email_subscribers"|"lookalike"
+    )
     user_ids: list[str] = field(default_factory=list)
     size: int = 0
     platforms: list[str] = field(default_factory=list)
@@ -154,8 +156,10 @@ class RetargetingEngine:
         name: str,
         audience_type: str,
         user_ids: list[str],
-        platforms: list[str] = ["meta", "google"],
+        platforms: list[str] = None,
     ) -> RetargetingAudience:
+        if platforms is None:
+            platforms = ["meta", "google"]
         await self._load()
 
         audience = RetargetingAudience(
@@ -181,8 +185,12 @@ class RetargetingEngine:
         await self._load()
 
         audience_type = audience.audience_type
-        ad_copy = _DEFAULT_COPY.get(audience_type, "Discover {product} today.").format(product=product_name)
-        headline = _DEFAULT_HEADLINE.get(audience_type, "Get {product} Now").format(product=product_name)
+        ad_copy = _DEFAULT_COPY.get(audience_type, "Discover {product} today.").format(
+            product=product_name
+        )
+        headline = _DEFAULT_HEADLINE.get(audience_type, "Get {product} Now").format(
+            product=product_name
+        )
 
         # Try AI enhancement
         try:
@@ -288,14 +296,16 @@ class RetargetingEngine:
                 action = "maintain"
                 rationale = f"ROAS of {roas:.2f}x is acceptable — maintain current budget"
 
-            recommendations.append({
-                "campaign_id": campaign.campaign_id,
-                "action": action,
-                "recommended_budget": new_budget,
-                "current_budget": current_budget,
-                "current_roas": roas,
-                "rationale": rationale,
-            })
+            recommendations.append(
+                {
+                    "campaign_id": campaign.campaign_id,
+                    "action": action,
+                    "recommended_budget": new_budget,
+                    "current_budget": current_budget,
+                    "current_roas": roas,
+                    "rationale": rationale,
+                }
+            )
 
         return recommendations
 
@@ -305,7 +315,9 @@ class RetargetingEngine:
         user_id: str,
     ) -> list[dict]:
         """Create 3-ad retargeting sequence for cart abandoners."""
-        product_names = [item.get("name", item.get("product", "your item")) for item in cart_items[:3]]
+        product_names = [
+            item.get("name", item.get("product", "your item")) for item in cart_items[:3]
+        ]
         product_str = ", ".join(product_names) if product_names else "your items"
 
         sequence = [
@@ -370,13 +382,17 @@ class RetargetingEngine:
         """Return top campaigns by ROAS."""
         sorted_campaigns = sorted(
             self._campaigns,
-            key=lambda c: c.get("roas", c.get("revenue_usd", 0.0) / c.get("spend_usd", 1.0)) if c.get("spend_usd", 0) > 0 else 0.0,
+            key=lambda c: (
+                c.get("roas", c.get("revenue_usd", 0.0) / c.get("spend_usd", 1.0))
+                if c.get("spend_usd", 0) > 0
+                else 0.0
+            ),
             reverse=True,
         )
         return sorted_campaigns[:limit]
 
 
-_retargeting_engine_instance: Optional[RetargetingEngine] = None
+_retargeting_engine_instance: RetargetingEngine | None = None
 
 
 def get_retargeting_engine() -> RetargetingEngine:

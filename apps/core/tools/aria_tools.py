@@ -10,15 +10,14 @@ Proporciona acceso a:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import subprocess
-from typing import Any, Dict, List, Optional
-
-from apps.core.integrations.mcp_client import mcp_manager
+from typing import Any
 
 import httpx
+
+from apps.core.integrations.mcp_client import mcp_manager
 
 logger = logging.getLogger("aria.tools")
 
@@ -34,7 +33,7 @@ class GitHubTool:
             "Accept": "application/vnd.github.v3+json",
         }
 
-    async def clone_repo(self, repo_url: str, destination: str) -> Dict[str, Any]:
+    async def clone_repo(self, repo_url: str, destination: str) -> dict[str, Any]:
         """Clona un repositorio de GitHub."""
         try:
             result = subprocess.run(
@@ -59,7 +58,7 @@ class GitHubTool:
         body: str,
         head: str,
         base: str = "main",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Crea un pull request en GitHub."""
         try:
             async with httpx.AsyncClient() as client:
@@ -81,7 +80,7 @@ class GitHubTool:
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def list_issues(self, owner: str, repo: str, state: str = "open") -> Dict[str, Any]:
+    async def list_issues(self, owner: str, repo: str, state: str = "open") -> dict[str, Any]:
         """Lista issues de un repositorio."""
         try:
             async with httpx.AsyncClient() as client:
@@ -101,7 +100,9 @@ class GitHubTool:
 class DockerTool:
     """Herramienta para interactuar con Docker."""
 
-    async def build_image(self, dockerfile_path: str, tag: str, context: str = ".") -> Dict[str, Any]:
+    async def build_image(
+        self, dockerfile_path: str, tag: str, context: str = "."
+    ) -> dict[str, Any]:
         """Construye una imagen Docker."""
         try:
             result = subprocess.run(
@@ -122,9 +123,9 @@ class DockerTool:
         self,
         image: str,
         command: str = None,
-        ports: Dict[str, int] = None,
-        volumes: Dict[str, str] = None,
-    ) -> Dict[str, Any]:
+        ports: dict[str, int] = None,
+        volumes: dict[str, str] = None,
+    ) -> dict[str, Any]:
         """Ejecuta un contenedor Docker."""
         try:
             cmd = ["docker", "run"]
@@ -161,7 +162,7 @@ class DockerTool:
 class DeploymentTool:
     """Herramienta para desplegar aplicaciones."""
 
-    async def deploy_to_vercel(self, project_path: str, token: str) -> Dict[str, Any]:
+    async def deploy_to_vercel(self, project_path: str, token: str) -> dict[str, Any]:
         """Despliega a Vercel."""
         try:
             result = subprocess.run(
@@ -179,7 +180,7 @@ class DeploymentTool:
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def deploy_to_fly(self, project_path: str, app_name: str) -> Dict[str, Any]:
+    async def deploy_to_fly(self, project_path: str, app_name: str) -> dict[str, Any]:
         """Despliega a Fly.io."""
         try:
             result = subprocess.run(
@@ -201,7 +202,7 @@ class DeploymentTool:
 class WebScrapingTool:
     """Herramienta avanzada para web scraping."""
 
-    async def scrape_page(self, url: str, selectors: Dict[str, str] = None) -> Dict[str, Any]:
+    async def scrape_page(self, url: str, selectors: dict[str, str] = None) -> dict[str, Any]:
         """Extrae datos de una página web."""
         try:
             async with httpx.AsyncClient() as client:
@@ -228,15 +229,14 @@ class WebScrapingTool:
                         "data": data,
                         "url": url,
                     }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"HTTP {response.status_code}",
-                    }
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}",
+                }
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def scrape_with_browser(self, url: str, script: str = None) -> Dict[str, Any]:
+    async def scrape_with_browser(self, url: str, script: str = None) -> dict[str, Any]:
         """Extrae datos usando navegador headless (Chromium)."""
         try:
             from playwright.async_api import async_playwright
@@ -265,7 +265,9 @@ class WebScrapingTool:
 class ZapierTool:
     """Herramienta para interactuar con Zapier a través de su servidor MCP."""
 
-    async def call_zapier_action(self, action_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def call_zapier_action(
+        self, action_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
         """Llama a una acción de Zapier usando el servidor MCP."""
         logger.info(f"[ZapierTool] Llamando acción Zapier: {action_name} con {arguments}")
         result = await mcp_manager.call_tool_on_server(
@@ -275,38 +277,41 @@ class ZapierTool:
         )
         if result:
             return {"success": not result.get("isError", False), "output": result}
-        return {"success": False, "error": "No se pudo conectar con el servidor MCP de Zapier o la acción falló."}
+        return {
+            "success": False,
+            "error": "No se pudo conectar con el servidor MCP de Zapier o la acción falló.",
+        }
 
 
 class APIDiscoveryTool:
     """Herramienta para descubrir e integrar APIs."""
 
-    async def discover_api(self, service_name: str) -> Dict[str, Any]:
+    async def discover_api(self, service_name: str) -> dict[str, Any]:
         """Descubre información sobre una API."""
         try:
             # Consultar OpenAPI Hub o similar
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"https://api.apis.guru/v1/list.json",
+                    "https://api.apis.guru/v1/list.json",
                     timeout=10,
                 )
 
                 if response.status_code == 200:
                     apis = response.json()
                     matching_apis = [
-                        api for api in apis.values()
-                        if service_name.lower() in str(api).lower()
+                        api for api in apis.values() if service_name.lower() in str(api).lower()
                     ]
                     return {
                         "success": True,
                         "apis": matching_apis[:5],
                     }
-                else:
-                    return {"success": False, "error": "No se pudo acceder al API Hub"}
+                return {"success": False, "error": "No se pudo acceder al API Hub"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    async def generate_client(self, openapi_spec: Dict[str, Any], language: str = "python") -> Dict[str, Any]:
+    async def generate_client(
+        self, openapi_spec: dict[str, Any], language: str = "python"
+    ) -> dict[str, Any]:
         """Genera un cliente para una API basado en OpenAPI spec."""
         try:
             # Usar OpenAPI Generator
@@ -342,7 +347,7 @@ class ToolRegistry:
     """Registro central de herramientas disponibles."""
 
     def __init__(self):
-        self.tools: Dict[str, Any] = {
+        self.tools: dict[str, Any] = {
             "github": GitHubTool(),
             "docker": DockerTool(),
             "deployment": DeploymentTool(),
@@ -351,11 +356,11 @@ class ToolRegistry:
             "zapier": ZapierTool(),
         }
 
-    def get_tool(self, tool_name: str) -> Optional[Any]:
+    def get_tool(self, tool_name: str) -> Any | None:
         """Obtiene una herramienta por nombre."""
         return self.tools.get(tool_name)
 
-    def list_tools(self) -> List[str]:
+    def list_tools(self) -> list[str]:
         """Lista todas las herramientas disponibles."""
         return list(self.tools.keys())
 

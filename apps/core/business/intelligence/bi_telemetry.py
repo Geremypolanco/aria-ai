@@ -10,15 +10,13 @@ Data is persisted to Redis (30-day TTL) and queried via summary/report methods.
 Design: pull-based. Callers record_* after each operation; dashboard/API
 queries summary() or report(window_hours=24) on demand.
 """
+
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
 
 
 @dataclass
@@ -61,7 +59,7 @@ class WorkflowRecord:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "WorkflowRecord":
+    def from_dict(cls, d: dict) -> WorkflowRecord:
         return cls(
             workflow_id=d["workflow_id"],
             workflow_type=d.get("workflow_type", "unknown"),
@@ -96,9 +94,10 @@ class BITelemetry:
             return
         try:
             from apps.core.memory.redis_client import get_cache
+
             raw = await get_cache().get(self._REDIS_KEY)
             if raw and isinstance(raw, list):
-                self._workflows = [WorkflowRecord.from_dict(d) for d in raw[-self._MAX_IN_MEMORY:]]
+                self._workflows = [WorkflowRecord.from_dict(d) for d in raw[-self._MAX_IN_MEMORY :]]
         except Exception:
             pass
         self._loaded = True
@@ -106,7 +105,8 @@ class BITelemetry:
     async def _persist(self) -> None:
         try:
             from apps.core.memory.redis_client import get_cache
-            payload = [w.to_dict() for w in self._workflows[-self._MAX_IN_MEMORY:]]
+
+            payload = [w.to_dict() for w in self._workflows[-self._MAX_IN_MEMORY :]]
             await get_cache().set(self._REDIS_KEY, payload, ttl_seconds=60 * 60 * 24 * 30)
         except Exception:
             pass
@@ -122,8 +122,8 @@ class BITelemetry:
         cost_usd: float = 0.0,
         duration_ms: float = 0.0,
         success: bool = True,
-        tools_used: Optional[list[str]] = None,
-        workflow_id: Optional[str] = None,
+        tools_used: list[str] | None = None,
+        workflow_id: str | None = None,
     ) -> str:
         await self._ensure_loaded()
         rec = WorkflowRecord(
@@ -140,7 +140,7 @@ class BITelemetry:
         )
         self._workflows.append(rec)
         if len(self._workflows) > self._MAX_IN_MEMORY:
-            self._workflows = self._workflows[-self._MAX_IN_MEMORY:]
+            self._workflows = self._workflows[-self._MAX_IN_MEMORY :]
         await self._persist()
         return rec.workflow_id
 
@@ -159,7 +159,9 @@ class BITelemetry:
         total_profit = sum(w.profit_usd for w in window_wf)
         success_count = sum(1 for w in window_wf if w.success)
 
-        by_agent: dict[str, dict] = defaultdict(lambda: {"revenue": 0.0, "workflows": 0, "success": 0})
+        by_agent: dict[str, dict] = defaultdict(
+            lambda: {"revenue": 0.0, "workflows": 0, "success": 0}
+        )
         by_strategy: dict[str, dict] = defaultdict(lambda: {"revenue": 0.0, "workflows": 0})
         by_type: dict[str, dict] = defaultdict(lambda: {"revenue": 0.0, "workflows": 0})
         tool_revenue: dict[str, float] = defaultdict(float)
@@ -185,8 +187,14 @@ class BITelemetry:
             for aid, d in by_agent.items()
         }
 
-        top_agent = max(agent_productivity, key=lambda k: agent_productivity[k]["revenue"]) if agent_productivity else None
-        top_strategy = max(by_strategy, key=lambda k: by_strategy[k]["revenue"]) if by_strategy else None
+        top_agent = (
+            max(agent_productivity, key=lambda k: agent_productivity[k]["revenue"])
+            if agent_productivity
+            else None
+        )
+        top_strategy = (
+            max(by_strategy, key=lambda k: by_strategy[k]["revenue"]) if by_strategy else None
+        )
 
         return {
             "window_hours": window_hours,
@@ -200,9 +208,17 @@ class BITelemetry:
             "top_agent": top_agent,
             "top_strategy": top_strategy,
             "by_agent": agent_productivity,
-            "by_strategy": {k: {"revenue": round(v["revenue"], 2), "workflows": v["workflows"]} for k, v in by_strategy.items()},
-            "by_type": {k: {"revenue": round(v["revenue"], 2), "workflows": v["workflows"]} for k, v in by_type.items()},
-            "tool_revenue_attribution": {k: round(v, 2) for k, v in sorted(tool_revenue.items(), key=lambda x: -x[1])[:10]},
+            "by_strategy": {
+                k: {"revenue": round(v["revenue"], 2), "workflows": v["workflows"]}
+                for k, v in by_strategy.items()
+            },
+            "by_type": {
+                k: {"revenue": round(v["revenue"], 2), "workflows": v["workflows"]}
+                for k, v in by_type.items()
+            },
+            "tool_revenue_attribution": {
+                k: round(v, 2) for k, v in sorted(tool_revenue.items(), key=lambda x: -x[1])[:10]
+            },
         }
 
     def summary(self) -> dict:
@@ -219,7 +235,7 @@ class BITelemetry:
         }
 
 
-_bi: Optional[BITelemetry] = None
+_bi: BITelemetry | None = None
 
 
 def get_bi_telemetry() -> BITelemetry:

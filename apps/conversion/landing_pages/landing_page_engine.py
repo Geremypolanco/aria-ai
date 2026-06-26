@@ -3,15 +3,15 @@ ARIA AI — Landing Page Engine
 Phase 13: High-converting landing page generation with A/B variants,
 headline optimization, and conversion rate estimation.
 """
+
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from apps.core.memory.redis_client import get_cache
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 _KEY = "conversion:landing_pages:v1"
 _TTL = 86400 * 60
@@ -122,8 +122,16 @@ class LandingPageEngine:
                 content = resp.content
                 lines = [l.strip() for l in content.split("\n") if l.strip()]
                 page.headline = lines[0].replace("HEADLINE:", "").replace("Headline:", "").strip()
-                page.subheadline = lines[1].replace("SUBHEADLINE:", "").replace("Subheadline:", "").strip() if len(lines) > 1 else f"The fastest way for {target_audience} to {offer.lower()}"
-                page.hero_copy = " ".join(lines[2:4]) if len(lines) > 3 else f"Stop struggling. Start getting results with {product}."
+                page.subheadline = (
+                    lines[1].replace("SUBHEADLINE:", "").replace("Subheadline:", "").strip()
+                    if len(lines) > 1
+                    else f"The fastest way for {target_audience} to {offer.lower()}"
+                )
+                page.hero_copy = (
+                    " ".join(lines[2:4])
+                    if len(lines) > 3
+                    else f"Stop struggling. Start getting results with {product}."
+                )
                 page.social_proof = "Join 2,000+ customers who've transformed their results"
                 page.urgency_trigger = "Limited time: this offer ends at midnight"
                 page.cta_primary = f"Get {product} Now"
@@ -136,7 +144,9 @@ class LandingPageEngine:
         if not page.subheadline:
             page.subheadline = f"The proven system for {target_audience} to achieve results fast"
         if not page.hero_copy:
-            page.hero_copy = f"Most {target_audience} struggle with {product.lower()}. Not anymore. {offer}."
+            page.hero_copy = (
+                f"Most {target_audience} struggle with {product.lower()}. Not anymore. {offer}."
+            )
         if not page.bullet_points:
             page.bullet_points = [
                 f"Achieve {offer} faster than ever before",
@@ -155,8 +165,14 @@ class LandingPageEngine:
             page.cta_secondary = "See How It Works"
         if not page.faq:
             page.faq = [
-                {"q": "How fast will I see results?", "a": f"Most customers see results within 7 days of using {product}."},
-                {"q": "Is there a money-back guarantee?", "a": "Yes — 30-day no-questions-asked refund."},
+                {
+                    "q": "How fast will I see results?",
+                    "a": f"Most customers see results within 7 days of using {product}.",
+                },
+                {
+                    "q": "Is there a money-back guarantee?",
+                    "a": "Yes — 30-day no-questions-asked refund.",
+                },
                 {"q": "Who is this for?", "a": f"Designed specifically for {target_audience}."},
             ]
 
@@ -170,7 +186,9 @@ class LandingPageEngine:
         await self._save()
         return page
 
-    async def generate_headline_variants(self, product: str, audience: str, count: int = 5) -> list[str]:
+    async def generate_headline_variants(
+        self, product: str, audience: str, count: int = 5
+    ) -> list[str]:
         """AI generates multiple headline variants for A/B testing."""
         ai = get_ai_client()
         try:
@@ -211,7 +229,7 @@ class LandingPageEngine:
             bullet_points=original_page.bullet_points,
             social_proof=original_page.social_proof,
             urgency_trigger="Only 47 spots remaining at this price",
-            cta_primary=f"Start Your Free Trial",
+            cta_primary="Start Your Free Trial",
             cta_secondary="Watch Demo First",
             faq=original_page.faq,
             estimated_cvr_pct=original_page.estimated_cvr_pct * 1.1,
@@ -227,7 +245,9 @@ class LandingPageEngine:
         for p in self._pages:
             v = p.get("ab_variant", "A")
             by_variant[v] = by_variant.get(v, 0) + 1
-        avg_cvr = sum(p.get("estimated_cvr_pct", 0.0) for p in self._pages) / max(len(self._pages), 1)
+        avg_cvr = sum(p.get("estimated_cvr_pct", 0.0) for p in self._pages) / max(
+            len(self._pages), 1
+        )
         return {
             "total_pages": len(self._pages),
             "by_variant": by_variant,
@@ -239,7 +259,7 @@ class LandingPageEngine:
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_instance: Optional[LandingPageEngine] = None
+_instance: LandingPageEngine | None = None
 
 
 def get_landing_page_engine() -> LandingPageEngine:

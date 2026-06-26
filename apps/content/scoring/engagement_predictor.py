@@ -2,13 +2,13 @@
 Engagement prediction engine.
 Predicts views, engagement rate, and viral probability before publishing.
 """
+
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
-from apps.core.tools.ai_client import get_ai_client, AIModel
+from apps.core.tools.ai_client import get_ai_client
 
 logger = logging.getLogger("aria.content.scoring")
 
@@ -41,13 +41,30 @@ _BEST_TIMES: dict[str, str] = {
 # ── Emotional / high-engagement words ─────────────────────────────────────────
 
 _EMOTIONAL_WORDS = {
-    "amazing", "shocking", "secret", "proven", "guaranteed", "instantly",
-    "exclusive", "free", "powerful", "fail", "love", "hate", "fear",
-    "dream", "truth", "never", "always", "everybody", "nobody",
+    "amazing",
+    "shocking",
+    "secret",
+    "proven",
+    "guaranteed",
+    "instantly",
+    "exclusive",
+    "free",
+    "powerful",
+    "fail",
+    "love",
+    "hate",
+    "fear",
+    "dream",
+    "truth",
+    "never",
+    "always",
+    "everybody",
+    "nobody",
 }
 
 
 # ── Data models ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class EngagementPrediction:
@@ -79,6 +96,7 @@ class EngagementPrediction:
 
 # ── Main class ─────────────────────────────────────────────────────────────────
 
+
 class EngagementPredictor:
     """Predicts engagement metrics for content across platforms."""
 
@@ -103,7 +121,8 @@ class EngagementPredictor:
         emotional_hits = sum(1 for w in _EMOTIONAL_WORDS if w in content_lower)
         multiplier += emotional_hits * 0.05
         import re
-        number_count = len(re.findall(r'\b\d+\b', content))
+
+        number_count = len(re.findall(r"\b\d+\b", content))
         if number_count > 0:
             multiplier += 0.10
         word_count = len(content.split())
@@ -115,7 +134,9 @@ class EngagementPredictor:
         predicted_views = int(audience_size * (0.1 + engagement_rate))
         predicted_shares = int(predicted_views * engagement_rate * 0.3)
         predicted_comments = int(predicted_views * engagement_rate * 0.1)
-        audience_match_score = round(min(1.0, 0.5 + emotional_hits * 0.05 + (1 if number_count > 0 else 0) * 0.1), 3)
+        audience_match_score = round(
+            min(1.0, 0.5 + emotional_hits * 0.05 + (1 if number_count > 0 else 0) * 0.1), 3
+        )
 
         return EngagementPrediction(
             content_preview=content[:200],
@@ -152,7 +173,7 @@ class EngagementPredictor:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 
-_engagement_predictor_instance: Optional[EngagementPredictor] = None
+_engagement_predictor_instance: EngagementPredictor | None = None
 
 
 def get_engagement_predictor() -> EngagementPredictor:

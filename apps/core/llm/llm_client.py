@@ -2,9 +2,8 @@
 Thin shim so that `from apps.core.llm.llm_client import complete_json` works
 everywhere in the scheduler. Delegates to AIClient.complete_json.
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 _MODEL_MAP = {
     "fast": "fast",
@@ -20,9 +19,10 @@ async def complete_json(
     system: str = "You are a helpful AI assistant. Always return valid JSON only.",
     model: str = "fast",
     **kwargs,
-) -> Optional[dict]:
+) -> dict | None:
     """Complete an LLM call and return parsed JSON, or None on failure."""
-    from apps.core.tools.ai_client import get_ai_client, AIModel
+    from apps.core.tools.ai_client import AIModel, get_ai_client
+
     ai = get_ai_client()
     if ai is None:
         return None
