@@ -51,7 +51,15 @@ logger = logging.getLogger("aria.income_loop")
 INTERVAL_SECONDS = 1200  # 20 minutes between cycles (was 30)
 FIRST_RUN_DELAY = 45  # seconds after startup before first run
 ERROR_BACKOFF = 300  # 5 min backoff after errors
-MAX_STRATEGY_TIME = 240  # 4 min max per strategy (avoids blocking)
+MAX_STRATEGY_TIME = 300  # 5 min max per strategy (default)
+
+# Heavy strategies that need more time (LLM-intensive or multi-step)
+HEAVY_STRATEGY_TIMEOUT = 480  # 8 min for complex strategies
+HEAVY_STRATEGIES = frozenset({
+    "b2b_saas_pitch", "vc_pitch_deck", "course_builder", "micro_saas",
+    "white_label_kit", "saas_waitlist_blitz", "api_product_launch",
+    "chrome_extension_builder", "ebook_factory", "product_factory",
+})
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
@@ -407,9 +415,11 @@ class IncomeLoop:
         self._running = False
         self._task = None
         self._cycle = 0
+        self._successful_cycles = 0  # in-memory fallback counter
         self._niche_idx = 0  # Round-robin through niche catalog (loaded from Redis in first cycle)
         self._adaptive_weights: dict[str, float] = {}  # updated from Redis every 10 cycles
         self._weights_refresh_cycle = 0
+        self._last_result: CycleResult | None = None  # in-memory last result fallback
         # Thompson Sampling Bandit — learns which strategies perform best over time.
         # Base weights from STRATEGIES serve as Bayesian prior (domain knowledge).
         self._bandit = ThompsonBandit(
@@ -476,14 +486,15 @@ class IncomeLoop:
             summary="",
         )
 
+        strategy_timeout = HEAVY_STRATEGY_TIMEOUT if strategy in HEAVY_STRATEGIES else MAX_STRATEGY_TIME
         try:
-            obs = await asyncio.wait_for(self._execute(strategy), timeout=MAX_STRATEGY_TIME)
+            obs = await asyncio.wait_for(self._execute(strategy), timeout=strategy_timeout)
             result.success = obs.get("success", False)
             result.summary = obs.get("summary", "")
             result.revenue_potential = obs.get("revenue_potential", 0.0)
             result.urls_created = obs.get("urls", [])
         except TimeoutError:
-            result.summary = f"Strategy '{strategy}' timed out after {MAX_STRATEGY_TIME}s"
+            result.summary = f"Strategy '{strategy}' timed out after {strategy_timeout}s"
             logger.warning("[IncomeLoop] %s", result.summary)
         except Exception as exc:
             result.summary = f"Strategy '{strategy}' error: {str(exc)[:150]}"
@@ -9437,6 +9448,11 @@ JSON:
             pass
 
     async def _save_result(self, result: CycleResult) -> None:
+        # Always update in-memory counters first — Redis-independent, never fails
+        if result.success:
+            self._successful_cycles += 1
+        self._last_result = result
+
         try:
             from apps.core.memory.redis_client import get_cache
 
@@ -9468,7 +9484,7 @@ JSON:
                     for _ in result.urls_created:
                         await cache.increment("aria:income:total_urls_published")
         except Exception as exc:
-            logger.warning("[IncomeLoop] Redis save: %s", exc)
+            logger.error("[IncomeLoop] _save_result Redis error (in-memory fallback active): %s", exc)
 
     async def _save_error(self, error: str) -> None:
         try:
@@ -9709,6 +9725,16 @@ JSON:
         except Exception:
             pass
 
+        # In-memory fallback: use self._cycle / self._successful_cycles when Redis has no data
+        if total_cycles == 0 and self._cycle > 0:
+            total_cycles = self._cycle
+        if success_count == 0 and self._successful_cycles > 0:
+            success_count = self._successful_cycles
+        if not last_cycle_data and self._last_result is not None:
+            last_cycle_data = asdict(self._last_result)
+            if not recent_cycles:
+                recent_cycles = [last_cycle_data]
+
         return {
             "running": self.is_running,
             "total_cycles": total_cycles,
@@ -9752,6 +9778,14 @@ JSON:
                         pass
         except Exception:
             pass
+
+        # In-memory fallback when Redis has no data
+        if total_cycles == 0 and self._cycle > 0:
+            total_cycles = self._cycle
+            success_count_mem = self._successful_cycles
+            success_rate = (success_count_mem / total_cycles * 100) if total_cycles else 0
+        if not last_cycle and self._last_result is not None:
+            last_cycle = asdict(self._last_result)
 
         (
             INTERVAL_SECONDS - ((self._cycle * INTERVAL_SECONDS) % INTERVAL_SECONDS)
