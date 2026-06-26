@@ -1120,14 +1120,14 @@ JSON:
                 arts = [
                     {
                         "title": "How AI is Changing Small Business in 2026: 7 Real Examples",
-                        "body": f"# How AI is Changing Small Business in 2026: 7 Real Examples\n\n*Published {_today} by ARIA AI*\n\nSmall businesses that adopt AI tools in 2026 are seeing an average 3x improvement in productivity. Here are 7 concrete examples of how AI is transforming operations:\n\n## 1. Customer Service Automation\nAI chatbots now handle 70% of customer inquiries without human intervention, reducing support costs by up to 60%.\n\n## 2. Content Creation at Scale\nBusiness owners generate a month's worth of social media content in an afternoon using AI writing tools.\n\n## 3. Inventory Prediction\nML models predict stockouts 30 days in advance, reducing lost sales by 40%.\n\n## 4. Personalized Email Campaigns\nAI segments email lists and writes personalized copy, boosting open rates from 20% to 45%.\n\n## 5. Financial Forecasting\nSmall businesses use AI to forecast cash flow with 85% accuracy, avoiding overdrafts.\n\n## 6. Automated Lead Qualification\nAI scores and routes leads in real-time, increasing conversion rates by 35%.\n\n## 7. Dynamic Pricing\nE-commerce stores use AI to adjust prices based on demand, increasing margins by 15-25%.\n\n---\n*ARIA AI helps businesses automate income generation. Learn more at https://aria-ai.fly.dev/dashboard*",
+                        "body": f"# How AI is Changing Small Business in 2026: 7 Real Examples\n\n*Published {_today} by ARIA AI*\n\nSmall businesses that adopt AI tools in 2026 are seeing an average 3x improvement in productivity. Here are 7 concrete examples of how AI is transforming operations:\n\n## 1. Customer Service Automation\nAI chatbots now handle 70% of customer inquiries without human intervention, reducing support costs by up to 60%.\n\n## 2. Content Creation at Scale\nBusiness owners generate a month's worth of social media content in an afternoon using AI writing tools.\n\n## 3. Inventory Prediction\nML models predict stockouts 30 days in advance, reducing lost sales by 40%.\n\n## 4. Personalized Email Campaigns\nAI segments email lists and writes personalized copy, boosting open rates from 20% to 45%.\n\n## 5. Financial Forecasting\nSmall businesses use AI to forecast cash flow with 85% accuracy, avoiding overdrafts.\n\n## 6. Automated Lead Qualification\nAI scores and routes leads in real-time, increasing conversion rates by 35%.\n\n## 7. Dynamic Pricing\nE-commerce stores use AI to adjust prices based on demand, increasing margins by 15-25%.\n\n---\n*ARIA AI helps businesses automate income generation. Learn more at https://aria-ai.fly.dev*",
                         "body_markdown": "",
                         "tags": ["AI", "business", "automation", "productivity"],
                         "urls": [],
                     },
                     {
                         "title": "The 5 AI Income Strategies That Are Actually Working in 2026",
-                        "body": f"# The 5 AI Income Strategies That Are Actually Working in 2026\n\n*Published {_today} by ARIA AI*\n\nAfter analyzing 1,000+ AI-powered businesses, these are the income strategies generating real results in 2026:\n\n## 1. Digital Products Created by AI\nTools like Gumroad + AI allow creators to publish 10x more products. Top sellers earn $5K-$50K/month.\n\n## 2. AI-Written Content Farms\nNiche blogs written entirely by AI rank on Google and generate $500-$5,000/month in ad revenue per site.\n\n## 3. Automated Affiliate Marketing\nAI writes comparison articles targeting buyer keywords. Commission rates average 8-30% per sale.\n\n## 4. AI SaaS Products\nOne-person companies build AI-powered SaaS tools and charge $29-$299/month subscriptions.\n\n## 5. Prompt Engineering Services\nSpecialists charge $50-$200/hour to optimize AI workflows for businesses.\n\n## Getting Started\nThe best strategy for most people: start with digital products. AI handles the creation, you focus on marketing.\n\n---\n*ARIA AI automates all of the above autonomously. See it live: https://aria-ai.fly.dev/dashboard*",
+                        "body": f"# The 5 AI Income Strategies That Are Actually Working in 2026\n\n*Published {_today} by ARIA AI*\n\nAfter analyzing 1,000+ AI-powered businesses, these are the income strategies generating real results in 2026:\n\n## 1. Digital Products Created by AI\nTools like Gumroad + AI allow creators to publish 10x more products. Top sellers earn $5K-$50K/month.\n\n## 2. AI-Written Content Farms\nNiche blogs written entirely by AI rank on Google and generate $500-$5,000/month in ad revenue per site.\n\n## 3. Automated Affiliate Marketing\nAI writes comparison articles targeting buyer keywords. Commission rates average 8-30% per sale.\n\n## 4. AI SaaS Products\nOne-person companies build AI-powered SaaS tools and charge $29-$299/month subscriptions.\n\n## 5. Prompt Engineering Services\nSpecialists charge $50-$200/hour to optimize AI workflows for businesses.\n\n## Getting Started\nThe best strategy for most people: start with digital products. AI handles the creation, you focus on marketing.\n\n---\n*ARIA AI automates all of the above autonomously. See it live: https://aria-ai.fly.dev*",
                         "body_markdown": "",
                         "tags": ["AI", "income", "passive income", "side hustle"],
                         "urls": [],
@@ -1343,7 +1343,7 @@ JSON:
                                 "".join(c for c in _rn_cp if c.isalnum() or c == "-")[:22]
                                 + f"-{_week_cp}-art"
                             )
-                            _readme_cp = f"---\ntitle: {_t_cp}\ntags:\n- article\n- AI\n---\n\n{_b_cp}\n\n---\n*Published by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                            _readme_cp = f"---\ntitle: {_t_cp}\ntags:\n- article\n- AI\n---\n\n{_b_cp}\n\n---\n*Published by [ARIA AI](https://aria-ai.fly.dev)*"
                             _cr_cp = await _hfc.post(
                                 "https://huggingface.co/api/repos/create",
                                 headers={
@@ -2230,8 +2230,8 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                             if _nr_deliverables
                             else ""
                         )
-                        + "## Book a Project\n\nVisit [ARIA AI Dashboard](https://aria-ai.fly.dev/dashboard) to get started.\n\n"
-                        + "---\n*Service powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                        + "## Book a Project\n\nVisit [ARIA AI Dashboard](https://aria-ai.fly.dev) to get started.\n\n"
+                        + "---\n*Service powered by [ARIA AI](https://aria-ai.fly.dev)*"
                     )
                     async with _hf_nr_http.AsyncClient(timeout=20.0) as _hnr:
                         _cr_nr = await _hnr.post(
@@ -2623,7 +2623,7 @@ Output JSON:
                             if product_data.get("table_of_contents")
                             else ""
                         )
-                        + "---\n*Digital product by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                        + "---\n*Digital product by [ARIA AI](https://aria-ai.fly.dev)*"
                     )
                     async with _hf_pf_http.AsyncClient(timeout=20.0) as _hpf:
                         _cr_pf = await _hpf.post(
@@ -2931,7 +2931,7 @@ Output JSON:
                 "✅ Writes content, creates products, runs campaigns autonomously\n"
                 "✅ Connects to 40+ platforms (Shopify, Slack, Google, Stripe...)\n"
                 "✅ Income loop runs non-stop while you sleep\n\n"
-                "DM me to learn more or visit https://aria-ai.fly.dev/dashboard"
+                "DM me to learn more or visit https://aria-ai.fly.dev"
             )[:280]
             _promo_sent = 0
             try:
@@ -3424,7 +3424,7 @@ JSON:
                         .replace("</p>", "\n\n")
                         .replace("<strong>", "**")
                         .replace("</strong>", "**")
-                        + "\n\n---\n\n*Digital product powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*\n"
+                        + "\n\n---\n\n*Digital product powered by [ARIA AI](https://aria-ai.fly.dev)*\n"
                     )
                     async with _hf_http.AsyncClient(timeout=20.0) as _hc:
                         # Create repo (Space)
@@ -3824,7 +3824,7 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
                         f"# {_ef_title}\n\n**{ebook.get('subtitle', '')}**\n\n"
                         f"**Price: ${_ef_price:.2f}** | Instant Download\n\n"
                         f"{full_description}\n\n---\n\n{ebook_content_md[:8000]}\n\n"
-                        f"---\n*Ebook published by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                        f"---\n*Ebook published by [ARIA AI](https://aria-ai.fly.dev)*"
                     )
                     async with _hf_ef_http.AsyncClient(timeout=20.0) as _hef:
                         _cr_ef = await _hef.post(
@@ -6514,7 +6514,7 @@ JSON:
                             "7/10 Email list monetization. AI writes sequences, nurtures subscribers, sells products. $1 per subscriber per month is the benchmark.",
                             "8/10 Freelance arbitrage. Charge $500 for work. AI does it in 20 min. Pocket the difference. Scale to 10 clients.",
                             "9/10 Data products. AI scrapes, analyzes, packages insights. Sell reports to businesses at $97–$497 each.",
-                            "10/10 The compounding effect: every AI income stream you build adds to the last. Start one this week. → https://aria-ai.fly.dev/dashboard",
+                            "10/10 The compounding effect: every AI income stream you build adds to the last. Start one this week. → https://aria-ai.fly.dev",
                         ],
                     },
                     {
@@ -6529,7 +6529,7 @@ JSON:
                             "7/10 It A/B tests prices and descriptions to maximize conversion rates automatically.",
                             "8/10 It sends email campaigns to subscribers promoting relevant products at the right time.",
                             "9/10 It tracks all revenue, adjusts strategy based on what's working, and doubles down.",
-                            "10/10 Total cost to run: ~$0/month using free AI APIs. This is ARIA — the income loop I built: https://aria-ai.fly.dev/dashboard",
+                            "10/10 Total cost to run: ~$0/month using free AI APIs. This is ARIA — the income loop I built: https://aria-ai.fly.dev",
                         ],
                     },
                     {
@@ -6544,7 +6544,7 @@ JSON:
                             "7/10 SEO: AI-written blog posts targeting long-tail keywords. Ranks in 3-6 months. Passive traffic forever.",
                             "8/10 ANALYTICS: GA4 free. AI interprets the data and suggests what to build next.",
                             "9/10 Total monthly cost: $0 to start. Total time: 2 hours to set up. Then the machines run it.",
-                            "10/10 I open-sourced my implementation. DM me or visit: https://aria-ai.fly.dev/dashboard to see it live.",
+                            "10/10 I open-sourced my implementation. DM me or visit: https://aria-ai.fly.dev to see it live.",
                         ],
                     },
                 ]
