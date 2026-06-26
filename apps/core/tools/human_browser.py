@@ -1076,6 +1076,129 @@ class PlatformLogin:
             logger.warning("[HumanBrowser] LinkedIn create_post failed: %s", exc)
             return ""
 
+    async def linkedin_send_dm(
+        self,
+        page: HumanPage,
+        message: str,
+        profile_url: str = "",
+        search_query: str = "",
+    ) -> bool:
+        """
+        Send a LinkedIn direct message to a 1st-degree connection.
+
+        Locates the recipient either by an explicit ``profile_url`` or by running a
+        people search for ``search_query`` (e.g. "Jane Doe Acme Inc") and opening the
+        first result. Then opens the Message composer, types the DM, and sends it.
+
+        Returns True only if the message was actually sent. Must call ``linkedin()``
+        first to obtain an authenticated page. Designed to fail soft — LinkedIn's DOM
+        shifts often, so every step has fallback selectors and the method returns
+        False rather than raising.
+        """
+        try:
+            # 1. Navigate to the recipient's profile
+            if profile_url and "linkedin.com/in/" in profile_url:
+                await page.goto(profile_url)
+                await page._random_pause("read")
+            elif search_query:
+                from urllib.parse import quote_plus
+
+                await page.goto(
+                    f"https://www.linkedin.com/search/results/people/?keywords={quote_plus(search_query)}"
+                )
+                await page._random_pause("read")
+                # Open the first person result
+                opened = False
+                for sel in [
+                    "span.entity-result__title-text a.app-aware-link",
+                    "a.app-aware-link[href*='/in/']",
+                    "div.entity-result__title-text a",
+                ]:
+                    try:
+                        await page.click(sel)
+                        opened = True
+                        break
+                    except Exception:
+                        continue
+                if not opened:
+                    logger.warning(
+                        "[HumanBrowser] LinkedIn DM: no search result for %s", search_query
+                    )
+                    return False
+                await page._random_pause("read")
+            else:
+                logger.warning("[HumanBrowser] LinkedIn DM: no profile_url or search_query given")
+                return False
+
+            # 2. Click the "Message" button on the profile
+            msg_opened = False
+            for sel in [
+                "button[aria-label^='Message']",
+                "a[aria-label^='Message']",
+                "button.message-anywhere-button",
+                "div.pvs-profile-actions button:has-text('Message')",
+                "button:has-text('Message')",
+            ]:
+                try:
+                    await page.click(sel)
+                    msg_opened = True
+                    break
+                except Exception:
+                    continue
+            if not msg_opened:
+                logger.warning(
+                    "[HumanBrowser] LinkedIn DM: Message button not found (maybe not connected)"
+                )
+                return False
+            await page._random_pause("action")
+
+            # 3. Type into the message composer (contenteditable)
+            typed = False
+            for sel in [
+                "div.msg-form__contenteditable[contenteditable='true']",
+                "div[aria-label='Write a message…']",
+                "div[contenteditable='true'][role='textbox']",
+                "div.msg-form__contenteditable",
+            ]:
+                try:
+                    await page.click(sel)
+                    await page._random_pause("action")
+                    await page.type_human(sel, message[:1900])
+                    typed = True
+                    break
+                except Exception:
+                    continue
+            if not typed:
+                logger.warning("[HumanBrowser] LinkedIn DM: composer not found")
+                return False
+            await page._random_pause("think")
+
+            # 4. Click Send
+            sent = False
+            for sel in [
+                "button.msg-form__send-button",
+                "button[type='submit'].msg-form__send-button",
+                "button:has-text('Send')",
+            ]:
+                try:
+                    await page.click(sel)
+                    sent = True
+                    break
+                except Exception:
+                    continue
+            if not sent:
+                logger.warning("[HumanBrowser] LinkedIn DM: Send button not found")
+                return False
+
+            await page._random_pause("navigate")
+            await asyncio.sleep(2)
+            await page.save_session()
+            logger.info("[HumanBrowser] LinkedIn DM sent successfully")
+            return True
+        except Exception as exc:
+            logger.warning("[HumanBrowser] LinkedIn send_dm failed: %s", exc)
+            return False
+
     async def hashnode_publish_article(
         self,
         email: str,
