@@ -19204,16 +19204,35 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                     "revenue_potential": 0.0,
                 }
 
-            # ── Load CRM pipeline ─────────────────────────────────────────────
-            crm_raw = await cache.get("aria:crm:pipeline")
-            pipeline = _json.loads(crm_raw) if crm_raw else {}
+            # ── Load CRM pipeline (supports both list and legacy dict formats) ─
             now_ts = _dt.datetime.utcnow()
+            pipeline: dict = {}
+
+            # Primary: list-based pipeline (populated by proactive_client_finder)
+            try:
+                list_raw = await cache.lrange("aria:crm:pipeline", -100, -1)
+                if list_raw:
+                    for idx, item in enumerate(list_raw):
+                        try:
+                            lead = _json.loads(item) if isinstance(item, str) else item
+                            key = lead.get("email") or f"lead_{idx}"
+                            if key not in pipeline:
+                                pipeline[key] = lead
+                        except Exception:
+                            pass
+            except Exception:
+                # Fallback: legacy dict format via GET
+                try:
+                    crm_raw = await cache.get("aria:crm:pipeline")
+                    if crm_raw:
+                        pipeline = _json.loads(crm_raw)
+                except Exception:
+                    pass
 
             if not pipeline:
-                # No leads yet — run outreach to get some
                 return {
                     "success": True,
-                    "summary": "lead_closer: no leads in pipeline yet — run partner_outreach or cold_email_outreach first",
+                    "summary": "lead_closer: no leads in pipeline yet — proactive_client_finder or cold_email_outreach will populate it",
                     "revenue_potential": 0.0,
                 }
 
@@ -19239,10 +19258,11 @@ Generate 5 specific influencer profiles to target and a compelling pitch email o
                     continue  # too early to follow up
 
                 # ── Generate personalized follow-up ───────────────────────────
-                name = lead.get("name", "there")
+                # Support both old format (name/deal_value_usd) and new (contact/deal_value)
+                name = lead.get("contact") or lead.get("name") or "there"
                 company = lead.get("company", "")
                 last_context = lead.get("last_message", "")
-                deal_value = float(lead.get("deal_value_usd", 200))
+                deal_value = float(lead.get("deal_value") or lead.get("deal_value_usd") or 500)
 
                 follow_up = await complete_json(
                     system="You are ARIA, an autonomous AI sales assistant. Write follow-up messages that close deals. Return JSON: {subject: str, email_body: str (120 words, personal and direct), call_to_action: str}",
