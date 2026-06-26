@@ -55,11 +55,20 @@ MAX_STRATEGY_TIME = 300  # 5 min max per strategy (default)
 
 # Heavy strategies that need more time (LLM-intensive or multi-step)
 HEAVY_STRATEGY_TIMEOUT = 480  # 8 min for complex strategies
-HEAVY_STRATEGIES = frozenset({
-    "b2b_saas_pitch", "vc_pitch_deck", "course_builder", "micro_saas",
-    "white_label_kit", "saas_waitlist_blitz", "api_product_launch",
-    "chrome_extension_builder", "ebook_factory", "product_factory",
-})
+HEAVY_STRATEGIES = frozenset(
+    {
+        "b2b_saas_pitch",
+        "vc_pitch_deck",
+        "course_builder",
+        "micro_saas",
+        "white_label_kit",
+        "saas_waitlist_blitz",
+        "api_product_launch",
+        "chrome_extension_builder",
+        "ebook_factory",
+        "product_factory",
+    }
+)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
@@ -486,7 +495,9 @@ class IncomeLoop:
             summary="",
         )
 
-        strategy_timeout = HEAVY_STRATEGY_TIMEOUT if strategy in HEAVY_STRATEGIES else MAX_STRATEGY_TIME
+        strategy_timeout = (
+            HEAVY_STRATEGY_TIMEOUT if strategy in HEAVY_STRATEGIES else MAX_STRATEGY_TIME
+        )
         try:
             obs = await asyncio.wait_for(self._execute(strategy), timeout=strategy_timeout)
             result.success = obs.get("success", False)
@@ -9484,7 +9495,9 @@ JSON:
                     for _ in result.urls_created:
                         await cache.increment("aria:income:total_urls_published")
         except Exception as exc:
-            logger.error("[IncomeLoop] _save_result Redis error (in-memory fallback active): %s", exc)
+            logger.error(
+                "[IncomeLoop] _save_result Redis error (in-memory fallback active): %s", exc
+            )
 
     async def _save_error(self, error: str) -> None:
         try:
