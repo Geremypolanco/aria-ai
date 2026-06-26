@@ -423,11 +423,48 @@ footer a{color:var(--primary-light)}
 </section>
 
 <!-- FINAL CTA -->
-<section class="cta-section">
+<section class="cta-section" id="start">
   <h2>Stop waiting for clients.<br>Start your autonomous revenue engine today.</h2>
-  <p>Join the first wave of businesses using AI that actually earns.</p>
-  <a href="https://aria-ai.fly.dev" class="btn-primary" style="font-size:1.1em;padding:18px 48px">Launch ARIA Free for 7 Days →</a>
+  <p>Enter your email and ARIA will reach out within 24 hours with a personalized growth plan.</p>
+  <form id="lead-form" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;max-width:560px;margin:0 auto" onsubmit="submitLead(event)">
+    <input type="text" name="name" placeholder="Your name" required style="padding:14px 20px;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;border-radius:8px;font-size:1em;flex:1;min-width:180px">
+    <input type="email" name="email" placeholder="your@email.com" required style="padding:14px 20px;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;border-radius:8px;font-size:1em;flex:1;min-width:220px">
+    <button type="submit" class="btn-primary" style="font-size:1em;padding:14px 28px;border:none;cursor:pointer">Get My Growth Plan →</button>
+  </form>
+  <p id="lead-status" style="margin-top:16px;font-size:.9em;min-height:1.4em"></p>
 </section>
+<script>
+async function submitLead(e) {
+  e.preventDefault();
+  const form = e.target;
+  const status = document.getElementById('lead-status');
+  const data = {
+    name: form.name.value,
+    email: form.email.value,
+    source: 'landing_page'
+  };
+  status.textContent = 'Sending...';
+  try {
+    const resp = await fetch('https://aria-ai.fly.dev/api/webhooks/lead', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+    if (result.success) {
+      status.style.color = '#10b981';
+      status.textContent = '✓ Got it! Check your inbox — ARIA is preparing your personalized plan.';
+      form.reset();
+    } else {
+      status.style.color = '#f59e0b';
+      status.textContent = 'Something went wrong. Try emailing support@aria-ai.fly.dev directly.';
+    }
+  } catch {
+    status.style.color = '#f59e0b';
+    status.textContent = 'Network error. Try again or email support@aria-ai.fly.dev';
+  }
+}
+</script>
 
 <footer>
   <p>© 2025 ARIA AI · <a href="https://aria-ai.fly.dev">aria-ai.fly.dev</a> · <a href="mailto:support@aria-ai.fly.dev">support@aria-ai.fly.dev</a></p>

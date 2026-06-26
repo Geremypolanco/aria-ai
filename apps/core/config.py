@@ -180,6 +180,8 @@ class Settings(BaseSettings):
     # ── COMUNICACIÓN ──────────────────────────────────────
     TWILIO_ACCOUNT_SID: str | None = None
     TWILIO_AUTH_TOKEN: str | None = None
+    TWILIO_FROM: str | None = None  # Twilio phone number, e.g. +12025551234
+    MAILCHIMP_LIST_ID: str | None = None  # Mailchimp audience/list ID for email capture
 
     # ── API PÚBLICA ───────────────────────────────────────
     ARIA_API_KEY: str | None = None
