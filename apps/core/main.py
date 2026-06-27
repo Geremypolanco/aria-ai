@@ -1379,6 +1379,82 @@ def _paypal_me_link(tier: str) -> str | None:
     return f"https://www.paypal.com/paypalme/{_ARIA_PAYPAL_ME}/{dollars}USD"
 
 
+# PayPal REST API (Orders v2) — uses PAYPAL_CLIENT_ID + PAYPAL_SECRET secrets.
+# Default to live; set PAYPAL_ENV=sandbox to test against sandbox credentials.
+_PAYPAL_BASE = (
+    "https://api-m.sandbox.paypal.com"
+    if (os.getenv("PAYPAL_ENV") or "live").lower() == "sandbox"
+    else "https://api-m.paypal.com"
+)
+
+
+async def _paypal_token() -> str | None:
+    """Fetch a PayPal OAuth access token from client credentials. None if unset/failed."""
+    cid = getattr(settings, "PAYPAL_CLIENT_ID", None)
+    secret = getattr(settings, "PAYPAL_SECRET", None)
+    if not cid or not secret:
+        return None
+    try:
+        import httpx as _hx
+
+        async with _hx.AsyncClient(timeout=20) as hc:
+            r = await hc.post(
+                f"{_PAYPAL_BASE}/v1/oauth2/token",
+                data={"grant_type": "client_credentials"},
+                auth=(cid, secret),
+                headers={"Accept": "application/json"},
+            )
+            if r.status_code == 200:
+                return r.json().get("access_token")
+            logger.warning("[paypal] token failed: %s %s", r.status_code, r.text[:200])
+    except Exception as exc:
+        logger.warning("[paypal] token error: %s", exc)
+    return None
+
+
+async def _create_paypal_order(tier: str) -> str | None:
+    """Create a PayPal order for a tier and return the buyer approval URL (or None)."""
+    if tier not in _ARIA_TIERS:
+        return None
+    token = await _paypal_token()
+    if not token:
+        return None
+    dollars = _ARIA_TIERS[tier][2]
+    label = _ARIA_TIERS[tier][1]
+    try:
+        import httpx as _hx
+
+        async with _hx.AsyncClient(timeout=20) as hc:
+            r = await hc.post(
+                f"{_PAYPAL_BASE}/v2/checkout/orders",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={
+                    "intent": "CAPTURE",
+                    "purchase_units": [
+                        {
+                            "amount": {"currency_code": "USD", "value": f"{dollars}.00"},
+                            "description": label[:127],
+                        }
+                    ],
+                    "application_context": {
+                        "brand_name": "ARIA AI",
+                        "user_action": "PAY_NOW",
+                        "return_url": f"https://aria-ai.fly.dev/paypal/capture?tier={tier}",
+                        "cancel_url": "https://aria-ai.fly.dev/?paypal=cancelled",
+                    },
+                },
+            )
+            if r.status_code in (200, 201):
+                for link in r.json().get("links", []):
+                    if link.get("rel") in ("approve", "payer-action"):
+                        return link.get("href")
+            else:
+                logger.warning("[paypal] create order failed: %s %s", r.status_code, r.text[:200])
+    except Exception as exc:
+        logger.warning("[paypal] create order error: %s", exc)
+    return None
+
+
 async def _get_or_create_stripe_link(tier: str) -> str | None:
     """
     Return a live Stripe payment-link URL for a tier, creating it on first use.
@@ -1462,18 +1538,105 @@ async def subscribe_redirect(tier: str):
     if tier not in _ARIA_TIERS:
         return RedirectResponse(url="https://aria-ai.fly.dev", status_code=302)
 
-    # 1. Real PayPal payment (preferred — accepts real money with no secret key)
-    paypal = _paypal_me_link(tier)
-    if paypal:
-        return RedirectResponse(url=paypal, status_code=302)
+    # 1. Real PayPal checkout via the REST API (PAYPAL_CLIENT_ID/SECRET configured)
+    paypal_order = await _create_paypal_order(tier)
+    if paypal_order:
+        return RedirectResponse(url=paypal_order, status_code=302)
 
-    # 2. Live Stripe checkout (created + cached on first use)
+    # 2. PayPal.Me link (if a public handle is configured)
+    paypal_me = _paypal_me_link(tier)
+    if paypal_me:
+        return RedirectResponse(url=paypal_me, status_code=302)
+
+    # 3. Live Stripe checkout (created + cached on first use)
     link = await _get_or_create_stripe_link(tier)
     if link:
         return RedirectResponse(url=link, status_code=302)
 
-    # 3. No live payment rail → lead-capture landing (served by this app)
+    # 4. No live payment rail → lead-capture landing (served by this app)
     return RedirectResponse(url=f"/?plan={tier}", status_code=302)
+
+
+@app.get("/paypal/capture", response_class=HTMLResponse)
+async def paypal_capture(token: str = "", tier: str = ""):
+    """
+    PayPal return URL — captures the approved order so the money actually moves,
+    records the sale, and shows the buyer a confirmation. ``token`` is the PayPal
+    order id appended by PayPal on redirect.
+    """
+    captured = False
+    amount = 0
+    if token:
+        access = await _paypal_token()
+        if access:
+            with contextlib.suppress(Exception):
+                import httpx as _hx
+
+                async with _hx.AsyncClient(timeout=20) as hc:
+                    r = await hc.post(
+                        f"{_PAYPAL_BASE}/v2/checkout/orders/{token}/capture",
+                        headers={
+                            "Authorization": f"Bearer {access}",
+                            "Content-Type": "application/json",
+                        },
+                    )
+                    if r.status_code in (200, 201):
+                        data = r.json()
+                        captured = data.get("status") == "COMPLETED"
+                        with contextlib.suppress(Exception):
+                            cap = data["purchase_units"][0]["payments"]["captures"][0]
+                            amount = float(cap["amount"]["value"])
+
+    # Record the real sale + alert the owner
+    if captured:
+        with contextlib.suppress(Exception):
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if cache:
+                import json as _json
+                import time as _time
+
+                await cache.rpush(
+                    "aria:crm:subscribers",
+                    _json.dumps(
+                        {
+                            "plan": tier,
+                            "amount": amount,
+                            "rail": "paypal",
+                            "order": token,
+                            "ts": _time.time(),
+                        }
+                    ),
+                )
+                await cache.increment("aria:revenue:paypal_total")
+        with contextlib.suppress(Exception):
+            from apps.core.tools.telegram_bot import get_bot
+
+            await get_bot().notify_owner(
+                f"💰 <b>REAL PAYMENT RECEIVED!</b>\n\n"
+                f"Plan: <b>{tier.title()}</b>\nAmount: <b>${amount:.2f}</b>\n"
+                f"Rail: PayPal\nOrder: {token}",
+                already_html=True,
+            )
+
+    if captured:
+        return HTMLResponse(
+            f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Thank you — ARIA AI</title>
+<style>body{{font-family:-apple-system,Inter,sans-serif;max-width:560px;margin:8vh auto;padding:0 1.25rem;text-align:center;color:#1a1a2e}}
+.card{{background:#f0fdf4;border:1px solid #86efac;border-radius:16px;padding:2.5rem}}h1{{color:#16a34a}}a{{color:#4f46e5}}</style></head>
+<body><div class="card"><h1>✅ Payment received — thank you!</h1>
+<p>Your <b>ARIA {tier.title()}</b> plan is active. We'll be in touch at the email on your PayPal account with next steps.</p>
+<p><a href="https://aria-ai.fly.dev">← Back to ARIA</a></p></div></body></html>"""
+        )
+    return HTMLResponse(
+        """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Payment status — ARIA AI</title></head>
+<body style="font-family:sans-serif;max-width:560px;margin:8vh auto;text-align:center">
+<h2>We couldn't confirm your payment yet</h2>
+<p>If you completed checkout, it may still be processing. Questions? Reply to your PayPal receipt.</p>
+<p><a href="https://aria-ai.fly.dev">← Back to ARIA</a></p></body></html>""",
+        status_code=200,
+    )
 
 
 @app.post("/telegram/webhook")
