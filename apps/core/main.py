@@ -1388,6 +1388,49 @@ _PAYPAL_BASE = (
 )
 
 
+async def _paypal_token_for(base: str) -> tuple[int, str | None]:
+    """Try to get a PayPal token from a specific base URL. Returns (status, token|None)."""
+    cid = getattr(settings, "PAYPAL_CLIENT_ID", None)
+    secret = getattr(settings, "PAYPAL_SECRET", None)
+    if not cid or not secret:
+        return (0, None)
+    try:
+        import httpx as _hx
+
+        async with _hx.AsyncClient(timeout=20) as hc:
+            r = await hc.post(
+                f"{base}/v1/oauth2/token",
+                data={"grant_type": "client_credentials"},
+                auth=(cid, secret),
+                headers={"Accept": "application/json"},
+            )
+            return (r.status_code, r.json().get("access_token") if r.status_code == 200 else None)
+    except Exception:
+        return (-1, None)
+
+
+@app.get("/paypal/diag")
+async def paypal_diag():
+    """Diagnose which PayPal environment the configured credentials belong to.
+
+    Exposes NO secret values — only presence booleans and token HTTP statuses, so it
+    is safe to hit publicly while wiring up payments.
+    """
+    cid = getattr(settings, "PAYPAL_CLIENT_ID", None)
+    secret = getattr(settings, "PAYPAL_SECRET", None)
+    live_status, live_tok = await _paypal_token_for("https://api-m.paypal.com")
+    sand_status, sand_tok = await _paypal_token_for("https://api-m.sandbox.paypal.com")
+    works = "live" if live_tok else ("sandbox" if sand_tok else "none")
+    return {
+        "client_id_present": bool(cid),
+        "secret_present": bool(secret),
+        "live_token_status": live_status,
+        "sandbox_token_status": sand_status,
+        "credentials_work_in": works,
+        "active_base": _PAYPAL_BASE,
+    }
+
+
 async def _paypal_token() -> str | None:
     """Fetch a PayPal OAuth access token from client credentials. None if unset/failed."""
     cid = getattr(settings, "PAYPAL_CLIENT_ID", None)
