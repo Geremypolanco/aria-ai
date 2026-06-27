@@ -1566,6 +1566,34 @@ async def _get_or_create_stripe_link(tier: str) -> str | None:
         return None
 
 
+@app.get("/stripe/diag")
+async def stripe_diag():
+    """Report whether the configured Stripe key is live or test mode (no secret exposed)."""
+    key = getattr(settings, "STRIPE_SECRET_KEY", None) or ""
+    if key.startswith(("sk_live_", "rk_live_")):
+        mode = "live"
+    elif key.startswith(("sk_test_", "rk_test_")):
+        mode = "test"
+    else:
+        mode = "unknown_or_missing"
+
+    api_status = 0
+    if key:
+        with contextlib.suppress(Exception):
+            import httpx as _hx
+
+            async with _hx.AsyncClient(timeout=15) as hc:
+                r = await hc.get("https://api.stripe.com/v1/balance", auth=(key, ""))
+                api_status = r.status_code
+
+    return {
+        "stripe_key_present": bool(key),
+        "stripe_key_mode": mode,
+        "stripe_api_status": api_status,
+        "accepts_real_money": mode == "live",
+    }
+
+
 @app.get("/subscribe/{tier}")
 async def subscribe_redirect(tier: str):
     """
