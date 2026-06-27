@@ -1358,6 +1358,14 @@ _ARIA_TIERS = {
     "agency": (49700, "ARIA Agency — $497/mo", 497),
 }
 
+# LIVE Stripe payment links (account "Aria_AI", livemode) — real money, real cards.
+# Created via the live Stripe connector; these take priority over any test-mode key.
+_ARIA_STRIPE_LINKS = {
+    "starter": "https://buy.stripe.com/3cIaEXeRn3bTa2N1KLdQQ01",
+    "pro": "https://buy.stripe.com/fZu00j9x38wdej3fBBdQQ00",
+    "agency": "https://buy.stripe.com/bJe4gzgZv6o5grb4WXdQQ02",
+}
+
 # Public PayPal.Me handle for real payments (no API/secret needed — the handle is
 # a public payment link). Set via the PAYPAL_ME_HANDLE env/secret, e.g. "geremypolanco"
 # so /subscribe/{tier} sends buyers straight to paypal.me/<handle>/<amount>USD.
@@ -1608,6 +1616,10 @@ async def subscribe_redirect(tier: str):
     tier = (tier or "").lower().strip()
     if tier not in _ARIA_TIERS:
         return RedirectResponse(url="https://aria-ai.fly.dev", status_code=302)
+
+    # 0. LIVE Stripe payment link (real money — highest priority)
+    if _ARIA_STRIPE_LINKS.get(tier):
+        return RedirectResponse(url=_ARIA_STRIPE_LINKS[tier], status_code=302)
 
     # 1. Real PayPal checkout via the REST API (PAYPAL_CLIENT_ID/SECRET configured)
     paypal_order = await _create_paypal_order(tier)
