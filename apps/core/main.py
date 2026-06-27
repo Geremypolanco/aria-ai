@@ -1439,6 +1439,40 @@ async def paypal_diag():
     }
 
 
+# Digital product delivery — buyers are redirected here by Stripe after payment.
+# Keys are non-obvious so the files aren't casually shareable; pages are noindex.
+_PRODUCT_FILES = {
+    "ai-prompts-x7k2q9": "200-ai-prompts.html",
+    "playbook-m4p8w1c5": "ai-automation-playbook.html",
+}
+
+
+@app.get("/access/{key}", response_class=HTMLResponse)
+async def product_access(key: str):
+    """Serve a purchased digital product. Linked only from the post-payment redirect."""
+    import pathlib
+
+    fname = _PRODUCT_FILES.get(key)
+    if not fname:
+        return HTMLResponse("<h2>Invalid or expired download link.</h2>", status_code=404)
+    for base in (
+        pathlib.Path("/app/docs/products"),
+        pathlib.Path(__file__).resolve().parents[2] / "docs" / "products",
+    ):
+        f = base / fname
+        try:
+            if f.is_file():
+                return HTMLResponse(
+                    f.read_text(encoding="utf-8"), headers={"X-Robots-Tag": "noindex"}
+                )
+        except Exception:
+            continue
+    return HTMLResponse(
+        "<h2>Your product is being prepared — email saraph.core@gmail.com if it doesn't load.</h2>",
+        status_code=503,
+    )
+
+
 async def _paypal_token() -> str | None:
     """Fetch a PayPal OAuth access token from client credentials. None if unset/failed."""
     cid = getattr(settings, "PAYPAL_CLIENT_ID", None)
