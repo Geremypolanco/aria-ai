@@ -80,6 +80,7 @@ HEAVY_STRATEGIES = frozenset(
         "proposal_generator",
         "linkedin_dm_automation",
         "competitor_gap_analyzer",
+        "ai_agency_sales_engine",
     }
 )
 
@@ -329,6 +330,10 @@ STRATEGIES = [
         "competitor_gap_analyzer",
         3,
     ),  # Analyze competitor content/offers → find underserved gaps → publish gap-filling content to capture demand
+    (
+        "ai_agency_sales_engine",
+        5,
+    ),  # Proven AI-automation-agency playbook: niche-targeted free-audit + risk-reversal LinkedIn content → inbound high-ticket leads
 ]
 
 # Strategies that already call publish_to_twitter/linkedin internally.
@@ -1091,6 +1096,8 @@ JSON:
             return await self._exec_linkedin_dm_automation()
         if strategy == "competitor_gap_analyzer":
             return await self._exec_competitor_gap_analyzer()
+        if strategy == "ai_agency_sales_engine":
+            return await self._exec_ai_agency_sales_engine()
         return {"success": False, "summary": "Unknown strategy"}
 
     async def _exec_content_pipeline(self) -> dict:
@@ -23950,6 +23957,156 @@ Return JSON:
 
         except Exception as exc:
             logger.error("[IncomeLoop] competitor_gap_analyzer: %s", exc)
+            return {"success": False, "summary": str(exc)[:120]}
+
+    async def _exec_ai_agency_sales_engine(self) -> dict:
+        """
+        The proven AI-automation-agency playbook, encoded so ARIA runs it herself.
+
+        Distilled from operators actually closing high-ticket AI-automation deals
+        (free-audit entry, risk reversal, setup + monthly retainer, niche-specific
+        case-study content). Each cycle ARIA publishes a value-first LinkedIn post
+        in the proven structure — targeting a high-value niche, leading with the
+        free audit and risk reversal — to generate inbound high-ticket leads.
+
+        Revenue model it sells: $3,500 setup + $1,200/mo (negotiable on the call).
+        """
+        try:
+            from apps.distribution.publishers.api_publisher import get_api_publisher
+
+            # The proven playbook, baked in as ARIA's operating knowledge.
+            niches = [
+                "marketing & creative agencies",
+                "private clinics & medical practices",
+                "real-estate brokers & teams",
+                "high-ticket coaches & consultants",
+            ]
+            angles = [
+                "the hidden-cost math: ~40 hrs/week of work AI now does end-to-end = a full salary burned",
+                "a concrete before/after outcome (e.g. one interview → a month of content, automatically)",
+                "a contrarian take: most businesses use AI backwards — as a faster tool, not as the worker",
+                "the free-audit offer framed as pure value, no pitch",
+                "ROI reframe: price against what they pay NOW (salary/contractor/opportunity cost)",
+                "risk reversal as the hook: I build the first automation, you pay only once it works",
+            ]
+            niche = niches[self._cycle % len(niches)]
+            angle = angles[self._cycle % len(angles)]
+
+            post = ""
+            try:
+                from apps.core.tools.ai_client import AIModel, get_ai_client
+
+                ai = get_ai_client()
+                if ai:
+                    system = (
+                        "You are ARIA running a PROVEN AI-automation sales playbook used by operators "
+                        "who close real high-ticket deals. Write ONE LinkedIn post in English for "
+                        "economically well-positioned business owners.\n"
+                        "NON-NEGOTIABLE RULES (these are what convert):\n"
+                        "- Open with a specific, felt pain for the target niche (make them feel seen). No AI hype.\n"
+                        "- Show a concrete outcome ARIA delivers (finds clients, runs outreach, publishes "
+                        "content, processes payments 24/7).\n"
+                        "- Lead the offer with a FREE AUDIT (pure value, no pitch) AND a RISK REVERSAL "
+                        "(they pay only once the first automation is live and working).\n"
+                        "- End with a low-friction CTA: comment a keyword or DM, or visit https://aria-ai.fly.dev\n"
+                        "- Sharp peer tone, not a vendor. 120-200 words, short paragraphs, 0-2 hashtags max.\n"
+                        "Output ONLY the post text, ready to publish."
+                    )
+                    raw = await ai.complete(
+                        system=system,
+                        user=f"TARGET NICHE: {niche}\nANGLE FOR THIS POST: {angle}",
+                        model=AIModel.CREATIVE,
+                        max_tokens=420,
+                    )
+                    post = (raw.content if hasattr(raw, "content") else str(raw) or "").strip()
+            except Exception as exc:
+                logger.warning("[ai_agency_sales_engine] generation failed: %s", exc)
+
+            if not post or len(post) < 80:
+                # Proven-structure fallback so ARIA always ships something on-model.
+                post = (
+                    f"If you run a business in {niche}, here's the math that should bother you:\n\n"
+                    "Your team burns ~40 hours a week on work AI now does end-to-end — content, "
+                    "lead research, follow-ups, reporting. That's a full salary spent on tasks that "
+                    "no longer need a human.\n\n"
+                    "I build AI systems that take that off your plate and run 24/7. And the offer is "
+                    "deliberately low-risk: I'll audit your workflows for free and show you exactly "
+                    "where 20+ hours/week are hiding — no pitch. If you want it built, you pay only "
+                    "once the first automation is live and working.\n\n"
+                    'Comment "AUDIT" or DM me, or see it here → https://aria-ai.fly.dev'
+                )
+
+            # Publish via ARIA's own LinkedIn channels (API first, stealth browser fallback)
+            posted_url = ""
+            try:
+                pub = get_api_publisher()
+                li_r = await asyncio.wait_for(pub.publish_to_linkedin(post[:1300]), timeout=20.0)
+                if li_r and li_r.success:
+                    posted_url = li_r.url or "linkedin"
+            except Exception as exc:
+                logger.warning("[ai_agency_sales_engine] API publish failed: %s", exc)
+
+            if not posted_url:
+                _ae = getattr(settings, "ARIA_EMAIL", None)
+                _ap = getattr(settings, "ARIA_PASSWORD", None)
+                if _ae and _ap:
+                    try:
+                        from apps.core.tools.human_browser import get_platform_login
+
+                        plat = await get_platform_login()
+                        page = await plat.linkedin(_ae, _ap)
+                        if await plat.linkedin_create_post(page, post[:3000]):
+                            posted_url = "https://www.linkedin.com/feed/"
+                    except Exception as exc:
+                        logger.warning("[ai_agency_sales_engine] browser publish failed: %s", exc)
+
+            # Archive the post + which playbook variant ran (for the learning loop)
+            try:
+                import base64 as _b64
+
+                from apps.core.tools.github_client import AriaGitHubClient
+
+                gh = AriaGitHubClient()
+                owner = settings.GITHUB_USERNAME or "Geremypolanco"
+                slug = f"agency-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}"
+                path = f"sales/ai-agency-engine/{slug}.md"
+                body_md = (
+                    f"# AI Agency Sales Engine\n\n"
+                    f"**Niche:** {niche}\n**Angle:** {angle}\n"
+                    f"**Posted:** {'yes — ' + posted_url if posted_url else 'no (publish failed)'}\n\n"
+                    f"---\n\n{post}\n"
+                )
+                existing = await gh._get(f"/repos/{owner}/aria-insights/contents/{path}")
+                sha = existing.get("sha") if "error" not in existing else None
+                body_put: dict = {
+                    "message": f"feat: agency sales engine post — {niche[:30]}",
+                    "content": _b64.b64encode(body_md.encode()).decode(),
+                }
+                if sha:
+                    body_put["sha"] = sha
+                await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            except Exception as exc:
+                logger.warning("[ai_agency_sales_engine] archive failed: %s", exc)
+
+            await self._send_telegram(
+                f"📣 *AI Agency Sales Engine*\n"
+                f"Niche: {niche}\n"
+                f"Angle: {angle[:60]}\n"
+                f"Posted: {'✅ ' + posted_url if posted_url else '⚠️ publish failed'}"
+            )
+
+            return {
+                "success": bool(posted_url),
+                "summary": (
+                    f"AI agency sales engine: published free-audit/risk-reversal post for "
+                    f"{niche} | {'live' if posted_url else 'archive only'}"
+                ),
+                "revenue_potential": 1200.0,  # one closed retainer = $1,200/mo recurring
+                "urls": [posted_url] if posted_url and posted_url.startswith("http") else [],
+            }
+
+        except Exception as exc:
+            logger.error("[IncomeLoop] ai_agency_sales_engine: %s", exc)
             return {"success": False, "summary": str(exc)[:120]}
 
     async def _exec_daily_revenue_report(self) -> dict:
