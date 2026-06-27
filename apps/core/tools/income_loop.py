@@ -23972,7 +23972,7 @@ Return JSON:
         Revenue model it sells: $3,500 setup + $1,200/mo (negotiable on the call).
         """
         try:
-            from apps.distribution.publishers.api_publisher import get_api_publisher
+            from apps.distribution.publishers.broadcaster import broadcast
 
             # The proven playbook, baked in as ARIA's operating knowledge.
             niches = [
@@ -24036,29 +24036,11 @@ Return JSON:
                     'Comment "AUDIT" or DM me, or see it here → https://aria-ai.fly.dev'
                 )
 
-            # Publish via ARIA's own LinkedIn channels (API first, stealth browser fallback)
-            posted_url = ""
-            try:
-                pub = get_api_publisher()
-                li_r = await asyncio.wait_for(pub.publish_to_linkedin(post[:1300]), timeout=20.0)
-                if li_r and li_r.success:
-                    posted_url = li_r.url or "linkedin"
-            except Exception as exc:
-                logger.warning("[ai_agency_sales_engine] API publish failed: %s", exc)
-
-            if not posted_url:
-                _ae = getattr(settings, "ARIA_EMAIL", None)
-                _ap = getattr(settings, "ARIA_PASSWORD", None)
-                if _ae and _ap:
-                    try:
-                        from apps.core.tools.human_browser import get_platform_login
-
-                        plat = await get_platform_login()
-                        page = await plat.linkedin(_ae, _ap)
-                        if await plat.linkedin_create_post(page, post[:3000]):
-                            posted_url = "https://www.linkedin.com/feed/"
-                    except Exception as exc:
-                        logger.warning("[ai_agency_sales_engine] browser publish failed: %s", exc)
+            # Publish via the reusable broadcaster — API-first with a stealth-browser
+            # fallback, all handled in one place (apps/distribution/publishers/broadcaster.py).
+            results = await broadcast(post[:1300], channels=["linkedin"])
+            li = results.get("linkedin")
+            posted_url = (li.url or "linkedin") if (li and li.success) else ""
 
             # Archive the post + which playbook variant ran (for the learning loop)
             try:
