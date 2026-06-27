@@ -1351,12 +1351,32 @@ except Exception as _e:
     logger.error("Error montando webhooks: %s", _e)
 
 
-# Pricing tiers — (Stripe amount in cents, product label)
+# Pricing tiers — (Stripe amount in cents, product label, USD dollars)
 _ARIA_TIERS = {
-    "starter": (2900, "ARIA Starter — $29/mo"),
-    "pro": (9700, "ARIA Pro — $97/mo"),
-    "agency": (49700, "ARIA Agency — $497/mo"),
+    "starter": (2900, "ARIA Starter — $29/mo", 29),
+    "pro": (9700, "ARIA Pro — $97/mo", 97),
+    "agency": (49700, "ARIA Agency — $497/mo", 497),
 }
+
+# Public PayPal.Me handle for real payments (no API/secret needed — the handle is
+# a public payment link). Set via the PAYPAL_ME_HANDLE env/secret, e.g. "geremypolanco"
+# so /subscribe/{tier} sends buyers straight to paypal.me/<handle>/<amount>USD.
+_ARIA_PAYPAL_ME = (
+    (os.getenv("PAYPAL_ME_HANDLE") or "")
+    .strip()
+    .lstrip("@")
+    .replace("https://paypal.me/", "")
+    .replace("paypal.me/", "")
+    .strip("/")
+)
+
+
+def _paypal_me_link(tier: str) -> str | None:
+    """Return a real PayPal.Me payment URL for a tier, or None if no handle is set."""
+    if not _ARIA_PAYPAL_ME or tier not in _ARIA_TIERS:
+        return None
+    dollars = _ARIA_TIERS[tier][2]
+    return f"https://www.paypal.com/paypalme/{_ARIA_PAYPAL_ME}/{dollars}USD"
 
 
 async def _get_or_create_stripe_link(tier: str) -> str | None:
@@ -1383,7 +1403,7 @@ async def _get_or_create_stripe_link(tier: str) -> str | None:
     if not stripe_key or tier not in _ARIA_TIERS:
         return None
 
-    cents, label = _ARIA_TIERS[tier]
+    cents, label = _ARIA_TIERS[tier][0], _ARIA_TIERS[tier][1]
     try:
         import httpx as _hx
 
@@ -1430,12 +1450,11 @@ async def _get_or_create_stripe_link(tier: str) -> str | None:
 @app.get("/subscribe/{tier}")
 async def subscribe_redirect(tier: str):
     """
-    Redirect a pricing-CTA click straight to a live Stripe checkout.
+    Redirect a pricing-CTA click straight to a real payment page.
 
-    The payment link is created on first use (and cached for 90 days), so the
-    checkout works immediately without waiting for the aria_subscription_launch
-    income-loop strategy to run. If Stripe isn't configured or the API fails,
-    fall back to the lead-capture landing so the prospect is never dropped.
+    Priority: (1) PayPal.Me — real money, no API key needed, live the moment a
+    PAYPAL_ME_HANDLE is set; (2) a live Stripe checkout created on first use;
+    (3) the lead-capture landing so the prospect is never dropped.
     """
     from fastapi.responses import RedirectResponse
 
@@ -1443,12 +1462,17 @@ async def subscribe_redirect(tier: str):
     if tier not in _ARIA_TIERS:
         return RedirectResponse(url="https://aria-ai.fly.dev", status_code=302)
 
+    # 1. Real PayPal payment (preferred — accepts real money with no secret key)
+    paypal = _paypal_me_link(tier)
+    if paypal:
+        return RedirectResponse(url=paypal, status_code=302)
+
+    # 2. Live Stripe checkout (created + cached on first use)
     link = await _get_or_create_stripe_link(tier)
     if link:
         return RedirectResponse(url=link, status_code=302)
 
-    # No live Stripe link → send them to the landing page (lead capture form),
-    # served by this same app so the front door is always live.
+    # 3. No live payment rail → lead-capture landing (served by this app)
     return RedirectResponse(url=f"/?plan={tier}", status_code=302)
 
 
