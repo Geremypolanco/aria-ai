@@ -435,12 +435,14 @@ footer a{color:var(--primary-light)}
 
 <!-- FINAL CTA -->
 <section class="cta-section" id="start">
-  <h2>Stop waiting for clients.<br>Start your autonomous revenue engine today.</h2>
-  <p>Enter your email and ARIA will reach out within 24 hours with a personalized growth plan.</p>
-  <form id="lead-form" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;max-width:560px;margin:0 auto" onsubmit="submitLead(event)">
-    <input type="text" name="name" placeholder="Your name" required style="padding:14px 20px;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;border-radius:8px;font-size:1em;flex:1;min-width:180px">
-    <input type="email" name="email" placeholder="your@email.com" required style="padding:14px 20px;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;border-radius:8px;font-size:1em;flex:1;min-width:220px">
-    <button type="submit" class="btn-primary" style="font-size:1em;padding:14px 28px;border:none;cursor:pointer">Get My Growth Plan →</button>
+  <div style="display:inline-block;background:rgba(99,102,241,.18);color:#a5b4fc;padding:6px 16px;border-radius:20px;font-size:.8em;font-weight:700;letter-spacing:.05em;margin-bottom:16px">FREE AI AUTOMATION AUDIT · NO PITCH</div>
+  <h2>See exactly where 20+ hours a week are hiding in your business.</h2>
+  <p>Tell us about your business and we'll map the 3 highest-leverage automations for you — free. If you want them built, you pay only once the first one is live and working. Zero risk.</p>
+  <form id="lead-form" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;max-width:620px;margin:0 auto" onsubmit="submitLead(event)">
+    <input type="text" name="name" placeholder="Your name" required style="padding:14px 20px;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;border-radius:8px;font-size:1em;flex:1;min-width:150px">
+    <input type="email" name="email" placeholder="your@email.com" required style="padding:14px 20px;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;border-radius:8px;font-size:1em;flex:1;min-width:200px">
+    <input type="text" name="company" placeholder="Company / website" style="padding:14px 20px;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;border-radius:8px;font-size:1em;flex:1;min-width:170px">
+    <button type="submit" class="btn-primary" style="font-size:1em;padding:14px 28px;border:none;cursor:pointer">Claim My Free Audit →</button>
   </form>
   <p id="lead-status" style="margin-top:16px;font-size:.9em;min-height:1.4em"></p>
 </section>
@@ -452,7 +454,9 @@ async function submitLead(e) {
   const data = {
     name: form.name.value,
     email: form.email.value,
-    source: 'landing_page'
+    company: form.company ? form.company.value : '',
+    segment: 'Free AI Audit',
+    source: 'free_audit'
   };
   status.textContent = 'Sending...';
   try {
@@ -464,7 +468,7 @@ async function submitLead(e) {
     const result = await resp.json();
     if (result.success) {
       status.style.color = '#10b981';
-      status.textContent = '✓ Got it! Check your inbox — ARIA is preparing your personalized plan.';
+      status.textContent = '✓ Got it! We’ll send your free audit + the 3 highest-leverage automations within 24 hours.';
       form.reset();
     } else {
       status.style.color = '#f59e0b';
