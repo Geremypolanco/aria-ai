@@ -1540,6 +1540,56 @@ def _activity_label(strategy: str) -> tuple[str, str]:
     return "⚡", "Ran a growth strategy"
 
 
+@app.get("/welcome", response_class=HTMLResponse)
+async def welcome(plan: str = ""):
+    """Post-purchase onboarding — every paying customer lands here and receives real
+    value immediately: instant digital products + a clear path to activate their ARIA.
+
+    This is the anti-fraud guarantee: no one pays and receives nothing.
+    """
+    plan = (plan or "your").lower()
+    plan_label = {
+        "starter": "Starter",
+        "pro": "Pro",
+        "agency": "Agency",
+        "dfy": "Done-For-You",
+    }.get(plan, "ARIA")
+    return HTMLResponse(
+        f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welcome to ARIA — let's get you set up</title>
+<link rel="stylesheet" href="/assets/aria-design-system.css">
+<style>.wrap{{max-width:760px;margin:0 auto;padding:var(--s-8) var(--s-5)}}
+.step{{display:flex;gap:var(--s-4);padding:var(--s-4) 0;border-bottom:1px solid var(--border)}}
+.num{{flex:0 0 32px;height:32px;border-radius:50%;background:var(--aria-grad);color:#fff;display:grid;place-items:center;font-weight:700}}</style>
+</head><body>
+<div class="wrap stack">
+  <span class="badge badge-live"><span class="dot"></span> Payment received</span>
+  <h1 class="h1">Welcome to ARIA {plan_label}. 🎉</h1>
+  <p class="lead">You're in. Here's everything you get — starting right now.</p>
+
+  <div class="card stack" style="margin-top:var(--s-4)">
+    <h2 class="h3">① Your resources — instant access</h2>
+    <p class="muted">Yours to keep, included with every plan:</p>
+    <div class="row">
+      <a class="btn btn-secondary" href="/access/ai-prompts-x7k2q9" target="_blank" rel="noopener">200 AI Prompts →</a>
+      <a class="btn btn-secondary" href="/access/playbook-m4p8w1c5" target="_blank" rel="noopener">The AI Automation Playbook →</a>
+    </div>
+  </div>
+
+  <div class="card stack">
+    <h2 class="h3">② Activate ARIA for your business</h2>
+    <p class="muted">Tell us about your business and we'll configure and launch your ARIA — finding clients, publishing, and running outreach for you. We set it up <strong>with</strong> you so it's tuned to your offers.</p>
+    <a class="btn btn-primary" href="/#audit">Start my setup (2 min) →</a>
+  </div>
+
+  <div class="step"><div class="num">③</div><div><strong>What happens next</strong><br><span class="muted">Within 24 hours you'll receive your personalized growth plan and your ARIA goes to work. Questions any time: <a href="mailto:saraph.core@gmail.com" style="color:var(--aria-accent-3)">saraph.core@gmail.com</a></span></div></div>
+
+  <p class="dim center" style="margin-top:var(--s-5)"><a href="/" style="color:var(--text-muted)">← Back to ARIA</a></p>
+</div></body></html>"""
+    )
+
+
 @app.get("/api/v1/activity/public", dependencies=[Depends(rate_limit(60, 60, "activity"))])
 async def public_activity(limit: int = 12):
     """ARIA's recent real actions, sanitized for public display (the live landing feed).
