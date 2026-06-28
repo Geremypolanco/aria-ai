@@ -234,28 +234,37 @@
 </footer>
 
 <script>
-// Live activity feed — communicates the core differentiator (ARIA acts).
-const ACTIONS = [
-  ["🎯","Found a high-fit prospect","SaaS founder · 30 staff"],
-  ["✍️","Published a LinkedIn post","Agency niche · free-audit angle"],
-  ["📧","Drafted a personalized proposal","$3,500 setup + retainer"],
-  ["🔎","Researched competitor gaps","Captured underserved intent"],
-  ["💬","Sent warm outreach","LinkedIn DM · 1st-degree"],
-  ["📈","Logged a new lead","Inbound · free audit"],
-  ["🛠️","Created a digital product","Auto-delivered on payment"],
+// Live activity feed — ARIA's real recent actions (the core differentiator: ARIA acts).
+// Falls back to a representative sequence only when no real activity is available yet.
+const FALLBACK = [
+  ["🎯","Researched new prospects"],
+  ["✍️","Published content"],
+  ["📨","Prepared a client proposal"],
+  ["🔎","Analyzed the market"],
+  ["💬","Sent warm outreach"],
+  ["🧲","Built a lead funnel"],
+  ["🛠️","Created a product"],
 ];
+function ago(s){ if(s==null) return 'just now'; if(s<60) return s+'s ago'; if(s<3600) return Math.floor(s/60)+'m ago'; return Math.floor(s/3600)+'h ago'; }
 (function feed(){
   const el = document.getElementById('feed'); if(!el) return;
-  let i = 0;
-  function add(){
-    const [ic,t,s] = ACTIONS[i % ACTIONS.length]; i++;
+  let queue = [], i = 0, live = false;
+  function render(icon,label,sub){
     const div = document.createElement('div'); div.className='feed-item';
-    div.innerHTML = `<div class="feed-ic" aria-hidden="true">${ic}</div><div><div class="feed-t">${t}</div><div class="feed-s">${s} · just now</div></div>`;
+    div.innerHTML = `<div class="feed-ic" aria-hidden="true">${icon}</div><div><div class="feed-t">${label}</div><div class="feed-s">${sub}</div></div>`;
     el.prepend(div);
     while(el.children.length > 5) el.removeChild(el.lastChild);
   }
-  add(); add(); add();
-  setInterval(add, 2600);
+  function tick(){
+    if(live && queue.length){ const it = queue[i % queue.length]; i++; render(it.icon, it.label, ago(it.ago_seconds)); }
+    else { const [ic,t] = FALLBACK[i % FALLBACK.length]; i++; render(ic, t, 'just now'); }
+  }
+  // Try real data first
+  fetch('/api/v1/activity/public').then(r=>r.json()).then(d=>{
+    if(d && Array.isArray(d.items) && d.items.length){ queue = d.items; live = true; el.innerHTML=''; i=0; tick(); tick(); tick(); }
+  }).catch(()=>{});
+  tick(); tick(); tick();
+  setInterval(tick, 2600);
 })();
 
 // Reveal-on-scroll (progressive enhancement; content is visible without JS via .in fallback)

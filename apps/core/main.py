@@ -1358,7 +1358,10 @@ try:
 
     from fastapi.staticfiles import StaticFiles
 
-    for _assets in (_pl.Path("/app/docs/assets"), _pl.Path(__file__).resolve().parents[2] / "docs" / "assets"):
+    for _assets in (
+        _pl.Path("/app/docs/assets"),
+        _pl.Path(__file__).resolve().parents[2] / "docs" / "assets",
+    ):
         if _assets.is_dir():
             app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
             logger.info("Static assets montados en /assets")
@@ -1511,6 +1514,71 @@ async def list_capabilities(check: bool = False):
     except Exception as exc:
         logger.error("[capabilities] endpoint error: %s", exc)
         return JSONResponse(status_code=500, content={"error": str(exc)[:200]})
+
+
+# Public, PII-free labels for ARIA's strategy executions (keyword → icon + label).
+# Order matters: first matching keyword wins. Keeps the public feed honest but safe.
+_ACTIVITY_LABELS: list[tuple[tuple[str, ...], str, str]] = [
+    (("proactive_client", "lead_", "prospect"), "🎯", "Researched new prospects"),
+    (("linkedin_dm", "outreach", "cold_", "sms"), "💬", "Sent warm outreach"),
+    (("proposal", "lead_closer", "deal"), "📨", "Prepared a client proposal"),
+    (("agency_sales", "linkedin_post"), "📣", "Ran the sales engine"),
+    (("viral", "content", "article", "blog", "ebook", "video"), "✍️", "Published content"),
+    (("competitor", "research", "market", "trend"), "🔎", "Analyzed the market"),
+    (("subscription", "stripe", "pricing", "payment"), "💳", "Tuned a payment offer"),
+    (("shopify", "product", "gumroad", "saas", "course", "kit"), "🛠️", "Created a product"),
+    (("email_capture", "funnel", "landing", "waitlist"), "🧲", "Built a lead funnel"),
+    (("revenue_report", "analytics", "daily"), "📊", "Reviewed performance"),
+]
+
+
+def _activity_label(strategy: str) -> tuple[str, str]:
+    s = (strategy or "").lower()
+    for keys, icon, label in _ACTIVITY_LABELS:
+        if any(k in s for k in keys):
+            return icon, label
+    return "⚡", "Ran a growth strategy"
+
+
+@app.get("/api/v1/activity/public", dependencies=[Depends(rate_limit(60, 60, "activity"))])
+async def public_activity(limit: int = 12):
+    """ARIA's recent real actions, sanitized for public display (the live landing feed).
+
+    Reads the income-loop history and returns only a category label + relative time —
+    never raw summaries (which can contain prospect names/emails). Returns an empty
+    list (200) when there's no data so the client can fall back gracefully.
+    """
+    items: list[dict] = []
+    with contextlib.suppress(Exception):
+        import json as _json
+        import time as _time
+
+        from apps.core.memory.redis_client import get_cache
+
+        cache = get_cache()
+        if cache:
+            limit = max(1, min(int(limit), 30))
+            raw = await cache.lrange("aria:income:loop_history", -60, -1)
+            now = _time.time()
+            for entry in reversed(raw or []):
+                try:
+                    c = _json.loads(entry) if isinstance(entry, str) else entry
+                except Exception:
+                    continue
+                if not isinstance(c, dict) or not c.get("success"):
+                    continue
+                icon, label = _activity_label(c.get("strategy", ""))
+                ts = float(c.get("ts") or 0)
+                items.append(
+                    {
+                        "icon": icon,
+                        "label": label,
+                        "ago_seconds": int(max(0, now - ts)) if ts else None,
+                    }
+                )
+                if len(items) >= limit:
+                    break
+    return {"items": items}
 
 
 async def _paypal_token() -> str | None:
