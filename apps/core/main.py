@@ -1605,34 +1605,46 @@ async def public_activity(limit: int = 12):
     with contextlib.suppress(Exception):
         import json as _json
         import time as _time
+        from datetime import datetime as _dt
 
         from apps.core.memory.redis_client import get_cache
+
+        now = _time.time()
+
+        def _to_item(c: dict) -> dict | None:
+            if not isinstance(c, dict) or not c.get("success"):
+                return None
+            icon, label = _activity_label(c.get("strategy", ""))
+            ago = None
+            ts_raw = c.get("ts")  # CycleResult.ts is an ISO-8601 string
+            if ts_raw:
+                with contextlib.suppress(Exception):
+                    ago = int(max(0, now - _dt.fromisoformat(str(ts_raw)).timestamp()))
+            return {"icon": icon, "label": label, "ago_seconds": ago}
 
         cache = get_cache()
         if cache:
             limit = max(1, min(int(limit), 30))
             raw = await cache.lrange("aria:income:loop_history", -60, -1)
-            now = _time.time()
             for entry in reversed(raw or []):
-                try:
+                with contextlib.suppress(Exception):
                     c = _json.loads(entry) if isinstance(entry, str) else entry
-                    if not isinstance(c, dict) or not c.get("success"):
-                        continue
-                    icon, label = _activity_label(c.get("strategy", ""))
-                    # CycleResult.ts is an ISO-8601 string (e.g. 2026-06-28T22:32:07+00:00);
-                    # parse it robustly and never let one bad entry abort the whole feed.
-                    ago = None
-                    ts_raw = c.get("ts")
-                    if ts_raw:
-                        with contextlib.suppress(Exception):
-                            from datetime import datetime as _dt
-
-                            ago = int(max(0, now - _dt.fromisoformat(str(ts_raw)).timestamp()))
-                    items.append({"icon": icon, "label": label, "ago_seconds": ago})
-                except Exception:
-                    continue
+                    it = _to_item(c)
+                    if it:
+                        items.append(it)
                 if len(items) >= limit:
                     break
+            # Fallback: the history LIST can come back empty over the Redis REST API,
+            # but the single last-cycle key is reliable. Surface at least that action so
+            # the live proof never blanks while ARIA is actually working.
+            if not items:
+                with contextlib.suppress(Exception):
+                    last = await cache.get("aria:income:last_cycle")
+                    if last:
+                        c = _json.loads(last) if isinstance(last, str) else last
+                        it = _to_item(c)
+                        if it:
+                            items.append(it)
     return {"items": items}
 
 
