@@ -51,10 +51,10 @@ logger = logging.getLogger("aria.income_loop")
 INTERVAL_SECONDS = 1200  # 20 minutes between cycles (was 30)
 FIRST_RUN_DELAY = 45  # seconds after startup before first run
 ERROR_BACKOFF = 300  # 5 min backoff after errors
-MAX_STRATEGY_TIME = 300  # 5 min max per strategy (default)
+MAX_STRATEGY_TIME = 180  # 3 min max per strategy (default) — fail fast, recover sooner
 
 # Heavy strategies that need more time (LLM-intensive or multi-step)
-HEAVY_STRATEGY_TIMEOUT = 480  # 8 min for complex strategies
+HEAVY_STRATEGY_TIMEOUT = 240  # 4 min for complex strategies (was 8 — wasted whole cycles)
 HEAVY_STRATEGIES = frozenset(
     {
         "b2b_saas_pitch",

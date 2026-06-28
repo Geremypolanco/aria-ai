@@ -1616,19 +1616,21 @@ async def public_activity(limit: int = 12):
             for entry in reversed(raw or []):
                 try:
                     c = _json.loads(entry) if isinstance(entry, str) else entry
+                    if not isinstance(c, dict) or not c.get("success"):
+                        continue
+                    icon, label = _activity_label(c.get("strategy", ""))
+                    # CycleResult.ts is an ISO-8601 string (e.g. 2026-06-28T22:32:07+00:00);
+                    # parse it robustly and never let one bad entry abort the whole feed.
+                    ago = None
+                    ts_raw = c.get("ts")
+                    if ts_raw:
+                        with contextlib.suppress(Exception):
+                            from datetime import datetime as _dt
+
+                            ago = int(max(0, now - _dt.fromisoformat(str(ts_raw)).timestamp()))
+                    items.append({"icon": icon, "label": label, "ago_seconds": ago})
                 except Exception:
                     continue
-                if not isinstance(c, dict) or not c.get("success"):
-                    continue
-                icon, label = _activity_label(c.get("strategy", ""))
-                ts = float(c.get("ts") or 0)
-                items.append(
-                    {
-                        "icon": icon,
-                        "label": label,
-                        "ago_seconds": int(max(0, now - ts)) if ts else None,
-                    }
-                )
                 if len(items) >= limit:
                     break
     return {"items": items}
