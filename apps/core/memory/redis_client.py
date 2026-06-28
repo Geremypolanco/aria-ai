@@ -148,12 +148,19 @@ class AriaCache:
 
     # ── RATE LIMITING ─────────────────────────────────────
     async def check_rate_limit(self, key: str, max_calls: int, window_seconds: int) -> bool:
-        """Retorna True si se puede hacer la llamada, False si excede el límite."""
+        """True if the call is allowed, False if the limit is exceeded.
+
+        Fails OPEN: if the backend is unreachable (``_cmd`` returns None) we allow the
+        call rather than block all traffic. A rate limiter that can't reach its store
+        must not become a global outage — availability over strictness.
+        """
         rate_key = f"ratelimit:{key}"
         current = await self._cmd("INCR", rate_key)
+        if current is None:
+            return True  # backend unavailable → fail open
         if current == 1:
             await self._cmd("EXPIRE", rate_key, window_seconds)
-        return current is not None and int(current) <= max_calls
+        return int(current) <= max_calls
 
     # ── LOCKS DISTRIBUIDOS ────────────────────────────────
     async def acquire_lock(self, resource: str, ttl_seconds: int = 60) -> bool:

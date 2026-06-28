@@ -7,14 +7,28 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from apps.api.ratelimit import rate_limit
+from apps.api.ratelimit import _client_ip, rate_limit
 
 
-def _request(ip="1.2.3.4"):
+def _request(ip="1.2.3.4", headers=None):
     req = MagicMock()
     req.client = MagicMock()
     req.client.host = ip
+    req.headers = headers or {}
     return req
+
+
+class TestClientIP:
+    def test_prefers_fly_client_ip(self):
+        req = _request("10.0.0.1", {"fly-client-ip": "203.0.113.7", "x-forwarded-for": "1.1.1.1"})
+        assert _client_ip(req) == "203.0.113.7"
+
+    def test_falls_back_to_xff_first_hop(self):
+        req = _request("10.0.0.1", {"x-forwarded-for": "198.51.100.9, 10.0.0.1"})
+        assert _client_ip(req) == "198.51.100.9"
+
+    def test_falls_back_to_socket_peer(self):
+        assert _client_ip(_request("192.0.2.5")) == "192.0.2.5"
 
 
 class TestRateLimit:
