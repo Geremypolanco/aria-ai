@@ -54,3 +54,6 @@ htmlcov/
 
 # Claude Code
 .claude/
+.aria/
+*.enc
+secrets.enc
