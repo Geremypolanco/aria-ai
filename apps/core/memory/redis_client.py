@@ -63,6 +63,17 @@ class AriaCache:
     async def increment(self, key: str) -> int:
         return await self._cmd("INCR", key) or 0
 
+    async def ping(self) -> bool:
+        """True only if a real round-trip to Redis succeeds.
+
+        Distinguishes a reachable backend from an unconfigured/unreachable one:
+        ``_cmd`` returns ``None`` on any transport error, so a genuine PONG is the
+        only way this returns True. Used by /health so the probe can't report a
+        false ``ok`` when Upstash credentials are missing or the DB is gone.
+        """
+        result = await self._cmd("PING")
+        return result == "PONG"
+
     # ── COLAS DE TAREAS ───────────────────────────────────
     async def enqueue(self, queue: str, task: dict) -> bool:
         """Agrega una tarea al final de la cola."""

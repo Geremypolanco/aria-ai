@@ -1948,17 +1948,21 @@ async def health():
     """Liveness + lightweight component readiness probe."""
     components: dict[str, str] = {}
 
-    # Redis (Upstash) reachability — non-fatal
+    # Redis (Upstash) reachability — non-fatal.
+    # Uses a real PING round-trip: cache.get() swallows transport errors and returns
+    # None, so it can't tell "key missing" from "backend down" and would report a
+    # false "ok". ping() returns True only on a genuine PONG.
     try:
-        cache = get_cache()
-        await cache.get("health:ping")
-        components["redis"] = "ok"
+        components["redis"] = "ok" if await get_cache().ping() else "unavailable"
     except Exception:
         components["redis"] = "unavailable"
 
-    # AI client availability — non-fatal
+    # AI client availability — non-fatal. The client object always exists, so the
+    # honest signal is whether any provider key is actually configured; with none,
+    # every completion fails. No network call is made here.
     try:
-        components["ai"] = "ok" if get_ai_client() is not None else "unavailable"
+        ai = get_ai_client()
+        components["ai"] = "ok" if ai is not None and ai.configured_providers() else "unavailable"
     except Exception:
         components["ai"] = "unavailable"
 

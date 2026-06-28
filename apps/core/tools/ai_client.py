@@ -1043,6 +1043,22 @@ class AriaAIClient:
 
     # ── UTILIDADES ────────────────────────────────────────
 
+    def configured_providers(self) -> list[str]:
+        """Names of LLM providers that have an API key set. No network call.
+
+        Lets /health report the truth: the client object always exists, but with no
+        provider key every completion fails ("AI analysis failed"). An empty list
+        means the AI is effectively down regardless of the object being present.
+        """
+        keyed = {
+            "huggingface": bool(settings.hf_key),
+            "groq": bool(settings.GROQ_API_KEY),
+            "anthropic": bool(settings.ANTHROPIC_API_KEY),
+            "gemini": bool(settings.gemini_key),
+            "openai": bool(settings.OPENAI_API_KEY),
+        }
+        return [name for name, present in keyed.items() if present]
+
     def _get_available_providers(self) -> list[AIProvider]:
         base_order = [
             AIProvider.HUGGINGFACE,
