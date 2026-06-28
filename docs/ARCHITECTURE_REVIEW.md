@@ -59,3 +59,44 @@ Before each new module/feature, answer: does it raise revenue / conversion / LTV
 or cut CAC / churn? can it reuse an existing component? is it a reusable capability
 or a per-case patch? how is it tested, observed, secured, and how will it evolve?
 If the answers aren't clear, it isn't a priority.
+
+---
+
+## Repo-wide audit execution log (every file reviewed)
+
+A 6-agent parallel audit covered all 528 files in `apps/`. Findings executed:
+
+### ✅ Done & deployed (validated: prod /health=ok, full test suite green)
+- **Dead code removed — 57 files / >10,000 lines**, each verified to have zero
+  importers across `apps/` and `tests/`: the orphan "ARIA ELITE" island, 5 unused
+  memory clients, 15 caller-less `intelligence/` modules (several were simulated
+  stubs — dishonest in a live system), 4 orphan orchestration engines, 4 dead
+  agents, 3 dead tracing impls, 10 dead `tools/` modules, dead integrations,
+  `commands/`, `planning/strategic`, and the unused `apps/api/main.py`.
+- **Security:**
+  - 🔴 Closed an unauthenticated **RCE** (`POST /execute_shell`) — it lived only in
+    the deleted `apps/api/main.py`.
+  - 🔴 **Stripe webhook signature** now enforced (was `except: pass` → forgeable
+    payment events).
+  - 🔴 `infra_tools` arbitrary `shell=True` → binary allowlist + no shell.
+  - 🐛 Fixed a real runtime crash in the live sandbox (`timeout=` on
+    `create_subprocess_exec`).
+  - 🔒 `.gitignore` hardened for the encrypted secret store.
+  - 🚦 Reusable **rate-limit dependency** (`apps/api/ratelimit.py`) on `/lead` and the
+    diag endpoints (email-bomb / token-minting vectors).
+
+### ⏳ Remaining roadmap (bigger refactors — incremental, each its own validated PR)
+1. **`income_loop.py` (25k LOC) god-file** → dict-dispatch first (mechanical), then a
+   `Strategy` protocol + `STRATEGY_REGISTRY` wired to the CapabilityRegistry, then move
+   `_exec_*` into `income_loop/strategies/*.py` by domain.
+2. **`autonomous_scheduler.py` (5.6k)**, **`routes/api.py` (2k)**, **`aria_mind.py`
+   (1.7k)** god-files → split by domain; replace the `aria_mind._execute_tool` 860-line
+   `if` chain with a dispatch table.
+3. **Migrate the 107 direct publish sites to `broadcast()`** (capability already built).
+4. **Connector interface:** a `BaseOAuthConnection` + wire live connector instances into
+   `capabilities/catalog.py` so the registry is executable, not just descriptive; delete
+   the unreachable `connections/` OAuth layer.
+5. **Distributed lock** around the schedulers/income-loop (defense-in-depth vs scaling).
+6. **Replace the 352 silent `except: pass`** with logged handlers (observability).
+7. Connector hygiene: timeouts on shopify/square, guard `delete_all_products`, fix Etsy
+   PKCE, consolidate duplicated webhook handlers.
