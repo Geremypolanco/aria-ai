@@ -1561,29 +1561,32 @@ async def welcome(plan: str = ""):
 <link rel="stylesheet" href="/assets/aria-design-system.css">
 <style>.wrap{{max-width:760px;margin:0 auto;padding:var(--s-8) var(--s-5)}}
 .step{{display:flex;gap:var(--s-4);padding:var(--s-4) 0;border-bottom:1px solid var(--border)}}
-.num{{flex:0 0 32px;height:32px;border-radius:50%;background:var(--aria-grad);color:#fff;display:grid;place-items:center;font-weight:700}}</style>
+.num{{flex:0 0 30px;height:30px;border-radius:9px;background:var(--surface-2);border:1px solid var(--border);color:var(--aria-accent);display:grid;place-items:center;font-weight:700;font-size:var(--fs-sm)}}</style>
 </head><body>
+<header class="nav"><div class="container nav-inner">
+  <a class="brand" href="/"><img src="/assets/aria-logo.svg" width="28" height="28" alt=""> ARIA <span class="dim" style="font-weight:500;font-size:var(--fs-sm)">by Saraph</span></a>
+</div></header>
 <div class="wrap stack">
   <span class="badge badge-live"><span class="dot"></span> Payment received</span>
-  <h1 class="h1">Welcome to ARIA {plan_label}. 🎉</h1>
+  <h1 class="h1">Welcome to ARIA {plan_label}.</h1>
   <p class="lead">You're in. Here's everything you get — starting right now.</p>
 
   <div class="card stack" style="margin-top:var(--s-4)">
-    <h2 class="h3">① Your resources — instant access</h2>
+    <div class="row"><span class="num">1</span><h2 class="h3">Your resources — instant access</h2></div>
     <p class="muted">Yours to keep, included with every plan:</p>
     <div class="row">
-      <a class="btn btn-secondary" href="/access/ai-prompts-x7k2q9" target="_blank" rel="noopener">200 AI Prompts →</a>
-      <a class="btn btn-secondary" href="/access/playbook-m4p8w1c5" target="_blank" rel="noopener">The AI Automation Playbook →</a>
+      <a class="btn btn-secondary" href="/access/ai-prompts-x7k2q9" target="_blank" rel="noopener">200 AI Prompts</a>
+      <a class="btn btn-secondary" href="/access/playbook-m4p8w1c5" target="_blank" rel="noopener">The AI Automation Playbook</a>
     </div>
   </div>
 
   <div class="card stack">
-    <h2 class="h3">② Activate ARIA for your business</h2>
+    <div class="row"><span class="num">2</span><h2 class="h3">Activate ARIA for your business</h2></div>
     <p class="muted">Tell us about your business and we'll configure and launch your ARIA — finding clients, publishing, and running outreach for you. We set it up <strong>with</strong> you so it's tuned to your offers.</p>
-    <a class="btn btn-primary" href="/#audit">Start my setup (2 min) →</a>
+    <a class="btn btn-primary" href="/#audit">Start my setup (2 min)</a>
   </div>
 
-  <div class="step"><div class="num">③</div><div><strong>What happens next</strong><br><span class="muted">Within 24 hours you'll receive your personalized growth plan and your ARIA goes to work. Questions any time: <a href="mailto:saraph.core@gmail.com" style="color:var(--aria-accent-3)">saraph.core@gmail.com</a></span></div></div>
+  <div class="step"><span class="num">3</span><div><strong>What happens next</strong><br><span class="muted">Within 24 hours you'll receive your personalized growth plan and your ARIA goes to work. Questions any time: <a href="mailto:saraph.core@gmail.com" style="color:var(--aria-accent-3)">saraph.core@gmail.com</a></span></div></div>
 
   <p class="dim center" style="margin-top:var(--s-5)"><a href="/" style="color:var(--text-muted)">← Back to ARIA</a></p>
 </div></body></html>"""
@@ -3922,6 +3925,18 @@ async def root():
 async def saraph_page():
     """Serve the Saraph company page (products, approach, launches)."""
     return _serve_doc("saraph.html")
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page():
+    """Serve the privacy policy."""
+    return _serve_doc("privacy.html")
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_page():
+    """Serve the terms of service."""
+    return _serve_doc("terms.html")
 
 
 if __name__ == "__main__":
