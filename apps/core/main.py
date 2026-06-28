@@ -1351,6 +1351,21 @@ try:
 except Exception as _e:
     logger.error("Error montando webhooks: %s", _e)
 
+# Serve static front-end assets (design system, images) — NOT docs/products (those
+# are paid deliverables gated behind /access/{key}).
+try:
+    import pathlib as _pl
+
+    from fastapi.staticfiles import StaticFiles
+
+    for _assets in (_pl.Path("/app/docs/assets"), _pl.Path(__file__).resolve().parents[2] / "docs" / "assets"):
+        if _assets.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+            logger.info("Static assets montados en /assets")
+            break
+except Exception as _e:
+    logger.error("Error montando assets: %s", _e)
+
 
 # Pricing tiers — (Stripe amount in cents, product label, USD dollars)
 _ARIA_TIERS = {
