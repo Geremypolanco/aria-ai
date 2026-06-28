@@ -22,10 +22,11 @@ import httpx
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
+from apps.api.ratelimit import rate_limit
 from apps.core.config_pkg import settings
 
 # ── Observability bootstrap (FIRST — before any other imports) ────────────
@@ -1417,7 +1418,7 @@ async def _paypal_token_for(base: str) -> tuple[int, str | None]:
         return (-1, None)
 
 
-@app.get("/paypal/diag")
+@app.get("/paypal/diag", dependencies=[Depends(rate_limit(10, 60, "diag"))])
 async def paypal_diag():
     """Diagnose which PayPal environment the configured credentials belong to.
 
@@ -1632,7 +1633,7 @@ async def _get_or_create_stripe_link(tier: str) -> str | None:
         return None
 
 
-@app.get("/stripe/diag")
+@app.get("/stripe/diag", dependencies=[Depends(rate_limit(10, 60, "diag"))])
 async def stripe_diag():
     """Report whether the configured Stripe key is live or test mode (no secret exposed)."""
     key = getattr(settings, "STRIPE_SECRET_KEY", None) or ""

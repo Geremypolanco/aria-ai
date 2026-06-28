@@ -10,10 +10,11 @@ import logging
 import time
 from typing import Any
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from apps.api.ratelimit import rate_limit
 from apps.core.agents.orchestrator import Orchestrator as AriaOrchestrator
 
 logger = logging.getLogger("aria.webhooks")
@@ -98,7 +99,7 @@ class LeadPayload(BaseModel):
     source: str = "landing_page"  # landing_page | lead_magnet | referral | direct
 
 
-@router.post("/lead")
+@router.post("/lead", dependencies=[Depends(rate_limit(8, 60, "lead"))])
 async def handle_inbound_lead(payload: LeadPayload):
     """
     Receives an inbound lead from the ARIA landing page or email capture funnel.
