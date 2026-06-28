@@ -3890,28 +3890,38 @@ async def oauth_callback(service: str, request: Request):
         return HTMLResponse(f"<h2>Error interno: {exc}</h2>", status_code=500)
 
 
+def _serve_doc(filename: str, fallback: str = "") -> HTMLResponse:
+    """Serve a static HTML page from docs/ (works in the container and locally)."""
+    import pathlib
+
+    for base in (
+        pathlib.Path("/app/docs"),
+        pathlib.Path(__file__).resolve().parents[2] / "docs",
+    ):
+        try:
+            f = base / filename
+            if f.is_file():
+                return HTMLResponse(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+    return HTMLResponse(fallback or f"<h2>{filename} not found</h2>", status_code=404)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the public ARIA landing page (lead-capture funnel front door)."""
-    import pathlib
-
-    for candidate in (
-        pathlib.Path("/app/docs/index.html"),
-        pathlib.Path(__file__).resolve().parents[2] / "docs" / "index.html",
-    ):
-        try:
-            if candidate.is_file():
-                return HTMLResponse(candidate.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-
-    # Fallback if the landing asset is missing — never break the front door
-    return HTMLResponse(
-        """<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/dashboard">
-    <title>ARIA AI</title></head><body>
-    <p>Redirigiendo al <a href="/dashboard">Dashboard de ARIA</a>...</p>
-    </body></html>"""
+    return _serve_doc(
+        "index.html",
+        fallback='<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/dashboard">'
+        "<title>ARIA AI</title></head><body><p>Redirecting to the "
+        '<a href="/dashboard">ARIA dashboard</a>…</p></body></html>',
     )
+
+
+@app.get("/saraph", response_class=HTMLResponse)
+async def saraph_page():
+    """Serve the Saraph company page (products, approach, launches)."""
+    return _serve_doc("saraph.html")
 
 
 if __name__ == "__main__":

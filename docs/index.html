@@ -8,13 +8,14 @@
 <meta property="og:title" content="ARIA — The Autonomous AI Revenue Agent">
 <meta property="og:description" content="The AI that runs your business growth for you, autonomously. Not a chatbot — an operator.">
 <meta property="og:type" content="website">
+<link rel="icon" type="image/svg+xml" href="/assets/aria-logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="/assets/aria-design-system.css">
 <style>
   /* Page-specific composition on top of the design system */
   .hero { position: relative; overflow: hidden; padding-top: var(--s-9); }
   .hero::before { content:""; position:absolute; inset:-40% 0 auto 0; height:520px;
-    background: radial-gradient(60% 60% at 50% 0%, rgba(99,102,241,.22), transparent 70%); pointer-events:none; }
+    background: radial-gradient(60% 60% at 50% 0%, rgba(124,140,255,.22), transparent 70%); pointer-events:none; }
   .hero-grid { display:grid; grid-template-columns: 1.05fr .95fr; gap: var(--s-7); align-items:center; }
   .feed { background: var(--surface); border:1px solid var(--border); border-radius: var(--r-xl); padding: var(--s-5); box-shadow: var(--shadow-lg); }
   .feed-head { display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--s-4); padding-bottom: var(--s-3); border-bottom:1px solid var(--border); }
@@ -53,11 +54,12 @@
 <!-- NAV -->
 <header class="nav">
   <div class="container nav-inner">
-    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span> ARIA</a>
+    <a class="brand" href="/"><img src="/assets/aria-logo.svg" width="28" height="28" alt="" aria-hidden="true"> ARIA <span class="dim" style="font-weight:500;font-size:var(--fs-sm)">by Saraph</span></a>
     <nav class="nav-links" aria-label="Primary">
       <a href="#how">How it works</a>
       <a href="#difference">Why ARIA</a>
       <a href="#pricing">Pricing</a>
+      <a href="/saraph">Saraph</a>
     </nav>
     <a class="btn btn-primary" href="#audit">Get a free audit</a>
   </div>
@@ -228,8 +230,8 @@
 
 <footer>
   <div class="container row" style="justify-content:space-between">
-    <span class="brand"><span class="brand-mark" aria-hidden="true"></span> ARIA</span>
-    <span>© ARIA AI — the autonomous revenue agent.</span>
+    <span class="brand"><img src="/assets/aria-logo.svg" width="24" height="24" alt="" aria-hidden="true"> ARIA <span class="dim" style="font-weight:500;font-size:var(--fs-sm)">by <a href="/saraph" style="color:var(--text-muted)">Saraph</a></span></span>
+    <span>© Saraph — building the autonomous future.</span>
   </div>
 </footer>
 
