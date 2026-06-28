@@ -505,6 +505,10 @@ class IncomeLoop:
             [s[0] for s in STRATEGIES],
             {s[0]: float(s[1]) for s in STRATEGIES},
         )
+        # Strategy dispatch table (name → bound handler). Replaces a 116-branch
+        # if/elif chain: O(1) lookup, trivially testable, and the single place where
+        # per-strategy execution is instrumented (see _execute).
+        self._dispatch: dict = self._build_dispatch()
 
     # ── Control ─────────────────────────────────────────────────────
 
@@ -865,240 +869,157 @@ JSON:
 
     # ── Strategy Executors ───────────────────────────────────────────────────
 
+    def _build_dispatch(self) -> dict:
+        """Map every strategy name to its handler — one line per strategy.
+
+        Adding a strategy means adding one entry here plus its _exec_ method;
+        nothing else in the loop changes. Replaces a 116-branch if/elif chain.
+        """
+        return {
+            "content_pipeline": self._exec_content_pipeline,
+            "niche_rotator": self._exec_niche_rotator,
+            "product_factory": self._exec_product_factory,
+            "opportunity_scan": self._exec_opportunity_scan,
+            "github_publish": self._exec_github_publish,
+            "shopify_listing": self._exec_shopify_listing,
+            "email_campaign": self._exec_email_campaign,
+            "ebook_factory": self._exec_ebook_factory,
+            "social_blitz": self._exec_social_blitz,
+            "premium_offer": self._exec_premium_offer,
+            "affiliate_content": self._exec_affiliate_content,
+            "lead_magnet": self._exec_lead_magnet,
+            "hf_spaces_demo": self._exec_hf_spaces_demo,
+            "seo_optimizer": self._exec_seo_optimizer,
+            "content_repurposer": self._exec_content_repurposer,
+            "course_builder": self._exec_course_builder,
+            "affiliate_network": self._exec_affiliate_network_builder,
+            "micro_saas": self._exec_micro_saas,
+            "gist_blitz": self._exec_gist_blitz,
+            "github_sponsors_setup": self._exec_github_sponsors_setup,
+            "product_bundle": self._exec_product_bundle,
+            "waitlist_builder": self._exec_waitlist_builder,
+            "challenge_campaign": self._exec_challenge_campaign,
+            "partner_outreach": self._exec_partner_outreach,
+            "newsletter_issue": self._exec_newsletter_issue,
+            "job_board_listing": self._exec_job_board_listing,
+            "viral_thread": self._exec_viral_thread,
+            "twitter_thread": self._exec_twitter_thread,
+            "linkedin_post": self._exec_linkedin_post,
+            "reddit_organic": self._exec_reddit_organic,
+            "stripe_checkout": self._exec_stripe_checkout,
+            "tiktok_script": self._exec_tiktok_script,
+            "linkedin_outreach": self._exec_linkedin_outreach,
+            "youtube_strategy": self._exec_youtube_strategy,
+            "product_hunt_launch": self._exec_product_hunt_launch,
+            "content_amplifier": self._exec_content_amplifier,
+            "cold_email_outreach": self._exec_cold_email_outreach,
+            "pinterest_pins": self._exec_pinterest_pins,
+            "landing_page_deploy": self._exec_landing_page_deploy,
+            "substack_publish": self._exec_substack_publish,
+            "freelance_gig": self._exec_freelance_gig,
+            "media_pitch": self._exec_media_pitch,
+            "ab_content_test": self._exec_ab_content_test,
+            "smart_pricing": self._exec_smart_pricing,
+            "voice_of_aria": self._exec_voice_of_aria,
+            "self_monetize": self._exec_self_monetize,
+            "referral_engine": self._exec_referral_engine,
+            "digital_agency": self._exec_digital_agency,
+            "crowdfunding_kit": self._exec_crowdfunding_kit,
+            "newsletter_monetize": self._exec_newsletter_monetize,
+            "community_launch": self._exec_community_launch,
+            "podcast_pitch": self._exec_podcast_pitch,
+            "multilingual_content": self._exec_multilingual_content,
+            "seo_tracking": self._exec_seo_tracking,
+            "viral_detector": self._exec_viral_detector,
+            "testimonial_collector": self._exec_testimonial_collector,
+            "seo_backlink_builder": self._exec_seo_backlink_builder,
+            "lead_closer": self._exec_lead_closer,
+            "retargeting_campaign": self._exec_retargeting_campaign,
+            "influencer_outreach": self._exec_influencer_outreach,
+            "marketplace_lister": self._exec_marketplace_lister,
+            "daily_goal_tracker": self._exec_daily_goal_tracker,
+            "growth_hacker": self._exec_growth_hacker,
+            "knowledge_synthesizer": self._exec_knowledge_synthesizer,
+            "conversion_optimizer": self._exec_conversion_optimizer,
+            "brand_storyteller": self._exec_brand_storyteller,
+            "competitor_copy": self._exec_competitor_copy,
+            "price_ladder": self._exec_price_ladder,
+            "auto_responder": self._exec_auto_responder,
+            "affiliate_injector": self._exec_affiliate_injector,
+            "social_dm_outreach": self._exec_social_dm_outreach,
+            "upsell_engine": self._exec_upsell_engine,
+            "podcast_producer": self._exec_podcast_producer,
+            "saas_waitlist_blitz": self._exec_saas_waitlist_blitz,
+            "vc_pitch_deck": self._exec_vc_pitch_deck,
+            "job_posting_scout": self._exec_job_posting_scout,
+            "micro_grant_hunter": self._exec_micro_grant_hunter,
+            "notion_template_seller": self._exec_notion_template_seller,
+            "chrome_extension_builder": self._exec_chrome_extension_builder,
+            "api_marketplace_lister": self._exec_api_marketplace_lister,
+            "white_label_kit": self._exec_white_label_kit,
+            "data_product_seller": self._exec_data_product_seller,
+            "b2b_saas_pitch": self._exec_b2b_saas_pitch,
+            "email_list_builder": self._exec_email_list_builder,
+            "joint_venture_pitch": self._exec_joint_venture_pitch,
+            "product_review_outreach": self._exec_product_review_outreach,
+            "seo_content_cluster": self._exec_seo_content_cluster,
+            "price_anchoring": self._exec_price_anchoring,
+            "social_proof_automation": self._exec_social_proof_automation,
+            "influencer_collab": self._exec_influencer_collab,
+            "content_licensing": self._exec_content_licensing,
+            "micro_consulting": self._exec_micro_consulting,
+            "saas_upsell_sequence": self._exec_saas_upsell_sequence,
+            "community_monetize": self._exec_community_monetize,
+            "thought_leadership": self._exec_thought_leadership,
+            "token_economy": self._exec_token_economy,
+            "api_product_launch": self._exec_api_product_launch,
+            "growth_experiment": self._exec_growth_experiment,
+            "app_store_listing": self._exec_app_store_listing,
+            "case_study_publisher": self._exec_case_study_publisher,
+            "catalog_repromoter": self._exec_catalog_repromoter,
+            "stripe_subscription": self._exec_stripe_subscription,
+            "reddit_pain_hunter": self._exec_reddit_pain_hunter,
+            "micro_saas_niche_tool": self._exec_micro_saas_niche_tool,
+            "aria_subscription_launch": self._exec_aria_subscription_launch,
+            "dfy_content_package": self._exec_dfy_content_package,
+            "platform_self_onboard": self._exec_platform_self_onboard,
+            "proactive_client_finder": self._exec_proactive_client_finder,
+            "daily_revenue_report": self._exec_daily_revenue_report,
+            "viral_content_engine": self._exec_viral_content_engine,
+            "email_capture_funnel": self._exec_email_capture_funnel,
+            "sms_outreach": self._exec_sms_outreach,
+            "proposal_generator": self._exec_proposal_generator,
+            "linkedin_dm_automation": self._exec_linkedin_dm_automation,
+            "competitor_gap_analyzer": self._exec_competitor_gap_analyzer,
+            "ai_agency_sales_engine": self._exec_ai_agency_sales_engine,
+        }
+
     async def _execute(self, strategy: str) -> dict:
-        if strategy == "content_pipeline":
-            return await self._exec_content_pipeline()
-        if strategy == "niche_rotator":
-            return await self._exec_niche_rotator()
-        if strategy == "product_factory":
-            return await self._exec_product_factory()
-        if strategy == "opportunity_scan":
-            return await self._exec_opportunity_scan()
-        if strategy == "github_publish":
-            return await self._exec_github_publish()
-        if strategy == "shopify_listing":
-            return await self._exec_shopify_listing()
-        if strategy == "email_campaign":
-            return await self._exec_email_campaign()
-        if strategy == "ebook_factory":
-            return await self._exec_ebook_factory()
-        if strategy == "social_blitz":
-            return await self._exec_social_blitz()
-        if strategy == "premium_offer":
-            return await self._exec_premium_offer()
-        if strategy == "affiliate_content":
-            return await self._exec_affiliate_content()
-        if strategy == "lead_magnet":
-            return await self._exec_lead_magnet()
-        if strategy == "hf_spaces_demo":
-            return await self._exec_hf_spaces_demo()
-        if strategy == "seo_optimizer":
-            return await self._exec_seo_optimizer()
-        if strategy == "content_repurposer":
-            return await self._exec_content_repurposer()
-        if strategy == "course_builder":
-            return await self._exec_course_builder()
-        if strategy == "affiliate_network":
-            return await self._exec_affiliate_network_builder()
-        if strategy == "micro_saas":
-            return await self._exec_micro_saas()
-        if strategy == "gist_blitz":
-            return await self._exec_gist_blitz()
-        if strategy == "github_sponsors_setup":
-            return await self._exec_github_sponsors_setup()
-        if strategy == "product_bundle":
-            return await self._exec_product_bundle()
-        if strategy == "waitlist_builder":
-            return await self._exec_waitlist_builder()
-        if strategy == "challenge_campaign":
-            return await self._exec_challenge_campaign()
-        if strategy == "partner_outreach":
-            return await self._exec_partner_outreach()
-        if strategy == "newsletter_issue":
-            return await self._exec_newsletter_issue()
-        if strategy == "job_board_listing":
-            return await self._exec_job_board_listing()
-        if strategy == "viral_thread":
-            return await self._exec_viral_thread()
-        if strategy == "twitter_thread":
-            return await self._exec_twitter_thread()
-        if strategy == "linkedin_post":
-            return await self._exec_linkedin_post()
-        if strategy == "reddit_organic":
-            return await self._exec_reddit_organic()
-        if strategy == "stripe_checkout":
-            return await self._exec_stripe_checkout()
-        if strategy == "tiktok_script":
-            return await self._exec_tiktok_script()
-        if strategy == "linkedin_outreach":
-            return await self._exec_linkedin_outreach()
-        if strategy == "youtube_strategy":
-            return await self._exec_youtube_strategy()
-        if strategy == "product_hunt_launch":
-            return await self._exec_product_hunt_launch()
-        if strategy == "content_amplifier":
-            return await self._exec_content_amplifier()
-        if strategy == "cold_email_outreach":
-            return await self._exec_cold_email_outreach()
-        if strategy == "pinterest_pins":
-            return await self._exec_pinterest_pins()
-        if strategy == "landing_page_deploy":
-            return await self._exec_landing_page_deploy()
-        if strategy == "substack_publish":
-            return await self._exec_substack_publish()
-        if strategy == "freelance_gig":
-            return await self._exec_freelance_gig()
-        if strategy == "media_pitch":
-            return await self._exec_media_pitch()
-        if strategy == "ab_content_test":
-            return await self._exec_ab_content_test()
-        if strategy == "smart_pricing":
-            return await self._exec_smart_pricing()
-        if strategy == "voice_of_aria":
-            return await self._exec_voice_of_aria()
-        if strategy == "self_monetize":
-            return await self._exec_self_monetize()
-        if strategy == "referral_engine":
-            return await self._exec_referral_engine()
-        if strategy == "digital_agency":
-            return await self._exec_digital_agency()
-        if strategy == "crowdfunding_kit":
-            return await self._exec_crowdfunding_kit()
-        if strategy == "newsletter_monetize":
-            return await self._exec_newsletter_monetize()
-        if strategy == "community_launch":
-            return await self._exec_community_launch()
-        if strategy == "podcast_pitch":
-            return await self._exec_podcast_pitch()
-        if strategy == "multilingual_content":
-            return await self._exec_multilingual_content()
-        if strategy == "seo_tracking":
-            return await self._exec_seo_tracking()
-        if strategy == "viral_detector":
-            return await self._exec_viral_detector()
-        if strategy == "testimonial_collector":
-            return await self._exec_testimonial_collector()
-        if strategy == "seo_backlink_builder":
-            return await self._exec_seo_backlink_builder()
-        if strategy == "lead_closer":
-            return await self._exec_lead_closer()
-        if strategy == "retargeting_campaign":
-            return await self._exec_retargeting_campaign()
-        if strategy == "influencer_outreach":
-            return await self._exec_influencer_outreach()
-        if strategy == "marketplace_lister":
-            return await self._exec_marketplace_lister()
-        if strategy == "daily_goal_tracker":
-            return await self._exec_daily_goal_tracker()
-        if strategy == "growth_hacker":
-            return await self._exec_growth_hacker()
-        if strategy == "knowledge_synthesizer":
-            return await self._exec_knowledge_synthesizer()
-        if strategy == "conversion_optimizer":
-            return await self._exec_conversion_optimizer()
-        if strategy == "brand_storyteller":
-            return await self._exec_brand_storyteller()
-        if strategy == "competitor_copy":
-            return await self._exec_competitor_copy()
-        if strategy == "price_ladder":
-            return await self._exec_price_ladder()
-        if strategy == "auto_responder":
-            return await self._exec_auto_responder()
-        if strategy == "affiliate_injector":
-            return await self._exec_affiliate_injector()
-        if strategy == "social_dm_outreach":
-            return await self._exec_social_dm_outreach()
-        if strategy == "upsell_engine":
-            return await self._exec_upsell_engine()
-        if strategy == "podcast_producer":
-            return await self._exec_podcast_producer()
-        if strategy == "saas_waitlist_blitz":
-            return await self._exec_saas_waitlist_blitz()
-        if strategy == "vc_pitch_deck":
-            return await self._exec_vc_pitch_deck()
-        if strategy == "job_posting_scout":
-            return await self._exec_job_posting_scout()
-        if strategy == "micro_grant_hunter":
-            return await self._exec_micro_grant_hunter()
-        if strategy == "notion_template_seller":
-            return await self._exec_notion_template_seller()
-        if strategy == "chrome_extension_builder":
-            return await self._exec_chrome_extension_builder()
-        if strategy == "api_marketplace_lister":
-            return await self._exec_api_marketplace_lister()
-        if strategy == "white_label_kit":
-            return await self._exec_white_label_kit()
-        if strategy == "data_product_seller":
-            return await self._exec_data_product_seller()
-        if strategy == "b2b_saas_pitch":
-            return await self._exec_b2b_saas_pitch()
-        if strategy == "email_list_builder":
-            return await self._exec_email_list_builder()
-        if strategy == "joint_venture_pitch":
-            return await self._exec_joint_venture_pitch()
-        if strategy == "product_review_outreach":
-            return await self._exec_product_review_outreach()
-        if strategy == "seo_content_cluster":
-            return await self._exec_seo_content_cluster()
-        if strategy == "price_anchoring":
-            return await self._exec_price_anchoring()
-        if strategy == "social_proof_automation":
-            return await self._exec_social_proof_automation()
-        if strategy == "influencer_collab":
-            return await self._exec_influencer_collab()
-        if strategy == "content_licensing":
-            return await self._exec_content_licensing()
-        if strategy == "micro_consulting":
-            return await self._exec_micro_consulting()
-        if strategy == "saas_upsell_sequence":
-            return await self._exec_saas_upsell_sequence()
-        if strategy == "community_monetize":
-            return await self._exec_community_monetize()
-        if strategy == "thought_leadership":
-            return await self._exec_thought_leadership()
-        if strategy == "token_economy":
-            return await self._exec_token_economy()
-        if strategy == "api_product_launch":
-            return await self._exec_api_product_launch()
-        if strategy == "growth_experiment":
-            return await self._exec_growth_experiment()
-        if strategy == "app_store_listing":
-            return await self._exec_app_store_listing()
-        elif strategy == "case_study_publisher":
-            return await self._exec_case_study_publisher()
-        elif strategy == "catalog_repromoter":
-            return await self._exec_catalog_repromoter()
-        elif strategy == "stripe_subscription":
-            return await self._exec_stripe_subscription()
-        if strategy == "reddit_pain_hunter":
-            return await self._exec_reddit_pain_hunter()
-        if strategy == "micro_saas_niche_tool":
-            return await self._exec_micro_saas_niche_tool()
-        if strategy == "aria_subscription_launch":
-            return await self._exec_aria_subscription_launch()
-        if strategy == "dfy_content_package":
-            return await self._exec_dfy_content_package()
-        if strategy == "platform_self_onboard":
-            return await self._exec_platform_self_onboard()
-        if strategy == "proactive_client_finder":
-            return await self._exec_proactive_client_finder()
-        if strategy == "daily_revenue_report":
-            return await self._exec_daily_revenue_report()
-        if strategy == "viral_content_engine":
-            return await self._exec_viral_content_engine()
-        if strategy == "email_capture_funnel":
-            return await self._exec_email_capture_funnel()
-        if strategy == "sms_outreach":
-            return await self._exec_sms_outreach()
-        if strategy == "proposal_generator":
-            return await self._exec_proposal_generator()
-        if strategy == "linkedin_dm_automation":
-            return await self._exec_linkedin_dm_automation()
-        if strategy == "competitor_gap_analyzer":
-            return await self._exec_competitor_gap_analyzer()
-        if strategy == "ai_agency_sales_engine":
-            return await self._exec_ai_agency_sales_engine()
-        return {"success": False, "summary": "Unknown strategy"}
+        """Dispatch a strategy by name and record its latency/outcome.
+
+        The single instrumented entry point for strategy execution: O(1) lookup,
+        an unknown-strategy guard, and best-effort per-strategy metrics (latency +
+        success) into the ToolRegistry so silent degradation becomes visible.
+        Individual handlers own their try/except; the run loop owns timeout, the
+        bandit update and top-level error handling.
+        """
+        handler = self._dispatch.get(strategy)
+        if handler is None:
+            return {"success": False, "summary": f"Unknown strategy: {strategy}"}
+        t0 = time.time()
+        result = await handler()
+        if not isinstance(result, dict):
+            result = {"success": False, "summary": f"{strategy}: non-dict result"}
+        with contextlib.suppress(Exception):
+            from apps.core.tools.intelligence.tool_registry import get_tool_registry
+
+            get_tool_registry().record_call(
+                f"strategy:{strategy}",
+                success=bool(result.get("success")),
+                latency_ms=(time.time() - t0) * 1000.0,
+                error=None if result.get("success") else str(result.get("summary", ""))[:200],
+            )
+        return result
 
     async def _exec_content_pipeline(self) -> dict:
         """Run the full content pipeline: trending → articles → publish → affiliate.
