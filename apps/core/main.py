@@ -1473,6 +1473,30 @@ async def product_access(key: str):
     )
 
 
+@app.get("/api/v1/capabilities")
+async def list_capabilities(check: bool = False):
+    """ARIA's capability matrix: what it can do, quality, verified, and known gaps.
+
+    Exposes no secret values — only capability names, statuses and required-secret
+    *names*. ``?check=true`` additionally runs each capability's health check.
+    """
+    try:
+        from apps.core.capabilities.registry import get_capability_registry
+
+        reg = get_capability_registry()
+        payload = {
+            "summary": reg.summary(),
+            "matrix": reg.matrix(),
+            "gaps": reg.missing(),
+        }
+        if check:
+            payload["health"] = await reg.check_all()
+        return payload
+    except Exception as exc:
+        logger.error("[capabilities] endpoint error: %s", exc)
+        return JSONResponse(status_code=500, content={"error": str(exc)[:200]})
+
+
 async def _paypal_token() -> str | None:
     """Fetch a PayPal OAuth access token from client credentials. None if unset/failed."""
     cid = getattr(settings, "PAYPAL_CLIENT_ID", None)
