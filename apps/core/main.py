@@ -1463,6 +1463,8 @@ async def paypal_diag():
 _PRODUCT_FILES = {
     "ai-prompts-x7k2q9": "200-ai-prompts.html",
     "playbook-m4p8w1c5": "ai-automation-playbook.html",
+    "complete-kit-b3x9k2": "complete-kit.html",
+    "ai-quickstart-free": "ai-quickstart.html",
 }
 
 
