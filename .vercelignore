@@ -1,0 +1,10 @@
+apps/
+tests/
+scripts/
+*.py
+requirements*.txt
+Dockerfile
+fly.toml
+.github/
+__pycache__/
+.pytest_cache/
