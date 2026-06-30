@@ -211,6 +211,23 @@ async def _validate_revenue_channels() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
+    import os
+
+    # ── Lean mode (DEFAULT) ────────────────────────────────────────────────
+    # The full lifespan boots ~130 background systems sequentially (income loop,
+    # trainer, task workers, schedulers, agent hierarchy, memory/graph stacks…).
+    # On a small Fly machine that startup is slow and memory-heavy — the likely
+    # cause of the production crash-loop (HTTP 000 with min_machines_running=1,
+    # auto_stop=false). None of those systems is required to serve the store,
+    # payments, product delivery or the API. Default to a lean boot that is fast
+    # and stable; opt into the full autonomy stack explicitly with ARIA_FULL_STACK=1.
+    if os.getenv("ARIA_FULL_STACK", "0") != "1":
+        logger.info(
+            "[startup] LEAN mode — background autonomy systems OFF for stability. "
+            "Web, payments, delivery and API are fully served. Set ARIA_FULL_STACK=1 to enable the full stack."
+        )
+        yield
+        return
 
     # 1. Registrar webhook de Telegram
     try:
