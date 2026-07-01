@@ -406,6 +406,7 @@ class IncomeLoop:
     def __init__(self) -> None:
         self._running = False
         self._task = None
+        self._lock = asyncio.Lock()
         self._cycle = 0
         self._niche_idx = 0  # Round-robin through niche catalog (loaded from Redis in first cycle)
         self._adaptive_weights: dict[str, float] = {}  # updated from Redis every 10 cycles
@@ -464,97 +465,98 @@ class IncomeLoop:
             await asyncio.sleep(INTERVAL_SECONDS)
 
     async def _run_one_cycle(self, force_strategy: str | None = None) -> CycleResult:
-        self._cycle += 1
-        strategy = force_strategy if force_strategy else await self._pick_strategy_smart()
-        start = time.time()
-        logger.info("[IncomeLoop] Cycle #%d — strategy: %s", self._cycle, strategy)
+        async with self._lock:
+            self._cycle += 1
+            strategy = force_strategy if force_strategy else await self._pick_strategy_smart()
+            start = time.time()
+            logger.info("[IncomeLoop] Cycle #%d — strategy: %s", self._cycle, strategy)
 
-        result = CycleResult(
-            cycle_id=self._cycle,
-            strategy=strategy,
-            success=False,
-            summary="",
-        )
+            result = CycleResult(
+                cycle_id=self._cycle,
+                strategy=strategy,
+                success=False,
+                summary="",
+            )
 
-        try:
-            obs = await asyncio.wait_for(self._execute(strategy), timeout=MAX_STRATEGY_TIME)
-            result.success = obs.get("success", False)
-            result.summary = obs.get("summary", "")
-            result.revenue_potential = obs.get("revenue_potential", 0.0)
-            result.urls_created = obs.get("urls", [])
-        except TimeoutError:
-            result.summary = f"Strategy '{strategy}' timed out after {MAX_STRATEGY_TIME}s"
-            logger.warning("[IncomeLoop] %s", result.summary)
-        except Exception as exc:
-            result.summary = f"Strategy '{strategy}' error: {str(exc)[:150]}"
-            logger.error("[IncomeLoop] %s", result.summary)
-        finally:
-            result.elapsed_seconds = int(time.time() - start)
+            try:
+                obs = await asyncio.wait_for(self._execute(strategy), timeout=MAX_STRATEGY_TIME)
+                result.success = obs.get("success", False)
+                result.summary = obs.get("summary", "")
+                result.revenue_potential = obs.get("revenue_potential", 0.0)
+                result.urls_created = obs.get("urls", [])
+            except TimeoutError:
+                result.summary = f"Strategy '{strategy}' timed out after {MAX_STRATEGY_TIME}s"
+                logger.warning("[IncomeLoop] %s", result.summary)
+            except Exception as exc:
+                result.summary = f"Strategy '{strategy}' error: {str(exc)[:150]}"
+                logger.error("[IncomeLoop] %s", result.summary)
+            finally:
+                result.elapsed_seconds = int(time.time() - start)
 
-        await self._save_result(result)
+            await self._save_result(result)
 
-        # Update Thompson Bandit with observed outcome and persist async
-        self._bandit.update(strategy, result.success)
-        asyncio.create_task(self._bandit.save())
+            # Update Thompson Bandit with observed outcome and persist async
+            self._bandit.update(strategy, result.success)
+            asyncio.create_task(self._bandit.save())
 
-        # Refresh adaptive weights every 10 cycles
-        if self._cycle - self._weights_refresh_cycle >= 10:
-            self._weights_refresh_cycle = self._cycle
-            asyncio.create_task(self._refresh_adaptive_weights())
+            # Refresh adaptive weights every 10 cycles
+            if self._cycle - self._weights_refresh_cycle >= 10:
+                self._weights_refresh_cycle = self._cycle
+                asyncio.create_task(self._refresh_adaptive_weights())
 
-        # Notify on wins — also notify high-value strategies even without URLs (e.g. vc_pitch_deck, micro_grant_hunter)
-        _HIGH_VALUE_STRATEGIES = {
-            "vc_pitch_deck",
-            "micro_grant_hunter",
-            "stripe_checkout",
-            "gumroad_checkout",
-        }
-        if result.success and (
-            result.urls_created
-            or (result.revenue_potential >= 50 and result.strategy in _HIGH_VALUE_STRATEGIES)
-        ):
-            await self._notify_win(result)
+            # Notify on wins — also notify high-value strategies even without URLs (e.g. vc_pitch_deck, micro_grant_hunter)
+            _HIGH_VALUE_STRATEGIES = {
+                "vc_pitch_deck",
+                "micro_grant_hunter",
+                "stripe_checkout",
+                "gumroad_checkout",
+            }
+            if result.success and (
+                result.urls_created
+                or (result.revenue_potential >= 50 and result.strategy in _HIGH_VALUE_STRATEGIES)
+            ):
+                await self._notify_win(result)
 
-        # Product launch sequence: announce newly created products on the blog + Dev.to + Hashnode
-        _PRODUCT_STRATEGIES = {
-            "product_factory",
-            "ebook_factory",
-            "premium_offer",
-            "stripe_checkout",
-            "stripe_subscription",
-            "shopify_listing",
-            "niche_rotator",
-            "notion_template_seller",
-            "white_label_kit",
-            "data_product_seller",
-            "saas_waitlist_blitz",
-            "api_product_launch",
-            "chrome_extension_builder",
-        }
-        if result.success and result.urls_created and result.strategy in _PRODUCT_STRATEGIES:
-            asyncio.create_task(self._announce_product_on_blog(result))
+            # Product launch sequence: announce newly created products on the blog + Dev.to + Hashnode
+            _PRODUCT_STRATEGIES = {
+                "product_factory",
+                "ebook_factory",
+                "premium_offer",
+                "stripe_checkout",
+                "stripe_subscription",
+                "shopify_listing",
+                "niche_rotator",
+                "notion_template_seller",
+                "white_label_kit",
+                "data_product_seller",
+                "saas_waitlist_blitz",
+                "api_product_launch",
+                "chrome_extension_builder",
+            }
+            if result.success and result.urls_created and result.strategy in _PRODUCT_STRATEGIES:
+                asyncio.create_task(self._announce_product_on_blog(result))
 
-        # Persist to product catalog for all income-generating strategies
-        if result.success and result.urls_created and result.revenue_potential > 0:
-            asyncio.create_task(self._register_product(result))
+            # Persist to product catalog for all income-generating strategies
+            if result.success and result.urls_created and result.revenue_potential > 0:
+                asyncio.create_task(self._register_product(result))
 
-        # Global social distribution fallback — catches all strategies that don't
-        # self-distribute. Fires asynchronously so it never blocks the cycle.
-        if (
-            result.success
-            and result.revenue_potential >= 1.0
-            and result.strategy not in _SELF_DISTRIBUTING_STRATEGIES
-        ):
-            asyncio.create_task(self._distribute_result_on_social(result))
+            # Global social distribution fallback — catches all strategies that don't
+            # self-distribute. Fires asynchronously so it never blocks the cycle.
+            if (
+                result.success
+                and result.revenue_potential >= 1.0
+                and result.strategy not in _SELF_DISTRIBUTING_STRATEGIES
+            ):
+                asyncio.create_task(self._distribute_result_on_social(result))
 
-        logger.info(
-            "[IncomeLoop] Cycle #%d done in %ds | success=%s | %s",
-            self._cycle,
-            result.elapsed_seconds,
-            result.success,
-            result.summary[:80],
-        )
-        return result
+            logger.info(
+                "[IncomeLoop] Cycle #%d done in %ds | success=%s | %s",
+                self._cycle,
+                result.elapsed_seconds,
+                result.success,
+                result.summary[:80],
+            )
+            return result
 
     async def _pick_strategy_smart(self) -> str:
         """
