@@ -1,685 +1,261 @@
 <!DOCTYPE html>
 <html lang="es" class="scroll-smooth">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ARIA — Autonomous Intelligence Platform</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sohne:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ARIA Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
-    * {
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-
-    html {
-      background: #ffffff;
-      color: #0d0d0d;
-    }
-
-    body {
-      font-family: 'Sohne', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #ffffff;
-      color: #0d0d0d;
-    }
-
-    code, pre {
-      font-family: 'Fira Code', monospace;
-    }
-
-    /* Scrollbar refinement */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: #d1d5db;
-      border-radius: 4px;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-      background: #9ca3af;
-    }
-
-    /* Refined card design */
-    .card-refined {
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .card-refined:hover {
-      border-color: #d1d5db;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-
-    /* Sidebar refinement */
-    .sidebar-refined {
-      background: #fafafa;
-      border-right: 1px solid #e5e7eb;
-    }
-
-    /* Button refinement */
-    .btn-primary-refined {
-      background: #0d0d0d;
-      color: #ffffff;
-      border: 1px solid #0d0d0d;
-      border-radius: 8px;
-      font-weight: 500;
-      font-size: 14px;
-      padding: 10px 16px;
-      transition: all 0.2s;
-      cursor: pointer;
-    }
-
-    .btn-primary-refined:hover {
-      background: #1a1a1a;
-      border-color: #1a1a1a;
-    }
-
-    .btn-primary-refined:active {
-      transform: scale(0.98);
-    }
-
-    .btn-secondary-refined {
-      background: #f3f4f6;
-      color: #0d0d0d;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      font-weight: 500;
-      font-size: 14px;
-      padding: 10px 16px;
-      transition: all 0.2s;
-      cursor: pointer;
-    }
-
-    .btn-secondary-refined:hover {
-      background: #e5e7eb;
-      border-color: #d1d5db;
-    }
-
-    /* Input refinement */
-    .input-refined {
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: 14px;
-      font-family: inherit;
-      transition: all 0.2s;
-    }
-
-    .input-refined:focus {
-      outline: none;
-      border-color: #0d0d0d;
-      box-shadow: 0 0 0 3px rgba(13, 13, 13, 0.05);
-    }
-
-    /* Typography refinement */
-    .text-display {
-      font-size: 32px;
-      font-weight: 700;
-      line-height: 1.2;
-      letter-spacing: -0.02em;
-    }
-
-    .text-heading {
-      font-size: 20px;
-      font-weight: 600;
-      line-height: 1.3;
-      letter-spacing: -0.01em;
-    }
-
-    .text-subheading {
-      font-size: 14px;
-      font-weight: 500;
-      line-height: 1.4;
-      color: #6b7280;
-    }
-
-    .text-body {
-      font-size: 14px;
-      font-weight: 400;
-      line-height: 1.6;
-      color: #374151;
-    }
-
-    .text-caption {
-      font-size: 12px;
-      font-weight: 500;
-      line-height: 1.4;
-      color: #9ca3af;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    /* Spacing system */
-    .space-xs { gap: 4px; }
-    .space-sm { gap: 8px; }
-    .space-md { gap: 12px; }
-    .space-lg { gap: 16px; }
-    .space-xl { gap: 24px; }
-
-    /* Message styling */
-    .message-user {
-      background: #0d0d0d;
-      color: #ffffff;
-      border-radius: 12px;
-      padding: 12px 16px;
-      max-width: 80%;
-      word-wrap: break-word;
-    }
-
-    .message-aria {
-      background: #f9fafb;
-      color: #0d0d0d;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 12px 16px;
-      max-width: 80%;
-    }
-
-    /* Markdown rendering */
-    .markdown-content p {
-      margin: 0.5em 0;
-    }
-
-    .markdown-content code {
-      background: #f3f4f6;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 0.9em;
-    }
-
-    .markdown-content pre {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 12px;
-      overflow-x: auto;
-      margin: 0.5em 0;
-    }
-
-    .markdown-content a {
-      color: #0d0d0d;
-      text-decoration: underline;
-      font-weight: 500;
-    }
-
-    /* Loading animation */
-    @keyframes pulse-subtle {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.6; }
-    }
-
-    .animate-pulse-subtle {
-      animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-
-    /* Fade in animation */
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(4px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .animate-fade-in {
-      animation: fadeIn 0.3s ease-out;
-    }
-
-    [x-cloak] { display: none !important; }
+    * { -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'Inter', sans-serif; background: #0a0a0f; color: #f1f5f9; }
+    .gradient-text { background: linear-gradient(135deg, #8b5cf6, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .card { background: #111118; border: 1px solid #1e1e2a; border-radius: 16px; transition: all 0.2s; }
+    .card:active { transform: scale(0.98); }
+    .btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border-radius: 12px; padding: 12px 20px; font-weight: 600; }
+    .btn-primary:active { transform: scale(0.97); }
+    .glass { background: rgba(17,17,24,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid #1e1e2a; }
+    .badge { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .msg-user { background: #1e1e2a; border-radius: 16px 16px 4px 16px; padding: 12px 16px; max-width: 85%; }
+    .msg-aria { background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.2); border-radius: 16px 16px 16px 4px; padding: 12px 16px; max-width: 85%; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 2px; }
+    @keyframes pulse-dot { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    .dot-pulse { animation: pulse-dot 1.4s infinite; }
+    .dot-pulse:nth-child(2) { animation-delay: 0.2s; }
+    .dot-pulse:nth-child(3) { animation-delay: 0.4s; }
   </style>
 </head>
-<body x-data="ariaApp()" x-init="init()" x-cloak>
-
-  <div class="flex h-screen bg-white">
-    
-    <!-- Sidebar -->
-    <aside class="w-64 sidebar-refined flex flex-col border-r border-gray-200">
-      <!-- Header -->
-      <div class="px-6 py-8 border-b border-gray-200">
-        <div class="flex items-center space-md">
-          <div class="w-10 h-10 rounded-lg bg-black flex items-center justify-center">
-            <span class="text-white font-bold text-lg">A</span>
-          </div>
-          <div>
-            <h1 class="text-heading">ARIA</h1>
-            <p class="text-caption text-gray-500">Autonomous AI</p>
-          </div>
-        </div>
+<body x-data="dashboardApp()" x-init="init()" class="pb-24">
+  
+  <!-- TOP BAR -->
+  <div class="glass fixed top-0 left-0 right-0 z-50 px-4 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <button @click="sidebar = !sidebar" class="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/5">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-xs font-bold">A</div>
+        <span class="font-semibold text-sm">ARIA</span>
       </div>
-
-      <!-- Navigation -->
-      <nav class="flex-1 overflow-y-auto px-4 py-6 space-y-1">
-        <template x-for="item in navItems" :key="item.id">
-          <button
-            @click="activeSection = item.id"
-            class="w-full text-left px-4 py-3 rounded-lg transition-all"
-            :class="activeSection === item.id 
-              ? 'bg-black text-white' 
-              : 'text-gray-700 hover:bg-gray-100'"
-          >
-            <span class="text-body font-medium" x-text="item.label"></span>
-          </button>
-        </template>
-      </nav>
-
-      <!-- Footer -->
-      <div class="px-4 py-6 border-t border-gray-200 space-y-3">
-        <div class="flex items-center space-md px-4 py-3 rounded-lg bg-gray-50">
-          <div class="w-2 h-2 rounded-full" :class="connected ? 'bg-green-500' : 'bg-red-500'"></div>
-          <div class="flex-1">
-            <p class="text-caption">Status</p>
-            <p class="text-body font-medium" x-text="connected ? 'Online' : 'Offline'"></p>
-          </div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Main Content -->
-    <main class="flex-1 flex flex-col overflow-hidden bg-white">
-      
-      <!-- Top Bar -->
-      <header class="h-16 border-b border-gray-200 flex items-center justify-between px-8 bg-white">
-        <div class="flex items-center space-md">
-          <h2 class="text-heading capitalize" x-text="activeSection"></h2>
-        </div>
-        <div class="flex items-center space-lg">
-          <div class="flex items-center space-sm">
-            <div class="w-2 h-2 rounded-full" :class="connected ? 'bg-green-500 animate-pulse-subtle' : 'bg-red-500'"></div>
-            <span class="text-caption" x-text="connected ? 'System Online' : 'System Offline'"></span>
-          </div>
-          <div class="w-8 h-8 rounded-lg bg-black text-white flex items-center justify-center text-xs font-bold">G</div>
-        </div>
-      </header>
-
-      <!-- Content Area -->
-      <div class="flex-1 overflow-y-auto">
-        
-        <!-- Overview Section -->
-        <div x-show="activeSection === 'overview'" class="animate-fade-in p-8 max-w-7xl mx-auto space-y-8">
-          <div class="space-y-2">
-            <h1 class="text-display">Welcome back</h1>
-            <p class="text-body text-gray-600" x-text="new Date().toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'})"></p>
-          </div>
-
-          <!-- Metrics Grid -->
-          <div class="grid grid-cols-4 gap-4">
-            <div class="card-refined p-6 space-y-3">
-              <p class="text-caption text-gray-500">Agents</p>
-              <p class="text-display" x-text="metrics.agents"></p>
-              <p class="text-body text-gray-600">Active in system</p>
-            </div>
-            <div class="card-refined p-6 space-y-3">
-              <p class="text-caption text-gray-500">Goals</p>
-              <p class="text-display" x-text="metrics.goals"></p>
-              <p class="text-body text-gray-600">Objectives</p>
-            </div>
-            <div class="card-refined p-6 space-y-3">
-              <p class="text-caption text-gray-500">Pipelines</p>
-              <p class="text-display" x-text="metrics.runs"></p>
-              <p class="text-body text-gray-600">Executed</p>
-            </div>
-            <div class="card-refined p-6 space-y-3">
-              <p class="text-caption text-gray-500">Health</p>
-              <p class="text-display">100%</p>
-              <p class="text-body text-gray-600">System optimal</p>
-            </div>
-          </div>
-
-          <!-- Income Loop Card -->
-          <div class="card-refined p-8 space-y-4 cursor-pointer hover:shadow-md" @click="activeSection = 'income'">
-            <div class="flex items-center justify-between">
-              <div class="space-y-2">
-                <h3 class="text-heading">Income Loop 24/7</h3>
-                <p class="text-body text-gray-600" x-text="incomeStatus.running ? 'Autonomous monetization active' : 'System paused'"></p>
-              </div>
-              <div class="text-right space-y-1">
-                <p class="text-caption text-gray-500">Potential Revenue</p>
-                <p class="text-heading" x-text="'$' + (incomeStatus.total_revenue_potential || 0).toFixed(2)"></p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Activity & Chat Grid -->
-          <div class="grid grid-cols-3 gap-6">
-            <div class="col-span-2 space-y-4">
-              <h3 class="text-heading">Recent Activity</h3>
-              <div class="card-refined divide-y divide-gray-200 overflow-hidden">
-                <template x-for="(e, i) in activity.slice(0, 6)" :key="i">
-                  <div class="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
-                    <div class="flex items-center space-md flex-1">
-                      <div class="w-2 h-2 rounded-full flex-shrink-0" :class="e.level === 'ERROR' ? 'bg-red-500' : 'bg-green-500'"></div>
-                      <p class="text-body text-gray-700 truncate" x-text="e.message"></p>
-                    </div>
-                    <p class="text-caption text-gray-400" x-text="e.ts?.substring(11, 16)"></p>
-                  </div>
-                </template>
-              </div>
-            </div>
-
-            <div class="space-y-4">
-              <h3 class="text-heading">Quick Command</h3>
-              <div class="card-refined p-6 flex flex-col h-80 space-y-4">
-                <div class="flex-1 overflow-y-auto space-y-3" id="quick-chat">
-                  <template x-for="m in quickMessages">
-                    <div class="flex" :class="m.role === 'user' ? 'justify-end' : 'justify-start'">
-                      <div class="text-body px-3 py-2 rounded-lg max-w-xs" :class="m.role === 'user' ? 'bg-black text-white' : 'bg-gray-100 text-gray-900'" x-text="m.text"></div>
-                    </div>
-                  </template>
-                </div>
-                <input x-model="quickInput" @keydown.enter="sendQuick()" placeholder="Ask something..." class="input-refined w-full">
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Chat Section -->
-        <div x-show="activeSection === 'chat'" class="animate-fade-in flex flex-col h-full">
-          <div class="flex-1 overflow-y-auto p-8 space-y-6" id="chat-messages">
-            <template x-for="(m, i) in messages" :key="i">
-              <div class="flex" :class="m.role === 'user' ? 'justify-end' : 'justify-start'">
-                <div class="space-y-1 max-w-2xl" :class="m.role === 'user' ? 'items-end' : 'items-start'">
-                  <p class="text-caption text-gray-500" x-text="m.role === 'user' ? 'You' : 'ARIA'"></p>
-                  <div class="text-body markdown-content" :class="m.role === 'user' ? 'message-user' : 'message-aria'" x-html="renderMarkdown(m.text)"></div>
-                </div>
-              </div>
-            </template>
-            <div x-show="thinking" class="flex space-md items-center">
-              <div class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse-subtle"></div>
-              <div class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse-subtle" style="animation-delay: 0.2s"></div>
-              <div class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse-subtle" style="animation-delay: 0.4s"></div>
-            </div>
-            <div x-show="messages.length === 0" class="flex flex-col items-center justify-center h-96 text-center space-y-4">
-              <div class="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center">
-                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-              </div>
-              <h2 class="text-heading">Start a conversation</h2>
-              <p class="text-body text-gray-600 max-w-md">ARIA is ready to process complex missions and provide autonomous intelligence.</p>
-            </div>
-          </div>
-
-          <!-- Input Area -->
-          <div class="px-8 py-6 border-t border-gray-200 bg-white">
-            <div class="max-w-4xl mx-auto space-y-3">
-              <textarea x-model="chatInput" @keydown.enter.prevent="if(!$event.shiftKey) sendMessage()" placeholder="Send a message to ARIA..." rows="3" class="input-refined w-full resize-none"></textarea>
-              <div class="flex justify-end">
-                <button @click="sendMessage()" class="btn-primary-refined" :disabled="!chatInput.trim() || thinking">
-                  <span x-show="!thinking">Send</span>
-                  <span x-show="thinking">Thinking...</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Agents Section -->
-        <div x-show="activeSection === 'agents'" class="animate-fade-in p-8 max-w-7xl mx-auto space-y-8">
-          <h1 class="text-display">Specialists</h1>
-          <div class="grid grid-cols-3 gap-6">
-            <template x-for="agent in agents" :key="agent.name">
-              <div class="card-refined p-6 space-y-4 flex flex-col justify-between">
-                <div class="space-y-3">
-                  <h3 class="text-heading capitalize" x-text="agent.name"></h3>
-                  <p class="text-body text-gray-600" x-text="agent.description"></p>
-                </div>
-                <button @click="openMission(agent.name)" class="btn-secondary-refined w-full">Activate Mission</button>
-              </div>
-            </template>
-          </div>
-        </div>
-
-        <!-- Settings Section -->
-        <div x-show="activeSection === 'settings'" class="animate-fade-in p-8 max-w-4xl mx-auto space-y-8">
-          <h1 class="text-display">Configuration</h1>
-          
-          <div class="card-refined p-8 space-y-6">
-            <h3 class="text-heading">AI Engine Status</h3>
-            <div class="grid grid-cols-2 gap-4">
-              <template x-for="(ph, name) in aiHealth" :key="name">
-                <div x-show="name !== '_totals'" class="p-4 border border-gray-200 rounded-lg flex items-center justify-between">
-                  <div class="space-y-1">
-                    <p class="text-body font-medium capitalize" x-text="name"></p>
-                    <p class="text-caption text-gray-500" x-text="ph.total_calls + ' calls'"></p>
-                  </div>
-                  <div class="text-right">
-                    <p class="text-body font-medium" x-text="ph.success_rate_pct + '%'"></p>
-                    <p class="text-caption text-gray-500">success</p>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </div>
-
-          <div class="card-refined p-8 space-y-6">
-            <h3 class="text-heading">Integrations</h3>
-            <div class="space-y-3">
-              <template x-for="item in integrations.ai" :key="item.name">
-                <div class="flex items-center justify-between py-3 border-b border-gray-200 last:border-b-0">
-                  <span class="text-body" x-text="item.name"></span>
-                  <span class="text-caption font-medium" :class="item.configured ? 'text-green-600' : 'text-gray-400'" x-text="item.configured ? 'ACTIVE' : 'INACTIVE'"></span>
-                </div>
-              </template>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </main>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full" :class="online ? 'bg-green-400' : 'bg-red-400'"></span>
+      <span class="text-xs text-slate-500" x-text="online ? 'Online' : 'Offline'"></span>
+    </div>
   </div>
 
-  <!-- Mission Modal -->
-  <div x-show="missionModal.open" x-cloak class="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-    <div class="card-refined w-full max-w-lg p-8 space-y-6" @click.away="missionModal.open = false">
-      <div class="space-y-2">
-        <h2 class="text-heading">New Mission</h2>
-        <p class="text-body text-gray-600" x-text="'Agent: ' + missionModal.agent"></p>
+  <!-- SIDEBAR OVERLAY -->
+  <template x-teleport="body">
+    <div x-show="sidebar" @click="sidebar = false" class="fixed inset-0 bg-black/50 z-40"></div>
+  </template>
+
+  <!-- SIDEBAR -->
+  <div class="fixed top-14 left-0 bottom-0 w-64 bg-[#0d0d14] border-r border-[#1e1e2a] z-50 transform transition-transform duration-300" :class="sidebar ? 'translate-x-0' : '-translate-x-full'">
+    <div class="p-4 space-y-1">
+      <a href="/dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-500/10 text-purple-300 text-sm font-medium">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Dashboard
+      </a>
+      <a href="/" class="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-slate-400 text-sm transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        Landing Page
+      </a>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="pt-14 px-4 max-w-lg mx-auto">
+    
+    <!-- HEADER -->
+    <div class="py-6">
+      <h1 class="text-2xl font-bold">Dashboard</h1>
+      <p class="text-slate-500 text-sm mt-1">Centro de control de ARIA AI</p>
+    </div>
+
+    <!-- STATUS CARDS -->
+    <div class="grid grid-cols-2 gap-3 mb-6">
+      <div class="card p-4">
+        <div class="text-xs text-slate-500 mb-1">Estado</div>
+        <div class="flex items-center gap-2">
+          <div class="w-2.5 h-2.5 rounded-full" :class="online ? 'bg-green-400' : 'bg-red-400'"></div>
+          <span class="text-sm font-semibold" x-text="online ? 'Online' : 'Offline'"></span>
+        </div>
       </div>
-      <textarea x-model="missionModal.mission" rows="4" placeholder="Describe the mission objectives..." class="input-refined w-full resize-none"></textarea>
-      <div class="flex space-md justify-end">
-        <button @click="missionModal.open = false" class="btn-secondary-refined">Cancel</button>
-        <button @click="runMission()" class="btn-primary-refined" :disabled="!missionModal.mission.trim()">Execute</button>
+      <div class="card p-4">
+        <div class="text-xs text-slate-500 mb-1">Versión</div>
+        <div class="text-sm font-semibold">3.3.0</div>
       </div>
+      <div class="card p-4">
+        <div class="text-xs text-slate-500 mb-1">AI Providers</div>
+        <div class="text-sm font-semibold" x-text="aiProviders"></div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs text-slate-500 mb-1">Herramientas</div>
+        <div class="text-sm font-semibold" x-text="toolsCount"></div>
+      </div>
+    </div>
+
+    <!-- QUICK ACTIONS -->
+    <div class="mb-6">
+      <h2 class="text-sm font-semibold text-slate-400 mb-3">ACCIONES RÁPIDAS</h2>
+      <div class="grid grid-cols-2 gap-2">
+        <button @click="quickAction('chat')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          Chat
+        </button>
+        <button @click="quickAction('code')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+          Código
+        </button>
+        <button @click="quickAction('research')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Investigar
+        </button>
+        <button @click="quickAction('run')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Ejecutar
+        </button>
+      </div>
+    </div>
+
+    <!-- CHAT SECTION -->
+    <div class="mb-6">
+      <h2 class="text-sm font-semibold text-slate-400 mb-3">CHAT CON ARIA</h2>
+      <div class="card overflow-hidden">
+        <!-- Messages -->
+        <div class="h-80 overflow-y-auto p-4 space-y-3" id="chat-messages" x-ref="chatbox">
+          <template x-for="(msg, i) in messages" :key="i">
+            <div class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+              <div :class="msg.role === 'user' ? 'msg-user bg-[#1e1e2a]' : 'msg-aria'">
+                <div class="text-sm leading-relaxed whitespace-pre-wrap" x-html="renderMarkdown(msg.text)"></div>
+              </div>
+            </div>
+          </template>
+          <div x-show="thinking" class="flex justify-start">
+            <div class="msg-aria">
+              <div class="flex gap-1.5 py-1">
+                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
+                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
+                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Input -->
+        <div class="border-t border-[#1e1e2a] p-3 flex gap-2">
+          <input type="text" x-model="chatInput" @keydown.enter="sendMessage" placeholder="Mensaje para ARIA..." class="flex-1 bg-[#1a1a24] rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-purple-500/30 placeholder-slate-600">
+          <button @click="sendMessage" :disabled="!chatInput.trim() || thinking" class="btn-primary px-4 py-2.5 text-sm disabled:opacity-30" :class="thinking ? 'animate-pulse' : ''">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SYSTEM STATUS -->
+    <div class="card p-4 mb-6">
+      <h2 class="text-sm font-semibold text-slate-400 mb-3">SISTEMA</h2>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between"><span class="text-slate-500">Servidor</span><span class="text-green-400" x-text="online ? 'Activo' : 'Inactivo'"></span></div>
+        <div class="flex justify-between"><span class="text-slate-500">API</span><span class="font-medium">/api/v1/*</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">AI Motor</span><span class="font-medium">HuggingFace → Groq</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">WebSocket</span><span class="font-medium">/ws/chat</span></div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="text-center text-xs text-slate-600 py-6">
+      ARIA AI v3.3 — Autonomous Intelligence Platform
     </div>
   </div>
 
   <script>
-    function ariaApp() {
+    function dashboardApp() {
       return {
-        activeSection: 'overview',
-        connected: false,
-        ws: null,
-        sessionId: 'web_' + Math.random().toString(36).substring(2, 10),
-        messages: [],
+        sidebar: false,
+        online: false,
+        aiProviders: '0',
+        toolsCount: '0',
+        messages: [{ role: 'aria', text: '👋 ¡Hola! Soy **ARIA**. ¿En qué puedo ayudarte hoy?' }],
         chatInput: '',
         thinking: false,
-        quickMessages: [],
-        quickInput: '',
-        quickThinking: false,
-        agents: [],
-        aiHealth: {},
-        activity: [],
-        metrics: { agents: 0, goals: 0, runs: 0 },
-        incomeStatus: { running: false, total_revenue_potential: 0 },
-        integrations: { ai: [] },
-        missionModal: { open: false, agent: '', mission: '', result: '' },
-        
-        navItems: [
-          { id: 'overview', label: 'Overview' },
-          { id: 'chat', label: 'Chat' },
-          { id: 'agents', label: 'Agents' },
-          { id: 'income', label: 'Income' },
-          { id: 'settings', label: 'Settings' },
-        ],
 
-        init() {
-          this.loadData();
-          this.connectWS();
-          setInterval(() => this.loadActivity(), 15000);
+        async init() {
+          await this.loadStatus();
         },
 
-        async loadData() {
+        async loadStatus() {
           try {
-            const [status, activity, income, agents, health] = await Promise.all([
-              fetch('/api/v1/status').then(r => r.json()).catch(() => ({})),
-              fetch('/api/v1/activity').then(r => r.json()).catch(() => ({})),
-              fetch('/api/v1/income').then(r => r.json()).catch(() => ({})),
-              fetch('/api/v1/agents').then(r => r.json()).catch(() => []),
-              fetch('/api/v1/health/ai').then(r => r.json()).catch(() => ({}))
-            ]);
-            
-            this.metrics.agents = status.agents?.registered || 0;
-            this.metrics.goals = status.tasks?.queued || 0;
-            this.metrics.runs = status.tasks?.done || 0;
-            this.activity = activity.entries || [];
-            this.incomeStatus = { ...this.incomeStatus, ...income };
-            this.agents = agents || [];
-            this.aiHealth = health || {};
-            this.integrations.ai = [
-              { name: 'HuggingFace', configured: true },
-              { name: 'Groq', configured: true },
-              { name: 'Gemini', configured: true },
-              { name: 'OpenAI', configured: false }
-            ];
-          } catch (e) { console.error(e); }
-        },
-
-        async loadActivity() {
+            const r = await fetch('/api/v1/status');
+            if (r.ok) {
+              this.online = true;
+              const d = await r.json();
+              this.aiProviders = d.ai ? Object.keys(d.ai).length.toString() : '0';
+            }
+          } catch(e) { this.online = false; }
           try {
-            const r = await fetch('/api/v1/activity');
+            const r = await fetch('/api/v1/tools');
             if (r.ok) {
               const d = await r.json();
-              this.activity = d.entries || [];
+              this.toolsCount = d.count.toString();
             }
-          } catch (e) {}
-        },
-
-        connectWS() {
-          const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-          try {
-            this.ws = new WebSocket(`${proto}://${location.host}/api/v1/ws`);
-            this.ws.onopen = () => { this.connected = true };
-            this.ws.onclose = () => { this.connected = false; setTimeout(() => this.connectWS(), 5000) };
-            this.ws.onmessage = (evt) => {
-              const d = JSON.parse(evt.data);
-              if (d.type === 'chat_chunk') {
-                if (this.messages.length === 0 || this.messages[this.messages.length - 1].role !== 'aria') {
-                  this.messages.push({ role: 'aria', text: d.content });
-                } else {
-                  this.messages[this.messages.length - 1].text += d.content;
-                }
-                this.$nextTick(() => this.scrollChat());
-              } else if (d.type === 'chat_done') {
-                this.thinking = false;
-              }
-            };
-          } catch (e) {}
+          } catch(e) {}
         },
 
         async sendMessage() {
           if (!this.chatInput.trim() || this.thinking) return;
           const text = this.chatInput;
-          this.messages.push({ role: 'user', text: text });
+          this.messages.push({ role: 'user', text });
           this.chatInput = '';
           this.thinking = true;
           this.$nextTick(() => this.scrollChat());
-          
-          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ type: 'chat', message: text, session_id: this.sessionId, stream: true }));
-          } else {
-            try {
-              const r = await fetch('/api/v1/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, session_id: this.sessionId })
-              });
-              const d = await r.json();
-              this.messages.push({ role: 'aria', text: d.reply || d.error });
-            } catch (e) {
-              this.messages.push({ role: 'aria', text: 'Connection error.' });
-            } finally {
-              this.thinking = false;
-            }
-          }
-        },
 
-        async sendQuick() {
-          if (!this.quickInput.trim() || this.quickThinking) return;
-          const text = this.quickInput;
-          this.quickMessages.push({ role: 'user', text: text });
-          this.quickInput = '';
-          this.quickThinking = true;
-          
           try {
             const r = await fetch('/api/v1/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: text, session_id: this.sessionId })
+              body: JSON.stringify({ message: text, session_id: 'web_' + Date.now() })
             });
             const d = await r.json();
-            this.quickMessages.push({ role: 'aria', text: d.reply || 'Done' });
-          } catch (e) {
-            this.quickMessages.push({ role: 'aria', text: 'Error.' });
+            this.messages.push({ role: 'aria', text: d.reply || '⚠️ Sin respuesta' });
+          } catch(e) {
+            this.messages.push({ role: 'aria', text: '⚠️ Error de conexión. Verifica que el servidor esté corriendo.' });
           } finally {
-            this.quickThinking = false;
-            this.$nextTick(() => {
-              const el = document.getElementById('quick-chat');
-              if (el) el.scrollTop = el.scrollHeight;
-            });
+            this.thinking = false;
+            this.$nextTick(() => this.scrollChat());
           }
         },
 
-        openMission(agentName) {
-          this.missionModal = { open: true, agent: agentName, mission: '', result: '' };
-        },
-
-        async runMission() {
-          const { agent, mission } = this.missionModal;
-          if (!mission.trim()) return;
-          try {
-            const r = await fetch('/api/v1/run', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ mission, agent, use_pipeline: true })
-            });
-            const d = await r.json();
-            this.missionModal.result = d.result?.summary || 'Mission started.';
-            this.loadData();
-          } catch (e) {
-            this.missionModal.result = `Error: ${e.message}`;
-          }
+        async quickAction(type) {
+          const actions = {
+            chat: { msg: 'Cuéntame sobre tus capacidades' },
+            code: { msg: 'Escribe un ejemplo de código Python que demuestre tus capacidades' },
+            research: { msg: 'Investiga sobre las tendencias actuales en inteligencia artificial' },
+            run: { msg: 'Ejecuta una misión: analiza el estado actual del sistema' }
+          };
+          const a = actions[type] || actions.chat;
+          this.chatInput = a.msg;
+          this.$nextTick(() => this.sendMessage());
         },
 
         scrollChat() {
-          const el = document.getElementById('chat-messages');
+          const el = this.$refs.chatbox;
           if (el) el.scrollTop = el.scrollHeight;
         },
 
         renderMarkdown(text) {
           if (!text) return '';
           let h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-          h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+          h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre class="bg-[#0a0a0f] p-3 rounded-xl overflow-x-auto text-xs my-2"><code>$2</code></pre>');
+          h = h.replace(/`([^`\n]+)`/g, '<code class="bg-[#0a0a0f] px-1.5 py-0.5 rounded text-xs text-purple-300">$1</code>');
           h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-          h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
           h = h.replace(/\n/g, '<br>');
           return h;
         }
-      }
+      };
     }
   </script>
 </body>
