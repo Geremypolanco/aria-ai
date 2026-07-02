@@ -1,367 +1,498 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="es" class="scroll-smooth">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>ARIA AI | Autonomous Intelligence</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-<style>
-  :root {
-    --bg-main: #0a0a0a;
-    --bg-sidebar: #111111;
-    --bg-card: #171717;
-    --bg-hover: #1f1f1f;
-    --border-subtle: #262626;
-    --text-primary: #f5f5f5;
-    --text-secondary: #a3a3a3;
-    --text-muted: #737373;
-    --accent: #8b5cf6;
-    --accent-glow: rgba(139, 92, 246, 0.15);
-  }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARIA — Autonomous Intelligence Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sohne:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <style>
+    * {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
 
-  body {
-    background-color: var(--bg-main);
-    color: var(--text-primary);
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
+    html {
+      background: #ffffff;
+      color: #0d0d0d;
+    }
 
-  /* Custom Scrollbar */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 10px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    body {
+      font-family: 'Sohne', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #ffffff;
+      color: #0d0d0d;
+    }
 
-  .glass {
-    background: rgba(23, 23, 23, 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--border-subtle);
-  }
+    code, pre {
+      font-family: 'Fira Code', monospace;
+    }
 
-  .anthropic-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
+    /* Scrollbar refinement */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
 
-  .anthropic-card:hover {
-    border-color: var(--text-muted);
-    transform: translateY(-1px);
-  }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
 
-  .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+      border-radius: 4px;
+    }
 
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-  .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af;
+    }
 
-  .message-user { background: #262626; border-radius: 1.5rem 1.5rem 0.25rem 1.5rem; }
-  .message-aria { background: transparent; border: 1px solid var(--border-subtle); border-radius: 1.5rem 1.5rem 1.5rem 0.25rem; }
+    /* Refined card design */
+    .card-refined {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
 
-  [x-cloak] { display: none !important; }
+    .card-refined:hover {
+      border-color: #d1d5db;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
 
-  .scrollable { overflow-y: auto; scrollbar-gutter: stable; }
-  
-  /* Markdown Styles */
-  .md-content pre { background: #000; padding: 1rem; border-radius: 0.75rem; margin: 0.75rem 0; overflow-x: auto; border: 1px solid #262626; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
-  .md-content code { background: #262626; padding: 0.1rem 0.3rem; border-radius: 0.25rem; font-family: 'JetBrains Mono', monospace; font-size: 0.85em; }
-  .md-content ul { list-style-type: disc; padding-left: 1.5rem; margin: 0.75rem 0; }
-  .md-content ol { list-style-type: decimal; padding-left: 1.5rem; margin: 0.75rem 0; }
-  .md-content a { color: #a78bfa; text-decoration: underline; }
-  .md-content p { margin-bottom: 0.75rem; }
-  .md-content h1, .md-content h2, .md-content h3 { font-weight: 700; margin: 1.5rem 0 0.75rem 0; }
-</style>
+    /* Sidebar refinement */
+    .sidebar-refined {
+      background: #fafafa;
+      border-right: 1px solid #e5e7eb;
+    }
+
+    /* Button refinement */
+    .btn-primary-refined {
+      background: #0d0d0d;
+      color: #ffffff;
+      border: 1px solid #0d0d0d;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 14px;
+      padding: 10px 16px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .btn-primary-refined:hover {
+      background: #1a1a1a;
+      border-color: #1a1a1a;
+    }
+
+    .btn-primary-refined:active {
+      transform: scale(0.98);
+    }
+
+    .btn-secondary-refined {
+      background: #f3f4f6;
+      color: #0d0d0d;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 14px;
+      padding: 10px 16px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .btn-secondary-refined:hover {
+      background: #e5e7eb;
+      border-color: #d1d5db;
+    }
+
+    /* Input refinement */
+    .input-refined {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    .input-refined:focus {
+      outline: none;
+      border-color: #0d0d0d;
+      box-shadow: 0 0 0 3px rgba(13, 13, 13, 0.05);
+    }
+
+    /* Typography refinement */
+    .text-display {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .text-heading {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.3;
+      letter-spacing: -0.01em;
+    }
+
+    .text-subheading {
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: #6b7280;
+    }
+
+    .text-body {
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.6;
+      color: #374151;
+    }
+
+    .text-caption {
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Spacing system */
+    .space-xs { gap: 4px; }
+    .space-sm { gap: 8px; }
+    .space-md { gap: 12px; }
+    .space-lg { gap: 16px; }
+    .space-xl { gap: 24px; }
+
+    /* Message styling */
+    .message-user {
+      background: #0d0d0d;
+      color: #ffffff;
+      border-radius: 12px;
+      padding: 12px 16px;
+      max-width: 80%;
+      word-wrap: break-word;
+    }
+
+    .message-aria {
+      background: #f9fafb;
+      color: #0d0d0d;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 12px 16px;
+      max-width: 80%;
+    }
+
+    /* Markdown rendering */
+    .markdown-content p {
+      margin: 0.5em 0;
+    }
+
+    .markdown-content code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+
+    .markdown-content pre {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px;
+      overflow-x: auto;
+      margin: 0.5em 0;
+    }
+
+    .markdown-content a {
+      color: #0d0d0d;
+      text-decoration: underline;
+      font-weight: 500;
+    }
+
+    /* Loading animation */
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .animate-pulse-subtle {
+      animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    /* Fade in animation */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    [x-cloak] { display: none !important; }
+  </style>
 </head>
-<body x-data="ariaApp()" x-init="init()" class="overflow-hidden">
+<body x-data="ariaApp()" x-init="init()" x-cloak>
 
-  <!-- Main Layout -->
-  <div class="flex h-screen w-full overflow-hidden">
+  <div class="flex h-screen bg-white">
     
     <!-- Sidebar -->
-    <aside 
-      class="flex flex-col bg-[#111] border-r border-[#262626] transition-all duration-300 z-50 relative"
-      :class="desktopCollapsed ? 'w-20' : 'w-72'"
-    >
-      <div class="p-6 flex items-center justify-between border-b border-[#262626]">
-        <div class="flex items-center gap-3 overflow-hidden">
-          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-500/20 flex-shrink-0">
+    <aside class="w-64 sidebar-refined flex flex-col border-r border-gray-200">
+      <!-- Header -->
+      <div class="px-6 py-8 border-b border-gray-200">
+        <div class="flex items-center space-md">
+          <div class="w-10 h-10 rounded-lg bg-black flex items-center justify-center">
             <span class="text-white font-bold text-lg">A</span>
           </div>
-          <span class="font-bold text-xl tracking-tight transition-opacity duration-300" :class="desktopCollapsed ? 'opacity-0 w-0' : 'opacity-100'">ARIA</span>
+          <div>
+            <h1 class="text-heading">ARIA</h1>
+            <p class="text-caption text-gray-500">Autonomous AI</p>
+          </div>
         </div>
       </div>
 
-      <nav class="flex-1 overflow-y-auto p-4 space-y-2">
+      <!-- Navigation -->
+      <nav class="flex-1 overflow-y-auto px-4 py-6 space-y-1">
         <template x-for="item in navItems" :key="item.id">
-          <button 
-            @click="activeSection = item.id; if(item.id==='settings') loadAiHealth();"
-            class="w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all group relative"
-            :class="activeSection === item.id ? 'bg-[#1f1f1f] text-white' : 'text-neutral-400 hover:bg-[#1a1a1a] hover:text-neutral-200'"
+          <button
+            @click="activeSection = item.id"
+            class="w-full text-left px-4 py-3 rounded-lg transition-all"
+            :class="activeSection === item.id 
+              ? 'bg-black text-white' 
+              : 'text-gray-700 hover:bg-gray-100'"
           >
-            <div class="flex-shrink-0" x-html="item.icon"></div>
-            <span class="font-medium text-sm transition-opacity duration-300" :class="desktopCollapsed ? 'opacity-0 w-0' : 'opacity-100'" x-text="item.label"></span>
-            <div x-show="desktopCollapsed" class="absolute left-full ml-4 px-2 py-1 bg-black text-white text-[10px] rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-[60] whitespace-nowrap" x-text="item.label"></div>
+            <span class="text-body font-medium" x-text="item.label"></span>
           </button>
         </template>
       </nav>
 
-      <div class="p-4 border-t border-[#262626]">
-        <button @click="toggleSidebar()" class="w-full flex items-center gap-4 px-4 py-3 text-neutral-500 hover:text-white transition-colors">
-          <svg x-show="!desktopCollapsed" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7"/></svg>
-          <svg x-show="desktopCollapsed" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7"/></svg>
-          <span class="text-xs font-medium" :class="desktopCollapsed ? 'hidden' : 'block'">Colapsar Menú</span>
-        </button>
+      <!-- Footer -->
+      <div class="px-4 py-6 border-t border-gray-200 space-y-3">
+        <div class="flex items-center space-md px-4 py-3 rounded-lg bg-gray-50">
+          <div class="w-2 h-2 rounded-full" :class="connected ? 'bg-green-500' : 'bg-red-500'"></div>
+          <div class="flex-1">
+            <p class="text-caption">Status</p>
+            <p class="text-body font-medium" x-text="connected ? 'Online' : 'Offline'"></p>
+          </div>
+        </div>
       </div>
     </aside>
 
     <!-- Main Content -->
-    <main class="flex-1 flex flex-col min-w-0 bg-[#0a0a0a] relative">
+    <main class="flex-1 flex flex-col overflow-hidden bg-white">
       
-      <!-- Top Header -->
-      <header class="h-16 border-b border-[#262626] flex items-center justify-between px-8 glass sticky top-0 z-40">
-        <div class="flex items-center gap-4">
-          <h2 class="text-sm font-medium text-neutral-400">ARIA / <span class="text-white capitalize" x-text="activeSection"></span></h2>
+      <!-- Top Bar -->
+      <header class="h-16 border-b border-gray-200 flex items-center justify-between px-8 bg-white">
+        <div class="flex items-center space-md">
+          <h2 class="text-heading capitalize" x-text="activeSection"></h2>
         </div>
-        <div class="flex items-center gap-6">
-          <div class="flex items-center gap-2 text-[10px] font-mono text-neutral-500">
-             <span class="w-2 h-2 rounded-full" :class="connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'"></span>
-             <span x-text="connected ? 'SYSTEM ONLINE' : 'SYSTEM OFFLINE'"></span>
+        <div class="flex items-center space-lg">
+          <div class="flex items-center space-sm">
+            <div class="w-2 h-2 rounded-full" :class="connected ? 'bg-green-500 animate-pulse-subtle' : 'bg-red-500'"></div>
+            <span class="text-caption" x-text="connected ? 'System Online' : 'System Offline'"></span>
           </div>
-          <div class="w-8 h-8 rounded-full bg-[#1f1f1f] border border-[#262626] flex items-center justify-center text-xs font-bold text-violet-400">G</div>
+          <div class="w-8 h-8 rounded-lg bg-black text-white flex items-center justify-center text-xs font-bold">G</div>
         </div>
       </header>
 
       <!-- Content Area -->
-      <div class="flex-1 overflow-hidden relative">
+      <div class="flex-1 overflow-y-auto">
         
-        <!-- OVERVIEW -->
-        <div x-show="activeSection === 'overview'" class="h-full overflow-y-auto p-8 animate-fade-in max-w-6xl mx-auto space-y-8">
-          <div class="flex flex-col gap-2">
-            <h1 class="text-3xl font-bold tracking-tight">Bienvenido de nuevo</h1>
-            <p class="text-neutral-500" x-text="new Date().toLocaleDateString('es',{weekday:'long',day:'numeric',month:'long'})"></p>
+        <!-- Overview Section -->
+        <div x-show="activeSection === 'overview'" class="animate-fade-in p-8 max-w-7xl mx-auto space-y-8">
+          <div class="space-y-2">
+            <h1 class="text-display">Welcome back</h1>
+            <p class="text-body text-gray-600" x-text="new Date().toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'})"></p>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="anthropic-card p-6 rounded-2xl space-y-4">
-              <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Agentes</p>
-              <div class="text-3xl font-bold" x-text="metrics.agents"></div>
-              <p class="text-xs text-neutral-600">Disponibles en el núcleo</p>
+          <!-- Metrics Grid -->
+          <div class="grid grid-cols-4 gap-4">
+            <div class="card-refined p-6 space-y-3">
+              <p class="text-caption text-gray-500">Agents</p>
+              <p class="text-display" x-text="metrics.agents"></p>
+              <p class="text-body text-gray-600">Active in system</p>
             </div>
-            <div class="anthropic-card p-6 rounded-2xl space-y-4">
-              <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Metas</p>
-              <div class="text-3xl font-bold" x-text="metrics.goals"></div>
-              <p class="text-xs text-neutral-600">Objetivos activos</p>
+            <div class="card-refined p-6 space-y-3">
+              <p class="text-caption text-gray-500">Goals</p>
+              <p class="text-display" x-text="metrics.goals"></p>
+              <p class="text-body text-gray-600">Objectives</p>
             </div>
-            <div class="anthropic-card p-6 rounded-2xl space-y-4">
-              <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Pipelines</p>
-              <div class="text-3xl font-bold" x-text="metrics.runs"></div>
-              <p class="text-xs text-neutral-600">Tareas completadas</p>
+            <div class="card-refined p-6 space-y-3">
+              <p class="text-caption text-gray-500">Pipelines</p>
+              <p class="text-display" x-text="metrics.runs"></p>
+              <p class="text-body text-gray-600">Executed</p>
             </div>
-            <div class="anthropic-card p-6 rounded-2xl space-y-4">
-              <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Salud IA</p>
-              <div class="text-3xl font-bold text-emerald-400">100%</div>
-              <p class="text-xs text-neutral-600">HF Engine Robusto</p>
+            <div class="card-refined p-6 space-y-3">
+              <p class="text-caption text-gray-500">Health</p>
+              <p class="text-display">100%</p>
+              <p class="text-body text-gray-600">System optimal</p>
             </div>
           </div>
 
-          <!-- Income Banner -->
-          <div @click="activeSection='income'" class="group anthropic-card p-6 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-[#1a1a1a]">
-            <div class="flex items-center gap-6">
-              <div class="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <!-- Income Loop Card -->
+          <div class="card-refined p-8 space-y-4 cursor-pointer hover:shadow-md" @click="activeSection = 'income'">
+            <div class="flex items-center justify-between">
+              <div class="space-y-2">
+                <h3 class="text-heading">Income Loop 24/7</h3>
+                <p class="text-body text-gray-600" x-text="incomeStatus.running ? 'Autonomous monetization active' : 'System paused'"></p>
               </div>
-              <div>
-                <h3 class="font-bold text-lg">Income Loop 24/7</h3>
-                <p class="text-sm text-neutral-500" x-text="incomeStatus.running ? 'Ejecutando estrategias de monetización' : 'Sistema en espera'"></p>
+              <div class="text-right space-y-1">
+                <p class="text-caption text-gray-500">Potential Revenue</p>
+                <p class="text-heading" x-text="'$' + (incomeStatus.total_revenue_potential || 0).toFixed(2)"></p>
               </div>
-            </div>
-            <div class="text-right">
-              <p class="text-[10px] text-neutral-500 uppercase tracking-widest mb-1">Potencial</p>
-              <p class="text-2xl font-mono font-bold text-white" x-text="'$'+(incomeStatus.total_revenue_potential||0).toFixed(2)"></p>
             </div>
           </div>
 
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div class="lg:col-span-2 space-y-4">
-              <h3 class="text-lg font-bold">Actividad del Sistema</h3>
-              <div class="anthropic-card rounded-2xl divide-y divide-[#262626] overflow-hidden">
-                <template x-for="(e,i) in activity.slice(0,8)" :key="i">
-                  <div class="p-4 flex items-center gap-4 hover:bg-[#1a1a1a] transition-colors">
-                    <div class="w-1.5 h-1.5 rounded-full" :class="e.level==='ERROR' ? 'bg-red-500' : 'bg-emerald-500'"></div>
-                    <p class="text-sm text-neutral-300 flex-1 truncate" x-text="e.message"></p>
-                    <span class="text-[10px] font-mono text-neutral-600" x-text="e.ts?.substring(11,16)"></span>
+          <!-- Activity & Chat Grid -->
+          <div class="grid grid-cols-3 gap-6">
+            <div class="col-span-2 space-y-4">
+              <h3 class="text-heading">Recent Activity</h3>
+              <div class="card-refined divide-y divide-gray-200 overflow-hidden">
+                <template x-for="(e, i) in activity.slice(0, 6)" :key="i">
+                  <div class="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                    <div class="flex items-center space-md flex-1">
+                      <div class="w-2 h-2 rounded-full flex-shrink-0" :class="e.level === 'ERROR' ? 'bg-red-500' : 'bg-green-500'"></div>
+                      <p class="text-body text-gray-700 truncate" x-text="e.message"></p>
+                    </div>
+                    <p class="text-caption text-gray-400" x-text="e.ts?.substring(11, 16)"></p>
                   </div>
                 </template>
               </div>
             </div>
+
             <div class="space-y-4">
-              <h3 class="text-lg font-bold">Comando Rápido</h3>
-              <div class="anthropic-card rounded-2xl p-4 flex flex-col h-[350px]">
-                <div class="flex-1 overflow-y-auto space-y-4 mb-4 scrollable pr-2" id="quick-chat-messages">
+              <h3 class="text-heading">Quick Command</h3>
+              <div class="card-refined p-6 flex flex-col h-80 space-y-4">
+                <div class="flex-1 overflow-y-auto space-y-3" id="quick-chat">
                   <template x-for="m in quickMessages">
-                    <div class="flex" :class="m.role==='user'?'justify-end':'justify-start'">
-                      <div class="px-3 py-2 text-xs max-w-[90%]" :class="m.role==='user'?'bg-[#262626] rounded-xl':'border border-[#262626] rounded-xl text-neutral-400'" x-text="m.text"></div>
+                    <div class="flex" :class="m.role === 'user' ? 'justify-end' : 'justify-start'">
+                      <div class="text-body px-3 py-2 rounded-lg max-w-xs" :class="m.role === 'user' ? 'bg-black text-white' : 'bg-gray-100 text-gray-900'" x-text="m.text"></div>
                     </div>
                   </template>
                 </div>
-                <input x-model="quickInput" @keydown.enter="sendQuick()" placeholder="Preguntar..." class="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-violet-500/50">
+                <input x-model="quickInput" @keydown.enter="sendQuick()" placeholder="Ask something..." class="input-refined w-full">
               </div>
             </div>
           </div>
         </div>
 
-        <!-- CHAT -->
-        <div x-show="activeSection === 'chat'" class="h-full flex flex-col animate-fade-in relative">
-          <div class="flex-1 overflow-y-auto p-8 space-y-8 pb-32 scrollable" id="chat-messages">
+        <!-- Chat Section -->
+        <div x-show="activeSection === 'chat'" class="animate-fade-in flex flex-col h-full">
+          <div class="flex-1 overflow-y-auto p-8 space-y-6" id="chat-messages">
             <template x-for="(m, i) in messages" :key="i">
-              <div class="max-w-4xl mx-auto flex flex-col gap-2" :class="m.role==='user'?'items-end':'items-start'">
-                <div class="flex items-center gap-2 px-2">
-                  <span class="text-[10px] font-bold uppercase tracking-widest text-neutral-600" x-text="m.role==='user'?'Geremy':'ARIA'"></span>
+              <div class="flex" :class="m.role === 'user' ? 'justify-end' : 'justify-start'">
+                <div class="space-y-1 max-w-2xl" :class="m.role === 'user' ? 'items-end' : 'items-start'">
+                  <p class="text-caption text-gray-500" x-text="m.role === 'user' ? 'You' : 'ARIA'"></p>
+                  <div class="text-body markdown-content" :class="m.role === 'user' ? 'message-user' : 'message-aria'" x-html="renderMarkdown(m.text)"></div>
                 </div>
-                <div class="p-6 text-sm leading-relaxed md-content w-full max-w-full" :class="m.role==='user'?'message-user text-white':'message-aria text-neutral-300'" x-html="renderMarkdown(m.text)"></div>
               </div>
             </template>
-            <div x-show="thinking" class="max-w-4xl mx-auto flex gap-2 p-4">
-              <div class="w-1.5 h-1.5 bg-violet-500 rounded-full animate-bounce"></div>
-              <div class="w-1.5 h-1.5 bg-violet-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-              <div class="w-1.5 h-1.5 bg-violet-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+            <div x-show="thinking" class="flex space-md items-center">
+              <div class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse-subtle"></div>
+              <div class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse-subtle" style="animation-delay: 0.2s"></div>
+              <div class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse-subtle" style="animation-delay: 0.4s"></div>
             </div>
-            <div x-show="messages.length === 0" class="h-full flex flex-col items-center justify-center text-center py-20 space-y-6">
-               <div class="w-16 h-16 bg-violet-500/10 rounded-2xl flex items-center justify-center text-violet-500 mb-4">
-                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-               </div>
-               <h2 class="text-2xl font-bold">Núcleo Cognitivo ARIA</h2>
-               <p class="text-neutral-500 max-w-md">Sistema de inteligencia autónoma listo para procesar misiones complejas.</p>
-               <div class="flex flex-wrap justify-center gap-2 max-w-2xl">
-                 <template x-for="hint in chatHints">
-                   <button @click="chatInput=hint; sendMessage()" class="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-xs text-neutral-400 hover:text-white transition-all" x-text="hint"></button>
-                 </template>
-               </div>
+            <div x-show="messages.length === 0" class="flex flex-col items-center justify-center h-96 text-center space-y-4">
+              <div class="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center">
+                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+              </div>
+              <h2 class="text-heading">Start a conversation</h2>
+              <p class="text-body text-gray-600 max-w-md">ARIA is ready to process complex missions and provide autonomous intelligence.</p>
             </div>
           </div>
-          
-          <div class="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a] to-transparent">
-            <div class="max-w-4xl mx-auto relative group">
-              <div class="glass rounded-2xl p-2 shadow-2xl border-neutral-800 focus-within:border-neutral-600 transition-all">
-                <div class="flex items-end gap-2">
-                  <textarea x-model="chatInput" @keydown.enter.prevent="if(!$event.shiftKey) sendMessage()" rows="1" placeholder="Enviar misión a ARIA..." class="flex-1 bg-transparent border-none focus:ring-0 text-sm p-4 resize-none min-h-[56px] max-h-40 scrollable"></textarea>
-                  <button @click="sendMessage()" class="mb-2 mr-2 p-3 bg-white text-black rounded-xl hover:bg-neutral-200 transition-all disabled:opacity-50" :disabled="!chatInput.trim() || thinking">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                  </button>
-                </div>
+
+          <!-- Input Area -->
+          <div class="px-8 py-6 border-t border-gray-200 bg-white">
+            <div class="max-w-4xl mx-auto space-y-3">
+              <textarea x-model="chatInput" @keydown.enter.prevent="if(!$event.shiftKey) sendMessage()" placeholder="Send a message to ARIA..." rows="3" class="input-refined w-full resize-none"></textarea>
+              <div class="flex justify-end">
+                <button @click="sendMessage()" class="btn-primary-refined" :disabled="!chatInput.trim() || thinking">
+                  <span x-show="!thinking">Send</span>
+                  <span x-show="thinking">Thinking...</span>
+                </button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- AGENTS -->
-        <div x-show="activeSection === 'agents'" class="h-full overflow-y-auto p-8 animate-fade-in max-w-6xl mx-auto space-y-8">
-          <div class="flex items-center justify-between">
-            <h1 class="text-3xl font-bold">Especialistas</h1>
-            <button @click="loadAgents()" class="text-xs text-neutral-500 hover:text-white">Refrescar registro</button>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <template x-for="agent in agents">
-              <div class="anthropic-card p-6 rounded-2xl flex flex-col justify-between group">
-                <div>
-                  <div class="flex items-center gap-3 mb-4">
-                    <div class="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-400 font-bold" x-text="agent.name[0].toUpperCase()"></div>
-                    <h3 class="font-bold text-lg capitalize" x-text="agent.name"></h3>
-                  </div>
-                  <p class="text-sm text-neutral-500 mb-6 leading-relaxed" x-text="agent.description"></p>
+        <!-- Agents Section -->
+        <div x-show="activeSection === 'agents'" class="animate-fade-in p-8 max-w-7xl mx-auto space-y-8">
+          <h1 class="text-display">Specialists</h1>
+          <div class="grid grid-cols-3 gap-6">
+            <template x-for="agent in agents" :key="agent.name">
+              <div class="card-refined p-6 space-y-4 flex flex-col justify-between">
+                <div class="space-y-3">
+                  <h3 class="text-heading capitalize" x-text="agent.name"></h3>
+                  <p class="text-body text-gray-600" x-text="agent.description"></p>
                 </div>
-                <button @click="openMission(agent.name)" class="w-full py-2 bg-[#1f1f1f] border border-[#262626] rounded-xl text-xs font-bold hover:bg-white hover:text-black transition-all">Activar Misión</button>
+                <button @click="openMission(agent.name)" class="btn-secondary-refined w-full">Activate Mission</button>
               </div>
             </template>
           </div>
         </div>
 
-        <!-- SETTINGS / HEALTH -->
-        <div x-show="activeSection === 'settings'" class="h-full overflow-y-auto p-8 animate-fade-in max-w-4xl mx-auto space-y-8">
-          <h1 class="text-3xl font-bold">Configuración del Núcleo</h1>
+        <!-- Settings Section -->
+        <div x-show="activeSection === 'settings'" class="animate-fade-in p-8 max-w-4xl mx-auto space-y-8">
+          <h1 class="text-display">Configuration</h1>
           
-          <div class="anthropic-card rounded-2xl p-8 space-y-6">
-            <h3 class="text-lg font-bold">Estado de los Motores de IA</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="card-refined p-8 space-y-6">
+            <h3 class="text-heading">AI Engine Status</h3>
+            <div class="grid grid-cols-2 gap-4">
               <template x-for="(ph, name) in aiHealth" :key="name">
-                <div x-show="name!=='_totals'" class="p-4 rounded-xl bg-[#0a0a0a] border border-[#262626] flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 rounded-full" :class="ph.state==='closed' ? 'bg-emerald-500' : 'bg-red-500'"></div>
-                    <span class="text-sm font-bold capitalize" x-text="name"></span>
+                <div x-show="name !== '_totals'" class="p-4 border border-gray-200 rounded-lg flex items-center justify-between">
+                  <div class="space-y-1">
+                    <p class="text-body font-medium capitalize" x-text="name"></p>
+                    <p class="text-caption text-gray-500" x-text="ph.total_calls + ' calls'"></p>
                   </div>
                   <div class="text-right">
-                    <p class="text-[10px] text-neutral-500 uppercase tracking-widest" x-text="ph.total_calls + ' llamadas'"></p>
-                    <p class="text-xs font-mono text-emerald-400" x-text="ph.success_rate_pct + '% éxito'"></p>
+                    <p class="text-body font-medium" x-text="ph.success_rate_pct + '%'"></p>
+                    <p class="text-caption text-gray-500">success</p>
                   </div>
                 </div>
               </template>
             </div>
           </div>
 
-          <div class="anthropic-card rounded-2xl p-8 space-y-6">
-            <h3 class="text-lg font-bold">Integraciones</h3>
-            <div class="grid grid-cols-2 gap-8">
-              <div class="space-y-4">
-                <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">IA & Modelos</p>
-                <div class="space-y-2">
-                  <template x-for="item in integrations.ai">
-                    <div class="flex items-center justify-between py-2 border-b border-[#262626]">
-                      <span class="text-sm" x-text="item.name"></span>
-                      <span class="text-[10px] font-bold" :class="item.configured ? 'text-emerald-500' : 'text-neutral-600'" x-text="item.configured ? 'ACTIVE' : 'OFF'"></span>
-                    </div>
-                  </template>
+          <div class="card-refined p-8 space-y-6">
+            <h3 class="text-heading">Integrations</h3>
+            <div class="space-y-3">
+              <template x-for="item in integrations.ai" :key="item.name">
+                <div class="flex items-center justify-between py-3 border-b border-gray-200 last:border-b-0">
+                  <span class="text-body" x-text="item.name"></span>
+                  <span class="text-caption font-medium" :class="item.configured ? 'text-green-600' : 'text-gray-400'" x-text="item.configured ? 'ACTIVE' : 'INACTIVE'"></span>
                 </div>
-              </div>
-              <div class="space-y-4">
-                <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Publicación</p>
-                <div class="space-y-2">
-                  <template x-for="item in integrations.publishing">
-                    <div class="flex items-center justify-between py-2 border-b border-[#262626]">
-                      <span class="text-sm" x-text="item.name"></span>
-                      <span class="text-[10px] font-bold" :class="item.configured ? 'text-emerald-500' : 'text-neutral-600'" x-text="item.configured ? 'ACTIVE' : 'OFF'"></span>
-                    </div>
-                  </template>
-                </div>
-              </div>
+              </template>
             </div>
           </div>
-        </div>
-
-        <!-- FALLBACK FOR OTHER SECTIONS -->
-        <div x-show="!['overview', 'chat', 'agents', 'settings'].includes(activeSection)" class="h-full flex flex-col items-center justify-center text-center p-8 animate-fade-in">
-          <div class="w-20 h-20 bg-[#171717] rounded-3xl flex items-center justify-center mb-6 border border-[#262626]">
-            <svg class="w-10 h-10 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-          </div>
-          <h2 class="text-xl font-bold">Módulo en Desarrollo</h2>
-          <p class="text-neutral-500 max-w-xs mt-2">Estamos migrando esta sección a la nueva arquitectura visual.</p>
-          <button @click="activeSection='overview'" class="mt-8 px-8 py-3 bg-white text-black rounded-xl font-bold text-sm hover:bg-neutral-200 transition-all">Volver al Inicio</button>
         </div>
 
       </div>
     </main>
   </div>
 
-  <!-- Modal Misión -->
-  <div x-show="missionModal.open" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in">
-    <div class="anthropic-card w-full max-w-lg rounded-3xl p-8 space-y-6" @click.away="missionModal.open = false">
-      <div class="flex items-center gap-4">
-        <div class="w-12 h-12 rounded-2xl bg-violet-500/10 flex items-center justify-center text-violet-400 font-bold text-xl" x-text="missionModal.agent[0]?.toUpperCase()"></div>
-        <div>
-          <h3 class="text-xl font-bold">Nueva Misión</h3>
-          <p class="text-sm text-neutral-500" x-text="'Agente: ' + missionModal.agent"></p>
-        </div>
+  <!-- Mission Modal -->
+  <div x-show="missionModal.open" x-cloak class="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+    <div class="card-refined w-full max-w-lg p-8 space-y-6" @click.away="missionModal.open = false">
+      <div class="space-y-2">
+        <h2 class="text-heading">New Mission</h2>
+        <p class="text-body text-gray-600" x-text="'Agent: ' + missionModal.agent"></p>
       </div>
-      <textarea x-model="missionModal.mission" rows="4" placeholder="Describe los objetivos detallados..." class="w-full bg-[#0a0a0a] border border-[#262626] rounded-2xl p-4 text-sm focus:outline-none focus:border-violet-500/50 resize-none"></textarea>
-      <div class="flex gap-3">
-        <button @click="runMission()" class="flex-1 py-3 bg-white text-black rounded-xl font-bold hover:bg-neutral-200 transition-all disabled:opacity-50" :disabled="!missionModal.mission.trim()">Iniciar Ejecución</button>
-        <button @click="missionModal.open = false" class="px-6 py-3 bg-[#1f1f1f] text-white rounded-xl font-bold hover:bg-[#262626] transition-all">Cancelar</button>
-      </div>
-      <div x-show="missionModal.result" class="p-4 bg-black rounded-xl border border-[#262626] text-[10px] font-mono text-neutral-400 overflow-x-auto max-h-40 scrollable">
-        <pre x-text="missionModal.result"></pre>
+      <textarea x-model="missionModal.mission" rows="4" placeholder="Describe the mission objectives..." class="input-refined w-full resize-none"></textarea>
+      <div class="flex space-md justify-end">
+        <button @click="missionModal.open = false" class="btn-secondary-refined">Cancel</button>
+        <button @click="runMission()" class="btn-primary-refined" :disabled="!missionModal.mission.trim()">Execute</button>
       </div>
     </div>
   </div>
@@ -372,9 +503,7 @@
         activeSection: 'overview',
         connected: false,
         ws: null,
-        currentTime: '',
         sessionId: 'web_' + Math.random().toString(36).substring(2, 10),
-        desktopCollapsed: localStorage.getItem('aria_sidebar_collapsed') === 'true',
         messages: [],
         chatInput: '',
         thinking: false,
@@ -384,68 +513,49 @@
         agents: [],
         aiHealth: {},
         activity: [],
-        metrics: { agents: 0, goals: 0, runs: 0, health: 98 },
-        incomeStatus: { running: false, total_cycles: 0, total_revenue_potential: 0 },
-        integrations: { ai: [], publishing: [] },
+        metrics: { agents: 0, goals: 0, runs: 0 },
+        incomeStatus: { running: false, total_revenue_potential: 0 },
+        integrations: { ai: [] },
         missionModal: { open: false, agent: '', mission: '', result: '' },
-        chatHints: ['/help', 'Analizar tendencias 2026', '/plan nuevo producto', '/research mercado'],
         
         navItems: [
-          { id:'overview',   label:'Overview', icon:'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>' },
-          { id:'chat',       label:'Chat',     icon:'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>' },
-          { id:'agents',     label:'Agentes',  icon:'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>' },
-          { id:'income',     label:'Ingresos', icon:'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' },
-          { id:'settings',   label:'Ajustes',  icon:'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>' },
+          { id: 'overview', label: 'Overview' },
+          { id: 'chat', label: 'Chat' },
+          { id: 'agents', label: 'Agents' },
+          { id: 'income', label: 'Income' },
+          { id: 'settings', label: 'Settings' },
         ],
 
         init() {
-          this.updateClock();
-          setInterval(() => this.updateClock(), 1000);
           this.loadData();
           this.connectWS();
           setInterval(() => this.loadActivity(), 15000);
-          setInterval(() => this.loadData(), 60000);
-        },
-
-        updateClock() {
-          this.currentTime = new Date().toLocaleTimeString('es', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-        },
-
-        toggleSidebar() {
-          this.desktopCollapsed = !this.desktopCollapsed;
-          localStorage.setItem('aria_sidebar_collapsed', this.desktopCollapsed);
         },
 
         async loadData() {
           try {
-            const [status, activity, income, agents] = await Promise.all([
-              fetch('/api/v1/status').then(r => r.json()),
-              fetch('/api/v1/activity').then(r => r.json()),
-              fetch('/api/v1/income').then(r => r.json()),
-              fetch('/api/v1/agents').then(r => r.json())
+            const [status, activity, income, agents, health] = await Promise.all([
+              fetch('/api/v1/status').then(r => r.json()).catch(() => ({})),
+              fetch('/api/v1/activity').then(r => r.json()).catch(() => ({})),
+              fetch('/api/v1/income').then(r => r.json()).catch(() => ({})),
+              fetch('/api/v1/agents').then(r => r.json()).catch(() => []),
+              fetch('/api/v1/health/ai').then(r => r.json()).catch(() => ({}))
             ]);
             
             this.metrics.agents = status.agents?.registered || 0;
             this.metrics.goals = status.tasks?.queued || 0;
             this.metrics.runs = status.tasks?.done || 0;
-            
             this.activity = activity.entries || [];
             this.incomeStatus = { ...this.incomeStatus, ...income };
             this.agents = agents || [];
-            
-            // Extract integrations from income creds if available
+            this.aiHealth = health || {};
             this.integrations.ai = [
-              {name:'HuggingFace', configured:true},
-              {name:'Groq', configured:true},
-              {name:'Gemini', configured:true},
-              {name:'OpenAI', configured: false}
+              { name: 'HuggingFace', configured: true },
+              { name: 'Groq', configured: true },
+              { name: 'Gemini', configured: true },
+              { name: 'OpenAI', configured: false }
             ];
-            this.integrations.publishing = [
-              {name:'Dev.to', configured: income.active_channels?.includes('devto')},
-              {name:'Medium', configured: income.active_channels?.includes('medium')},
-              {name:'Gumroad', configured: income.active_channels?.includes('gumroad')}
-            ];
-          } catch(e) { console.error("Load error", e); }
+          } catch (e) { console.error(e); }
         },
 
         async loadActivity() {
@@ -455,21 +565,7 @@
               const d = await r.json();
               this.activity = d.entries || [];
             }
-          } catch(e) {}
-        },
-
-        async loadAiHealth() {
-          try {
-            const r = await fetch('/api/v1/health/ai');
-            if (r.ok) this.aiHealth = await r.json();
-          } catch(e) {}
-        },
-
-        async loadAgents() {
-          try {
-            const r = await fetch('/api/v1/agents');
-            if (r.ok) this.agents = await r.json();
-          } catch(e) {}
+          } catch (e) {}
         },
 
         connectWS() {
@@ -481,23 +577,23 @@
             this.ws.onmessage = (evt) => {
               const d = JSON.parse(evt.data);
               if (d.type === 'chat_chunk') {
-                if (this.messages.length === 0 || this.messages[this.messages.length-1].role !== 'aria') {
-                  this.messages.push({ role: 'aria', text: d.content, ts: new Date().toLocaleTimeString() });
+                if (this.messages.length === 0 || this.messages[this.messages.length - 1].role !== 'aria') {
+                  this.messages.push({ role: 'aria', text: d.content });
                 } else {
-                  this.messages[this.messages.length-1].text += d.content;
+                  this.messages[this.messages.length - 1].text += d.content;
                 }
                 this.$nextTick(() => this.scrollChat());
               } else if (d.type === 'chat_done') {
                 this.thinking = false;
               }
             };
-          } catch(e) {}
+          } catch (e) {}
         },
 
         async sendMessage() {
           if (!this.chatInput.trim() || this.thinking) return;
           const text = this.chatInput;
-          this.messages.push({ role: 'user', text: text, ts: new Date().toLocaleTimeString() });
+          this.messages.push({ role: 'user', text: text });
           this.chatInput = '';
           this.thinking = true;
           this.$nextTick(() => this.scrollChat());
@@ -512,9 +608,9 @@
                 body: JSON.stringify({ message: text, session_id: this.sessionId })
               });
               const d = await r.json();
-              this.messages.push({ role: 'aria', text: d.reply || d.error, ts: new Date().toLocaleTimeString() });
-            } catch(e) {
-              this.messages.push({ role: 'aria', text: 'Error de conexión con el núcleo.', ts: new Date().toLocaleTimeString() });
+              this.messages.push({ role: 'aria', text: d.reply || d.error });
+            } catch (e) {
+              this.messages.push({ role: 'aria', text: 'Connection error.' });
             } finally {
               this.thinking = false;
             }
@@ -535,35 +631,37 @@
               body: JSON.stringify({ message: text, session_id: this.sessionId })
             });
             const d = await r.json();
-            this.quickMessages.push({ role: 'aria', text: d.reply || 'Completado' });
-          } catch(e) {
+            this.quickMessages.push({ role: 'aria', text: d.reply || 'Done' });
+          } catch (e) {
             this.quickMessages.push({ role: 'aria', text: 'Error.' });
           } finally {
             this.quickThinking = false;
             this.$nextTick(() => {
-              const el = document.getElementById('quick-chat-messages');
+              const el = document.getElementById('quick-chat');
               if (el) el.scrollTop = el.scrollHeight;
             });
           }
         },
 
         openMission(agentName) {
-          this.missionModal = { open:true, agent:agentName, mission:'', result:'' };
+          this.missionModal = { open: true, agent: agentName, mission: '', result: '' };
         },
 
         async runMission() {
           const { agent, mission } = this.missionModal;
           if (!mission.trim()) return;
-          this.missionModal.result = '⏳ Desplegando agentes en el pipeline...';
           try {
             const r = await fetch('/api/v1/run', {
-              method:'POST', headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({ mission, agent, use_pipeline:true })
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mission, agent, use_pipeline: true })
             });
             const d = await r.json();
-            this.missionModal.result = d.result?.summary || 'Misión iniciada correctamente.';
+            this.missionModal.result = d.result?.summary || 'Mission started.';
             this.loadData();
-          } catch(e) { this.missionModal.result = `Error: ${e.message}` }
+          } catch (e) {
+            this.missionModal.result = `Error: ${e.message}`;
+          }
         },
 
         scrollChat() {
@@ -573,22 +671,12 @@
 
         renderMarkdown(text) {
           if (!text) return '';
-          let h = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          
-          // Code blocks
+          let h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-          // Inline code
           h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-          // Bold
-          h = h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
-          // Links
-          h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
-          // Lists
-          h = h.replace(/^[-•*] (.+)$/gm,'<li>$1</li>');
-          h = h.replace(/(<li>[\s\S]*?<\/li>(?:\n|$))+/g, m => `<ul>${m}</ul>`);
-          // Newlines
-          h = h.replace(/\n/g,'<br>');
-          
+          h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+          h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+          h = h.replace(/\n/g, '<br>');
           return h;
         }
       }
