@@ -151,6 +151,46 @@ async def api_status():
         status["ai"] = {"error": str(e)}
     return status
 
+class RunRequest(BaseModel):
+    mission: str
+    agent: str = "auto"
+    use_pipeline: bool = True
+
+@app.post("/api/v1/run")
+async def run_mission(req: RunRequest):
+    """Execute a mission using ARIA's execution engine."""
+    import time
+    start = time.time()
+    try:
+        from apps.core.execution_engine import get_executor
+        executor = get_executor()
+        result = await executor.execute(req.mission)
+        elapsed = int((time.time() - start) * 1000)
+        return {
+            "success": result["success"],
+            "result": {
+                "summary": result["result"][:500] if result.get("result") else "",
+                "understanding": result["understanding"][:300] if result.get("understanding") else "",
+                "tool_plan": result.get("tool_plan", {}),
+            },
+            "processing_time_ms": elapsed,
+        }
+    except Exception as e:
+        logger.error(f"Run error: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/v1/tools")
+async def list_tools():
+    """List all available tools."""
+    from apps.core.tool_registry import TOOL_REGISTRY
+    tools_by_cat = {}
+    for tid, t in TOOL_REGISTRY.items():
+        cat = t["category"]
+        if cat not in tools_by_cat:
+            tools_by_cat[cat] = []
+        tools_by_cat[cat].append({"id": tid, "name": t["name"], "description": t["description"]})
+    return {"tools": tools_by_cat, "count": len(TOOL_REGISTRY)}
+
 # ── WEBSOCKET ─────────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
