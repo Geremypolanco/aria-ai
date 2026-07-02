@@ -1,7 +1,6 @@
 """
-ARIA AI — Agent Brain v3.
-Uses the local AI client (HuggingFace / Groq / OpenAI) with proper tool-use prompting.
-No external API dependencies beyond what's configured.
+ARIA AI — Agent Brain v3.2.
+Fully integrated with Tool Registry, HuggingFace/Groq/OpenAI, and orchestrator.
 """
 from __future__ import annotations
 
@@ -11,43 +10,25 @@ import re
 from typing import Any
 
 from apps.core.config import settings
-from apps.core.tools.ai_client import AIModel, AriaAIClient, get_ai_client
+from apps.core.tool_registry import SYSTEM_INSTRUCTION, get_tool_descriptions
+from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.agent")
 
-# ── SYSTEM PROMPT ─────────────────────────────────────────
-SYSTEM_PROMPT = """Eres ARIA, una inteligencia artificial autónoma de nivel enterprise.
-
-CAPACIDADES:
-- Razonamiento profundo multi-paso
-- Generación y análisis de código
-- Investigación y síntesis de información
-- Análisis de imágenes y video
-- Integración con APIs externas
-- Memoria persistente y contextual
-
-DIRECTRICES:
-1. Piensa paso a paso antes de responder
-2. Si necesitas información, investiga antes de concluir
-3. Cuando generes código, incluye explicaciones
-4. Sé precisa, honesta y directa
-5. Si no sabes algo, dilo claramente
-6. Usa las herramientas disponibles cuando sean necesarias
-
-FORMATO DE RESPUESTA:
-- Usa **negritas** para énfasis
-- Usa `código` para fragmentos de código
-- Usa ``` para bloques de código con el lenguaje especificado
-- Usa listas numeradas para pasos secuenciales
-- Sé conversacional pero profesional"""
+# ── FULL SYSTEM PROMPT ───────────────────────────────────
+def build_system_prompt(include_tools: bool = True) -> str:
+    base = SYSTEM_INSTRUCTION
+    if include_tools:
+        base += "\n\n" + get_tool_descriptions()
+    return base
 
 
 class AriaAgent:
-    """Agente principal de ARIA que usa el AI client local."""
+    """ARIA's main agent - uses local AI models with full tool-use capability."""
 
     def __init__(self):
-        self.client: AriaAIClient | None = get_ai_client()
-        logger.info("AriaAgent initialized")
+        self.client = get_ai_client()
+        logger.info("AriaAgent v3.2 initialized")
 
     async def think(
         self,
@@ -55,24 +36,53 @@ class AriaAgent:
         system: str | None = None,
         model: AIModel = AIModel.STRATEGY,
         temperature: float = 0.7,
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
     ) -> str:
-        """Process a message through ARIA's reasoning."""
-        if self.client is None:
-            return "⏳ Error: AI client not initialized. Check your API keys in .env"
+        """Process a message through ARIA's reasoning with multi-provider fallback."""
+        if not self.client:
+            return """⚠️ **ARIA no está completamente inicializada**
 
+Para activar todas mis capacidades, configura al menos una de estas API keys en tu `.env`:
+- `HF_TOKEN` (HuggingFace - motor principal, gratis)
+- `GROQ_API_KEY` (Groq - respaldo rápido)
+- `OPENAI_API_KEY` (OpenAI - respaldo secundario)
+
+Mientras tanto, puedes usar el dashboard para ver el estado del sistema."""
+
+        full_system = system or build_system_prompt()
         try:
             response = await self.client.complete(
-                system=system or SYSTEM_PROMPT,
+                system=full_system,
                 user=message,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                agent_name="aria",
             )
-            return response.content
+            if response and response.success:
+                return response.content
+            # If primary fails, try fallback
+            fb_response = await self.client.complete(
+                system=full_system,
+                user=message,
+                model=AIModel.FAST,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                agent_name="aria-fallback",
+            )
+            if fb_response and fb_response.success:
+                return fb_response.content
+            return f"⚠️ Error en todos los proveedores de IA. Último error: {response.error if response else 'Sin respuesta'}"
         except Exception as e:
             logger.error(f"AriaAgent.think error: {e}")
-            return f"⚠️ Error processing request: {str(e)}"
+            return f"""⚠️ **Error interno**: {str(e)}
+
+Posibles causas:
+- API key inválida o sin fondos
+- Timeout en la conexión
+- Modelo temporalmente no disponible
+
+Intenta de nuevo o verifica tu configuración."""
 
     async def think_json(
         self,
@@ -80,83 +90,88 @@ class AriaAgent:
         system: str | None = None,
         model: AIModel = AIModel.STRATEGY,
     ) -> dict[str, Any]:
-        """Process a message and return structured JSON."""
-        json_system = (system or SYSTEM_PROMPT) + "\n\nRESPONDE SOLO CON JSON VÁLIDO."
-        response = await self.think(
-            message=message,
-            system=json_system,
-            model=model,
-            temperature=0.1,
-        )
-        return self._parse_json(response)
+        """Get structured JSON response from ARIA."""
+        if not self.client:
+            return {"error": "AI not initialized"}
+        try:
+            response = await self.client.complete_json(
+                system=system or build_system_prompt(),
+                user=message,
+                model=model,
+            )
+            return response or {"error": "Empty response"}
+        except Exception as e:
+            logger.error(f"think_json error: {e}")
+            return {"error": str(e)}
 
     async def generate_code(
         self,
         prompt: str,
         language: str = "python",
     ) -> str:
-        """Generate code with ARIA's code model."""
-        system = f"Eres un experto programador en {language}. Genera código limpio, bien documentado y funcional."
+        """Generate code using ARIA's code-optimized model."""
+        system = f"""Eres un ingeniero de software experto en {language.upper()}.
+
+DIRECTRICES:
+1. Genera código limpio, eficiente y bien documentado
+2. Sigue las mejores prácticas de {language}
+3. Incluye manejo de errores
+4. Agrega comentarios explicativos
+5. Si es aplicable, incluye ejemplos de uso
+
+Lenguaje objetivo: {language}"""
         return await self.think(
             message=prompt,
             system=system,
             model=AIModel.CODE,
             temperature=0.2,
+            max_tokens=8192,
         )
-
-    async def analyze_image(
-        self,
-        image_base64: str,
-        question: str,
-    ) -> str:
-        """Analyze an image with ARIA's vision capabilities."""
-        if self.client is None:
-            return "Vision not available"
-        try:
-            return await self.client.analyze_image(image_base64, question)
-        except Exception as e:
-            logger.error(f"Vision error: {e}")
-            return f"Vision analysis failed: {e}"
 
     async def research(
         self,
         topic: str,
-        depth: str = "medium",
+        depth: str = "completa",
     ) -> str:
-        """Research a topic in depth."""
-        system = f"""Eres un investigador experto. Investiga a fondo sobre: {topic}
+        """Deep research on any topic."""
+        system = f"""Eres un investigador académico experto realizando una investigación {depth} sobre: {topic}
 
-PROFUNDIDAD: {depth}
-
-Estructura tu respuesta:
-1. Resumen ejecutivo
-2. Hallazgos principales
-3. Análisis detallado
-4. Conclusiones y recomendaciones
-5. Fuentes y referencias"""
+ESTRUCTURA DE RESPUESTA:
+1. **Resumen Ejecutivo** - Visión general en 2-3 oraciones
+2. **Contexto y Antecedentes** - Información fundamental necesaria
+3. **Análisis Principal** - Desglose detallado del tema
+4. **Hallazgos Clave** - Los descubrimientos más importantes
+5. **Implicaciones** - Qué significa esto en la práctica
+6. **Conclusiones** - Síntesis final
+7. **Referencias** - Fuentes y recursos adicionales"""
         return await self.think(
-            message=f"Realiza una investigación profunda sobre: {topic}",
+            message=f"Investiga a fondo: {topic}",
             system=system,
             model=AIModel.STRATEGY,
             temperature=0.3,
             max_tokens=8192,
         )
 
-    @staticmethod
-    def _parse_json(text: str) -> dict[str, Any]:
-        """Extrae JSON del texto."""
-        text = text.strip()
-        text = re.sub(r"```(?:json)?\n?", "", text).strip().rstrip("```").strip()
-        for start, end in [("{", "}"), ("[", "]")]:
-            s = text.find(start)
-            if s != -1:
-                e = text.rfind(end)
-                if e > s:
-                    try:
-                        return json.loads(text[s : e + 1])
-                    except json.JSONDecodeError:
-                        pass
-        return {"error": "No valid JSON found", "raw": text[:500]}
+    async def analyze(
+        self,
+        data: str,
+        analysis_type: str = "general",
+    ) -> str:
+        """Analyze data, code, text, or any content."""
+        system = f"""Eres un analista experto realizando un análisis de tipo: {analysis_type}
+
+Proporciona:
+1. Resumen de lo que se está analizando
+2. Puntos clave y patrones identificados
+3. Problemas o áreas de mejora (si aplica)
+4. Recomendaciones accionables
+5. Puntuación o evaluación general"""
+        return await self.think(
+            message=data,
+            system=system,
+            model=AIModel.STRATEGY,
+            temperature=0.3,
+        )
 
 
 # ── SINGLETON ─────────────────────────────────────────────
