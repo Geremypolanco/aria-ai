@@ -9534,6 +9534,22 @@ JSON:
 
     # ── Notifications ───────────────────────────────────────────────────
 
+    async def _send_telegram(self, message: str) -> None:
+        """Safe Telegram notification used across strategies.
+
+        Historically ~15 strategies called ``self._send_telegram(...)`` but the
+        method was never defined, so every one of them crashed with
+        ``AttributeError: 'IncomeLoop' object has no attribute '_send_telegram'``.
+        This defines it once and never raises — a missing Telegram config or a
+        transient send error must never fail a revenue strategy.
+        """
+        try:
+            from apps.core.tools.telegram_bot import get_bot
+
+            await get_bot().notify_owner(str(message), already_html=False)
+        except Exception as exc:  # noqa: BLE001 — notifications are best-effort
+            logger.debug("[IncomeLoop] _send_telegram skipped: %s", exc)
+
     async def _notify_startup(self) -> None:
         """Send startup Telegram message and bootstrap portfolio + blog on first run."""
         try:
