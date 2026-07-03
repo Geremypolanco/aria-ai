@@ -17,9 +17,9 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import httpx
 from groq import AsyncGroq
@@ -185,10 +185,7 @@ class ProviderHealth:
                 return True
             return False
 
-        if self.state == CircuitState.HALF_OPEN:
-            return True
-
-        return False
+        return self.state == CircuitState.HALF_OPEN
 
     def record_success(self) -> None:
         self.total_calls += 1
@@ -303,14 +300,14 @@ class AriaAIClient:
                 response.attempts = attempts
                 if json_mode:
                     response.content = self._extract_json_safe(response.content)
-                
+
                 logger.info(
                     "[%s] OK %s via %s — %dms",
                     agent_name, model.value, provider.value, response.latency_ms
                 )
                 return response
 
-            except (asyncio.TimeoutError, TimeoutError):
+            except TimeoutError:
                 self._health[provider].record_failure()
                 last_error = f"{provider.value}: timeout"
                 self._total_fallbacks += 1
@@ -382,7 +379,7 @@ class AriaAIClient:
                     if "404" in err_str or "not supported" in err_str:
                         logger.debug("[%s] HF %s no soportado en %s", agent_name, short_name, hf_provider)
                         break # Probar siguiente modelo
-                    
+
                     logger.warning("[%s] HF fallo %s@%s: %s", agent_name, short_name, hf_provider, err_str[:60])
                     continue # Probar siguiente provider/modelo
 
@@ -400,7 +397,7 @@ class AriaAIClient:
     ) -> AIResponse:
         model_id = MODEL_REGISTRY[model][provider]
         t0 = time.time()
-        
+
         if provider == AIProvider.GROQ:
             content, tokens = await self._call_groq(model_id, system, user, max_tokens, temperature)
         elif provider == AIProvider.GEMINI:
@@ -409,7 +406,7 @@ class AriaAIClient:
             content, tokens = await self._call_anthropic(model_id, system, user, max_tokens, temperature)
         else:
             content, tokens = await self._call_openai(model_id, system, user, max_tokens, temperature)
-            
+
         latency = int((time.time() - t0) * 1000)
         self._total_tokens += tokens
         return AIResponse(
@@ -450,7 +447,7 @@ class AriaAIClient:
     async def _call_gemini(self, model_id: str, system: str, user: str, max_tokens: int, temperature: float) -> tuple[str, int]:
         if not settings.GOOGLE_API_KEY:
             raise ValueError("GOOGLE_API_KEY no configurado para Gemini")
-        
+
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={settings.GOOGLE_API_KEY}"
         payload = {
             "contents": [{"parts": [{"text": f"System: {system}\n\nUser: {user}"}]}],
@@ -515,7 +512,7 @@ class AriaAIClient:
             AIProvider.ANTHROPIC,
             AIProvider.OPENAI,
         ]
-        
+
         has_key = {
             AIProvider.HUGGINGFACE: bool(settings.hf_key),
             AIProvider.GROQ: bool(settings.GROQ_API_KEY),
@@ -523,14 +520,14 @@ class AriaAIClient:
             AIProvider.ANTHROPIC: bool(settings.ANTHROPIC_API_KEY),
             AIProvider.OPENAI: bool(settings.OPENAI_API_KEY),
         }
-        
+
         available = [p for p in base_order if has_key.get(p) and self._health[p].is_available()]
-        
+
         # Si HF ha fallado recientemente, priorizar Groq
         if self._health[AIProvider.HUGGINGFACE].consecutive_failures >= 1 and AIProvider.GROQ in available:
             available.remove(AIProvider.GROQ)
             available.insert(0, AIProvider.GROQ)
-            
+
         return available
 
     def _extract_json_safe(self, text: str) -> str:
@@ -584,7 +581,7 @@ class AriaAIClient:
                 return
             except Exception:
                 pass
-        
+
         # Fallback a no-streaming
         res = await self.complete(system, user, model, max_tokens, temperature)
         yield res.content
@@ -608,7 +605,7 @@ class AriaAIClient:
                     return data["candidates"][0]["content"]["parts"][0]["text"].strip()
             except Exception:
                 pass
-        
+
         # Fallback a HF Vision si Gemini falla
         res = await self.complete(system="Analiza esta imagen.", user=question, model=AIModel.VISION)
         return res.content

@@ -4,17 +4,16 @@ Full-featured FastAPI server with AI integration, chat, and web interface.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
-import json
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime
-from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from apps.core.config import settings
@@ -207,10 +206,8 @@ async def websocket_chat(ws: WebSocket):
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        try:
+        with suppress(Exception):
             await ws.send_json({"error": str(e)})
-        except Exception:
-            pass
 
 # ── MAIN ──────────────────────────────────────────────────
 if __name__ == "__main__":
