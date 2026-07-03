@@ -223,6 +223,71 @@ async def api_run(req: RunRequest) -> dict:
         return {"error": str(exc)}
 
 
+class ContentOperateRequest(BaseModel):
+    """Payload for the autonomous content-marketing operator (the wedge)."""
+
+    name: str = "SARAPH"
+    product: str
+    price: str | None = None
+    audience: str | None = None
+    url: str | None = None
+    channels: list[str] | None = None
+    dry_run: bool = False
+
+
+@router.post("/content/operate", dependencies=[Depends(verify_api_key)])
+async def api_content_operate(req: ContentOperateRequest) -> dict:
+    """
+    Run one autonomous content cycle: generate copy + image, publish to the given
+    channels via Zapier MCP, and record a full observability trail. Use dry_run=true
+    to generate the asset without publishing.
+    """
+    _log_activity("info", f"Content operate: {req.product[:60]} dry={req.dry_run}", "content")
+    try:
+        from apps.core.tools.content_operator import get_content_operator
+
+        brand = {
+            "name": req.name,
+            "product": req.product,
+            "price": req.price,
+            "audience": req.audience,
+            "url": req.url,
+        }
+        record = await get_content_operator().run_once(
+            brand, channels=req.channels, dry_run=req.dry_run
+        )
+        return record
+    except Exception as exc:
+        logger.error("[API /content/operate] %s", exc, exc_info=True)
+        _log_activity("error", f"Content operate error: {exc}", "content")
+        return {"success": False, "error": str(exc)}
+
+
+@router.get("/content/runs", dependencies=[Depends(verify_api_key)])
+async def api_content_runs(limit: int = 20) -> dict:
+    """Return recent content-operator runs (the observability trail)."""
+    try:
+        from apps.core.tools.content_operator import get_content_operator
+
+        runs = await get_content_operator().recent_runs(limit=limit)
+        return {"count": len(runs), "runs": runs}
+    except Exception as exc:
+        logger.error("[API /content/runs] %s", exc, exc_info=True)
+        return {"error": str(exc)}
+
+
+@router.get("/content/selftest", dependencies=[Depends(verify_api_key)])
+async def api_content_selftest() -> dict:
+    """Check that the Zapier MCP bridge is reachable and see which tools are available."""
+    try:
+        from apps.core.tools.zapier_mcp import get_zapier_mcp
+
+        return await get_zapier_mcp().self_test()
+    except Exception as exc:
+        logger.error("[API /content/selftest] %s", exc, exc_info=True)
+        return {"ok": False, "error": str(exc)}
+
+
 @router.get("/agents", dependencies=[Depends(verify_api_key)])
 async def api_agents() -> list:
     """List all registered agents with metadata."""
