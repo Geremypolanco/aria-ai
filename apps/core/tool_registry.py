@@ -2,6 +2,7 @@
 ARIA AI — Tool Registry & Instruction System.
 Teaches ARIA what tools are available and how to use them.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -34,7 +35,6 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Analiza video y extrae información visual",
         "category": "ai",
     },
-
     # ── WEB & INTERNET ──
     "web_search": {
         "name": "web_search",
@@ -51,7 +51,6 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Navega por sitios web interactivamente",
         "category": "web",
     },
-
     # ── CODE & DEVELOPMENT ──
     "github_clone": {
         "name": "github_clone",
@@ -78,7 +77,6 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Ejecuta comandos en la terminal",
         "category": "dev",
     },
-
     # ── CONTENT & MEDIA ──
     "generate_image": {
         "name": "generate_image",
@@ -95,7 +93,6 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Convierte texto a voz",
         "category": "media",
     },
-
     # ── DATA & ANALYTICS ──
     "database_query": {
         "name": "database_query",
@@ -107,7 +104,6 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Analiza datos y genera reportes",
         "category": "data",
     },
-
     # ── INTEGRATIONS ──
     "shopify_get_products": {
         "name": "shopify_get_products",

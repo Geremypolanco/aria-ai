@@ -156,9 +156,7 @@ class ZapierMCPClient:
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 await self._ensure_initialized(client)
-                out = await self._rpc(
-                    client, "tools/call", {"name": name, "arguments": arguments}
-                )
+                out = await self._rpc(client, "tools/call", {"name": name, "arguments": arguments})
         except Exception as exc:  # noqa: BLE001 - surface transport errors as data
             logger.error("[ZapierMCP] call_tool(%s) transport error: %s", name, exc)
             return {"success": False, "error": str(exc), "text": ""}

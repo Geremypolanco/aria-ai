@@ -158,7 +158,9 @@ class ContentOperator:
             tools = await self.mcp.list_tools()
         except Exception as exc:  # noqa: BLE001
             for ch in channels:
-                results.append({"channel": ch, "success": False, "error": f"MCP unreachable: {exc}"})
+                results.append(
+                    {"channel": ch, "success": False, "error": f"MCP unreachable: {exc}"}
+                )
             return results
 
         by_name = {str(t.get("name", "")).lower(): t for t in tools}
@@ -175,9 +177,7 @@ class ContentOperator:
                     {"channel": ch, "success": False, "error": f"no Zapier tool matching {kws}"}
                 )
                 continue
-            args = self._build_args(
-                match.get("inputSchema", {}), image_url, caption, extra or {}
-            )
+            args = self._build_args(match.get("inputSchema", {}), image_url, caption, extra or {})
             out = await self.mcp.call_tool(match["name"], args)
             results.append(
                 {
@@ -228,8 +228,12 @@ class ContentOperator:
 
         # 2. image
         img = await self.produce_image(creative["image_prompt"], brand.get("name", "brand"))
-        step("generate_image", img.get("success", False), error=img.get("error"),
-             image_url=img.get("image_url"))
+        step(
+            "generate_image",
+            img.get("success", False),
+            error=img.get("error"),
+            image_url=img.get("image_url"),
+        )
         if not img.get("success") or not img.get("image_url"):
             record["error"] = img.get("error", "image generation failed")
             await self._save(record)
@@ -248,8 +252,12 @@ class ContentOperator:
         )
         record["results"] = results
         for r in results:
-            step(f"publish:{r['channel']}", r.get("success", False),
-                 tool=r.get("tool"), error=r.get("error"))
+            step(
+                f"publish:{r['channel']}",
+                r.get("success", False),
+                tool=r.get("tool"),
+                error=r.get("error"),
+            )
         record["success"] = any(r.get("success") for r in results)
 
         await self._save(record)

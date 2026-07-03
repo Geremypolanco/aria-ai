@@ -2,6 +2,7 @@
 ARIA AI — Agent Brain v3.2.
 Fully integrated with Tool Registry, HuggingFace/Groq/OpenAI, and orchestrator.
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,6 +12,7 @@ from apps.core.tool_registry import SYSTEM_INSTRUCTION, get_tool_descriptions
 from apps.core.tools.ai_client import AIModel, get_ai_client
 
 logger = logging.getLogger("aria.agent")
+
 
 # ── FULL SYSTEM PROMPT ───────────────────────────────────
 def build_system_prompt(include_tools: bool = True) -> str:
