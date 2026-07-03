@@ -91,7 +91,7 @@ HF_MODEL_ROTATION: dict[AIModel, list[str]] = {
 # Modelo primario por proveedor
 MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
     AIModel.STRATEGY: {
-        AIProvider.HUGGINGFACE: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-72B-Instruct",
         AIProvider.GROQ: "llama-3.3-70b-versatile",
         AIProvider.GEMINI: "gemini-1.5-pro",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
@@ -112,7 +112,7 @@ MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
         AIProvider.ANTHROPIC: "claude-3-5-haiku-20241022",
     },
     AIModel.CREATIVE: {
-        AIProvider.HUGGINGFACE: "meta-llama/Llama-3.3-70B-Instruct",
+        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-72B-Instruct",
         AIProvider.GROQ: "llama-3.3-70b-versatile",
         AIProvider.GEMINI: "gemini-1.5-pro",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
@@ -422,16 +422,29 @@ class AriaAIClient:
         )
 
     async def _call_huggingface(self, model_id: str, system: str, user: str, max_tokens: int, temperature: float, provider: str) -> tuple[str, int]:
-        from huggingface_hub import AsyncInferenceClient
-        client = AsyncInferenceClient(provider=provider, api_key=settings.hf_key)
-        response = await client.chat.completions.create(
-            model=model_id,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            max_tokens=min(max_tokens, 4096),
-            temperature=temperature,
+        # Use the HF router (OpenAI-compatible) which auto-routes to a working
+        # inference provider. Verified live against Qwen2.5-72B and DeepSeek-R1.
+        # The previous AsyncInferenceClient(provider=...) path 403'd on providers
+        # that don't serve the requested model, which tripped HF's circuit breaker
+        # and left only Groq/Gemini (both currently 403) → total AI failure on
+        # every tool. Routing through the router endpoint restores HF as primary.
+        resp = await self._http.post(
+            "https://router.huggingface.co/v1/chat/completions",
+            json={
+                "model": model_id,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "max_tokens": min(max_tokens, 4096),
+                "temperature": temperature,
+            },
+            headers={"Authorization": f"Bearer {settings.hf_key}"},
         )
-        content = (response.choices[0].message.content or "").strip()
-        tokens = response.usage.total_tokens if response.usage else len(content.split()) * 2
+        resp.raise_for_status()
+        data = resp.json()
+        content = (data["choices"][0]["message"]["content"] or "").strip()
+        tokens = data.get("usage", {}).get("total_tokens") or len(content.split()) * 2
         return content, tokens
 
     async def _call_gemini(self, model_id: str, system: str, user: str, max_tokens: int, temperature: float) -> tuple[str, int]:
