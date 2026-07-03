@@ -177,6 +177,7 @@ class Settings(BaseSettings):
 
     # ── API PÚBLICA ───────────────────────────────────────
     ARIA_API_KEY: str | None = None
+    ZAPIER_MCP_URL: str | None = None
 
     # ── CREDENCIALES DE ARIA (para login stealth en plataformas) ──────────
     ARIA_EMAIL: str | None = None

@@ -220,6 +220,7 @@ class AriaAIClient:
     _OAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 
     def __init__(self) -> None:
+        self._zapier_mcp_url = settings.ZAPIER_MCP_URL
         self._health: dict[AIProvider, ProviderHealth] = {p: ProviderHealth(provider=p) for p in AIProvider}
         self._groq = AsyncGroq(api_key=settings.GROQ_API_KEY or "no-key")
         self._http = httpx.AsyncClient(
@@ -557,8 +558,49 @@ class AriaAIClient:
             "_totals": {
                 "tokens_used": self._total_tokens,
                 "fallbacks_triggered": self._total_fallbacks,
+                "zapier_mcp_active": bool(self._zapier_mcp_url),
             }
         }
+
+    async def get_zapier_tools(self) -> list[dict]:
+        """Fetch available tools from Zapier MCP server."""
+        if not self._zapier_mcp_url:
+            return []
+        try:
+            # Zapier MCP implementation for tool listing
+            resp = await self._http.post(
+                self._zapier_mcp_url,
+                json={"method": "list_tools", "params": {}},
+                timeout=10.0
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("result", {}).get("tools", [])
+        except Exception as e:
+            logger.error("Error fetching Zapier tools: %s", e)
+        return []
+
+    async def execute_zapier_tool(self, tool_name: str, arguments: dict) -> dict:
+        """Execute a tool via Zapier MCP server."""
+        if not self._zapier_mcp_url:
+            return {"success": False, "error": "Zapier MCP not configured"}
+        try:
+            resp = await self._http.post(
+                self._zapier_mcp_url,
+                json={
+                    "method": "call_tool",
+                    "params": {
+                        "name": tool_name,
+                        "arguments": arguments
+                    }
+                },
+                timeout=30.0
+            )
+            if resp.status_code == 200:
+                return resp.json().get("result", {"success": False})
+        except Exception as e:
+            logger.error("Error executing Zapier tool %s: %s", tool_name, e)
+        return {"success": False, "error": "Zapier MCP execution failed"}
 
     async def stream_complete(
         self,
