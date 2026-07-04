@@ -77,34 +77,44 @@ class ContentOperator:
     # ── 0. research (never create blind) ──────────────────────────────────
 
     async def research(self, topic: str, n: int = 6) -> list[dict[str, str]]:
-        """Ground content in current, real info (research-first) via SerpAPI.
-        Returns a list of {title, snippet, link}. Empty on any failure."""
+        """Ground content in current, real info (research-first). Empty on failure."""
+        findings, _ = await self._research_diag(topic, n)
+        return findings
+
+    async def _research_diag(
+        self, topic: str, n: int = 6
+    ) -> tuple[list[dict[str, str]], str | None]:
+        """Research via SerpAPI, returning (findings, error_reason). The reason is
+        surfaced in the run record so a silent 0-results is diagnosable, not a mystery."""
         key = getattr(settings, "SERP_API_KEY", None)
-        if not key or not topic.strip():
-            return []
+        if not key:
+            return [], "no SERP_API_KEY"
+        if not topic.strip():
+            return [], "empty topic"
         try:
             async with httpx.AsyncClient(timeout=25.0) as c:
                 r = await c.get(
-                    "https://serpapi.com/search.json",
+                    "https://serpapi.com/search",
                     params={"q": topic, "api_key": key, "engine": "google", "num": n},
                 )
             if r.status_code != 200:
-                return []
-            items = r.json().get("organic_results", []) or []
-            out = []
-            for it in items[:n]:
-                if it.get("snippet"):
-                    out.append(
-                        {
-                            "title": str(it.get("title", ""))[:160],
-                            "snippet": str(it.get("snippet", ""))[:300],
-                            "link": str(it.get("link", "")),
-                        }
-                    )
-            return out
+                return [], f"HTTP {r.status_code}: {r.text[:160]}"
+            data = r.json()
+            if data.get("error"):
+                return [], f"serpapi: {str(data['error'])[:160]}"
+            items = data.get("organic_results", []) or []
+            out = [
+                {
+                    "title": str(it.get("title", ""))[:160],
+                    "snippet": str(it.get("snippet", ""))[:300],
+                    "link": str(it.get("link", "")),
+                }
+                for it in items[:n]
+                if it.get("snippet")
+            ]
+            return out, (None if out else "no organic_results")
         except Exception as exc:  # noqa: BLE001 - research is best-effort
-            logger.debug("[ContentOperator] research failed: %s", exc)
-            return []
+            return [], f"exception: {exc}"
 
     # ── 1. creative generation (research-first, methodology-driven) ────────
 
@@ -117,7 +127,11 @@ class ContentOperator:
         product = brand.get("product", brand.get("name", "the product"))
         audience = brand.get("audience", "founders and small business owners")
 
-        findings = await self.research(f"{product} {audience}") if research_first else []
+        findings, research_error = (
+            await self._research_diag(f"{product} {audience}")
+            if research_first
+            else ([], "disabled")
+        )
         research_block = ""
         if findings:
             lines = "\n".join(f"- {f['title']}: {f['snippet']}" for f in findings)
@@ -163,6 +177,7 @@ class ContentOperator:
             "image_prompt": data.get("image_prompt", f"Premium marketing graphic for {product}"),
             "reasoning": data.get("reasoning", ""),
             "research_used": len(findings),
+            "research_error": research_error,
             "sources": [f["link"] for f in findings if f.get("link")][:6],
         }
 
@@ -293,8 +308,14 @@ class ContentOperator:
         record["assets"]["hook"] = creative["hook"]
         record["reasoning"] = creative.get("reasoning", "")
         record["research_used"] = creative.get("research_used", 0)
+        record["research_error"] = creative.get("research_error")
         record["sources"] = creative.get("sources", [])
-        step("research", True, sources=creative.get("research_used", 0))
+        step(
+            "research",
+            bool(creative.get("research_used")),
+            sources=creative.get("research_used", 0),
+            error=creative.get("research_error"),
+        )
 
         # 2. image
         img = await self.produce_image(creative["image_prompt"], brand.get("name", "brand"))
