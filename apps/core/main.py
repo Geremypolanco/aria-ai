@@ -219,6 +219,64 @@ async def list_tools():
     return {"tools": tools_by_cat, "count": len(TOOL_REGISTRY)}
 
 
+# ── CONTENT OPERATOR (autonomous content-marketing wedge) ─────────────
+class ContentOperateRequest(BaseModel):
+    name: str = "SARAPH"
+    product: str
+    price: str | None = None
+    audience: str | None = None
+    url: str | None = None
+    channels: list[str] | None = None
+    dry_run: bool = False
+
+
+@app.post("/api/v1/content/operate")
+async def content_operate(req: ContentOperateRequest):
+    """Run one autonomous content cycle: generate copy + image, optionally publish
+    via Zapier MCP, and record a full observability trail. dry_run skips publishing."""
+    try:
+        from apps.core.tools.content_operator import get_content_operator
+
+        brand = {
+            "name": req.name,
+            "product": req.product,
+            "price": req.price,
+            "audience": req.audience,
+            "url": req.url,
+        }
+        return await get_content_operator().run_once(
+            brand, channels=req.channels, dry_run=req.dry_run
+        )
+    except Exception as e:
+        logger.error(f"Content operate error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/v1/content/runs")
+async def content_runs(limit: int = 20):
+    """Return recent content-operator runs (the observability trail)."""
+    try:
+        from apps.core.tools.content_operator import get_content_operator
+
+        runs = await get_content_operator().recent_runs(limit=limit)
+        return {"count": len(runs), "runs": runs}
+    except Exception as e:
+        logger.error(f"Content runs error: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/v1/content/selftest")
+async def content_selftest():
+    """Check that the Zapier MCP bridge is reachable and list available tools."""
+    try:
+        from apps.core.tools.zapier_mcp import get_zapier_mcp
+
+        return await get_zapier_mcp().self_test()
+    except Exception as e:
+        logger.error(f"Content selftest error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
