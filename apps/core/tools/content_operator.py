@@ -28,6 +28,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
+
+from apps.core.config import settings
 from apps.core.tools.ai_client import AIModel, get_ai_client_async
 from apps.core.tools.content_tools import get_content_tools
 from apps.core.tools.zapier_mcp import get_zapier_mcp
@@ -36,6 +39,24 @@ logger = logging.getLogger("aria.tools.content_operator")
 
 _RUNS_KEY = "aria:content_operator:runs"
 
+# The operating methodology transferred from how the assistant works. This is injected
+# into every generation so ARIA makes the same kind of decisions: research first, never
+# fabricate, hook hard, stay honest, write native to the platform.
+PLAYBOOK = (
+    "You operate like an elite, honest creative director. Non-negotiable principles:\n"
+    "1) RESEARCH FIRST: never invent facts, numbers, names, or events. Ground every claim "
+    "in the RESEARCH provided. If the research is thin, stay general and truthful — never "
+    "fabricate to sound impressive. Credibility is the asset.\n"
+    "2) REFERENCE FIRST: mirror the structure of what already works for this format/platform "
+    "(hook, pacing) without copying anyone.\n"
+    "3) HOOK: the first line must stop the scroll and make sense on its own.\n"
+    "4) HONESTY: no clickbait the content doesn't deliver; no misleading claims.\n"
+    "5) PLATFORM FIT: write natively for the target platform's format and tone.\n"
+    "6) VALUE OR EMOTION: give the reader something useful or something that moves them; "
+    "never generic filler.\n"
+    "7) CLEAR CTA at the end when it fits."
+)
+
 # The Zapier MCP server does NOT expose one tool per channel; it exposes meta-tools
 # (execute_zapier_write_action, list_enabled_zapier_actions, ...). To publish we call
 # `execute_zapier_write_action` with the app's `selected_api` + `action` + `params`.
@@ -43,6 +64,8 @@ _RUNS_KEY = "aria:content_operator:runs"
 CHANNELS: dict[str, dict[str, str]] = {
     "instagram": {"selected_api": "InstagramBusinessCLIAPI", "action": "publish_media_v2"},
     "pinterest": {"selected_api": "PinterestCLIAPI", "action": "create_pin"},
+    "linkedin": {"selected_api": "LinkedInCLIAPI", "action": "share"},
+    "facebook": {"selected_api": "FacebookV2CLIAPI", "action": "create_page_photo"},
 }
 
 
@@ -51,23 +74,66 @@ class ContentOperator:
         self.content = get_content_tools()
         self.mcp = get_zapier_mcp()
 
-    # ── 1. creative generation ────────────────────────────────────────────
+    # ── 0. research (never create blind) ──────────────────────────────────
 
-    async def generate_creative(self, brand: dict[str, Any]) -> dict[str, Any]:
-        """Ask the AI for a publish-ready caption + image prompt for this brand."""
+    async def research(self, topic: str, n: int = 6) -> list[dict[str, str]]:
+        """Ground content in current, real info (research-first) via SerpAPI.
+        Returns a list of {title, snippet, link}. Empty on any failure."""
+        key = getattr(settings, "SERP_API_KEY", None)
+        if not key or not topic.strip():
+            return []
+        try:
+            async with httpx.AsyncClient(timeout=25.0) as c:
+                r = await c.get(
+                    "https://serpapi.com/search.json",
+                    params={"q": topic, "api_key": key, "engine": "google", "num": n},
+                )
+            if r.status_code != 200:
+                return []
+            items = r.json().get("organic_results", []) or []
+            out = []
+            for it in items[:n]:
+                if it.get("snippet"):
+                    out.append(
+                        {
+                            "title": str(it.get("title", ""))[:160],
+                            "snippet": str(it.get("snippet", ""))[:300],
+                            "link": str(it.get("link", "")),
+                        }
+                    )
+            return out
+        except Exception as exc:  # noqa: BLE001 - research is best-effort
+            logger.debug("[ContentOperator] research failed: %s", exc)
+            return []
+
+    # ── 1. creative generation (research-first, methodology-driven) ────────
+
+    async def generate_creative(
+        self, brand: dict[str, Any], research_first: bool = True
+    ) -> dict[str, Any]:
+        """Research the topic, then ask the AI for a publish-ready caption + image prompt,
+        under the PLAYBOOK methodology so ARIA decides like the assistant would."""
         ai = await get_ai_client_async()
-        system = (
-            "You are a senior direct-response social media strategist. You write "
-            "thumb-stopping, high-converting organic posts. You never sound like a "
-            "generic AI. Hooks are specific and a little contrarian."
-        )
         product = brand.get("product", brand.get("name", "the product"))
+        audience = brand.get("audience", "founders and small business owners")
+
+        findings = await self.research(f"{product} {audience}") if research_first else []
+        research_block = ""
+        if findings:
+            lines = "\n".join(f"- {f['title']}: {f['snippet']}" for f in findings)
+            research_block = (
+                "\n\nCURRENT RESEARCH — ground your claims in this, do not contradict it, "
+                f"do not invent beyond it:\n{lines}\n"
+            )
+
+        system = PLAYBOOK + "\n\nYou are a senior direct-response social media strategist."
         user = (
             f"Brand: {brand.get('name', 'SARAPH')}\n"
             f"Product: {product}\n"
             f"Price: {brand.get('price', '')}\n"
-            f"Audience: {brand.get('audience', 'founders and small business owners')}\n"
-            f"Offer link: {brand.get('url', '')}\n\n"
+            f"Audience: {audience}\n"
+            f"Offer link: {brand.get('url', '')}\n"
+            f"{research_block}\n"
             "Write ONE Instagram-ready post promoting this. Return JSON with keys:\n"
             '  "hook": a 4-8 word scroll-stopping first line,\n'
             '  "caption": the full caption (120-220 words, line breaks ok, ends with a clear CTA to the link),\n'
@@ -96,6 +162,8 @@ class ContentOperator:
             "caption": caption,
             "image_prompt": data.get("image_prompt", f"Premium marketing graphic for {product}"),
             "reasoning": data.get("reasoning", ""),
+            "research_used": len(findings),
+            "sources": [f["link"] for f in findings if f.get("link")][:6],
         }
 
     # ── 2. asset production ───────────────────────────────────────────────
@@ -132,6 +200,12 @@ class ContentOperator:
         """Build the `params` payload for a channel's Zapier write action."""
         if channel == "instagram":
             return {"media": [image_url], "caption": caption}
+        if channel == "facebook":
+            return {"photo_url": image_url, "message": caption}
+        if channel == "linkedin":
+            # LinkedIn's share action is text-first; an image only attaches via a
+            # penalised link-card, so we post the caption as a native text update.
+            return {"comment": caption, "visibility__code": "anyone"}
         if channel == "pinterest":
             params: dict[str, Any] = {
                 "image_url": image_url,
@@ -218,6 +292,9 @@ class ContentOperator:
         record["assets"]["caption"] = creative["caption"]
         record["assets"]["hook"] = creative["hook"]
         record["reasoning"] = creative.get("reasoning", "")
+        record["research_used"] = creative.get("research_used", 0)
+        record["sources"] = creative.get("sources", [])
+        step("research", True, sources=creative.get("research_used", 0))
 
         # 2. image
         img = await self.produce_image(creative["image_prompt"], brand.get("name", "brand"))

@@ -104,6 +104,17 @@ class TestChannelParams:
         assert "board_id" not in p
         assert p["description"].startswith("Hook line")
 
+    def test_linkedin_is_text_first(self):
+        p = self._params("linkedin")
+        assert p["comment"].startswith("Hook line")
+        assert p["visibility__code"] == "anyone"
+        assert "media" not in p and "image_url" not in p
+
+    def test_facebook_uses_photo_and_message(self):
+        p = self._params("facebook")
+        assert p["photo_url"] == "https://cdn/img.png"
+        assert p["message"].startswith("Hook line")
+
     def test_unknown_channel_falls_back(self):
         p = self._params("mastodon")
         assert p == {"image_url": "https://cdn/img.png", "caption": "Hook line\nrest of caption"}
