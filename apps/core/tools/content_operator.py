@@ -103,7 +103,25 @@ class ContentOperator:
     async def produce_image(self, image_prompt: str, brand_name: str) -> dict[str, Any]:
         slug = "".join(c for c in brand_name.lower() if c.isalnum())[:20] or "brand"
         public_id = f"aria/{slug}-{uuid.uuid4().hex[:8]}"
-        return await self.content.generate_and_upload_image(image_prompt, public_id=public_id)
+        # Primary: FLUX → Cloudinary (branded storage).
+        result = await self.content.generate_and_upload_image(image_prompt, public_id=public_id)
+        if result.get("success") and result.get("image_url"):
+            return result
+        # Fallback: Pollinations returns a ready-to-use public image URL with no auth
+        # and no dependency on HF's (deprecated) inference host.
+        import urllib.parse
+
+        prompt_enc = urllib.parse.quote(image_prompt[:400])
+        url = (
+            f"https://image.pollinations.ai/prompt/{prompt_enc}"
+            "?width=1080&height=1350&nologo=true&model=flux"
+        )
+        return {
+            "success": True,
+            "image_url": url,
+            "source": "pollinations",
+            "fallback_reason": result.get("error"),
+        }
 
     # ── 3. publishing (via Zapier meta-tools) ─────────────────────────────
 
