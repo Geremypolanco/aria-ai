@@ -5,6 +5,8 @@ Full-featured FastAPI server with AI integration, chat, and web interface.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -12,12 +14,49 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from apps.core.config import settings
+
+# ── ADMIN AUTH (server-side gate for the owner-only control panel) ─────────
+_ADMIN_COOKIE = "aria_admin"
+
+
+def _admin_token() -> str:
+    """Deterministic session token derived from the admin password. An attacker who
+    doesn't know ADMIN_PASSWORD cannot forge it."""
+    pw = (getattr(settings, "ADMIN_PASSWORD", None) or "").encode()
+    return hmac.new(pw or b"unset", b"aria-admin-session-v1", hashlib.sha256).hexdigest()
+
+
+def _is_admin(request: Request) -> bool:
+    if not getattr(settings, "ADMIN_PASSWORD", None):
+        return False  # locked until an admin password is configured
+    return hmac.compare_digest(request.cookies.get(_ADMIN_COOKIE, ""), _admin_token())
+
+
+_LOGIN_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIA · Admin</title><style>
+*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:radial-gradient(120% 90% at 20% 10%,rgba(124,58,237,.35),transparent 45%),#0a0a0f;color:#f1f5f9}}
+.card{{width:360px;max-width:92vw;background:rgba(17,17,24,.85);border:1px solid rgba(255,255,255,.1);
+border-radius:18px;padding:36px 30px;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+h1{{font-size:22px;margin-bottom:6px}} p{{color:#94a3b8;font-size:14px;margin-bottom:22px}}
+input{{width:100%;padding:13px 15px;border-radius:11px;border:1px solid rgba(255,255,255,.14);
+background:rgba(255,255,255,.04);color:#fff;font-size:15px;margin-bottom:14px}}
+button{{width:100%;padding:13px;border:0;border-radius:11px;font-weight:600;font-size:15px;cursor:pointer;
+background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}}
+.err{{color:#fb7185;font-size:13px;margin-bottom:12px}} .mut{{color:#64748b;font-size:12px;margin-top:16px;text-align:center}}
+</style></head><body><form class="card" method="post" action="/admin/login">
+<h1>Panel de control</h1><p>Acceso solo para el administrador.</p>
+{error}<input type="password" name="password" placeholder="Contraseña de administrador" autofocus required>
+<button type="submit">Entrar</button>
+<div class="mut">{notice}</div></form></body></html>"""
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("aria")
@@ -79,14 +118,121 @@ async def root():
         return HTMLResponse("<h1>ARIA AI</h1><p>Online</p>")
 
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard():
+def _serve_control_panel() -> HTMLResponse:
     path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
     try:
         with open(path, encoding="utf-8") as f:
-            return f.read()
+            return HTMLResponse(f.read())
     except FileNotFoundError:
-        return HTMLResponse("<h1>Dashboard</h1><p>Not found</p>")
+        return HTMLResponse("<h1>Panel</h1><p>Not found</p>")
+
+
+@app.get("/dashboard")
+async def dashboard_redirect():
+    # The control panel is now owner-only; old links land on the gate.
+    return RedirectResponse("/admin", status_code=307)
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_page():
+    notice = (
+        "ARIA · Autonomous Intelligence"
+        if getattr(settings, "ADMIN_PASSWORD", None)
+        else "⚠️ Configura ADMIN_PASSWORD en el servidor para activar el acceso."
+    )
+    return HTMLResponse(_LOGIN_HTML.format(error="", notice=notice))
+
+
+@app.post("/admin/login")
+async def admin_login(password: str = Form(...)):
+    real = getattr(settings, "ADMIN_PASSWORD", None)
+    if not real:
+        return HTMLResponse(
+            _LOGIN_HTML.format(
+                error='<div class="err">Panel bloqueado: configura ADMIN_PASSWORD.</div>',
+                notice="",
+            ),
+            status_code=403,
+        )
+    if not hmac.compare_digest(password, real):
+        return HTMLResponse(
+            _LOGIN_HTML.format(error='<div class="err">Contraseña incorrecta.</div>', notice=""),
+            status_code=401,
+        )
+    resp = RedirectResponse("/admin", status_code=303)
+    resp.set_cookie(
+        _ADMIN_COOKIE,
+        _admin_token(),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,
+    )
+    return resp
+
+
+@app.get("/admin/logout")
+async def admin_logout():
+    resp = RedirectResponse("/admin/login", status_code=303)
+    resp.delete_cookie(_ADMIN_COOKIE)
+    return resp
+
+
+@app.get("/admin")
+async def admin_panel(request: Request):
+    if not _is_admin(request):
+        return RedirectResponse("/admin/login", status_code=307)
+    return _serve_control_panel()
+
+
+# ── PUBLIC SIGNUP (waitlist until user accounts + billing ship) ────────────
+_SIGNUP_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Acceso</title><style>
+*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:radial-gradient(120% 90% at 80% 10%,rgba(37,99,235,.30),transparent 45%),
+radial-gradient(120% 90% at 10% 90%,rgba(124,58,237,.30),transparent 45%),#0a0a0f;color:#f1f5f9}}
+.card{{width:420px;max-width:92vw;background:rgba(17,17,24,.85);border:1px solid rgba(255,255,255,.1);
+border-radius:20px;padding:40px 34px;text-align:center;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+h1{{font-size:26px;margin-bottom:10px}} p{{color:#94a3b8;font-size:15px;margin-bottom:24px;line-height:1.5}}
+input{{width:100%;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.14);
+background:rgba(255,255,255,.04);color:#fff;font-size:15px;margin-bottom:14px}}
+button{{width:100%;padding:14px;border:0;border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;
+background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}} a{{color:#a78bfa;text-decoration:none}}
+.mut{{color:#64748b;font-size:13px;margin-top:18px}}</style></head><body>
+<form class="card" method="post" action="/signup">
+<h1>{title}</h1><p>{sub}</p>{body}</form></body></html>"""
+
+
+@app.get("/signup", response_class=HTMLResponse)
+async def signup_page():
+    body = (
+        '<input type="email" name="email" placeholder="tu@email.com" required autofocus>'
+        '<button type="submit">Unirme a la lista de acceso</button>'
+        '<div class="mut">¿Eres el administrador? <a href="/admin/login">Entrar al panel</a></div>'
+    )
+    return HTMLResponse(
+        _SIGNUP_HTML.format(
+            title="Sé de los primeros en usar ARIA",
+            sub="Estamos abriendo acceso por olas. Déjanos tu correo y te avisamos en cuanto tu plan esté listo.",
+            body=body,
+        )
+    )
+
+
+@app.post("/signup", response_class=HTMLResponse)
+async def signup_submit(email: str = Form(...)):
+    with suppress(Exception):
+        from apps.core.memory.redis_client import get_cache
+
+        await get_cache().rpush("aria:waitlist", email.strip().lower())
+    return HTMLResponse(
+        _SIGNUP_HTML.format(
+            title="¡Listo! 🎉",
+            sub="Te apuntamos. Te escribiremos a ese correo cuando tu acceso esté disponible.",
+            body='<a href="/" style="display:inline-block;margin-top:6px">← Volver</a>',
+        )
+    )
 
 
 # ── API ROUTES ────────────────────────────────────────────

@@ -180,6 +180,8 @@ class Settings(BaseSettings):
 
     # ── API PÚBLICA ───────────────────────────────────────
     ARIA_API_KEY: str | None = None
+    # Owner-only password gating the /admin control panel (server-side).
+    ADMIN_PASSWORD: str | None = None
 
     # ── CREDENCIALES DE ARIA (para login stealth en plataformas) ──────────
     ARIA_EMAIL: str | None = None
