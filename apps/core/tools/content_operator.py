@@ -36,18 +36,14 @@ logger = logging.getLogger("aria.tools.content_operator")
 
 _RUNS_KEY = "aria:content_operator:runs"
 
-# Per-channel discovery hints. `find` = keywords that must all appear in the Zapier
-# tool name; `needs` = extra args the channel requires that we can't infer.
-CHANNELS: dict[str, dict[str, Any]] = {
-    "instagram": {"find": ["instagram", "photo"], "needs": []},
-    "facebook": {"find": ["facebook", "photo"], "needs": []},
-    "linkedin": {"find": ["linkedin", "create"], "needs": []},
-    "twitter": {"find": ["twitter", "tweet"], "needs": []},
+# The Zapier MCP server does NOT expose one tool per channel; it exposes meta-tools
+# (execute_zapier_write_action, list_enabled_zapier_actions, ...). To publish we call
+# `execute_zapier_write_action` with the app's `selected_api` + `action` + `params`.
+# These identifiers are the stable Zapier action keys for each already-connected app.
+CHANNELS: dict[str, dict[str, str]] = {
+    "instagram": {"selected_api": "InstagramBusinessCLIAPI", "action": "publish_media_v2"},
+    "pinterest": {"selected_api": "PinterestCLIAPI", "action": "create_pin"},
 }
-
-# Parameter-name intents used to map our asset onto an unknown tool schema.
-_IMAGE_HINTS = ("media", "image", "photo", "picture", "url", "file")
-_TEXT_HINTS = ("caption", "text", "message", "content", "comment", "description")
 
 
 class ContentOperator:
@@ -109,84 +105,63 @@ class ContentOperator:
         public_id = f"aria/{slug}-{uuid.uuid4().hex[:8]}"
         return await self.content.generate_and_upload_image(image_prompt, public_id=public_id)
 
-    # ── 3. publishing (schema-driven) ─────────────────────────────────────
+    # ── 3. publishing (via Zapier meta-tools) ─────────────────────────────
 
     @staticmethod
-    def _build_args(
-        schema: dict[str, Any], image_url: str, caption: str, extra: dict[str, Any]
+    def _channel_params(
+        channel: str, image_url: str, caption: str, extra: dict[str, Any]
     ) -> dict[str, Any]:
-        """Map (image_url, caption) onto a tool's inputSchema property names."""
-        props: dict[str, Any] = (schema or {}).get("properties", {}) or {}
-        args: dict[str, Any] = {}
-
-        def _match(hints: tuple[str, ...]) -> str | None:
-            # Prefer required properties, then any, that contain a hint keyword.
-            required = set((schema or {}).get("required", []) or [])
-            ordered = sorted(props.keys(), key=lambda k: (k not in required, k))
-            for key in ordered:
-                low = key.lower()
-                if any(h in low for h in hints):
-                    return key
-            return None
-
-        img_key = _match(_IMAGE_HINTS)
-        if img_key:
-            prop = props.get(img_key, {})
-            is_array = prop.get("type") == "array" or "list" in str(prop.get("type", ""))
-            args[img_key] = [image_url] if is_array else image_url
-
-        txt_key = _match(_TEXT_HINTS)
-        if txt_key and txt_key != img_key:
-            args[txt_key] = caption
-
-        # Caller-supplied required extras (e.g. a pinterest board_id) win.
-        args.update({k: v for k, v in (extra or {}).items() if v is not None})
-        return args
+        """Build the `params` payload for a channel's Zapier write action."""
+        if channel == "instagram":
+            return {"media": [image_url], "caption": caption}
+        if channel == "pinterest":
+            params: dict[str, Any] = {
+                "image_url": image_url,
+                "description": caption,
+                "title": (extra.get("title") or caption.split("\n", 1)[0])[:100],
+            }
+            if extra.get("board_id"):
+                params["board_id"] = extra["board_id"]
+            if extra.get("source_url"):
+                params["source_url"] = extra["source_url"]
+            return params
+        return {"image_url": image_url, "caption": caption}
 
     async def publish(
         self, channels: list[str], image_url: str, caption: str, extra: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
+        extra = extra or {}
         if not self.mcp.configured:
-            for ch in channels:
-                results.append(
-                    {"channel": ch, "success": False, "error": "ZAPIER_MCP_URL not configured"}
-                )
-            return results
-
-        try:
-            tools = await self.mcp.list_tools()
-        except Exception as exc:  # noqa: BLE001
-            for ch in channels:
-                results.append(
-                    {"channel": ch, "success": False, "error": f"MCP unreachable: {exc}"}
-                )
-            return results
-
-        by_name = {str(t.get("name", "")).lower(): t for t in tools}
+            return [
+                {"channel": ch, "success": False, "error": "ZAPIER_MCP_URL not configured"}
+                for ch in channels
+            ]
 
         for ch in channels:
             spec = CHANNELS.get(ch)
             if not spec:
                 results.append({"channel": ch, "success": False, "error": "unknown channel"})
                 continue
-            kws = [k.lower() for k in spec["find"]]
-            match = next((t for n, t in by_name.items() if all(k in n for k in kws)), None)
-            if not match:
-                results.append(
-                    {"channel": ch, "success": False, "error": f"no Zapier tool matching {kws}"}
-                )
-                continue
-            args = self._build_args(match.get("inputSchema", {}), image_url, caption, extra or {})
-            out = await self.mcp.call_tool(match["name"], args)
+            params = self._channel_params(ch, image_url, caption, extra)
+            out = await self.mcp.call_tool(
+                "execute_zapier_write_action",
+                {
+                    "selected_api": spec["selected_api"],
+                    "action": spec["action"],
+                    "instructions": f"Publish this {ch} post promoting the brand.",
+                    "params": params,
+                    "output": "The URL/permalink and ID of the published post, or any error.",
+                },
+            )
             results.append(
                 {
                     "channel": ch,
-                    "tool": match["name"],
-                    "args_keys": list(args.keys()),
+                    "action": spec["action"],
+                    "params_keys": list(params.keys()),
                     "success": out.get("success", False),
                     "error": out.get("error"),
-                    "response": (out.get("text") or "")[:600],
+                    "response": (out.get("text") or "")[:800],
                 }
             )
         return results

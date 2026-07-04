@@ -77,65 +77,33 @@ class TestZapierMCPUnconfigured:
         assert await ZapierMCPClient(url="").list_tools() == []
 
 
-class TestBuildArgs:
-    def _build(self, schema, extra=None):
+class TestChannelParams:
+    def _params(self, channel, extra=None):
         from apps.core.tools.content_operator import ContentOperator
 
-        return ContentOperator._build_args(
-            schema, "https://cdn/img.png", "Hello caption", extra or {}
+        return ContentOperator._channel_params(
+            channel, "https://cdn/img.png", "Hook line\nrest of caption", extra or {}
         )
 
-    def test_array_media_field_wraps_in_list(self):
-        schema = {
-            "type": "object",
-            "properties": {
-                "media": {"type": "array"},
-                "caption": {"type": "string"},
-            },
-            "required": ["media"],
-        }
-        args = self._build(schema)
-        assert args["media"] == ["https://cdn/img.png"]
-        assert args["caption"] == "Hello caption"
+    def test_instagram_uses_media_list_and_caption(self):
+        p = self._params("instagram")
+        assert p["media"] == ["https://cdn/img.png"]
+        assert p["caption"].startswith("Hook line")
 
-    def test_string_image_field_stays_scalar(self):
-        schema = {
-            "type": "object",
-            "properties": {
-                "image_url": {"type": "string"},
-                "description": {"type": "string"},
-            },
-        }
-        args = self._build(schema)
-        assert args["image_url"] == "https://cdn/img.png"
-        # caption mapped onto the text-like field, not duplicated onto the image field
-        assert args["description"] == "Hello caption"
+    def test_pinterest_includes_board_and_source_when_given(self):
+        p = self._params("pinterest", extra={"board_id": "999", "source_url": "https://x"})
+        assert p["image_url"] == "https://cdn/img.png"
+        assert p["board_id"] == "999"
+        assert p["source_url"] == "https://x"
+        # title derived from the first line of the caption, capped at 100 chars
+        assert p["title"] == "Hook line"
+        assert len(p["title"]) <= 100
 
-    def test_image_and_text_keys_are_distinct(self):
-        schema = {
-            "properties": {
-                "photo": {"type": "string"},
-                "message": {"type": "string"},
-            }
-        }
-        args = self._build(schema)
-        assert args["photo"] == "https://cdn/img.png"
-        assert args["message"] == "Hello caption"
-        assert args["photo"] != args["message"]
+    def test_pinterest_omits_board_when_absent(self):
+        p = self._params("pinterest")
+        assert "board_id" not in p
+        assert p["description"].startswith("Hook line")
 
-    def test_required_extra_overrides(self):
-        schema = {
-            "properties": {
-                "image_url": {"type": "string"},
-                "title": {"type": "string"},
-                "board_id": {"type": "string"},
-            },
-            "required": ["board_id", "image_url"],
-        }
-        args = self._build(schema, extra={"board_id": "123456"})
-        assert args["board_id"] == "123456"
-        assert args["image_url"] == "https://cdn/img.png"
-
-    def test_empty_schema_yields_only_extras(self):
-        args = self._build({}, extra={"foo": "bar"})
-        assert args == {"foo": "bar"}
+    def test_unknown_channel_falls_back(self):
+        p = self._params("mastodon")
+        assert p == {"image_url": "https://cdn/img.png", "caption": "Hook line\nrest of caption"}
