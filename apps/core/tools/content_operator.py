@@ -198,11 +198,21 @@ class ContentOperator:
             "on-brand vertical graphic (dark, modern, high-end; describe layout and any short on-image text),\n"
             '  "reasoning": one sentence on why this angle should convert.\n'
         )
-        data = await ai.complete_json(
-            system=system, user=user, model=AIModel.CREATIVE, max_tokens=1200, temperature=0.85
-        )
+        # HF (the working provider) intermittently returns unparseable output (~1 in 4).
+        # Retry a few times so a single hiccup never fails the whole run.
+        data: dict[str, Any] = {}
+        for _ in range(3):
+            data = await ai.complete_json(
+                system=system, user=user, model=AIModel.CREATIVE, max_tokens=1200, temperature=0.85
+            )
+            if data and data.get("caption"):
+                break
         if not data or not data.get("caption"):
-            return {"success": False, "error": "AI returned no usable creative", "raw": data}
+            return {
+                "success": False,
+                "error": "AI returned no usable creative after retries",
+                "raw": data,
+            }
 
         tags = data.get("hashtags") or []
         if isinstance(tags, str):
