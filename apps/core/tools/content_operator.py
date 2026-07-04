@@ -84,37 +84,79 @@ class ContentOperator:
     async def _research_diag(
         self, topic: str, n: int = 6
     ) -> tuple[list[dict[str, str]], str | None]:
-        """Research via SerpAPI, returning (findings, error_reason). The reason is
-        surfaced in the run record so a silent 0-results is diagnosable, not a mystery."""
-        key = getattr(settings, "SERP_API_KEY", None)
-        if not key:
-            return [], "no SERP_API_KEY"
+        """Research with a provider chain (SerpAPI → NewsAPI) so ARIA isn't dependent on
+        a single paid quota. Returns (findings, error_reason); the reason is surfaced in
+        the run record so a 0-results run is diagnosable, not a mystery."""
         if not topic.strip():
             return [], "empty topic"
-        try:
-            async with httpx.AsyncClient(timeout=25.0) as c:
-                r = await c.get(
-                    "https://serpapi.com/search",
-                    params={"q": topic, "api_key": key, "engine": "google", "num": n},
-                )
-            if r.status_code != 200:
-                return [], f"HTTP {r.status_code}: {r.text[:160]}"
-            data = r.json()
-            if data.get("error"):
-                return [], f"serpapi: {str(data['error'])[:160]}"
-            items = data.get("organic_results", []) or []
-            out = [
-                {
-                    "title": str(it.get("title", ""))[:160],
-                    "snippet": str(it.get("snippet", ""))[:300],
-                    "link": str(it.get("link", "")),
-                }
-                for it in items[:n]
-                if it.get("snippet")
-            ]
-            return out, (None if out else "no organic_results")
-        except Exception as exc:  # noqa: BLE001 - research is best-effort
-            return [], f"exception: {exc}"
+        errors: list[str] = []
+
+        # 1) SerpAPI (Google web results)
+        skey = getattr(settings, "SERP_API_KEY", None)
+        if skey:
+            try:
+                async with httpx.AsyncClient(timeout=25.0) as c:
+                    r = await c.get(
+                        "https://serpapi.com/search",
+                        params={"q": topic, "api_key": skey, "engine": "google", "num": n},
+                    )
+                if r.status_code == 200 and not r.json().get("error"):
+                    out = [
+                        {
+                            "title": str(it.get("title", ""))[:160],
+                            "snippet": str(it.get("snippet", ""))[:300],
+                            "link": str(it.get("link", "")),
+                        }
+                        for it in (r.json().get("organic_results", []) or [])[:n]
+                        if it.get("snippet")
+                    ]
+                    if out:
+                        return out, None
+                    errors.append("serpapi: no results")
+                else:
+                    detail = r.json().get("error") if r.status_code == 200 else r.text[:120]
+                    errors.append(f"serpapi {r.status_code}: {str(detail)[:120]}")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"serpapi exc: {exc}")
+        else:
+            errors.append("no SERP_API_KEY")
+
+        # 2) NewsAPI (current news — free tier, no web-search quota)
+        nkey = getattr(settings, "NEWS_API_KEY", None)
+        if nkey:
+            try:
+                async with httpx.AsyncClient(timeout=25.0) as c:
+                    r = await c.get(
+                        "https://newsapi.org/v2/everything",
+                        params={
+                            "q": topic,
+                            "apiKey": nkey,
+                            "pageSize": n,
+                            "sortBy": "relevancy",
+                            "language": "en",
+                        },
+                    )
+                if r.status_code == 200:
+                    out = [
+                        {
+                            "title": str(a.get("title", ""))[:160],
+                            "snippet": str(a.get("description") or "")[:300],
+                            "link": str(a.get("url", "")),
+                        }
+                        for a in (r.json().get("articles", []) or [])[:n]
+                        if a.get("description")
+                    ]
+                    if out:
+                        return out, None
+                    errors.append("newsapi: no results")
+                else:
+                    errors.append(f"newsapi {r.status_code}: {r.text[:120]}")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"newsapi exc: {exc}")
+        else:
+            errors.append("no NEWS_API_KEY")
+
+        return [], " | ".join(errors)[:220]
 
     # ── 1. creative generation (research-first, methodology-driven) ────────
 
