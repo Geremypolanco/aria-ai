@@ -235,6 +235,156 @@ async def signup_submit(email: str = Form(...)):
     )
 
 
+# ── USER OAUTH LOGIN (Google / GitHub) → per-user dashboard ────────────────
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    from apps.core import auth
+
+    g = (
+        '<a class="btn" href="/auth/google"><span>Continuar con Google</span></a>'
+        if auth.google_enabled()
+        else ""
+    )
+    gh = (
+        '<a class="btn gh" href="/auth/github"><span>Continuar con GitHub</span></a>'
+        if auth.github_enabled()
+        else ""
+    )
+    body = g + gh or '<p style="color:#fb7185">Login no configurado.</p>'
+    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Entrar</title><style>
+*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:radial-gradient(120% 90% at 80% 10%,rgba(37,99,235,.28),transparent 45%),
+radial-gradient(120% 90% at 10% 90%,rgba(124,58,237,.30),transparent 45%),#0a0a0f;color:#f1f5f9}}
+.card{{width:400px;max-width:92vw;background:rgba(17,17,24,.85);border:1px solid rgba(255,255,255,.1);
+border-radius:20px;padding:42px 34px;text-align:center;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+h1{{font-size:26px;margin-bottom:8px}} p{{color:#94a3b8;font-size:15px;margin-bottom:26px}}
+.btn{{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;
+border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);
+color:#fff;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12px}}
+.btn:hover{{background:rgba(255,255,255,.12)}} .btn.gh{{background:#161b22;border-color:#30363d}}
+.mut{{color:#64748b;font-size:12px;margin-top:18px}} a.lnk{{color:#a78bfa;text-decoration:none}}
+</style></head><body><div class="card"><h1>Entra a ARIA</h1>
+<p>Accede a tu panel personal.</p>{body}
+<div class="mut">Al continuar aceptas usar ARIA de forma responsable. <a class="lnk" href="/">← Inicio</a></div>
+</div></body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/auth/google")
+async def auth_google():
+    from apps.core import auth
+
+    url = auth.google_authorize_url()
+    return RedirectResponse(url or "/login?e=google_off", status_code=307)
+
+
+@app.get("/auth/github")
+async def auth_github():
+    from apps.core import auth
+
+    url = auth.github_authorize_url()
+    return RedirectResponse(url or "/login?e=github_off", status_code=307)
+
+
+async def _finish_login(profile: dict | None):
+    from apps.core import auth
+
+    if not profile or not profile.get("email"):
+        return RedirectResponse("/login?e=failed", status_code=303)
+    await auth.remember_user(profile)
+    resp = RedirectResponse("/app", status_code=303)
+    resp.set_cookie(
+        auth.USER_COOKIE,
+        auth.sign_user(profile["email"], profile.get("name", ""), profile.get("provider", "")),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 30,
+    )
+    return resp
+
+
+@app.get("/auth/google/callback")
+async def auth_google_cb(request: Request):
+    from apps.core import auth
+
+    if not auth.check_state(request.query_params.get("state")):
+        return RedirectResponse("/login?e=state", status_code=303)
+    code = request.query_params.get("code")
+    if not code:
+        return RedirectResponse("/login?e=nocode", status_code=303)
+    return await _finish_login(await auth.google_exchange(code))
+
+
+@app.get("/auth/github/callback")
+async def auth_github_cb(request: Request):
+    from apps.core import auth
+
+    if not auth.check_state(request.query_params.get("state")):
+        return RedirectResponse("/login?e=state", status_code=303)
+    code = request.query_params.get("code")
+    if not code:
+        return RedirectResponse("/login?e=nocode", status_code=303)
+    return await _finish_login(await auth.github_exchange(code))
+
+
+@app.get("/logout")
+async def user_logout():
+    from apps.core import auth
+
+    resp = RedirectResponse("/", status_code=303)
+    resp.delete_cookie(auth.USER_COOKIE)
+    return resp
+
+
+@app.get("/app", response_class=HTMLResponse)
+async def user_app(request: Request):
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return RedirectResponse("/login", status_code=307)
+    name = (user.get("name") or user.get("email", "").split("@")[0] or "").strip()
+    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Tu panel</title>
+<style>*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;background:radial-gradient(120% 60% at 100% 0%,rgba(124,58,237,.22),transparent 45%),#0a0a0f;color:#f1f5f9}}
+.top{{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.08)}}
+.brand{{font-weight:800;letter-spacing:.5px}} .brand span{{color:#a78bfa}}
+.wrap{{max-width:900px;margin:0 auto;padding:44px 24px}}
+.pill{{display:inline-block;font-size:12px;padding:5px 12px;border-radius:100px;background:rgba(148,163,184,.15);color:#cbd5e1;margin-bottom:18px}}
+h1{{font-size:32px;margin-bottom:10px}} .sub{{color:#94a3b8;margin-bottom:30px}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:30px}}
+.card{{background:rgba(17,17,24,.8);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:22px}}
+.card h3{{font-size:16px;margin-bottom:6px}} .card p{{color:#94a3b8;font-size:14px}}
+.up{{background:linear-gradient(92deg,#7c3aed,#2563eb);border:0}} .up h3,.up p{{color:#fff}}
+textarea{{width:100%;min-height:90px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;padding:14px;font-size:15px}}
+button{{margin-top:10px;padding:12px 20px;border:0;border-radius:11px;font-weight:600;cursor:pointer;background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}}
+a{{color:#a78bfa;text-decoration:none}} #out{{margin-top:16px;white-space:pre-wrap;color:#cbd5e1}}</style></head>
+<body><div class="top"><div class="brand">SAR<span>APH</span> · ARIA</div>
+<div style="font-size:14px;color:#94a3b8">{name} · <a href="/logout">Salir</a></div></div>
+<div class="wrap"><span class="pill">Plan Free</span>
+<h1>Hola, {name} 👋</h1>
+<div class="sub">Este es tu panel personal de ARIA. Pídele que investigue, escriba o cree una imagen.</div>
+<div class="grid">
+<div class="card"><h3>💬 Asistente</h3><p>Chatea con ARIA para investigar, redactar y crear.</p></div>
+<div class="card"><h3>🎨 Imágenes</h3><p>Genera visuales profesionales al instante.</p></div>
+<div class="card up"><h3>⚡ Pasa a Pro</h3><p>Publicación automática multicanal, video y más. Pronto.</p></div>
+</div>
+<textarea id="msg" placeholder="Pídele algo a ARIA… ej: créame una imagen de un león dorado"></textarea>
+<button onclick="ask()">Enviar</button><div id="out"></div>
+<script>
+async function ask(){{const m=document.getElementById('msg').value;if(!m)return;
+document.getElementById('out').textContent='Pensando…';
+const r=await fetch('/api/v1/chat',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{message:m,session_id:'app'}})}});
+const d=await r.json();let o=document.getElementById('out');o.textContent=d.reply||'';
+if(d.media_base64){{const img=document.createElement('img');img.src='data:image/png;base64,'+d.media_base64;img.style='max-width:100%;border-radius:12px;margin-top:14px';o.appendChild(img);}}}}
+</script></div></body></html>"""
+    return HTMLResponse(html)
+
+
 # ── API ROUTES ────────────────────────────────────────────
 @app.get("/health")
 async def health():
@@ -248,24 +398,39 @@ async def health():
 
 @app.post("/api/v1/chat")
 async def chat(req: ChatRequest):
-    """Chat with ARIA AI."""
+    """Chat with ARIA — routed through the real cognitive brain (tools + identity),
+    so it actually executes (e.g. generate_image) and knows who it is."""
+    import base64
     import time
 
     start = time.time()
     try:
-        from apps.core.agent_brain import get_agent
+        from apps.core.cognition.aria_mind import get_aria_mind
 
-        agent = get_agent()
-        reply = await agent.think(req.message)
+        resp = await get_aria_mind().handle(req.message, req.session_id or "default")
         elapsed = int((time.time() - start) * 1000)
+        media_type = None
+        media_b64 = None
+        if resp.image_bytes:
+            media_type, media_b64 = "image", base64.b64encode(resp.image_bytes).decode()
         return {
-            "reply": reply,
-            "model_used": "huggingface+groq",
+            "reply": resp.text or resp.caption or "",
+            "model_used": resp.tool_used or "aria",
             "processing_time_ms": elapsed,
+            "media_type": media_type,
+            "media_base64": media_b64,
         }
     except Exception as e:
-        logger.error(f"Chat error: {e}")
-        return {"reply": f"⚠️ Error: {str(e)}", "model_used": "none", "processing_time_ms": 0}
+        logger.error(f"Chat (aria_mind) error: {e}")
+        # Fallback to the lightweight brain if the cognitive path errors (e.g. Redis quota).
+        try:
+            from apps.core.agent_brain import get_agent
+
+            reply = await get_agent().think(req.message)
+            return {"reply": reply, "model_used": "fallback", "processing_time_ms": 0}
+        except Exception as e2:
+            logger.error(f"Chat fallback error: {e2}")
+            return {"reply": f"⚠️ Error: {e}", "model_used": "none", "processing_time_ms": 0}
 
 
 @app.post("/api/v1/code")
@@ -428,14 +593,14 @@ async def content_selftest():
 async def websocket_chat(ws: WebSocket):
     await ws.accept()
     try:
-        from apps.core.agent_brain import get_agent
+        from apps.core.cognition.aria_mind import get_aria_mind
 
-        agent = get_agent()
+        mind = get_aria_mind()
         while True:
             data = await ws.receive_text()
             msg = json.loads(data)
-            reply = await agent.think(msg.get("message", ""))
-            await ws.send_json({"reply": reply})
+            resp = await mind.handle(msg.get("message", ""), msg.get("session_id", "ws"))
+            await ws.send_json({"reply": resp.text or resp.caption or "", "tool": resp.tool_used})
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:

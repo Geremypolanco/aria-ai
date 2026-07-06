@@ -192,6 +192,10 @@ class Settings(BaseSettings):
     # Obtén en: console.cloud.google.com → APIs & Services → Credentials → OAuth 2.0
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
+    GITHUB_CLIENT_ID: str | None = None
+    GITHUB_CLIENT_SECRET: str | None = None
+    META_APP_ID: str | None = None
+    META_APP_SECRET: str | None = None
 
     # Slack OAuth (para enviar/leer mensajes en workspaces)
     # Obtén en: api.slack.com/apps → Create App → OAuth & Permissions
