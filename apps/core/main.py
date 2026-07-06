@@ -38,7 +38,7 @@ def _is_admin(request: Request) -> bool:
     return hmac.compare_digest(request.cookies.get(_ADMIN_COOKIE, ""), _admin_token())
 
 
-_LOGIN_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+_LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ARIA · Admin</title><style>
 *{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
@@ -53,9 +53,9 @@ button{{width:100%;padding:13px;border:0;border-radius:11px;font-weight:600;font
 background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}}
 .err{{color:#fb7185;font-size:13px;margin-bottom:12px}} .mut{{color:#64748b;font-size:12px;margin-top:16px;text-align:center}}
 </style></head><body><form class="card" method="post" action="/admin/login">
-<h1>Panel de control</h1><p>Acceso solo para el administrador.</p>
-{error}<input type="password" name="password" placeholder="Contraseña de administrador" autofocus required>
-<button type="submit">Entrar</button>
+<h1>Control panel</h1><p>Admin access only.</p>
+{error}<input type="password" name="password" placeholder="Admin password" autofocus required>
+<button type="submit">Sign in</button>
 <div class="mut">{notice}</div></form></body></html>"""
 
 logging.basicConfig(level=logging.INFO)
@@ -138,7 +138,7 @@ async def admin_login_page():
     notice = (
         "ARIA · Autonomous Intelligence"
         if getattr(settings, "ADMIN_PASSWORD", None)
-        else "⚠️ Configura ADMIN_PASSWORD en el servidor para activar el acceso."
+        else "⚠️ Set ADMIN_PASSWORD on the server to enable access."
     )
     return HTMLResponse(_LOGIN_HTML.format(error="", notice=notice))
 
@@ -149,14 +149,14 @@ async def admin_login(password: str = Form(...)):
     if not real:
         return HTMLResponse(
             _LOGIN_HTML.format(
-                error='<div class="err">Panel bloqueado: configura ADMIN_PASSWORD.</div>',
+                error='<div class="err">Panel locked: set ADMIN_PASSWORD.</div>',
                 notice="",
             ),
             status_code=403,
         )
     if not hmac.compare_digest(password, real):
         return HTMLResponse(
-            _LOGIN_HTML.format(error='<div class="err">Contraseña incorrecta.</div>', notice=""),
+            _LOGIN_HTML.format(error='<div class="err">Incorrect password.</div>', notice=""),
             status_code=401,
         )
     resp = RedirectResponse("/admin", status_code=303)
@@ -186,8 +186,8 @@ async def admin_panel(request: Request):
 
 
 # ── PUBLIC SIGNUP (waitlist until user accounts + billing ship) ────────────
-_SIGNUP_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Acceso</title><style>
+_SIGNUP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Access</title><style>
 *{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
 background:radial-gradient(120% 90% at 80% 10%,rgba(37,99,235,.30),transparent 45%),
@@ -208,13 +208,13 @@ background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}} a{{color:#a78bfa;
 async def signup_page():
     body = (
         '<input type="email" name="email" placeholder="tu@email.com" required autofocus>'
-        '<button type="submit">Unirme a la lista de acceso</button>'
-        '<div class="mut">¿Eres el administrador? <a href="/admin/login">Entrar al panel</a></div>'
+        '<button type="submit">Join the access list</button>'
+        '<div class="mut">Are you the admin? <a href="/admin/login">Open the panel</a></div>'
     )
     return HTMLResponse(
         _SIGNUP_HTML.format(
-            title="Sé de los primeros en usar ARIA",
-            sub="Estamos abriendo acceso por olas. Déjanos tu correo y te avisamos en cuanto tu plan esté listo.",
+            title="Be first to use ARIA",
+            sub="We're opening access in waves. Leave your email and we'll let you know when your plan is ready.",
             body=body,
         )
     )
@@ -228,9 +228,9 @@ async def signup_submit(email: str = Form(...)):
         await get_cache().rpush("aria:waitlist", email.strip().lower())
     return HTMLResponse(
         _SIGNUP_HTML.format(
-            title="¡Listo! 🎉",
-            sub="Te apuntamos. Te escribiremos a ese correo cuando tu acceso esté disponible.",
-            body='<a href="/" style="display:inline-block;margin-top:6px">← Volver</a>',
+            title="You're in! 🎉",
+            sub="You're on the list. We'll email you when your access is ready.",
+            body='<a href="/" style="display:inline-block;margin-top:6px">← Back</a>',
         )
     )
 
@@ -241,18 +241,18 @@ async def login_page():
     from apps.core import auth
 
     g = (
-        '<a class="btn" href="/auth/google"><span>Continuar con Google</span></a>'
+        '<a class="btn" href="/auth/google"><span>Continue with Google</span></a>'
         if auth.google_enabled()
         else ""
     )
     gh = (
-        '<a class="btn gh" href="/auth/github"><span>Continuar con GitHub</span></a>'
+        '<a class="btn gh" href="/auth/github"><span>Continue with GitHub</span></a>'
         if auth.github_enabled()
         else ""
     )
-    body = g + gh or '<p style="color:#fb7185">Login no configurado.</p>'
-    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Entrar</title><style>
+    body = g + gh or '<p style="color:#fb7185">Login not configured.</p>'
+    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Sign in</title><style>
 *{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
 background:radial-gradient(120% 90% at 80% 10%,rgba(37,99,235,.28),transparent 45%),
@@ -265,9 +265,9 @@ border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,25
 color:#fff;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12px}}
 .btn:hover{{background:rgba(255,255,255,.12)}} .btn.gh{{background:#161b22;border-color:#30363d}}
 .mut{{color:#64748b;font-size:12px;margin-top:18px}} a.lnk{{color:#a78bfa;text-decoration:none}}
-</style></head><body><div class="card"><h1>Entra a ARIA</h1>
-<p>Accede a tu panel personal.</p>{body}
-<div class="mut">Al continuar aceptas usar ARIA de forma responsable. <a class="lnk" href="/">← Inicio</a></div>
+</style></head><body><div class="card"><h1>Sign in to ARIA</h1>
+<p>Access your personal workspace.</p>{body}
+<div class="mut">By continuing you agree to use ARIA responsibly. <a class="lnk" href="/">← Home</a></div>
 </div></body></html>"""
     return HTMLResponse(html)
 
@@ -347,8 +347,8 @@ async def user_app(request: Request):
     if not user:
         return RedirectResponse("/login", status_code=307)
     name = (user.get("name") or user.get("email", "").split("@")[0] or "").strip()
-    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Tu panel</title>
+    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Your workspace</title>
 <style>*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;background:radial-gradient(120% 60% at 100% 0%,rgba(124,58,237,.22),transparent 45%),#0a0a0f;color:#f1f5f9}}
 .top{{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.08)}}
@@ -364,20 +364,20 @@ textarea{{width:100%;min-height:90px;border-radius:12px;border:1px solid rgba(25
 button{{margin-top:10px;padding:12px 20px;border:0;border-radius:11px;font-weight:600;cursor:pointer;background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}}
 a{{color:#a78bfa;text-decoration:none}} #out{{margin-top:16px;white-space:pre-wrap;color:#cbd5e1}}</style></head>
 <body><div class="top"><div class="brand">SAR<span>APH</span> · ARIA</div>
-<div style="font-size:14px;color:#94a3b8">{name} · <a href="/logout">Salir</a></div></div>
-<div class="wrap"><span class="pill">Plan Free</span>
-<h1>Hola, {name} 👋</h1>
-<div class="sub">Este es tu panel personal de ARIA. Pídele que investigue, escriba o cree una imagen.</div>
+<div style="font-size:14px;color:#94a3b8">{name} · <a href="/logout">Sign out</a></div></div>
+<div class="wrap"><span class="pill">Free plan</span>
+<h1>Hi, {name} 👋</h1>
+<div class="sub">This is your personal ARIA workspace. Ask it to research, write, or create an image.</div>
 <div class="grid">
-<div class="card"><h3>💬 Asistente</h3><p>Chatea con ARIA para investigar, redactar y crear.</p></div>
-<div class="card"><h3>🎨 Imágenes</h3><p>Genera visuales profesionales al instante.</p></div>
-<div class="card up"><h3>⚡ Pasa a Pro</h3><p>Publicación automática multicanal, video y más. Pronto.</p></div>
+<div class="card"><h3>💬 Assistant</h3><p>Chat with ARIA to research, write and create.</p></div>
+<div class="card"><h3>🎨 Images</h3><p>Generate professional visuals instantly.</p></div>
+<div class="card up"><h3>⚡ Go Pro</h3><p>Automated multi-channel publishing, video and more. Soon.</p></div>
 </div>
-<textarea id="msg" placeholder="Pídele algo a ARIA… ej: créame una imagen de un león dorado"></textarea>
-<button onclick="ask()">Enviar</button><div id="out"></div>
+<textarea id="msg" placeholder="Ask ARIA something… e.g. create an image of a golden lion"></textarea>
+<button onclick="ask()">Send</button><div id="out"></div>
 <script>
 async function ask(){{const m=document.getElementById('msg').value;if(!m)return;
-document.getElementById('out').textContent='Pensando…';
+document.getElementById('out').textContent='Thinking…';
 const r=await fetch('/api/v1/chat',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{message:m,session_id:'app'}})}});
 const d=await r.json();let o=document.getElementById('out');o.textContent=d.reply||'';
 if(d.media_base64){{const img=document.createElement('img');img.src='data:image/png;base64,'+d.media_base64;img.style='max-width:100%;border-radius:12px;margin-top:14px';o.appendChild(img);}}}}

@@ -1,421 +1,151 @@
 <!DOCTYPE html>
-<html lang="es" class="scroll-smooth">
+<html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ARIA — Autonomous Intelligence Platform</title>
-  <meta name="description" content="ARIA es una plataforma de inteligencia artificial autónoma de nivel enterprise con capacidades multi-agente, cognición avanzada, memoria persistente y visión computacional." />
+  <title>ARIA — The AI that executes</title>
+  <meta name="description" content="ARIA by SARAPH is an autonomous AI that doesn't just chat — it researches, creates professional content, and publishes across your channels, 24/7." />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
   <style>
-    :root {
-      --primary: #8b5cf6;
-      --primary-dark: #7c3aed;
-      --bg-dark: #0a0a0f;
-      --bg-card: #111118;
-      --bg-card-hover: #1a1a24;
-      --text-primary: #f1f5f9;
-      --text-secondary: #94a3b8;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-primary);
-      overflow-x: hidden;
-    }
-    code, pre { font-family: 'JetBrains Mono', monospace; }
-    .gradient-text {
-      background: linear-gradient(135deg, #8b5cf6, #a78bfa, #c4b5fd);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .gradient-bg {
-      background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 50%, #4c1d95 100%);
-    }
-    .glass {
-      background: rgba(17, 17, 24, 0.8);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(139, 92, 246, 0.1);
-    }
-    .glass-light {
-      background: rgba(255, 255, 255, 0.03);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(139, 92, 246, 0.08);
-    }
-    .card-hover {
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .card-hover:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 20px 40px rgba(139, 92, 246, 0.15);
-      border-color: rgba(139, 92, 246, 0.3);
-    }
-    .glow {
-      box-shadow: 0 0 40px rgba(139, 92, 246, 0.15), 0 0 80px rgba(139, 92, 246, 0.05);
-    }
-    .hero-gradient {
-      position: absolute;
-      top: -50%;
-      left: -20%;
-      width: 140%;
-      height: 140%;
-      background: radial-gradient(ellipse at center, rgba(139,92,246,0.15) 0%, transparent 70%);
-      pointer-events: none;
-    }
-    .animate-float {
-      animation: float 6s ease-in-out infinite;
-    }
-    @keyframes float {
-      0%, 100% { transform: translateY(0px); }
-      50% { transform: translateY(-20px); }
-    }
-    .animate-fade-in {
-      animation: fadeIn 1s ease-out forwards;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(30px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .animate-slide-up {
-      animation: slideUp 0.8s ease-out forwards;
-    }
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(60px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .particle-grid {
-      background-image: 
-        linear-gradient(rgba(139,92,246,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(139,92,246,0.03) 1px, transparent 1px);
-      background-size: 60px 60px;
-    }
-    .hero-title {
-      font-size: clamp(2.5rem, 8vw, 5.5rem);
-      line-height: 1.05;
-      letter-spacing: -0.03em;
-      font-weight: 800;
-    }
-    .typing-dots::after {
-      content: '';
-      animation: dots 1.5s steps(4, end) infinite;
-    }
-    @keyframes dots {
-      0%   { content: ''; }
-      25%  { content: '.'; }
-      50%  { content: '..'; }
-      75%  { content: '...'; }
-      100% { content: ''; }
-    }
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: var(--bg-dark); }
-    ::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.3); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.5); }
-    .nav-blur {
-      background: rgba(10, 10, 15, 0.8);
-      backdrop-filter: blur(20px);
-      border-bottom: 1px solid rgba(139,92,246,0.08);
-    }
+    html,body{font-family:'Inter',sans-serif;background:#08080c;color:#f2f4f8;overflow-x:hidden}
+    .grotesk{font-family:'Space Grotesk',sans-serif}
+    .g{background:linear-gradient(92deg,#a78bfa,#38bdf8);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .glow{box-shadow:0 0 60px -12px rgba(124,58,237,.6)}
+    .card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:20px}
+    .halo{background:radial-gradient(60% 50% at 50% 0%,rgba(124,58,237,.28),transparent 70%),radial-gradient(50% 40% at 85% 20%,rgba(37,99,235,.22),transparent 70%)}
+    .btn{transition:.2s} .btn:hover{transform:translateY(-1px)}
+    .fade{opacity:0;transform:translateY(14px);animation:f .7s forwards}
+    @keyframes f{to{opacity:1;transform:none}}
   </style>
 </head>
 <body class="antialiased">
-  <!-- NAVBAR -->
-  <nav class="nav-blur fixed top-0 left-0 right-0 z-50 px-4 sm:px-8 h-16 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-lg gradient-bg flex items-center justify-center font-bold text-sm">A</div>
-      <span class="font-semibold text-lg tracking-tight">ARIA</span>
-    </div>
-    <div class="hidden md:flex items-center gap-8 text-sm text-slate-400">
-      <a href="#capabilities" class="hover:text-white transition-colors">Capacidades</a>
-      <a href="#tech" class="hover:text-white transition-colors">Tecnología</a>
-      <a href="#stats" class="hover:text-white transition-colors">Estadísticas</a>
-      <a href="#pricing" class="hover:text-white transition-colors">Precios</a>
-    </div>
-    <div class="flex items-center gap-3">
-      <a href="/admin/login" class="hidden sm:inline-flex text-sm text-slate-500 hover:text-white transition-colors">Admin</a>
-      <a href="/signup" class="inline-flex items-center gap-2 text-sm font-medium px-5 py-2.5 rounded-lg gradient-bg text-white hover:opacity-90 transition-all glow">
-        Solicitar acceso
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-        </svg>
-      </a>
+
+  <!-- NAV -->
+  <nav class="sticky top-0 z-50 backdrop-blur-xl bg-[#08080c]/70 border-b border-white/5">
+    <div class="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2 font-extrabold tracking-tight text-lg">SAR<span class="g">APH</span><span class="text-white/40 font-medium text-sm ml-1">· ARIA</span></a>
+      <div class="hidden md:flex items-center gap-8 text-sm text-slate-400">
+        <a href="#how" class="hover:text-white transition">How it works</a>
+        <a href="#features" class="hover:text-white transition">Features</a>
+        <a href="#pricing" class="hover:text-white transition">Pricing</a>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="/login" class="hidden sm:inline text-sm text-slate-300 hover:text-white transition">Sign in</a>
+        <a href="/login" class="btn text-sm font-semibold px-5 py-2.5 rounded-xl text-white glow" style="background:linear-gradient(92deg,#7c3aed,#2563eb)">Start free</a>
+      </div>
     </div>
   </nav>
 
-  <!-- HERO SECTION -->
-  <section class="relative min-h-screen flex items-center justify-center px-4 pt-20 pb-20 overflow-hidden">
-    <div class="hero-gradient"></div>
-    <div class="particle-grid absolute inset-0"></div>
-    <div class="relative z-10 max-w-6xl mx-auto text-center">
-      <div class="animate-fade-in mb-6">
-        <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium bg-purple-500/10 text-purple-300 border border-purple-500/20">
-          <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-          Sistema Autónomo en Vivo
-        </span>
+  <!-- HERO -->
+  <header class="halo relative">
+    <div class="max-w-6xl mx-auto px-5 pt-24 pb-16 text-center">
+      <div class="fade inline-flex items-center gap-2 text-xs font-medium text-slate-300 border border-white/10 rounded-full px-4 py-1.5 mb-8 bg-white/[.03]">
+        <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span> Autonomous AI, working 24/7
       </div>
-      <h1 class="hero-title mb-6 animate-slide-up" style="animation-delay: 0.1s;">
-        <span class="gradient-text">ARIA</span><br />
-        <span class="text-slate-300">Inteligencia Artificial</span><br />
-        <span class="text-slate-300">Autónoma y Multi-Agente</span>
+      <h1 class="fade grotesk text-5xl sm:text-7xl font-bold leading-[1.03] tracking-tight" style="animation-delay:.05s">
+        The AI that doesn't<br>just chat. <span class="g">It executes.</span>
       </h1>
-      <p class="text-lg sm:text-xl text-slate-400 max-w-3xl mx-auto mb-10 animate-slide-up" style="animation-delay: 0.2s;">
-        Una plataforma de IA de nivel enterprise con <span class="text-white font-semibold">cognición avanzada</span>, 
-        <span class="text-white font-semibold">memoria persistente</span>, <span class="text-white font-semibold">visión computacional</span> 
-        y un <span class="text-white font-semibold">sistema multi-agente</span> que ejecuta misiones complejas de forma autónoma.
+      <p class="fade max-w-2xl mx-auto mt-7 text-lg sm:text-xl text-slate-400 leading-relaxed" style="animation-delay:.1s">
+        ARIA researches in real time, creates professional content — copy, images, video, voice — and publishes it across your channels. You give the goal. It does the work.
       </p>
-      <div class="flex flex-wrap justify-center gap-4 animate-slide-up" style="animation-delay: 0.3s;">
-        <a href="/signup" class="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl gradient-bg text-white font-semibold text-base hover:opacity-90 transition-all glow">
-          Probar ARIA Ahora
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-          </svg>
-        </a>
-        <a href="#capabilities" class="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl glass-light text-slate-300 font-semibold text-base hover:bg-white/5 transition-all">
-          Ver Capacidades
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
-        </a>
+      <div class="fade mt-9 flex items-center justify-center gap-3" style="animation-delay:.15s">
+        <a href="/login" class="btn px-8 py-4 rounded-2xl font-semibold text-white glow" style="background:linear-gradient(92deg,#7c3aed,#2563eb)">Start free →</a>
+        <a href="#how" class="btn px-8 py-4 rounded-2xl font-semibold text-slate-200 border border-white/12 bg-white/[.03] hover:bg-white/[.06]">See how it works</a>
       </div>
-      <div class="mt-16 animate-slide-up" style="animation-delay: 0.4s;">
-        <div class="flex justify-center gap-8 sm:gap-16 text-center">
-          <div>
-            <div class="text-3xl sm:text-4xl font-bold gradient-text">200+</div>
-            <div class="text-xs sm:text-sm text-slate-500 mt-1">Módulos de IA</div>
-          </div>
-          <div>
-            <div class="text-3xl sm:text-4xl font-bold gradient-text">50+</div>
-            <div class="text-xs sm:text-sm text-slate-500 mt-1">Agentes Autónomos</div>
-          </div>
-          <div>
-            <div class="text-3xl sm:text-4xl font-bold gradient-text">10+</div>
-            <div class="text-xs sm:text-sm text-slate-500 mt-1">Modelos de Lenguaje</div>
-          </div>
-          <div>
-            <div class="text-3xl sm:text-4xl font-bold gradient-text">24/7</div>
-            <div class="text-xs sm:text-sm text-slate-500 mt-1">Operación Continua</div>
+
+      <!-- Prompt box mockup -->
+      <div class="fade card max-w-2xl mx-auto mt-14 text-left overflow-hidden" style="animation-delay:.2s">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-white/8 text-xs text-slate-400">
+          <span class="flex items-center gap-2">🗂 Your workspace <span class="text-slate-600">·</span> 40+ integrations</span>
+          <span class="text-violet-300">Autonomous</span>
+        </div>
+        <div class="px-5 py-6">
+          <p class="text-slate-300">Ask ARIA to do anything. Try:</p>
+          <div class="mt-4 flex flex-wrap gap-2 text-sm">
+            <span class="px-3 py-2 rounded-lg bg-white/[.04] border border-white/8 text-slate-300">“Research today's trends and post a reel”</span>
+            <span class="px-3 py-2 rounded-lg bg-white/[.04] border border-white/8 text-slate-300">“Create an image for my launch”</span>
+            <span class="px-3 py-2 rounded-lg bg-white/[.04] border border-white/8 text-slate-300">“Write & publish this week's content”</span>
           </div>
         </div>
       </div>
     </div>
-  </section>
+  </header>
 
-  <!-- CAPABILITIES SECTION -->
-  <section id="capabilities" class="py-24 px-4 relative">
-    <div class="max-w-7xl mx-auto">
-      <div class="text-center mb-16">
-        <h2 class="text-3xl sm:text-5xl font-bold mb-4">Capacidades <span class="gradient-text">de Clase Mundial</span></h2>
-        <p class="text-slate-400 text-lg max-w-2xl mx-auto">ARIA combina lo mejor de la inteligencia artificial moderna en una plataforma unificada y autónoma.</p>
+  <!-- HOW IT WORKS -->
+  <section id="how" class="max-w-5xl mx-auto px-5 py-24">
+    <h2 class="grotesk text-4xl sm:text-5xl font-bold text-center leading-tight">Three steps to <span class="g">autonomous AI.</span></h2>
+    <div class="mt-14 grid md:grid-cols-3 gap-6">
+      <div class="card p-7">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white mb-5" style="background:linear-gradient(92deg,#7c3aed,#2563eb)">1</div>
+        <h3 class="font-semibold text-lg mb-2">Sign in</h3>
+        <p class="text-slate-400 text-[15px] leading-relaxed">Continue with Google or GitHub. Your personal workspace is ready in seconds.</p>
       </div>
-      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div class="glass rounded-2xl p-8 card-hover">
-          <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-5">
-            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <h3 class="text-xl font-semibold mb-3">Multi-Agente</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">Orquestación de agentes especializados que colaboran para resolver problemas complejos: código, investigación, escritura, planificación y más.</p>
-        </div>
-        <div class="glass rounded-2xl p-8 card-hover">
-          <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-5">
-            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-          </div>
-          <h3 class="text-xl font-semibold mb-3">Cognición Avanzada</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">Razonamiento multi-paso, reflexión profunda, y autoevaluación continua para mejorar la calidad de las respuestas.</p>
-        </div>
-        <div class="glass rounded-2xl p-8 card-hover">
-          <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-5">
-            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          </div>
-          <h3 class="text-xl font-semibold mb-3">Memoria Persistente</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">Memoria a largo plazo con gráficos de conocimiento, almacenamiento vectorial y recuperación semántica para contexto ilimitado.</p>
-        </div>
-        <div class="glass rounded-2xl p-8 card-hover">
-          <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-5">
-            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          </div>
-          <h3 class="text-xl font-semibold mb-3">Visión Computacional</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">Análisis de imágenes, reconocimiento de objetos, procesamiento de video y generación de contenido visual de alta calidad.</p>
-        </div>
-        <div class="glass rounded-2xl p-8 card-hover">
-          <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-5">
-            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-            </svg>
-          </div>
-          <h3 class="text-xl font-semibold mb-3">Generación de Código</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">Creación, revisión, refactorización y depuración de código en múltiples lenguajes con ejecución en sandbox seguro.</p>
-        </div>
-        <div class="glass rounded-2xl p-8 card-hover">
-          <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-5">
-            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-            </svg>
-          </div>
-          <h3 class="text-xl font-semibold mb-3">Integración APIs</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">Conexión con 50+ APIs externas: Shopify, Stripe, GitHub, Google, HubSpot, Telegram, y muchas más mediante Zapier.</p>
-        </div>
+      <div class="card p-7">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white mb-5" style="background:linear-gradient(92deg,#7c3aed,#2563eb)">2</div>
+        <h3 class="font-semibold text-lg mb-2">Give it a goal</h3>
+        <p class="text-slate-400 text-[15px] leading-relaxed">Type a task. ARIA researches the facts, creates the content, and prepares it for every platform.</p>
+      </div>
+      <div class="card p-7">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white mb-5" style="background:linear-gradient(92deg,#7c3aed,#2563eb)">3</div>
+        <h3 class="font-semibold text-lg mb-2">It runs 24/7</h3>
+        <p class="text-slate-400 text-[15px] leading-relaxed">ARIA publishes, tracks results, and keeps working — so growth doesn't stop when you log off.</p>
       </div>
     </div>
   </section>
 
-  <!-- TECH STACK SECTION -->
-  <section id="tech" class="py-24 px-4 relative">
-    <div class="max-w-7xl mx-auto">
-      <div class="text-center mb-16">
-        <h2 class="text-3xl sm:text-5xl font-bold mb-4">Arquitectura <span class="gradient-text">Tecnológica</span></h2>
-        <p class="text-slate-400 text-lg max-w-2xl mx-auto">Construido sobre un stack moderno y escalable con los mejores frameworks de IA.</p>
+  <!-- FEATURES -->
+  <section id="features" class="max-w-6xl mx-auto px-5 py-16">
+    <h2 class="grotesk text-4xl sm:text-5xl font-bold text-center leading-tight">Not another chatbot.<br>A <span class="g">real operator.</span></h2>
+    <div class="mt-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div class="card p-6"><div class="text-2xl mb-3">🔎</div><h3 class="font-semibold mb-1.5">Research-first</h3><p class="text-slate-400 text-sm leading-relaxed">Grounds every piece in real, current data. Never makes up facts.</p></div>
+      <div class="card p-6"><div class="text-2xl mb-3">🎨</div><h3 class="font-semibold mb-1.5">Content & media</h3><p class="text-slate-400 text-sm leading-relaxed">Professional copy, images, video and voice — generated on demand.</p></div>
+      <div class="card p-6"><div class="text-2xl mb-3">🚀</div><h3 class="font-semibold mb-1.5">Multi-channel publishing</h3><p class="text-slate-400 text-sm leading-relaxed">Instagram, LinkedIn, YouTube, Pinterest and more — from one place.</p></div>
+      <div class="card p-6"><div class="text-2xl mb-3">📊</div><h3 class="font-semibold mb-1.5">Full observability</h3><p class="text-slate-400 text-sm leading-relaxed">Every action is auditable: what it did, why, and the result.</p></div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing" class="max-w-5xl mx-auto px-5 py-24">
+    <h2 class="grotesk text-4xl sm:text-5xl font-bold text-center leading-tight">Simple pricing.</h2>
+    <p class="text-center text-slate-400 mt-4">Start free. Upgrade when ARIA is doing real work for you.</p>
+    <div class="mt-14 grid md:grid-cols-3 gap-6">
+      <div class="card p-8">
+        <p class="text-sm text-slate-400">Free</p>
+        <p class="text-4xl font-bold mt-2">$0<span class="text-base font-medium text-slate-500">/mo</span></p>
+        <p class="text-slate-400 text-sm mt-3 mb-6">Your workspace + assistant to research and create.</p>
+        <a href="/login" class="btn block text-center py-3 rounded-xl font-semibold border border-white/12 bg-white/[.03] hover:bg-white/[.06]">Start free</a>
       </div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="glass rounded-xl p-6 text-center card-hover">
-          <div class="text-sm font-semibold text-purple-300 mb-2">FRAMEWORK</div>
-          <div class="font-bold text-lg">FastAPI + Python 3.12</div>
-        </div>
-        <div class="glass rounded-xl p-6 text-center card-hover">
-          <div class="text-sm font-semibold text-purple-300 mb-2">LENGUAJES</div>
-          <div class="font-bold text-lg">Python, TypeScript, HTML/CSS</div>
-        </div>
-        <div class="glass rounded-xl p-6 text-center card-hover">
-          <div class="text-sm font-semibold text-purple-300 mb-2">MODELOS</div>
-          <div class="font-bold text-lg">HuggingFace, Groq, OpenAI</div>
-        </div>
-        <div class="glass rounded-xl p-6 text-center card-hover">
-          <div class="text-sm font-semibold text-purple-300 mb-2">MEMORIA</div>
-          <div class="font-bold text-lg">Qdrant, Neo4j, Redis</div>
-        </div>
-        <div class="glass rounded-xl p-6 text-center card-hover">
-          <div class="text-sm font-semibold text-purple-300 mb-2">AGENTES</div>
-          <div class="font-bold text-lg">LangGraph, CrewAI, AutoGen</div>
-        </div>
-        <div class="glass rounded-xl p-6 text-center card-hover">
-          <div class="text-sm font-semibold text-purple-300 mb-2">ORQUESTACIÓN</div>
-          <div class="font-bold text-lg">Temporal, Prefect, Celery</div>
-        </div>
-        <div class="glass rounded-xl p-6 text-center card-hover">
-          <div class="text-sm font-semibold text-purple-300 mb-2">FRONTEND</div>
-          <div class="font-bold text-lg">Tailwind CSS, Vue.js, Alpine</div>
-        </div>
-        <div class="glass rounded-xl p-6 text-center card-hover">
-          <div class="text-sm font-semibold text-purple-300 mb-2">INFRA</div>
-          <div class="font-bold text-lg">Fly.io, Supabase, Upstash</div>
-        </div>
+      <div class="card p-8 relative" style="border-color:rgba(167,139,250,.5)">
+        <span class="absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-semibold px-3 py-1 rounded-full text-white" style="background:linear-gradient(92deg,#7c3aed,#2563eb)">Most popular</span>
+        <p class="text-sm text-slate-400">Pro</p>
+        <p class="text-4xl font-bold mt-2">$29<span class="text-base font-medium text-slate-500">/mo</span></p>
+        <p class="text-slate-400 text-sm mt-3 mb-6">Autonomous multi-channel publishing, video, and priority AI.</p>
+        <a href="/login" class="btn block text-center py-3 rounded-xl font-semibold text-white glow" style="background:linear-gradient(92deg,#7c3aed,#2563eb)">Go Pro</a>
+      </div>
+      <div class="card p-8">
+        <p class="text-sm text-slate-400">Enterprise</p>
+        <p class="text-4xl font-bold mt-2">Custom</p>
+        <p class="text-slate-400 text-sm mt-3 mb-6">Dedicated automations, team seats and support.</p>
+        <a href="mailto:litesaraph@gmail.com" class="btn block text-center py-3 rounded-xl font-semibold border border-white/12 bg-white/[.03] hover:bg-white/[.06]">Contact us</a>
       </div>
     </div>
   </section>
 
-  <!-- STATS / LIVE METRICS -->
-  <section id="stats" class="py-24 px-4 relative">
-    <div class="max-w-7xl mx-auto">
-      <div class="text-center mb-16">
-        <h2 class="text-3xl sm:text-5xl font-bold mb-4">Métricas <span class="gradient-text">en Vivo</span></h2>
-        <p class="text-slate-400 text-lg">Monitoreo en tiempo real del rendimiento del sistema.</p>
-      </div>
-      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div class="glass rounded-2xl p-6 text-center">
-          <div class="text-sm text-slate-500 mb-1">AGENTES ACTIVOS</div>
-          <div class="text-4xl font-bold gradient-text" id="agentCount">12</div>
-        </div>
-        <div class="glass rounded-2xl p-6 text-center">
-          <div class="text-sm text-slate-500 mb-1">TAREAS COMPLETADAS</div>
-          <div class="text-4xl font-bold gradient-text" id="taskCount">1,247</div>
-        </div>
-        <div class="glass rounded-2xl p-6 text-center">
-          <div class="text-sm text-slate-500 mb-1">TIEMPO ACTIVO</div>
-          <div class="text-4xl font-bold gradient-text" id="uptime">99.9%</div>
-        </div>
-        <div class="glass rounded-2xl p-6 text-center">
-          <div class="text-sm text-slate-500 mb-1">MODELOS DISPONIBLES</div>
-          <div class="text-4xl font-bold gradient-text" id="modelCount">10+</div>
-        </div>
-      </div>
+  <!-- CTA -->
+  <section class="max-w-4xl mx-auto px-5 pb-28 text-center">
+    <div class="card halo p-12">
+      <h2 class="grotesk text-3xl sm:text-4xl font-bold">Give ARIA a goal.<br>Watch it <span class="g">get to work.</span></h2>
+      <a href="/login" class="btn inline-block mt-8 px-10 py-4 rounded-2xl font-semibold text-white glow" style="background:linear-gradient(92deg,#7c3aed,#2563eb)">Start free →</a>
     </div>
   </section>
 
-  <!-- PRICING SECTION -->
-  <section id="pricing" class="py-24 px-4 relative">
-    <div class="max-w-6xl mx-auto">
-      <div class="text-center mb-16">
-        <h2 class="text-3xl sm:text-5xl font-bold mb-4">Planes <span class="gradient-text">Flexibles</span></h2>
-        <p class="text-slate-400 text-lg">Desde uso personal hasta despliegue enterprise.</p>
-      </div>
-      <div class="grid md:grid-cols-3 gap-6">
-        <div class="glass rounded-2xl p-8 card-hover">
-          <div class="text-lg font-semibold mb-2">Starter</div>
-          <div class="text-3xl font-bold mb-4">Gratis</div>
-          <ul class="text-sm text-slate-400 space-y-3 mb-8">
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Chat básico con ARIA</li>
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> 1 agente simultáneo</li>
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Dashboard básico</li>
-          </ul>
-          <a href="/signup" class="block text-center py-3 rounded-xl glass-light text-sm font-semibold hover:bg-white/5 transition-all">Comenzar</a>
-        </div>
-        <div class="rounded-2xl p-8 gradient-bg glow card-hover relative">
-          <div class="absolute -top-3 right-8 px-3 py-1 bg-white text-purple-900 text-xs font-bold rounded-full">POPULAR</div>
-          <div class="text-lg font-semibold mb-2">Pro</div>
-          <div class="text-3xl font-bold mb-1">$29<span class="text-base font-normal text-slate-300">/mes</span></div>
-          <ul class="text-sm text-slate-300 space-y-3 mb-8 mt-6">
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Agentes ilimitados</li>
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Memoria persistente</li>
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> APIs externas ilimitadas</li>
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Dashboard avanzado</li>
-          </ul>
-          <a href="/signup" class="block text-center py-3 rounded-xl bg-white text-purple-900 text-sm font-semibold hover:opacity-90 transition-all">Elegir Pro</a>
-        </div>
-        <div class="glass rounded-2xl p-8 card-hover">
-          <div class="text-lg font-semibold mb-2">Enterprise</div>
-          <div class="text-3xl font-bold mb-4">Custom</div>
-          <ul class="text-sm text-slate-400 space-y-3 mb-8">
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Despliegue dedicado</li>
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Modelos privados</li>
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> SLA garantizado</li>
-            <li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Soporte prioritario 24/7</li>
-          </ul>
-          <a href="/signup" class="block text-center py-3 rounded-xl glass-light text-sm font-semibold hover:bg-white/5 transition-all">Contactar</a>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- CTA SECTION -->
-  <section class="py-24 px-4 relative">
-    <div class="max-w-4xl mx-auto text-center">
-      <div class="glass rounded-3xl p-12 glow">
-        <h2 class="text-3xl sm:text-5xl font-bold mb-6">¿Listo para <span class="gradient-text">transformar</span> tu flujo de trabajo?</h2>
-        <p class="text-slate-400 text-lg mb-8 max-w-2xl mx-auto">Únete a ARIA y descubre el poder de la inteligencia artificial autónoma.</p>
-        <a href="/signup" class="inline-flex items-center gap-2 px-10 py-4 rounded-xl gradient-bg text-white font-semibold text-lg hover:opacity-90 transition-all glow">
-          Comenzar Gratis
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-          </svg>
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- FOOTER -->
-  <footer class="py-12 px-4 border-t border-purple-500/10">
-    <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center font-bold text-xs">A</div>
-        <span class="font-semibold">ARIA AI</span>
-      </div>
-      <div class="text-sm text-slate-500">© 2025 ARIA — Autonomous Intelligence Platform</div>
-      <div class="flex gap-6 text-sm text-slate-500">
-        <a href="#" class="hover:text-white transition-colors">Docs</a>
-        <a href="#" class="hover:text-white transition-colors">API</a>
-        <a href="#" class="hover:text-white transition-colors">GitHub</a>
-      </div>
+  <footer class="border-t border-white/5">
+    <div class="max-w-6xl mx-auto px-5 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-500">
+      <span>© 2026 SARAPH · ARIA. Built by Geremy Polanco.</span>
+      <a href="/admin/login" class="text-slate-600 hover:text-slate-300 transition">Admin</a>
     </div>
   </footer>
 </body>
