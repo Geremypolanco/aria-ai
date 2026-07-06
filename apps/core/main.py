@@ -339,6 +339,15 @@ async def user_logout():
     return resp
 
 
+def _safe_name(s: str) -> str:
+    """Sanitize an OAuth-provided display value for safe embedding in HTML/JS.
+    Strips characters that could break out of an HTML attribute or JS string."""
+    s = (s or "").strip()
+    for ch in ('"', "'", "<", ">", "\\", "\n", "\r", "\t", "`"):
+        s = s.replace(ch, "")
+    return s[:40]
+
+
 @app.get("/app", response_class=HTMLResponse)
 async def user_app(request: Request):
     from apps.core import auth
@@ -346,42 +355,27 @@ async def user_app(request: Request):
     user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
     if not user:
         return RedirectResponse("/login", status_code=307)
-    name = (user.get("name") or user.get("email", "").split("@")[0] or "").strip()
-    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Your workspace</title>
-<style>*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
-body{{min-height:100vh;background:radial-gradient(120% 60% at 100% 0%,rgba(124,58,237,.22),transparent 45%),#0a0a0f;color:#f1f5f9}}
-.top{{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.08)}}
-.brand{{font-weight:800;letter-spacing:.5px}} .brand span{{color:#a78bfa}}
-.wrap{{max-width:900px;margin:0 auto;padding:44px 24px}}
-.pill{{display:inline-block;font-size:12px;padding:5px 12px;border-radius:100px;background:rgba(148,163,184,.15);color:#cbd5e1;margin-bottom:18px}}
-h1{{font-size:32px;margin-bottom:10px}} .sub{{color:#94a3b8;margin-bottom:30px}}
-.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:30px}}
-.card{{background:rgba(17,17,24,.8);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:22px}}
-.card h3{{font-size:16px;margin-bottom:6px}} .card p{{color:#94a3b8;font-size:14px}}
-.up{{background:linear-gradient(92deg,#7c3aed,#2563eb);border:0}} .up h3,.up p{{color:#fff}}
-textarea{{width:100%;min-height:90px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#fff;padding:14px;font-size:15px}}
-button{{margin-top:10px;padding:12px 20px;border:0;border-radius:11px;font-weight:600;cursor:pointer;background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}}
-a{{color:#a78bfa;text-decoration:none}} #out{{margin-top:16px;white-space:pre-wrap;color:#cbd5e1}}</style></head>
-<body><div class="top"><div class="brand">SAR<span>APH</span> · ARIA</div>
-<div style="font-size:14px;color:#94a3b8">{name} · <a href="/logout">Sign out</a></div></div>
-<div class="wrap"><span class="pill">Free plan</span>
-<h1>Hi, {name} 👋</h1>
-<div class="sub">This is your personal ARIA workspace. Ask it to research, write, or create an image.</div>
-<div class="grid">
-<div class="card"><h3>💬 Assistant</h3><p>Chat with ARIA to research, write and create.</p></div>
-<div class="card"><h3>🎨 Images</h3><p>Generate professional visuals instantly.</p></div>
-<div class="card up"><h3>⚡ Go Pro</h3><p>Automated multi-channel publishing, video and more. Soon.</p></div>
-</div>
-<textarea id="msg" placeholder="Ask ARIA something… e.g. create an image of a golden lion"></textarea>
-<button onclick="ask()">Send</button><div id="out"></div>
-<script>
-async function ask(){{const m=document.getElementById('msg').value;if(!m)return;
-document.getElementById('out').textContent='Thinking…';
-const r=await fetch('/api/v1/chat',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{message:m,session_id:'app'}})}});
-const d=await r.json();let o=document.getElementById('out');o.textContent=d.reply||'';
-if(d.media_base64){{const img=document.createElement('img');img.src='data:image/png;base64,'+d.media_base64;img.style='max-width:100%;border-radius:12px;margin-top:14px';o.appendChild(img);}}}}
-</script></div></body></html>"""
+
+    email = _safe_name(user.get("email", ""))
+    name = _safe_name(user.get("name") or email.split("@")[0] or "there")
+    first = name.split(" ")[0] if name else "there"
+    initial = (first[:1] or "Y").upper()
+    plan = "Free"
+
+    path = os.path.join(os.path.dirname(__file__), "templates", "app.html")
+    try:
+        with open(path, encoding="utf-8") as f:
+            html = f.read()
+    except FileNotFoundError:
+        return HTMLResponse(f"<h1>Hi {name}</h1><p>Workspace template missing.</p>")
+
+    html = (
+        html.replace("__NAME__", name)
+        .replace("__FIRST__", first)
+        .replace("__INITIAL__", initial)
+        .replace("__EMAIL__", email)
+        .replace("__PLAN__", plan)
+    )
     return HTMLResponse(html)
 
 
