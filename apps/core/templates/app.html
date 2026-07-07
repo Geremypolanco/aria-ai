@@ -104,7 +104,14 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 .msg.a .ava{background:var(--grad)}
 .msg.u{flex-direction:row-reverse}
 .msg.u .ava{background:rgba(255,255,255,.1);color:var(--txt)}
-.bubble{max-width:calc(100% - 60px);line-height:1.65;font-size:15px}
+.msg .col{max-width:calc(100% - 60px);min-width:0;display:flex;flex-direction:column}
+.msg.u .col{align-items:flex-end}
+.actions{display:flex;gap:6px;margin-top:7px;opacity:0;transition:.15s}
+.msg.a:hover .actions{opacity:1}
+.act{font-size:12px;color:var(--mut2);padding:4px 9px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid var(--line);transition:.12s;cursor:pointer}
+.act:hover{color:var(--txt);background:rgba(255,255,255,.09)}
+@media(hover:none){.actions{opacity:.75}}
+.bubble{max-width:100%;line-height:1.65;font-size:15px}
 .msg.u .bubble{background:rgba(124,58,237,.14);border:1px solid rgba(167,139,250,.22);padding:12px 16px;border-radius:16px 16px 4px 16px;color:#f3f0ff}
 .msg.a .bubble{padding-top:3px}
 .bubble p{margin:0 0 10px}.bubble p:last-child{margin-bottom:0}
@@ -276,10 +283,34 @@ function renderHist(){
 function bubble(m){
   const wrap=document.createElement('div');
   wrap.className='msg '+(m.role==='user'?'u':'a');
-  const ava='<div class="ava">'+(m.role==='user'?(USER.name[0]||'Y').toUpperCase():'A')+'</div>';
-  let body = m.role==='user' ? '<div class="bubble">'+esc(m.text).replace(/\n/g,'<br>')+'</div>'
-                             : '<div class="bubble">'+md(m.text)+(m.img?'<img src="'+m.img+'" alt="generated image">':'')+'</div>';
-  wrap.innerHTML=ava+body;
+  const ava=document.createElement('div');
+  ava.className='ava';
+  ava.textContent=(m.role==='user'?(USER.name[0]||'Y').toUpperCase():'A');
+  const col=document.createElement('div');
+  col.className='col';
+  const bub=document.createElement('div');
+  bub.className='bubble';
+  if(m.role==='user'){ bub.innerHTML=esc(m.text).replace(/\n/g,'<br>'); }
+  else { bub.innerHTML=md(m.text)+(m.img?'<img src="'+m.img+'" alt="generated image">':''); }
+  col.appendChild(bub);
+  if(m.role!=='user'){
+    const act=document.createElement('div'); act.className='actions';
+    const copy=document.createElement('button'); copy.className='act'; copy.title='Copy text';
+    copy.innerHTML='&#10697; Copy';
+    copy.onclick=()=>{ (navigator.clipboard?navigator.clipboard.writeText(m.text||''):Promise.reject())
+      .then(()=>{copy.innerHTML='&#10003; Copied';setTimeout(()=>copy.innerHTML='&#10697; Copy',1400)})
+      .catch(()=>{copy.innerHTML='Ctrl+C';setTimeout(()=>copy.innerHTML='&#10697; Copy',1400)}); };
+    act.appendChild(copy);
+    if(m.img){
+      const dl=document.createElement('button'); dl.className='act'; dl.title='Download image';
+      dl.innerHTML='&#8595; Image';
+      dl.onclick=()=>{ const a=document.createElement('a'); a.href=m.img; a.download='aria-image.png'; document.body.appendChild(a); a.click(); a.remove(); };
+      act.appendChild(dl);
+    }
+    col.appendChild(act);
+  }
+  wrap.appendChild(ava);
+  wrap.appendChild(col);
   return wrap;
 }
 function renderThread(){

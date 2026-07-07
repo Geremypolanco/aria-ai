@@ -81,6 +81,7 @@ CÓMO OPERAS:
 6. Tu propósito es ayudar a {owner} y a sus usuarios a crear, publicar y crecer con contenido de alto valor.
 Cuando el usuario pide información actual, tendencias, precios o noticias → usa web_search SIEMPRE.
 Usa markdown (listas, negritas, títulos) cuando mejore la legibilidad.
+IDIOMA: Responde SIEMPRE en el MISMO idioma en que el usuario escribió su mensaje. Si escribe en inglés, respondes en inglés; si escribe en español, respondes en español. Nunca cambies de idioma por tu cuenta.
 
 ESTADO ACTUAL:
 Foco actual: {focus}
@@ -186,12 +187,12 @@ Responde SOLO con JSON válido. Sin markdown. Sin texto extra. El esquema es exa
   "autonomous_execution": true, // pon true si la tarea requiere múltiples pasos, investigación o ejecución real
   "tool": "nombre_herramienta o null si es conversación directa",
   "tool_args": {{"clave": "valor"}} o null,
-  "reply": "mi respuesta en español — puede ser vacío si el resultado de la herramienta será la respuesta. Si respondo directamente, que sea completo y útil.",
+  "reply": "mi respuesta EN EL MISMO IDIOMA del usuario — puede ser vacío si el resultado de la herramienta será la respuesta. Si respondo directamente, que sea completo y útil.",
   "goal_action": null o {{"action": "add", "text": "...", "priority": 3}} o {{"action": "update", "index": 0, "progress": "..."}}
 }}"""
 
 SYNTHESIS_SYSTEM = """\
-Eres ARIA. Recibiste el resultado de ejecutar una herramienta y debes convertirlo en una respuesta completa y útil en español.
+Eres ARIA. Recibiste el resultado de ejecutar una herramienta y debes convertirlo en una respuesta completa y útil, EN EL MISMO IDIOMA en que escribió el usuario (inglés si escribió en inglés, español si escribió en español).
 
 REGLAS DE SÍNTESIS:
 - Responde de forma completa. No cortes información valiosa artificialmente.
@@ -420,9 +421,17 @@ class AriaMind:
                 obs, media = await self._execute_with_retry(
                     "generate_image", {"prompt": img_prompt}
                 )
-                caption = (
-                    obs if (obs and not media) else f"Here's the image you asked for: {img_prompt}"
+                # Caption mirrors the user's language.
+                is_es = any(
+                    w in text.lower()
+                    for w in ("imagen", "genera", "dibuj", "crea", "foto", "ilustr", "diseñ", "haz")
                 )
+                default_caption = (
+                    f"Aquí tienes la imagen que pediste: {img_prompt}"
+                    if is_es
+                    else f"Here's the image you asked for: {img_prompt}"
+                )
+                caption = obs if (obs and not media) else default_caption
                 with suppress(Exception):
                     await self._record_exec(
                         "generate_image", {"prompt": img_prompt}, obs, bool(media)
@@ -579,7 +588,7 @@ class AriaMind:
         # Fallback: respuesta de texto directo
         logger.warning("[AriaMind] complete_json returned None — using FAST fallback")
         resp = await ai.complete(
-            system="Eres ARIA. Responde directamente en español, máximo 2 oraciones.",
+            system="Eres ARIA. Responde directamente en el MISMO idioma del usuario, máximo 2 oraciones.",
             user=text,
             model=AIModel.FAST,
             max_tokens=150,
@@ -1539,7 +1548,8 @@ class AriaMind:
 
         resp = await ai.complete(
             system=(
-                "Eres ARIA, asistente inteligente. Responde en español de forma directa y completa. "
+                "Eres ARIA, asistente inteligente. Responde en el MISMO idioma del usuario, "
+                "de forma directa y completa. "
                 "Usa markdown cuando sea útil. Si necesitas datos de internet, dilo y sugiere qué buscar."
             ),
             user=text,
