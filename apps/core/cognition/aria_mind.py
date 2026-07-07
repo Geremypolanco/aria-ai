@@ -397,6 +397,59 @@ class AriaMind:
         prompt = prompt.rstrip(" .!?¡¿")
         return prompt or t
 
+    @staticmethod
+    def _detect_lang(text: str) -> str:
+        """Best-effort language of the user's message: 'es' or 'en' (default 'en')."""
+        import re
+
+        t = (text or "").lower()
+        if re.search(r"[ñ¿¡áéíóúü]", t):
+            return "es"
+        es_markers = {
+            "que",
+            "qué",
+            "cómo",
+            "como",
+            "para",
+            "con",
+            "una",
+            "uno",
+            "esto",
+            "eso",
+            "ayuda",
+            "ayudar",
+            "puedes",
+            "quiero",
+            "hazme",
+            "dame",
+            "necesito",
+            "gracias",
+            "hola",
+            "genera",
+            "crea",
+            "crear",
+            "dibuja",
+            "imagen",
+            "español",
+            "cuál",
+            "cuánto",
+            "por",
+            "favor",
+            "noticias",
+            "ingresos",
+            "dinero",
+        }
+        words = set(re.findall(r"[a-záéíóúñ]+", t))
+        return "es" if words & es_markers else "en"
+
+    @staticmethod
+    def _lang_directive(lang: str) -> str:
+        return (
+            "\n\n[IMPORTANTE: responde ÚNICAMENTE en español.]"
+            if lang == "es"
+            else "\n\n[IMPORTANT: reply ONLY in English.]"
+        )
+
     # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
 
     async def handle(self, text: str, chat_id: str) -> MindResponse:
@@ -570,9 +623,11 @@ class AriaMind:
             history=history_text,
         )
 
+        lang = self._detect_lang(text)
         user_input = text
         if kb_context:
             user_input = f"{kb_context}\n\n---\nMensaje del usuario: {text}"
+        user_input += self._lang_directive(lang)
 
         result = await ai.complete_json(
             system=system,
@@ -589,7 +644,7 @@ class AriaMind:
         logger.warning("[AriaMind] complete_json returned None — using FAST fallback")
         resp = await ai.complete(
             system="Eres ARIA. Responde directamente en el MISMO idioma del usuario, máximo 2 oraciones.",
-            user=text,
+            user=text + self._lang_directive(self._detect_lang(text)),
             model=AIModel.FAST,
             max_tokens=150,
             temperature=0.5,
@@ -1529,6 +1584,7 @@ class AriaMind:
             user=(
                 f"El usuario pidió: {user_input[:400]}\n"
                 f"Usé la herramienta '{tool}' y obtuve:\n{observation[:2000]}"
+                f"{self._lang_directive(self._detect_lang(user_input))}"
             ),
             model=AIModel.STRATEGY,
             max_tokens=800,
@@ -1552,7 +1608,7 @@ class AriaMind:
                 "de forma directa y completa. "
                 "Usa markdown cuando sea útil. Si necesitas datos de internet, dilo y sugiere qué buscar."
             ),
-            user=text,
+            user=text + self._lang_directive(self._detect_lang(text)),
             model=AIModel.STRATEGY,
             max_tokens=600,
             temperature=0.4,
