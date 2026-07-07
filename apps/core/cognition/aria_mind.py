@@ -661,9 +661,11 @@ class AriaMind:
                         resp = await client.get(poll_url)
                     if resp.status_code == 200 and resp.content:
                         logger.info("[AriaMind] Imagen generada via Pollinations")
+                        # media dict is spread into MindResponse(**media), so it must
+                        # only contain valid fields (image_bytes). URL stays in the text.
                         return (
                             f"Imagen generada: {prompt}\n{poll_url}",
-                            {"image_bytes": resp.content, "image_url": poll_url},
+                            {"image_bytes": resp.content},
                         )
                 except Exception as e:
                     logger.error("[AriaMind] Pollinations fallo: %s", e)
