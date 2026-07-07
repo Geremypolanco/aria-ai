@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -270,6 +271,131 @@ class AriaMind:
         self._ai = None
         self._cache = None
 
+    # ── DETECCIÓN DETERMINISTA DE INTENCIÓN ────────────────────────────────
+
+    _IMG_NOUNS = (
+        "image",
+        "picture",
+        "photo",
+        "illustration",
+        "logo",
+        "graphic",
+        "visual",
+        "wallpaper",
+        "artwork",
+        "drawing",
+        "poster",
+        "banner",
+        "icon",
+        "imagen",
+        "foto",
+        "ilustración",
+        "ilustracion",
+        "gráfico",
+        "grafico",
+        "dibujo",
+        "cartel",
+        "afiche",
+    )
+    _IMG_VERBS = (
+        "generate",
+        "create",
+        "make",
+        "draw",
+        "design",
+        "render",
+        "produce",
+        "genera",
+        "generar",
+        "generame",
+        "créame",
+        "creame",
+        "crea",
+        "crear",
+        "haz",
+        "hazme",
+        "hacer",
+        "dibuja",
+        "dibujar",
+        "diseña",
+        "disena",
+        "diseñar",
+    )
+    _IMG_STRONG_VERBS = (
+        "draw",
+        "sketch",
+        "paint",
+        "dibuja",
+        "dibujar",
+        "dibújame",
+        "pinta",
+        "pintar",
+        "ilustra",
+        "ilustrar",
+    )
+    _IMG_EXCLUDE = (
+        "describe",
+        "analyze",
+        "analyse",
+        "analiza",
+        "edit",
+        "edita",
+        "modifica",
+        "this image",
+        "esta imagen",
+        "image above",
+        "imagen de arriba",
+        "draw a conclusion",
+        "draw attention",
+        "draw the line",
+    )
+
+    def _detect_image_request(self, text: str) -> str | None:
+        """Detect an explicit image-generation request and return a clean prompt.
+
+        Deterministic so the headline 'create an image' capability never depends on
+        the flaky LLM planner. Returns None when the message isn't an image request
+        (e.g. describing/editing an existing image)."""
+        import re
+
+        t = (text or "").strip()
+        low = t.lower()
+        if not t or any(x in low for x in self._IMG_EXCLUDE):
+            return None
+
+        has_noun = any(n in low for n in self._IMG_NOUNS)
+        has_strong = any(re.search(rf"\b{re.escape(v)}\b", low) for v in self._IMG_STRONG_VERBS)
+        if not has_noun and not has_strong:
+            return None
+
+        nouns = "|".join(self._IMG_NOUNS)
+        m = (
+            re.search(
+                rf"(?:{nouns})\s+(?:of|de|for|para|about|sobre|showing|con|que muestre)\s+(.+)",
+                low,
+                re.IGNORECASE,
+            )
+            if has_noun
+            else None
+        )
+        has_verb = any(re.search(rf"\b{re.escape(v)}\b", low) for v in self._IMG_VERBS)
+        if not m and not has_verb and not has_strong:
+            return None
+
+        if m:
+            prompt = t[m.start(1) :].strip()
+        else:
+            verbs = "|".join(self._IMG_VERBS)
+            prompt = re.sub(
+                rf"^\s*(?:please\s+|por favor\s+)?(?:can you\s+|could you\s+|puedes\s+|me\s+)?"
+                rf"(?:{verbs})\s+(?:me\s+|a\s+|an\s+|un\s+|una\s+|the\s+|el\s+|la\s+)?",
+                "",
+                t,
+                flags=re.IGNORECASE,
+            ).strip()
+        prompt = prompt.rstrip(" .!?¡¿")
+        return prompt or t
+
     # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
 
     async def handle(self, text: str, chat_id: str) -> MindResponse:
@@ -284,6 +410,30 @@ class AriaMind:
                 )
             if stripped in ("/status", "/estado", "status"):
                 return await self._build_status()
+
+            # Deterministic fast-path for image generation.
+            # Creating images is a headline capability, so we route obvious image
+            # requests straight to the tool instead of depending on the (occasionally
+            # flaky) LLM planner, which otherwise falls back to a text-only apology.
+            img_prompt = self._detect_image_request(text)
+            if img_prompt:
+                obs, media = await self._execute_with_retry(
+                    "generate_image", {"prompt": img_prompt}
+                )
+                caption = (
+                    obs if (obs and not media) else f"Here's the image you asked for: {img_prompt}"
+                )
+                with suppress(Exception):
+                    await self._record_exec(
+                        "generate_image", {"prompt": img_prompt}, obs, bool(media)
+                    )
+                    await self._store_interaction(chat_id, text, caption, "generate_image")
+                return MindResponse(
+                    text=(None if media else caption),
+                    caption=caption,
+                    tool_used="generate_image",
+                    **media,
+                )
 
             # Cargar todo el contexto cognitivo
             history, state, goals, learned = await asyncio.gather(
@@ -534,9 +684,11 @@ class AriaMind:
                 except Exception as e:
                     logger.error("[AriaMind] HF imagen fallo: %s", e)
 
+                # Both providers failed to return bytes — degrade to a link in the
+                # text (media dict must only contain valid MindResponse fields).
                 return (
-                    f"Aquí está la imagen que generé: {poll_url}",
-                    {"image_url": poll_url},
+                    f"No pude incrustar la imagen ahora mismo, pero puedes abrirla aquí: {poll_url}",
+                    {},
                 )
 
             # ── VIDEO ─────────────────────────────────────────────────────
