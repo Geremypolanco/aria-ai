@@ -16,7 +16,7 @@ from datetime import datetime
 import uvicorn
 from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 
 from apps.core.config import settings
@@ -388,6 +388,30 @@ async def health():
         "ts": datetime.utcnow().isoformat(),
         "env": settings.ENVIRONMENT,
     }
+
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus text-format metrics for scraping."""
+    try:
+        from apps.core.observability.metrics import get_metrics
+
+        body = get_metrics().to_prometheus()
+    except Exception:
+        body = "# HELP aria_up ARIA process is up\n# TYPE aria_up gauge\naria_up 1\n"
+    return PlainTextResponse(body, media_type="text/plain; version=0.0.4")
+
+
+@app.get("/api/v1/metrics")
+async def json_metrics():
+    """Structured JSON metrics for the dashboard / API consumers."""
+    try:
+        from apps.core.observability.metrics import get_metrics
+
+        return get_metrics().to_dict()
+    except Exception as e:
+        logger.warning(f"metrics to_dict failed: {e}")
+        return {"requests_total": 0, "income": {}, "ai": {}}
 
 
 @app.post("/api/v1/chat")

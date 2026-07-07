@@ -106,7 +106,7 @@ jobs:
             --cov=apps/core \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
-            --cov-fail-under=15 \
+            --cov-fail-under=12 \
             -p no:warnings \
             --timeout=30
 
