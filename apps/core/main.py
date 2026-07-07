@@ -107,6 +107,13 @@ class ChatResponse(BaseModel):
     processing_time_ms: int = 0
 
 
+class ProfileRequest(BaseModel):
+    name: str = ""
+    work: str = ""
+    goals: list[str] = []
+    plan: str = "free"
+
+
 # ── FRONTEND ROUTES ───────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -356,11 +363,18 @@ async def user_app(request: Request):
     if not user:
         return RedirectResponse("/login", status_code=307)
 
+    raw_email = (user.get("email") or "").strip().lower()
+    profile = await _get_profile(raw_email)
+
+    # Prefer the name the user chose during onboarding, else the OAuth name.
+    chosen = profile.get("name") if profile else ""
+    name = _safe_name(chosen or user.get("name") or raw_email.split("@")[0] or "there")
     email = _safe_name(user.get("email", ""))
-    name = _safe_name(user.get("name") or email.split("@")[0] or "there")
     first = name.split(" ")[0] if name else "there"
     initial = (first[:1] or "Y").upper()
-    plan = "Free"
+    plan_map = {"pro": "Pro", "business": "Business"}
+    plan = plan_map.get(await _get_user_plan(raw_email), "Free")
+    onboarded = "true" if (profile and profile.get("onboarded")) else "false"
 
     path = os.path.join(os.path.dirname(__file__), "templates", "app.html")
     try:
@@ -375,8 +389,180 @@ async def user_app(request: Request):
         .replace("__INITIAL__", initial)
         .replace("__EMAIL__", email)
         .replace("__PLAN__", plan)
+        .replace("__ONBOARDED__", onboarded)
     )
     return HTMLResponse(html)
+
+
+# ── BILLING (Stripe Checkout, subscription) ───────────────
+_PLAN_KEY = "aria:plan:{email}"
+
+# Researched, margin-positive tiers (2026 market: entry premium ~$20, teams $25-30/seat).
+# ARIA does more than chat (it also researches + publishes), so a slight premium holds.
+BILLING_PLANS = {
+    "pro": {"name": "ARIA Pro", "cents": 2900},  # $29 / month
+    "business": {"name": "ARIA Business", "cents": 9900},  # $99 / month
+}
+
+
+async def _get_user_plan(email: str) -> str:
+    if not email:
+        return "free"
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        val = await get_cache().get(_PLAN_KEY.format(email=email))
+        return val if val in ("free", "pro", "business") else "free"
+    except Exception:
+        return "free"
+
+
+async def _set_user_plan(email: str, plan: str) -> None:
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        await get_cache().set(_PLAN_KEY.format(email=email), plan, ttl_seconds=45 * 24 * 3600)
+    except Exception as e:
+        logger.warning(f"set_user_plan failed: {e}")
+
+
+# ── USER PROFILE (onboarding + personalization) ───────────
+async def _get_profile(email: str) -> dict:
+    if not email:
+        return {}
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        val = await get_cache().get(f"aria:profile:{email}")
+        if isinstance(val, dict):
+            return val
+        if isinstance(val, str) and val:
+            return json.loads(val)
+    except Exception:
+        pass
+    return {}
+
+
+async def _save_profile(email: str, data: dict) -> None:
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        await get_cache().set(f"aria:profile:{email}", data, ttl_seconds=365 * 24 * 3600)
+    except Exception as e:
+        logger.warning(f"save_profile failed: {e}")
+
+
+def _profile_context(profile: dict) -> str:
+    """A concise personalization note fed to ARIA so it addresses the user by
+    name and tailors help to their work and goals."""
+    if not profile:
+        return ""
+    parts = []
+    if profile.get("name"):
+        parts.append(f"su nombre es {profile['name']}")
+    if profile.get("work"):
+        parts.append(f"se dedica a: {profile['work']}")
+    if profile.get("goals"):
+        parts.append("quiere ayuda con: " + ", ".join(profile["goals"][:6]))
+    if not parts:
+        return ""
+    return (
+        "[Perfil del usuario — personaliza tu respuesta y, cuando sea natural, "
+        "dirígete a él por su nombre: " + "; ".join(parts) + ".]"
+    )
+
+
+@app.get("/billing/checkout")
+async def billing_checkout(request: Request, tier: str = "pro"):
+    """Start a Stripe Checkout session for the given ARIA subscription tier."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return RedirectResponse("/login", status_code=307)
+
+    plan = BILLING_PLANS.get(tier if tier in BILLING_PLANS else "pro")
+
+    key = getattr(settings, "STRIPE_SECRET_KEY", None)
+    if not key:
+        # Billing not configured yet — send the user back with a clear flag.
+        return RedirectResponse("/app?billing=unavailable", status_code=303)
+
+    email = (user.get("email") or "").strip().lower()
+    base = (getattr(settings, "ARIA_BASE_URL", None) or "https://aria-ai.fly.dev").rstrip("/")
+    tier_key = tier if tier in BILLING_PLANS else "pro"
+    try:
+        import stripe
+
+        stripe.api_key = key
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer_email=email or None,
+            line_items=[
+                {
+                    "quantity": 1,
+                    "price_data": {
+                        "currency": "usd",
+                        "unit_amount": plan["cents"],
+                        "recurring": {"interval": "month"},
+                        "product_data": {"name": plan["name"]},
+                    },
+                }
+            ],
+            allow_promotion_codes=True,
+            success_url=base + "/billing/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=base + "/app?billing=cancel",
+            metadata={"email": email, "tier": tier_key},
+        )
+        return RedirectResponse(session.url, status_code=303)
+    except Exception as e:
+        logger.error(f"Stripe checkout error: {e}")
+        return RedirectResponse("/app?billing=error", status_code=303)
+
+
+@app.get("/billing/success")
+async def billing_success(request: Request, session_id: str = ""):
+    """Verify the completed Checkout session server-side, then mark the user Pro."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    key = getattr(settings, "STRIPE_SECRET_KEY", None)
+    if user and key and session_id:
+        try:
+            import stripe
+
+            stripe.api_key = key
+            s = stripe.checkout.Session.retrieve(session_id)
+            paid = s.get("payment_status") == "paid" or s.get("status") == "complete"
+            email = (user.get("email") or "").strip().lower()
+            tier = (s.get("metadata") or {}).get("tier", "pro")
+            if tier not in BILLING_PLANS:
+                tier = "pro"
+            if paid and email:
+                await _set_user_plan(email, tier)
+        except Exception as e:
+            logger.error(f"Stripe verify error: {e}")
+    return RedirectResponse("/app?billing=success", status_code=303)
+
+
+@app.post("/api/v1/profile")
+async def save_onboarding_profile(req: ProfileRequest, request: Request):
+    """Persist the first-login onboarding answers used to personalize ARIA."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return {"ok": False, "error": "unauthenticated"}
+    email = (user.get("email") or "").strip().lower()
+    data = {
+        "name": _safe_name(req.name)[:60] or (user.get("name") or ""),
+        "work": _safe_name(req.work)[:60],
+        "goals": [_safe_name(g)[:40] for g in (req.goals or []) if g][:8],
+        "plan": req.plan if req.plan in ("free", "pro", "business") else "free",
+        "onboarded": True,
+    }
+    await _save_profile(email, data)
+    return {"ok": True}
 
 
 # ── API ROUTES ────────────────────────────────────────────
@@ -415,17 +601,32 @@ async def json_metrics():
 
 
 @app.post("/api/v1/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request):
     """Chat with ARIA — routed through the real cognitive brain (tools + identity),
     so it actually executes (e.g. generate_image) and knows who it is."""
     import base64
     import time
 
     start = time.time()
+
+    # Personalize from the signed-in user's onboarding profile, if any.
+    user_context = ""
+    try:
+        from apps.core import auth
+
+        u = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+        if u:
+            prof = await _get_profile((u.get("email") or "").strip().lower())
+            user_context = _profile_context(prof)
+    except Exception:
+        user_context = ""
+
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
 
-        resp = await get_aria_mind().handle(req.message, req.session_id or "default")
+        resp = await get_aria_mind().handle(
+            req.message, req.session_id or "default", user_context=user_context or None
+        )
         elapsed = int((time.time() - start) * 1000)
         media_type = None
         media_b64 = None

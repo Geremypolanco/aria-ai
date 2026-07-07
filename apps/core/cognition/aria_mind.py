@@ -452,7 +452,9 @@ class AriaMind:
 
     # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
 
-    async def handle(self, text: str, chat_id: str) -> MindResponse:
+    async def handle(
+        self, text: str, chat_id: str, user_context: str | None = None
+    ) -> MindResponse:
         try:
             # Fast-path for built-in commands
             stripped = text.strip().lower()
@@ -506,7 +508,7 @@ class AriaMind:
             )
 
             # Construir prompt y razonar
-            plan = await self._reason(text, history, state, goals, learned)
+            plan = await self._reason(text, history, state, goals, learned, user_context or "")
             if not plan:
                 return MindResponse(text="No pude procesar eso. Inténtalo de nuevo.")
 
@@ -580,7 +582,13 @@ class AriaMind:
     # ── RAZONAMIENTO ───────────────────────────────────────────────────────
 
     async def _reason(
-        self, text: str, history: list, state: dict, goals: list[dict], learned: list[str]
+        self,
+        text: str,
+        history: list,
+        state: dict,
+        goals: list[dict],
+        learned: list[str],
+        user_context: str = "",
     ) -> dict | None:
         ai = self._ai_client()
         if not ai:
@@ -627,6 +635,8 @@ class AriaMind:
         user_input = text
         if kb_context:
             user_input = f"{kb_context}\n\n---\nMensaje del usuario: {text}"
+        if user_context:
+            user_input = f"{user_context}\n\n{user_input}"
         user_input += self._lang_directive(lang)
 
         result = await ai.complete_json(

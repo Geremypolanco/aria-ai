@@ -148,6 +148,53 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 
 .backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:35}
 
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);z-index:60;max-width:min(560px,92vw);
+  padding:14px 18px;border-radius:14px;font-size:14px;line-height:1.45;background:var(--panel2);color:var(--txt);
+  border:1px solid var(--line);box-shadow:0 20px 50px -12px rgba(0,0,0,.7);opacity:0;transition:.3s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.ok{border-color:rgba(52,211,153,.5)}
+.toast.err{border-color:rgba(239,68,68,.5)}
+
+/* ── onboarding + plans modal ── */
+.ov{position:fixed;inset:0;z-index:80;background:rgba(4,4,8,.86);backdrop-filter:blur(8px);
+  display:none;align-items:center;justify-content:center;padding:24px}
+.ov.show{display:flex}
+.sheet{width:100%;max-width:620px;max-height:92vh;overflow-y:auto;background:var(--panel);
+  border:1px solid var(--line);border-radius:22px;padding:34px 30px 26px;box-shadow:0 40px 90px -20px rgba(0,0,0,.8)}
+.sheet .logo{width:40px;height:40px;border-radius:12px;background:var(--grad);display:grid;place-items:center;font-weight:800;font-size:18px;margin-bottom:18px}
+.sheet h2{font-size:26px;font-weight:800;letter-spacing:-.5px;line-height:1.15}
+.sheet .qsub{color:var(--mut);margin-top:8px;font-size:15px;line-height:1.5}
+.dots{display:flex;gap:6px;margin:22px 0 4px}
+.dots i{height:4px;flex:1;border-radius:4px;background:rgba(255,255,255,.1)}
+.dots i.on{background:var(--grad)}
+.step{display:none;margin-top:22px}.step.on{display:block;animation:rise .3s ease}
+.field{width:100%;padding:14px 16px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04);
+  color:var(--txt);font-size:16px;font-family:inherit}
+.field:focus{outline:none;border-color:rgba(167,139,250,.5)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.chip2{padding:11px 16px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.03);
+  color:var(--txt);font-size:14px;cursor:pointer;transition:.12s}
+.chip2:hover{background:rgba(255,255,255,.07)}
+.chip2.sel{background:rgba(124,58,237,.18);border-color:rgba(167,139,250,.55);color:#fff}
+.chip2 .ck{color:var(--vio);margin-right:6px;font-weight:700}
+.orow{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:26px}
+.obtn{padding:12px 22px;border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;transition:.15s}
+.obtn.primary{background:var(--grad);color:#fff}.obtn.primary:hover{filter:brightness(1.08)}
+.obtn.ghost{background:transparent;color:var(--mut)}.obtn.ghost:hover{color:var(--txt)}
+.obtn:disabled{opacity:.4;cursor:not-allowed}
+/* plan cards */
+.plans{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+.plan{position:relative;text-align:left;border:1px solid var(--line);border-radius:16px;padding:16px 48px 16px 18px;cursor:pointer;transition:.14s;background:rgba(255,255,255,.02)}
+.plan:hover{background:rgba(255,255,255,.05)}
+.plan.sel{border-color:rgba(167,139,250,.6);background:rgba(124,58,237,.12)}
+.plan .ph{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.plan .pn{font-weight:700;font-size:16px}
+.plan .pp{font-weight:800;font-size:18px}.plan .pp small{font-size:12px;color:var(--mut2);font-weight:500}
+.plan .pd{color:var(--mut);font-size:13px;margin-top:6px;line-height:1.5}
+.plan .pop{position:absolute;top:-9px;right:14px;font-size:10.5px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:20px;background:var(--grad);color:#fff}
+.plan.sel .rad{border-color:var(--vio);background:var(--vio)}
+.plan .rad{position:absolute;top:16px;right:16px;width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.25)}
+
 @media(max-width:820px){
   .side{position:fixed;top:0;bottom:0;left:0;margin-left:-300px;box-shadow:0 0 60px rgba(0,0,0,.6)}
   .side.open{margin-left:0}
@@ -159,6 +206,102 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 </style>
 </head>
 <body>
+
+<!-- ONBOARDING / PLANS OVERLAY -->
+<div class="ov" id="ov">
+  <div class="sheet">
+    <div class="logo">A</div>
+
+    <!-- progress -->
+    <div class="dots" id="dots"><i class="on"></i><i></i><i></i><i></i></div>
+
+    <!-- step 1: name -->
+    <div class="step on" data-step="0">
+      <h2>Welcome to ARIA 👋</h2>
+      <div class="qsub">Let's set up your workspace. First — what should we call you?</div>
+      <div style="margin-top:20px"><input class="field" id="obName" placeholder="Your name" maxlength="60" /></div>
+    </div>
+
+    <!-- step 2: work -->
+    <div class="step" data-step="1">
+      <h2>What best describes your work?</h2>
+      <div class="qsub">So ARIA can tailor research, content and ideas to you.</div>
+      <div class="chips" id="obWork" data-single="1">
+        <div class="chip2" data-v="Founder / Entrepreneur">Founder / Entrepreneur</div>
+        <div class="chip2" data-v="Marketing">Marketing</div>
+        <div class="chip2" data-v="Content creator">Content creator</div>
+        <div class="chip2" data-v="Freelancer">Freelancer</div>
+        <div class="chip2" data-v="Developer / Engineer">Developer / Engineer</div>
+        <div class="chip2" data-v="Agency">Agency</div>
+        <div class="chip2" data-v="Sales">Sales</div>
+        <div class="chip2" data-v="Student">Student</div>
+        <div class="chip2" data-v="Other">Other</div>
+      </div>
+      <div style="margin-top:12px;display:none" id="obWorkOtherWrap">
+        <input class="field" id="obWorkOther" placeholder="Tell us what you do" maxlength="60" />
+      </div>
+    </div>
+
+    <!-- step 3: goals -->
+    <div class="step" data-step="2">
+      <h2>What do you want ARIA to help with?</h2>
+      <div class="qsub">Pick all that apply.</div>
+      <div class="chips" id="obGoals">
+        <div class="chip2" data-v="Grow on social media">Grow on social media</div>
+        <div class="chip2" data-v="Create content">Create content</div>
+        <div class="chip2" data-v="Research & analysis">Research &amp; analysis</div>
+        <div class="chip2" data-v="Launch or grow a business">Launch or grow a business</div>
+        <div class="chip2" data-v="Automate publishing">Automate publishing</div>
+        <div class="chip2" data-v="Generate images & video">Generate images &amp; video</div>
+      </div>
+    </div>
+
+    <!-- step 4: plan -->
+    <div class="step" data-step="3">
+      <h2>Choose your plan</h2>
+      <div class="qsub">Start free — upgrade any time. Cancel whenever you want.</div>
+      <div class="plans" id="obPlans">
+        <div class="plan sel" data-v="free"><div class="rad"></div>
+          <div class="ph"><span class="pn">Free</span><span class="pp">$0</span></div>
+          <div class="pd">ARIA assistant to research, write and create images. 1 workspace.</div></div>
+        <div class="plan" data-v="pro"><div class="rad"></div><span class="pop">MOST POPULAR</span>
+          <div class="ph"><span class="pn">Pro</span><span class="pp">$29<small>/mo</small></span></div>
+          <div class="pd">Everything unlimited + advanced image, video &amp; voice, autonomous multi-channel publishing, expanded memory, priority AI.</div></div>
+        <div class="plan" data-v="business"><div class="rad"></div>
+          <div class="ph"><span class="pn">Business</span><span class="pp">$99<small>/mo</small></span></div>
+          <div class="pd">Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</div></div>
+      </div>
+    </div>
+
+    <div class="orow">
+      <button class="obtn ghost" id="obBack" onclick="obPrev()" style="visibility:hidden">← Back</button>
+      <button class="obtn primary" id="obNext" onclick="obNext()">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- UPGRADE / PLANS MODAL (from the menu) -->
+<div class="ov" id="upOv">
+  <div class="sheet">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div class="logo">A</div><h2>Upgrade ARIA</h2>
+      <div class="qsub">Do more — autonomous publishing, video, and priority AI.</div></div>
+      <button class="icon-btn" onclick="closeUpgrade()" aria-label="Close" style="font-size:18px">✕</button>
+    </div>
+    <div class="plans" id="upPlans" style="margin-top:20px">
+      <div class="plan" data-v="pro"><span class="pop">MOST POPULAR</span>
+        <div class="ph"><span class="pn">Pro</span><span class="pp">$29<small>/mo</small></span></div>
+        <div class="pd">Unlimited chat, advanced image + video + voice, autonomous multi-channel publishing, expanded memory, priority AI.</div></div>
+      <div class="plan" data-v="business">
+        <div class="ph"><span class="pn">Business</span><span class="pp">$99<small>/mo</small></span></div>
+        <div class="pd">Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</div></div>
+    </div>
+    <div class="orow"><span></span>
+      <button class="obtn primary" id="upGo" onclick="upgradeGo()">Continue</button>
+    </div>
+  </div>
+</div>
+
 <div class="app">
   <div class="backdrop" id="backdrop" onclick="toggleSide(false)"></div>
 
@@ -173,7 +316,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
     <div class="side-foot">
       <div class="menu" id="menu">
         <a href="/" >⌂ Home</a>
-        <a href="#" class="up" onclick="alert('Pro plan: automated multi-channel publishing, video & priority AI — coming soon.');return false">⚡ Upgrade to Pro</a>
+        <a href="#" class="up" id="upgradeLink" onclick="openUpgrade();return false">⚡ Upgrade — see plans</a>
         <a href="/logout">↩ Sign out</a>
       </div>
       <div class="user" onclick="toggleMenu()">
@@ -224,7 +367,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 </div>
 
 <script>
-const USER = { name: "__NAME__", email: "__EMAIL__", plan: "__PLAN__" };
+const USER = { name: "__NAME__", email: "__EMAIL__", plan: "__PLAN__", onboarded: __ONBOARDED__ };
 const KEY = "aria_convos_v1";
 let convos = [];       // [{id, title, sid, msgs:[{role,text,img}]}]
 let cur = null;        // current convo id
@@ -431,8 +574,93 @@ function toggleSide(open){
 }
 document.addEventListener('click',e=>{const m=document.getElementById('menu');if(m.classList.contains('open')&&!e.target.closest('.side-foot'))m.classList.remove('open')});
 
+/* billing */
+function toast(msg,kind){
+  const t=document.createElement('div'); t.className='toast '+(kind||'');
+  t.textContent=msg; document.body.appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300)},5200);
+}
+function billingBoot(){
+  if(USER.plan==='Pro'){ const u=document.getElementById('upgradeLink'); if(u) u.style.display='none'; }
+  const p=new URLSearchParams(location.search).get('billing');
+  if(!p) return;
+  const M={
+    success:["🎉 You're on ARIA Pro — thank you! Autonomous publishing, video & priority AI are unlocked.","ok"],
+    cancel:["Checkout canceled. You can upgrade any time from the menu.",""],
+    unavailable:["Billing isn't switched on yet. Ping the team and we'll enable Pro checkout.",""],
+    error:["Something went wrong starting checkout. Please try again.","err"]
+  };
+  const m=M[p]; if(m) toast(m[0],m[1]);
+  history.replaceState({}, '', location.pathname);
+}
+
+/* ── onboarding ── */
+let obStep=0, obWork="", obGoals=new Set(), obPlan="free";
+const OB_STEPS=4;
+function setGreetName(n){ document.querySelectorAll('.empty .g').forEach(e=>e.textContent=n); }
+function obShow(){
+  const first=(USER.name||'there').split(' ')[0];
+  document.getElementById('obName').value=USER.name||'';
+  // chip handlers
+  document.querySelectorAll('#obWork .chip2').forEach(c=>c.onclick=()=>{
+    document.querySelectorAll('#obWork .chip2').forEach(x=>x.classList.remove('sel'));
+    c.classList.add('sel'); obWork=c.dataset.v;
+    document.getElementById('obWorkOtherWrap').style.display = obWork==='Other'?'block':'none';
+  });
+  document.querySelectorAll('#obGoals .chip2').forEach(c=>c.onclick=()=>{
+    c.classList.toggle('sel'); const v=c.dataset.v;
+    if(obGoals.has(v)) obGoals.delete(v); else obGoals.add(v);
+  });
+  document.querySelectorAll('#obPlans .plan').forEach(c=>c.onclick=()=>{
+    document.querySelectorAll('#obPlans .plan').forEach(x=>x.classList.remove('sel'));
+    c.classList.add('sel'); obPlan=c.dataset.v;
+  });
+  document.getElementById('ov').classList.add('show');
+  setTimeout(()=>document.getElementById('obName').focus(),120);
+}
+function obRender(){
+  document.querySelectorAll('.step').forEach(s=>s.classList.toggle('on', +s.dataset.step===obStep));
+  document.querySelectorAll('#dots i').forEach((d,i)=>d.classList.toggle('on', i<=obStep));
+  document.getElementById('obBack').style.visibility = obStep===0?'hidden':'visible';
+  document.getElementById('obNext').textContent = obStep===OB_STEPS-1 ? (obPlan==='free'?'Start using ARIA':'Continue to checkout') : 'Continue';
+}
+function obPrev(){ if(obStep>0){obStep--;obRender();} }
+async function obNext(){
+  if(obStep===0){
+    const v=document.getElementById('obName').value.trim();
+    if(v) USER.name=v;
+  }
+  if(obStep<OB_STEPS-1){ obStep++; obRender(); return; }
+  // finish
+  const btn=document.getElementById('obNext'); btn.disabled=true; btn.textContent='Saving…';
+  const work = obWork==='Other' ? (document.getElementById('obWorkOther').value.trim()||'Other') : obWork;
+  const payload={ name:USER.name, work, goals:[...obGoals], plan:obPlan };
+  try{ await fetch('/api/v1/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){}
+  USER.onboarded=true;
+  if(obPlan==='pro'||obPlan==='business'){ location.href='/billing/checkout?tier='+obPlan; return; }
+  document.getElementById('ov').classList.remove('show');
+  setGreetName((USER.name||'there').split(' ')[0]);
+  document.querySelector('.user .nm').textContent=USER.name;
+  toast("You're all set — welcome to ARIA. Ask it anything to get started.","ok");
+  document.getElementById('input').focus();
+}
+
+/* ── upgrade modal ── */
+let upPlan="pro";
+function openUpgrade(){
+  document.querySelectorAll('#upPlans .plan').forEach(c=>{ c.classList.toggle('sel',c.dataset.v===upPlan);
+    c.onclick=()=>{ document.querySelectorAll('#upPlans .plan').forEach(x=>x.classList.remove('sel')); c.classList.add('sel'); upPlan=c.dataset.v; };
+  });
+  document.getElementById('menu').classList.remove('open');
+  document.getElementById('upOv').classList.add('show');
+}
+function closeUpgrade(){ document.getElementById('upOv').classList.remove('show'); }
+function upgradeGo(){ location.href='/billing/checkout?tier='+upPlan; }
+
 /* boot */
-load(); renderHist(); renderThread(); document.getElementById('input').focus();
+load(); renderHist(); renderThread(); billingBoot();
+if(!USER.onboarded){ obRender(); obShow(); } else { document.getElementById('input').focus(); }
 </script>
 </body>
 </html>
