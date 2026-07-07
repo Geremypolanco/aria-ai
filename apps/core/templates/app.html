@@ -141,6 +141,9 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 .cbox textarea::placeholder{color:var(--mut2)}
 .send{width:38px;height:38px;border-radius:12px;background:var(--grad);display:grid;place-items:center;flex-shrink:0;transition:.15s}
 .send:hover{filter:brightness(1.08)}.send:disabled{opacity:.4;cursor:not-allowed;filter:grayscale(.4)}
+.send.busy{background:linear-gradient(92deg,#ef4444,#b91c1c)}
+.caret{display:inline-block;width:8px;height:1.05em;background:var(--vio);vertical-align:-2px;margin-left:2px;border-radius:1px;animation:cb 1s step-end infinite}
+@keyframes cb{50%{opacity:0}}
 .hint{max-width:760px;margin:10px auto 0;text-align:center;color:var(--mut2);font-size:11.5px}
 
 .backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:35}
@@ -211,7 +214,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
       <div class="cbox">
         <textarea id="input" rows="1" placeholder="Ask ARIA to research, write, or create…"
           onkeydown="onKey(event)" oninput="autogrow(this)"></textarea>
-        <button class="send" id="send" onclick="sendMsg()" aria-label="Send" title="Send">
+        <button class="send" id="send" onclick="onSend()" aria-label="Send" title="Send">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
@@ -307,6 +310,10 @@ function bubble(m){
       dl.onclick=()=>{ const a=document.createElement('a'); a.href=m.img; a.download='aria-image.png'; document.body.appendChild(a); a.click(); a.remove(); };
       act.appendChild(dl);
     }
+    const rg=document.createElement('button'); rg.className='act'; rg.title='Regenerate this reply';
+    rg.innerHTML='&#8635; Retry';
+    rg.onclick=()=>regen();
+    act.appendChild(rg);
     col.appendChild(act);
   }
   wrap.appendChild(ava);
@@ -330,41 +337,91 @@ function openChat(id){cur=id;renderHist();renderThread();toggleSide(false)}
 function delChat(id){convos=convos.filter(c=>c.id!==id);if(cur===id)cur=null;save();renderHist();renderThread()}
 function quick(t){document.getElementById('input').value=t;autogrow(document.getElementById('input'));sendMsg()}
 
+let controller=null, stopTyping=false;
+
 async function sendMsg(){
   const inp=document.getElementById('input'); const text=inp.value.trim();
   if(!text||busy)return;
   let c=convById(cur);
   if(!c){ c={id:uid(),title:text.slice(0,42),sid:'app-'+uid(),msgs:[]}; convos.unshift(c); cur=c.id; }
   c.msgs.push({role:'user',text});
-  if(c.msgs.length===1) c.title=text.slice(0,42);
+  if(c.msgs.filter(m=>m.role==='user').length===1) c.title=text.slice(0,42);
   inp.value=''; autogrow(inp); save(); renderHist(); renderThread();
+  await runGeneration(c, text);
+}
 
-  busy=true; document.getElementById('send').disabled=true;
+/* regenerate the latest reply from the last user turn */
+function regen(){
+  const c=convById(cur); if(!c||busy)return;
+  while(c.msgs.length && c.msgs[c.msgs.length-1].role==='assistant') c.msgs.pop();
+  const lastUser=[...c.msgs].reverse().find(m=>m.role==='user');
+  if(!lastUser)return;
+  save(); renderThread();
+  runGeneration(c, lastUser.text);
+}
+
+async function runGeneration(c, text){
+  setBusy(true);
   const th=document.getElementById('thread');
   const load=document.createElement('div'); load.className='msg a';
-  load.innerHTML='<div class="ava">A</div><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div>';
+  load.innerHTML='<div class="ava">A</div><div class="col"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>';
   th.appendChild(load); scrollDown();
-
+  controller=new AbortController(); stopTyping=false;
   try{
     const r=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:text,session_id:c.sid})});
+      body:JSON.stringify({message:text,session_id:c.sid}),signal:controller.signal});
     const d=await r.json();
     load.remove();
     const img=d.media_base64?('data:image/png;base64,'+d.media_base64):null;
-    c.msgs.push({role:'assistant',text:d.reply||'(no response)',img});
-    save(); renderThread();
+    const msg={role:'assistant',text:d.reply||'(no response)',img};
+    c.msgs.push(msg); save(); renderThread();
+    const bubbles=document.querySelectorAll('#thread .msg.a .bubble');
+    const lastB=bubbles[bubbles.length-1];
+    if(lastB) await typeInto(lastB, msg.text, img);
   }catch(e){
     load.remove();
-    c.msgs.push({role:'assistant',text:'⚠️ Something went wrong reaching ARIA. Please try again.'});
-    save(); renderThread();
+    if(e.name!=='AbortError'){
+      c.msgs.push({role:'assistant',text:'⚠️ Something went wrong reaching ARIA. Please try again.'});
+      save(); renderThread();
+    }
   }finally{
-    busy=false; document.getElementById('send').disabled=false; inp.focus();
+    setBusy(false); controller=null; document.getElementById('input').focus();
   }
 }
 
+/* progressive "typewriter" reveal of the assistant reply */
+function typeInto(bubbleEl, fullText, img){
+  return new Promise(resolve=>{
+    const imgTag = img?'<img src="'+img+'" alt="generated image">':'';
+    const tokens=(fullText||'').split(/(\s+)/); let i=0, acc='';
+    function finish(){ bubbleEl.innerHTML=md(fullText)+imgTag; scrollDown(); resolve(); }
+    function step(){
+      if(stopTyping||i>=tokens.length){ finish(); return; }
+      for(let k=0;k<3 && i<tokens.length;k++) acc+=tokens[i++];
+      bubbleEl.innerHTML=md(acc)+'<span class="caret"></span>';
+      scrollDown();
+      setTimeout(step, 16);
+    }
+    step();
+  });
+}
+
+/* send / stop control */
+function setBusy(on){
+  busy=on;
+  const b=document.getElementById('send');
+  b.classList.toggle('busy',on);
+  b.setAttribute('aria-label', on?'Stop':'Send');
+  b.innerHTML = on
+    ? '<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="#fff"/></svg>'
+    : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+function onSend(){ if(busy) stopGen(); else sendMsg(); }
+function stopGen(){ stopTyping=true; if(controller){ try{controller.abort()}catch(e){} } }
+
 /* ui helpers */
 function autogrow(t){t.style.height='auto';t.style.height=Math.min(t.scrollHeight,200)+'px'}
-function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}}
+function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!busy)sendMsg()}}
 function toggleMenu(){document.getElementById('menu').classList.toggle('open')}
 function toggleSide(open){
   const s=document.getElementById('side'),b=document.getElementById('backdrop'),c=document.getElementById('sideClose');
