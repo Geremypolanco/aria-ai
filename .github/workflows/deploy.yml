@@ -1,8 +1,9 @@
 name: Deploy to Fly.io
 
 on:
-  push:
-    branches: [main]
+  # NOTE: auto-deploy on push to main was intentionally removed. `main` holds an
+  # older codebase, so a push here would overwrite the live app. Deploys are now
+  # manual-only (workflow_dispatch) from the intended branch.
   workflow_dispatch:
     inputs:
       strategy:
