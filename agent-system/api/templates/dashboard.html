@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ARIA — Autonomous Agent System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'Inter', sans-serif; background: #08080d; color: #e2e8f0; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .gradient-text { background: linear-gradient(135deg, #8b5cf6, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .card { background: #0d0d15; border: 1px solid #1a1a2a; border-radius: 14px; transition: all 0.2s; }
+    .card:hover { border-color: rgba(139,92,246,0.2); }
+    .card-active { border-color: rgba(139,92,246,0.4); background: rgba(139,92,246,0.03); }
+    .card-soft { background: rgba(13,13,21,0.7); backdrop-filter: blur(8px); }
+    .btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border-radius: 10px; padding: 10px 18px; font-weight: 600; transition: all 0.15s; }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(139,92,246,0.3); }
+    .btn-primary:active { transform: scale(0.97); }
+    .btn-ghost { background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); border-radius: 10px; padding: 8px 14px; font-weight: 500; transition: all 0.15s; }
+    .btn-ghost:hover { background: rgba(139,92,246,0.15); }
+    .glass { background: rgba(8,8,13,0.92); backdrop-filter: blur(24px); border-bottom: 1px solid #1a1a2a; }
+    .badge { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .msg-user { background: linear-gradient(135deg, #1e1e30, #2a2a40); border-radius: 14px 14px 4px 14px; padding: 10px 14px; max-width: 82%; }
+    .msg-aria { background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.15); border-radius: 14px 14px 14px 4px; padding: 10px 14px; max-width: 82%; }
+    .msg-system { background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.12); border-radius: 14px; padding: 8px 14px; max-width: 90%; font-size: 13px; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 2px; }
+    @keyframes pulse-dot { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    .dot-pulse { animation: pulse-dot 1.4s infinite; }
+    .dot-pulse:nth-child(2) { animation-delay: 0.2s; }
+    .dot-pulse:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .slide-up { animation: slide-up 0.4s ease-out; }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .fade-in { animation: fade-in 0.3s ease-out; }
+    @keyframes breathe { 0%,100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.2); } 50% { box-shadow: 0 0 0 6px rgba(139,92,246,0); } }
+    .breathe { animation: breathe 2s infinite; }
+    .agent-node { transition: all 0.3s; }
+    .agent-node:hover { transform: scale(1.02); }
+    .log-line { font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; padding: 1px 8px; border-radius: 2px; }
+    .log-line:hover { background: rgba(255,255,255,0.03); }
+    .metric-bar { height: 4px; border-radius: 2px; background: #1a1a2a; overflow: hidden; }
+    .metric-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+    @media (max-width: 640px) { .hide-mobile { display: none; } }
+  </style>
+</head>
+<body x-data="ariaDashboard()" x-init="init()" class="pb-28 antialiased">
+
+  <!-- ── TOP BAR ── -->
+  <div class="glass fixed top-0 left-0 right-0 z-50 px-3 h-12 flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <button @click="sidebar = !sidebar" class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/[0.04] transition-colors">
+        <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center text-[10px] font-bold">A</div>
+        <span class="font-semibold text-sm">ARIA</span>
+        <span class="badge bg-purple-500/10 text-purple-300 text-[10px]">v0.2</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <!-- Agent status dots -->
+      <div class="flex items-center gap-1.5 hide-mobile">
+        <template x-for="(agent, name) in agents" :key="name">
+          <div class="flex items-center gap-1" :title="`${name}: ${agent.running ? 'Activo' : 'Inactivo'}`">
+            <span class="w-1.5 h-1.5 rounded-full" :class="agent.running ? 'bg-green-400' : 'bg-red-400'"></span>
+            <span class="text-[10px] text-slate-500 uppercase" x-text="name.slice(0,4)"></span>
+          </div>
+        </template>
+      </div>
+      <span class="w-1.5 h-1.5 rounded-full breathe" :class="connected ? 'bg-green-400' : 'bg-red-400'"></span>
+      <span class="text-[11px] text-slate-500" x-text="connected ? 'Online' : 'Offline'"></span>
+    </div>
+  </div>
+
+  <!-- ── SIDEBAR OVERLAY ── -->
+  <template x-teleport="body">
+    <div x-show="sidebar" @click="sidebar = false" class="fixed inset-0 bg-black/60 z-40 fade-in"></div>
+  </template>
+
+  <!-- ── SIDEBAR ── -->
+  <div class="fixed top-12 left-0 bottom-0 w-64 bg-[#0a0a10] border-r border-[#1a1a2a] z-50 transform transition-transform duration-300" :class="sidebar ? 'translate-x-0' : '-translate-x-full'">
+    <div class="p-3 space-y-0.5">
+      <div class="px-3 py-2 text-[10px] uppercase tracking-wider text-slate-600 font-semibold">Navegación</div>
+      <a href="/dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-500/8 text-purple-300 text-sm font-medium">
+        <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Dashboard
+      </a>
+      <a href="/" class="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.03] text-slate-400 text-sm transition-colors">
+        <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+        Landing
+      </a>
+      <div class="px-3 py-2 mt-4 text-[10px] uppercase tracking-wider text-slate-600 font-semibold">Sistema</div>
+      <div class="px-3 py-1.5 text-xs text-slate-500">
+        <div class="flex justify-between py-0.5"><span>Agentes</span><span class="text-slate-300" x-text="Object.keys(agents).length"></span></div>
+        <div class="flex justify-between py-0.5"><span>Tareas activas</span><span class="text-slate-300" x-text="tasksActive"></span></div>
+        <div class="flex justify-between py-0.5"><span>Herramientas</span><span class="text-slate-300" x-text="toolsCount"></span></div>
+        <div class="flex justify-between py-0.5"><span>Uptime</span><span class="text-slate-300" x-text="uptime"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ONBOARDING OVERLAY (primera vez) ── -->
+  <template x-teleport="body">
+    <div x-show="showOnboarding" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 fade-in">
+      <div class="card max-w-lg w-full p-6 slide-up" @click.outside="dismissOnboarding">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center text-lg font-bold">A</div>
+          <div>
+            <h2 class="text-lg font-bold gradient-text">Bienvenido a ARIA</h2>
+            <p class="text-xs text-slate-500">Sistema Autónomo Multi-Agente</p>
+          </div>
+        </div>
+        
+        <p class="text-sm text-slate-400 mb-5">
+          Soy un sistema de <strong class="text-white">4 agentes autónomos</strong> que trabajan juntos 
+          para ejecutar tareas complejas: desde navegación web y extracción de datos hasta ejecución
+          de comandos y gestión de secretos.
+        </p>
+
+        <!-- Capabilities grid -->
+        <div class="grid grid-cols-2 gap-2 mb-5">
+          <div class="card p-3 border-l-2 border-l-purple-500">
+            <div class="text-xs font-semibold mb-0.5">🤖 Planner</div>
+            <div class="text-[11px] text-slate-500">Analiza y descompone tareas en planes ejecutables</div>
+          </div>
+          <div class="card p-3 border-l-2 border-l-cyan-500">
+            <div class="text-xs font-semibold mb-0.5">⚡ Execution</div>
+            <div class="text-[11px] text-slate-500">Ejecuta pasos con Docker y sandbox aislado</div>
+          </div>
+          <div class="card p-3 border-l-2 border-l-green-500">
+            <div class="text-xs font-semibold mb-0.5">✅ Verification</div>
+            <div class="text-[11px] text-slate-500">Valida resultados contra expectativas</div>
+          </div>
+          <div class="card p-3 border-l-2 border-l-orange-500">
+            <div class="text-xs font-semibold mb-0.5">🔄 Orchestrator</div>
+            <div class="text-[11px] text-slate-500">Orquesta reintentos y escalación</div>
+          </div>
+        </div>
+
+        <p class="text-xs text-slate-600 mb-4">¿Qué te gustaría hacer primero?</p>
+
+        <div class="grid grid-cols-1 gap-2 mb-5">
+          <button @click="startWith('explore')" class="card p-3 text-left text-sm hover:border-purple-500/30 flex items-center gap-3">
+            <span class="text-lg">🔍</span>
+            <div><div class="font-medium">Explorar capacidades</div><div class="text-[11px] text-slate-500">Ver qué puede hacer ARIA</div></div>
+          </button>
+          <button @click="startWith('automate')" class="card p-3 text-left text-sm hover:border-purple-500/30 flex items-center gap-3">
+            <span class="text-lg">⚙️</span>
+            <div><div class="font-medium">Automatizar una tarea</div><div class="text-[11px] text-slate-500">Ejecutar un agente para resolver un problema</div></div>
+          </button>
+          <button @click="startWith('monitor')" class="card p-3 text-left text-sm hover:border-purple-500/30 flex items-center gap-3">
+            <span class="text-lg">📊</span>
+            <div><div class="font-medium">Monitorear el sistema</div><div class="text-[11px] text-slate-500">Ver estado de agentes y métricas en vivo</div></div>
+          </button>
+          <button @click="dismissOnboarding" class="card p-3 text-left text-sm hover:border-white/10 flex items-center gap-3 text-slate-500">
+            <span class="text-lg">✖️</span>
+            <div><div class="font-medium">Cerrar</div><div class="text-[11px] text-slate-600">Ir al dashboard directamente</div></div>
+          </button>
+        </div>
+
+        <label class="flex items-center gap-2 text-xs text-slate-500">
+          <input type="checkbox" x-model="onboardingDontShow" class="rounded bg-[#1a1a2a] border-slate-700">
+          No mostrar de nuevo
+        </label>
+      </div>
+    </div>
+  </template>
+
+  <!-- ── MAIN CONTENT ── -->
+  <div class="pt-12 px-3 max-w-5xl mx-auto">
+    
+    <!-- ── HEADER SECTION ── -->
+    <div class="py-4 flex items-end justify-between">
+      <div>
+        <h1 class="text-xl font-bold">
+          <span class="gradient-text">Dashboard</span>
+          <span class="text-slate-500 text-sm font-normal ml-2" x-text="currentTime"></span>
+        </h1>
+        <p class="text-xs text-slate-500 mt-0.5">Centro de control del sistema multi-agente</p>
+      </div>
+      <button @click="showOnboarding = true" class="btn-ghost text-xs flex items-center gap-1.5">
+        <span>Ayuda</span>
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </button>
+    </div>
+
+    <!-- ── AGENT PIPELINE VISUALIZATION ── -->
+    <div class="card p-4 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pipeline de Agentes</h2>
+        <span class="badge bg-green-500/10 text-green-300" x-text="pipelineStatus"></span>
+      </div>
+      <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
+        <template x-for="(agent, name) in agents" :key="name">
+          <div class="agent-node card p-2.5 flex-shrink-0 min-w-[100px]" :class="agent.running ? 'card-active' : ''">
+            <div class="flex items-center gap-1.5 mb-1">
+              <span class="w-2 h-2 rounded-full" :class="agent.running ? 'bg-green-400' : 'bg-slate-600'"></span>
+              <span class="text-[10px] font-semibold uppercase" x-text="name"></span>
+            </div>
+            <div class="text-[18px] mb-0.5" x-text="agent.icon"></div>
+            <div class="text-[10px] text-slate-500" x-text="`${agent.messages} msg`"></div>
+            <div class="metric-bar mt-1">
+              <div class="metric-bar-fill bg-purple-500" :style="`width: ${agent.load}%`"></div>
+            </div>
+          </div>
+        </template>
+        <!-- Task flow arrows -->
+        <div class="text-slate-600 text-xs flex-shrink-0 mx-0.5">→</div>
+        <div class="agent-node card p-2.5 flex-shrink-0 min-w-[80px] border-dashed border-purple-500/30">
+          <div class="text-[18px] text-center">✅</div>
+          <div class="text-[10px] text-center text-slate-500">Resultado</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── METRICS ROW ── -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+      <div class="card p-3">
+        <div class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Tareas Hoy</div>
+        <div class="text-xl font-bold" x-text="tasksToday"></div>
+        <div class="text-[10px] text-green-400" x-text="`${tasksCompleted} completadas`"></div>
+      </div>
+      <div class="card p-3">
+        <div class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Agentes</div>
+        <div class="text-xl font-bold" x-text="`${agentsOnline}/${Object.keys(agents).length}`"></div>
+        <div class="text-[10px] text-slate-500" x-text="`${Object.keys(agents).length} registrados`"></div>
+      </div>
+      <div class="card p-3">
+        <div class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Latencia P95</div>
+        <div class="text-xl font-bold" x-text="latencyP95"></div>
+        <div class="text-[10px] text-slate-500" x-text="`${toolsExecuted} ejecuciones`"></div>
+      </div>
+      <div class="card p-3">
+        <div class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Contenedores</div>
+        <div class="text-xl font-bold" x-text="containersActive"></div>
+        <div class="text-[10px] text-slate-500">sandbox + browser</div>
+      </div>
+    </div>
+
+    <!-- ── MAIN GRID: Chat + Activity ── -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+      
+      <!-- ── CHAT PANEL (2/3) ── -->
+      <div class="lg:col-span-2">
+        <div class="card overflow-hidden flex flex-col h-[480px]">
+          <!-- Messages area -->
+          <div class="flex-1 overflow-y-auto p-3 space-y-2.5" id="chat-messages" x-ref="chatbox">
+            <!-- Welcome message if no messages -->
+            <template x-if="messages.length === 0">
+              <div class="flex items-center justify-center h-full">
+                <div class="text-center">
+                  <div class="text-3xl mb-2">👋</div>
+                  <p class="text-sm text-slate-500">Escribe un mensaje para empezar</p>
+                  <p class="text-xs text-slate-600 mt-1">Prueba: "ejecuta un comando" o "extrae datos de una web"</p>
+                </div>
+              </div>
+            </template>
+            <template x-for="(msg, i) in messages" :key="i">
+              <div class="flex slide-up" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+                <div :class="msg.role === 'user' ? 'msg-user' : msg.role === 'system' ? 'msg-system' : 'msg-aria'">
+                  <div class="text-sm leading-relaxed whitespace-pre-wrap" x-html="renderMarkdown(msg.text)"></div>
+                  <div x-show="msg.duration" class="text-[10px] text-slate-600 mt-1" x-text="`${msg.duration}ms`"></div>
+                </div>
+              </div>
+            </template>
+            <!-- Thinking indicator -->
+            <div x-show="thinking" class="flex justify-start slide-up">
+              <div class="msg-aria">
+                <div class="flex gap-1.5 py-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-purple-400 dot-pulse"></span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-purple-400 dot-pulse"></span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-purple-400 dot-pulse"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Quick prompts -->
+          <div x-show="messages.length <= 1" class="px-3 pb-2 flex gap-1.5 overflow-x-auto">
+            <button @click="quickPrompt('Navega a wikipedia y dime qué hay en la página principal')" class="btn-ghost text-[11px] whitespace-nowrap flex-shrink-0">🌐 Navegar web</button>
+            <button @click="quickPrompt('Ejecuta un comando para mostrar la fecha y hora del sistema')" class="btn-ghost text-[11px] whitespace-nowrap flex-shrink-0">💻 Ejecutar comando</button>
+            <button @click="quickPrompt('Muéstrame el estado actual del sistema y los agentes')" class="btn-ghost text-[11px] whitespace-nowrap flex-shrink-0">📊 Estado sistema</button>
+            <button @click="quickPrompt('Crea una tarea de investigación sobre inteligencia artificial')" class="btn-ghost text-[11px] whitespace-nowrap flex-shrink-0">🔍 Investigar</button>
+          </div>
+          <!-- Input area -->
+          <div class="border-t border-[#1a1a2a] p-2.5 flex gap-2 items-end">
+            <div class="flex-1 relative">
+              <input type="text" x-model="chatInput" @keydown.enter="sendMessage" 
+                     placeholder="¿Qué quieres que haga ARIA?" 
+                     class="w-full bg-[#12121e] rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-purple-500/20 placeholder-slate-600 transition-all">
+            </div>
+            <button @click="sendMessage" :disabled="!chatInput.trim() || thinking" 
+                    class="btn-primary px-3.5 py-2.5 text-sm disabled:opacity-30 flex items-center gap-1.5">
+              <span class="hide-mobile">Enviar</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ACTIVITY PANEL (1/3) ── -->
+      <div class="space-y-3">
+        <!-- Active Tasks -->
+        <div class="card p-3">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tareas Activas</h2>
+            <span class="badge bg-purple-500/10 text-purple-300 text-[10px]" x-text="tasksActive"></span>
+          </div>
+          <div class="space-y-1.5 max-h-[180px] overflow-y-auto">
+            <template x-if="activeTasks.length === 0">
+              <div class="text-xs text-slate-600 text-center py-4">No hay tareas activas</div>
+            </template>
+            <template x-for="task in activeTasks" :key="task.id">
+              <div class="card p-2 text-xs flex items-center justify-between">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" 
+                        :class="task.status === 'running' ? 'bg-green-400 animate-pulse' : 
+                                task.status === 'pending' ? 'bg-yellow-400' : 
+                                task.status === 'failed' ? 'bg-red-400' : 'bg-slate-500'"></span>
+                  <span class="truncate text-slate-300" x-text="task.title || task.task_type"></span>
+                </div>
+                <span class="text-[10px] text-slate-500 flex-shrink-0 ml-2" x-text="task.status"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Live Logs -->
+        <div class="card p-3">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Logs en Vivo</h2>
+            <span class="badge bg-cyan-500/10 text-cyan-300 text-[10px]" x-show="logs.length > 0" x-text="`${logs.length}`"></span>
+          </div>
+          <div class="bg-[#08080d] rounded-lg p-2 h-[180px] overflow-y-auto">
+            <template x-if="logs.length === 0">
+              <div class="text-xs text-slate-600 text-center py-6">Esperando actividad...</div>
+            </template>
+            <template x-for="(log, i) in logs" :key="i">
+              <div class="log-line" :class="log.level === 'error' ? 'text-red-400' : log.level === 'warning' ? 'text-yellow-400' : 'text-slate-400'">
+                <span class="text-slate-600" x-text="log.timestamp"></span>
+                <span class="mx-1" x-text="`[${log.level?.toUpperCase() || 'INFO'}]`"></span>
+                <span x-text="log.message"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Tools quick access -->
+        <div class="card p-3">
+          <h2 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Herramientas</h2>
+          <div class="grid grid-cols-2 gap-1.5">
+            <template x-for="tool in tools" :key="tool.name">
+              <button @click="useTool(tool.name)" 
+                      class="card p-2 text-[11px] text-left hover:border-purple-500/20 transition-all"
+                      :title="tool.description">
+                <div class="font-medium truncate" x-text="tool.name"></div>
+                <div class="text-[9px] text-slate-600 truncate" x-text="tool.category"></div>
+              </button>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── FOOTER ── -->
+    <div class="text-center text-[11px] text-slate-700 py-4 border-t border-[#1a1a2a]">
+      ARIA Agent System v0.2 — <span class="text-purple-500/50">Autonomous Multi-Agent Platform</span>
+    </div>
+  </div>
+
+  <!-- ── ALPINE.JS APP ── -->
+  <script>
+    function ariaDashboard() {
+      return {
+        // ── State ──
+        sidebar: false,
+        connected: false,
+        showOnboarding: false,
+        onboardingDontShow: false,
+        currentTime: '',
+        messages: [],
+        chatInput: '',
+        thinking: false,
+        ws: null,
+        logs: [],
+        tools: [],
+        activeTasks: [],
+        
+        // Agent state
+        agents: {
+          planner: { running: false, messages: 0, errors: 0, load: 0, icon: '🤖' },
+          execution: { running: false, messages: 0, errors: 0, load: 0, icon: '⚡' },
+          verification: { running: false, messages: 0, errors: 0, load: 0, icon: '✅' },
+          orchestrator: { running: false, messages: 0, errors: 0, load: 0, icon: '🔄' },
+        },
+        
+        // Derived state
+        get agentsOnline() {
+          return Object.values(this.agents).filter(a => a.running).length;
+        },
+        get tasksToday() { return '—'; },
+        get tasksCompleted() { return '—'; },
+        get latencyP95() { return '—'; },
+        get toolsExecuted() { return '—'; },
+        get containersActive() { return '—'; },
+        get tasksActive() { return this.activeTasks.length; },
+        get pipelineStatus() { 
+          const running = Object.values(this.agents).filter(a => a.running).length;
+          return running > 0 ? `${running}/4 Activo` : 'Inactivo';
+        },
+        get uptime() {
+          if (!this._startTime) return '—';
+          const s = Math.floor((Date.now() - this._startTime) / 1000);
+          const m = Math.floor(s / 60);
+          const h = Math.floor(m / 60);
+          return h > 0 ? `${h}h ${m % 60}m` : `${m}m ${s % 60}s`;
+        },
+        _startTime: Date.now(),
+
+        // ── Init ──
+        async init() {
+          this._startTime = Date.now();
+          this.updateTime();
+          setInterval(() => this.updateTime(), 1000);
+
+          // Check if first visit
+          if (!localStorage.getItem('aria_onboarding_done')) {
+            setTimeout(() => { this.showOnboarding = true; }, 300);
+          }
+
+          // Load initial data
+          await Promise.all([
+            this.loadStatus(),
+            this.loadTools(),
+            this.loadAgents(),
+            this.connectWebSocket(),
+          ]);
+
+          // Poll for updates
+          setInterval(() => this.loadAgents(), 5000);
+          setInterval(() => this.loadTasks(), 3000);
+        },
+
+        updateTime() {
+          this.currentTime = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+        },
+
+        // ── API Calls ──
+        async loadStatus() {
+          try {
+            const r = await fetch('/api/v1/system/status');
+            if (r.ok) {
+              this.connected = true;
+              const d = await r.json();
+              if (d.lifecycle) {
+                const stats = d.lifecycle.agent_stats || {};
+                Object.keys(stats).forEach(key => {
+                  if (this.agents[key]) {
+                    this.agents[key].running = stats[key].running;
+                    this.agents[key].messages = stats[key].messages_processed || 0;
+                    this.agents[key].errors = stats[key].errors || 0;
+                    this.agents[key].load = Math.min(100, stats[key].messages_processed * 5 || 10);
+                  }
+                });
+              }
+              if (d.sandbox) {
+                this.containersActive = d.sandbox.active_containers || '—';
+              }
+            }
+          } catch(e) { this.connected = false; }
+        },
+
+        async loadTools() {
+          try {
+            const r = await fetch('/api/v1/tools');
+            if (r.ok) {
+              const d = await r.json();
+              this.tools = d.tools || [];
+              this.toolsCount = d.count || 0;
+            }
+          } catch(e) {}
+        },
+
+        async loadAgents() {
+          try {
+            const r = await fetch('/api/v1/agents');
+            if (r.ok) {
+              const d = await r.json();
+              (d.agents || []).forEach(a => {
+                if (this.agents[a.type]) {
+                  this.agents[a.type].running = a.running;
+                  this.agents[a.type].messages = a.messages_processed || 0;
+                  this.agents[a.type].errors = a.errors || 0;
+                  this.agents[a.type].load = Math.min(100, (a.messages_processed || 0) * 5 + (a.running ? 15 : 0));
+                }
+              });
+            }
+          } catch(e) {}
+        },
+
+        async loadTasks() {
+          try {
+            const r = await fetch('/api/v1/tasks?page_size=10');
+            if (r.ok) {
+              const d = await r.json();
+              this.activeTasks = (d.tasks || []).filter(t => 
+                ['pending', 'planning', 'running'].includes(t.status)
+              );
+              this.tasksActive = this.activeTasks.length;
+            }
+          } catch(e) {}
+        },
+
+        // ── WebSocket ──
+        connectWebSocket() {
+          const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const url = `${proto}//${window.location.host}/ws/events?session_id=web_${Date.now()}`;
+          
+          try {
+            this.ws = new WebSocket(url);
+            this.ws.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                this.handleWsMessage(data);
+              } catch(e) {}
+            };
+            this.ws.onclose = () => {
+              setTimeout(() => this.connectWebSocket(), 3000);
+            };
+          } catch(e) {}
+        },
+
+        handleWsMessage(data) {
+          if (data.type === 'task_event') {
+            this.logs.unshift({
+              timestamp: new Date().toLocaleTimeString(),
+              level: data.status === 'failed' ? 'error' : 'info',
+              message: `[${data.status}] ${data.message || data.action || ''}`
+            });
+            if (this.logs.length > 50) this.logs.length = 50;
+          } else if (data.type === 'system_state') {
+            // Update from initial state
+          }
+        },
+
+        // ── Chat ──
+        async sendMessage() {
+          if (!this.chatInput.trim() || this.thinking) return;
+          const text = this.chatInput;
+          this.messages.push({ role: 'user', text });
+          this.chatInput = '';
+          this.thinking = true;
+          this.$nextTick(() => this.scrollChat());
+
+          try {
+            const r = await fetch('/api/v1/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: text, session_id: 'web_' + Date.now() })
+            });
+            if (r.ok) {
+              const d = await r.json();
+              this.messages.push({ 
+                role: 'aria', 
+                text: d.reply || '✅ Tarea ejecutada. Revisa los logs para más detalles.',
+                duration: d.execution_time_ms || 0
+              });
+              // Refresh tasks after chat
+              this.loadTasks();
+              this.loadAgents();
+            } else {
+              this.messages.push({ role: 'aria', text: '⚠️ Error al procesar la solicitud.' });
+            }
+          } catch(e) {
+            this.messages.push({ role: 'aria', text: '⚠️ Error de conexión con el servidor.' });
+          } finally {
+            this.thinking = false;
+            this.$nextTick(() => this.scrollChat());
+          }
+        },
+
+        quickPrompt(text) {
+          this.chatInput = text;
+          this.$nextTick(() => this.sendMessage());
+        },
+
+        useTool(toolName) {
+          this.chatInput = `Ejecuta la herramienta ${toolName}`;
+          this.$nextTick(() => this.sendMessage());
+        },
+
+        scrollChat() {
+          const el = this.$refs.chatbox;
+          if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        },
+
+        renderMarkdown(text) {
+          if (!text) return '';
+          let h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, 
+            '<pre class="bg-[#08080d] p-2.5 rounded-xl overflow-x-auto text-xs my-1.5 mono" style="border:1px solid #1a1a2a"><code style="color:#a78bfa">$2</code></pre>');
+          h = h.replace(/`([^`\n]+)`/g, '<code class="bg-[#08080d] px-1.5 py-0.5 rounded text-xs text-cyan-300 mono">$1</code>');
+          h = h.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#e2e8f0">$1</strong>');
+          h = h.replace(/\n/g, '<br>');
+          return h;
+        },
+
+        // ── Onboarding ──
+        dismissOnboarding() {
+          this.showOnboarding = false;
+          if (this.onboardingDontShow) {
+            localStorage.setItem('aria_onboarding_done', 'true');
+          }
+          // Add welcome message
+          if (this.messages.length === 0) {
+            this.messages.push({
+              role: 'aria',
+              text: '👋 ¡Hola! Soy **ARIA**, tu sistema autónomo multi-agente. Estoy listo para ayudarte.\n\nPuedes pedirme cosas como:\n• 🌐 *"Navega a Wikipedia y dime qué hay en la página principal"*\n• 💻 *"Ejecuta un comando para mostrar la fecha del sistema"*\n• 🔍 *"Investiga sobre inteligencia artificial"*\n• 📊 *"Muéstrame el estado del sistema"*'
+            });
+          }
+        },
+
+        startWith(option) {
+          this.dismissOnboarding();
+          const prompts = {
+            explore: 'Cuéntame sobre tus capacidades detalladamente',
+            automate: 'Quiero automatizar una tarea. ¿Qué puedo hacer?',
+            monitor: 'Muéstrame el estado completo del sistema y los agentes'
+          };
+          this.chatInput = prompts[option] || prompts.explore;
+          this.$nextTick(() => this.sendMessage());
+        }
+      };
+    }
+  </script>
+</body>
+</html>
