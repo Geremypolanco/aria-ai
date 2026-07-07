@@ -3,206 +3,358 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ARIA Dashboard</title>
+  <title>ARIA — Dashboard Inteligente</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     * { -webkit-tap-highlight-color: transparent; }
-    body { font-family: 'Inter', sans-serif; background: #0a0a0f; color: #f1f5f9; }
-    .gradient-text { background: linear-gradient(135deg, #8b5cf6, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .card { background: #111118; border: 1px solid #1e1e2a; border-radius: 16px; transition: all 0.2s; }
-    .card:active { transform: scale(0.98); }
-    .btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border-radius: 12px; padding: 12px 20px; font-weight: 600; }
+    body { font-family: 'Inter', sans-serif; background: #08080d; color: #e2e8f0; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .gradient-text { background: linear-gradient(135deg, #8b5cf6, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .card { background: #0d0d15; border: 1px solid #1a1a2a; border-radius: 14px; transition: all 0.2s; }
+    .card:hover { border-color: rgba(139,92,246,0.2); }
+    .card-soft { background: rgba(13,13,21,0.7); backdrop-filter: blur(8px); }
+    .btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border-radius: 10px; padding: 10px 18px; font-weight: 600; transition: all 0.15s; }
     .btn-primary:active { transform: scale(0.97); }
-    .glass { background: rgba(17,17,24,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid #1e1e2a; }
+    .btn-ghost { background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 500; transition: all 0.15s; }
+    .btn-ghost:hover { background: rgba(139,92,246,0.15); }
+    .glass { background: rgba(8,8,13,0.92); backdrop-filter: blur(24px); border-bottom: 1px solid #1a1a2a; }
     .badge { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-    .msg-user { background: #1e1e2a; border-radius: 16px 16px 4px 16px; padding: 12px 16px; max-width: 85%; }
-    .msg-aria { background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.2); border-radius: 16px 16px 16px 4px; padding: 12px 16px; max-width: 85%; }
+    .msg-user { background: linear-gradient(135deg, #1e1e30, #2a2a40); border-radius: 14px 14px 4px 14px; padding: 10px 14px; max-width: 82%; }
+    .msg-aria { background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.15); border-radius: 14px 14px 14px 4px; padding: 10px 14px; max-width: 82%; }
     ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 2px; }
     @keyframes pulse-dot { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
     .dot-pulse { animation: pulse-dot 1.4s infinite; }
     .dot-pulse:nth-child(2) { animation-delay: 0.2s; }
     .dot-pulse:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .slide-up { animation: slide-up 0.4s ease-out; }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .fade-in { animation: fade-in 0.3s ease-out; }
+    .log-line { font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 6px; border-radius: 2px; }
+    .log-line:hover { background: rgba(255,255,255,0.03); }
   </style>
 </head>
-<body x-data="dashboardApp()" x-init="init()" class="pb-24">
-  
-  <!-- TOP BAR -->
-  <div class="glass fixed top-0 left-0 right-0 z-50 px-4 h-14 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <button @click="sidebar = !sidebar" class="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/5">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+<body x-data="ariaDashboard()" x-init="init()" class="pb-24 antialiased">
+
+  <!-- ── TOP BAR ── -->
+  <div class="glass fixed top-0 left-0 right-0 z-50 px-3 h-12 flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <button @click="sidebar = !sidebar" class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/[0.04]">
+        <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
       <div class="flex items-center gap-2">
-        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-xs font-bold">A</div>
+        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center text-[10px] font-bold">A</div>
         <span class="font-semibold text-sm">ARIA</span>
+        <span class="badge bg-purple-500/10 text-purple-300 text-[10px]" x-text="version"></span>
       </div>
     </div>
-    <div class="flex items-center gap-2">
-      <span class="w-2 h-2 rounded-full" :class="online ? 'bg-green-400' : 'bg-red-400'"></span>
-      <span class="text-xs text-slate-500" x-text="online ? 'Online' : 'Offline'"></span>
+    <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-1.5 text-[10px] text-slate-500">
+        <template x-for="(a, name) in agents" :key="name">
+          <span class="flex items-center gap-1" :title="name">
+            <span class="w-1.5 h-1.5 rounded-full" :class="a.running ? 'bg-green-400' : 'bg-red-400/50'"></span>
+            <span x-text="name.charAt(0).toUpperCase()"></span>
+          </span>
+        </template>
+      </div>
+      <span class="w-1.5 h-1.5 rounded-full" :class="connected ? 'bg-green-400' : 'bg-red-400'"></span>
     </div>
   </div>
 
-  <!-- SIDEBAR OVERLAY -->
+  <!-- ── SIDEBAR ── -->
   <template x-teleport="body">
-    <div x-show="sidebar" @click="sidebar = false" class="fixed inset-0 bg-black/50 z-40"></div>
+    <div x-show="sidebar" @click="sidebar = false" class="fixed inset-0 bg-black/60 z-40 fade-in"></div>
   </template>
-
-  <!-- SIDEBAR -->
-  <div class="fixed top-14 left-0 bottom-0 w-64 bg-[#0d0d14] border-r border-[#1e1e2a] z-50 transform transition-transform duration-300" :class="sidebar ? 'translate-x-0' : '-translate-x-full'">
-    <div class="p-4 space-y-1">
-      <a href="/dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-500/10 text-purple-300 text-sm font-medium">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+  <div class="fixed top-12 left-0 bottom-0 w-64 bg-[#0a0a10] border-r border-[#1a1a2a] z-50 transform transition-transform duration-300" :class="sidebar ? 'translate-x-0' : '-translate-x-full'">
+    <div class="p-3 space-y-0.5">
+      <div class="px-3 py-2 text-[10px] uppercase tracking-wider text-slate-600 font-semibold">Navegación</div>
+      <a href="/dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-500/8 text-purple-300 text-sm font-medium">
+        <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
         Dashboard
       </a>
-      <a href="/" class="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-slate-400 text-sm transition-colors">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
-        Landing Page
+      <a href="/" class="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.03] text-slate-400 text-sm">
+        <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+        Landing
       </a>
+      <div class="px-3 py-2 mt-4 text-[10px] uppercase tracking-wider text-slate-600 font-semibold">Sistema</div>
+      <div class="px-3 py-1.5 text-xs text-slate-500 space-y-1">
+        <div class="flex justify-between"><span>AI Providers</span><span class="text-slate-300" x-text="aiProviders"></span></div>
+        <div class="flex justify-between"><span>Herramientas</span><span class="text-slate-300" x-text="toolsCount"></span></div>
+        <div class="flex justify-between"><span>Agentes</span><span class="text-slate-300" x-text="agentsOnline"></span></div>
+      </div>
     </div>
   </div>
 
-  <!-- MAIN CONTENT -->
-  <div class="pt-14 px-4 max-w-lg mx-auto">
-    
-    <!-- HEADER -->
-    <div class="py-6">
-      <h1 class="text-2xl font-bold">Dashboard</h1>
-      <p class="text-slate-500 text-sm mt-1">Centro de control de ARIA AI</p>
-    </div>
-
-    <!-- STATUS CARDS -->
-    <div class="grid grid-cols-2 gap-3 mb-6">
-      <div class="card p-4">
-        <div class="text-xs text-slate-500 mb-1">Estado</div>
-        <div class="flex items-center gap-2">
-          <div class="w-2.5 h-2.5 rounded-full" :class="online ? 'bg-green-400' : 'bg-red-400'"></div>
-          <span class="text-sm font-semibold" x-text="online ? 'Online' : 'Offline'"></span>
-        </div>
-      </div>
-      <div class="card p-4">
-        <div class="text-xs text-slate-500 mb-1">Versión</div>
-        <div class="text-sm font-semibold">3.3.0</div>
-      </div>
-      <div class="card p-4">
-        <div class="text-xs text-slate-500 mb-1">AI Providers</div>
-        <div class="text-sm font-semibold" x-text="aiProviders"></div>
-      </div>
-      <div class="card p-4">
-        <div class="text-xs text-slate-500 mb-1">Herramientas</div>
-        <div class="text-sm font-semibold" x-text="toolsCount"></div>
-      </div>
-    </div>
-
-    <!-- QUICK ACTIONS -->
-    <div class="mb-6">
-      <h2 class="text-sm font-semibold text-slate-400 mb-3">ACCIONES RÁPIDAS</h2>
-      <div class="grid grid-cols-2 gap-2">
-        <button @click="quickAction('chat')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
-          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-          Chat
-        </button>
-        <button @click="quickAction('code')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
-          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
-          Código
-        </button>
-        <button @click="quickAction('research')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
-          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Investigar
-        </button>
-        <button @click="quickAction('run')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
-          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          Ejecutar
-        </button>
-      </div>
-    </div>
-
-    <!-- CHAT SECTION -->
-    <div class="mb-6">
-      <h2 class="text-sm font-semibold text-slate-400 mb-3">CHAT CON ARIA</h2>
-      <div class="card overflow-hidden">
-        <!-- Messages -->
-        <div class="h-80 overflow-y-auto p-4 space-y-3" id="chat-messages" x-ref="chatbox">
-          <template x-for="(msg, i) in messages" :key="i">
-            <div class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
-              <div :class="msg.role === 'user' ? 'msg-user bg-[#1e1e2a]' : 'msg-aria'">
-                <div class="text-sm leading-relaxed whitespace-pre-wrap" x-html="renderMarkdown(msg.text)"></div>
-              </div>
-            </div>
-          </template>
-          <div x-show="thinking" class="flex justify-start">
-            <div class="msg-aria">
-              <div class="flex gap-1.5 py-1">
-                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
-                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
-                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
-              </div>
-            </div>
+  <!-- ── ONBOARDING ── -->
+  <template x-teleport="body">
+    <div x-show="showOnboarding" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 fade-in">
+      <div class="card max-w-md w-full p-5 slide-up" @click.outside="dismissOnboarding">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center text-lg font-bold">A</div>
+          <div>
+            <h2 class="text-lg font-bold gradient-text">Bienvenido a ARIA</h2>
+            <p class="text-xs text-slate-500">Sistema Autónomo de IA</p>
           </div>
         </div>
-        <!-- Input -->
-        <div class="border-t border-[#1e1e2a] p-3 flex gap-2">
-          <input type="text" x-model="chatInput" @keydown.enter="sendMessage" placeholder="Mensaje para ARIA..." class="flex-1 bg-[#1a1a24] rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-purple-500/30 placeholder-slate-600">
-          <button @click="sendMessage" :disabled="!chatInput.trim() || thinking" class="btn-primary px-4 py-2.5 text-sm disabled:opacity-30" :class="thinking ? 'animate-pulse' : ''">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+        <p class="text-sm text-slate-400 mb-4">
+          Soy un asistente autónomo con <strong class="text-white">inteligencia multi-agente</strong>.
+          Puedo investigar, escribir código, ejecutar comandos y automatizar tareas por ti.
+        </p>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <div class="card p-2.5 border-l-2 border-l-purple-500"><div class="text-xs font-semibold">🤖 Planificar</div><div class="text-[10px] text-slate-500">Descompongo tareas en pasos</div></div>
+          <div class="card p-2.5 border-l-2 border-l-cyan-500"><div class="text-xs font-semibold">⚡ Ejecutar</div><div class="text-[10px] text-slate-500">Uso herramientas y sandbox</div></div>
+          <div class="card p-2.5 border-l-2 border-l-green-500"><div class="text-xs font-semibold">✅ Verificar</div><div class="text-[10px] text-slate-500">Valido resultados</div></div>
+          <div class="card p-2.5 border-l-2 border-l-orange-500"><div class="text-xs font-semibold">🔄 Orquestar</div><div class="text-[10px] text-slate-500">Reintentos y escalación</div></div>
+        </div>
+        <p class="text-xs text-slate-600 mb-3">¿Qué quieres hacer primero?</p>
+        <div class="space-y-1.5 mb-4">
+          <button @click="startWith('explore')" class="card w-full p-2.5 text-left text-sm hover:border-purple-500/30 flex items-center gap-2.5">
+            <span>🔍</span><div><div class="font-medium text-xs">Explorar capacidades</div><div class="text-[10px] text-slate-500">Ver qué puede hacer ARIA</div></div>
           </button>
+          <button @click="startWith('automate')" class="card w-full p-2.5 text-left text-sm hover:border-purple-500/30 flex items-center gap-2.5">
+            <span>⚙️</span><div><div class="font-medium text-xs">Automatizar una tarea</div><div class="text-[10px] text-slate-500">Resolver un problema con agentes</div></div>
+          </button>
+          <button @click="startWith('monitor')" class="card w-full p-2.5 text-left text-sm hover:border-purple-500/30 flex items-center gap-2.5">
+            <span>📊</span><div><div class="font-medium text-xs">Estado del sistema</div><div class="text-[10px] text-slate-500">Ver métricas y agentes</div></div>
+          </button>
+          <button @click="dismissOnboarding" class="card w-full p-2.5 text-left text-sm hover:border-white/10 flex items-center gap-2.5 text-slate-500">
+            <span>✖️</span><div><div class="font-medium text-xs">Cerrar</div></div>
+          </button>
+        </div>
+        <label class="flex items-center gap-2 text-xs text-slate-500">
+          <input type="checkbox" x-model="onboardingDontShow" class="rounded bg-[#1a1a2a] border-slate-700">
+          No mostrar de nuevo
+        </label>
+      </div>
+    </div>
+  </template>
+
+  <!-- ── MAIN ── -->
+  <div class="pt-12 px-3 max-w-4xl mx-auto">
+    
+    <!-- Header -->
+    <div class="py-4 flex items-end justify-between">
+      <div>
+        <h1 class="text-xl font-bold"><span class="gradient-text">Dashboard</span></h1>
+        <p class="text-xs text-slate-500 mt-0.5">Centro de control de ARIA</p>
+      </div>
+      <button @click="showOnboarding = true" class="btn-ghost text-[11px] flex items-center gap-1">💡 Ayuda</button>
+    </div>
+
+    <!-- Agent Pipeline -->
+    <div class="card p-3 mb-3">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Pipeline de Agentes</span>
+        <span class="badge bg-green-500/10 text-green-300 text-[10px]" x-text="pipelineStatus"></span>
+      </div>
+      <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+        <template x-for="(agent, name) in agents" :key="name">
+          <div class="card p-2 flex-shrink-0 text-center" style="min-width:85px" :class="agent.running ? 'border-purple-500/20' : 'opacity-60'">
+            <div class="text-lg" x-text="agent.icon"></div>
+            <div class="text-[10px] font-semibold uppercase mt-0.5" x-text="name"></div>
+            <div class="text-[9px] text-slate-600" x-text="`${agent.messages} msg`"></div>
+            <div class="h-1 rounded-full bg-[#1a1a2a] mt-1 overflow-hidden">
+              <div class="h-full rounded-full bg-purple-500 transition-all" :style="`width:${agent.load}%`"></div>
+            </div>
+          </div>
+        </template>
+        <div class="text-slate-600 text-xs">→</div>
+        <div class="card p-2 flex-shrink-0 text-center border-dashed border-purple-500/30 opacity-70" style="min-width:70px">
+          <div class="text-lg">✅</div>
+          <div class="text-[9px] text-slate-500">Resultado</div>
         </div>
       </div>
     </div>
 
-    <!-- SYSTEM STATUS -->
-    <div class="card p-4 mb-6">
-      <h2 class="text-sm font-semibold text-slate-400 mb-3">SISTEMA</h2>
-      <div class="space-y-2 text-sm">
-        <div class="flex justify-between"><span class="text-slate-500">Servidor</span><span class="text-green-400" x-text="online ? 'Activo' : 'Inactivo'"></span></div>
-        <div class="flex justify-between"><span class="text-slate-500">API</span><span class="font-medium">/api/v1/*</span></div>
-        <div class="flex justify-between"><span class="text-slate-500">AI Motor</span><span class="font-medium">HuggingFace → Groq</span></div>
-        <div class="flex justify-between"><span class="text-slate-500">WebSocket</span><span class="font-medium">/ws/chat</span></div>
+    <!-- Métricas rápidas -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+      <div class="card p-2.5">
+        <div class="text-[9px] text-slate-500 uppercase tracking-wider">Estado</div>
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <span class="w-2 h-2 rounded-full" :class="connected ? 'bg-green-400' : 'bg-red-400'"></span>
+          <span class="text-sm font-semibold" x-text="connected ? 'Online' : 'Offline'"></span>
+        </div>
+      </div>
+      <div class="card p-2.5">
+        <div class="text-[9px] text-slate-500 uppercase tracking-wider">AI</div>
+        <div class="text-sm font-semibold mt-0.5" x-text="aiProviders"></div>
+      </div>
+      <div class="card p-2.5">
+        <div class="text-[9px] text-slate-500 uppercase tracking-wider">Tools</div>
+        <div class="text-sm font-semibold mt-0.5" x-text="toolsCount"></div>
+      </div>
+      <div class="card p-2.5">
+        <div class="text-[9px] text-slate-500 uppercase tracking-wider">Agentes</div>
+        <div class="text-sm font-semibold mt-0.5" x-text="`${agentsOnline}/4`"></div>
       </div>
     </div>
 
-    <!-- FOOTER -->
-    <div class="text-center text-xs text-slate-600 py-6">
-      ARIA AI v3.3 — Autonomous Intelligence Platform
+    <!-- Grid principal: Chat + Actividad -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+
+      <!-- Chat (2/3) -->
+      <div class="lg:col-span-2">
+        <div class="card overflow-hidden flex flex-col h-[420px]">
+          <div class="flex-1 overflow-y-auto p-3 space-y-2" x-ref="chatbox">
+            <template x-if="messages.length === 0">
+              <div class="flex items-center justify-center h-full text-center">
+                <div><div class="text-3xl mb-2">👋</div>
+                <p class="text-sm text-slate-500">Escribe algo para empezar</p>
+                <p class="text-xs text-slate-600 mt-1">"navega a wikipedia" • "ejecuta un comando"</p></div>
+              </div>
+            </template>
+            <template x-for="(msg, i) in messages" :key="i">
+              <div class="flex slide-up" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+                <div :class="msg.role === 'user' ? 'msg-user' : 'msg-aria'">
+                  <div class="text-sm leading-relaxed whitespace-pre-wrap" x-html="renderMarkdown(msg.text)"></div>
+                  <div x-show="msg.duration" class="text-[10px] text-slate-600 mt-1" x-text="`${msg.duration}ms`"></div>
+                </div>
+              </div>
+            </template>
+            <div x-show="thinking" class="flex justify-start slide-up">
+              <div class="msg-aria"><div class="flex gap-1.5 py-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-400 dot-pulse"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-400 dot-pulse"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-400 dot-pulse"></span>
+              </div></div>
+            </div>
+          </div>
+          <!-- Quick prompts (solo al inicio) -->
+          <div x-show="messages.length <= 1" class="px-3 pb-1.5 flex gap-1 overflow-x-auto">
+            <button @click="quickPrompt('Cuéntame sobre tus capacidades')" class="btn-ghost text-[10px] whitespace-nowrap">🔍 Explorar</button>
+            <button @click="quickPrompt('Navega a wikipedia.org y dime qué hay en la página principal')" class="btn-ghost text-[10px] whitespace-nowrap">🌐 Navegar</button>
+            <button @click="quickPrompt('Ejecuta un comando para mostrar la fecha y hora del sistema')" class="btn-ghost text-[10px] whitespace-nowrap">💻 Comando</button>
+            <button @click="quickPrompt('Muéstrame el estado actual del sistema')" class="btn-ghost text-[10px] whitespace-nowrap">📊 Estado</button>
+          </div>
+          <!-- Input -->
+          <div class="border-t border-[#1a1a2a] p-2.5 flex gap-2">
+            <input type="text" x-model="chatInput" @keydown.enter="sendMessage" 
+                   placeholder="¿Qué quieres que haga ARIA?" 
+                   class="flex-1 bg-[#12121e] rounded-xl px-3.5 py-2 text-sm outline-none focus:ring-1 focus:ring-purple-500/20 placeholder-slate-600">
+            <button @click="sendMessage" :disabled="!chatInput.trim() || thinking" 
+                    class="btn-primary px-3 py-2 text-sm disabled:opacity-30 flex items-center gap-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel derecho (1/3) -->
+      <div class="space-y-2.5">
+        <!-- Logs en vivo -->
+        <div class="card p-2.5">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Actividad</span>
+            <span class="badge bg-cyan-500/10 text-cyan-300 text-[9px]" x-show="logs.length">${logs.length}</span>
+          </div>
+          <div class="bg-[#08080d] rounded-lg p-2 h-32 overflow-y-auto">
+            <template x-if="logs.length === 0">
+              <div class="text-xs text-slate-600 text-center py-4">Esperando actividad...</div>
+            </template>
+            <template x-for="(log, i) in logs" :key="i">
+              <div class="log-line" :class="log.level === 'error' ? 'text-red-400' : log.level === 'warning' ? 'text-yellow-400' : 'text-slate-400'">
+                <span class="text-[9px] text-slate-600" x-text="log.time"></span>
+                <span class="text-[9px]" x-text="log.msg"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+        <!-- Atajos de herramientas -->
+        <div class="card p-2.5">
+          <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Acciones rápidas</span>
+          <div class="grid grid-cols-2 gap-1.5 mt-1.5">
+            <button @click="quickPrompt('Navega a wikipedia.org y dime qué hay')" class="card p-2 text-[11px] text-left hover:border-purple-500/20">🌐 Navegar</button>
+            <button @click="quickPrompt('Ejecuta un comando: ls -la')" class="card p-2 text-[11px] text-left hover:border-purple-500/20">💻 Terminal</button>
+            <button @click="quickPrompt('Investiga sobre inteligencia artificial')" class="card p-2 text-[11px] text-left hover:border-purple-500/20">🔍 Investigar</button>
+            <button @click="quickPrompt('Muéstrame el estado del sistema')" class="card p-2 text-[11px] text-left hover:border-purple-500/20">📊 Sistema</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center text-[10px] text-slate-700 py-4 border-t border-[#1a1a2a] mt-4">
+      ARIA v3.3 — <span class="text-purple-500/50">Autonomous Intelligence Platform</span>
     </div>
   </div>
 
   <script>
-    function dashboardApp() {
+    function ariaDashboard() {
       return {
-        sidebar: false,
-        online: false,
-        aiProviders: '0',
-        toolsCount: '0',
-        messages: [{ role: 'aria', text: '👋 ¡Hola! Soy **ARIA**. ¿En qué puedo ayudarte hoy?' }],
-        chatInput: '',
-        thinking: false,
+        sidebar: false, connected: false, version: '3.3.0',
+        showOnboarding: false, onboardingDontShow: false,
+        aiProviders: '0', toolsCount: '0',
+        agents: {
+          planner: { running: false, messages: 0, load: 10, icon: '🤖' },
+          execution: { running: false, messages: 0, load: 10, icon: '⚡' },
+          verification: { running: false, messages: 0, load: 10, icon: '✅' },
+          orchestrator: { running: false, messages: 0, load: 10, icon: '🔄' },
+        },
+        messages: [], chatInput: '', thinking: false,
+        logs: [],
+        _startTime: Date.now(),
+
+        get agentsOnline() { return Object.values(this.agents).filter(a => a.running).length; },
+        get pipelineStatus() {
+          const n = this.agentsOnline;
+          return n === 4 ? '✅ Completo' : n > 0 ? `⚠️ ${n}/4` : '❌ Inactivo';
+        },
 
         async init() {
+          if (!localStorage.getItem('aria_onboarding_done')) {
+            setTimeout(() => this.showOnboarding = true, 400);
+          }
           await this.loadStatus();
+          this.connectWs();
+          setInterval(() => this.loadStatus(), 10000);
         },
 
         async loadStatus() {
           try {
             const r = await fetch('/api/v1/status');
             if (r.ok) {
-              this.online = true;
+              this.connected = true;
               const d = await r.json();
               this.aiProviders = d.ai ? Object.keys(d.ai).length.toString() : '0';
             }
-          } catch(e) { this.online = false; }
+          } catch(e) { this.connected = false; }
           try {
             const r = await fetch('/api/v1/tools');
+            if (r.ok) { const d = await r.json(); this.toolsCount = d.count?.toString() || '0'; }
+          } catch(e) {}
+          try {
+            const r = await fetch('/api/v1/agents');
             if (r.ok) {
               const d = await r.json();
-              this.toolsCount = d.count.toString();
+              (d.agents || []).forEach(a => {
+                if (this.agents[a.type]) {
+                  this.agents[a.type].running = a.running;
+                  this.agents[a.type].messages = a.messages_processed || 0;
+                  this.agents[a.type].load = Math.min(100, (a.messages_processed||0)*5 + (a.running?20:0));
+                }
+              });
             }
           } catch(e) {}
+        },
+
+        connectWs() {
+          try {
+            const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${proto}//${window.location.host}/ws/chat?session_id=dash_${Date.now()}`);
+            ws.onmessage = (e) => {
+              try {
+                const d = JSON.parse(e.data);
+                if (d.type === 'task_status' || d.type === 'status') {
+                  this.logs.unshift({ time: new Date().toLocaleTimeString(), level: 'info', msg: `[${d.status||''}] ${d.message||''}` });
+                  if (this.logs.length > 30) this.logs.length = 30;
+                }
+              } catch(_) {}
+            };
+            ws.onclose = () => setTimeout(() => this.connectWs(), 5000);
+          } catch(_) {}
         },
 
         async sendMessage() {
@@ -220,40 +372,48 @@
               body: JSON.stringify({ message: text, session_id: 'web_' + Date.now() })
             });
             const d = await r.json();
-            this.messages.push({ role: 'aria', text: d.reply || '⚠️ Sin respuesta' });
+            this.messages.push({ role: 'aria', text: d.reply || '✅ Hecho', duration: d.execution_time_ms || 0 });
           } catch(e) {
-            this.messages.push({ role: 'aria', text: '⚠️ Error de conexión. Verifica que el servidor esté corriendo.' });
+            this.messages.push({ role: 'aria', text: '⚠️ Error de conexión con el servidor.' });
           } finally {
             this.thinking = false;
             this.$nextTick(() => this.scrollChat());
           }
         },
 
-        async quickAction(type) {
-          const actions = {
-            chat: { msg: 'Cuéntame sobre tus capacidades' },
-            code: { msg: 'Escribe un ejemplo de código Python que demuestre tus capacidades' },
-            research: { msg: 'Investiga sobre las tendencias actuales en inteligencia artificial' },
-            run: { msg: 'Ejecuta una misión: analiza el estado actual del sistema' }
-          };
-          const a = actions[type] || actions.chat;
-          this.chatInput = a.msg;
-          this.$nextTick(() => this.sendMessage());
-        },
-
-        scrollChat() {
-          const el = this.$refs.chatbox;
-          if (el) el.scrollTop = el.scrollHeight;
-        },
+        quickPrompt(text) { this.chatInput = text; this.$nextTick(() => this.sendMessage()); },
+        scrollChat() { const el = this.$refs.chatbox; if(el) el.scrollTo({top: el.scrollHeight, behavior:'smooth'}); },
 
         renderMarkdown(text) {
           if (!text) return '';
-          let h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre class="bg-[#0a0a0f] p-3 rounded-xl overflow-x-auto text-xs my-2"><code>$2</code></pre>');
-          h = h.replace(/`([^`\n]+)`/g, '<code class="bg-[#0a0a0f] px-1.5 py-0.5 rounded text-xs text-purple-300">$1</code>');
-          h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+          let h = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre class="bg-[#08080d] p-2 rounded-xl text-xs my-1 mono" style="border:1px solid #1a1a2a;color:#a78bfa">$2</pre>');
+          h = h.replace(/`([^`\n]+)`/g, '<code class="bg-[#08080d] px-1.5 py-0.5 rounded text-xs text-cyan-300 mono">$1</code>');
+          h = h.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#e2e8f0">$1</strong>');
           h = h.replace(/\n/g, '<br>');
           return h;
+        },
+
+        dismissOnboarding() {
+          this.showOnboarding = false;
+          if (this.onboardingDontShow) localStorage.setItem('aria_onboarding_done', 'true');
+          if (this.messages.length === 0) {
+            this.messages.push({
+              role: 'aria',
+              text: '👋 ¡Hola! Soy **ARIA**, tu asistente autónomo. Puedes pedirme cosas como:\n\n• 🌐 *"Navega a Wikipedia y dime qué hay"*\n• 💻 *"Ejecuta un comando"*\n• 🔍 *"Investiga sobre IA"*\n• 📊 *"Estado del sistema"*'
+            });
+          }
+        },
+
+        startWith(option) {
+          this.dismissOnboarding();
+          const prompts = {
+            explore: 'Cuéntame sobre tus capacidades detalladamente',
+            automate: 'Quiero automatizar una tarea. ¿Qué puedo hacer?',
+            monitor: 'Muéstrame el estado completo del sistema y los agentes'
+          };
+          this.chatInput = prompts[option] || prompts.explore;
+          this.$nextTick(() => this.sendMessage());
         }
       };
     }
