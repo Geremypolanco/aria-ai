@@ -512,37 +512,41 @@ class AriaMind:
             if not plan:
                 return MindResponse(text="No pude procesar eso. Inténtalo de nuevo.")
 
-            # DETECTAR NECESIDAD DE AUTONOMÍA (Estilo Claude Code / Agente de Propósito General)
-            # Si el plan indica una tarea compleja o el usuario pide ejecución real
-            if (
-                plan.get("autonomous_execution")
-                or "ejecuta" in text.lower()
-                or "haz" in text.lower()
-            ):
-                from apps.core.cognition.aria_agent import AriaAgent
-                from apps.core.config import settings
-
-                agent = AriaAgent(
-                    identity=SYSTEM_TEMPLATE.format(
-                        owner=getattr(settings, "OWNER_NAME", "su dueño"),
-                        focus=state.get("focus", "ejecución autónoma"),
-                        confidence="100%",
-                        interaction_count=state.get("interaction_count", 0),
-                        goals="\n".join([g["text"] for g in goals]),
-                        learned="\n".join(learned),
-                        history="",
-                    )
-                )
-                agent_result = await agent.run(text)
-                if agent_result["success"]:
-                    return MindResponse(text=agent_result["output"])
-                return MindResponse(
-                    text=f"Lo intenté de forma autónoma pero fallé: {agent_result['error']}"
-                )
-
             tool = plan.get("tool")
             tool_args = plan.get("tool_args") or {}
             reply = (plan.get("reply") or "").strip()
+            has_tool = bool(tool and tool not in ("null", "none", None))
+
+            # AUTONOMÍA (estilo agente) — SOLO cuando el plan no eligió una herramienta
+            # concreta. Así, investigar/crear se enruta a su herramienta confiable
+            # (web_search, generate_image, …) en vez del agente autónomo, que es más
+            # frágil. Si el agente falla, seguimos con el flujo normal en lugar de
+            # devolver un error crudo.
+            if plan.get("autonomous_execution") and not has_tool:
+                try:
+                    from apps.core.cognition.aria_agent import AriaAgent
+                    from apps.core.config import settings
+
+                    agent = AriaAgent(
+                        identity=SYSTEM_TEMPLATE.format(
+                            owner=getattr(settings, "OWNER_NAME", "su dueño"),
+                            focus=state.get("focus", "ejecución autónoma"),
+                            confidence="100%",
+                            interaction_count=state.get("interaction_count", 0),
+                            goals="\n".join([g["text"] for g in goals]),
+                            learned="\n".join(learned),
+                            history="",
+                        )
+                    )
+                    agent_result = await agent.run(text)
+                    if agent_result.get("success"):
+                        return MindResponse(text=agent_result["output"])
+                    logger.warning(
+                        "[AriaMind] autónomo falló, uso flujo normal: %s",
+                        agent_result.get("error"),
+                    )
+                except Exception as e:
+                    logger.warning("[AriaMind] autónomo error, uso flujo normal: %s", e)
 
             # Actualizar metas si el plan lo indica
             goal_action = plan.get("goal_action")
@@ -550,7 +554,7 @@ class AriaMind:
                 goals = await self._apply_goal_action(goal_action, goals)
 
             # Ejecutar herramienta si hay una
-            if tool and tool not in ("null", "none", None):
+            if has_tool:
                 obs, media = await self._execute_with_retry(tool, tool_args)
                 final_text = await self._synthesize(text, tool, obs)
                 await self._record_exec(tool, tool_args, obs, bool(media or obs))
