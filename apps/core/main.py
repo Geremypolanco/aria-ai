@@ -16,7 +16,12 @@ from datetime import datetime
 import uvicorn
 from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from pydantic import BaseModel
 
 from apps.core.config import settings
@@ -375,6 +380,12 @@ async def user_app(request: Request):
     plan_map = {"pro": "Pro", "business": "Business"}
     plan = plan_map.get(await _get_user_plan(raw_email), "Free")
     onboarded = "true" if (profile and profile.get("onboarded")) else "false"
+    profile_json = json.dumps(
+        {
+            "work": (profile.get("work", "") if profile else ""),
+            "goals": (profile.get("goals", []) if profile else []),
+        }
+    )
 
     path = os.path.join(os.path.dirname(__file__), "templates", "app.html")
     try:
@@ -390,6 +401,7 @@ async def user_app(request: Request):
         .replace("__EMAIL__", email)
         .replace("__PLAN__", plan)
         .replace("__ONBOARDED__", onboarded)
+        .replace("__PROFILE_JSON__", profile_json)
     )
     return HTMLResponse(html)
 
@@ -563,6 +575,29 @@ async def save_onboarding_profile(req: ProfileRequest, request: Request):
     }
     await _save_profile(email, data)
     return {"ok": True}
+
+
+@app.post("/api/v1/account/delete")
+async def delete_account(request: Request):
+    """Delete the signed-in user's stored data (profile + plan) and sign out."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return {"ok": False, "error": "unauthenticated"}
+    email = (user.get("email") or "").strip().lower()
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        cache = get_cache()
+        for key in (f"aria:profile:{email}", _PLAN_KEY.format(email=email)):
+            with suppress(Exception):
+                await cache.delete(key)
+    except Exception as e:
+        logger.warning(f"delete_account failed: {e}")
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.USER_COOKIE)
+    return resp
 
 
 # ── API ROUTES ────────────────────────────────────────────

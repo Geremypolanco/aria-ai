@@ -194,6 +194,16 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 .plan .pop{position:absolute;top:-9px;right:14px;font-size:10.5px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:20px;background:var(--grad);color:#fff}
 .plan.sel .rad{border-color:var(--vio);background:var(--vio)}
 .plan .rad{position:absolute;top:16px;right:16px;width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.25)}
+/* settings */
+.set-sec{margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+.set-sec:first-of-type{border-top:0;padding-top:6px}
+.set-h{font-family:'Grotesk';font-weight:700;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut2);margin-bottom:12px}
+.set-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;font-size:14.5px}
+.set-row .mut{color:var(--mut)}
+.set-lbl{display:block;font-size:13px;color:var(--mut);margin:14px 0 6px}
+.obtn.danger{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);color:#ff8085}
+.obtn.danger:hover{background:rgba(239,68,68,.22)}
+.set-sec.danger .set-h{color:#ff6b72}
 
 @media(max-width:820px){
   .side{position:fixed;top:0;bottom:0;left:0;margin-left:-300px;box-shadow:0 0 60px rgba(0,0,0,.6)}
@@ -302,6 +312,52 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
   </div>
 </div>
 
+<!-- SETTINGS MODAL -->
+<div class="ov" id="settingsOv">
+  <div class="sheet">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div class="logo">A</div><h2>Settings</h2></div>
+      <button class="icon-btn" onclick="closeSettings()" aria-label="Close" style="font-size:18px">✕</button>
+    </div>
+
+    <div class="set-sec">
+      <div class="set-h">Account</div>
+      <div class="set-row"><span>Email</span><span class="mut">__EMAIL__</span></div>
+      <div class="set-row"><span>Plan</span>
+        <span><b id="setPlan" style="color:var(--vio)">Free</b>
+        <button class="act" style="margin-left:8px" onclick="closeSettings();openUpgrade()">Upgrade</button></span>
+      </div>
+    </div>
+
+    <div class="set-sec">
+      <div class="set-h">Personalization</div>
+      <div class="qsub">How ARIA addresses you and tailors its help.</div>
+      <label class="set-lbl">What ARIA should call you</label>
+      <input class="field" id="setName" maxlength="60" />
+      <label class="set-lbl">What you do</label>
+      <input class="field" id="setWork" maxlength="60" placeholder="e.g. Founder, Marketer, Creator…" />
+      <label class="set-lbl">Goals</label>
+      <div class="chips" id="setGoals">
+        <div class="chip2" data-v="Grow on social media">Grow on social media</div>
+        <div class="chip2" data-v="Create content">Create content</div>
+        <div class="chip2" data-v="Research & analysis">Research &amp; analysis</div>
+        <div class="chip2" data-v="Launch or grow a business">Launch or grow a business</div>
+        <div class="chip2" data-v="Automate publishing">Automate publishing</div>
+        <div class="chip2" data-v="Generate images & video">Generate images &amp; video</div>
+      </div>
+      <div class="orow"><span></span>
+        <button class="obtn primary" id="setSaveBtn" onclick="saveSettings()">Save changes</button>
+      </div>
+    </div>
+
+    <div class="set-sec danger">
+      <div class="set-h">Danger zone</div>
+      <div class="qsub">Permanently delete your ARIA data — profile, plan and saved chats. This can't be undone.</div>
+      <div style="margin-top:12px"><button class="obtn danger" onclick="deleteAccount()">Delete account &amp; data</button></div>
+    </div>
+  </div>
+</div>
+
 <div class="app">
   <div class="backdrop" id="backdrop" onclick="toggleSide(false)"></div>
 
@@ -315,8 +371,9 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
     <div class="hist" id="hist"></div>
     <div class="side-foot">
       <div class="menu" id="menu">
-        <a href="/" >⌂ Home</a>
+        <a href="#" onclick="openSettings();return false">⚙ Settings</a>
         <a href="#" class="up" id="upgradeLink" onclick="openUpgrade();return false">⚡ Upgrade — see plans</a>
+        <a href="/" >⌂ Home</a>
         <a href="/logout">↩ Sign out</a>
       </div>
       <div class="user" onclick="toggleMenu()">
@@ -338,17 +395,6 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
     <div class="scroll" id="scroll">
       <div id="emptyState" class="empty">
         <h1>Good <span id="tod">day</span>, <span class="g">__FIRST__</span>.</h1>
-        <p>This is your ARIA workspace. Give it a goal — it researches in real time, writes, and creates images. What should we work on?</p>
-        <div class="sugg">
-          <button class="sc" onclick="quick('Research the top 3 trends in my industry this week and summarize why each matters.')">
-            <span class="em">🔎</span><span><span class="st">Research a topic</span><span class="sd">Get a current, sourced brief on anything</span></span></button>
-          <button class="sc" onclick="quick('Write a punchy LinkedIn post about the future of AI and work, with a strong hook.')">
-            <span class="em">✍️</span><span><span class="st">Write content</span><span class="sd">Posts, emails, scripts, captions</span></span></button>
-          <button class="sc" onclick="quick('Create a striking image of a futuristic city at golden hour, cinematic lighting.')">
-            <span class="em">🎨</span><span><span class="st">Create an image</span><span class="sd">Generate professional visuals on demand</span></span></button>
-          <button class="sc" onclick="quick('Give me a 5-step plan to grow my audience on LinkedIn and YouTube this month.')">
-            <span class="em">🚀</span><span><span class="st">Make a plan</span><span class="sd">Turn a goal into concrete steps</span></span></button>
-        </div>
       </div>
       <div class="thread" id="thread" style="display:none"></div>
     </div>
@@ -368,6 +414,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 
 <script>
 const USER = { name: "__NAME__", email: "__EMAIL__", plan: "__PLAN__", onboarded: __ONBOARDED__ };
+const PROFILE = __PROFILE_JSON__;
 const KEY = "aria_convos_v1";
 let convos = [];       // [{id, title, sid, msgs:[{role,text,img}]}]
 let cur = null;        // current convo id
@@ -657,6 +704,43 @@ function openUpgrade(){
 }
 function closeUpgrade(){ document.getElementById('upOv').classList.remove('show'); }
 function upgradeGo(){ location.href='/billing/checkout?tier='+upPlan; }
+
+/* ── settings ── */
+function openSettings(){
+  document.getElementById('menu').classList.remove('open');
+  document.getElementById('setName').value = USER.name || '';
+  document.getElementById('setWork').value = (PROFILE && PROFILE.work) || '';
+  document.getElementById('setPlan').textContent = (USER.plan || 'Free') + ' plan';
+  const goals = new Set((PROFILE && PROFILE.goals) || []);
+  document.querySelectorAll('#setGoals .chip2').forEach(c=>{
+    c.classList.toggle('sel', goals.has(c.dataset.v));
+    c.onclick=()=>c.classList.toggle('sel');
+  });
+  document.getElementById('settingsOv').classList.add('show');
+}
+function closeSettings(){ document.getElementById('settingsOv').classList.remove('show'); }
+async function saveSettings(){
+  const btn=document.getElementById('setSaveBtn'); btn.disabled=true; btn.textContent='Saving…';
+  const name=document.getElementById('setName').value.trim()||USER.name;
+  const work=document.getElementById('setWork').value.trim();
+  const goals=[...document.querySelectorAll('#setGoals .chip2.sel')].map(c=>c.dataset.v);
+  try{
+    await fetch('/api/v1/profile',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,work,goals,plan:(USER.plan||'free').toLowerCase()})});
+    USER.name=name; PROFILE.work=work; PROFILE.goals=goals;
+    document.querySelector('.user .nm').textContent=name;
+    setGreetName((name||'there').split(' ')[0]);
+    toast('Settings saved. ARIA will use this to personalize your experience.','ok');
+    closeSettings();
+  }catch(e){ toast('Could not save settings. Please try again.','err'); }
+  finally{ btn.disabled=false; btn.textContent='Save changes'; }
+}
+async function deleteAccount(){
+  if(!confirm('Delete your ARIA account data (profile, plan and saved chats)? This cannot be undone.')) return;
+  try{ await fetch('/api/v1/account/delete',{method:'POST'}); }catch(e){}
+  try{ localStorage.removeItem(KEY); }catch(e){}
+  location.href='/login';
+}
 
 /* boot */
 load(); renderHist(); renderThread(); billingBoot();
