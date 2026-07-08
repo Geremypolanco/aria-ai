@@ -64,22 +64,39 @@ class WebTools:
         if optimized_query != query:
             logger.info("[WebTools] Query optimizada: %s -> %s", query, optimized_query)
 
-        # 1. SerpAPI (si esta configurado) — Google real
+        # 1. SerpAPI (si esta configurado y con cuota) — Google real
         if getattr(settings, "SERP_API_KEY", None):
             result = await self._search_serpapi(optimized_query, num_results)
             if result["success"] and result.get("results"):
                 return result
 
-        # 2. DuckDuckGo Instant Answer API (sin key, siempre disponible)
-        result = await self._search_duckduckgo(optimized_query)
-        if result["success"] and result.get("results"):
-            return result
+        # 2. Tavily — busqueda web para IA, fiable desde servidores (si hay key)
+        if getattr(settings, "TAVILY_API_KEY", None):
+            result = await self._search_tavily(optimized_query, num_results)
+            if result["success"] and result.get("results"):
+                return result
 
-        # 3. NewsAPI como fallback (si hay NEWS_API_KEY)
+        # 3. Brave Search — general, fiable desde datacenters (si hay key)
+        if getattr(settings, "BRAVE_API_KEY", None):
+            result = await self._search_brave(optimized_query, num_results)
+            if result["success"] and result.get("results"):
+                return result
+
+        # 4. NewsAPI — noticias actuales (si hay NEWS_API_KEY)
         if getattr(settings, "NEWS_API_KEY", None):
             result = await self._search_newsapi(query, num_results)
             if result["success"] and result.get("results"):
                 return result
+
+        # 5. Wikipedia — factual/enciclopedico, SIN key, fiable desde servidores
+        result = await self._search_wikipedia(optimized_query, num_results)
+        if result["success"] and result.get("results"):
+            return result
+
+        # 6. DuckDuckGo Instant Answer — respuestas directas, sin key
+        result = await self._search_duckduckgo(optimized_query)
+        if result["success"] and result.get("results"):
+            return result
 
         return {
             "success": False,
@@ -197,6 +214,118 @@ class WebTools:
         except Exception as exc:
             logger.error("[WebTools] duckduckgo error: %s", exc)
         return {"success": False, "results": [], "source": "duckduckgo"}
+
+    async def _search_tavily(self, query: str, num: int = 10) -> dict[str, Any]:
+        """Tavily — AI-oriented web search. Free tier, works from servers.
+        Alternative to SerpAPI when it is out of quota (set TAVILY_API_KEY)."""
+        key = getattr(settings, "TAVILY_API_KEY", None)
+        if not key:
+            return {"success": False, "results": [], "source": "tavily"}
+        try:
+            res = await self._http.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": key,
+                    "query": query,
+                    "max_results": min(num, 10),
+                    "search_depth": "basic",
+                },
+            )
+            if res.status_code == 200:
+                data = res.json()
+                results = [
+                    {
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "snippet": (r.get("content", "") or "")[:300],
+                        "source": "Tavily",
+                    }
+                    for r in (data.get("results") or [])[:num]
+                ]
+                if results:
+                    return {
+                        "success": True,
+                        "source": "tavily",
+                        "query": query,
+                        "results": results,
+                    }
+        except Exception as exc:
+            logger.error("[WebTools] tavily error: %s", exc)
+        return {"success": False, "results": [], "source": "tavily"}
+
+    async def _search_brave(self, query: str, num: int = 10) -> dict[str, Any]:
+        """Brave Search API — reliable general web search from datacenters.
+        Free tier available (set BRAVE_API_KEY)."""
+        key = getattr(settings, "BRAVE_API_KEY", None)
+        if not key:
+            return {"success": False, "results": [], "source": "brave"}
+        try:
+            res = await self._http.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                params={"q": query, "count": min(num, 20)},
+                headers={"X-Subscription-Token": key, "Accept": "application/json"},
+            )
+            if res.status_code == 200:
+                web = (res.json().get("web") or {}).get("results") or []
+                results = [
+                    {
+                        "title": w.get("title", ""),
+                        "url": w.get("url", ""),
+                        "snippet": (w.get("description", "") or "")[:300],
+                        "source": "Brave",
+                    }
+                    for w in web[:num]
+                ]
+                if results:
+                    return {
+                        "success": True,
+                        "source": "brave",
+                        "query": query,
+                        "results": results,
+                    }
+        except Exception as exc:
+            logger.error("[WebTools] brave error: %s", exc)
+        return {"success": False, "results": [], "source": "brave"}
+
+    async def _search_wikipedia(self, query: str, num: int = 6) -> dict[str, Any]:
+        """Wikipedia search — keyless, reliable from servers. Good for factual /
+        encyclopedic queries; a real fallback that never needs quota."""
+        try:
+            res = await self._http.get(
+                "https://en.wikipedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "format": "json",
+                    "srlimit": min(num, 8),
+                },
+            )
+            if res.status_code == 200:
+                hits = (res.json().get("query") or {}).get("search") or []
+                results = []
+                for h in hits[:num]:
+                    title = h.get("title", "")
+                    snippet = re.sub(r"<[^>]+>", "", h.get("snippet", "") or "")
+                    slug = title.replace(" ", "_")
+                    results.append(
+                        {
+                            "title": title,
+                            "url": f"https://en.wikipedia.org/wiki/{slug}",
+                            "snippet": snippet[:300],
+                            "source": "Wikipedia",
+                        }
+                    )
+                if results:
+                    return {
+                        "success": True,
+                        "source": "wikipedia",
+                        "query": query,
+                        "results": results,
+                    }
+        except Exception as exc:
+            logger.error("[WebTools] wikipedia error: %s", exc)
+        return {"success": False, "results": [], "source": "wikipedia"}
 
     # ══════════════════════════════════════════════════════════════
     # SCREENSHOTS Y NAVEGACION REAL

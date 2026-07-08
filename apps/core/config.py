@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     # ── CONTENIDO / SEO ───────────────────────────────────
     NEWS_API_KEY: str | None = None
     SERP_API_KEY: str | None = None
+    # Alternative web-search providers (free tiers, work from servers). Set either
+    # to keep research working when SerpAPI is out of quota.
+    TAVILY_API_KEY: str | None = None
+    BRAVE_API_KEY: str | None = None
     PEXELS_API_KEY: str | None = None
     ELEVENLABS_API_KEY: str | None = None
 
