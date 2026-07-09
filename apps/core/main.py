@@ -119,6 +119,10 @@ class ProfileRequest(BaseModel):
     plan: str = "free"
 
 
+class ConnectorRequest(BaseModel):
+    app: str = ""
+
+
 # ── FRONTEND ROUTES ───────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -574,6 +578,27 @@ async def save_onboarding_profile(req: ProfileRequest, request: Request):
         "onboarded": True,
     }
     await _save_profile(email, data)
+    return {"ok": True}
+
+
+@app.post("/api/v1/connectors/request")
+async def request_connector(req: ConnectorRequest, request: Request):
+    """Record a user's request to connect an external app (connectors waitlist)."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    email = (user.get("email") or "").strip().lower() if user else "anon"
+    app_id = _safe_name(req.app)[:40]
+    if not app_id:
+        return {"ok": False, "error": "missing app"}
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        await get_cache().rpush(
+            "aria:connector_requests", json.dumps({"email": email, "app": app_id})
+        )
+    except Exception as e:
+        logger.warning(f"connector request failed: {e}")
     return {"ok": True}
 
 
