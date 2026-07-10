@@ -560,6 +560,22 @@ class AriaAIClient:
             "output_tokens", 0
         )
 
+    def configured_providers(self) -> list[str]:
+        """Nombres de los proveedores LLM que tienen una API key configurada.
+
+        Sin llamadas de red. Permite que /health diga la verdad: el cliente
+        siempre existe, pero sin ninguna key toda completación falla — una lista
+        vacía significa que la IA está efectivamente caída.
+        """
+        keyed = {
+            "huggingface": bool(settings.hf_key),
+            "groq": bool(settings.GROQ_API_KEY),
+            "gemini": bool(settings.GOOGLE_API_KEY),
+            "anthropic": bool(settings.ANTHROPIC_API_KEY),
+            "openai": bool(settings.OPENAI_API_KEY),
+        }
+        return [name for name, present in keyed.items() if present]
+
     def _get_available_providers(self) -> list[AIProvider]:
         base_order = [
             AIProvider.HUGGINGFACE,
