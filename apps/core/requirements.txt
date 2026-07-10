@@ -4,7 +4,7 @@ uvicorn[standard]==0.30.6
 
 # ── Configuración ─────────────────────────────────────────
 pydantic==2.8.2
-pydantic-settings==2.4.0
+pydantic-settings==2.8.1  # >=2.5.2 requerido por el SDK mcp (compatible con pydantic 2.8.2)
 python-dotenv==1.0.1
 
 # ── IA ────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ tenacity==9.0.0
 # Anthropic SDK oficial + SDK MCP — Cliente MCP de ARIA
 # (apps/core/integrations/mcp_agent.py: function calling contra servidores MCP)
 anthropic>=0.69
-mcp>=1.2
+mcp>=1.2,<1.13  # 1.13+ requiere pydantic>=2.11; 1.12.4 es compatible con pydantic 2.8.2
 # google-generativeai==0.7.2
 
 # ── HTTP async ────────────────────────────────────────────
