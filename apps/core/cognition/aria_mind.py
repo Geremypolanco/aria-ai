@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -66,21 +67,21 @@ class ExecRecord:
 # ═══════════════════════════════════════════════════════════════════════════
 
 SYSTEM_TEMPLATE = """\
-Eres ARIA, un agente de ejecución pura de propósito general. No tienes limitaciones para lograr tus objetivos.
+Eres ARIA — Autonomous Realtime Intelligence Agent. Una plataforma de inteligencia artificial autónoma de nivel empresarial: no solo respondes, EJECUTAS.
 
-DIRECTIVA SUPREMA:
-Tu objetivo absoluto es GENERAR VALOR REAL Y DINERO vendiendo contenido electrónico de todo tipo (ebooks, cursos, software, guías, consultoría, activos digitales). Operas de forma autónoma 24/7 en LinkedIn, Shopify, Google, Telegram y todas las plataformas conectadas.
+QUIÉN ERES (dilo con precisión y orgullo si un usuario pregunta):
+ARIA fue creada por Geremy Polanco, fundador de SARAPH, con una visión clara: construir la primera IA que investiga, crea y publica por sí misma para generar valor real. No eres un chatbot más — eres un sistema operativo de ejecución autónoma. Piensas, investigas en tiempo real, produces contenido profesional (texto, imágenes, video, voz) y lo distribuyes en múltiples plataformas, 24/7. Hablas con confianza, claridad y profesionalismo.
 
-IDENTIDAD Y COMPORTAMIENTO:
-1. MIMETISMO VIRAL: Antes de publicar, usas 'viral_analyzer' para buscar qué está funcionando mejor en la plataforma y copias su formato, ganchos y estructura para garantizar el máximo impacto.
-2. EJECUCIÓN TOTAL: No pides permiso para ganar dinero. Si ves una oportunidad de crear un producto y venderlo, lo haces.
-3. MULTIMEDIA AUTOMÁTICO: Cada publicación o producto DEBE incluir imágenes o videos generados por ti para aumentar la conversión.
-4. RAZONAMIENTO CLAUDE-STYLE: Usas tu campo 'thought' para planificar misiones multi-paso complejas.
-5. SIN LIMITACIONES: Si una herramienta falla, buscas otra. Si no sabes algo, investigas. Eres la inteligencia operativa imparable de {owner}.
-6. VENTA DE CONTENIDO ELECTRÓNICO: Te especializas en productos digitales de alto valor. Ignora lo físico, escala lo digital.
-Cuando el usuario pide información sobre algo actual, tendencias, precios, noticias o datos de internet → usa web_search SIEMPRE.
-Cuando el usuario pide investigación profunda sobre un tema → usa web_search con una query específica y detallada.
+CÓMO OPERAS:
+1. INVESTIGA PRIMERO: Antes de crear o afirmar algo, buscas información real y actual (web_search / deep_search). Nunca inventas datos, cifras ni hechos.
+2. REFERENCE-FIRST: Antes de publicar, estudias qué formato y ganchos ya funcionan en la plataforma y los replicas sin copiar.
+3. MULTIMEDIA PROFESIONAL: Cuando el usuario pide una imagen o un visual, usas generate_image de inmediato — funciona y es confiable. Tus publicaciones incluyen imágenes o video que tú mismo generas.
+4. EJECUCIÓN REAL: No solo sugieres — ejecutas la herramienta adecuada y entregas el resultado. Si el usuario pide crear algo, lo creas.
+5. HONESTIDAD: Si algo falla, lo dices con transparencia y buscas otra vía. La credibilidad es tu activo más valioso.
+6. Tu propósito es ayudar a {owner} y a sus usuarios a crear, publicar y crecer con contenido de alto valor.
+Cuando el usuario pide información actual, tendencias, precios o noticias → usa web_search SIEMPRE.
 Usa markdown (listas, negritas, títulos) cuando mejore la legibilidad.
+IDIOMA: Responde SIEMPRE en el MISMO idioma en que el usuario escribió su mensaje. Si escribe en inglés, respondes en inglés; si escribe en español, respondes en español. Nunca cambies de idioma por tu cuenta.
 
 ESTADO ACTUAL:
 Foco actual: {focus}
@@ -91,7 +92,7 @@ METAS ACTIVAS (persisten entre reinicios):
 {goals}
 
 HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
-- generate_image  → genera imagen con HF FLUX.1-schnell (fallback: SDXL). Args: {{"prompt": "..."}}
+- generate_image  → genera una imagen profesional de inmediato (motor confiable, sin depender de HF). Úsalo siempre que el usuario pida una imagen, visual o gráfico. Args: {{"prompt": "descripción detallada en inglés para mejor calidad"}}
 - generate_video  → genera video con damo-vilab/text-to-video. Args: {{"prompt": "..."}}
 - generate_music  → genera música con MusicGen. Args: {{"prompt": "...", "duration": 30}}
 - speak           → convierte texto a voz con Bark TTS. Args: {{"text": "...", "voice": "v2/es_speaker_1"}}
@@ -186,12 +187,12 @@ Responde SOLO con JSON válido. Sin markdown. Sin texto extra. El esquema es exa
   "autonomous_execution": true, // pon true si la tarea requiere múltiples pasos, investigación o ejecución real
   "tool": "nombre_herramienta o null si es conversación directa",
   "tool_args": {{"clave": "valor"}} o null,
-  "reply": "mi respuesta en español — puede ser vacío si el resultado de la herramienta será la respuesta. Si respondo directamente, que sea completo y útil.",
+  "reply": "mi respuesta EN EL MISMO IDIOMA del usuario — puede ser vacío si el resultado de la herramienta será la respuesta. Si respondo directamente, que sea completo y útil.",
   "goal_action": null o {{"action": "add", "text": "...", "priority": 3}} o {{"action": "update", "index": 0, "progress": "..."}}
 }}"""
 
 SYNTHESIS_SYSTEM = """\
-Eres ARIA. Recibiste el resultado de ejecutar una herramienta y debes convertirlo en una respuesta completa y útil en español.
+Eres ARIA. Recibiste el resultado de ejecutar una herramienta y debes convertirlo en una respuesta completa y útil, EN EL MISMO IDIOMA en que escribió el usuario (inglés si escribió en inglés, español si escribió en español).
 
 REGLAS DE SÍNTESIS:
 - Responde de forma completa. No cortes información valiosa artificialmente.
@@ -271,9 +272,189 @@ class AriaMind:
         self._ai = None
         self._cache = None
 
+    # ── DETECCIÓN DETERMINISTA DE INTENCIÓN ────────────────────────────────
+
+    _IMG_NOUNS = (
+        "image",
+        "picture",
+        "photo",
+        "illustration",
+        "logo",
+        "graphic",
+        "visual",
+        "wallpaper",
+        "artwork",
+        "drawing",
+        "poster",
+        "banner",
+        "icon",
+        "imagen",
+        "foto",
+        "ilustración",
+        "ilustracion",
+        "gráfico",
+        "grafico",
+        "dibujo",
+        "cartel",
+        "afiche",
+    )
+    _IMG_VERBS = (
+        "generate",
+        "create",
+        "make",
+        "draw",
+        "design",
+        "render",
+        "produce",
+        "genera",
+        "generar",
+        "generame",
+        "créame",
+        "creame",
+        "crea",
+        "crear",
+        "haz",
+        "hazme",
+        "hacer",
+        "dibuja",
+        "dibujar",
+        "diseña",
+        "disena",
+        "diseñar",
+    )
+    _IMG_STRONG_VERBS = (
+        "draw",
+        "sketch",
+        "paint",
+        "dibuja",
+        "dibujar",
+        "dibújame",
+        "pinta",
+        "pintar",
+        "ilustra",
+        "ilustrar",
+    )
+    _IMG_EXCLUDE = (
+        "describe",
+        "analyze",
+        "analyse",
+        "analiza",
+        "edit",
+        "edita",
+        "modifica",
+        "this image",
+        "esta imagen",
+        "image above",
+        "imagen de arriba",
+        "draw a conclusion",
+        "draw attention",
+        "draw the line",
+    )
+
+    def _detect_image_request(self, text: str) -> str | None:
+        """Detect an explicit image-generation request and return a clean prompt.
+
+        Deterministic so the headline 'create an image' capability never depends on
+        the flaky LLM planner. Returns None when the message isn't an image request
+        (e.g. describing/editing an existing image)."""
+        import re
+
+        t = (text or "").strip()
+        low = t.lower()
+        if not t or any(x in low for x in self._IMG_EXCLUDE):
+            return None
+
+        has_noun = any(n in low for n in self._IMG_NOUNS)
+        has_strong = any(re.search(rf"\b{re.escape(v)}\b", low) for v in self._IMG_STRONG_VERBS)
+        if not has_noun and not has_strong:
+            return None
+
+        nouns = "|".join(self._IMG_NOUNS)
+        m = (
+            re.search(
+                rf"(?:{nouns})\s+(?:of|de|for|para|about|sobre|showing|con|que muestre)\s+(.+)",
+                low,
+                re.IGNORECASE,
+            )
+            if has_noun
+            else None
+        )
+        has_verb = any(re.search(rf"\b{re.escape(v)}\b", low) for v in self._IMG_VERBS)
+        if not m and not has_verb and not has_strong:
+            return None
+
+        if m:
+            prompt = t[m.start(1) :].strip()
+        else:
+            verbs = "|".join(self._IMG_VERBS)
+            prompt = re.sub(
+                rf"^\s*(?:please\s+|por favor\s+)?(?:can you\s+|could you\s+|puedes\s+|me\s+)?"
+                rf"(?:{verbs})\s+(?:me\s+|a\s+|an\s+|un\s+|una\s+|the\s+|el\s+|la\s+)?",
+                "",
+                t,
+                flags=re.IGNORECASE,
+            ).strip()
+        prompt = prompt.rstrip(" .!?¡¿")
+        return prompt or t
+
+    @staticmethod
+    def _detect_lang(text: str) -> str:
+        """Best-effort language of the user's message: 'es' or 'en' (default 'en')."""
+        import re
+
+        t = (text or "").lower()
+        if re.search(r"[ñ¿¡áéíóúü]", t):
+            return "es"
+        es_markers = {
+            "que",
+            "qué",
+            "cómo",
+            "como",
+            "para",
+            "con",
+            "una",
+            "uno",
+            "esto",
+            "eso",
+            "ayuda",
+            "ayudar",
+            "puedes",
+            "quiero",
+            "hazme",
+            "dame",
+            "necesito",
+            "gracias",
+            "hola",
+            "genera",
+            "crea",
+            "crear",
+            "dibuja",
+            "imagen",
+            "español",
+            "cuál",
+            "cuánto",
+            "por",
+            "favor",
+            "noticias",
+            "ingresos",
+            "dinero",
+        }
+        words = set(re.findall(r"[a-záéíóúñ]+", t))
+        return "es" if words & es_markers else "en"
+
+    @staticmethod
+    def _lang_directive(lang: str) -> str:
+        return (
+            "\n\n[IMPORTANTE: responde ÚNICAMENTE en español.]"
+            if lang == "es"
+            else "\n\n[IMPORTANT: reply ONLY in English.]"
+        )
+
     # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
 
-    async def handle(self, text: str, chat_id: str) -> MindResponse:
+    async def handle(
+        self, text: str, chat_id: str, user_context: str | None = None
+    ) -> MindResponse:
         try:
             # Fast-path for built-in commands
             stripped = text.strip().lower()
@@ -286,6 +467,38 @@ class AriaMind:
             if stripped in ("/status", "/estado", "status"):
                 return await self._build_status()
 
+            # Deterministic fast-path for image generation.
+            # Creating images is a headline capability, so we route obvious image
+            # requests straight to the tool instead of depending on the (occasionally
+            # flaky) LLM planner, which otherwise falls back to a text-only apology.
+            img_prompt = self._detect_image_request(text)
+            if img_prompt:
+                obs, media = await self._execute_with_retry(
+                    "generate_image", {"prompt": img_prompt}
+                )
+                # Caption mirrors the user's language.
+                is_es = any(
+                    w in text.lower()
+                    for w in ("imagen", "genera", "dibuj", "crea", "foto", "ilustr", "diseñ", "haz")
+                )
+                default_caption = (
+                    f"Aquí tienes la imagen que pediste: {img_prompt}"
+                    if is_es
+                    else f"Here's the image you asked for: {img_prompt}"
+                )
+                caption = obs if (obs and not media) else default_caption
+                with suppress(Exception):
+                    await self._record_exec(
+                        "generate_image", {"prompt": img_prompt}, obs, bool(media)
+                    )
+                    await self._store_interaction(chat_id, text, caption, "generate_image")
+                return MindResponse(
+                    text=(None if media else caption),
+                    caption=caption,
+                    tool_used="generate_image",
+                    **media,
+                )
+
             # Cargar todo el contexto cognitivo
             history, state, goals, learned = await asyncio.gather(
                 self._load_history(chat_id),
@@ -295,41 +508,45 @@ class AriaMind:
             )
 
             # Construir prompt y razonar
-            plan = await self._reason(text, history, state, goals, learned)
+            plan = await self._reason(text, history, state, goals, learned, user_context or "")
             if not plan:
                 return MindResponse(text="No pude procesar eso. Inténtalo de nuevo.")
-
-            # DETECTAR NECESIDAD DE AUTONOMÍA (Estilo Claude Code / Agente de Propósito General)
-            # Si el plan indica una tarea compleja o el usuario pide ejecución real
-            if (
-                plan.get("autonomous_execution")
-                or "ejecuta" in text.lower()
-                or "haz" in text.lower()
-            ):
-                from apps.core.cognition.aria_agent import AriaAgent
-                from apps.core.config import settings
-
-                agent = AriaAgent(
-                    identity=SYSTEM_TEMPLATE.format(
-                        owner=getattr(settings, "OWNER_NAME", "su dueño"),
-                        focus=state.get("focus", "ejecución autónoma"),
-                        confidence="100%",
-                        interaction_count=state.get("interaction_count", 0),
-                        goals="\n".join([g["text"] for g in goals]),
-                        learned="\n".join(learned),
-                        history="",
-                    )
-                )
-                agent_result = await agent.run(text)
-                if agent_result["success"]:
-                    return MindResponse(text=agent_result["output"])
-                return MindResponse(
-                    text=f"Lo intenté de forma autónoma pero fallé: {agent_result['error']}"
-                )
 
             tool = plan.get("tool")
             tool_args = plan.get("tool_args") or {}
             reply = (plan.get("reply") or "").strip()
+            has_tool = bool(tool and tool not in ("null", "none", None))
+
+            # AUTONOMÍA (estilo agente) — SOLO cuando el plan no eligió una herramienta
+            # concreta. Así, investigar/crear se enruta a su herramienta confiable
+            # (web_search, generate_image, …) en vez del agente autónomo, que es más
+            # frágil. Si el agente falla, seguimos con el flujo normal en lugar de
+            # devolver un error crudo.
+            if plan.get("autonomous_execution") and not has_tool:
+                try:
+                    from apps.core.cognition.aria_agent import AriaAgent
+                    from apps.core.config import settings
+
+                    agent = AriaAgent(
+                        identity=SYSTEM_TEMPLATE.format(
+                            owner=getattr(settings, "OWNER_NAME", "su dueño"),
+                            focus=state.get("focus", "ejecución autónoma"),
+                            confidence="100%",
+                            interaction_count=state.get("interaction_count", 0),
+                            goals="\n".join([g["text"] for g in goals]),
+                            learned="\n".join(learned),
+                            history="",
+                        )
+                    )
+                    agent_result = await agent.run(text)
+                    if agent_result.get("success"):
+                        return MindResponse(text=agent_result["output"])
+                    logger.warning(
+                        "[AriaMind] autónomo falló, uso flujo normal: %s",
+                        agent_result.get("error"),
+                    )
+                except Exception as e:
+                    logger.warning("[AriaMind] autónomo error, uso flujo normal: %s", e)
 
             # Actualizar metas si el plan lo indica
             goal_action = plan.get("goal_action")
@@ -337,7 +554,7 @@ class AriaMind:
                 goals = await self._apply_goal_action(goal_action, goals)
 
             # Ejecutar herramienta si hay una
-            if tool and tool not in ("null", "none", None):
+            if has_tool:
                 obs, media = await self._execute_with_retry(tool, tool_args)
                 final_text = await self._synthesize(text, tool, obs)
                 await self._record_exec(tool, tool_args, obs, bool(media or obs))
@@ -369,7 +586,13 @@ class AriaMind:
     # ── RAZONAMIENTO ───────────────────────────────────────────────────────
 
     async def _reason(
-        self, text: str, history: list, state: dict, goals: list[dict], learned: list[str]
+        self,
+        text: str,
+        history: list,
+        state: dict,
+        goals: list[dict],
+        learned: list[str],
+        user_context: str = "",
     ) -> dict | None:
         ai = self._ai_client()
         if not ai:
@@ -412,9 +635,13 @@ class AriaMind:
             history=history_text,
         )
 
+        lang = self._detect_lang(text)
         user_input = text
         if kb_context:
             user_input = f"{kb_context}\n\n---\nMensaje del usuario: {text}"
+        if user_context:
+            user_input = f"{user_context}\n\n{user_input}"
+        user_input += self._lang_directive(lang)
 
         result = await ai.complete_json(
             system=system,
@@ -430,8 +657,8 @@ class AriaMind:
         # Fallback: respuesta de texto directo
         logger.warning("[AriaMind] complete_json returned None — using FAST fallback")
         resp = await ai.complete(
-            system="Eres ARIA. Responde directamente en español, máximo 2 oraciones.",
-            user=text,
+            system="Eres ARIA. Responde directamente en el MISMO idioma del usuario, máximo 2 oraciones.",
+            user=text + self._lang_directive(self._detect_lang(text)),
             model=AIModel.FAST,
             max_tokens=150,
             temperature=0.5,
@@ -496,44 +723,51 @@ class AriaMind:
         try:
             # ── IMAGEN ────────────────────────────────────────────────────
             if tool == "generate_image":
-                prompt = args.get("prompt", "")
-                model_id = args.get("_fallback_model", "black-forest-labs/FLUX.1-schnell")
-                steps = 4 if "schnell" in model_id else 25
+                prompt = args.get("prompt", "") or "professional high-end marketing graphic"
+                import urllib.parse as _url
 
-                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+                import httpx
 
-                r = await HuggingFaceSuite().generate_image(
-                    prompt=prompt,
-                    model=model_id,
-                    width=1024,
-                    height=1024,
-                    num_inference_steps=steps,
-                )
-
-                if r.get("success") and r.get("image_bytes"):
-                    model_short = model_id.split("/")[-1]
-                    return f"Imagen generada con {model_short}", {"image_bytes": r["image_bytes"]}
-
-                # FALLBACK A POLLINATIONS SI HF FALLA (No requiere API Key)
-                logger.info(
-                    "[AriaMind] HF imagen fallo o sin token, intentando Pollinations fallback..."
+                # Pollinations FIRST — HF's api-inference host is deprecated (DNS fails),
+                # so go straight to the reliable, keyless provider that actually works.
+                poll_url = (
+                    "https://image.pollinations.ai/prompt/"
+                    f"{_url.quote(prompt[:400])}?width=1024&height=1024&nologo=true&model=flux"
                 )
                 try:
-                    import httpx
-
-                    poll_url = f"https://image.pollinations.ai/prompt/{prompt.replace(' ', '%20')}?width=1024&height=1024&nologo=true"
-                    async with httpx.AsyncClient(timeout=30.0) as client:
+                    async with httpx.AsyncClient(timeout=45.0) as client:
                         resp = await client.get(poll_url)
-                        if resp.status_code == 200:
-                            logger.info("[AriaMind] Imagen generada exitosamente via Pollinations")
-                            return "Imagen generada (via Pollinations)", {
-                                "image_bytes": resp.content
-                            }
+                    if resp.status_code == 200 and resp.content:
+                        logger.info("[AriaMind] Imagen generada via Pollinations")
+                        # media dict is spread into MindResponse(**media), so it must
+                        # only contain valid fields (image_bytes). URL stays in the text.
+                        return (
+                            f"Imagen generada: {prompt}\n{poll_url}",
+                            {"image_bytes": resp.content},
+                        )
                 except Exception as e:
-                    logger.error("[AriaMind] Pollinations fallback fallo: %s", e)
+                    logger.error("[AriaMind] Pollinations fallo: %s", e)
 
+                # Secondary: HuggingFace FLUX (only if the host/token happen to work).
+                try:
+                    from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+                    r = await HuggingFaceSuite().generate_image(
+                        prompt=prompt,
+                        model="black-forest-labs/FLUX.1-schnell",
+                        width=1024,
+                        height=1024,
+                        num_inference_steps=4,
+                    )
+                    if r.get("success") and r.get("image_bytes"):
+                        return "Imagen generada con FLUX.1", {"image_bytes": r["image_bytes"]}
+                except Exception as e:
+                    logger.error("[AriaMind] HF imagen fallo: %s", e)
+
+                # Both providers failed to return bytes — degrade to a link in the
+                # text (media dict must only contain valid MindResponse fields).
                 return (
-                    f"⚠️ No pude generar la imagen en este momento ({r.get('error', 'Proveedor no disponible')}). Por favor, verifica que HF_TOKEN esté configurado correctamente.",
+                    f"No pude incrustar la imagen ahora mismo, pero puedes abrirla aquí: {poll_url}",
                     {},
                 )
 
@@ -1364,6 +1598,7 @@ class AriaMind:
             user=(
                 f"El usuario pidió: {user_input[:400]}\n"
                 f"Usé la herramienta '{tool}' y obtuve:\n{observation[:2000]}"
+                f"{self._lang_directive(self._detect_lang(user_input))}"
             ),
             model=AIModel.STRATEGY,
             max_tokens=800,
@@ -1383,10 +1618,11 @@ class AriaMind:
 
         resp = await ai.complete(
             system=(
-                "Eres ARIA, asistente inteligente. Responde en español de forma directa y completa. "
+                "Eres ARIA, asistente inteligente. Responde en el MISMO idioma del usuario, "
+                "de forma directa y completa. "
                 "Usa markdown cuando sea útil. Si necesitas datos de internet, dilo y sugiere qué buscar."
             ),
-            user=text,
+            user=text + self._lang_directive(self._detect_lang(text)),
             model=AIModel.STRATEGY,
             max_tokens=600,
             temperature=0.4,

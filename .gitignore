@@ -1,59 +1,22 @@
-# Python
+# ARIA AI
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-*.egg
+.env
+.venv
+venv/
+env/
 *.egg-info/
 dist/
 build/
-.eggs/
-.Python
-
-# Virtual environments
-.env
-.venv
-env/
-venv/
-ENV/
-
-# Secrets & credentials
-.env.local
-.env.production
-secrets.json
-*.pem
-*.key
-
-# Fly.io
-.fly/
-
-# Logs
-*.log
-logs/
-
-# Screenshots (playwright)
-screenshots/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Testing
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Claude Code
-.claude/
-.aria/
-*.enc
-secrets.enc
+*.log
+.DS_Store
+node_modules/
+.fly/
+*.pyc.claude/

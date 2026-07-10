@@ -1,0 +1,543 @@
+"""
+continuous_learning.py — Motor de Auto-Aprendizaje Continuo de ARIA.
+
+ARIA aprende de cada interacción, extrae patrones con modelos HuggingFace
+y enriquece sus respuestas futuras con conocimiento acumulado.
+
+Ciclo de aprendizaje:
+  1. Cada interacción se graba: quién preguntó, qué preguntó, cómo respondió ARIA
+  2. Cada N horas, el motor procesa el lote acumulado con modelos HF:
+     - Clasificación de temas (zero-shot-classification)
+     - Resumen de conversaciones (summarization)
+     - Extracción de entidades clave (named-entity-recognition)
+     - Embeddings para búsqueda semántica futura (feature-extraction)
+  3. Los aprendizajes se guardan en Redis (cache rápido) y Supabase (persistencia)
+  4. Al responder, ARIA consulta el contexto aprendido relevante al tema
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+logger = logging.getLogger("aria.continuous_learning")
+
+# ── CLAVES REDIS ─────────────────────────────────────────────
+INTERACTIONS_KEY = "aria:learning:interactions:v2"
+KNOWLEDGE_KEY = "aria:learning:knowledge:{topic}"
+LAST_CYCLE_KEY = "aria:learning:last_cycle"
+TOPIC_FREQ_KEY = "aria:learning:topic_freq"
+MODEL_PERF_KEY = "aria:learning:model_perf:{model}"
+LEARNING_TTL = 60 * 60 * 24 * 30  # 30 días
+CYCLE_INTERVAL_H = 4  # cada 4 horas
+
+
+@dataclass
+class Interaction:
+    """Una interacción registrada de Aria con el mundo."""
+
+    ts: str
+    source: str  # "telegram", "scheduler", "webhook", etc.
+    agent: str  # agente que respondió
+    user_text: str
+    aria_text: str
+    model_used: str
+    latency_ms: int
+    success: bool
+    tokens: int = 0
+    metadata: dict = field(default_factory=dict)
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+
+
+@dataclass
+class KnowledgeCrystal:
+    """Unidad de conocimiento aprendida y comprimida."""
+
+    topic: str
+    summary: str
+    key_entities: list[str]
+    interaction_count: int
+    avg_satisfaction: float  # 0-1 estimado por señales implícitas
+    hf_model_used: str
+    created_at: str
+    updated_at: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+class ContinuousLearningEngine:
+    """
+    Motor de auto-aprendizaje continuo de ARIA.
+
+    Uso:
+        engine = get_learning_engine()
+
+        # Grabar interacción
+        await engine.record(source="telegram", agent="telegram_conversation",
+                            user_text="...", aria_text="...",
+                            model_used="groq/llama", latency_ms=600)
+
+        # Obtener contexto aprendido para enriquecer una respuesta
+        ctx = await engine.get_learned_context("marketing digital")
+
+        # Correr ciclo de aprendizaje completo (llamado por scheduler)
+        report = await engine.run_learning_cycle()
+    """
+
+    def __init__(self) -> None:
+        self._cache = None
+        self._db = None
+        self._hf = None
+        self._lock = asyncio.Lock()
+        self._pending_interactions: list[Interaction] = []
+        self._batch_size = 20
+
+    def _get_cache(self):
+        if not self._cache:
+            from apps.core.memory.redis_client import get_cache
+
+            self._cache = get_cache()
+        return self._cache
+
+    def _get_db(self):
+        if not self._db:
+            from apps.core.memory.supabase_client import get_db
+
+            self._db = get_db()
+        return self._db
+
+    def _get_hf(self):
+        if not self._hf:
+            from apps.core.tools.hf_discovery import HFDiscovery
+
+            self._hf = HFDiscovery()
+        return self._hf
+
+    # ── GRABACIÓN DE INTERACCIONES ───────────────────────────
+
+    async def record(
+        self,
+        source: str,
+        agent: str,
+        user_text: str,
+        aria_text: str,
+        model_used: str,
+        latency_ms: int,
+        success: bool = True,
+        tokens: int = 0,
+        metadata: dict | None = None,
+    ) -> None:
+        """Graba una interacción para aprendizaje posterior."""
+        interaction = Interaction(
+            ts=datetime.now(UTC).isoformat(),
+            source=source,
+            agent=agent,
+            user_text=user_text[:500],  # limit for storage
+            aria_text=aria_text[:800],
+            model_used=model_used,
+            latency_ms=latency_ms,
+            success=success,
+            tokens=tokens,
+            metadata=metadata or {},
+        )
+
+        # Buffer local para batch
+        async with self._lock:
+            self._pending_interactions.append(interaction)
+
+        # Flush a Redis si tenemos suficientes
+        if len(self._pending_interactions) >= self._batch_size:
+            await self._flush_to_redis()
+
+        # Siempre flush al menos el último
+        else:
+            try:
+                cache = self._get_cache()
+                await cache.lpush(INTERACTIONS_KEY, interaction.to_json())
+                await cache.expire(INTERACTIONS_KEY, LEARNING_TTL)
+                logger.debug("[Learning] Interacción grabada: %s/%s", source, agent)
+            except Exception as exc:
+                logger.warning("[Learning] No se pudo grabar interacción: %s", exc)
+
+    async def _flush_to_redis(self) -> None:
+        async with self._lock:
+            batch = self._pending_interactions[:]
+            self._pending_interactions.clear()
+        try:
+            cache = self._get_cache()
+            for interaction in batch:
+                await cache.lpush(INTERACTIONS_KEY, interaction.to_json())
+            await cache.expire(INTERACTIONS_KEY, LEARNING_TTL)
+            logger.info("[Learning] Batch de %d interacciones grabado", len(batch))
+        except Exception as exc:
+            logger.error("[Learning] Error flushing batch: %s", exc)
+
+    # ── CONTEXTO APRENDIDO ───────────────────────────────────
+
+    async def get_learned_context(self, topic: str, max_chars: int = 300) -> str:
+        """
+        Recupera conocimiento aprendido relevante a un tema.
+        Úsalo para enriquecer el contexto de las respuestas de ARIA.
+        """
+        try:
+            cache = self._get_cache()
+            topic_key = KNOWLEDGE_KEY.format(topic=topic[:40].replace(" ", "_").lower())
+            raw = await cache.get(topic_key)
+            if raw:
+                crystal_data = json.loads(raw)
+                summary = crystal_data.get("summary", "")
+                entities = crystal_data.get("key_entities", [])
+                count = crystal_data.get("interaction_count", 0)
+                if summary:
+                    entity_str = ", ".join(entities[:5]) if entities else ""
+                    ctx = f"[Aprendido de {count} interacciones sobre '{topic}': {summary}"
+                    if entity_str:
+                        ctx += f" | Entidades clave: {entity_str}"
+                    ctx += "]"
+                    return ctx[:max_chars]
+        except Exception as exc:
+            logger.debug("[Learning] Error recuperando contexto: %s", exc)
+        return ""
+
+    async def get_top_topics(self, n: int = 10) -> list[dict]:
+        """Retorna los temas más frecuentes aprendidos por ARIA."""
+        try:
+            cache = self._get_cache()
+            raw = await cache.get(TOPIC_FREQ_KEY)
+            if raw:
+                freq = json.loads(raw)
+                sorted_topics = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:n]
+                return [{"topic": t, "count": c} for t, c in sorted_topics]
+        except Exception:
+            pass
+        return []
+
+    # ── CICLO DE APRENDIZAJE ─────────────────────────────────
+
+    async def run_learning_cycle(self) -> dict:
+        """
+        Ciclo principal de aprendizaje. Llamado por el scheduler cada 4h.
+        Procesa interacciones acumuladas con modelos HF y cristaliza conocimiento.
+        """
+        t0 = time.time()
+        logger.info("[Learning] ═══ Iniciando ciclo de aprendizaje ═══")
+
+        # 1. Verificar si es momento de correr
+        cache = self._get_cache()
+        last_cycle_raw = await cache.get(LAST_CYCLE_KEY)
+        if last_cycle_raw:
+            last_ts = float(last_cycle_raw)
+            elapsed_h = (time.time() - last_ts) / 3600
+            if elapsed_h < CYCLE_INTERVAL_H:
+                logger.info("[Learning] Próximo ciclo en %.1fh", CYCLE_INTERVAL_H - elapsed_h)
+                return {
+                    "skipped": True,
+                    "reason": f"Próximo ciclo en {CYCLE_INTERVAL_H - elapsed_h:.1f}h",
+                }
+
+        # 2. Obtener interacciones acumuladas
+        interactions = await self._load_interactions_from_redis(max_count=200)
+        if not interactions:
+            logger.info("[Learning] Sin interacciones para procesar")
+            await cache.set(LAST_CYCLE_KEY, str(time.time()), ttl=LEARNING_TTL)
+            return {"processed": 0, "message": "Sin interacciones nuevas"}
+
+        logger.info("[Learning] Procesando %d interacciones con HF models", len(interactions))
+
+        results = {
+            "interactions_processed": len(interactions),
+            "topics_discovered": 0,
+            "crystals_created": 0,
+            "models_used": [],
+            "errors": [],
+            "duration_s": 0,
+        }
+
+        # 3. Clasificar interacciones por tema (zero-shot)
+        topics_map = await self._classify_topics(interactions)
+        results["topics_discovered"] = len(topics_map)
+
+        # 4. Para cada tema, cristalizar conocimiento
+        for topic, topic_interactions in topics_map.items():
+            try:
+                crystal = await self._crystallize_topic(topic, topic_interactions)
+                if crystal:
+                    await self._save_crystal(crystal)
+                    results["crystals_created"] += 1
+            except Exception as exc:
+                logger.error("[Learning] Error cristalizando '%s': %s", topic, exc)
+                results["errors"].append(str(exc))
+
+        # 5. Actualizar frecuencia de temas en Redis
+        await self._update_topic_frequency(topics_map)
+
+        # 6. Analizar rendimiento de modelos
+        model_insights = await self._analyze_model_performance(interactions)
+        results["model_performance"] = model_insights
+
+        # 7. Marcar ciclo como completado
+        await cache.set(LAST_CYCLE_KEY, str(time.time()), ttl=LEARNING_TTL)
+        results["duration_s"] = round(time.time() - t0, 1)
+
+        logger.info(
+            "[Learning] ═══ Ciclo completado: %d interacciones, %d temas, %d cristales en %.1fs ═══",
+            results["interactions_processed"],
+            results["topics_discovered"],
+            results["crystals_created"],
+            results["duration_s"],
+        )
+        return results
+
+    async def _load_interactions_from_redis(self, max_count: int = 200) -> list[Interaction]:
+        """Carga y limpia interacciones de Redis."""
+        try:
+            cache = self._get_cache()
+            raw_list = await cache.lrange(INTERACTIONS_KEY, 0, max_count - 1)
+            interactions = []
+            for raw in raw_list:
+                try:
+                    data = json.loads(raw)
+                    interactions.append(Interaction(**data))
+                except Exception:
+                    continue
+            # Limpiar los procesados
+            if interactions:
+                await cache.ltrim(INTERACTIONS_KEY, len(interactions), -1)
+            return interactions
+        except Exception as exc:
+            logger.error("[Learning] Error cargando interacciones: %s", exc)
+            return []
+
+    async def _classify_topics(
+        self, interactions: list[Interaction]
+    ) -> dict[str, list[Interaction]]:
+        """
+        Usa zero-shot-classification de HF para agrupar interacciones por tema.
+        """
+        hf = self._get_hf()
+        topics_map: dict[str, list[Interaction]] = {}
+        candidate_labels = [
+            "ventas y marketing",
+            "desarrollo de software",
+            "finanzas e ingresos",
+            "redes sociales",
+            "estrategia de negocios",
+            "consulta general",
+            "automatización",
+            "investigación de mercado",
+            "ecommerce y shopify",
+            "análisis de datos",
+            "contenido y creatividad",
+            "soporte técnico",
+        ]
+
+        # Procesar en lotes de 5 para no saturar HF
+        batch_size = 5
+        for i in range(0, len(interactions), batch_size):
+            batch = interactions[i : i + batch_size]
+            for interaction in batch:
+                if not interaction.user_text.strip():
+                    continue
+                try:
+                    result = await asyncio.wait_for(
+                        hf.discover_and_run(
+                            task="zero-shot-classification",
+                            payload={
+                                "inputs": interaction.user_text[:200],
+                                "parameters": {"candidate_labels": candidate_labels},
+                            },
+                        ),
+                        timeout=20.0,
+                    )
+                    if result.get("success") and result.get("result"):
+                        raw = result["result"]
+                        labels = raw.get("labels", []) if isinstance(raw, dict) else []
+                        topic = labels[0] if labels else "consulta general"
+                    else:
+                        topic = "consulta general"
+                except Exception:
+                    topic = "consulta general"
+
+                if topic not in topics_map:
+                    topics_map[topic] = []
+                topics_map[topic].append(interaction)
+
+            await asyncio.sleep(0.5)  # rate limiting
+
+        return topics_map
+
+    async def _crystallize_topic(
+        self, topic: str, interactions: list[Interaction]
+    ) -> KnowledgeCrystal | None:
+        """
+        Usa summarization de HF para cristalizar lo aprendido sobre un tema.
+        """
+        if not interactions:
+            return None
+
+        hf = self._get_hf()
+
+        # Construir texto a resumir
+        texts = []
+        for ix in interactions[:10]:  # max 10 por cristal
+            texts.append(f"Usuario: {ix.user_text[:150]}\nARIA: {ix.aria_text[:200]}")
+        full_text = "\n\n".join(texts)
+
+        # Resumir con HF
+        summary = ""
+        model_used = "none"
+        try:
+            result = await asyncio.wait_for(
+                hf.discover_and_run(
+                    task="summarization",
+                    payload={"inputs": full_text[:1024]},
+                ),
+                timeout=30.0,
+            )
+            if result.get("success") and result.get("result"):
+                raw = result["result"]
+                summary = (
+                    raw[0].get("summary_text", "")
+                    if isinstance(raw, list)
+                    else raw.get("summary_text", "") if isinstance(raw, dict) else str(raw)
+                )[:400]
+                model_used = result.get("model_used", "hf/summarization")
+        except Exception as exc:
+            logger.warning("[Learning] Summarization falló para '%s': %s", topic, exc)
+            # Fallback: concatenar primeras interacciones
+            summary = " | ".join(t[:80] for t in [ix.user_text for ix in interactions[:3]])[:300]
+
+        # Extraer entidades con NER
+        key_entities: list[str] = []
+        try:
+            ner_result = await asyncio.wait_for(
+                hf.discover_and_run(
+                    task="named-entity-recognition",
+                    payload={"inputs": full_text[:512]},
+                ),
+                timeout=20.0,
+            )
+            if ner_result.get("success") and ner_result.get("result"):
+                raw = ner_result["result"]
+                if isinstance(raw, list):
+                    seen = set()
+                    for ent in raw:
+                        word = ent.get("word", "").strip("#")
+                        if word and len(word) > 2 and word not in seen:
+                            key_entities.append(word)
+                            seen.add(word)
+                            if len(key_entities) >= 10:
+                                break
+        except Exception:
+            pass
+
+        # Calcular satisfacción implícita: respuestas largas + sin errores = mejor score
+        avg_lat = sum(ix.latency_ms for ix in interactions) / len(interactions)
+        success_rate = sum(1 for ix in interactions if ix.success) / len(interactions)
+        avg_satisfaction = round(
+            min(1.0, success_rate * 0.7 + (1 - min(avg_lat, 3000) / 3000) * 0.3), 2
+        )
+
+        now = datetime.now(UTC).isoformat()
+        return KnowledgeCrystal(
+            topic=topic,
+            summary=summary,
+            key_entities=key_entities,
+            interaction_count=len(interactions),
+            avg_satisfaction=avg_satisfaction,
+            hf_model_used=model_used,
+            created_at=now,
+            updated_at=now,
+        )
+
+    async def _save_crystal(self, crystal: KnowledgeCrystal) -> None:
+        """Guarda un cristal de conocimiento en Redis (y opcionalmente Supabase)."""
+        topic_key = KNOWLEDGE_KEY.format(topic=crystal.topic[:40].replace(" ", "_").lower())
+        try:
+            cache = self._get_cache()
+            await cache.set(
+                topic_key, json.dumps(crystal.to_dict(), ensure_ascii=False), ttl=LEARNING_TTL
+            )
+            logger.info(
+                "[Learning] Cristal guardado: '%s' (%d interacciones)",
+                crystal.topic,
+                crystal.interaction_count,
+            )
+        except Exception as exc:
+            logger.error("[Learning] Error guardando cristal '%s': %s", crystal.topic, exc)
+
+    async def _update_topic_frequency(self, topics_map: dict[str, list]) -> None:
+        """Actualiza el contador de frecuencia de temas en Redis."""
+        try:
+            cache = self._get_cache()
+            raw = await cache.get(TOPIC_FREQ_KEY)
+            freq = json.loads(raw) if raw else {}
+            for topic, interactions in topics_map.items():
+                freq[topic] = freq.get(topic, 0) + len(interactions)
+            await cache.set(TOPIC_FREQ_KEY, json.dumps(freq), ttl=LEARNING_TTL)
+        except Exception as exc:
+            logger.warning("[Learning] Error actualizando frecuencia de temas: %s", exc)
+
+    async def _analyze_model_performance(self, interactions: list[Interaction]) -> dict[str, Any]:
+        """Analiza qué modelos dan mejores resultados basándose en las interacciones."""
+        perf: dict[str, dict] = {}
+        for ix in interactions:
+            m = ix.model_used or "unknown"
+            if m not in perf:
+                perf[m] = {"calls": 0, "success": 0, "total_latency": 0, "total_tokens": 0}
+            perf[m]["calls"] += 1
+            perf[m]["success"] += int(ix.success)
+            perf[m]["total_latency"] += ix.latency_ms
+            perf[m]["total_tokens"] += ix.tokens
+
+        summary = {}
+        for m, stats in perf.items():
+            if stats["calls"] > 0:
+                summary[m] = {
+                    "calls": stats["calls"],
+                    "success_rate": round(stats["success"] / stats["calls"], 3),
+                    "avg_latency_ms": round(stats["total_latency"] / stats["calls"]),
+                    "avg_tokens": round(stats["total_tokens"] / stats["calls"]),
+                }
+        return summary
+
+    # ── REPORTE ──────────────────────────────────────────────
+
+    async def get_learning_report(self) -> dict:
+        """Genera un reporte del estado del aprendizaje continuo."""
+        try:
+            cache = self._get_cache()
+            pending_count = await cache.llen(INTERACTIONS_KEY)
+            top_topics = await self.get_top_topics(10)
+            last_cycle_raw = await cache.get(LAST_CYCLE_KEY)
+            last_cycle = "Nunca"
+            if last_cycle_raw:
+                dt = datetime.fromtimestamp(float(last_cycle_raw), tz=UTC)
+                last_cycle = dt.strftime("%Y-%m-%d %H:%M UTC")
+            return {
+                "pending_interactions": pending_count or 0,
+                "top_topics": top_topics,
+                "last_cycle": last_cycle,
+                "local_buffer": len(self._pending_interactions),
+            }
+        except Exception as exc:
+            return {"error": str(exc)}
+
+
+# ── SINGLETON ────────────────────────────────────────────────
+_learning_engine: ContinuousLearningEngine | None = None
+
+
+def get_learning_engine() -> ContinuousLearningEngine:
+    global _learning_engine
+    if _learning_engine is None:
+        _learning_engine = ContinuousLearningEngine()
+    return _learning_engine

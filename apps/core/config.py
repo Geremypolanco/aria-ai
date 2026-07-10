@@ -80,18 +80,16 @@ class Settings(BaseSettings):
 
     # ── IA Adicional ──────────────────────────────────────
     ANTHROPIC_API_KEY: str | None = None
-    GEMINI_API_KEY: str | None = None
     GOOGLE_API_KEY: str | None = None
     COHERE_API_KEY: str | None = None
-
-    @property
-    def gemini_key(self) -> str | None:
-        """Devuelve la clave de Gemini (GEMINI_API_KEY o GOOGLE_API_KEY como respaldo)."""
-        return self.GEMINI_API_KEY or self.GOOGLE_API_KEY
 
     # ── CONTENIDO / SEO ───────────────────────────────────
     NEWS_API_KEY: str | None = None
     SERP_API_KEY: str | None = None
+    # Alternative web-search providers (free tiers, work from servers). Set either
+    # to keep research working when SerpAPI is out of quota.
+    TAVILY_API_KEY: str | None = None
+    BRAVE_API_KEY: str | None = None
     PEXELS_API_KEY: str | None = None
     ELEVENLABS_API_KEY: str | None = None
 
@@ -175,16 +173,19 @@ class Settings(BaseSettings):
     CANVA_CLIENT_SECRET: str | None = None
     ARIA_BASE_URL: str = "https://aria-ai.fly.dev"
     ZAPIER_WEBHOOK_URL: str | None = None
+    # Full Zapier MCP endpoint URL (embeds its own key) copied from mcp.zapier.com.
+    # Lets ARIA publish to every account the owner connected in Zapier with one credential.
+    ZAPIER_MCP_URL: str | None = None
     SOCIAL_CONNECT_TOKEN: str = "aria"
 
     # ── COMUNICACIÓN ──────────────────────────────────────
     TWILIO_ACCOUNT_SID: str | None = None
     TWILIO_AUTH_TOKEN: str | None = None
-    TWILIO_FROM: str | None = None  # Twilio phone number, e.g. +12025551234
-    MAILCHIMP_LIST_ID: str | None = None  # Mailchimp audience/list ID for email capture
 
     # ── API PÚBLICA ───────────────────────────────────────
     ARIA_API_KEY: str | None = None
+    # Owner-only password gating the /admin control panel (server-side).
+    ADMIN_PASSWORD: str | None = None
 
     # ── CREDENCIALES DE ARIA (para login stealth en plataformas) ──────────
     ARIA_EMAIL: str | None = None
@@ -195,6 +196,10 @@ class Settings(BaseSettings):
     # Obtén en: console.cloud.google.com → APIs & Services → Credentials → OAuth 2.0
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
+    GITHUB_CLIENT_ID: str | None = None
+    GITHUB_CLIENT_SECRET: str | None = None
+    META_APP_ID: str | None = None
+    META_APP_SECRET: str | None = None
 
     # Slack OAuth (para enviar/leer mensajes en workspaces)
     # Obtén en: api.slack.com/apps → Create App → OAuth & Permissions

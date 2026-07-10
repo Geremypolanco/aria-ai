@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import time
 import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 
@@ -217,6 +219,17 @@ class TestFunnelOptimizer:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestExperimentRunner:
+    @pytest.fixture(autouse=True)
+    def _isolate_cache(self):
+        # Each ExperimentRunner uses the real process-shared cache by default, so
+        # experiments leak across tests and analysis/lookup becomes flaky. Give every
+        # test a fresh, empty mock cache that stays active for the whole test.
+        cache = MagicMock()
+        cache.get = AsyncMock(return_value=None)
+        cache.set = AsyncMock(return_value=True)
+        with patch("apps.business.growth.experiment_runner.get_cache", return_value=cache):
+            yield
+
     @pytest.mark.asyncio
     async def test_create_experiment(self):
         from apps.business.growth.experiment_runner import ExperimentRunner

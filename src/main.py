@@ -1,31 +1,16 @@
 """
-ARIA - Main Entry Point (Stable Redirect to Aria OS)
+ARIA AI — Legacy Entry Point.
+Delegates to the new apps.core.main module.
 """
-
-import logging
-import asyncio
-import os
 import sys
-
-# Añadir el path raíz para que las importaciones de apps funcionen
-sys.path.append(os.getcwd())
-
-from apps.core.main import app
-import uvicorn
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("aria.main")
-
-def main():
-    print("\n" + "="*60)
-    print("🚀 ARIA OS - Production Mode (Multimedia Enabled)")
-    print("="*60)
-    
-    port = int(os.getenv("PORT", "8000"))
-    
-    # Ejecutar la app de FastAPI que contiene el bot avanzado y multimedia
-    logger.info(f"Starting Aria OS on port {port}...")
-    uvicorn.run("apps.core.main:app", host="0.0.0.0", port=port, reload=False)
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from apps.core.main import app  # noqa: E402, F401
 
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    print(f"\n{'='*60}")
+    print("🚀 ARIA AI - Autonomous Intelligence Platform")
+    print(f"{'='*60}")
+    uvicorn.run("apps.core.main:app", host="0.0.0.0", port=port, reload=False)

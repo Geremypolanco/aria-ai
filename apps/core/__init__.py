@@ -1,1 +1,1 @@
-# Aria AI
+"""ARIA AI — Core Application"""

@@ -148,6 +148,7 @@ class SandboxSession:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(self.working_directory),
+                timeout=timeout,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
@@ -182,6 +183,7 @@ class SandboxSession:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(self.working_directory),
+                timeout=timeout,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)

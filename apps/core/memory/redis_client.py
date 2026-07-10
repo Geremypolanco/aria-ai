@@ -63,17 +63,6 @@ class AriaCache:
     async def increment(self, key: str) -> int:
         return await self._cmd("INCR", key) or 0
 
-    async def ping(self) -> bool:
-        """True only if a real round-trip to Redis succeeds.
-
-        Distinguishes a reachable backend from an unconfigured/unreachable one:
-        ``_cmd`` returns ``None`` on any transport error, so a genuine PONG is the
-        only way this returns True. Used by /health so the probe can't report a
-        false ``ok`` when Upstash credentials are missing or the DB is gone.
-        """
-        result = await self._cmd("PING")
-        return result == "PONG"
-
     # ── COLAS DE TAREAS ───────────────────────────────────
     async def enqueue(self, queue: str, task: dict) -> bool:
         """Agrega una tarea al final de la cola."""
@@ -159,19 +148,12 @@ class AriaCache:
 
     # ── RATE LIMITING ─────────────────────────────────────
     async def check_rate_limit(self, key: str, max_calls: int, window_seconds: int) -> bool:
-        """True if the call is allowed, False if the limit is exceeded.
-
-        Fails OPEN: if the backend is unreachable (``_cmd`` returns None) we allow the
-        call rather than block all traffic. A rate limiter that can't reach its store
-        must not become a global outage — availability over strictness.
-        """
+        """Retorna True si se puede hacer la llamada, False si excede el límite."""
         rate_key = f"ratelimit:{key}"
         current = await self._cmd("INCR", rate_key)
-        if current is None:
-            return True  # backend unavailable → fail open
         if current == 1:
             await self._cmd("EXPIRE", rate_key, window_seconds)
-        return int(current) <= max_calls
+        return current is not None and int(current) <= max_calls
 
     # ── LOCKS DISTRIBUIDOS ────────────────────────────────
     async def acquire_lock(self, resource: str, ttl_seconds: int = 60) -> bool:

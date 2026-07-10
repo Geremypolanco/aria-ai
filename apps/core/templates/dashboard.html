@@ -1,2311 +1,262 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="es" class="scroll-smooth">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>ARIA AI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-<style>
-/* ── TOKENS ─────────────────────────────────────────── */
-:root{
-  --bg:       #07080d;
-  --surface:  #0d0f18;
-  --elevated: #12141f;
-  --hover:    #181b28;
-  --border:   #1d2030;
-  --borderl:  #262a3d;
-  --accent:   #7c3aed;
-  --accent2:  #6d28d9;
-  --glow:     rgba(124,58,237,.10);
-  --glow2:    rgba(124,58,237,.22);
-  --text:     #edf0fb;
-  --text2:    #8892aa;
-  --text3:    #484f68;
-  --green:    #10b981;
-  --yellow:   #f59e0b;
-  --red:      #ef4444;
-  --blue:     #3b82f6;
-}
-*{box-sizing:border-box}
-[x-cloak]{display:none!important}
-
-/* ── BASE ─────────────────────────────────────────────── */
-html,body{height:100%;overflow:hidden}
-body{
-  background:var(--bg);
-  color:var(--text);
-  font-family:'Inter',system-ui,sans-serif;
-  font-size:15px;
-  line-height:1.55;
-}
-
-/* ── SCROLLBARS ──────────────────────────────────────── */
-::-webkit-scrollbar{width:5px;height:5px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:#262a3d;border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:#333850}
-
-/* ── UTILITIES ───────────────────────────────────────── */
-.scrollable{overflow-y:auto}
-.gradient-text{
-  background:linear-gradient(135deg,#818cf8,#a78bfa,#c084fc);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-}
-.glow-bg{
-  position:fixed;top:-200px;right:-200px;
-  width:600px;height:600px;border-radius:50%;
-  background:radial-gradient(circle,rgba(109,40,217,.08) 0%,transparent 70%);
-  pointer-events:none;z-index:0;
-}
-
-/* ── SIDEBAR ─────────────────────────────────────────── */
-#sidebar{
-  position:fixed;top:0;left:0;bottom:0;z-index:40;
-  background:var(--surface);
-  border-right:1px solid var(--border);
-  display:flex;flex-direction:column;
-  transition:width .2s ease,transform .2s ease;
-  overflow:hidden;
-}
-#sidebar.expanded{width:248px}
-#sidebar.collapsed{width:64px}
-@media(max-width:1023px){
-  #sidebar{width:248px!important;transform:translateX(-100%)}
-  #sidebar.mobile-open{transform:translateX(0)!important}
-}
-#main-content{
-  margin-left:64px;
-  transition:margin-left .2s ease;
-}
-#main-content.sidebar-expanded{margin-left:248px}
-@media(max-width:1023px){
-  #main-content,#main-content.sidebar-expanded{margin-left:0!important}
-}
-
-/* ── NAV ITEMS ───────────────────────────────────────── */
-.nav-item{
-  display:flex;align-items:center;gap:10px;
-  padding:9px 12px;border-radius:8px;
-  cursor:pointer;color:var(--text2);
-  font-size:13.5px;font-weight:500;
-  transition:background .15s,color .15s;
-  white-space:nowrap;overflow:hidden;
-  position:relative;
-}
-.nav-item:hover{background:var(--hover);color:var(--text)}
-.nav-item.active{background:rgba(124,58,237,.15);color:#a78bfa}
-.nav-item.active::before{
-  content:'';position:absolute;left:0;top:20%;bottom:20%;
-  width:3px;border-radius:0 3px 3px 0;background:#7c3aed;
-}
-.nav-icon{flex-shrink:0;width:18px;height:18px;display:flex;align-items:center;justify-content:center}
-.nav-label{transition:opacity .15s,width .15s}
-#sidebar.collapsed .nav-label{opacity:0;width:0;overflow:hidden}
-#sidebar.collapsed .nav-badge{display:none}
-
-/* ── CARDS ───────────────────────────────────────────── */
-.card{
-  background:var(--surface);
-  border:1px solid var(--border);
-  border-radius:12px;
-}
-.card-elevated{
-  background:var(--elevated);
-  border:1px solid var(--borderl);
-  border-radius:12px;
-}
-.metric-card{
-  background:linear-gradient(135deg,var(--surface) 0%,#111525 100%);
-  border:1px solid var(--border);
-  border-radius:12px;padding:20px;
-  transition:border-color .2s;
-}
-.metric-card:hover{border-color:var(--borderl)}
-
-/* ── CHAT BUBBLES ────────────────────────────────────── */
-.msg-user{
-  background:linear-gradient(135deg,#4c1d95,#5b21b6);
-  border-radius:18px 18px 4px 18px;
-  max-width:78%;padding:10px 15px;
-}
-.msg-aria{
-  background:var(--elevated);
-  border:1px solid var(--border);
-  border-radius:18px 18px 18px 4px;
-  max-width:82%;padding:10px 15px;
-}
-/* markdown inside ARIA messages */
-.msg-aria strong{color:#c4b5fd;font-weight:600}
-.msg-aria em{color:#94a3b8;font-style:italic}
-.msg-aria code{
-  background:rgba(0,0,0,.4);border:1px solid var(--border);
-  padding:1px 5px;border-radius:4px;
-  font-family:'JetBrains Mono',monospace;font-size:12px;color:#a78bfa;
-}
-.msg-aria pre{
-  background:rgba(0,0,0,.5);border:1px solid var(--border);
-  border-radius:8px;padding:12px;margin:8px 0;
-  overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;
-}
-.msg-aria h1,.msg-aria h2,.msg-aria h3{font-weight:600;margin:8px 0 4px}
-.msg-aria h1{font-size:16px;color:var(--text)}
-.msg-aria h2{font-size:14px;color:var(--text)}
-.msg-aria h3{font-size:13px;color:var(--text2)}
-.msg-aria ul,.msg-aria ol{margin:6px 0;padding-left:18px}
-.msg-aria li{margin:2px 0;font-size:13.5px}
-.msg-aria p{margin:4px 0}
-
-/* ── STREAMING CURSOR ────────────────────────────────── */
-.streaming-cursor{
-  display:inline-block;width:2px;height:14px;
-  background:#a78bfa;border-radius:1px;margin-left:2px;
-  vertical-align:text-bottom;
-  animation:blink-caret .7s step-end infinite;
-}
-@keyframes blink-caret{0%,100%{opacity:1}50%{opacity:0}}
-
-/* ── PULSE DOT ───────────────────────────────────────── */
-.pulse-dot{
-  width:8px;height:8px;border-radius:50%;
-  animation:pulse-anim 2s infinite;
-}
-@keyframes pulse-anim{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
-
-/* ── TYPING ──────────────────────────────────────────── */
-.typing-dot{
-  width:5px;height:5px;border-radius:50%;background:#a78bfa;
-  animation:typing-anim 1.4s infinite;
-}
-.typing-dot:nth-child(2){animation-delay:.2s}
-.typing-dot:nth-child(3){animation-delay:.4s}
-@keyframes typing-anim{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}
-
-/* ── BADGES ──────────────────────────────────────────── */
-.badge{padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600}
-.badge-g{background:#064e3b;color:#34d399}
-.badge-r{background:#450a0a;color:#f87171}
-.badge-y{background:#451a03;color:#fbbf24}
-.badge-v{background:#2e1065;color:#c084fc}
-.badge-b{background:#0c1a6b;color:#60a5fa}
-
-/* ── INPUT BASE ──────────────────────────────────────── */
-.input{
-  background:var(--elevated);border:1px solid var(--border);
-  border-radius:10px;color:var(--text);
-  padding:10px 14px;font-size:13.5px;
-  outline:none;font-family:inherit;
-  transition:border-color .15s;width:100%;
-}
-.input:focus{border-color:rgba(124,58,237,.6)}
-.input::placeholder{color:var(--text3)}
-textarea.input{resize:none}
-
-/* ── BUTTONS ─────────────────────────────────────────── */
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  padding:9px 18px;border-radius:9px;font-size:13.5px;font-weight:500;
-  cursor:pointer;transition:all .15s;font-family:inherit;border:none;
-}
-.btn:disabled{opacity:.4;cursor:not-allowed}
-.btn-primary{background:#5b21b6;color:#ddd6fe}
-.btn-primary:not(:disabled):hover{background:#4c1d95}
-.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}
-.btn-ghost:not(:disabled):hover{background:var(--hover);color:var(--text)}
-.btn-sm{padding:6px 12px;font-size:12.5px;border-radius:7px}
-.btn-icon{padding:7px;width:32px;height:32px;border-radius:8px}
-
-/* ── AGENT CARD ──────────────────────────────────────── */
-.agent-card{
-  background:var(--surface);border:1px solid var(--border);
-  border-radius:12px;padding:16px;
-  transition:border-color .15s,transform .15s;
-}
-.agent-card:hover{border-color:#4c1d95;transform:translateY(-1px)}
-
-/* ── SECTION FADE ────────────────────────────────────── */
-[x-show]{transition:opacity .15s ease}
-
-/* ── MODAL ───────────────────────────────────────────── */
-.modal-bg{
-  position:fixed;inset:0;z-index:50;
-  display:flex;align-items:center;justify-content:center;
-  background:rgba(0,0,0,.75);backdrop-filter:blur(4px);
-  padding:16px;
-}
-.modal-box{
-  background:var(--surface);border:1px solid var(--borderl);
-  border-radius:16px;padding:24px;width:100%;max-width:480px;
-}
-
-/* ── MOBILE BOTTOM NAV ───────────────────────────────── */
-#bottom-nav{
-  display:none;position:fixed;bottom:0;left:0;right:0;z-index:40;
-  background:var(--surface);border-top:1px solid var(--border);
-  padding:8px 4px calc(8px + env(safe-area-inset-bottom));
-}
-@media(max-width:1023px){
-  #bottom-nav{display:flex}
-  body{padding-bottom:64px}
-}
-.bnav-item{
-  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
-  color:var(--text3);padding:6px 4px;cursor:pointer;
-  transition:color .15s;font-size:10px;font-weight:500;
-}
-.bnav-item.active{color:#a78bfa}
-.bnav-item svg{width:20px;height:20px}
-
-/* ── BACKDROP ────────────────────────────────────────── */
-#sidebar-backdrop{
-  display:none;position:fixed;inset:0;z-index:39;
-  background:rgba(0,0,0,.65);backdrop-filter:blur(2px);
-}
-@media(max-width:1023px){#sidebar-backdrop.visible{display:block}}
-
-/* ── TOOLTIP ─────────────────────────────────────────── */
-.tip{position:relative}
-.tip::after{
-  content:attr(data-tip);
-  position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);
-  background:#1f2335;border:1px solid var(--borderl);color:var(--text);
-  padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;
-  pointer-events:none;opacity:0;transition:opacity .15s;z-index:99;
-}
-#sidebar.collapsed .tip:hover::after{opacity:1}
-
-/* ── SECTION HEADERS ─────────────────────────────────── */
-.section-header{
-  display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:24px;
-}
-.section-title{font-size:22px;font-weight:700;letter-spacing:-.3px}
-.section-sub{color:var(--text2);font-size:13px;margin-top:3px}
-
-/* ── ACTIVITY ROW ────────────────────────────────────── */
-.activity-row{
-  display:flex;align-items:flex-start;gap:12px;
-  padding:10px 16px;border-bottom:1px solid #0e1015;
-}
-.activity-row:last-child{border-bottom:none}
-
-/* ── KB CHIP ─────────────────────────────────────────── */
-.source-chip{
-  display:inline-flex;align-items:center;gap:6px;
-  background:var(--elevated);border:1px solid var(--border);
-  border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text2);
-  transition:border-color .15s;
-}
-.source-chip:hover{border-color:#4c1d95;color:var(--text)}
-
-/* ── PREFORMATTED CODE ───────────────────────────────── */
-pre{white-space:pre-wrap;word-break:break-word;font-family:'JetBrains Mono','Fira Code',monospace;font-size:12.5px}
-code{font-family:'JetBrains Mono','Fira Code',monospace}
-
-/* ── PROGRESS BAR ────────────────────────────────────── */
-.progress-track{background:var(--border);border-radius:3px;height:3px;overflow:hidden}
-.progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#7c3aed,#a78bfa);transition:width .3s ease}
-
-/* ── ENHANCED CODE BLOCKS ─────────────────────────────── */
-.code-block-wrapper{position:relative;margin:8px 0}
-.code-block-header{display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.6);border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;padding:6px 12px}
-.code-lang{font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b7a9e;letter-spacing:.04em;text-transform:lowercase}
-.code-copy-btn{font-size:11px;padding:3px 9px;border-radius:5px;background:var(--elevated);border:1px solid var(--border);color:var(--text3);cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif}
-.code-copy-btn:hover{color:var(--text2);border-color:rgba(124,58,237,.4)}
-.msg-aria pre.has-header{border-radius:0 0 8px 8px!important;border-top:none!important;margin:0!important}
-
-/* ── MARKDOWN EXTRAS ─────────────────────────────────── */
-.md-table{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0}
-.md-table th{background:rgba(0,0,0,.4);border:1px solid var(--border);padding:6px 10px;text-align:left;font-weight:600;color:var(--text2);font-size:12px}
-.md-table td{border:1px solid var(--border);padding:5px 10px;color:var(--text2)}
-.md-table tr:nth-child(even) td{background:rgba(255,255,255,.025)}
-.md-link{color:#818cf8;text-decoration:underline;text-underline-offset:2px;word-break:break-all}
-.md-link:hover{color:#a78bfa}
-
-/* ── TOAST NOTIFICATIONS ─────────────────────────────── */
-.toast-wrap{position:fixed;bottom:80px;right:16px;z-index:9999;display:flex;flex-direction:column-reverse;gap:8px;pointer-events:none;max-width:320px}
-.toast{padding:10px 16px;border-radius:10px;font-size:13px;font-weight:500;pointer-events:all;border:1px solid;display:flex;align-items:center;gap:8px;animation:toast-in .25s ease;box-shadow:0 4px 20px rgba(0,0,0,.5)}
-.toast-s{background:#052e16;border-color:#14532d;color:#34d399}
-.toast-e{background:#2d0808;border-color:#450a0a;color:#f87171}
-.toast-i{background:var(--surface);border-color:var(--borderl);color:var(--text)}
-@keyframes toast-in{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
-
-/* ── SCROLL TO BOTTOM BUTTON ─────────────────────────── */
-.scroll-btn{position:absolute;bottom:10px;right:16px;z-index:10;width:34px;height:34px;border-radius:50%;background:var(--elevated);border:1px solid var(--borderl);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;box-shadow:0 4px 14px rgba(0,0,0,.5)}
-.scroll-btn:hover{color:var(--text);border-color:rgba(124,58,237,.5);background:var(--hover)}
-
-/* ── VOICE INPUT ─────────────────────────────────────── */
-.voice-btn.listening{background:rgba(239,68,68,.12)!important;border-color:rgba(239,68,68,.4)!important;color:#f87171!important;animation:pulse-anim 1.2s infinite}
-
-/* ── REGENERATE / FOLLOW-UPS ─────────────────────────── */
-.followup-chip{display:inline-flex;align-items:center;padding:5px 12px;border-radius:20px;background:var(--elevated);border:1px solid var(--border);color:var(--text3);font-size:12px;cursor:pointer;transition:all .15s;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}
-.followup-chip:hover{border-color:rgba(124,58,237,.4);color:var(--text2);background:var(--hover)}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ARIA Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'Inter', sans-serif; background: #0a0a0f; color: #f1f5f9; }
+    .gradient-text { background: linear-gradient(135deg, #8b5cf6, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .card { background: #111118; border: 1px solid #1e1e2a; border-radius: 16px; transition: all 0.2s; }
+    .card:active { transform: scale(0.98); }
+    .btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border-radius: 12px; padding: 12px 20px; font-weight: 600; }
+    .btn-primary:active { transform: scale(0.97); }
+    .glass { background: rgba(17,17,24,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid #1e1e2a; }
+    .badge { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .msg-user { background: #1e1e2a; border-radius: 16px 16px 4px 16px; padding: 12px 16px; max-width: 85%; }
+    .msg-aria { background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.2); border-radius: 16px 16px 16px 4px; padding: 12px 16px; max-width: 85%; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 2px; }
+    @keyframes pulse-dot { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    .dot-pulse { animation: pulse-dot 1.4s infinite; }
+    .dot-pulse:nth-child(2) { animation-delay: 0.2s; }
+    .dot-pulse:nth-child(3) { animation-delay: 0.4s; }
+  </style>
 </head>
-
-<body x-data="ariaApp()" x-init="init()" x-cloak>
-
-<!-- GLOW BACKGROUND EFFECT -->
-<div class="glow-bg"></div>
-
-<!-- SIDEBAR BACKDROP (mobile) -->
-<div id="sidebar-backdrop" :class="mobileSidebarOpen ? 'visible' : ''"
-     @click="closeMobileSidebar()"></div>
-
-<!-- ══════════════ SIDEBAR ══════════════ -->
-<aside id="sidebar"
-       :class="[desktopCollapsed ? 'collapsed' : 'expanded', mobileSidebarOpen ? 'mobile-open' : '']">
-
-  <!-- Logo Area -->
-  <div class="flex items-center justify-between px-4 py-4 flex-shrink-0" style="border-bottom:1px solid var(--border);min-height:60px">
-    <div class="flex items-center gap-2.5 overflow-hidden">
-      <div class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.3)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <path d="M6 18L12 4L18 18" stroke="#a78bfa" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M9 13H15" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"/>
-        </svg>
-      </div>
-      <div class="nav-label">
-        <div class="gradient-text font-bold text-base leading-none">ARIA</div>
-        <div class="text-xs mt-0.5" style="color:var(--text3)">Autonomous AI</div>
-      </div>
-    </div>
-    <!-- Desktop collapse toggle -->
-    <button class="hidden lg:flex btn btn-icon btn-ghost nav-label ml-1"
-            @click="toggleSidebar()" style="flex-shrink:0">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path x-show="!desktopCollapsed" d="M15 18l-6-6 6-6"/>
-        <path x-show="desktopCollapsed" d="M9 18l6-6-6-6"/>
-      </svg>
-    </button>
-  </div>
-
-  <!-- New Chat Button -->
-  <div class="px-3 py-3 flex-shrink-0">
-    <button @click="activeSection='chat'; closeMobileSidebar()"
-            class="w-full btn btn-primary flex items-center gap-2 justify-center"
-            :class="desktopCollapsed ? 'px-0 py-2' : ''"
-            style="font-size:13px">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M12 5v14M5 12h14"/>
-      </svg>
-      <span class="nav-label">Nuevo Chat</span>
-    </button>
-  </div>
-
-  <!-- Navigation -->
-  <nav class="flex-1 px-2 space-y-0.5 scrollable py-1">
-    <template x-for="item in navItems" :key="item.id">
-      <div class="nav-item tip" :class="activeSection===item.id ? 'active' : ''"
-           :data-tip="item.label"
-           @click="activeSection=item.id; closeMobileSidebar(); if(item.id==='settings') loadAiHealth(); if(item.id==='income') loadIncome()">
-        <span class="nav-icon" x-html="item.icon"></span>
-        <span class="nav-label flex-1" x-text="item.label"></span>
-        <span x-show="item.badge && !desktopCollapsed" class="nav-badge badge badge-v text-xs ml-auto" x-text="item.badge"></span>
-      </div>
-    </template>
-  </nav>
-
-  <!-- System Health (bottom of sidebar) -->
-  <div class="flex-shrink-0 px-3 py-3 nav-label" style="border-top:1px solid var(--border)">
-    <div class="rounded-lg p-3" style="background:var(--elevated);border:1px solid var(--border)">
-      <div class="flex items-center justify-between mb-2.5">
-        <span class="text-xs font-medium" style="color:var(--text3)">SISTEMA</span>
-        <div class="flex items-center gap-1.5">
-          <div class="pulse-dot" :class="connected ? 'bg-emerald-500' : 'bg-red-500'" style="width:6px;height:6px"></div>
-          <span class="text-xs" :class="connected ? 'text-emerald-400' : 'text-red-400'" x-text="connected ? 'Online' : 'Offline'"></span>
-        </div>
-      </div>
-      <template x-for="(val, key) in Object.entries(skills).slice(0,3)" :key="key">
-        <div class="flex items-center gap-2 mb-1.5">
-          <span class="text-xs flex-1 truncate capitalize" style="color:var(--text3)" x-text="val[0].replace('_',' ')"></span>
-          <div class="progress-track flex-shrink-0" style="width:48px">
-            <div class="progress-fill" :style="`width:${val[1]}%`"></div>
-          </div>
-          <span class="text-xs font-mono w-6 text-right" :class="val[1]>=70?'text-emerald-400':val[1]>=40?'text-yellow-400':'text-red-400'" x-text="Math.round(val[1])"></span>
-        </div>
-      </template>
-      <div x-show="Object.keys(skills).length === 0" class="text-xs py-1" style="color:var(--text3)">Cargando...</div>
-    </div>
-  </div>
-</aside>
-
-<!-- ══════════════ HEADER ══════════════ -->
-<header class="fixed top-0 right-0 z-30 h-[60px] flex items-center justify-between px-4"
-        :style="desktopCollapsed ? 'left:64px' : 'left:248px'"
-        style="background:var(--bg);border-bottom:1px solid var(--border);transition:left .2s ease"
-        :class="{'!left-0': windowWidth < 1024}">
-
-  <!-- Left: hamburger (mobile) + breadcrumb -->
-  <div class="flex items-center gap-3">
-    <!-- Mobile hamburger -->
-    <button class="lg:hidden btn btn-icon btn-ghost" @click="toggleMobileSidebar()">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-      </svg>
-    </button>
-
-    <!-- ARIA logo (mobile, since sidebar is hidden) -->
-    <div class="flex items-center gap-2 lg:hidden">
-      <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:rgba(124,58,237,.2);border:1px solid rgba(124,58,237,.3)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <path d="M6 18L12 4L18 18" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M9 13H15" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-      </div>
-      <span class="gradient-text font-bold text-base">ARIA</span>
-    </div>
-
-    <!-- Section title (desktop) -->
-    <div class="hidden lg:block">
-      <span class="text-sm font-medium" style="color:var(--text2)"
-            x-text="navItems.find(n=>n.id===activeSection)?.label || 'ARIA'"></span>
-    </div>
-  </div>
-
-  <!-- Right: status + clock + avatar -->
-  <div class="flex items-center gap-3">
-    <div class="hidden sm:flex items-center gap-1.5 text-sm">
-      <div class="pulse-dot" :class="connected ? 'bg-emerald-500' : 'bg-red-500'"></div>
-      <span style="color:var(--text2);font-size:12.5px" x-text="connected ? 'Conectado' : 'Reconectando...'"></span>
-    </div>
-    <span class="hidden md:block font-mono text-xs" style="color:var(--text3)" x-text="currentTime"></span>
-    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 cursor-pointer"
-         style="background:rgba(124,58,237,.2);color:#a78bfa;border:1px solid rgba(124,58,237,.3)">G</div>
-  </div>
-</header>
-
-<!-- ══════════════ MAIN CONTENT ══════════════ -->
-<div id="main-content" :class="desktopCollapsed ? '' : 'sidebar-expanded'"
-     class="flex flex-col" style="padding-top:60px;height:100vh;overflow:hidden">
-
-  <main class="flex-1 overflow-y-auto scrollable">
-
-  <!-- ═══════════ OVERVIEW ═══════════ -->
-  <section x-show="activeSection==='overview'" class="p-5 lg:p-7 max-w-7xl mx-auto">
-    <div class="section-header">
-      <div>
-        <h1 class="section-title">Bienvenido de nuevo</h1>
-        <p class="section-sub">Sistema ARIA operando · <span x-text="new Date().toLocaleDateString('es',{weekday:'long',day:'numeric',month:'long'})"></span></p>
-      </div>
-      <button @click="loadData()" class="btn btn-ghost btn-sm hidden sm:flex gap-1.5">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-        Actualizar
+<body x-data="dashboardApp()" x-init="init()" class="pb-24">
+  
+  <!-- TOP BAR -->
+  <div class="glass fixed top-0 left-0 right-0 z-50 px-4 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <button @click="sidebar = !sidebar" class="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/5">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
-    </div>
-
-    <!-- Metric Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-      <div class="metric-card">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Agentes</span>
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(124,58,237,.15)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-          </div>
-        </div>
-        <div class="text-3xl font-bold mb-0.5" x-text="metrics.agents||'—'"></div>
-        <div class="text-xs" style="color:var(--text3)">Disponibles</div>
-      </div>
-      <div class="metric-card">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Metas</span>
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(16,185,129,.12)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
-          </div>
-        </div>
-        <div class="text-3xl font-bold mb-0.5" x-text="metrics.goals||'—'"></div>
-        <div class="text-xs" style="color:var(--text3)">Activas</div>
-      </div>
-      <div class="metric-card">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Pipelines</span>
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(59,130,246,.12)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
-          </div>
-        </div>
-        <div class="text-3xl font-bold mb-0.5" x-text="metrics.runs||'0'"></div>
-        <div class="text-xs" style="color:var(--text3)">Ejecutados</div>
-      </div>
-      <div class="metric-card">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Salud</span>
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(245,158,11,.12)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-          </div>
-        </div>
-        <div class="text-3xl font-bold mb-0.5" x-text="metrics.health ? metrics.health.toFixed(0)+'%' : '—'"></div>
-        <div class="text-xs" style="color:var(--text3)">Score global</div>
-      </div>
-    </div>
-
-    <!-- Income Loop Banner -->
-    <div class="mb-4 p-3 rounded-xl flex items-center gap-4 cursor-pointer hover:opacity-90 transition-opacity"
-         style="background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(16,185,129,.08));border:1px solid rgba(124,58,237,.2)"
-         @click="activeSection='income'; loadIncome()">
       <div class="flex items-center gap-2">
-        <div class="w-2.5 h-2.5 rounded-full"
-             :class="incomeStatus.running ? 'bg-emerald-400 pulse-dot' : 'bg-red-400'"></div>
-        <span class="text-sm font-semibold"
-              :class="incomeStatus.running ? 'text-emerald-400' : 'text-red-400'"
-              x-text="incomeStatus.running ? 'Income Loop 24/7 — ACTIVO' : 'Income Loop — PARADO'"></span>
-      </div>
-      <div class="hidden sm:flex items-center gap-5 ml-2">
-        <div class="text-xs" style="color:var(--text3)">
-          Ciclos: <span class="font-mono font-semibold" style="color:var(--text2)" x-text="incomeStatus.total_cycles||0"></span>
-        </div>
-        <div class="text-xs" style="color:var(--text3)">
-          Éxitos: <span class="font-mono font-semibold text-emerald-400" x-text="incomeStatus.successful_cycles||0"></span>
-        </div>
-        <div class="text-xs" style="color:var(--text3)">
-          Revenue: <span class="font-mono font-semibold text-yellow-400" x-text="'$'+(incomeStatus.total_revenue_potential||0).toFixed(0)"></span>
-        </div>
-      </div>
-      <div class="ml-auto text-xs" style="color:var(--text3)">Ver detalles →</div>
-    </div>
-
-    <!-- Activity + Quick Chat -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <!-- Activity Feed -->
-      <div class="card lg:col-span-2" style="overflow:hidden">
-        <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid var(--border)">
-          <h3 class="font-semibold text-sm">Actividad Reciente</h3>
-          <button @click="loadActivity()" class="btn btn-ghost btn-sm btn-icon">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
-          </button>
-        </div>
-        <div class="scrollable" style="max-height:310px">
-          <template x-for="(e,i) in activity.slice(0,25)" :key="i">
-            <div class="activity-row">
-              <div class="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0"
-                   :class="e.level==='ERROR'?'bg-red-500':e.level==='WARNING'?'bg-yellow-500':'bg-emerald-500'"></div>
-              <div class="flex-1 min-w-0">
-                <div class="text-xs truncate" style="color:var(--text2)" x-text="e.message"></div>
-                <div class="text-xs mt-0.5 font-mono" style="color:var(--text3)" x-text="e.ts?.substring(11,19)"></div>
-              </div>
-            </div>
-          </template>
-          <div x-show="activity.length===0" class="text-center py-10 text-sm" style="color:var(--text3)">
-            Sin actividad aún — inicia un pipeline o envía un mensaje
-          </div>
-        </div>
-      </div>
-
-      <!-- Quick Chat -->
-      <div class="card flex flex-col" style="min-height:360px;max-height:390px">
-        <div class="px-4 py-3 flex-shrink-0" style="border-bottom:1px solid var(--border)">
-          <div class="flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full pulse-dot" :class="connected?'bg-emerald-500':'bg-yellow-500'"></div>
-            <h3 class="font-semibold text-sm">Chat Rápido</h3>
-          </div>
-        </div>
-        <div class="flex-1 scrollable p-3 space-y-2" id="quick-chat-messages">
-          <template x-for="(m,i) in quickMessages" :key="i">
-            <div class="flex" :class="m.role==='user'?'justify-end':'justify-start'">
-              <div class="px-3 py-2 text-sm leading-snug" :class="m.role==='user'?'msg-user':'msg-aria'" x-text="m.text"></div>
-            </div>
-          </template>
-          <div x-show="quickThinking" class="flex gap-1 p-2 items-center">
-            <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
-          </div>
-          <div x-show="quickMessages.length===0" class="flex flex-col items-center justify-center h-24 text-center">
-            <p class="text-xs" style="color:var(--text3)">Escribe algo para empezar</p>
-          </div>
-        </div>
-        <div class="p-3 flex-shrink-0" style="border-top:1px solid var(--border)">
-          <div class="flex gap-2">
-            <input x-model="quickInput" @keydown.enter="sendQuick()"
-                   placeholder="Pregunta algo..." class="input flex-1" style="padding:8px 12px;font-size:13px"
-                   :disabled="quickThinking">
-            <button @click="sendQuick()" :disabled="quickThinking||!quickInput.trim()"
-                    class="btn btn-primary btn-sm" style="padding:8px 14px">→</button>
-          </div>
-        </div>
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-xs font-bold">A</div>
+        <span class="font-semibold text-sm">ARIA</span>
       </div>
     </div>
-  </section>
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full" :class="online ? 'bg-green-400' : 'bg-red-400'"></span>
+      <span class="text-xs text-slate-500" x-text="online ? 'Online' : 'Offline'"></span>
+    </div>
+  </div>
 
-  <!-- ═══════════ CHAT ═══════════ -->
-  <section x-show="activeSection==='chat'" class="flex flex-col" style="height:calc(100vh - 60px);overflow:hidden">
-    <!-- Chat header -->
-    <div class="flex items-center justify-between px-5 py-3 flex-shrink-0" style="border-bottom:1px solid var(--border)">
-      <div>
-        <h2 class="font-semibold text-sm">Chat con ARIA</h2>
-        <p class="text-xs mt-0.5" style="color:var(--text3)">
-          WebSocket <span x-text="connected ? '· conectado' : '· desconectado'"></span>
-          · sesión <span x-text="sessionId.substring(0,8)" class="font-mono"></span>
-        </p>
-      </div>
-      <div class="flex gap-2">
-        <button @click="regenerate()" x-show="messages.length>0 && !thinking"
-                class="btn btn-ghost btn-sm" title="Regenerar última respuesta">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-          Regenerar
-        </button>
-        <button @click="exportChat()" x-show="messages.length>0"
-                class="btn btn-ghost btn-sm" title="Exportar conversación">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Exportar
-        </button>
-        <button @click="clearChat()" class="btn btn-ghost btn-sm">Limpiar</button>
-      </div>
+  <!-- SIDEBAR OVERLAY -->
+  <template x-teleport="body">
+    <div x-show="sidebar" @click="sidebar = false" class="fixed inset-0 bg-black/50 z-40"></div>
+  </template>
+
+  <!-- SIDEBAR -->
+  <div class="fixed top-14 left-0 bottom-0 w-64 bg-[#0d0d14] border-r border-[#1e1e2a] z-50 transform transition-transform duration-300" :class="sidebar ? 'translate-x-0' : '-translate-x-full'">
+    <div class="p-4 space-y-1">
+      <a href="/dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-500/10 text-purple-300 text-sm font-medium">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Dashboard
+      </a>
+      <a href="/" class="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-slate-400 text-sm transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        Landing Page
+      </a>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="pt-14 px-4 max-w-lg mx-auto">
+    
+    <!-- HEADER -->
+    <div class="py-6">
+      <h1 class="text-2xl font-bold">Dashboard</h1>
+      <p class="text-slate-500 text-sm mt-1">Centro de control de ARIA AI</p>
     </div>
 
-    <!-- Drag-over overlay -->
-    <div id="drag-overlay" class="hidden" style="position:absolute;inset:0;z-index:20;background:rgba(124,58,237,.12);border:2px dashed #7c3aed;border-radius:12px;display:flex;align-items:center;justify-content:center;pointer-events:none">
-      <p class="text-sm font-medium" style="color:#a78bfa">Suelta la imagen para analizarla</p>
-    </div>
-
-    <!-- Messages -->
-    <div class="flex-1 scrollable px-4 py-4 space-y-5 relative" id="chat-messages" style="overflow-y:auto"
-         @dragover.prevent="document.getElementById('drag-overlay').style.display='flex'"
-         @dragleave="document.getElementById('drag-overlay').style.display='none'"
-         @drop.prevent="handleDrop($event); document.getElementById('drag-overlay').style.display='none'">
-      <!-- Welcome screen -->
-      <div x-show="messages.length===0" class="flex flex-col items-center justify-center min-h-full text-center py-10">
-        <div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-5" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.25)">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
-            <path d="M6 18L12 4L18 18" stroke="#a78bfa" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M9 13H15" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-        </div>
-        <h2 class="text-xl font-semibold mb-1">¿En qué te ayudo hoy?</h2>
-        <p class="text-sm mb-6" style="color:var(--text2);max-width:360px">Soy ARIA, tu IA autónoma de negocio. Puedo investigar, crear contenido, escribir código, analizar datos y mucho más.</p>
-        <div class="flex flex-wrap gap-2 justify-center max-w-lg">
-          <template x-for="hint in chatHints" :key="hint">
-            <button @click="chatInput=hint;sendMessage()"
-                    class="text-xs px-3 py-2 rounded-xl cursor-pointer transition-all"
-                    style="background:var(--elevated);border:1px solid var(--border);color:var(--text2)"
-                    onmouseover="this.style.borderColor='rgba(124,58,237,.5)'"
-                    onmouseout="this.style.borderColor='var(--border)'"
-                    x-text="hint"></button>
-          </template>
-        </div>
-      </div>
-
-      <!-- Message list -->
-      <template x-for="(m,i) in messages" :key="i">
-        <div class="flex msg-row" :class="m.role==='user'?'justify-end':'justify-start gap-3'">
-          <div x-show="m.role==='aria'" class="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold mt-1" style="background:rgba(124,58,237,.2);color:#a78bfa">A</div>
-          <div class="relative group" style="max-width:82%">
-            <div :class="m.role==='user'?'msg-user':'msg-aria'" class="text-sm leading-relaxed">
-              <div x-show="m.role==='user'" x-text="m.text"></div>
-              <div x-show="m.role==='aria'">
-                <span x-html="renderMarkdown(m.text)"></span>
-                <span x-show="m.streaming" class="streaming-cursor"></span>
-              </div>
-            </div>
-            <!-- Timestamp + copy (hover) -->
-            <div class="absolute opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2"
-                 style="bottom:-20px;right:0">
-              <span x-show="m.ts" class="text-xs font-mono" style="color:var(--text3)" x-text="m.ts"></span>
-              <button x-show="m.role==='aria' && !m.streaming"
-                      @click="copyMsg(m.text)"
-                      style="background:var(--elevated);border:1px solid var(--border);color:var(--text3);padding:2px 8px;border-radius:5px;font-size:10px;cursor:pointer;white-space:nowrap">
-                copiar
-              </button>
-            </div>
-          </div>
-        </div>
-      </template>
-
-      <!-- Thinking -->
-      <div x-show="thinking" class="flex gap-3">
-        <div class="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center" style="background:rgba(124,58,237,.2);color:#a78bfa;font-size:11px;font-weight:700">A</div>
-        <div class="msg-aria px-4 py-3 flex gap-1 items-center">
-          <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
-        </div>
-      </div>
-
-      <!-- Scroll to bottom -->
-      <button x-show="showScrollBtn" @click="scrollChat()" class="scroll-btn" title="Ir al final">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-      </button>
-    </div>
-
-    <!-- Input -->
-    <div class="flex-shrink-0 px-4 pb-4 pt-3" style="border-top:1px solid var(--border)">
-      <!-- Quick commands -->
-      <div class="flex gap-1.5 mb-2.5 flex-wrap">
-        <template x-for="cmd in quickCommands.slice(0,6)" :key="cmd">
-          <button @click="chatInput=cmd" class="text-xs px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
-                  style="background:var(--elevated);border:1px solid var(--border);color:var(--text3)"
-                  onmouseover="this.style.color='var(--text2)'" onmouseout="this.style.color='var(--text3)'"
-                  x-text="cmd"></button>
-        </template>
-      </div>
-      <!-- Attachment preview -->
-      <div x-show="attachedImage" class="mb-2 flex items-center gap-2 rounded-xl px-3 py-2" style="background:var(--elevated);border:1px solid var(--borderl)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-        <span class="text-xs flex-1" style="color:var(--text2)" x-text="attachedImageName"></span>
-        <button @click="attachedImage='';attachedImageName=''" style="color:var(--text3);font-size:16px;background:none;border:none;cursor:pointer">✕</button>
-      </div>
-      <div class="flex gap-3 items-end">
-        <!-- Hidden file input -->
-        <input type="file" id="img-upload" accept="image/*" class="hidden"
-               @change="handleImageUpload($event)">
-        <!-- Attach button -->
-        <button @click="document.getElementById('img-upload').click()"
-                class="btn btn-ghost btn-icon flex-shrink-0" title="Adjuntar imagen"
-                style="padding:9px;height:42px;width:42px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 0 1 5.66 5.65l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-        </button>
-        <!-- Voice button -->
-        <button @click="voiceActive ? stopVoice() : startVoice()"
-                class="btn btn-ghost btn-icon flex-shrink-0 voice-btn" :class="voiceActive ? 'listening' : ''"
-                title="Entrada por voz" style="padding:9px;height:42px;width:42px">
-          <svg x-show="!voiceActive" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-          <svg x-show="voiceActive" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-        </button>
-        <div class="flex-1 relative">
-          <textarea x-model="chatInput"
-                    @keydown.enter.prevent="if(!$event.shiftKey) sendMessage()"
-                    placeholder="Escribe un mensaje… (Enter = enviar · Shift+Enter = nueva línea)"
-                    rows="2"
-                    class="input w-full scrollable"
-                    style="line-height:1.5"
-                    :disabled="thinking"></textarea>
-        </div>
-        <button @click="sendMessage()" :disabled="thinking||(!chatInput.trim()&&!attachedImage)"
-                class="btn btn-primary flex-shrink-0" style="padding:11px 20px">
-          <svg x-show="!thinking" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          <svg x-show="thinking" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>
-        </button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ AGENTS ═══════════ -->
-  <section x-show="activeSection==='agents'" class="p-5 lg:p-7 max-w-7xl mx-auto">
-    <div class="section-header">
-      <div>
-        <h1 class="section-title">Agentes</h1>
-        <p class="section-sub">Especialistas autónomos · <span x-text="agents.length"></span> disponibles</p>
-      </div>
-      <button @click="loadAgents()" class="btn btn-ghost btn-sm">↻ Actualizar</button>
-    </div>
-
-    <!-- Mission modal -->
-    <div x-show="missionModal.open" class="modal-bg" @click.self="missionModal.open=false">
-      <div class="modal-box">
-        <div class="flex items-center gap-3 mb-4">
-          <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold" style="background:rgba(124,58,237,.2);color:#a78bfa" x-text="missionModal.agent.charAt(0).toUpperCase()"></div>
-          <div>
-            <h3 class="font-semibold" x-text="`Activar: ${missionModal.agent}`"></h3>
-            <p class="text-xs" style="color:var(--text3)">Describe la misión para este agente</p>
-          </div>
-        </div>
-        <textarea x-model="missionModal.mission" rows="3" placeholder="Ej: Analizar el mercado de IA y crear un informe ejecutivo con oportunidades de negocio..." class="input mb-3"></textarea>
-        <div class="flex gap-2 mb-3">
-          <button @click="runMission()" :disabled="!missionModal.mission.trim()" class="btn btn-primary flex-1">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            Ejecutar Pipeline
-          </button>
-          <button @click="missionModal.open=false" class="btn btn-ghost">Cancelar</button>
-        </div>
-        <div x-show="missionModal.result" class="rounded-lg p-3 text-xs font-mono scrollable" style="background:#080a10;border:1px solid var(--border);max-height:160px">
-          <pre x-text="missionModal.result" style="color:var(--text2)"></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-      <template x-for="agent in agents" :key="agent.name">
-        <div class="agent-card">
-          <div class="flex items-start justify-between mb-3">
-            <div class="flex items-center gap-2.5">
-              <div class="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold" style="background:rgba(124,58,237,.15);color:#a78bfa" x-text="agent.name.charAt(0).toUpperCase()"></div>
-              <div>
-                <div class="font-semibold text-sm capitalize" x-text="agent.name"></div>
-                <span class="badge" :class="agent.type==='business'?'badge-v':'badge-b'" x-text="agent.type"></span>
-              </div>
-            </div>
-            <div class="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" :class="agent.available?'bg-emerald-500':'bg-slate-600'"></div>
-          </div>
-          <p class="text-xs leading-relaxed mb-4" style="color:var(--text2)" x-text="agent.description||'Agente especializado de ARIA'"></p>
-          <button @click="openMission(agent.name)" class="w-full btn btn-ghost btn-sm" style="font-size:12px">
-            Activar misión →
-          </button>
-        </div>
-      </template>
-      <div x-show="agents.length===0" class="col-span-full card p-10 text-center">
-        <p class="text-sm" style="color:var(--text3)">Cargando agentes...</p>
-      </div>
-    </div>
-
-    <!-- Crews section -->
-    <div class="mt-8">
-      <div class="section-header">
-        <div>
-          <h2 class="text-lg font-semibold">Equipos (Crews)</h2>
-          <p class="section-sub">Agentes colaborando en secuencia para proyectos complejos</p>
-        </div>
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <template x-for="crew in crews" :key="crew.id">
-          <div class="agent-card">
-            <div class="flex items-center gap-2.5 mb-3">
-              <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:rgba(59,130,246,.12);color:#60a5fa" x-html="crew.icon"></div>
-              <div>
-                <div class="font-semibold text-sm" x-text="crew.name"></div>
-                <div class="text-xs" style="color:var(--text3)" x-text="crew.members+' agentes'"></div>
-              </div>
-            </div>
-            <p class="text-xs leading-relaxed mb-4" style="color:var(--text2)" x-text="crew.description"></p>
-            <button @click="openCrewModal(crew)" class="w-full btn btn-ghost btn-sm" style="font-size:12px">
-              Lanzar Crew →
-            </button>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <!-- Crew run modal -->
-    <div x-show="crewModal.open" class="modal-bg" @click.self="crewModal.open=false">
-      <div class="modal-box">
-        <h3 class="font-semibold mb-1" x-text="`Crew: ${crewModal.name}`"></h3>
-        <p class="text-xs mb-4" style="color:var(--text3)">Los agentes colaborarán secuencialmente en tu misión</p>
-        <textarea x-model="crewModal.mission" rows="3" placeholder="Describe la misión del equipo..." class="input mb-3"></textarea>
-        <div class="flex gap-2">
-          <button @click="runCrew()" :disabled="!crewModal.mission.trim()||crewModal.running" class="btn btn-primary flex-1">
-            <span x-show="!crewModal.running">🚀 Lanzar</span>
-            <span x-show="crewModal.running">Ejecutando…</span>
-          </button>
-          <button @click="crewModal.open=false" class="btn btn-ghost">Cancelar</button>
-        </div>
-        <div x-show="crewModal.result" class="mt-3 rounded-lg p-3 text-xs scrollable" style="background:#080a10;border:1px solid var(--border);max-height:200px">
-          <pre x-text="crewModal.result" style="color:var(--text2);white-space:pre-wrap"></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ AUTOMATIZACIÓN ═══════════ -->
-  <section x-show="activeSection==='automation'" class="p-5 lg:p-7 max-w-7xl mx-auto">
-    <div class="section-header">
-      <div>
-        <h1 class="section-title">Automatización</h1>
-        <p class="section-sub">Workflows multi-paso y ejecución de pipelines</p>
-      </div>
-    </div>
-
-    <!-- Create workflow -->
-    <div class="card p-5 mb-5">
-      <h3 class="font-semibold text-sm mb-3">Crear Workflow</h3>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <input x-model="wfName" placeholder="Nombre del workflow" class="input">
-        <input x-model="wfDesc" placeholder="Descripción en lenguaje natural: investiga X, luego publica..." class="input">
-      </div>
-      <button @click="createWorkflow()" :disabled="!wfName.trim()||!wfDesc.trim()||wfCreating" class="btn btn-primary btn-sm">
-        <span x-show="!wfCreating">+ Crear Workflow</span>
-        <span x-show="wfCreating">Generando pasos…</span>
-      </button>
-    </div>
-
-    <!-- Workflow list -->
-    <div class="card mb-6 overflow-hidden">
-      <div class="px-4 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--border)">
-        <span class="font-semibold text-sm">Mis Workflows</span>
-        <button @click="loadWorkflows()" class="btn btn-ghost btn-sm btn-icon">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
-        </button>
-      </div>
-      <template x-for="wf in workflows" :key="wf.id">
-        <div class="px-4 py-3 flex items-center gap-4" style="border-bottom:1px solid #0a0c12">
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:rgba(59,130,246,.1);color:#60a5fa">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="font-medium text-sm truncate" x-text="wf.name"></div>
-            <div class="text-xs truncate mt-0.5" style="color:var(--text3)" x-text="wf.description"></div>
-          </div>
-          <div class="flex items-center gap-2 flex-shrink-0">
-            <span class="text-xs font-mono" style="color:var(--text3)" x-text="wf.run_count+' runs'"></span>
-            <button @click="runWorkflow(wf.id)" class="btn btn-ghost btn-sm" style="font-size:12px">▶ Ejecutar</button>
-          </div>
-        </div>
-      </template>
-      <div x-show="workflows.length===0" class="p-8 text-center text-sm" style="color:var(--text3)">
-        No hay workflows guardados — crea uno arriba
-      </div>
-    </div>
-
-    <!-- Pipeline -->
-    <div class="section-header">
-      <div>
-        <h2 class="text-lg font-semibold">Execution Pipeline</h2>
-        <p class="section-sub">Plan → Audit → Execute → Verify</p>
-      </div>
-    </div>
-
-    <div class="card p-5 mb-4">
-      <h3 class="font-semibold text-sm mb-3">Nueva Misión</h3>
-      <div class="flex flex-col sm:flex-row gap-3">
-        <input x-model="newMission" placeholder="Describe la misión para ARIA..."
-               @keydown.enter="runPipeline()" class="input flex-1">
-        <select x-model="pipelineAgent" class="input sm:w-40" style="width:auto">
-          <option value="auto">Auto-routing</option>
-          <option value="ceo">CEO</option>
-          <option value="developer">Developer</option>
-          <option value="marketing">Marketing</option>
-          <option value="sales">Sales</option>
-          <option value="research">Research</option>
-          <option value="content">Content</option>
-          <option value="finance">Finance</option>
-        </select>
-        <button @click="runPipeline()" :disabled="pipelineRunning||!newMission.trim()" class="btn btn-primary">
-          <span x-show="!pipelineRunning">Ejecutar</span>
-          <span x-show="pipelineRunning" class="flex items-center gap-2">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>
-            Procesando…
-          </span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Pipeline stage indicator -->
-    <div x-show="pipelineRunning" class="card p-4 mb-4">
-      <div class="flex items-center gap-2 mb-4">
-        <div class="pulse-dot bg-violet-500"></div>
-        <span class="text-sm font-medium">Pipeline ejecutando...</span>
-      </div>
-      <div class="flex items-center gap-1 overflow-x-auto pb-1">
-        <template x-for="(stage,i) in pipelineStages" :key="stage">
-          <div class="flex items-center gap-1 flex-shrink-0">
-            <div class="flex flex-col items-center gap-1">
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-                   :class="i<currentPipelineStage?'bg-emerald-900 text-emerald-400 border border-emerald-700':i===currentPipelineStage?'bg-violet-900 text-violet-400 border border-violet-600':'bg-slate-900 text-slate-600 border border-slate-700'"
-                   x-text="i<currentPipelineStage?'✓':i+1"></div>
-              <span class="text-xs whitespace-nowrap" style="color:var(--text3)" x-text="stage"></span>
-            </div>
-            <div x-show="i<pipelineStages.length-1" class="w-6 h-px mb-4 flex-shrink-0" style="background:var(--border)"></div>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <div class="card overflow-hidden">
-      <div class="px-4 py-3" style="border-bottom:1px solid var(--border)">
-        <span class="font-semibold text-sm">Historial de Pipelines</span>
-      </div>
-      <template x-for="(run,i) in pipelineRuns" :key="i">
-        <div class="px-4 py-3 flex items-center gap-3" style="border-bottom:1px solid #0a0c12">
-          <span class="text-base flex-shrink-0" x-text="run.stage==='complete'?'✅':run.stage==='failed'?'❌':'🔄'"></span>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm truncate" x-text="run.mission"></div>
-            <div class="flex gap-2 mt-1">
-              <span class="text-xs font-mono" style="color:var(--text3)" x-text="run.id?.substring(0,8)"></span>
-              <span class="badge" :class="run.stage==='complete'?'badge-g':run.stage==='failed'?'badge-r':'badge-y'" x-text="run.stage"></span>
-              <span x-show="run.agent_name" class="badge badge-v" x-text="run.agent_name"></span>
-            </div>
-          </div>
-          <div class="text-xs flex-shrink-0 hidden sm:block" style="color:var(--text3)" x-text="run.started_at?.substring(0,16)?.replace('T',' ')"></div>
-        </div>
-      </template>
-      <div x-show="pipelineRuns.length===0" class="p-8 text-center text-sm" style="color:var(--text3)">No hay pipelines ejecutados aún</div>
-    </div>
-  </section>
-
-  <!-- ═══════════ CONOCIMIENTO ═══════════ -->
-  <section x-show="activeSection==='knowledge'" class="p-5 lg:p-7 max-w-7xl mx-auto">
-    <div class="section-header">
-      <div>
-        <h1 class="section-title">Base de Conocimiento</h1>
-        <p class="section-sub">ARIA aprende de documentos y URLs. RAG semántico activo.</p>
-      </div>
-    </div>
-
-    <!-- Ingest panel -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-      <div class="card p-5">
-        <h3 class="font-semibold text-sm mb-3">Agregar URL</h3>
-        <div class="flex gap-2">
-          <input x-model="kbUrl" placeholder="https://..." class="input flex-1" @keydown.enter="ingestUrl()">
-          <button @click="ingestUrl()" :disabled="!kbUrl.trim()||kbLoading" class="btn btn-primary btn-sm">Aprender</button>
-        </div>
-        <p class="text-xs mt-2" style="color:var(--text3)">ARIA descargará y fragmentará la página automáticamente</p>
-      </div>
-      <div class="card p-5">
-        <h3 class="font-semibold text-sm mb-3">Agregar Texto</h3>
-        <div class="flex gap-2">
-          <textarea x-model="kbText" placeholder="Pega aquí el texto o notas..." rows="2" class="input flex-1"></textarea>
-          <button @click="ingestText()" :disabled="!kbText.trim()||kbLoading" class="btn btn-primary btn-sm">Agregar</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Search KB -->
-    <div class="card p-5 mb-5">
-      <h3 class="font-semibold text-sm mb-3">Buscar en la Base de Conocimiento</h3>
-      <div class="flex gap-2">
-        <input x-model="kbQuery" placeholder="Buscar semánticamente..." class="input flex-1" @keydown.enter="searchKb()">
-        <button @click="searchKb()" :disabled="!kbQuery.trim()" class="btn btn-ghost btn-sm">Buscar</button>
-      </div>
-      <div x-show="kbResults.length>0" class="mt-4 space-y-3">
-        <template x-for="(r,i) in kbResults" :key="i">
-          <div class="rounded-xl p-3 text-xs" style="background:var(--elevated);border:1px solid var(--border)">
-            <div class="flex items-center justify-between mb-1.5">
-              <span class="font-mono truncate max-w-xs" style="color:#a78bfa" x-text="r.source"></span>
-              <span class="badge badge-v" x-text="'score: '+r.score"></span>
-            </div>
-            <p style="color:var(--text2)" x-text="r.text?.substring(0,300)+'...'"></p>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <!-- Sources list -->
-    <div class="card overflow-hidden">
-      <div class="px-4 py-3 flex items-center justify-between" style="border-bottom:1px solid var(--border)">
-        <span class="font-semibold text-sm">Fuentes Ingresadas <span class="badge badge-v ml-2" x-text="kbSources.length"></span></span>
-        <button @click="loadKbSources()" class="btn btn-ghost btn-sm btn-icon">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
-        </button>
-      </div>
-      <div class="p-4">
-        <div class="flex flex-wrap gap-2" x-show="kbSources.length>0">
-          <template x-for="s in kbSources" :key="s.source">
-            <div class="source-chip">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              <span class="truncate max-w-[180px]" x-text="s.source"></span>
-              <span style="color:var(--text3)" x-text="s.chunks+'✦'"></span>
-            </div>
-          </template>
-        </div>
-        <div x-show="kbSources.length===0" class="text-sm text-center py-6" style="color:var(--text3)">
-          No hay fuentes ingresadas — agrega una URL o texto arriba
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ METAS ═══════════ -->
-  <section x-show="activeSection==='goals'" class="p-5 lg:p-7 max-w-4xl mx-auto">
-    <div class="section-header">
-      <div>
-        <h1 class="section-title">Metas Activas</h1>
-        <p class="section-sub">Objetivos persistentes de ARIA entre reinicios</p>
-      </div>
-      <button @click="loadGoals()" class="btn btn-ghost btn-sm">↻</button>
-    </div>
-
-    <!-- Add goal -->
-    <div class="card p-4 mb-4 flex gap-2">
-      <input x-model="newGoalText" placeholder="Describir nueva meta para ARIA..."
-             class="input flex-1" @keydown.enter="addGoal()">
-      <button @click="addGoal()" :disabled="!newGoalText.trim()" class="btn btn-primary btn-sm">Agregar</button>
-    </div>
-
-    <div x-show="goals.length===0" class="card p-14 text-center">
-      <div class="mb-4" style="font-size:40px;opacity:.5">◎</div>
-      <p class="text-sm" style="color:var(--text2)">ARIA no tiene metas activas.</p>
-      <p class="text-xs mt-2" style="color:var(--text3)">Agrega una arriba o usa el chat.</p>
-    </div>
-    <div class="space-y-2">
-      <template x-for="(goal,i) in goals" :key="i">
-        <div class="card p-4 flex items-start gap-4">
-          <div class="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0" style="background:rgba(124,58,237,.15);color:#a78bfa" x-text="i+1"></div>
-          <div class="flex-1">
-            <div class="font-medium text-sm" x-text="goal.text||goal.goal||JSON.stringify(goal)"></div>
-            <div class="flex gap-2 mt-2">
-              <span class="badge" :class="goal.status==='active'||!goal.status?'badge-g':goal.status==='completed'?'badge-b':'badge-y'" x-text="goal.status||'active'"></span>
-              <span x-show="goal.priority" class="badge badge-v" x-text="'P'+goal.priority"></span>
-            </div>
-            <div x-show="goal.progress" class="text-xs mt-1.5" style="color:var(--text3)" x-text="goal.progress"></div>
-          </div>
-          <button @click="sendGoalChat('Elimina la meta: '+(goal.text||goal.goal))"
-                  class="btn-icon btn btn-ghost" style="color:var(--text3);font-size:14px" title="Eliminar vía chat">✕</button>
-        </div>
-      </template>
-    </div>
-  </section>
-
-  <!-- ═══════════ ACTIVIDAD ═══════════ -->
-  <section x-show="activeSection==='activity'" class="p-5 lg:p-7 max-w-5xl mx-auto">
-    <div class="section-header">
-      <div>
-        <h1 class="section-title">Log de Actividad</h1>
-        <p class="section-sub">Historial de operaciones del sistema en tiempo real</p>
-      </div>
-      <div class="flex gap-2">
-        <select x-model="activityFilter" class="input btn-sm" style="width:auto;padding:6px 12px;font-size:12.5px">
-          <option value="">Todo</option>
-          <option value="ERROR">Errores</option>
-          <option value="WARNING">Avisos</option>
-          <option value="INFO">Info</option>
-        </select>
-        <button @click="loadActivity()" class="btn btn-ghost btn-sm btn-icon">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
-        </button>
-      </div>
-    </div>
-    <div class="card overflow-hidden">
-      <template x-for="(e,i) in filteredActivity" :key="i">
-        <div class="activity-row">
-          <span class="text-xs font-mono flex-shrink-0 w-20" style="color:var(--text3)" x-text="e.ts?.substring(11,19)"></span>
-          <span class="badge flex-shrink-0 w-16 text-center"
-                :class="e.level==='ERROR'?'badge-r':e.level==='WARNING'?'badge-y':'badge-b'"
-                x-text="e.level||'INFO'"></span>
-          <span class="text-xs" style="color:var(--text2)" x-text="e.message"></span>
-        </div>
-      </template>
-      <div x-show="filteredActivity.length===0" class="p-10 text-center text-sm" style="color:var(--text3)">Sin actividad registrada</div>
-    </div>
-
-    <!-- Background Tasks -->
-    <div class="mt-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-base font-semibold">Tareas en Segundo Plano</h2>
-        <button @click="loadTasks()" class="btn btn-ghost btn-sm btn-icon">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
-        </button>
-      </div>
-      <div class="card overflow-hidden">
-        <template x-for="(t,i) in tasks" :key="t.id||i">
-          <div class="activity-row">
-            <span class="text-xs font-mono flex-shrink-0 w-16" style="color:var(--text3)" x-text="t.id?.substring(0,8)"></span>
-            <span class="badge flex-shrink-0 w-20 text-center"
-                  :class="t.status==='done'?'badge-g':t.status==='running'?'badge-b':t.status==='failed'?'badge-r':'badge-y'"
-                  x-text="t.status||'queued'"></span>
-            <span class="text-xs flex-1" style="color:var(--text2)" x-text="t.description||t.mission||t.tool||'tarea'"></span>
-            <button x-show="t.status==='queued'||t.status==='running'"
-                    @click="cancelTask(t.id)"
-                    class="text-xs px-2 py-0.5 rounded" style="background:#450a0a;color:#f87171;border:none;cursor:pointer">
-              Cancelar
-            </button>
-          </div>
-        </template>
-        <div x-show="tasks.length===0" class="p-8 text-center text-sm" style="color:var(--text3)">No hay tareas en segundo plano</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ AJUSTES ═══════════ -->
-  <section x-show="activeSection==='settings'" class="p-5 lg:p-7 max-w-4xl mx-auto">
-    <div class="section-header">
-      <div>
-        <h1 class="section-title">Configuración</h1>
-        <p class="section-sub">Estado de integraciones y acceso API</p>
-      </div>
-      <button @click="loadAiHealth()" class="btn btn-ghost btn-sm">↻</button>
-    </div>
-
-    <!-- AI Provider Health -->
-    <div class="card p-5 mb-4">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-sm">Motor de IA — Estado de Proveedores</h3>
-        <span class="text-xs font-mono" style="color:var(--text3)"
-              x-text="aiHealth._totals ? `${(aiHealth._totals.tokens_used||0).toLocaleString()} tokens · ${aiHealth._totals.fallbacks_triggered||0} fallbacks` : 'Cargando…'"></span>
-      </div>
-      <div class="grid grid-cols-3 gap-3">
-        <template x-for="(ph, name) in aiHealth" :key="name">
-          <div x-show="name!=='_totals'" class="rounded-xl p-3 text-center" style="background:var(--elevated);border:1px solid var(--border)">
-            <div class="w-8 h-8 rounded-full flex items-center justify-center mx-auto mb-2"
-                 :style="ph.available ? 'background:rgba(16,185,129,.15)' : 'background:rgba(239,68,68,.12)'">
-              <div class="w-3 h-3 rounded-full" :class="ph.available ? 'bg-emerald-400' : 'bg-red-400'"></div>
-            </div>
-            <div class="text-xs font-semibold capitalize" x-text="name"></div>
-            <div class="text-xs mt-1" style="color:var(--text3)" x-text="(ph.success_rate_pct||100).toFixed(0)+'% éxito'"></div>
-            <div class="text-xs" style="color:var(--text3)" x-text="ph.total_calls+' llamadas'"></div>
-          </div>
-        </template>
-        <div x-show="Object.keys(aiHealth).length===0" class="col-span-3 text-center py-4 text-sm" style="color:var(--text3)">
-          Haz clic en ↻ para cargar estado de proveedores
-        </div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-      <div class="card p-5">
-        <h3 class="font-semibold text-sm mb-4">IA y Modelos</h3>
-        <template x-for="item in integrations.ai" :key="item.name">
-          <div class="flex items-center justify-between py-2.5" style="border-bottom:1px solid var(--border)">
-            <span class="text-sm" x-text="item.name"></span>
-            <span class="badge" :class="item.configured?'badge-g':'badge-r'" x-text="item.configured?'✓ Activo':'✗ No config.'"></span>
-          </div>
-        </template>
-      </div>
-      <div class="card p-5">
-        <h3 class="font-semibold text-sm mb-4">Pagos y E-commerce</h3>
-        <template x-for="item in integrations.payments" :key="item.name">
-          <div class="flex items-center justify-between py-2.5" style="border-bottom:1px solid var(--border)">
-            <span class="text-sm" x-text="item.name"></span>
-            <span class="badge" :class="item.configured?'badge-g':'badge-r'" x-text="item.configured?'✓ Activo':'✗ No config.'"></span>
-          </div>
-        </template>
-      </div>
-      <div class="card p-5">
-        <h3 class="font-semibold text-sm mb-4">Publicación de Contenido</h3>
-        <template x-for="item in integrations.publishing" :key="item.name">
-          <div class="flex items-center justify-between py-2.5" style="border-bottom:1px solid var(--border)">
-            <span class="text-sm" x-text="item.name"></span>
-            <span class="badge" :class="item.configured?'badge-g':'badge-r'" x-text="item.configured?'✓ Activo':'✗ No config.'"></span>
-          </div>
-        </template>
-      </div>
-      <div class="card p-5">
-        <h3 class="font-semibold text-sm mb-4">Redes Sociales</h3>
-        <template x-for="item in integrations.social" :key="item.name">
-          <div class="flex items-center justify-between py-2.5" style="border-bottom:1px solid var(--border)">
-            <span class="text-sm" x-text="item.name"></span>
-            <span class="badge" :class="item.configured?'badge-g':'badge-r'" x-text="item.configured?'✓ Activo':'✗ No config.'"></span>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <div class="card p-5">
-      <h3 class="font-semibold text-sm mb-1">API de ARIA</h3>
-      <p class="text-xs mb-4" style="color:var(--text3)">Integra ARIA con cualquier herramienta usando la API REST o WebSocket</p>
-      <div class="rounded-xl p-4 font-mono text-xs" style="background:#05060a;border:1px solid var(--border);line-height:2">
-        <div class="mb-2 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">CHAT & CORE</div>
-        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/chat</span></div>
-        <div><span class="text-yellow-400">WS</span>   <span style="color:var(--text2)">/api/v1/ws</span> <span style="color:var(--text3)">— streaming support</span></div>
-        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/run</span></div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/status</span></div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/agents</span></div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/goals</span></div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/activity</span></div>
-        <div class="mt-2 mb-1 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">WORKFLOWS</div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/workflows</span></div>
-        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/workflows</span></div>
-        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/workflows/{id}/run</span></div>
-        <div class="mt-2 mb-1 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">KNOWLEDGE BASE</div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/knowledge/sources</span></div>
-        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/knowledge/ingest</span></div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/knowledge/search?q=</span></div>
-        <div class="mt-2 mb-1 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">TASKS & PIPELINE</div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/tasks</span></div>
-        <div><span class="text-red-400">DEL</span>  <span style="color:var(--text2)">/api/v1/tasks/{id}</span></div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/pipeline</span></div>
-      </div>
-      <p class="text-xs mt-3" style="color:var(--text3)">Header: <code class="px-1 py-0.5 rounded" style="background:var(--elevated);color:#a78bfa">X-ARIA-Key: tu-api-key</code></p>
-      <!-- Income API -->
-      <div class="mt-3" style="border-top:1px solid var(--border);padding-top:12px">
-        <div class="mb-2 text-xs font-sans font-semibold" style="color:var(--text3);letter-spacing:.05em">INCOME LOOP</div>
-        <div><span class="text-blue-400">GET</span>  <span style="color:var(--text2)">/api/v1/income</span></div>
-        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/income/cycle</span> <span style="color:var(--text3)">— ejecutar ciclo ya</span></div>
-        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/income/start</span></div>
-        <div><span class="text-emerald-400">POST</span> <span style="color:var(--text2)">/api/v1/income/stop</span></div>
-      </div>
-    </div>
-
-    <!-- Income Secrets Checklist -->
-    <div class="card p-5 mt-4">
-      <h3 class="font-semibold text-sm mb-1">Secrets para Ingresos — Fly.io</h3>
-      <p class="text-xs mb-4" style="color:var(--text3)">Configura estos secretos en Fly.io para activar cada estrategia de ingresos</p>
-      <div class="space-y-2">
-        <template x-for="secret in incomeSecrets" :key="secret.key">
-          <div class="flex items-start gap-3 p-3 rounded-lg" style="background:var(--elevated);border:1px solid var(--border)">
-            <div class="flex-shrink-0 mt-0.5">
-              <div class="w-5 h-5 rounded-full flex items-center justify-center"
-                   :style="secret.priority==='critical' ? 'background:rgba(239,68,68,.2)' : secret.priority==='high' ? 'background:rgba(245,158,11,.15)' : 'background:rgba(59,130,246,.12)'">
-                <span class="text-xs" :style="secret.priority==='critical' ? 'color:#ef4444' : secret.priority==='high' ? 'color:#f59e0b' : 'color:#60a5fa'"
-                      x-text="secret.priority==='critical' ? '!' : secret.priority==='high' ? '↑' : '·'"></span>
-              </div>
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <code class="text-xs px-1.5 py-0.5 rounded font-mono"
-                      style="background:rgba(124,58,237,.1);color:#a78bfa" x-text="secret.key"></code>
-                <span class="text-xs font-medium" style="color:var(--text2)" x-text="secret.label"></span>
-              </div>
-              <div class="text-xs mt-1" style="color:var(--text3)" x-text="secret.description"></div>
-              <div class="text-xs mt-0.5 font-mono" style="color:var(--text3)"
-                   x-text="'fly secrets set '+secret.key+'=tu_valor'"></div>
-            </div>
-          </div>
-        </template>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ INCOME ═══════════ -->
-  <section x-show="activeSection==='income'" class="p-5 lg:p-7 max-w-7xl mx-auto">
-    <div class="section-header">
-      <div>
-        <h1 class="section-title">Motor de Ingresos</h1>
-        <p class="section-sub">Loop 24/7 · 6 estrategias · 67 nichos · autónomo</p>
-      </div>
-      <div class="flex gap-2">
-        <button @click="incomeRunCycle()" :disabled="incomeRunning"
-                class="btn btn-primary btn-sm gap-1.5"
-                style="font-size:12px">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-          <span x-text="incomeRunning ? 'Ejecutando...' : 'Ciclo Ya'"></span>
-        </button>
-        <button @click="incomeToggleLoop()" class="btn btn-sm gap-1.5"
-                :class="incomeStatus.running ? 'btn-ghost' : 'btn-outline'"
-                style="font-size:12px">
-          <span x-text="incomeStatus.running ? '⏸ Pausar Loop' : '▶ Iniciar Loop'"></span>
-        </button>
-        <button @click="loadIncome()" class="btn btn-ghost btn-sm btn-icon">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-        </button>
-      </div>
-    </div>
-
-    <!-- Metric Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-      <div class="metric-card">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Estado</span>
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center"
-               :style="incomeStatus.running ? 'background:rgba(16,185,129,.15)' : 'background:rgba(239,68,68,.12)'">
-            <div class="w-2.5 h-2.5 rounded-full"
-                 :class="incomeStatus.running ? 'bg-emerald-400 pulse-dot' : 'bg-red-400'"></div>
-          </div>
-        </div>
-        <div class="text-2xl font-bold mb-0.5"
-             :class="incomeStatus.running ? 'text-emerald-400' : 'text-red-400'"
-             x-text="incomeStatus.running ? 'ACTIVO' : 'PARADO'"></div>
-        <div class="text-xs" style="color:var(--text3)">Loop 24/7</div>
-      </div>
-      <div class="metric-card">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Ciclos</span>
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(124,58,237,.15)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8"/></svg>
-          </div>
-        </div>
-        <div class="text-3xl font-bold mb-0.5" x-text="incomeStatus.total_cycles||'0'"></div>
-        <div class="text-xs" style="color:var(--text3)">Total ejecutados</div>
-      </div>
-      <div class="metric-card">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Éxito</span>
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(16,185,129,.12)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-          </div>
-        </div>
-        <div class="text-3xl font-bold mb-0.5 text-emerald-400" x-text="incomeStatus.successful_cycles||'0'"></div>
-        <div class="text-xs" style="color:var(--text3)">Ciclos exitosos</div>
-      </div>
-      <div class="metric-card">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-medium uppercase tracking-wide" style="color:var(--text3)">Potencial</span>
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(245,158,11,.12)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          </div>
-        </div>
-        <div class="text-3xl font-bold mb-0.5 text-yellow-400"
-             x-text="'$'+(incomeStatus.total_revenue_potential||0).toFixed(0)"></div>
-        <div class="text-xs" style="color:var(--text3)">Revenue potencial</div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-      <!-- Strategy Distribution -->
+    <!-- STATUS CARDS -->
+    <div class="grid grid-cols-2 gap-3 mb-6">
       <div class="card p-4">
-        <h3 class="font-semibold text-sm mb-4" style="color:var(--text2)">Distribución de Estrategias</h3>
-        <div class="space-y-3">
-          <template x-for="s in incomeStrategies" :key="s.name">
-            <div>
-              <div class="flex justify-between text-xs mb-1">
-                <span x-text="s.label" style="color:var(--text2)"></span>
-                <span x-text="s.pct+'%'" style="color:var(--text3)"></span>
-              </div>
-              <div class="h-1.5 rounded-full" style="background:var(--border)">
-                <div class="h-1.5 rounded-full transition-all duration-500"
-                     :style="`width:${s.pct}%;background:${s.color}`"></div>
-              </div>
-            </div>
-          </template>
-        </div>
-        <!-- Last cycle info -->
-        <div x-show="incomeStatus.last_cycle" class="mt-5 pt-4" style="border-top:1px solid var(--border)">
-          <div class="text-xs font-medium mb-2" style="color:var(--text3)">Último Ciclo</div>
-          <div class="text-xs mb-1" style="color:var(--text2)">
-            <span class="font-mono px-1.5 py-0.5 rounded" style="background:var(--elevated);color:#a78bfa"
-                  x-text="incomeStatus.last_cycle?.strategy||'—'"></span>
-          </div>
-          <div class="text-xs" style="color:var(--text3)"
-               x-text="incomeStatus.last_cycle?.summary?.substring(0,80)||''"></div>
-          <div class="flex items-center gap-2 mt-2">
-            <div class="w-1.5 h-1.5 rounded-full"
-                 :class="incomeStatus.last_cycle?.success ? 'bg-emerald-400' : 'bg-red-400'"></div>
-            <span class="text-xs" style="color:var(--text3)"
-                  x-text="incomeStatus.last_cycle?.success ? 'Exitoso' : 'Sin resultado'"></span>
-            <span class="text-xs ml-auto font-mono" style="color:var(--text3)"
-                  x-text="(incomeStatus.last_cycle?.elapsed_seconds||0)+'s'"></span>
-          </div>
+        <div class="text-xs text-slate-500 mb-1">Estado</div>
+        <div class="flex items-center gap-2">
+          <div class="w-2.5 h-2.5 rounded-full" :class="online ? 'bg-green-400' : 'bg-red-400'"></div>
+          <span class="text-sm font-semibold" x-text="online ? 'Online' : 'Offline'"></span>
         </div>
       </div>
-
-      <!-- Cycle History -->
-      <div class="card lg:col-span-2" style="overflow:hidden">
-        <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid var(--border)">
-          <h3 class="font-semibold text-sm">Historial de Ciclos</h3>
-          <div class="flex items-center gap-2">
-            <span class="text-xs font-mono" style="color:var(--text3)"
-                  x-text="'errores: '+(incomeStatus.errors||0)"></span>
-          </div>
-        </div>
-        <div class="scrollable" style="max-height:340px">
-          <template x-for="(c, i) in (incomeStatus.recent_cycles||[]).slice(0,15)" :key="i">
-            <div class="flex items-start gap-3 px-4 py-3" style="border-bottom:1px solid var(--border)">
-              <div class="flex-shrink-0 mt-0.5">
-                <div class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
-                     :class="c.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/15 text-red-400'">
-                  <span x-show="c.success">✓</span>
-                  <span x-show="!c.success">✕</span>
-                </div>
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-0.5">
-                  <span class="text-xs font-mono px-1.5 py-0.5 rounded"
-                        style="background:var(--elevated);color:#a78bfa"
-                        x-text="c.strategy"></span>
-                  <span x-show="c.revenue_potential > 0"
-                        class="text-xs font-semibold text-yellow-400"
-                        x-text="'$'+c.revenue_potential?.toFixed(0)"></span>
-                  <span class="text-xs ml-auto font-mono" style="color:var(--text3)"
-                        x-text="c.elapsed_seconds+'s'"></span>
-                </div>
-                <div class="text-xs truncate" style="color:var(--text2)" x-text="c.summary"></div>
-                <template x-if="c.urls_created?.length">
-                  <div class="flex flex-wrap gap-1 mt-1">
-                    <template x-for="(u,j) in c.urls_created.slice(0,3)" :key="j">
-                      <a :href="u" target="_blank" rel="noopener"
-                         class="text-xs px-1.5 py-0.5 rounded hover:opacity-80 transition-opacity"
-                         style="background:rgba(59,130,246,.12);color:#60a5fa">↗ link</a>
-                    </template>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </template>
-          <div x-show="!(incomeStatus.recent_cycles?.length)" class="text-center py-12 text-sm" style="color:var(--text3)">
-            Sin ciclos todavía — el loop iniciará automáticamente o presiona "Ciclo Ya"
-          </div>
-        </div>
+      <div class="card p-4">
+        <div class="text-xs text-slate-500 mb-1">Versión</div>
+        <div class="text-sm font-semibold">3.3.0</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs text-slate-500 mb-1">AI Providers</div>
+        <div class="text-sm font-semibold" x-text="aiProviders"></div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs text-slate-500 mb-1">Herramientas</div>
+        <div class="text-sm font-semibold" x-text="toolsCount"></div>
       </div>
     </div>
 
-    <!-- Opportunity Queue -->
-    <div class="card p-4">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-sm">Cola de Oportunidades <span class="ml-2 text-xs font-mono" style="color:var(--text3)" x-text="'('+( incomeStatus.opportunity_count||0)+')'"></span></h3>
-        <button @click="incomeRunCycleStrategy('opportunity_scan')" class="btn btn-ghost btn-sm" style="font-size:11px">
-          + Escanear ahora
+    <!-- QUICK ACTIONS -->
+    <div class="mb-6">
+      <h2 class="text-sm font-semibold text-slate-400 mb-3">ACCIONES RÁPIDAS</h2>
+      <div class="grid grid-cols-2 gap-2">
+        <button @click="quickAction('chat')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          Chat
+        </button>
+        <button @click="quickAction('code')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+          Código
+        </button>
+        <button @click="quickAction('research')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Investigar
+        </button>
+        <button @click="quickAction('run')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Ejecutar
         </button>
       </div>
-      <div x-show="incomeStatus.opportunities?.length">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-2">
-          <template x-for="(opp, i) in (incomeStatus.opportunities||[]).slice(0,6)" :key="i">
-            <div class="p-3 rounded-lg text-xs" style="background:var(--elevated);border:1px solid var(--border)">
-              <div class="font-medium mb-1" style="color:var(--text)" x-text="opp.title||opp"></div>
-              <div x-show="opp.revenue_estimate" class="text-yellow-400 font-semibold" x-text="'$'+opp.revenue_estimate"></div>
-              <div x-show="opp.niche" class="mt-1" style="color:var(--text3)" x-text="opp.niche"></div>
+    </div>
+
+    <!-- CHAT SECTION -->
+    <div class="mb-6">
+      <h2 class="text-sm font-semibold text-slate-400 mb-3">CHAT CON ARIA</h2>
+      <div class="card overflow-hidden">
+        <!-- Messages -->
+        <div class="h-80 overflow-y-auto p-4 space-y-3" id="chat-messages" x-ref="chatbox">
+          <template x-for="(msg, i) in messages" :key="i">
+            <div class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+              <div :class="msg.role === 'user' ? 'msg-user bg-[#1e1e2a]' : 'msg-aria'">
+                <div class="text-sm leading-relaxed whitespace-pre-wrap" x-html="renderMarkdown(msg.text)"></div>
+              </div>
             </div>
           </template>
+          <div x-show="thinking" class="flex justify-start">
+            <div class="msg-aria">
+              <div class="flex gap-1.5 py-1">
+                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
+                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
+                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Input -->
+        <div class="border-t border-[#1e1e2a] p-3 flex gap-2">
+          <input type="text" x-model="chatInput" @keydown.enter="sendMessage" placeholder="Mensaje para ARIA..." class="flex-1 bg-[#1a1a24] rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-purple-500/30 placeholder-slate-600">
+          <button @click="sendMessage" :disabled="!chatInput.trim() || thinking" class="btn-primary px-4 py-2.5 text-sm disabled:opacity-30" :class="thinking ? 'animate-pulse' : ''">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+          </button>
         </div>
       </div>
-      <div x-show="!incomeStatus.opportunities?.length" class="text-xs py-4 text-center" style="color:var(--text3)">
-        Escanea el mercado para descubrir oportunidades de ingresos
+    </div>
+
+    <!-- SYSTEM STATUS -->
+    <div class="card p-4 mb-6">
+      <h2 class="text-sm font-semibold text-slate-400 mb-3">SISTEMA</h2>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between"><span class="text-slate-500">Servidor</span><span class="text-green-400" x-text="online ? 'Activo' : 'Inactivo'"></span></div>
+        <div class="flex justify-between"><span class="text-slate-500">API</span><span class="font-medium">/api/v1/*</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">AI Motor</span><span class="font-medium">HuggingFace → Groq</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">WebSocket</span><span class="font-medium">/ws/chat</span></div>
       </div>
     </div>
-  </section>
 
-  </main>
-</div><!-- /main-content -->
-
-<!-- ══════════════ TOAST CONTAINER ══════════════ -->
-<div class="toast-wrap">
-  <template x-for="t in toasts" :key="t.id">
-    <div class="toast" :class="t.type==='success'?'toast-s':t.type==='error'?'toast-e':'toast-i'">
-      <span x-show="t.type==='success'">✓</span>
-      <span x-show="t.type==='error'">✕</span>
-      <span x-text="t.message"></span>
+    <!-- FOOTER -->
+    <div class="text-center text-xs text-slate-600 py-6">
+      ARIA AI v3.3 — Autonomous Intelligence Platform
     </div>
-  </template>
-</div>
+  </div>
 
-<!-- ══════════════ MOBILE BOTTOM NAV ══════════════ -->
-<nav id="bottom-nav">
-  <template x-for="item in mobileNavItems" :key="item.id">
-    <div class="bnav-item" :class="activeSection===item.id?'active':''"
-         @click="activeSection=item.id">
-      <span x-html="item.icon"></span>
-      <span x-text="item.label"></span>
-    </div>
-  </template>
-</nav>
+  <script>
+    function dashboardApp() {
+      return {
+        sidebar: false,
+        online: false,
+        aiProviders: '0',
+        toolsCount: '0',
+        messages: [{ role: 'aria', text: '👋 ¡Hola! Soy **ARIA**. ¿En qué puedo ayudarte hoy?' }],
+        chatInput: '',
+        thinking: false,
 
-<!-- ══════════════ JAVASCRIPT ══════════════ -->
-<script>
-function ariaApp() {
-  return {
-    // ── STATE ────────────────────────────────────────────
-    activeSection: 'overview',
-    connected: false,
-    ws: null,
-    currentTime: '',
-    windowWidth: window.innerWidth,
-    sessionId: 'web_' + Math.random().toString(36).substring(2, 10),
+        async init() {
+          await this.loadStatus();
+        },
 
-    // Sidebar
-    desktopCollapsed: localStorage.getItem('aria_sidebar_collapsed') === 'true',
-    mobileSidebarOpen: false,
-
-    // Chat
-    messages: [],
-    chatInput: '',
-    thinking: false,
-    attachedImage: '',       // base64 data URL
-    attachedImageName: '',
-
-    // Quick chat (overview)
-    quickMessages: [],
-    quickInput: '',
-    quickThinking: false,
-
-    // Data
-    agents: [],
-    goals: [],
-    tasks: [],
-    aiHealth: {},
-    activity: [],
-    activityFilter: '',
-    metrics: { agents: 0, goals: 0, runs: 0, health: 0 },
-    skills: {},
-
-    // Pipeline
-    pipelineRuns: [],
-    newMission: '',
-    pipelineAgent: 'auto',
-    pipelineRunning: false,
-    currentPipelineStage: 0,
-    pipelineStages: ['Planificar', 'Auditar', 'Ejecutar', 'Verificar'],
-
-    // Modals
-    missionModal: { open: false, agent: '', mission: '', result: '' },
-    crewModal: { open: false, id: '', name: '', mission: '', running: false, result: '' },
-
-    // Workflows
-    workflows: [],
-    wfName: '',
-    wfDesc: '',
-    wfCreating: false,
-
-    // Goals
-    newGoalText: '',
-
-    // Income Loop
-    incomeStatus: { running: false, total_cycles: 0, successful_cycles: 0, errors: 0, total_revenue_potential: 0, recent_cycles: [], last_cycle: null, opportunities: [], opportunity_count: 0 },
-    incomeRunning: false,
-    incomeSecrets: [
-      { key: 'GUMROAD_TOKEN',           label: 'Gumroad API',        priority: 'critical', description: 'Vende productos digitales, ebooks y servicios. Principal plataforma de ingresos.' },
-      { key: 'ANTHROPIC_API_KEY',       label: 'Anthropic Claude',   priority: 'critical', description: 'Motor AI principal para generar contenido, productos y análisis.' },
-      { key: 'OPENAI_API_KEY',          label: 'OpenAI GPT',         priority: 'critical', description: 'Fallback AI y generación de imágenes DALL·E.' },
-      { key: 'DEVTO_API_KEY',           label: 'Dev.to Publishing',  priority: 'high',     description: 'Publica artículos técnicos y de programación con tráfico orgánico masivo.' },
-      { key: 'MEDIUM_TOKEN',            label: 'Medium Publishing',  priority: 'high',     description: 'Publica en Medium Partner Program para monetizar con lecturas.' },
-      { key: 'HASHNODE_TOKEN',          label: 'Hashnode Blog',      priority: 'high',     description: 'Blog técnico con SEO optimizado. Necesita también HASHNODE_PUBLICATION_ID.' },
-      { key: 'NEWS_API_KEY',            label: 'NewsAPI Trends',     priority: 'high',     description: 'Accede a noticias trending para generar contenido relevante.' },
-      { key: 'SHOPIFY_URL',             label: 'Shopify Store URL',  priority: 'high',     description: 'URL de tu tienda ej: mystore.myshopify.com. Necesita SHOPIFY_ADMIN_TOKEN.' },
-      { key: 'SHOPIFY_ADMIN_TOKEN',     label: 'Shopify Admin API',  priority: 'high',     description: 'Token de acceso para crear productos en tu tienda Shopify.' },
-      { key: 'MAILCHIMP_API_KEY',       label: 'Mailchimp Email',    priority: 'high',     description: 'Envía campañas de email marketing a tu lista. Necesita MAILCHIMP_DC.' },
-      { key: 'ZAPIER_WEBHOOK_URL',      label: 'Zapier Webhooks',    priority: 'high',     description: 'Conecta ARIA con 5000+ apps vía Zapier para distribución automática.' },
-      { key: 'GITHUB_TOKEN',            label: 'GitHub API',         priority: 'high',     description: 'Para que ARIA lea y mejore su propio código autónomamente.' },
-      { key: 'HASHNODE_PUBLICATION_ID', label: 'Hashnode Pub ID',    priority: 'medium',   description: 'ID de tu publicación en Hashnode (ver en settings de Hashnode).' },
-      { key: 'TWITTER_API_KEY',         label: 'Twitter/X API',      priority: 'medium',   description: 'Distribuye contenido en Twitter/X para generar tráfico.' },
-      { key: 'STRIPE_SECRET_KEY',       label: 'Stripe Payments',    priority: 'medium',   description: 'Pagos directos sin comisión de terceros (vs 5-10% de Gumroad).' },
-      { key: 'ARIA_API_KEY',            label: 'ARIA API Key',       priority: 'medium',   description: 'Protege el acceso a la API REST de ARIA con autenticación.' },
-    ],
-    incomeStrategies: [
-      { name: 'content_pipeline', label: 'Content Pipeline',  pct: 28, color: '#7c3aed' },
-      { name: 'niche_rotator',    label: 'Niche Rotator',     pct: 20, color: '#2563eb' },
-      { name: 'product_factory',  label: 'Product Factory',   pct: 17, color: '#059669' },
-      { name: 'opportunity_scan', label: 'Opportunity Scan',  pct:  9, color: '#d97706' },
-      { name: 'shopify_listing',  label: 'Shopify Listing',   pct:  8, color: '#16a34a' },
-      { name: 'email_campaign',   label: 'Email Campaign',    pct:  7, color: '#c026d3' },
-      { name: 'ebook_factory',    label: 'Ebook Factory',     pct:  6, color: '#ea580c' },
-      { name: 'social_blitz',     label: 'Social Blitz',      pct:  3, color: '#db2777' },
-      { name: 'premium_offer',    label: 'Premium Offer',     pct:  2, color: '#0891b2' },
-    ],
-
-    // Knowledge Base
-    kbUrl: '',
-    kbText: '',
-    kbQuery: '',
-    kbResults: [],
-    kbSources: [],
-    kbLoading: false,
-    kbNotif: '',
-
-    // Toast notifications
-    toasts: [],
-
-    // Chat extras
-    showScrollBtn: false,
-    voiceActive: false,
-    voiceRecognition: null,
-
-    // Hints
-    chatHints: [
-      '/help — ver todas las capacidades',
-      'Analiza las tendencias de IA en 2026',
-      '/plan lanzar un SaaS de productividad',
-      'Crea un pitch deck para inversores',
-      '/research competidores en mi nicho',
-    ],
-    quickCommands: ['/help', '/run', '/plan', '/think', '/research', '/status', '/goals', '/audit'],
-
-    // Integrations
-    integrations: {
-      payments:   [{name:'Stripe',configured:false},{name:'Shopify',configured:false},{name:'Gumroad',configured:false},{name:'PayPal',configured:false}],
-      ai:         [{name:'HuggingFace',configured:false},{name:'OpenAI',configured:false},{name:'Groq',configured:false},{name:'Anthropic',configured:false}],
-      publishing: [{name:'Dev.to',configured:false},{name:'Medium',configured:false},{name:'Hashnode',configured:false},{name:'Resend',configured:false}],
-      social:     [{name:'Twitter/X',configured:false},{name:'Instagram',configured:false},{name:'LinkedIn',configured:false},{name:'Reddit',configured:false}],
-    },
-
-    // Crews
-    crews: [
-      { id:'research_crew',  name:'Research Crew',  members:3, description:'Investigador → Analista → Redactor. Informes profundos y accionables.',  icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' },
-      { id:'content_crew',   name:'Content Crew',   members:3, description:'Investigador → SEO Strategist → Editor. Contenido listo para publicar.', icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
-      { id:'dev_crew',       name:'Dev Crew',        members:3, description:'PM → Developer → QA. Proyectos de software de principio a fin.',        icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>' },
-      { id:'sales_crew',     name:'Sales Crew',      members:3, description:'Analista de Mercado → Sales Strategist → Copywriter de conversión.',    icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
-      { id:'launch_crew',    name:'Launch Crew',     members:3, description:'Estratega → Marketing Director → Analista Financiero. Go-to-market.',   icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>' },
-      { id:'venture_crew',   name:'Venture Crew',    members:3, description:'Analista de Negocio → Estratega Financiero → Pitch Specialist.',        icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
-    ],
-
-    // ── NAVIGATION ────────────────────────────────────────
-    navItems: [
-      { id:'overview',   label:'Visión General', icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
-      { id:'chat',       label:'Chat',           icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
-      { id:'agents',     label:'Agentes',        icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
-      { id:'automation', label:'Automatización', icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>' },
-      { id:'knowledge',  label:'Conocimiento',   icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>' },
-      { id:'goals',      label:'Metas',          icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>' },
-      { id:'activity',   label:'Actividad',      icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>' },
-      { id:'income',     label:'Ingresos',       icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', badge: '24/7' },
-      { id:'settings',   label:'Ajustes',        icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' },
-    ],
-
-    mobileNavItems: [
-      { id:'overview',   label:'Inicio',    icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>' },
-      { id:'chat',       label:'Chat',      icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
-      { id:'agents',     label:'Agentes',   icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>' },
-      { id:'automation', label:'Auto',      icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>' },
-      { id:'income',     label:'Ingresos',  icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
-      { id:'settings',   label:'Ajustes',   icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>' },
-    ],
-
-    // ── INIT ─────────────────────────────────────────────
-    init() {
-      this.updateClock();
-      setInterval(() => this.updateClock(), 1000);
-      window.addEventListener('resize', () => { this.windowWidth = window.innerWidth });
-      this.connectWS();
-      this.loadData();
-      setInterval(() => this.loadActivity(), 20000);
-      setInterval(() => this.loadTasks(), 15000);
-      setInterval(() => this.loadIncome(), 60000);
-      this.$nextTick(() => this.watchScroll());
-    },
-
-    updateClock() {
-      this.currentTime = new Date().toLocaleTimeString('es', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    },
-
-    // ── SIDEBAR ────────────────────────────────────────────
-    toggleSidebar() {
-      this.desktopCollapsed = !this.desktopCollapsed;
-      localStorage.setItem('aria_sidebar_collapsed', this.desktopCollapsed);
-    },
-    toggleMobileSidebar() { this.mobileSidebarOpen = !this.mobileSidebarOpen },
-    closeMobileSidebar()  { this.mobileSidebarOpen = false },
-
-    // ── WEBSOCKET ─────────────────────────────────────────
-    connectWS() {
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      try {
-        this.ws = new WebSocket(`${proto}://${location.host}/api/v1/ws`);
-        this.ws.onopen  = () => { this.connected = true };
-        this.ws.onclose = () => { this.connected = false; setTimeout(() => this.connectWS(), 5000) };
-        this.ws.onerror = () => { this.connected = false };
-        this.ws.onmessage = (evt) => {
+        async loadStatus() {
           try {
-            const d = JSON.parse(evt.data);
-            if (d.type === 'chunk') {
-              const last = this.messages[this.messages.length - 1];
-              if (last && last.role === 'aria' && last.streaming) {
-                last.text += d.text;
-              } else {
-                this.messages.push({ role:'aria', text: d.text, streaming: true });
-                this.thinking = false;
-              }
-              this.$nextTick(() => this.scrollChat());
-            } else if (d.type === 'reply') {
-              this.thinking = false;
-              const last = this.messages[this.messages.length - 1];
-              if (last && last.role === 'aria' && last.streaming) {
-                if (d.text) last.text = d.text;
-                last.streaming = false;
-                last.ts = this._ts();
-              } else {
-                this.messages.push({ role:'aria', text: d.text, streaming: false, ts: this._ts() });
-              }
-              this.$nextTick(() => this.scrollChat());
-            } else if (d.type === 'error') {
-              this.thinking = false;
-              this.messages.push({ role:'aria', text: d.text || 'Error desconocido', streaming: false, ts: this._ts() });
-              this.$nextTick(() => this.scrollChat());
+            const r = await fetch('/api/v1/status');
+            if (r.ok) {
+              this.online = true;
+              const d = await r.json();
+              this.aiProviders = d.ai ? Object.keys(d.ai).length.toString() : '0';
+            }
+          } catch(e) { this.online = false; }
+          try {
+            const r = await fetch('/api/v1/tools');
+            if (r.ok) {
+              const d = await r.json();
+              this.toolsCount = d.count.toString();
             }
           } catch(e) {}
-        };
-      } catch(e) { this.connected = false }
-    },
+        },
 
-    // ── LOAD DATA ─────────────────────────────────────────
-    async loadData() {
-      await Promise.allSettled([
-        this.loadStatus(), this.loadAgents(), this.loadGoals(),
-        this.loadActivity(), this.loadPipeline(), this.loadWorkflows(), this.loadKbSources(),
-        this.loadTasks(), this.loadIncome(),
-      ]);
-    },
+        async sendMessage() {
+          if (!this.chatInput.trim() || this.thinking) return;
+          const text = this.chatInput;
+          this.messages.push({ role: 'user', text });
+          this.chatInput = '';
+          this.thinking = true;
+          this.$nextTick(() => this.scrollChat());
 
-    async loadStatus() {
-      try {
-        const r = await fetch('/api/v1/status');
-        if (!r.ok) return;
-        const d = await r.json();
-        this.skills = d.skills || d.trainer?.skill_scores || {};
-        const vals = Object.values(this.skills);
-        this.metrics.health = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
-        const integs = d.integrations || {};
-        for (const [key, val] of Object.entries(integs)) {
-          for (const cat of Object.values(this.integrations)) {
-            const item = cat.find(i => i.name.toLowerCase().includes(key.toLowerCase()));
-            if (item) item.configured = !!val;
+          try {
+            const r = await fetch('/api/v1/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: text, session_id: 'web_' + Date.now() })
+            });
+            const d = await r.json();
+            this.messages.push({ role: 'aria', text: d.reply || '⚠️ Sin respuesta' });
+          } catch(e) {
+            this.messages.push({ role: 'aria', text: '⚠️ Error de conexión. Verifica que el servidor esté corriendo.' });
+          } finally {
+            this.thinking = false;
+            this.$nextTick(() => this.scrollChat());
           }
-        }
-      } catch(e) {}
-    },
+        },
 
-    async loadAgents() {
-      try {
-        const r = await fetch('/api/v1/agents');
-        if (!r.ok) return;
-        const d = await r.json();
-        this.agents = d.agents || d || [];
-        this.metrics.agents = this.agents.length;
-        const nav = this.navItems.find(n => n.id === 'agents');
-        if (nav) nav.badge = this.agents.length || null;
-      } catch(e) {}
-    },
-
-    async loadGoals() {
-      try {
-        const r = await fetch('/api/v1/goals');
-        if (!r.ok) return;
-        const d = await r.json();
-        this.goals = d.goals || d || [];
-        this.metrics.goals = this.goals.length;
-      } catch(e) {}
-    },
-
-    async addGoal() {
-      const text = this.newGoalText.trim();
-      if (!text) return;
-      this.newGoalText = '';
-      // Send to chat as /add_goal command so ARIA persists it
-      this.messages.push({ role:'user', text: `/add_goal ${text}` });
-      this.thinking = true;
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type:'chat', message:`/add_goal ${text}`, session_id: this.sessionId, stream: false }));
-      }
-      setTimeout(() => this.loadGoals(), 2500);
-    },
-
-    sendGoalChat(msg) {
-      this.activeSection = 'chat';
-      this.chatInput = msg;
-      this.$nextTick(() => this.sendMessage());
-    },
-
-    async loadActivity() {
-      try {
-        const r = await fetch('/api/v1/activity');
-        if (!r.ok) return;
-        const d = await r.json();
-        this.activity = d.entries || d.activity || d || [];
-      } catch(e) {}
-    },
-
-    async loadTasks() {
-      try {
-        const r = await fetch('/api/v1/tasks');
-        if (!r.ok) return;
-        const d = await r.json();
-        this.tasks = d.tasks || [];
-      } catch(e) {}
-    },
-
-    async cancelTask(id) {
-      try {
-        await fetch(`/api/v1/tasks/${id}`, { method:'DELETE' });
-        await this.loadTasks();
-      } catch(e) {}
-    },
-
-    async loadAiHealth() {
-      try {
-        const r = await fetch('/api/v1/health/ai');
-        if (!r.ok) return;
-        this.aiHealth = await r.json();
-      } catch(e) {}
-    },
-
-    async loadPipeline() {
-      try {
-        const r = await fetch('/api/v1/pipeline');
-        if (!r.ok) return;
-        const d = await r.json();
-        this.pipelineRuns = d.runs || d || [];
-        this.metrics.runs = this.pipelineRuns.length;
-      } catch(e) {}
-    },
-
-    async loadWorkflows() {
-      try {
-        const r = await fetch('/api/v1/workflows');
-        if (!r.ok) return;
-        const d = await r.json();
-        this.workflows = d.workflows || [];
-      } catch(e) { this.workflows = [] }
-    },
-
-    async loadKbSources() {
-      try {
-        const r = await fetch('/api/v1/knowledge/sources');
-        if (!r.ok) return;
-        const d = await r.json();
-        this.kbSources = d.sources || [];
-      } catch(e) { this.kbSources = [] }
-    },
-
-    // ── INCOME LOOP ───────────────────────────────────────
-    async loadIncome() {
-      try {
-        const r = await fetch('/api/v1/income');
-        if (!r.ok) return;
-        const d = await r.json();
-        if (d.error) return;
-        this.incomeStatus = { ...this.incomeStatus, ...d };
-      } catch(e) {}
-    },
-
-    async incomeRunCycle(strategy) {
-      if (this.incomeRunning) return;
-      this.incomeRunning = true;
-      try {
-        const r = await fetch('/api/v1/income/cycle', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ strategy: strategy || null }),
-        });
-        const d = await r.json();
-        if (d.error) { this.toast('error', d.error); return; }
-        this.toast('success', `Ciclo: ${d.strategy} — ${d.success ? '✓' : '✕'} ${d.summary?.substring(0,50)||''}`);
-        await this.loadIncome();
-      } catch(e) { this.toast('error', 'Error ejecutando ciclo') }
-      finally { this.incomeRunning = false }
-    },
-
-    async incomeRunCycleStrategy(s) { return this.incomeRunCycle(s) },
-
-    async incomeToggleLoop() {
-      const endpoint = this.incomeStatus.running ? '/api/v1/income/stop' : '/api/v1/income/start';
-      try {
-        const r = await fetch(endpoint, { method: 'POST' });
-        const d = await r.json();
-        this.incomeStatus.running = d.running;
-        this.toast('success', d.running ? 'Loop iniciado' : 'Loop pausado');
-      } catch(e) { this.toast('error', 'Error controlando loop') }
-    },
-
-    // ── FILTERS ───────────────────────────────────────────
-    get filteredActivity() {
-      if (!this.activityFilter) return this.activity;
-      return this.activity.filter(e => e.level === this.activityFilter);
-    },
-
-    // ── CHAT ─────────────────────────────────────────────
-    _ts() { return new Date().toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'}) },
-
-    handleImageUpload(evt) {
-      const file = evt.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        this.attachedImage = e.target.result;   // data:image/...;base64,...
-        this.attachedImageName = file.name;
-      };
-      reader.readAsDataURL(file);
-      evt.target.value = '';  // reset so same file can be re-selected
-    },
-
-    async sendMessage() {
-      const text = this.chatInput.trim();
-      const img  = this.attachedImage;
-      if ((!text && !img) || this.thinking) return;
-
-      // Build user display message
-      const userText = text || `[imagen: ${this.attachedImageName}]`;
-      this.messages.push({ role:'user', text: userText, ts: this._ts() });
-      this.chatInput = '';
-      this.attachedImage = '';
-      this.attachedImageName = '';
-      this.thinking = true;
-      this.$nextTick(() => this.scrollChat());
-
-      // If image attached, send via REST (WS can't easily handle base64 blobs)
-      if (img) {
-        try {
-          const b64 = img.split(',')[1] || img;
-          const msgText = text || 'Analiza esta imagen y descríbela en detalle.';
-          const r = await fetch('/api/v1/chat', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ message: msgText, session_id: this.sessionId, image_base64: b64 })
-          });
-          const d = await r.json();
-          this.thinking = false;
-          this.messages.push({ role:'aria', text: d.reply||d.error||'Sin respuesta', streaming:false });
-        } catch(e) {
-          this.thinking = false;
-          this.messages.push({ role:'aria', text:'Error al analizar la imagen.', streaming:false });
-        }
-        this.$nextTick(() => this.scrollChat());
-        return;
-      }
-
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type:'chat', message:text, session_id: this.sessionId, stream: true }));
-      } else {
-        try {
-          const r = await fetch('/api/v1/chat', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ message:text, session_id: this.sessionId })
-          });
-          const d = await r.json();
-          this.thinking = false;
-          this.messages.push({ role:'aria', text: d.reply||d.error||'Sin respuesta', streaming:false });
-        } catch(e) {
-          this.thinking = false;
-          this.messages.push({ role:'aria', text:'Error de conexión.', streaming:false });
-        }
-        this.$nextTick(() => this.scrollChat());
-      }
-    },
-
-    clearChat() { this.messages = [] },
-
-    exportChat() {
-      const lines = this.messages.map(m =>
-        `[${m.role === 'user' ? 'Tú' : 'ARIA'}]\n${m.text}\n`
-      ).join('\n---\n\n');
-      const blob = new Blob([lines], { type:'text/plain;charset=utf-8' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url; a.download = `aria-chat-${Date.now()}.txt`;
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a); URL.revokeObjectURL(url);
-    },
-
-    handleDrop(evt) {
-      const file = evt.dataTransfer.files?.[0];
-      if (!file || !file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        this.attachedImage = e.target.result;
-        this.attachedImageName = file.name;
-      };
-      reader.readAsDataURL(file);
-    },
-
-    async copyMsg(text) {
-      try {
-        await navigator.clipboard.writeText(text);
-        this.toast('Copiado al portapapeles', 'success', 1500);
-      } catch(e) { this.toast('No se pudo copiar', 'error'); }
-    },
-
-    // ── TOAST ─────────────────────────────────────────────
-    toast(msg, type = 'info', duration = 3000) {
-      const id = Date.now() + Math.random();
-      this.toasts.push({ id, message: msg, type });
-      setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, duration);
-    },
-
-    // ── VOICE INPUT ───────────────────────────────────────
-    startVoice() {
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) { this.toast('Tu navegador no soporta reconocimiento de voz', 'error'); return; }
-      this.voiceRecognition = new SR();
-      this.voiceRecognition.lang = 'es-ES';
-      this.voiceRecognition.continuous = false;
-      this.voiceRecognition.interimResults = false;
-      this.voiceRecognition.onresult = (e) => {
-        const transcript = e.results[0][0].transcript;
-        this.chatInput = (this.chatInput + ' ' + transcript).trim();
-        this.voiceActive = false;
-        this.toast('Voz capturada', 'success', 1500);
-      };
-      this.voiceRecognition.onerror = () => { this.voiceActive = false; };
-      this.voiceRecognition.onend   = () => { this.voiceActive = false; };
-      this.voiceRecognition.start();
-      this.voiceActive = true;
-    },
-    stopVoice() {
-      if (this.voiceRecognition) this.voiceRecognition.stop();
-      this.voiceActive = false;
-    },
-
-    // ── REGENERATE ────────────────────────────────────────
-    regenerate() {
-      for (let i = this.messages.length - 1; i >= 0; i--) {
-        if (this.messages[i].role === 'user') {
-          const text = this.messages[i].text;
-          this.messages = this.messages.slice(0, i);
-          this.chatInput = text;
+        async quickAction(type) {
+          const actions = {
+            chat: { msg: 'Cuéntame sobre tus capacidades' },
+            code: { msg: 'Escribe un ejemplo de código Python que demuestre tus capacidades' },
+            research: { msg: 'Investiga sobre las tendencias actuales en inteligencia artificial' },
+            run: { msg: 'Ejecuta una misión: analiza el estado actual del sistema' }
+          };
+          const a = actions[type] || actions.chat;
+          this.chatInput = a.msg;
           this.$nextTick(() => this.sendMessage());
-          return;
-        }
-      }
-    },
+        },
 
-    scrollChat() {
-      const el = document.getElementById('chat-messages');
-      if (el) { el.scrollTop = el.scrollHeight; this.showScrollBtn = false; }
-    },
-
-    watchScroll() {
-      const el = document.getElementById('chat-messages');
-      if (!el) return;
-      el.addEventListener('scroll', () => {
-        this.showScrollBtn = (el.scrollHeight - el.scrollTop - el.clientHeight) > 140;
-      }, { passive: true });
-    },
-
-    async sendQuick() {
-      const text = this.quickInput.trim();
-      if (!text || this.quickThinking) return;
-      this.quickMessages.push({ role:'user', text });
-      this.quickInput    = '';
-      this.quickThinking = true;
-      try {
-        const r = await fetch('/api/v1/chat', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ message:text })
-        });
-        const d = await r.json();
-        this.quickMessages.push({ role:'aria', text: d.reply||'Error' });
-      } catch(e) {
-        this.quickMessages.push({ role:'aria', text:'Error.' });
-      } finally {
-        this.quickThinking = false;
-        this.$nextTick(() => {
-          const el = document.getElementById('quick-chat-messages');
+        scrollChat() {
+          const el = this.$refs.chatbox;
           if (el) el.scrollTop = el.scrollHeight;
-        });
-      }
-    },
+        },
 
-    // ── MARKDOWN ──────────────────────────────────────────
-    renderMarkdown(text) {
-      if (!text) return '';
-
-      // 1. Extract code blocks first so their content isn't processed
-      const codeBlocks = [];
-      let h = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-        const idx = codeBlocks.length;
-        const safeLang = (lang || '').replace(/[^a-zA-Z0-9+#]/g, '');
-        codeBlocks.push({ lang: safeLang, code });
-        return '\x00CB' + idx + '\x00';
-      });
-
-      // 2. HTML-escape the non-code text
-      h = h.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-      // 3. Restore code blocks with enhanced UI
-      h = h.replace(/\x00CB(\d+)\x00/g, (_, idx) => {
-        const { lang, code } = codeBlocks[Number(idx)];
-        const safe = code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const label = lang || 'code';
-        const header = `<div class="code-block-header"><span class="code-lang">${label}</span><button class="code-copy-btn" onclick="(function(btn){var pre=btn.closest('.code-block-wrapper').querySelector('pre');navigator.clipboard.writeText(pre.innerText||pre.textContent).then(function(){var t=btn.textContent;btn.textContent='✓ copiado';setTimeout(function(){btn.textContent=t},1400)}).catch(function(){});})(this)">copiar</button></div>`;
-        return `<div class="code-block-wrapper">${header}<pre class="has-header"><code>${safe}</code></pre></div>`;
-      });
-
-      // 4. Inline code
-      h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-      // 5. Bold & italic
-      h = h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/__(.+?)__/g,'<strong>$1</strong>');
-      h = h.replace(/\*([^*\n]+)\*/g,'<em>$1</em>').replace(/_([^_\n]+)_/g,'<em>$1</em>');
-      // 6. Headers
-      h = h.replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>');
-      // 7. Markdown tables (| col | col |)
-      h = h.replace(/(\|.+\|\n)+/g, (table) => {
-        const lines = table.trim().split('\n').filter(l => !/^\|[-| :]+\|$/.test(l.trim()));
-        if (!lines.length) return table;
-        const [headerRow, ...bodyRows] = lines;
-        const ths = headerRow.split('|').slice(1,-1).map(c=>`<th>${c.trim()}</th>`).join('');
-        const trs = bodyRows.map(row => {
-          const tds = row.split('|').slice(1,-1).map(c=>`<td>${c.trim()}</td>`).join('');
-          return tds ? `<tr>${tds}</tr>` : '';
-        }).filter(Boolean).join('');
-        return `<table class="md-table"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
-      });
-      // 8. Markdown links then bare URLs
-      h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener" class="md-link">$1</a>');
-      h = h.replace(/(?<![="'])(https?:\/\/[^\s<"&]+)/g,'<a href="$1" target="_blank" rel="noopener" class="md-link">$1</a>');
-      // 9. Lists
-      h = h.replace(/^[-•*] (.+)$/gm,'<li>$1</li>');
-      h = h.replace(/(<li>[\s\S]*?<\/li>(?:\n|$))+/g, m => `<ul>${m}</ul>`);
-      h = h.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');
-      // 10. Paragraphs
-      h = h.replace(/\n\n/g,'</p><p style="margin:6px 0">').replace(/\n/g,'<br>');
-      return '<p style="margin:0">' + h + '</p>';
-    },
-
-    // ── AGENTS & PIPELINE ────────────────────────────────
-    openMission(agentName) {
-      this.missionModal = { open:true, agent:agentName, mission:'', result:'' };
-    },
-
-    async runMission() {
-      const { agent, mission } = this.missionModal;
-      if (!mission.trim()) return;
-      this.missionModal.result = '⏳ Ejecutando pipeline...';
-      try {
-        const r = await fetch('/api/v1/run', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ mission, agent, use_pipeline:true })
-        });
-        const d = await r.json();
-        this.missionModal.result = d.result?.summary || d.result?.report || JSON.stringify(d.result,null,2)?.substring(0,600) || 'Completado';
-        await this.loadPipeline();
-      } catch(e) { this.missionModal.result = `Error: ${e.message}` }
-    },
-
-    async runPipeline() {
-      if (!this.newMission.trim() || this.pipelineRunning) return;
-      this.pipelineRunning = true;
-      this.currentPipelineStage = 0;
-      const iv = setInterval(() => { if (this.currentPipelineStage < 3) this.currentPipelineStage++ }, 4000);
-      try {
-        const r = await fetch('/api/v1/run', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ mission:this.newMission, agent:this.pipelineAgent, use_pipeline:true })
-        });
-        clearInterval(iv);
-        this.currentPipelineStage = 4;
-        this.newMission = '';
-        await this.loadPipeline();
-      } catch(e) { clearInterval(iv) }
-      finally { setTimeout(() => { this.pipelineRunning = false; this.currentPipelineStage = 0 }, 1500) }
-    },
-
-    // ── CREWS ─────────────────────────────────────────────
-    openCrewModal(crew) {
-      this.crewModal = { open:true, id:crew.id, name:crew.name, mission:'', running:false, result:'' };
-    },
-
-    async runCrew() {
-      if (!this.crewModal.mission.trim()) return;
-      this.crewModal.running = true;
-      try {
-        const r = await fetch('/api/v1/chat', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ message:`run_crew crew=${this.crewModal.id} mission=${this.crewModal.mission}` })
-        });
-        const d = await r.json();
-        this.crewModal.result = d.reply || JSON.stringify(d);
-      } catch(e) { this.crewModal.result = `Error: ${e.message}` }
-      finally { this.crewModal.running = false }
-    },
-
-    // ── WORKFLOWS ─────────────────────────────────────────
-    async createWorkflow() {
-      if (!this.wfName.trim() || !this.wfDesc.trim()) return;
-      this.wfCreating = true;
-      try {
-        const r = await fetch('/api/v1/workflows', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ name:this.wfName, description:this.wfDesc })
-        });
-        const d = await r.json();
-        if (d.success) {
-          this.wfName = ''; this.wfDesc = '';
-          await this.loadWorkflows();
+        renderMarkdown(text) {
+          if (!text) return '';
+          let h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre class="bg-[#0a0a0f] p-3 rounded-xl overflow-x-auto text-xs my-2"><code>$2</code></pre>');
+          h = h.replace(/`([^`\n]+)`/g, '<code class="bg-[#0a0a0f] px-1.5 py-0.5 rounded text-xs text-purple-300">$1</code>');
+          h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+          h = h.replace(/\n/g, '<br>');
+          return h;
         }
-      } catch(e) {} finally { this.wfCreating = false }
-    },
-
-    async runWorkflow(wfId) {
-      try {
-        const r = await fetch(`/api/v1/workflows/${wfId}/run`, { method:'POST' });
-        const d = await r.json();
-        const msg = d.error ? d.error.substring(0,80) : (d.final_output ? d.final_output.substring(0,80) : 'Workflow completado');
-        this.toast(msg, d.error ? 'error' : 'success', 4000);
-        await this.loadWorkflows();
-      } catch(e) { this.toast('Error ejecutando workflow', 'error'); }
-    },
-
-    // ── KNOWLEDGE BASE ────────────────────────────────────
-    async ingestUrl() {
-      if (!this.kbUrl.trim()) return;
-      this.kbLoading = true;
-      try {
-        const r = await fetch('/api/v1/knowledge/ingest', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ source: this.kbUrl, is_url: true })
-        });
-        const d = await r.json();
-        if (d.success) {
-          this.toast(`Aprendido: ${d.chunks_added} fragmentos`, 'success', 4000);
-          this.kbUrl = '';
-          await this.loadKbSources();
-        } else {
-          this.toast(`Error: ${(d.error||'desconocido').substring(0,60)}`, 'error', 4000);
-        }
-      } catch(e) { this.toast('Error de conexión', 'error'); }
-      finally { this.kbLoading = false }
-    },
-
-    async ingestText() {
-      if (!this.kbText.trim()) return;
-      this.kbLoading = true;
-      try {
-        const r = await fetch('/api/v1/knowledge/ingest', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ source: this.kbText, is_url: false, category: 'manual' })
-        });
-        const d = await r.json();
-        if (d.success) {
-          this.toast(`Texto agregado: ${d.chunks_added} fragmentos`, 'success', 3000);
-          this.kbText = '';
-          await this.loadKbSources();
-        } else {
-          this.toast(`Error: ${(d.error||'desconocido').substring(0,60)}`, 'error', 4000);
-        }
-      } catch(e) { this.toast('Error de conexión', 'error'); }
-      finally { this.kbLoading = false }
-    },
-
-    async searchKb() {
-      if (!this.kbQuery.trim()) return;
-      try {
-        const r = await fetch(`/api/v1/knowledge/search?q=${encodeURIComponent(this.kbQuery)}&top_k=5`);
-        const d = await r.json();
-        this.kbResults = d.results || [];
-      } catch(e) {}
-    },
-  };
-}
-</script>
+      };
+    }
+  </script>
 </body>
 </html>

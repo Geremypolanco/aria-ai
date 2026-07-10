@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ARIA · Workspace</title>
+<meta name="description" content="Your personal ARIA workspace — research, write, and create with an autonomous AI." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#f6f5f2; --panel:#ffffff; --panel2:#ffffff;
+  --line:rgba(20,20,30,.10); --line2:rgba(20,20,30,.07);
+  --txt:#1c1c22; --mut:#5b6472; --mut2:#8a92a0;
+  --vio:#7c3aed; --cy:#2563eb;
+  --grad:linear-gradient(92deg,#7c3aed,#2563eb);
+  --grad2:linear-gradient(92deg,#7c3aed,#2563eb);
+  --radius:16px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:'Plus Jakarta Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  background:var(--bg);color:var(--txt);overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+.grotesk{font-family:'Plus Jakarta Sans',sans-serif}
+.serif{font-family:'Fraunces',Georgia,serif}
+.g{background:var(--grad2);-webkit-background-clip:text;background-clip:text;color:transparent}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1);border-radius:20px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.18);background-clip:content-box}
+
+.app{display:flex;height:100dvh;width:100vw}
+
+/* ── SIDEBAR ── */
+.side{
+  width:280px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;transition:margin-left .25s ease;z-index:40;
+}
+.side-top{padding:16px 16px 10px;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:.3px;font-size:15px}
+.brand .dot{width:22px;height:22px;border-radius:7px;background:var(--grad);display:grid;place-items:center;font-size:12px;font-weight:800}
+.brand small{color:var(--mut2);font-weight:600;font-size:12px;letter-spacing:2px}
+.icon-btn{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:var(--mut);transition:.15s}
+.icon-btn:hover{background:rgba(0,0,0,.06);color:var(--txt)}
+.newchat{margin:8px 12px 6px;padding:11px 14px;border-radius:12px;background:rgba(0,0,0,.04);
+  border:1px solid var(--line);display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;transition:.15s;width:calc(100% - 24px)}
+.newchat:hover{background:rgba(0,0,0,.07);border-color:rgba(0,0,0,.14)}
+.newchat .plus{width:20px;height:20px;border-radius:6px;background:var(--grad);display:grid;place-items:center;font-size:14px;font-weight:700}
+.hist{flex:1;overflow-y:auto;padding:12px 8px 8px}
+.hist-label{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut2);padding:6px 10px 8px;font-weight:700}
+.conv{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;color:var(--mut);
+  font-size:13.5px;cursor:pointer;transition:.12s;white-space:nowrap;overflow:hidden}
+.conv:hover{background:rgba(0,0,0,.05);color:var(--txt)}
+.conv.active{background:rgba(124,58,237,.12);color:#4c1d95}
+.conv .t{flex:1;overflow:hidden;text-overflow:ellipsis}
+.conv .del{opacity:0;width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--mut2);flex-shrink:0}
+.conv:hover .del{opacity:1}
+.conv .del:hover{background:rgba(255,80,90,.18);color:#ff7080}
+.hist-empty{color:var(--mut2);font-size:13px;padding:10px 12px;line-height:1.6}
+.side-foot{border-top:1px solid var(--line);padding:12px}
+.user{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;transition:.15s;cursor:pointer;position:relative}
+.user:hover{background:rgba(0,0,0,.05)}
+.avatar{width:34px;height:34px;border-radius:10px;background:var(--grad);display:grid;place-items:center;font-weight:700;font-size:15px;flex-shrink:0}
+.user .meta{flex:1;overflow:hidden}
+.user .nm{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user .pl{font-size:11.5px;color:var(--vio);font-weight:600}
+.menu{position:absolute;bottom:52px;left:8px;right:8px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:12px;padding:6px;box-shadow:0 16px 44px -14px rgba(0,0,0,.16);display:none}
+.menu.open{display:block}
+.menu a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;font-size:13.5px;color:var(--txt);text-decoration:none;transition:.12s}
+.menu a:hover{background:rgba(0,0,0,.06)}
+.menu a.up{color:var(--vio)}
+
+/* ── MAIN ── */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.topbar{height:56px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid var(--line2);background:rgba(255,255,255,.72);backdrop-filter:blur(12px);z-index:20}
+.hamb{display:none}
+.topbar .title{font-weight:600;font-size:14.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mut)}
+.badge{font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:100px;border:1px solid var(--line);color:var(--mut);display:flex;align-items:center;gap:6px}
+.badge .live{width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 8px #34d399}
+
+.scroll{flex:1;overflow-y:auto;scroll-behavior:smooth}
+.thread{max-width:760px;margin:0 auto;padding:26px 20px 150px}
+
+/* empty state */
+.empty{max-width:760px;margin:0 auto;padding:0 20px;height:100%;display:flex;flex-direction:column;justify-content:center;min-height:60vh}
+.empty h1{font-family:'Fraunces',Georgia,serif;font-size:clamp(30px,4.8vw,44px);font-weight:500;letter-spacing:-.5px;line-height:1.08}
+.empty p{color:var(--mut);margin-top:12px;font-size:16px;max-width:520px;line-height:1.6}
+.sugg{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:30px}
+.sc{text-align:left;padding:16px;border-radius:14px;background:rgba(0,0,0,.03);border:1px solid var(--line);transition:.15s;display:flex;gap:12px;align-items:flex-start}
+.sc:hover{background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.16);transform:translateY(-1px)}
+.sc .em{font-size:20px;line-height:1}
+.sc>span:last-child{display:flex;flex-direction:column}
+.sc .st{display:block;font-weight:600;font-size:14px}
+.sc .sd{display:block;color:var(--mut2);font-size:12.5px;margin-top:3px;line-height:1.45}
+
+/* messages */
+.msg{display:flex;gap:14px;margin:22px 0;animation:rise .35s ease}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.msg .ava{width:30px;height:30px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;font-size:13px;font-weight:700}
+.msg.a .ava{background:var(--grad)}
+.msg.u{flex-direction:row-reverse}
+.msg.u .ava{background:rgba(0,0,0,.1);color:var(--txt)}
+.msg .col{max-width:calc(100% - 60px);min-width:0;display:flex;flex-direction:column}
+.msg.u .col{align-items:flex-end}
+.actions{display:flex;gap:6px;margin-top:7px;opacity:0;transition:.15s}
+.msg.a:hover .actions{opacity:1}
+.act{font-size:12px;color:var(--mut2);padding:4px 9px;border-radius:8px;background:rgba(0,0,0,.04);border:1px solid var(--line);transition:.12s;cursor:pointer}
+.act:hover{color:var(--txt);background:rgba(0,0,0,.09)}
+@media(hover:none){.actions{opacity:.75}}
+.bubble{max-width:100%;line-height:1.65;font-size:15px}
+.msg.u .bubble{background:rgba(124,58,237,.14);border:1px solid rgba(167,139,250,.22);padding:12px 16px;border-radius:16px 16px 4px 16px;color:#37306b}
+.msg.a .bubble{padding-top:3px}
+.bubble p{margin:0 0 10px}.bubble p:last-child{margin-bottom:0}
+.bubble h1,.bubble h2,.bubble h3{margin:16px 0 8px;line-height:1.3;font-weight:700}
+.bubble h1{font-size:20px}.bubble h2{font-size:18px}.bubble h3{font-size:16px}
+.bubble ul,.bubble ol{margin:8px 0 12px;padding-left:22px}.bubble li{margin:4px 0}
+.bubble a{color:var(--vio);text-decoration:underline;text-underline-offset:2px}
+.bubble code{background:rgba(0,0,0,.08);padding:2px 6px;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.bubble pre{background:#f3f3f6;border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;margin:10px 0}
+.bubble pre code{background:none;padding:0;font-size:13px;line-height:1.6}
+.bubble strong{font-weight:700;color:var(--txt)}
+.bubble img{max-width:100%;border-radius:12px;margin-top:12px;border:1px solid var(--line)}
+.typing{display:inline-flex;gap:5px;padding:6px 2px}
+.typing i{width:7px;height:7px;border-radius:50%;background:var(--mut);animation:bl 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+@keyframes bl{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+
+/* composer */
+.composer{position:absolute;bottom:0;left:0;right:0;padding:16px 20px 22px;
+  background:linear-gradient(to top,var(--bg) 55%,transparent);z-index:15}
+.cbox{max-width:760px;margin:0 auto;background:var(--panel2);border:1px solid var(--line);
+  border-radius:20px;padding:10px 10px 10px 18px;display:flex;align-items:flex-end;gap:10px;
+  box-shadow:0 10px 34px -14px rgba(0,0,0,.12);transition:.15s}
+.cbox:focus-within{border-color:rgba(167,139,250,.4);box-shadow:0 0 0 3px rgba(124,58,237,.14),0 10px 34px -14px rgba(0,0,0,.12)}
+.cbox textarea{flex:1;resize:none;background:none;border:0;outline:0;color:var(--txt);font-size:15px;
+  line-height:1.5;max-height:200px;padding:9px 0;font-family:inherit}
+.cbox textarea::placeholder{color:var(--mut2)}
+.send{width:38px;height:38px;border-radius:12px;background:var(--grad);display:grid;place-items:center;flex-shrink:0;transition:.15s}
+.send:hover{filter:brightness(1.08)}.send:disabled{opacity:.4;cursor:not-allowed;filter:grayscale(.4)}
+.send.busy{background:linear-gradient(92deg,#ef4444,#b91c1c)}
+.caret{display:inline-block;width:8px;height:1.05em;background:var(--vio);vertical-align:-2px;margin-left:2px;border-radius:1px;animation:cb 1s step-end infinite}
+@keyframes cb{50%{opacity:0}}
+.hint{max-width:760px;margin:10px auto 0;text-align:center;color:var(--mut2);font-size:11.5px}
+
+.backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:35}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);z-index:60;max-width:min(560px,92vw);
+  padding:14px 18px;border-radius:14px;font-size:14px;line-height:1.45;background:var(--panel2);color:var(--txt);
+  border:1px solid var(--line);box-shadow:0 16px 44px -14px rgba(0,0,0,.16);opacity:0;transition:.3s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.ok{border-color:rgba(52,211,153,.5)}
+.toast.err{border-color:rgba(239,68,68,.5)}
+
+/* ── onboarding + plans modal ── */
+.ov{position:fixed;inset:0;z-index:80;background:rgba(24,24,32,.42);backdrop-filter:blur(6px);
+  display:none;align-items:center;justify-content:center;padding:24px}
+.ov.show{display:flex}
+.sheet{width:100%;max-width:620px;max-height:92vh;overflow-y:auto;background:var(--panel);
+  border:1px solid var(--line);border-radius:22px;padding:34px 30px 26px;box-shadow:0 30px 80px -24px rgba(0,0,0,.2)}
+.sheet .logo{width:40px;height:40px;border-radius:12px;background:var(--grad);display:grid;place-items:center;font-weight:800;font-size:18px;margin-bottom:18px}
+.sheet h2{font-family:'Fraunces',Georgia,serif;font-size:27px;font-weight:500;letter-spacing:-.3px;line-height:1.15}
+.sheet .qsub{color:var(--mut);margin-top:8px;font-size:15px;line-height:1.5}
+.dots{display:flex;gap:6px;margin:22px 0 4px}
+.dots i{height:4px;flex:1;border-radius:4px;background:rgba(0,0,0,.1)}
+.dots i.on{background:var(--grad)}
+.step{display:none;margin-top:22px}.step.on{display:block;animation:rise .3s ease}
+.field{width:100%;padding:14px 16px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.04);
+  color:var(--txt);font-size:16px;font-family:inherit}
+.field:focus{outline:none;border-color:rgba(167,139,250,.5)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.chip2{padding:11px 16px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.03);
+  color:var(--txt);font-size:14px;cursor:pointer;transition:.12s}
+.chip2:hover{background:rgba(0,0,0,.07)}
+.chip2.sel{background:rgba(124,58,237,.12);border-color:rgba(124,58,237,.5);color:#4c1d95}
+.chip2 .ck{color:var(--vio);margin-right:6px;font-weight:700}
+.orow{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:26px}
+.obtn{padding:12px 22px;border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;transition:.15s}
+.obtn.primary{background:var(--grad);color:#fff}.obtn.primary:hover{filter:brightness(1.08)}
+.obtn.ghost{background:transparent;color:var(--mut)}.obtn.ghost:hover{color:var(--txt)}
+.obtn:disabled{opacity:.4;cursor:not-allowed}
+/* plan cards */
+.plans{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+.plan{position:relative;text-align:left;border:1px solid var(--line);border-radius:16px;padding:16px 48px 16px 18px;cursor:pointer;transition:.14s;background:rgba(0,0,0,.02)}
+.plan:hover{background:rgba(0,0,0,.05)}
+.plan.sel{border-color:rgba(167,139,250,.6);background:rgba(124,58,237,.12)}
+.plan .ph{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.plan .pn{font-weight:700;font-size:16px}
+.plan .pp{font-weight:800;font-size:18px}.plan .pp small{font-size:12px;color:var(--mut2);font-weight:500}
+.plan .pd{color:var(--mut);font-size:13px;margin-top:6px;line-height:1.5}
+.plan .pop{position:absolute;top:-9px;right:14px;font-size:10.5px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:20px;background:var(--grad);color:#fff}
+.plan.sel .rad{border-color:var(--vio);background:var(--vio)}
+.plan .rad{position:absolute;top:16px;right:16px;width:18px;height:18px;border-radius:50%;border:2px solid rgba(0,0,0,.25)}
+/* settings */
+.set-sec{margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+.set-sec:first-of-type{border-top:0;padding-top:6px}
+.set-h{font-family:'Plus Jakarta Sans';font-weight:700;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut2);margin-bottom:12px}
+.set-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;font-size:14.5px}
+.set-row .mut{color:var(--mut)}
+.set-lbl{display:block;font-size:13px;color:var(--mut);margin:14px 0 6px}
+.obtn.danger{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);color:#ff8085}
+.obtn.danger:hover{background:rgba(239,68,68,.22)}
+.set-sec.danger .set-h{color:#ff6b72}
+/* connectors */
+.conn{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line2)}
+.conn:last-child{border-bottom:0}
+.conn .ci{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:16px;font-weight:800;color:#fff;flex-shrink:0}
+.conn .cm{flex:1;min-width:0}
+.conn .cn{font-weight:600;font-size:14.5px}
+.conn .cd{color:var(--mut2);font-size:12.5px;margin-top:1px}
+.conn .cbtn{padding:7px 15px;border-radius:10px;font-size:13px;font-weight:600;border:1px solid var(--line);background:rgba(0,0,0,.03);color:var(--txt);cursor:pointer;transition:.12s;flex-shrink:0}
+.conn .cbtn:hover{background:rgba(0,0,0,.06)}
+.conn .cbtn.done{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.4);color:#0f9d63;cursor:default}
+
+@media(max-width:820px){
+  .side{position:fixed;top:0;bottom:0;left:0;margin-left:-300px;box-shadow:0 0 60px rgba(0,0,0,.18)}
+  .side.open{margin-left:0}
+  .backdrop.show{display:block}
+  .hamb{display:grid}
+  .sugg{grid-template-columns:1fr}
+  .thread{padding-bottom:160px}
+}
+</style>
+</head>
+<body>
+
+<!-- ONBOARDING / PLANS OVERLAY -->
+<div class="ov" id="ov">
+  <div class="sheet">
+    <div class="logo">A</div>
+
+    <!-- progress -->
+    <div class="dots" id="dots"><i class="on"></i><i></i><i></i><i></i></div>
+
+    <!-- step 1: name -->
+    <div class="step on" data-step="0">
+      <h2>Welcome to ARIA 👋</h2>
+      <div class="qsub">Let's set up your workspace. First — what should we call you?</div>
+      <div style="margin-top:20px"><input class="field" id="obName" placeholder="Your name" maxlength="60" /></div>
+    </div>
+
+    <!-- step 2: work -->
+    <div class="step" data-step="1">
+      <h2>What best describes your work?</h2>
+      <div class="qsub">So ARIA can tailor research, content and ideas to you.</div>
+      <div class="chips" id="obWork" data-single="1">
+        <div class="chip2" data-v="Founder / Entrepreneur">Founder / Entrepreneur</div>
+        <div class="chip2" data-v="Marketing">Marketing</div>
+        <div class="chip2" data-v="Content creator">Content creator</div>
+        <div class="chip2" data-v="Freelancer">Freelancer</div>
+        <div class="chip2" data-v="Developer / Engineer">Developer / Engineer</div>
+        <div class="chip2" data-v="Agency">Agency</div>
+        <div class="chip2" data-v="Sales">Sales</div>
+        <div class="chip2" data-v="Student">Student</div>
+        <div class="chip2" data-v="Other">Other</div>
+      </div>
+      <div style="margin-top:12px;display:none" id="obWorkOtherWrap">
+        <input class="field" id="obWorkOther" placeholder="Tell us what you do" maxlength="60" />
+      </div>
+    </div>
+
+    <!-- step 3: goals -->
+    <div class="step" data-step="2">
+      <h2>What do you want ARIA to help with?</h2>
+      <div class="qsub">Pick all that apply.</div>
+      <div class="chips" id="obGoals">
+        <div class="chip2" data-v="Grow on social media">Grow on social media</div>
+        <div class="chip2" data-v="Create content">Create content</div>
+        <div class="chip2" data-v="Research & analysis">Research &amp; analysis</div>
+        <div class="chip2" data-v="Launch or grow a business">Launch or grow a business</div>
+        <div class="chip2" data-v="Automate publishing">Automate publishing</div>
+        <div class="chip2" data-v="Generate images & video">Generate images &amp; video</div>
+      </div>
+    </div>
+
+    <!-- step 4: plan -->
+    <div class="step" data-step="3">
+      <h2>Choose your plan</h2>
+      <div class="qsub">Start free — upgrade any time. Cancel whenever you want.</div>
+      <div class="plans" id="obPlans">
+        <div class="plan sel" data-v="free"><div class="rad"></div>
+          <div class="ph"><span class="pn">Free</span><span class="pp">$0</span></div>
+          <div class="pd">ARIA assistant to research, write and create images. 1 workspace.</div></div>
+        <div class="plan" data-v="pro"><div class="rad"></div><span class="pop">MOST POPULAR</span>
+          <div class="ph"><span class="pn">Pro</span><span class="pp">$29<small>/mo</small></span></div>
+          <div class="pd">Everything unlimited + advanced image, video &amp; voice, autonomous multi-channel publishing, expanded memory, priority AI.</div></div>
+        <div class="plan" data-v="business"><div class="rad"></div>
+          <div class="ph"><span class="pn">Business</span><span class="pp">$99<small>/mo</small></span></div>
+          <div class="pd">Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</div></div>
+      </div>
+    </div>
+
+    <div class="orow">
+      <button class="obtn ghost" id="obBack" onclick="obPrev()" style="visibility:hidden">← Back</button>
+      <button class="obtn primary" id="obNext" onclick="obNext()">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- UPGRADE / PLANS MODAL (from the menu) -->
+<div class="ov" id="upOv">
+  <div class="sheet">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div class="logo">A</div><h2>Upgrade ARIA</h2>
+      <div class="qsub">Do more — autonomous publishing, video, and priority AI.</div></div>
+      <button class="icon-btn" onclick="closeUpgrade()" aria-label="Close" style="font-size:18px">✕</button>
+    </div>
+    <div class="plans" id="upPlans" style="margin-top:20px">
+      <div class="plan" data-v="pro"><span class="pop">MOST POPULAR</span>
+        <div class="ph"><span class="pn">Pro</span><span class="pp">$29<small>/mo</small></span></div>
+        <div class="pd">Unlimited chat, advanced image + video + voice, autonomous multi-channel publishing, expanded memory, priority AI.</div></div>
+      <div class="plan" data-v="business">
+        <div class="ph"><span class="pn">Business</span><span class="pp">$99<small>/mo</small></span></div>
+        <div class="pd">Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</div></div>
+    </div>
+    <div class="orow"><span></span>
+      <button class="obtn primary" id="upGo" onclick="upgradeGo()">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="ov" id="settingsOv">
+  <div class="sheet">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div class="logo">A</div><h2>Settings</h2></div>
+      <button class="icon-btn" onclick="closeSettings()" aria-label="Close" style="font-size:18px">✕</button>
+    </div>
+
+    <div class="set-sec">
+      <div class="set-h">Account</div>
+      <div class="set-row"><span>Email</span><span class="mut">__EMAIL__</span></div>
+      <div class="set-row"><span>Plan</span>
+        <span><b id="setPlan" style="color:var(--vio)">Free</b>
+        <button class="act" style="margin-left:8px" onclick="closeSettings();openUpgrade()">Upgrade</button></span>
+      </div>
+    </div>
+
+    <div class="set-sec">
+      <div class="set-h">Personalization</div>
+      <div class="qsub">How ARIA addresses you and tailors its help.</div>
+      <label class="set-lbl">What ARIA should call you</label>
+      <input class="field" id="setName" maxlength="60" />
+      <label class="set-lbl">What you do</label>
+      <input class="field" id="setWork" maxlength="60" placeholder="e.g. Founder, Marketer, Creator…" />
+      <label class="set-lbl">Goals</label>
+      <div class="chips" id="setGoals">
+        <div class="chip2" data-v="Grow on social media">Grow on social media</div>
+        <div class="chip2" data-v="Create content">Create content</div>
+        <div class="chip2" data-v="Research & analysis">Research &amp; analysis</div>
+        <div class="chip2" data-v="Launch or grow a business">Launch or grow a business</div>
+        <div class="chip2" data-v="Automate publishing">Automate publishing</div>
+        <div class="chip2" data-v="Generate images & video">Generate images &amp; video</div>
+      </div>
+      <div class="orow"><span></span>
+        <button class="obtn primary" id="setSaveBtn" onclick="saveSettings()">Save changes</button>
+      </div>
+    </div>
+
+    <div class="set-sec danger">
+      <div class="set-h">Danger zone</div>
+      <div class="qsub">Permanently delete your ARIA data — profile, plan and saved chats. This can't be undone.</div>
+      <div style="margin-top:12px"><button class="obtn danger" onclick="deleteAccount()">Delete account &amp; data</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- CONNECTORS MODAL -->
+<div class="ov" id="connOv">
+  <div class="sheet">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div class="logo">🔗</div><h2>Connectors</h2>
+      <div class="qsub">Connect ARIA to the apps you already use — so it can research, publish and act across them.</div></div>
+      <button class="icon-btn" onclick="closeConnectors()" aria-label="Close" style="font-size:18px">✕</button>
+    </div>
+    <div id="connList" style="margin-top:18px"></div>
+    <div class="qsub" style="margin-top:16px;font-size:12.5px">More connectors are added regularly. Request one and we'll enable it for your account.</div>
+  </div>
+</div>
+
+<div class="app">
+  <div class="backdrop" id="backdrop" onclick="toggleSide(false)"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="side" id="side">
+    <div class="side-top">
+      <div class="brand"><span class="dot">A</span> SAR<span class="g">APH</span> <small>ARIA</small></div>
+      <button class="icon-btn" onclick="toggleSide(false)" title="Close" aria-label="Close sidebar" style="display:none" id="sideClose">✕</button>
+    </div>
+    <button class="newchat" onclick="newChat()"><span class="plus">+</span> New chat</button>
+    <div class="hist" id="hist"></div>
+    <div class="side-foot">
+      <div class="menu" id="menu">
+        <a href="/admin" id="adminLink" style="display:none">🛡 Admin panel</a>
+        <a href="#" onclick="openConnectors();return false">🔗 Connectors</a>
+        <a href="#" onclick="openSettings();return false">⚙ Settings</a>
+        <a href="#" class="up" id="upgradeLink" onclick="openUpgrade();return false">⚡ Upgrade — see plans</a>
+        <a href="/" >⌂ Home</a>
+        <a href="/logout">↩ Sign out</a>
+      </div>
+      <div class="user" onclick="toggleMenu()">
+        <div class="avatar">__INITIAL__</div>
+        <div class="meta"><div class="nm">__NAME__</div><div class="pl">__PLAN__ plan</div></div>
+        <span class="icon-btn" style="pointer-events:none">⋯</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="topbar">
+      <button class="hamb icon-btn" onclick="toggleSide(true)" aria-label="Open menu">☰</button>
+      <div class="title" id="chatTitle">New chat</div>
+      <span class="badge"><span class="live"></span> ARIA online</span>
+    </div>
+
+    <div class="scroll" id="scroll">
+      <div id="emptyState" class="empty">
+        <h1>Good <span id="tod">day</span>, <span class="g">__FIRST__</span>.</h1>
+      </div>
+      <div class="thread" id="thread" style="display:none"></div>
+    </div>
+
+    <div class="composer">
+      <div class="cbox">
+        <textarea id="input" rows="1" placeholder="Ask ARIA to research, write, or create…"
+          onkeydown="onKey(event)" oninput="autogrow(this)"></textarea>
+        <button class="send" id="send" onclick="onSend()" aria-label="Send" title="Send">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="hint">ARIA researches, writes &amp; creates. Press <b>Enter</b> to send · <b>Shift+Enter</b> for a new line.</div>
+    </div>
+  </main>
+</div>
+
+<script>
+const USER = { name: "__NAME__", email: "__EMAIL__", plan: "__PLAN__", onboarded: __ONBOARDED__, owner: __IS_OWNER__ };
+const PROFILE = __PROFILE_JSON__;
+const KEY = "aria_convos_v1";
+let convos = [];       // [{id, title, sid, msgs:[{role,text,img}]}]
+let cur = null;        // current convo id
+let busy = false;
+
+// greeting
+(function(){const h=new Date().getHours();document.getElementById('tod').textContent=h<12?'morning':h<18?'afternoon':'evening';})();
+
+/* storage */
+function load(){ try{convos=JSON.parse(localStorage.getItem(KEY))||[]}catch(e){convos=[]} }
+function save(){ try{localStorage.setItem(KEY,JSON.stringify(convos.slice(0,50)))}catch(e){} }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7) }
+
+/* markdown-lite → safe HTML */
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function md(src){
+  if(!src) return '';
+  const blocks=[];
+  src=src.replace(/```(\w+)?\n?([\s\S]*?)```/g,(m,l,c)=>{blocks.push('<pre><code>'+esc(c.replace(/\n$/,''))+'</code></pre>');return ' '+(blocks.length-1)+' '});
+  let h=esc(src);
+  h=h.replace(/`([^`]+)`/g,(m,c)=>'<code>'+c+'</code>');
+  h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  h=h.replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+  h=h.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  h=h.replace(/^(#{1,3})\s+(.+)$/gm,(m,hs,t)=>'<h'+hs.length+'>'+t+'</h'+hs.length+'>');
+  // lists
+  const lines=h.split('\n'); let out=[],inUl=false,inOl=false;
+  for(let ln of lines){
+    if(/^\s*[-*]\s+/.test(ln)){ if(!inUl){out.push('<ul>');inUl=true} out.push('<li>'+ln.replace(/^\s*[-*]\s+/,'')+'</li>'); continue }
+    if(inUl){out.push('</ul>');inUl=false}
+    if(/^\s*\d+\.\s+/.test(ln)){ if(!inOl){out.push('<ol>');inOl=true} out.push('<li>'+ln.replace(/^\s*\d+\.\s+/,'')+'</li>'); continue }
+    if(inOl){out.push('</ol>');inOl=false}
+    out.push(ln);
+  }
+  if(inUl)out.push('</ul>'); if(inOl)out.push('</ol>');
+  h=out.join('\n');
+  // paragraphs
+  h=h.split(/\n{2,}/).map(b=>{
+    if(/^\s*<(h\d|ul|ol|pre|blockquote)/.test(b.trim())) return b;
+    return '<p>'+b.trim().replace(/\n/g,'<br>')+'</p>';
+  }).join('');
+  h=h.replace(/ (\d+) /g,(m,i)=>blocks[+i]);
+  return h;
+}
+
+/* rendering */
+function convById(id){return convos.find(c=>c.id===id)}
+function renderHist(){
+  const el=document.getElementById('hist');
+  if(!convos.length){el.innerHTML='<div class="hist-empty">No conversations yet.<br>Start by asking ARIA anything.</div>';return}
+  let html='<div class="hist-label">Recent</div>';
+  for(const c of convos){
+    html+='<div class="conv'+(c.id===cur?' active':'')+'" onclick="openChat(\''+c.id+'\')">'+
+      '<span style="opacity:.5">💬</span><span class="t">'+esc(c.title||'New chat')+'</span>'+
+      '<span class="del" onclick="event.stopPropagation();delChat(\''+c.id+'\')" title="Delete">🗑</span></div>';
+  }
+  el.innerHTML=html;
+}
+function bubble(m){
+  const wrap=document.createElement('div');
+  wrap.className='msg '+(m.role==='user'?'u':'a');
+  const ava=document.createElement('div');
+  ava.className='ava';
+  ava.textContent=(m.role==='user'?(USER.name[0]||'Y').toUpperCase():'A');
+  const col=document.createElement('div');
+  col.className='col';
+  const bub=document.createElement('div');
+  bub.className='bubble';
+  if(m.role==='user'){ bub.innerHTML=esc(m.text).replace(/\n/g,'<br>'); }
+  else { bub.innerHTML=md(m.text)+(m.img?'<img src="'+m.img+'" alt="generated image">':''); }
+  col.appendChild(bub);
+  if(m.role!=='user'){
+    const act=document.createElement('div'); act.className='actions';
+    const copy=document.createElement('button'); copy.className='act'; copy.title='Copy text';
+    copy.innerHTML='&#10697; Copy';
+    copy.onclick=()=>{ (navigator.clipboard?navigator.clipboard.writeText(m.text||''):Promise.reject())
+      .then(()=>{copy.innerHTML='&#10003; Copied';setTimeout(()=>copy.innerHTML='&#10697; Copy',1400)})
+      .catch(()=>{copy.innerHTML='Ctrl+C';setTimeout(()=>copy.innerHTML='&#10697; Copy',1400)}); };
+    act.appendChild(copy);
+    if(m.img){
+      const dl=document.createElement('button'); dl.className='act'; dl.title='Download image';
+      dl.innerHTML='&#8595; Image';
+      dl.onclick=()=>{ const a=document.createElement('a'); a.href=m.img; a.download='aria-image.png'; document.body.appendChild(a); a.click(); a.remove(); };
+      act.appendChild(dl);
+    }
+    const rg=document.createElement('button'); rg.className='act'; rg.title='Regenerate this reply';
+    rg.innerHTML='&#8635; Retry';
+    rg.onclick=()=>regen();
+    act.appendChild(rg);
+    col.appendChild(act);
+  }
+  wrap.appendChild(ava);
+  wrap.appendChild(col);
+  return wrap;
+}
+function renderThread(){
+  const c=convById(cur); const th=document.getElementById('thread');
+  document.getElementById('emptyState').style.display=c&&c.msgs.length?'none':'flex';
+  th.style.display=c&&c.msgs.length?'block':'none';
+  document.getElementById('chatTitle').textContent=c?(c.title||'New chat'):'New chat';
+  th.innerHTML='';
+  if(c) c.msgs.forEach(m=>th.appendChild(bubble(m)));
+  scrollDown();
+}
+function scrollDown(){const s=document.getElementById('scroll');requestAnimationFrame(()=>s.scrollTop=s.scrollHeight)}
+
+/* actions */
+function newChat(){cur=null;renderHist();renderThread();document.getElementById('input').focus();toggleSide(false)}
+function openChat(id){cur=id;renderHist();renderThread();toggleSide(false)}
+function delChat(id){convos=convos.filter(c=>c.id!==id);if(cur===id)cur=null;save();renderHist();renderThread()}
+function quick(t){document.getElementById('input').value=t;autogrow(document.getElementById('input'));sendMsg()}
+
+let controller=null, stopTyping=false;
+
+async function sendMsg(){
+  const inp=document.getElementById('input'); const text=inp.value.trim();
+  if(!text||busy)return;
+  let c=convById(cur);
+  if(!c){ c={id:uid(),title:text.slice(0,42),sid:'app-'+uid(),msgs:[]}; convos.unshift(c); cur=c.id; }
+  c.msgs.push({role:'user',text});
+  if(c.msgs.filter(m=>m.role==='user').length===1) c.title=text.slice(0,42);
+  inp.value=''; autogrow(inp); save(); renderHist(); renderThread();
+  await runGeneration(c, text);
+}
+
+/* regenerate the latest reply from the last user turn */
+function regen(){
+  const c=convById(cur); if(!c||busy)return;
+  while(c.msgs.length && c.msgs[c.msgs.length-1].role==='assistant') c.msgs.pop();
+  const lastUser=[...c.msgs].reverse().find(m=>m.role==='user');
+  if(!lastUser)return;
+  save(); renderThread();
+  runGeneration(c, lastUser.text);
+}
+
+async function runGeneration(c, text){
+  setBusy(true);
+  const th=document.getElementById('thread');
+  const load=document.createElement('div'); load.className='msg a';
+  load.innerHTML='<div class="ava">A</div><div class="col"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>';
+  th.appendChild(load); scrollDown();
+  controller=new AbortController(); stopTyping=false;
+  try{
+    const r=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:text,session_id:c.sid}),signal:controller.signal});
+    const d=await r.json();
+    load.remove();
+    const img=d.media_base64?('data:image/png;base64,'+d.media_base64):null;
+    const msg={role:'assistant',text:d.reply||'(no response)',img};
+    c.msgs.push(msg); save(); renderThread();
+    const bubbles=document.querySelectorAll('#thread .msg.a .bubble');
+    const lastB=bubbles[bubbles.length-1];
+    if(lastB) await typeInto(lastB, msg.text, img);
+  }catch(e){
+    load.remove();
+    if(e.name!=='AbortError'){
+      c.msgs.push({role:'assistant',text:'⚠️ Something went wrong reaching ARIA. Please try again.'});
+      save(); renderThread();
+    }
+  }finally{
+    setBusy(false); controller=null; document.getElementById('input').focus();
+  }
+}
+
+/* progressive "typewriter" reveal of the assistant reply */
+function typeInto(bubbleEl, fullText, img){
+  return new Promise(resolve=>{
+    const imgTag = img?'<img src="'+img+'" alt="generated image">':'';
+    const tokens=(fullText||'').split(/(\s+)/); let i=0, acc='';
+    function finish(){ bubbleEl.innerHTML=md(fullText)+imgTag; scrollDown(); resolve(); }
+    function step(){
+      if(stopTyping||i>=tokens.length){ finish(); return; }
+      for(let k=0;k<3 && i<tokens.length;k++) acc+=tokens[i++];
+      bubbleEl.innerHTML=md(acc)+'<span class="caret"></span>';
+      scrollDown();
+      setTimeout(step, 16);
+    }
+    step();
+  });
+}
+
+/* send / stop control */
+function setBusy(on){
+  busy=on;
+  const b=document.getElementById('send');
+  b.classList.toggle('busy',on);
+  b.setAttribute('aria-label', on?'Stop':'Send');
+  b.innerHTML = on
+    ? '<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="#fff"/></svg>'
+    : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+function onSend(){ if(busy) stopGen(); else sendMsg(); }
+function stopGen(){ stopTyping=true; if(controller){ try{controller.abort()}catch(e){} } }
+
+/* ui helpers */
+function autogrow(t){t.style.height='auto';t.style.height=Math.min(t.scrollHeight,200)+'px'}
+function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!busy)sendMsg()}}
+function toggleMenu(){document.getElementById('menu').classList.toggle('open')}
+function toggleSide(open){
+  const s=document.getElementById('side'),b=document.getElementById('backdrop'),c=document.getElementById('sideClose');
+  const isM=window.innerWidth<=820;
+  if(!isM)return;
+  s.classList.toggle('open',open); b.classList.toggle('show',open); c.style.display=open?'grid':'none';
+}
+document.addEventListener('click',e=>{const m=document.getElementById('menu');if(m.classList.contains('open')&&!e.target.closest('.side-foot'))m.classList.remove('open')});
+
+/* billing */
+function toast(msg,kind){
+  const t=document.createElement('div'); t.className='toast '+(kind||'');
+  t.textContent=msg; document.body.appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300)},5200);
+}
+function billingBoot(){
+  if(USER.plan==='Pro'){ const u=document.getElementById('upgradeLink'); if(u) u.style.display='none'; }
+  const p=new URLSearchParams(location.search).get('billing');
+  if(!p) return;
+  const M={
+    success:["🎉 You're on ARIA Pro — thank you! Autonomous publishing, video & priority AI are unlocked.","ok"],
+    cancel:["Checkout canceled. You can upgrade any time from the menu.",""],
+    unavailable:["Billing isn't switched on yet. Ping the team and we'll enable Pro checkout.",""],
+    error:["Something went wrong starting checkout. Please try again.","err"]
+  };
+  const m=M[p]; if(m) toast(m[0],m[1]);
+  history.replaceState({}, '', location.pathname);
+}
+
+/* ── onboarding ── */
+let obStep=0, obWork="", obGoals=new Set(), obPlan="free";
+const OB_STEPS=4;
+function setGreetName(n){ document.querySelectorAll('.empty .g').forEach(e=>e.textContent=n); }
+function obShow(){
+  const first=(USER.name||'there').split(' ')[0];
+  document.getElementById('obName').value=USER.name||'';
+  // chip handlers
+  document.querySelectorAll('#obWork .chip2').forEach(c=>c.onclick=()=>{
+    document.querySelectorAll('#obWork .chip2').forEach(x=>x.classList.remove('sel'));
+    c.classList.add('sel'); obWork=c.dataset.v;
+    document.getElementById('obWorkOtherWrap').style.display = obWork==='Other'?'block':'none';
+  });
+  document.querySelectorAll('#obGoals .chip2').forEach(c=>c.onclick=()=>{
+    c.classList.toggle('sel'); const v=c.dataset.v;
+    if(obGoals.has(v)) obGoals.delete(v); else obGoals.add(v);
+  });
+  document.querySelectorAll('#obPlans .plan').forEach(c=>c.onclick=()=>{
+    document.querySelectorAll('#obPlans .plan').forEach(x=>x.classList.remove('sel'));
+    c.classList.add('sel'); obPlan=c.dataset.v;
+  });
+  document.getElementById('ov').classList.add('show');
+  setTimeout(()=>document.getElementById('obName').focus(),120);
+}
+function obRender(){
+  document.querySelectorAll('.step').forEach(s=>s.classList.toggle('on', +s.dataset.step===obStep));
+  document.querySelectorAll('#dots i').forEach((d,i)=>d.classList.toggle('on', i<=obStep));
+  document.getElementById('obBack').style.visibility = obStep===0?'hidden':'visible';
+  document.getElementById('obNext').textContent = obStep===OB_STEPS-1 ? (obPlan==='free'?'Start using ARIA':'Continue to checkout') : 'Continue';
+}
+function obPrev(){ if(obStep>0){obStep--;obRender();} }
+async function obNext(){
+  if(obStep===0){
+    const v=document.getElementById('obName').value.trim();
+    if(v) USER.name=v;
+  }
+  if(obStep<OB_STEPS-1){ obStep++; obRender(); return; }
+  // finish
+  const btn=document.getElementById('obNext'); btn.disabled=true; btn.textContent='Saving…';
+  const work = obWork==='Other' ? (document.getElementById('obWorkOther').value.trim()||'Other') : obWork;
+  const payload={ name:USER.name, work, goals:[...obGoals], plan:obPlan };
+  try{ await fetch('/api/v1/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){}
+  USER.onboarded=true;
+  try{ localStorage.setItem('aria_onb:'+(USER.email||''),'1'); }catch(e){}
+  if(obPlan==='pro'||obPlan==='business'){ location.href='/billing/checkout?tier='+obPlan; return; }
+  document.getElementById('ov').classList.remove('show');
+  setGreetName((USER.name||'there').split(' ')[0]);
+  document.querySelector('.user .nm').textContent=USER.name;
+  toast("You're all set — welcome to ARIA. Ask it anything to get started.","ok");
+  document.getElementById('input').focus();
+}
+
+/* ── upgrade modal ── */
+let upPlan="pro";
+function openUpgrade(){
+  document.querySelectorAll('#upPlans .plan').forEach(c=>{ c.classList.toggle('sel',c.dataset.v===upPlan);
+    c.onclick=()=>{ document.querySelectorAll('#upPlans .plan').forEach(x=>x.classList.remove('sel')); c.classList.add('sel'); upPlan=c.dataset.v; };
+  });
+  document.getElementById('menu').classList.remove('open');
+  document.getElementById('upOv').classList.add('show');
+}
+function closeUpgrade(){ document.getElementById('upOv').classList.remove('show'); }
+function upgradeGo(){ location.href='/billing/checkout?tier='+upPlan; }
+
+/* ── settings ── */
+function openSettings(){
+  document.getElementById('menu').classList.remove('open');
+  document.getElementById('setName').value = USER.name || '';
+  document.getElementById('setWork').value = (PROFILE && PROFILE.work) || '';
+  document.getElementById('setPlan').textContent = (USER.plan || 'Free') + ' plan';
+  const goals = new Set((PROFILE && PROFILE.goals) || []);
+  document.querySelectorAll('#setGoals .chip2').forEach(c=>{
+    c.classList.toggle('sel', goals.has(c.dataset.v));
+    c.onclick=()=>c.classList.toggle('sel');
+  });
+  document.getElementById('settingsOv').classList.add('show');
+}
+function closeSettings(){ document.getElementById('settingsOv').classList.remove('show'); }
+
+/* ── connectors ── */
+const CONNECTORS=[
+ {id:'google',n:'Google',d:'Gmail, Drive, Calendar',c:'#ea4335',i:'G'},
+ {id:'linkedin',n:'LinkedIn',d:'Publish & grow your audience',c:'#0a66c2',i:'in'},
+ {id:'youtube',n:'YouTube',d:'Upload & manage videos',c:'#ff0000',i:'▶'},
+ {id:'instagram',n:'Instagram',d:'Post reels & images',c:'#e1306c',i:'◎'},
+ {id:'facebook',n:'Facebook',d:'Pages & posts',c:'#1877f2',i:'f'},
+ {id:'shopify',n:'Shopify',d:'Products, orders, store',c:'#5a8e2f',i:'S'},
+ {id:'stripe',n:'Stripe',d:'Payments & billing',c:'#635bff',i:'S'},
+ {id:'slack',n:'Slack',d:'Notify your team',c:'#4a154b',i:'#'},
+ {id:'notion',n:'Notion',d:'Docs & databases',c:'#1a1a1a',i:'N'},
+ {id:'x',n:'X (Twitter)',d:'Post & schedule',c:'#111111',i:'𝕏'},
+ {id:'tiktok',n:'TikTok',d:'Short-form video',c:'#111111',i:'♪'},
+ {id:'zapier',n:'Zapier',d:'9,000+ apps via automations',c:'#ff4a00',i:'⚡'},
+];
+let connState={};
+function esc2(s){return (s||'').replace(/'/g,"\\'")}
+function openConnectors(){
+  document.getElementById('menu').classList.remove('open');
+  try{connState=JSON.parse(localStorage.getItem('aria_connectors')||'{}')}catch(e){connState={}}
+  document.getElementById('connList').innerHTML = CONNECTORS.map(c=>{
+    const done=!!connState[c.id];
+    return '<div class="conn"><div class="ci" style="background:'+c.c+'">'+c.i+'</div>'+
+      '<div class="cm"><div class="cn">'+c.n+'</div><div class="cd">'+c.d+'</div></div>'+
+      '<button class="cbtn'+(done?' done':'')+'" '+(done?'disabled':'onclick="connectApp(\''+c.id+'\',\''+esc2(c.n)+'\',this)"')+'>'+(done?'Requested ✓':'Connect')+'</button></div>';
+  }).join('');
+  document.getElementById('connOv').classList.add('show');
+}
+function closeConnectors(){ document.getElementById('connOv').classList.remove('show'); }
+async function connectApp(id,name,btn){
+  btn.disabled=true; btn.textContent='…';
+  try{ await fetch('/api/v1/connectors/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({app:id})}); }catch(e){}
+  connState[id]=true; try{localStorage.setItem('aria_connectors',JSON.stringify(connState))}catch(e){}
+  btn.classList.add('done'); btn.textContent='Requested ✓';
+  toast(name+" requested — we'll enable it for your account and let you know.","ok");
+}
+async function saveSettings(){
+  const btn=document.getElementById('setSaveBtn'); btn.disabled=true; btn.textContent='Saving…';
+  const name=document.getElementById('setName').value.trim()||USER.name;
+  const work=document.getElementById('setWork').value.trim();
+  const goals=[...document.querySelectorAll('#setGoals .chip2.sel')].map(c=>c.dataset.v);
+  try{
+    await fetch('/api/v1/profile',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,work,goals,plan:(USER.plan||'free').toLowerCase()})});
+    USER.name=name; PROFILE.work=work; PROFILE.goals=goals;
+    document.querySelector('.user .nm').textContent=name;
+    setGreetName((name||'there').split(' ')[0]);
+    toast('Settings saved. ARIA will use this to personalize your experience.','ok');
+    closeSettings();
+  }catch(e){ toast('Could not save settings. Please try again.','err'); }
+  finally{ btn.disabled=false; btn.textContent='Save changes'; }
+}
+async function deleteAccount(){
+  if(!confirm('Delete your ARIA account data (profile, plan and saved chats)? This cannot be undone.')) return;
+  try{ await fetch('/api/v1/account/delete',{method:'POST'}); }catch(e){}
+  try{ localStorage.removeItem(KEY); }catch(e){}
+  location.href='/login';
+}
+
+/* boot */
+if(USER.owner){ const al=document.getElementById('adminLink'); if(al) al.style.display='flex'; }
+load(); renderHist(); renderThread(); billingBoot();
+let _onbDone = USER.onboarded;
+try{ if(localStorage.getItem('aria_onb:'+(USER.email||''))==='1') _onbDone=true; }catch(e){}
+if(!_onbDone){ obRender(); obShow(); } else { document.getElementById('input').focus(); }
+</script>
+</body>
+</html>
