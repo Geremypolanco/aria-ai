@@ -161,6 +161,114 @@ async def root():
         return HTMLResponse("<h1>ARIA AI</h1><p>Online</p>")
 
 
+# ── LEGAL PAGES (required to launch a paid product) ────────
+_LEGAL_CONTACT = "litesaraph@gmail.com"
+
+
+def _legal_page(title: str, body_html: str) -> HTMLResponse:
+    updated = datetime.utcnow().strftime("%B %d, %Y")
+    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · {title}</title>
+<style>*{{margin:0;box-sizing:border-box}}
+body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#08080c;color:#e8ebf2;line-height:1.7}}
+.wrap{{max-width:760px;margin:0 auto;padding:56px 22px 80px}}
+a{{color:#a78bfa;text-decoration:none}} a:hover{{text-decoration:underline}}
+h1{{font-size:30px;margin-bottom:6px}} .upd{{color:#7a8598;font-size:13px;margin-bottom:30px}}
+h2{{font-size:18px;margin:26px 0 8px}} p,li{{color:#c3cad6;font-size:15px}} ul{{padding-left:20px;margin:8px 0}}
+.top{{margin-bottom:26px;font-size:14px}} .foot{{margin-top:44px;border-top:1px solid rgba(255,255,255,.08);padding-top:18px;color:#7a8598;font-size:13px}}
+.foot a{{margin-right:16px}}</style></head><body><div class="wrap">
+<div class="top"><a href="/">← SARAPH · ARIA</a></div>
+<h1>{title}</h1><div class="upd">Last updated: {updated}</div>
+{body_html}
+<div class="foot"><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/refunds">Refunds</a>
+<a href="mailto:{_LEGAL_CONTACT}">Contact</a></div>
+</div></body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms():
+    return _legal_page(
+        "Terms of Service",
+        f"""
+<p>These Terms govern your use of ARIA, an autonomous AI assistant operated by SARAPH
+("we", "us"). By creating an account or using the service you agree to these Terms.</p>
+<h2>1. The service</h2>
+<p>ARIA lets you research, create content, and generate images and other media using AI.
+Output is generated automatically and may be inaccurate or incomplete — you are responsible
+for reviewing it before you rely on or publish it.</p>
+<h2>2. Accounts</h2>
+<p>You sign in with Google or GitHub. You are responsible for activity under your account and
+for keeping your login secure.</p>
+<h2>3. Plans & billing</h2>
+<p>ARIA offers a Free plan and paid monthly subscriptions (Pro and Business). Paid plans renew
+automatically each month until cancelled. Prices are shown at checkout. You can cancel at any
+time; cancellation stops future renewals and takes effect at the end of the current period.</p>
+<h2>4. Acceptable use</h2>
+<p>Don't use ARIA to break the law, infringe others' rights, generate harmful or deceptive
+content, or abuse the service (including attempts to disrupt or reverse-engineer it). We may
+suspend accounts that violate these Terms.</p>
+<h2>5. Your content</h2>
+<p>You keep ownership of the inputs you provide and, to the extent permitted by law, the output
+you generate. You grant us the limited rights needed to operate the service.</p>
+<h2>6. Disclaimers & liability</h2>
+<p>The service is provided "as is", without warranties. To the maximum extent permitted by law,
+our liability is limited to the amount you paid in the last 12 months.</p>
+<h2>7. Changes & contact</h2>
+<p>We may update these Terms; material changes will be posted here. Questions:
+<a href="mailto:{_LEGAL_CONTACT}">{_LEGAL_CONTACT}</a>.</p>
+""",
+    )
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy():
+    return _legal_page(
+        "Privacy Policy",
+        f"""
+<p>This policy explains what we collect and how we use it when you use ARIA.</p>
+<h2>1. What we collect</h2>
+<ul>
+<li><b>Account info</b> — your name and email from Google/GitHub sign-in.</li>
+<li><b>Profile</b> — the details you give during onboarding (what you do, your goals) to
+personalize responses.</li>
+<li><b>Usage</b> — the messages you send to ARIA and basic counters used to enforce plan limits.</li>
+<li><b>Billing</b> — handled by Stripe; we do not store your card details.</li>
+</ul>
+<h2>2. How we use it</h2>
+<p>To provide and personalize the service, enforce plan limits, process subscriptions, and
+improve reliability. We do not sell your personal data.</p>
+<h2>3. Processors</h2>
+<p>We use trusted providers to run ARIA, including Google/GitHub (sign-in), Stripe (payments),
+and AI/hosting providers that process your prompts to generate output.</p>
+<h2>4. Your choices</h2>
+<p>You can edit your profile in Settings, and delete your account and data at any time from
+Settings → Danger zone. You may also contact us to request deletion.</p>
+<h2>5. Contact</h2>
+<p>Privacy questions: <a href="mailto:{_LEGAL_CONTACT}">{_LEGAL_CONTACT}</a>.</p>
+""",
+    )
+
+
+@app.get("/refunds", response_class=HTMLResponse)
+async def refunds():
+    return _legal_page(
+        "Refund Policy",
+        f"""
+<p>We want you to be happy with ARIA. This policy covers refunds for paid subscriptions.</p>
+<h2>Monthly subscriptions</h2>
+<p>You can cancel any time to stop future renewals; you keep access until the end of the
+current billing period. If you were charged and haven't meaningfully used the plan that period,
+email us within <b>7 days</b> of the charge and we'll issue a refund for that period.</p>
+<h2>How to cancel or request a refund</h2>
+<p>Cancel from your account, or email <a href="mailto:{_LEGAL_CONTACT}">{_LEGAL_CONTACT}</a>
+with the email on your account. Refunds are returned to your original payment method via Stripe.</p>
+<h2>Exceptions</h2>
+<p>We may decline refunds in cases of clear abuse of the service or of this policy.</p>
+""",
+    )
+
+
 def _serve_control_panel() -> HTMLResponse:
     path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
     try:
@@ -310,7 +418,8 @@ color:#fff;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12p
 .mut{{color:#64748b;font-size:12px;margin-top:18px}} a.lnk{{color:#a78bfa;text-decoration:none}}
 </style></head><body><div class="card"><h1>Sign in to ARIA</h1>
 <p>Access your personal workspace.</p>{body}
-<div class="mut">By continuing you agree to use ARIA responsibly. <a class="lnk" href="/">← Home</a></div>
+<div class="mut">By continuing you agree to our <a class="lnk" href="/terms">Terms</a> &amp;
+<a class="lnk" href="/privacy">Privacy</a>. <a class="lnk" href="/">← Home</a></div>
 </div></body></html>"""
     return HTMLResponse(html)
 
