@@ -711,6 +711,7 @@ async function obNext(){
   const payload={ name:USER.name, work, goals:[...obGoals], plan:obPlan };
   try{ await fetch('/api/v1/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){}
   USER.onboarded=true;
+  try{ localStorage.setItem('aria_onb:'+(USER.email||''),'1'); }catch(e){}
   if(obPlan==='pro'||obPlan==='business'){ location.href='/billing/checkout?tier='+obPlan; return; }
   document.getElementById('ov').classList.remove('show');
   setGreetName((USER.name||'there').split(' ')[0]);
@@ -808,7 +809,9 @@ async function deleteAccount(){
 /* boot */
 if(USER.owner){ const al=document.getElementById('adminLink'); if(al) al.style.display='flex'; }
 load(); renderHist(); renderThread(); billingBoot();
-if(!USER.onboarded){ obRender(); obShow(); } else { document.getElementById('input').focus(); }
+let _onbDone = USER.onboarded;
+try{ if(localStorage.getItem('aria_onb:'+(USER.email||''))==='1') _onbDone=true; }catch(e){}
+if(!_onbDone){ obRender(); obShow(); } else { document.getElementById('input').focus(); }
 </script>
 </body>
 </html>
