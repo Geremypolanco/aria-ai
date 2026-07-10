@@ -29,6 +29,18 @@ from apps.core.config import settings
 # ── ADMIN AUTH (server-side gate for the owner-only control panel) ─────────
 _ADMIN_COOKIE = "aria_admin"
 
+# The owner is admin automatically when signed in via OAuth with one of these
+# emails (no separate password needed). Extra emails can be added via OWNER_EMAIL.
+OWNER_EMAILS = {"geremypolancod@gmail.com"}
+
+
+def _owner_emails() -> set[str]:
+    emails = {e.lower() for e in OWNER_EMAILS}
+    extra = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
+    if extra:
+        emails.add(extra)
+    return emails
+
 
 def _admin_token() -> str:
     """Deterministic session token derived from the admin password. An attacker who
@@ -37,7 +49,22 @@ def _admin_token() -> str:
     return hmac.new(pw or b"unset", b"aria-admin-session-v1", hashlib.sha256).hexdigest()
 
 
+def _is_owner_user(request: Request) -> bool:
+    """True when the visitor is signed in (Google/GitHub OAuth) as the owner."""
+    try:
+        from apps.core import auth
+
+        u = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+        email = ((u or {}).get("email") or "").strip().lower()
+        return bool(email) and email in _owner_emails()
+    except Exception:
+        return False
+
+
 def _is_admin(request: Request) -> bool:
+    # The owner, signed in via OAuth, is always admin.
+    if _is_owner_user(request):
+        return True
     if not getattr(settings, "ADMIN_PASSWORD", None):
         return False  # locked until an admin password is configured
     return hmac.compare_digest(request.cookies.get(_ADMIN_COOKIE, ""), _admin_token())
@@ -381,8 +408,9 @@ async def user_app(request: Request):
     email = _safe_name(user.get("email", ""))
     first = name.split(" ")[0] if name else "there"
     initial = (first[:1] or "Y").upper()
+    is_owner = raw_email in _owner_emails()
     plan_map = {"pro": "Pro", "business": "Business"}
-    plan = plan_map.get(await _get_user_plan(raw_email), "Free")
+    plan = "Business" if is_owner else plan_map.get(await _get_user_plan(raw_email), "Free")
     onboarded = "true" if (profile and profile.get("onboarded")) else "false"
     profile_json = json.dumps(
         {
@@ -406,6 +434,7 @@ async def user_app(request: Request):
         .replace("__PLAN__", plan)
         .replace("__ONBOARDED__", onboarded)
         .replace("__PROFILE_JSON__", profile_json)
+        .replace("__IS_OWNER__", "true" if is_owner else "false")
     )
     return HTMLResponse(html)
 

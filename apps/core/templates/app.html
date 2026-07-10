@@ -395,6 +395,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
     <div class="hist" id="hist"></div>
     <div class="side-foot">
       <div class="menu" id="menu">
+        <a href="/admin" id="adminLink" style="display:none">🛡 Admin panel</a>
         <a href="#" onclick="openConnectors();return false">🔗 Connectors</a>
         <a href="#" onclick="openSettings();return false">⚙ Settings</a>
         <a href="#" class="up" id="upgradeLink" onclick="openUpgrade();return false">⚡ Upgrade — see plans</a>
@@ -438,7 +439,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 </div>
 
 <script>
-const USER = { name: "__NAME__", email: "__EMAIL__", plan: "__PLAN__", onboarded: __ONBOARDED__ };
+const USER = { name: "__NAME__", email: "__EMAIL__", plan: "__PLAN__", onboarded: __ONBOARDED__, owner: __IS_OWNER__ };
 const PROFILE = __PROFILE_JSON__;
 const KEY = "aria_convos_v1";
 let convos = [];       // [{id, title, sid, msgs:[{role,text,img}]}]
@@ -805,6 +806,7 @@ async function deleteAccount(){
 }
 
 /* boot */
+if(USER.owner){ const al=document.getElementById('adminLink'); if(al) al.style.display='flex'; }
 load(); renderHist(); renderThread(); billingBoot();
 if(!USER.onboarded){ obRender(); obShow(); } else { document.getElementById('input').focus(); }
 </script>
