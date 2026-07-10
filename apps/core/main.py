@@ -471,6 +471,26 @@ async def _set_user_plan(email: str, plan: str) -> None:
         logger.warning(f"set_user_plan failed: {e}")
 
 
+# Free-plan daily message cap — the concrete reason to upgrade to Pro.
+FREE_DAILY_LIMIT = 15
+
+
+async def _consume_free_quota(email: str) -> tuple[bool, int]:
+    """Count today's message for a Free user. Returns (allowed, remaining).
+    Fails open (allowed) if the cache is unavailable."""
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        cache = get_cache()
+        key = f"aria:usage:{email}:{datetime.utcnow():%Y%m%d}"
+        count = await cache.increment(key)
+        if count == 1:
+            await cache.expire(key, 2 * 24 * 3600)
+        return (count <= FREE_DAILY_LIMIT, max(0, FREE_DAILY_LIMIT - count))
+    except Exception:
+        return (True, FREE_DAILY_LIMIT)
+
+
 # ── USER PROFILE (onboarding + personalization) ───────────
 async def _get_profile(email: str) -> dict:
     if not email:
@@ -698,17 +718,38 @@ async def chat(req: ChatRequest, request: Request):
 
     start = time.time()
 
-    # Personalize from the signed-in user's onboarding profile, if any.
+    # Personalize + enforce plan limits from the signed-in user.
     user_context = ""
+    email = ""
+    plan = "free"
     try:
         from apps.core import auth
 
         u = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
         if u:
-            prof = await _get_profile((u.get("email") or "").strip().lower())
-            user_context = _profile_context(prof)
+            email = (u.get("email") or "").strip().lower()
+            user_context = _profile_context(await _get_profile(email))
+            plan = "business" if email in _owner_emails() else await _get_user_plan(email)
     except Exception:
         user_context = ""
+
+    # Free plan has a daily message cap — the reason to upgrade to Pro.
+    if email and plan == "free":
+        allowed, remaining = await _consume_free_quota(email)
+        if not allowed:
+            return {
+                "reply": (
+                    f"🔒 You've reached today's free limit of {FREE_DAILY_LIMIT} messages.\n\n"
+                    "Upgrade to **Pro** for **unlimited** ARIA — unlimited chat, images, "
+                    "video & voice, and autonomous multi-channel publishing.\n\n"
+                    "Open the menu → **Upgrade**, or continue tomorrow when your free "
+                    "messages reset."
+                ),
+                "model_used": "limit",
+                "processing_time_ms": 0,
+                "media_type": None,
+                "media_base64": None,
+            }
 
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
