@@ -243,6 +243,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Feature routers (modular) ─────────────────────────────────────
+try:
+    from apps.core.routes.clipper import router as clipper_router
+    from apps.core.routes.voice_profile import router as voice_router
+    from apps.core.webhooks.webhook_monitor_controller import router as webhook_router
+
+    app.include_router(clipper_router)
+    app.include_router(voice_router)
+    app.include_router(webhook_router)
+except Exception as _exc:  # noqa: BLE001 — never let an optional router break boot
+    logging.getLogger("aria").warning("feature routers not fully loaded: %s", _exc)
+
 
 # ── MODELS ────────────────────────────────────────────────
 class ChatRequest(BaseModel):

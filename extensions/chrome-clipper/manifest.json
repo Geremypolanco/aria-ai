@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "ARIA Clipper",
+  "version": "1.0.0",
+  "description": "Clip the current page's URL and your selected text straight into ARIA.",
+  "permissions": ["scripting", "activeTab", "storage"],
+  "host_permissions": ["https://aria-ai.fly.dev/*"],
+  "action": {
+    "default_title": "ARIA Clipper",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "128": "icon128.png"
+  }
+}
