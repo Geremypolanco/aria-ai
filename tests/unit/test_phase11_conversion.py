@@ -1,4 +1,5 @@
 """Phase 11 tests — Conversion Extensions (SMSCaptureEngine, FunnelEngine)."""
+
 from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -22,17 +23,20 @@ def _mock_ai(content="Welcome to our store! Get 10% off your first order. Reply 
 
 # ── SMS Capture Engine ────────────────────────────────────────────────────────
 
+
 class TestSMSCaptureEngine:
     @pytest.fixture
     def engine(self):
         with patch("apps.conversion.sms.sms_capture.get_cache", return_value=_mock_cache()):
             with patch("apps.conversion.sms.sms_capture.get_ai_client", return_value=_mock_ai()):
                 from apps.conversion.sms.sms_capture import SMSCaptureEngine
+
                 return SMSCaptureEngine()
 
     @pytest.mark.asyncio
     async def test_capture_returns_subscriber(self, engine):
         from apps.conversion.sms.sms_capture import SMSSubscriber
+
         sub = await engine.capture("+15551234567", "popup", name="Alice")
         assert isinstance(sub, SMSSubscriber)
         assert sub.subscriber_id
@@ -55,6 +59,7 @@ class TestSMSCaptureEngine:
     @pytest.mark.asyncio
     async def test_generate_welcome_message_returns_sms(self, engine):
         from apps.conversion.sms.sms_capture import SMSMessage
+
         sub = await engine.capture("+15551234567", "popup", name="Bob")
         msg = await engine.generate_welcome_message(sub.subscriber_id, "MyBrand", "15% off")
         assert isinstance(msg, SMSMessage)
@@ -75,6 +80,7 @@ class TestSMSCaptureEngine:
     @pytest.mark.asyncio
     async def test_generate_cart_recovery_sms(self, engine):
         from apps.conversion.sms.sms_capture import SMSMessage
+
         sub = await engine.capture("+15557778888", "checkout")
         msg = await engine.generate_cart_recovery_sms(sub.subscriber_id, 89.99, "Blue Sneakers")
         assert isinstance(msg, SMSMessage)
@@ -89,15 +95,20 @@ class TestSMSCaptureEngine:
     @pytest.mark.asyncio
     async def test_generate_flash_sale_sms(self, engine):
         from apps.conversion.sms.sms_capture import SMSMessage
+
         sub = await engine.capture("+15554445555", "campaign")
-        msg = await engine.generate_flash_sale_sms(sub.subscriber_id, {"name": "Summer Sale", "discount": "30% off", "expires": "24 hours"})
+        msg = await engine.generate_flash_sale_sms(
+            sub.subscriber_id, {"name": "Summer Sale", "discount": "30% off", "expires": "24 hours"}
+        )
         assert isinstance(msg, SMSMessage)
         assert msg.message_type == "flash_sale"
 
     @pytest.mark.asyncio
     async def test_flash_sale_sms_under_160_chars(self, engine):
         sub = await engine.capture("+15553332222", "campaign")
-        msg = await engine.generate_flash_sale_sms(sub.subscriber_id, {"name": "Flash", "discount": "40% off", "expires": "6 hours"})
+        msg = await engine.generate_flash_sale_sms(
+            sub.subscriber_id, {"name": "Flash", "discount": "40% off", "expires": "6 hours"}
+        )
         assert len(msg.body) <= 160
 
     @pytest.mark.asyncio
@@ -130,18 +141,25 @@ class TestSMSCaptureEngine:
 
 # ── Funnel Engine ─────────────────────────────────────────────────────────────
 
+
 class TestFunnelEngine:
     @pytest.fixture
     def engine(self):
         with patch("apps.conversion.funnels.funnel_engine.get_cache", return_value=_mock_cache()):
-            with patch("apps.conversion.funnels.funnel_engine.get_ai_client",
-                       return_value=_mock_ai('[{"stage_name": "awareness", "optimization_opportunity": "Use retargeting ads", "avg_time_hours": 48.0}]')):
+            with patch(
+                "apps.conversion.funnels.funnel_engine.get_ai_client",
+                return_value=_mock_ai(
+                    '[{"stage_name": "awareness", "optimization_opportunity": "Use retargeting ads", "avg_time_hours": 48.0}]'
+                ),
+            ):
                 from apps.conversion.funnels.funnel_engine import FunnelEngine
+
                 return FunnelEngine()
 
     @pytest.mark.asyncio
     async def test_create_funnel_returns_funnel(self, engine):
         from apps.conversion.funnels.funnel_engine import Funnel
+
         funnel = await engine.create_funnel("My Ecommerce Funnel", "ecommerce", "fitness")
         assert isinstance(funnel, Funnel)
         assert funnel.funnel_id
@@ -206,8 +224,8 @@ class TestFunnelEngine:
 
     def test_get_funnel_returns_funnel_dict(self, engine):
         import asyncio
-        loop = asyncio.get_event_loop()
-        funnel = loop.run_until_complete(engine.create_funnel("Get Test", "ecommerce", "home"))
+
+        funnel = asyncio.run(engine.create_funnel("Get Test", "ecommerce", "home"))
         result = engine.get_funnel(funnel.funnel_id)
         assert result is not None
         assert result["funnel_id"] == funnel.funnel_id

@@ -30,17 +30,29 @@ def _run_async(coro) -> Any:
     Run an async coroutine from a synchronous context.
 
     If an event loop is already running (LangGraph's invocation context),
-    we cannot call loop.run_until_complete() — so we spin up a thread that
-    has its own fresh event loop via asyncio.run().  Otherwise we use the
-    existing loop directly.
+    we cannot block it — so we spin up a thread with its own fresh event loop
+    via asyncio.run(). Otherwise we create a fresh loop with asyncio.run().
+
+    We deliberately do NOT use asyncio.get_event_loop(): on Python 3.12+ it
+    raises when no current loop is set (e.g. after a test framework tears one
+    down), which would silently drop the coroutine. asyncio.get_running_loop()
+    is the correct, side-effect-free way to detect a live loop.
     """
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
+        asyncio.get_running_loop()
+    except RuntimeError:
+        running = False
+    else:
+        running = True
+
+    try:
+        if running:
+            # A loop is already running here → run the coroutine in a worker
+            # thread that owns its own fresh loop.
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(asyncio.run, coro)
-                return future.result(timeout=60)
-        return loop.run_until_complete(coro)
+                return pool.submit(asyncio.run, coro).result(timeout=60)
+        # No running loop → safe to create a fresh one and run to completion.
+        return asyncio.run(coro)
     except Exception as exc:
         logger.warning("[_run_async] coroutine failed: %s", exc)
         return None

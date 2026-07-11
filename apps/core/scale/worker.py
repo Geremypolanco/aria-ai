@@ -12,6 +12,7 @@ Run it as its own Fly process:  python -m apps.core.scale.worker
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import Any
 
@@ -86,20 +87,57 @@ async def handle_task(
     return outcome
 
 
+async def _next_task(q: MissionQueue, stop: asyncio.Event | None, poll: float) -> dict | None:
+    """Await the next task, but return promptly if `stop` fires mid-wait.
+
+    Without this, a worker blocked inside dequeue() only notices a stop signal
+    after the full timeout elapsed — making graceful shutdown (Fly SIGTERM)
+    sluggish. Racing the dequeue against stop.wait() makes shutdown near-instant
+    while still blocking efficiently when there's no work.
+    """
+    if stop is None:
+        return await q.dequeue(timeout=poll)
+
+    deq = asyncio.ensure_future(q.dequeue(timeout=poll))
+    stopper = asyncio.ensure_future(stop.wait())
+    try:
+        done, _ = await asyncio.wait({deq, stopper}, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        deq.cancel()
+        stopper.cancel()
+        raise
+    if stopper in done:
+        # Stop requested — cancel the in-flight dequeue and drain it cleanly.
+        deq.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await deq
+        return None
+    stopper.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await stopper
+    return deq.result()
+
+
 async def run_forever(
     queue: MissionQueue | None = None, *, stop: asyncio.Event | None = None
 ) -> None:
-    """Main worker loop — blocks on the queue and processes tasks one by one."""
+    """Main worker loop — blocks on the queue and processes tasks one by one.
+
+    Reacts to `stop` immediately (even while waiting for work) so shutdown is
+    clean; one bad task can never kill the loop.
+    """
     q = queue or get_queue()
     logger.info("[worker] started; draining mission queue")
+    poll = 1.0 if stop is not None else 5.0
     while stop is None or not stop.is_set():
-        task = await q.dequeue(timeout=5.0)
+        task = await _next_task(q, stop, poll)
         if not task:
             continue
         try:
             await handle_task(task, queue=q)
         except Exception as exc:  # noqa: BLE001 — one bad task must not kill the worker
             logger.error("[worker] task crashed: %s", exc)
+    logger.info("[worker] stop signalled; loop exited cleanly")
 
 
 def main() -> None:
