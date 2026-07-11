@@ -196,7 +196,7 @@ class Settings(BaseSettings):
     # Fly.io API token — enables the live instance counter in the admin console.
     FLY_API_TOKEN: str | None = None
     # Social webhook signing secrets (Social Media Monitor controller).
-    META_APP_SECRET: str | None = None
+    # (META_APP_SECRET is already declared with META_APP_ID below.)
     INSTAGRAM_APP_SECRET: str | None = None
     META_VERIFY_TOKEN: str | None = None
     YOUTUBE_WEBHOOK_SECRET: str | None = None
