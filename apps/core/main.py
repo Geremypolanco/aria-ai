@@ -129,6 +129,37 @@ def _json_for_script(obj) -> str:
     return out
 
 
+# \u2500\u2500 Global Panic + AI burn-rate accounting \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# Global "panic" freeze \u2014 flipped by the owner from the God Mode console to halt
+# all user missions instantly. In-process (best-effort mirrored to cache).
+_PANIC: dict[str, bool] = {"on": False}
+
+# Conservative model used to *price* usage for the burn-rate cap. We may run on
+# free/flat tiers, but the cap accounts against a paid-model rate to protect
+# margin \u2014 the admin UI labels this "estimated".
+_BILLING_MODEL = "claude-haiku-4-5"
+
+
+async def _record_ai_cost(email: str, plan: str, prompt: str, reply: str) -> None:
+    """Estimate + record the AI cost of a chat turn and enforce the burn cap."""
+    if not email:
+        return
+    try:
+        from apps.core.ops.cost_ledger import get_ledger, notify_burn_cap
+
+        led = get_ledger()
+        in_tokens = max(1, len(prompt) // 4)
+        out_tokens = max(1, len(reply) // 4)
+        led.record(email, _BILLING_MODEL, in_tokens, out_tokens)
+        was_frozen = led.is_frozen(email)
+        if led.evaluate(email, plan) and not was_frozen:
+            frac = led.usage_fraction(email, plan)
+            await notify_burn_cap(email, plan, frac)
+            logger.info("[cost] burn-cap freeze for %s at %.0f%%", email, frac * 100)
+    except Exception as exc:  # noqa: BLE001 \u2014 accounting must never break chat
+        logger.debug("[cost] record failed: %s", exc)
+
+
 _LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ARIA · Admin</title><style>
@@ -166,7 +197,34 @@ async def lifespan(app: FastAPI):
             logger.info("✅ AI Client initialized")
     except Exception as e:
         logger.warning(f"⚠️ AI Client init: {e}")
+
+    # Connector health semaphore — ping external APIs every 30 minutes so the
+    # dashboard can hold queued posts when a platform is globally down.
+    health_task = None
+
+    async def _health_loop():
+        import asyncio as _a
+
+        from apps.core.ops.connector_health import CHECK_INTERVAL_SECONDS, check_all
+
+        while True:
+            try:
+                await check_all()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[health] loop check failed: %s", exc)
+            await _a.sleep(CHECK_INTERVAL_SECONDS)
+
+    try:
+        import asyncio as _asyncio
+
+        health_task = _asyncio.create_task(_health_loop())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"⚠️ health loop not started: {e}")
+
     yield
+
+    if health_task is not None:
+        health_task.cancel()
     logger.info("🛑 ARIA AI shutting down...")
 
 
@@ -329,12 +387,15 @@ with the email on your account. Refunds are returned to your original payment me
 
 
 def _serve_control_panel() -> HTMLResponse:
-    path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
-    try:
-        with open(path, encoding="utf-8") as f:
-            return HTMLResponse(f.read())
-    except FileNotFoundError:
-        return HTMLResponse("<h1>Panel</h1><p>Not found</p>")
+    # God Mode console; falls back to the legacy dashboard if the template is absent.
+    for tpl in ("admin.html", "dashboard.html"):
+        path = os.path.join(os.path.dirname(__file__), "templates", tpl)
+        try:
+            with open(path, encoding="utf-8") as f:
+                return HTMLResponse(f.read())
+        except FileNotFoundError:
+            continue
+    return HTMLResponse("<h1>Panel</h1><p>Not found</p>")
 
 
 @app.get("/dashboard")
@@ -393,6 +454,186 @@ async def admin_panel(request: Request):
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=307)
     return _serve_control_panel()
+
+
+# ── GOD MODE: data + operator actions ─────────────────────────────
+async def _fly_instance_count() -> int | None:
+    """Live Fly.io machine count for this app, or None if not configured."""
+    token = os.environ.get("FLY_API_TOKEN") or getattr(settings, "FLY_API_TOKEN", None)
+    app_name = os.environ.get("FLY_APP_NAME", "aria-ai")
+    if not token:
+        return None
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=8.0) as c:
+            r = await c.get(
+                f"https://api.machines.dev/v1/apps/{app_name}/machines",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if r.status_code == 200:
+                return len([m for m in r.json() if m.get("state") == "started"])
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[admin] fly count failed: %s", exc)
+    return None
+
+
+async def _list_users() -> list[dict]:
+    """Signed-up users recorded at login (best-effort; empty if none)."""
+    users: list[dict] = []
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        raw = await get_cache().lrange("aria:users", 0, 500)
+        seen = set()
+        for item in raw or []:
+            try:
+                u = json.loads(item)
+            except Exception:
+                continue
+            em = (u.get("email") or "").strip().lower()
+            if em and em not in seen:
+                seen.add(em)
+                users.append(
+                    {"email": em, "name": u.get("name", ""), "provider": u.get("provider", "")}
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[admin] list users failed: %s", exc)
+    return users
+
+
+@app.get("/admin/api/overview")
+async def admin_overview(request: Request):
+    """Real operational data for the God Mode console (admin-gated)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+
+    from apps.core.ops.connector_health import get_store
+    from apps.core.ops.cost_ledger import get_ledger
+
+    led = get_ledger()
+
+    # Revenue (real, from metrics if tracked) vs estimated API spend.
+    revenue = 0.0
+    try:
+        from apps.core.observability.metrics import get_metrics
+
+        income = get_metrics().to_dict().get("income", {}) or {}
+        revenue = float(income.get("revenue_usd", 0.0) or 0.0)
+    except Exception:
+        revenue = 0.0
+    api_spend = round(sum(led._cost.values()), 2)  # month-to-date estimated
+
+    users = await _list_users()
+    return {
+        "net_margin_usd": round(revenue - api_spend, 2),
+        "revenue_usd": round(revenue, 2),
+        "estimated_api_spend_usd": api_spend,
+        "fly_instances": await _fly_instance_count(),  # None if FLY_API_TOKEN unset
+        "users": users,
+        "user_count": len(users),
+        "frozen_users": led.frozen_users(),
+        "connectors": get_store().get_all(),
+        "panic": _PANIC["on"],
+    }
+
+
+@app.post("/admin/panic")
+async def admin_panic(request: Request):
+    """Global Panic Button — instantly freeze all user missions. Owner-only."""
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    _PANIC["on"] = True
+    logger.warning("[admin] GLOBAL PANIC engaged by owner")
+    return {"ok": True, "panic": True}
+
+
+@app.post("/admin/unpanic")
+async def admin_unpanic(request: Request):
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    _PANIC["on"] = False
+    logger.warning("[admin] global panic released by owner")
+    return {"ok": True, "panic": False}
+
+
+_IMPERSONATOR_COOKIE = "aria_impersonator"
+
+
+@app.post("/admin/impersonate")
+async def admin_impersonate(request: Request, email: str = Form(...)):
+    """Enter a user's dashboard for support. Owner-only. The real owner session
+    is preserved in a signed cookie so it can be restored."""
+    from apps.core import auth
+
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    target = _safe_name(email).strip().lower()
+    if not target or "@" not in target:
+        return JSONResponse({"error": "invalid email"}, status_code=400)
+    owner = auth.verify_user(request.cookies.get(auth.USER_COOKIE)) or {}
+    resp = RedirectResponse("/app", status_code=303)
+    # Remember who we really are (signed) so /admin/stop-impersonate can restore.
+    resp.set_cookie(
+        _IMPERSONATOR_COOKIE,
+        auth.sign_user(owner.get("email", ""), owner.get("name", ""), "owner"),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60,
+    )
+    # Become the target user.
+    resp.set_cookie(
+        auth.USER_COOKIE,
+        auth.sign_user(target, target.split("@")[0], "impersonated"),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60,
+    )
+    logger.warning("[admin] owner impersonating %s", target)
+    return resp
+
+
+@app.get("/admin/stop-impersonate")
+async def admin_stop_impersonate(request: Request):
+    """Restore the owner session after impersonation."""
+    from apps.core import auth
+
+    orig = auth.verify_user(request.cookies.get(_IMPERSONATOR_COOKIE))
+    resp = RedirectResponse("/admin", status_code=303)
+    if orig and orig.get("email"):
+        resp.set_cookie(
+            auth.USER_COOKIE,
+            auth.sign_user(orig["email"], orig.get("name", ""), "google"),
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=60 * 60 * 24 * 30,
+        )
+    else:
+        resp.delete_cookie(auth.USER_COOKIE)
+    resp.delete_cookie(_IMPERSONATOR_COOKIE)
+    return resp
+
+
+@app.get("/api/v1/connectors/health")
+async def connectors_health():
+    """Connector health for the preventive banner. Refreshes lazily if stale
+    (>30 min) so queued posts can be held when a platform is globally down."""
+    import time as _t
+
+    from apps.core.ops.connector_health import CHECK_INTERVAL_SECONDS, check_all, get_store
+
+    store = get_store()
+    statuses = store.get_all()
+    newest = max((s.get("checked_at") or 0 for s in statuses.values()), default=0)
+    if (_t.time() - newest) > CHECK_INTERVAL_SECONDS:
+        try:
+            statuses = await check_all(store=store)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[health] refresh failed: %s", exc)
+    return {"connectors": statuses, "offline": store.offline()}
 
 
 # ── PUBLIC SIGNUP (waitlist until user accounts + billing ship) ────────────
@@ -961,6 +1202,31 @@ async def chat(req: ChatRequest, request: Request):
                 "media_base64": None,
             }
 
+    # Global panic freeze + AI burn-rate cap (paid plans frozen over budget).
+    if _PANIC["on"]:
+        return {
+            "reply": "🛑 ARIA is temporarily paused by an operator. Please try again shortly.",
+            "model_used": "paused",
+            "processing_time_ms": 0,
+            "media_type": None,
+            "media_base64": None,
+        }
+    if email and plan in ("pro", "business"):
+        from apps.core.ops.cost_ledger import get_ledger
+
+        if get_ledger().is_frozen(email):
+            return {
+                "reply": (
+                    "🔒 You've reached this month's AI usage cap for your plan, so new "
+                    "missions are paused to protect your account. Upgrade for more "
+                    "capacity, or your allowance resets at the start of next month."
+                ),
+                "model_used": "burn_cap",
+                "processing_time_ms": 0,
+                "media_type": None,
+                "media_base64": None,
+            }
+
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
 
@@ -972,8 +1238,10 @@ async def chat(req: ChatRequest, request: Request):
         media_b64 = None
         if resp.image_bytes:
             media_type, media_b64 = "image", base64.b64encode(resp.image_bytes).decode()
+        reply_text = resp.text or resp.caption or ""
+        await _record_ai_cost(email, plan, req.message, reply_text)
         return {
-            "reply": resp.text or resp.caption or "",
+            "reply": reply_text,
             "model_used": resp.tool_used or "aria",
             "processing_time_ms": elapsed,
             "media_type": media_type,

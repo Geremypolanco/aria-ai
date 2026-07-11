@@ -307,6 +307,11 @@ if (window.tailwind) {
     <!-- scroll area -->
     <div class="flex-1 overflow-y-auto no-sb p-4 md:p-8">
       <div class="mx-auto max-w-5xl">
+        <!-- connector-outage banner (shown when a platform is globally down) -->
+        <div id="outageBanner" class="mb-4 hidden rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <span class="font-semibold">⚠️ Publishing paused:</span>
+          <span id="outageList"></span> appears to be down globally. Queued posts are held until it recovers.
+        </div>
         <!-- hero -->
         <h1 class="text-2xl font-bold tracking-tight md:text-3xl">Good <span id="tod">day</span>, <span class="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent" id="greetName">__FIRST__</span>.</h1>
         <p class="mt-1.5 text-sm text-zinc-400">Describe a goal and ARIA will run it as an autonomous mission — research, writing, images.</p>
@@ -711,7 +716,22 @@ async function connectApp(id,name,btn){
 
 /* ── boot ── */
 if(USER.owner){ const al=document.getElementById('adminLink'); if(al) al.classList.remove('hidden'); }
-loadMissions(); renderMissions(); billingBoot();
+loadMissions(); renderMissions(); billingBoot(); checkConnectorHealth();
+
+/* connector-outage banner — holds queued posts when a platform is globally down */
+async function checkConnectorHealth(){
+  try{
+    const r = await fetch('/api/v1/connectors/health', {credentials:'same-origin'});
+    const d = await r.json();
+    const offline = d.offline || [];
+    if(offline.length){
+      document.getElementById('outageList').textContent = offline.map(function(s){return s.charAt(0).toUpperCase()+s.slice(1)}).join(', ');
+      document.getElementById('outageBanner').classList.remove('hidden');
+      log('⚠️ connector outage: '+offline.join(', ')+' — publishing held', 'warn');
+    }
+  }catch(e){}
+}
+setInterval(checkConnectorHealth, 5 * 60 * 1000);  // re-check every 5 min
 log('ARIA online · systems nominal', 'ok');
 log('· mission control ready — awaiting dispatch', 'dim');
 let _onbDone = USER.onboarded;

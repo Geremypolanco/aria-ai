@@ -193,6 +193,8 @@ class Settings(BaseSettings):
     SESSION_SECRET: str | None = None
     # Secret for signing outbound integration webhooks.
     WEBHOOK_SECRET: str | None = None
+    # Fly.io API token — enables the live instance counter in the admin console.
+    FLY_API_TOKEN: str | None = None
 
     # ── CREDENCIALES DE ARIA (para login stealth en plataformas) ──────────
     ARIA_EMAIL: str | None = None
