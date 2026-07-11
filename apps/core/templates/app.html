@@ -144,11 +144,37 @@ if (window.tailwind) {
         <div class="flex items-baseline justify-between"><span class="font-bold">Business</span><span class="text-lg font-extrabold">$99<small class="text-xs font-medium text-zinc-500">/mo</small></span></div>
         <p class="mt-1.5 text-[13px] text-zinc-400">Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
     </div>
-    <div class="mt-6 flex justify-end">
-      <button id="upGo" onclick="upgradeGo()" class="rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-6 py-3 text-sm font-semibold hover:brightness-110">Continue</button>
+    <label for="upAck" class="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3.5">
+      <input id="upAck" type="checkbox" onchange="upAckChanged(this.checked)" class="mt-0.5 h-4 w-4 flex-none accent-indigo-500">
+      <span class="text-[13px] leading-relaxed text-zinc-400">Entiendo y acepto la <a href="/legal/refund-policy" target="_blank" class="text-indigo-400 hover:underline">política estricta de no reembolso</a> de ARIA debido a los costes inmediatos de renderizado y cómputo de IA.</span>
+    </label>
+    <div class="mt-5 flex justify-end">
+      <button id="upGo" onclick="upgradeGo()" disabled class="cursor-not-allowed rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-6 py-3 text-sm font-semibold opacity-40">Continue</button>
     </div>
   </div>
 </div>
+
+<!-- ══════════════════ ARIA SUPPORT WIDGET (24/7) ══════════════════ -->
+<div id="supPanel" class="fixed bottom-24 right-5 z-[85] hidden w-[92vw] max-w-[380px] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl sm:right-6">
+  <div class="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/70 px-4 py-3">
+    <div class="flex items-center gap-2.5">
+      <span class="relative grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-extrabold">A
+        <span class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900 bg-emerald-400"></span></span>
+      <div><div class="text-sm font-semibold leading-tight">ARIA Support</div>
+        <div class="text-[11px] text-zinc-500">Asistente 24/7 · en línea</div></div>
+    </div>
+    <button onclick="toggleSupport(false)" aria-label="Cerrar soporte" class="grid h-8 w-8 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-800">✕</button>
+  </div>
+  <div id="supLog" class="flex h-[46vh] max-h-[380px] flex-col gap-3 overflow-y-auto no-sb px-4 py-4 text-sm"></div>
+  <form id="supForm" onsubmit="return supSend(event)" class="flex items-center gap-2 border-t border-zinc-800 bg-zinc-950/70 p-3">
+    <input id="supInput" autocomplete="off" placeholder="Facturación, misiones, conectores…" class="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-3.5 py-2.5 text-sm text-zinc-50 placeholder-zinc-600 outline-none focus:border-zinc-600">
+    <button type="submit" aria-label="Enviar" class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 hover:brightness-110">↑</button>
+  </form>
+</div>
+<button id="supFab" onclick="toggleSupport()" class="fixed bottom-5 right-5 z-[84] flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-50 shadow-2xl transition hover:bg-zinc-800 sm:right-6">
+  <span class="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[11px] font-extrabold">A</span>
+  <span>Soporte</span>
+</button>
 
 <!-- ══════════════════ SETTINGS ══════════════════ -->
 <div id="settingsOv" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6">
@@ -629,14 +655,76 @@ async function obNext(){
 
 /* ── upgrade ── */
 let upPlan="pro";
+function upAckChanged(ok){
+  const b=document.getElementById('upGo'); if(!b) return;
+  b.disabled=!ok;
+  b.classList.toggle('opacity-40',!ok);
+  b.classList.toggle('cursor-not-allowed',!ok);
+  b.classList.toggle('hover:brightness-110',ok);
+}
 function openUpgrade(){
   document.querySelectorAll('#upPlans .plan').forEach(c=>{ c.classList.toggle('sel',c.dataset.v===upPlan);
     c.onclick=()=>{ document.querySelectorAll('#upPlans .plan').forEach(x=>x.classList.remove('sel')); c.classList.add('sel'); upPlan=c.dataset.v; }; });
+  const ack=document.getElementById('upAck'); if(ack){ ack.checked=false; upAckChanged(false); }
   document.getElementById('menu').classList.add('hidden');
   const o=document.getElementById('upOv'); o.classList.remove('hidden'); o.classList.add('flex');
 }
 function closeUpgrade(){ const o=document.getElementById('upOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
-function upgradeGo(){ location.href='/billing/checkout?tier='+upPlan; }
+function upgradeGo(){
+  const ack=document.getElementById('upAck');
+  if(!ack||!ack.checked){ return; }  // mandatory no-refund acknowledgement
+  location.href='/billing/checkout?tier='+upPlan+'&agreed=1';
+}
+
+/* ── ARIA Support widget (24/7) ── */
+let supOpen=false, supBusy=false, supGreeted=false;
+function toggleSupport(force){
+  supOpen = (typeof force==='boolean') ? force : !supOpen;
+  const p=document.getElementById('supPanel'), fab=document.getElementById('supFab');
+  if(supOpen){
+    p.classList.remove('hidden'); p.classList.add('flex'); fab.classList.add('hidden');
+    if(!supGreeted){ supGreeted=true;
+      supAppend('aria','Hola 👋 Soy ARIA Support. Puedo ayudarte con facturación, fallos en misiones o configuración de conectores. ¿Qué necesitas?');
+    }
+    setTimeout(()=>{ const i=document.getElementById('supInput'); if(i) i.focus(); },50);
+  } else { p.classList.add('hidden'); p.classList.remove('flex'); fab.classList.remove('hidden'); }
+}
+function supAppend(who,text){
+  const log=document.getElementById('supLog');
+  const row=document.createElement('div');
+  if(who==='user'){
+    row.className='self-end max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-600 px-3.5 py-2 text-zinc-50';
+    row.textContent=text;
+  } else if(who==='typing'){
+    row.className='self-start rounded-2xl rounded-bl-sm bg-zinc-800 px-3.5 py-2 text-zinc-400'; row.id='supTyping';
+    row.textContent='ARIA está escribiendo…';
+  } else {
+    row.className='self-start max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-zinc-800 px-3.5 py-2 text-zinc-200';
+    row.textContent=text;
+  }
+  log.appendChild(row); log.scrollTop=log.scrollHeight;
+  return row;
+}
+async function supSend(e){
+  e.preventDefault();
+  if(supBusy) return false;
+  const input=document.getElementById('supInput');
+  const msg=(input.value||'').trim();
+  if(!msg) return false;
+  input.value=''; supAppend('user',msg);
+  supBusy=true; const typing=supAppend('typing','');
+  try{
+    const r=await fetch('/api/v1/support/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:msg})});
+    const d=await r.json();
+    typing.remove();
+    supAppend('aria', d.reply || 'Lo siento, no pude procesar tu mensaje. Escríbenos a litesaraph@gmail.com.');
+  }catch(err){
+    const t=document.getElementById('supTyping'); if(t) t.remove();
+    supAppend('aria','⚠️ No pude conectar con soporte ahora mismo. Inténtalo de nuevo o escribe a litesaraph@gmail.com.');
+  }finally{ supBusy=false; }
+  return false;
+}
 
 /* ── settings ── */
 function openSettings(){

@@ -295,6 +295,11 @@ class ChatResponse(BaseModel):
     processing_time_ms: int = 0
 
 
+class SupportRequest(BaseModel):
+    message: str
+    session_id: str = "support"
+
+
 class ProfileRequest(BaseModel):
     name: str = ""
     work: str = ""
@@ -318,111 +323,58 @@ async def root():
 
 
 # ── LEGAL PAGES (required to launch a paid product) ────────
+# Premium dark-mode legal pages live as styled HTML files under templates/legal/
+# and are served at /legal/{terms,privacy,refund-policy}. Legacy short paths
+# (/terms, /privacy, /refunds) 301-redirect to the canonical /legal/* URLs so
+# there is a single source of truth.
 _LEGAL_CONTACT = "litesaraph@gmail.com"
 
-
-def _legal_page(title: str, body_html: str) -> HTMLResponse:
-    updated = datetime.utcnow().strftime("%B %d, %Y")
-    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · {title}</title>
-<style>*{{margin:0;box-sizing:border-box}}
-body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#08080c;color:#e8ebf2;line-height:1.7}}
-.wrap{{max-width:760px;margin:0 auto;padding:56px 22px 80px}}
-a{{color:#a78bfa;text-decoration:none}} a:hover{{text-decoration:underline}}
-h1{{font-size:30px;margin-bottom:6px}} .upd{{color:#7a8598;font-size:13px;margin-bottom:30px}}
-h2{{font-size:18px;margin:26px 0 8px}} p,li{{color:#c3cad6;font-size:15px}} ul{{padding-left:20px;margin:8px 0}}
-.top{{margin-bottom:26px;font-size:14px}} .foot{{margin-top:44px;border-top:1px solid rgba(255,255,255,.08);padding-top:18px;color:#7a8598;font-size:13px}}
-.foot a{{margin-right:16px}}</style></head><body><div class="wrap">
-<div class="top"><a href="/">← SARAPH · ARIA</a></div>
-<h1>{title}</h1><div class="upd">Last updated: {updated}</div>
-{body_html}
-<div class="foot"><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/refunds">Refunds</a>
-<a href="mailto:{_LEGAL_CONTACT}">Contact</a></div>
-</div></body></html>"""
-    return HTMLResponse(html)
+_LEGAL_FILES = {
+    "terms": "terms.html",
+    "privacy": "privacy.html",
+    "refund-policy": "refund-policy.html",
+}
 
 
-@app.get("/terms", response_class=HTMLResponse)
+def _serve_legal(slug: str) -> HTMLResponse:
+    filename = _LEGAL_FILES.get(slug)
+    if not filename:
+        return HTMLResponse("<h1>Not found</h1>", status_code=404)
+    path = os.path.join(os.path.dirname(__file__), "templates", "legal", filename)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    except FileNotFoundError:
+        return HTMLResponse(
+            f"<h1>ARIA · {slug.title()}</h1><p>Page unavailable.</p>", status_code=404
+        )
+
+
+@app.get("/legal", response_class=HTMLResponse)
+async def legal_index():
+    return RedirectResponse("/legal/terms", status_code=307)
+
+
+@app.get("/legal/{slug}", response_class=HTMLResponse)
+async def legal_page(slug: str):
+    # Tolerate an optional .html suffix (/legal/terms.html).
+    return _serve_legal(slug[:-5] if slug.endswith(".html") else slug)
+
+
+# Backward-compatible redirects to the canonical /legal/* URLs.
+@app.get("/terms")
 async def terms():
-    return _legal_page(
-        "Terms of Service",
-        f"""
-<p>These Terms govern your use of ARIA, an autonomous AI assistant operated by SARAPH
-("we", "us"). By creating an account or using the service you agree to these Terms.</p>
-<h2>1. The service</h2>
-<p>ARIA lets you research, create content, and generate images and other media using AI.
-Output is generated automatically and may be inaccurate or incomplete — you are responsible
-for reviewing it before you rely on or publish it.</p>
-<h2>2. Accounts</h2>
-<p>You sign in with Google or GitHub. You are responsible for activity under your account and
-for keeping your login secure.</p>
-<h2>3. Plans & billing</h2>
-<p>ARIA offers a Free plan and paid monthly subscriptions (Pro and Business). Paid plans renew
-automatically each month until cancelled. Prices are shown at checkout. You can cancel at any
-time; cancellation stops future renewals and takes effect at the end of the current period.</p>
-<h2>4. Acceptable use</h2>
-<p>Don't use ARIA to break the law, infringe others' rights, generate harmful or deceptive
-content, or abuse the service (including attempts to disrupt or reverse-engineer it). We may
-suspend accounts that violate these Terms.</p>
-<h2>5. Your content</h2>
-<p>You keep ownership of the inputs you provide and, to the extent permitted by law, the output
-you generate. You grant us the limited rights needed to operate the service.</p>
-<h2>6. Disclaimers & liability</h2>
-<p>The service is provided "as is", without warranties. To the maximum extent permitted by law,
-our liability is limited to the amount you paid in the last 12 months.</p>
-<h2>7. Changes & contact</h2>
-<p>We may update these Terms; material changes will be posted here. Questions:
-<a href="mailto:{_LEGAL_CONTACT}">{_LEGAL_CONTACT}</a>.</p>
-""",
-    )
+    return RedirectResponse("/legal/terms", status_code=301)
 
 
-@app.get("/privacy", response_class=HTMLResponse)
+@app.get("/privacy")
 async def privacy():
-    return _legal_page(
-        "Privacy Policy",
-        f"""
-<p>This policy explains what we collect and how we use it when you use ARIA.</p>
-<h2>1. What we collect</h2>
-<ul>
-<li><b>Account info</b> — your name and email from Google/GitHub sign-in.</li>
-<li><b>Profile</b> — the details you give during onboarding (what you do, your goals) to
-personalize responses.</li>
-<li><b>Usage</b> — the messages you send to ARIA and basic counters used to enforce plan limits.</li>
-<li><b>Billing</b> — handled by Stripe; we do not store your card details.</li>
-</ul>
-<h2>2. How we use it</h2>
-<p>To provide and personalize the service, enforce plan limits, process subscriptions, and
-improve reliability. We do not sell your personal data.</p>
-<h2>3. Processors</h2>
-<p>We use trusted providers to run ARIA, including Google/GitHub (sign-in), Stripe (payments),
-and AI/hosting providers that process your prompts to generate output.</p>
-<h2>4. Your choices</h2>
-<p>You can edit your profile in Settings, and delete your account and data at any time from
-Settings → Danger zone. You may also contact us to request deletion.</p>
-<h2>5. Contact</h2>
-<p>Privacy questions: <a href="mailto:{_LEGAL_CONTACT}">{_LEGAL_CONTACT}</a>.</p>
-""",
-    )
+    return RedirectResponse("/legal/privacy", status_code=301)
 
 
-@app.get("/refunds", response_class=HTMLResponse)
+@app.get("/refunds")
 async def refunds():
-    return _legal_page(
-        "Refund Policy",
-        f"""
-<p>We want you to be happy with ARIA. This policy covers refunds for paid subscriptions.</p>
-<h2>Monthly subscriptions</h2>
-<p>You can cancel any time to stop future renewals; you keep access until the end of the
-current billing period. If you were charged and haven't meaningfully used the plan that period,
-email us within <b>7 days</b> of the charge and we'll issue a refund for that period.</p>
-<h2>How to cancel or request a refund</h2>
-<p>Cancel from your account, or email <a href="mailto:{_LEGAL_CONTACT}">{_LEGAL_CONTACT}</a>
-with the email on your account. Refunds are returned to your original payment method via Stripe.</p>
-<h2>Exceptions</h2>
-<p>We may decline refunds in cases of clear abuse of the service or of this policy.</p>
-""",
-    )
+    return RedirectResponse("/legal/refund-policy", status_code=301)
 
 
 def _serve_control_panel() -> HTMLResponse:
@@ -757,8 +709,10 @@ color:#fff;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12p
 .mut{{color:#64748b;font-size:12px;margin-top:18px}} a.lnk{{color:#a78bfa;text-decoration:none}}
 </style></head><body><div class="card"><h1>Sign in to ARIA</h1>
 <p>Access your personal workspace.</p>{body}
-<div class="mut">By continuing you agree to our <a class="lnk" href="/terms">Terms</a> &amp;
-<a class="lnk" href="/privacy">Privacy</a>. <a class="lnk" href="/">← Home</a></div>
+<div class="mut">By continuing you agree to our <a class="lnk" href="/legal/terms">Terms</a>,
+<a class="lnk" href="/legal/privacy">Privacy</a> &amp;
+<a class="lnk" href="/legal/refund-policy">Refund Policy</a>.
+<a class="lnk" href="/">← Home</a></div>
 </div></body></html>"""
     return HTMLResponse(html)
 
@@ -1009,16 +963,70 @@ def _profile_context(profile: dict) -> str:
     )
 
 
+# Mandatory pre-checkout acknowledgement (strict no-refund policy). Every path
+# to Stripe passes through this gate — the modal sends agreed=1 inline; direct
+# links (onboarding, deep-links) are stopped here and shown the interstitial.
+NO_REFUND_ACK = (
+    "Entiendo y acepto la política estricta de no reembolso de ARIA debido a los "
+    "costes inmediatos de renderizado y cómputo de IA."
+)
+
+
+def _checkout_confirm_page(tier: str, plan: dict) -> HTMLResponse:
+    price = f"${plan['cents'] // 100}/mo"
+    go = f"/billing/checkout?tier={tier}&amp;agreed=1"
+    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIA · Confirmar {plan['name']}</title><style>
+*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#09090b;color:#e4e4e7;padding:20px}}
+.card{{width:460px;max-width:94vw;background:#111114;border:1px solid #27272a;border-radius:18px;
+padding:32px 28px;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+h1{{font-size:22px;margin-bottom:4px}} .price{{color:#a1a1aa;font-size:14px;margin-bottom:22px}}
+.price b{{color:#f4f4f5}}
+.ack{{display:flex;gap:12px;align-items:flex-start;background:#0b0b0e;border:1px solid #27272a;
+border-radius:12px;padding:14px 14px;margin-bottom:20px}}
+.ack input{{margin-top:3px;width:18px;height:18px;accent-color:#6366f1;flex:0 0 auto;cursor:pointer}}
+.ack label{{font-size:13.5px;line-height:1.55;color:#d4d4d8;cursor:pointer}}
+.btn{{display:block;width:100%;text-align:center;padding:13px;border-radius:12px;border:0;
+background:linear-gradient(90deg,#6366f1,#8b5cf6);color:#fff;font-weight:600;font-size:15px;
+text-decoration:none;cursor:pointer;transition:opacity .15s}}
+.btn[aria-disabled="true"]{{opacity:.4;pointer-events:none}}
+.sub{{text-align:center;margin-top:14px;font-size:12.5px}}
+.sub a{{color:#a1a1aa;text-decoration:none;margin:0 8px}} .sub a:hover{{color:#e4e4e7}}
+</style></head><body><div class="card">
+<h1>Confirmar {plan['name']}</h1>
+<div class="price"><b>{price}</b> · renovación mensual · cancela cuando quieras</div>
+<div class="ack">
+  <input type="checkbox" id="ack" onchange="document.getElementById('go').setAttribute('aria-disabled', this.checked?'false':'true')">
+  <label for="ack">{NO_REFUND_ACK}</label>
+</div>
+<a id="go" class="btn" aria-disabled="true" href="{go}">Continuar al pago seguro →</a>
+<div class="sub"><a href="/app">← Volver</a><a href="/legal/refund-policy">Política de reembolso</a>
+<a href="/legal/terms">Términos</a></div>
+</div></body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/billing/checkout")
-async def billing_checkout(request: Request, tier: str = "pro"):
-    """Start a Stripe Checkout session for the given ARIA subscription tier."""
+async def billing_checkout(request: Request, tier: str = "pro", agreed: str = ""):
+    """Start a Stripe Checkout session for the given ARIA subscription tier.
+
+    Gated by a mandatory strict-no-refund acknowledgement: without `agreed=1`
+    we render the confirmation interstitial instead of creating the session."""
     from apps.core import auth
 
     user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
     if not user:
         return RedirectResponse("/login", status_code=307)
 
-    plan = BILLING_PLANS.get(tier if tier in BILLING_PLANS else "pro")
+    tier = tier if tier in BILLING_PLANS else "pro"
+    plan = BILLING_PLANS[tier]
+
+    # Enforce the no-refund acknowledgement before any charge can start.
+    if agreed.lower() not in ("1", "true", "yes", "on"):
+        return _checkout_confirm_page(tier, plan)
 
     key = getattr(settings, "STRIPE_SECRET_KEY", None)
     if not key:
@@ -1297,6 +1305,50 @@ async def chat(req: ChatRequest, request: Request):
         except Exception as e2:
             logger.error(f"Chat fallback error: {e2}")
             return {"reply": f"⚠️ Error: {e}", "model_used": "none", "processing_time_ms": 0}
+
+
+@app.post("/api/v1/support/chat")
+async def support_chat(req: SupportRequest, request: Request):
+    """ARIA Support — the autonomous 24/7 assistant behind the support widget.
+
+    A fast Claude sub-agent (Haiku) with a strict support system prompt when an
+    API key is configured; an honest offline FAQ responder otherwise so support
+    works with no token budget. Kept separate from /api/v1/chat so the main
+    cognitive brain and its plan limits are untouched.
+    """
+    import time
+
+    start = time.time()
+
+    if not _rate_ok(request, "support", 20, 60):
+        return {
+            "reply": "⏳ Estás enviando mensajes muy rápido. Espera un momento e inténtalo de nuevo.",
+            "source": "ratelimited",
+            "processing_time_ms": 0,
+        }
+    if not _current_user(request):
+        return {
+            "reply": "🔒 Inicia sesión para hablar con ARIA Support.",
+            "source": "auth",
+            "processing_time_ms": 0,
+        }
+
+    from apps.core.support.support_agent import answer
+
+    api_key = getattr(settings, "ANTHROPIC_API_KEY", None)
+    try:
+        reply, source = await answer(req.message, api_key=api_key)
+    except Exception as e:  # noqa: BLE001 — the widget must never hard-error.
+        logger.error(f"Support chat error: {e}")
+        from apps.core.support.support_agent import offline_answer
+
+        reply, source = offline_answer(req.message or ""), "offline_error"
+
+    return {
+        "reply": reply,
+        "source": source,
+        "processing_time_ms": int((time.time() - start) * 1000),
+    }
 
 
 @app.post("/api/v1/code")
