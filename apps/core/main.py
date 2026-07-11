@@ -221,10 +221,35 @@ async def lifespan(app: FastAPI):
     except Exception as e:  # noqa: BLE001
         logger.warning(f"⚠️ health loop not started: {e}")
 
+    # In-process mission worker — convenient for single-container dev. In
+    # production run dedicated worker containers instead (see SCALE_ARCH.md) and
+    # set ARIA_INPROCESS_WORKER=0. Enabled by default only when no REDIS_URL
+    # (i.e. single-instance), so multi-container deploys don't double-process.
+    worker_task = None
+    worker_stop = None
+    want_worker = os.environ.get(
+        "ARIA_INPROCESS_WORKER", "1" if not getattr(settings, "REDIS_URL", None) else "0"
+    ) not in ("0", "false", "False", "")
+    if want_worker:
+        try:
+            import asyncio as _asyncio
+
+            from apps.core.scale.worker import run_forever
+
+            worker_stop = _asyncio.Event()
+            worker_task = _asyncio.create_task(run_forever(stop=worker_stop))
+            logger.info("🧵 in-process mission worker started")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"⚠️ in-process worker not started: {e}")
+
     yield
 
     if health_task is not None:
         health_task.cancel()
+    if worker_stop is not None:
+        worker_stop.set()
+    if worker_task is not None:
+        worker_task.cancel()
     logger.info("🛑 ARIA AI shutting down...")
 
 
@@ -246,12 +271,14 @@ app.add_middleware(
 # ── Feature routers (modular) ─────────────────────────────────────
 try:
     from apps.core.routes.clipper import router as clipper_router
+    from apps.core.routes.missions import router as missions_router
     from apps.core.routes.voice_profile import router as voice_router
     from apps.core.webhooks.webhook_monitor_controller import router as webhook_router
 
     app.include_router(clipper_router)
     app.include_router(voice_router)
     app.include_router(webhook_router)
+    app.include_router(missions_router)
 except Exception as _exc:  # noqa: BLE001 — never let an optional router break boot
     logging.getLogger("aria").warning("feature routers not fully loaded: %s", _exc)
 
