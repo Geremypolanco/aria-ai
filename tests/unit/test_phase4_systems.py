@@ -8,6 +8,7 @@ Tests for Phase 4 enterprise systems:
 - Business Intelligence Telemetry
 - Benchmark harness
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -17,9 +18,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 # ── Event Schemas ─────────────────────────────────────────────────────────────
 
+
 class TestAriaEvent:
     def test_event_has_required_fields(self):
         from apps.core.events.schemas import AriaEvent, EventType
+
         ev = AriaEvent(event_type=EventType.SYSTEM_STARTUP, payload={"msg": "ok"})
         assert ev.event_id
         assert ev.correlation_id
@@ -28,12 +31,14 @@ class TestAriaEvent:
 
     def test_event_is_immutable(self):
         from apps.core.events.schemas import AriaEvent, EventType
+
         ev = AriaEvent(event_type=EventType.FACT_STORED, payload={})
         with pytest.raises((AttributeError, TypeError)):
             ev.event_id = "changed"
 
     def test_derive_inherits_correlation(self):
         from apps.core.events.schemas import AriaEvent, EventType
+
         parent = AriaEvent(event_type=EventType.REASONING_STARTED, payload={})
         child = parent.derive(EventType.REASONING_COMPLETED, {"result": "done"})
         assert child.correlation_id == parent.correlation_id
@@ -41,6 +46,7 @@ class TestAriaEvent:
 
     def test_serialization_roundtrip(self):
         from apps.core.events.schemas import AriaEvent, EventType
+
         ev = AriaEvent(
             event_type=EventType.REVENUE_RECORDED,
             payload={"amount": 100.0, "source": "shopify"},
@@ -54,6 +60,7 @@ class TestAriaEvent:
 
     def test_event_type_enum_values_are_strings(self):
         from apps.core.events.schemas import EventType
+
         for et in EventType:
             assert isinstance(et.value, str)
             assert "." in et.value
@@ -61,15 +68,18 @@ class TestAriaEvent:
 
 # ── Event Bus ─────────────────────────────────────────────────────────────────
 
+
 class TestEventBus:
     @pytest.fixture
     def bus(self):
         from apps.core.events.bus import EventBus
+
         return EventBus()
 
     @pytest.mark.asyncio
     async def test_subscribe_and_receive(self, bus):
         from apps.core.events.schemas import AriaEvent, EventType
+
         received = []
 
         async def handler(ev: AriaEvent):
@@ -87,6 +97,7 @@ class TestEventBus:
     @pytest.mark.asyncio
     async def test_wildcard_handler_receives_all(self, bus):
         from apps.core.events.schemas import AriaEvent, EventType
+
         received = []
 
         async def catch_all(ev):
@@ -110,14 +121,17 @@ class TestEventBus:
         bus.subscribe(EventType.TASK_FAILED, bad_handler)
         ev = AriaEvent(event_type=EventType.TASK_FAILED, payload={})
 
-        with patch.object(bus, "_persist", new=AsyncMock()), \
-             patch.object(bus, "_send_to_dlq", new=AsyncMock()) as mock_dlq:
+        with (
+            patch.object(bus, "_persist", new=AsyncMock()),
+            patch.object(bus, "_send_to_dlq", new=AsyncMock()) as mock_dlq,
+        ):
             await bus.publish(ev)
             assert mock_dlq.called
 
     @pytest.mark.asyncio
     async def test_unsubscribe_removes_handler(self, bus):
         from apps.core.events.schemas import AriaEvent, EventType
+
         calls = []
 
         async def handler(ev):
@@ -140,10 +154,12 @@ class TestEventBus:
 
 # ── Platform Cache Abstraction ────────────────────────────────────────────────
 
+
 class TestMemoryCacheProvider:
     @pytest.fixture
     def cache(self):
         from apps.core.platform.cache import MemoryCacheProvider
+
         return MemoryCacheProvider()
 
     @pytest.mark.asyncio
@@ -177,6 +193,7 @@ class TestMemoryCacheProvider:
     @pytest.mark.asyncio
     async def test_ttl_expiry(self, cache):
         import time
+
         await cache.set("expires", "data", ttl_seconds=1)
         # Manually expire by setting past timestamp
         cache._store["expires"] = ("data", time.time() - 2)
@@ -184,17 +201,20 @@ class TestMemoryCacheProvider:
 
     def test_clear_removes_all(self, cache):
         import asyncio
-        asyncio.get_event_loop().run_until_complete(cache.set("k1", "v1"))
+
+        asyncio.run(cache.set("k1", "v1"))
         cache.clear()
         assert len(cache._store) == 0
 
 
 # ── Deterministic Rule Engine ─────────────────────────────────────────────────
 
+
 class TestRuleEngine:
     @pytest.fixture
     def engine(self):
         from apps.core.deterministic.rule_engine import RuleEngine
+
         return RuleEngine()
 
     def test_add_rule_and_evaluate(self, engine):
@@ -215,8 +235,20 @@ class TestRuleEngine:
 
     def test_priority_ordering(self, engine):
         results = []
-        engine.add_rule("low_prio", "d", lambda ctx: True, lambda ctx: results.append("low") or "low", priority=100)
-        engine.add_rule("high_prio", "d", lambda ctx: True, lambda ctx: results.append("high") or "high", priority=10)
+        engine.add_rule(
+            "low_prio",
+            "d",
+            lambda ctx: True,
+            lambda ctx: results.append("low") or "low",
+            priority=100,
+        )
+        engine.add_rule(
+            "high_prio",
+            "d",
+            lambda ctx: True,
+            lambda ctx: results.append("high") or "high",
+            priority=10,
+        )
         engine.evaluate({})
         assert results[0] == "high"
 
@@ -246,6 +278,7 @@ class TestRuleEngine:
 
     def test_threshold_rule_factory(self):
         from apps.core.deterministic.rule_engine import threshold_rule, RuleEngine
+
         rule = threshold_rule("rev_check", "revenue", ">", 100.0, lambda ctx: "high_rev")
         engine = RuleEngine()
         engine._rules.append(rule)
@@ -254,7 +287,10 @@ class TestRuleEngine:
 
     def test_pattern_rule_factory(self):
         from apps.core.deterministic.rule_engine import pattern_rule, RuleEngine
-        rule = pattern_rule("income_detect", "task", r"income|revenue|earn", lambda ctx: "income_task")
+
+        rule = pattern_rule(
+            "income_detect", "task", r"income|revenue|earn", lambda ctx: "income_task"
+        )
         engine = RuleEngine()
         engine._rules.append(rule)
         assert engine.first_match({"task": "generate revenue from Shopify"}) == "income_task"
@@ -262,6 +298,7 @@ class TestRuleEngine:
 
     def test_aria_rules_budget_cap(self):
         from apps.core.deterministic.rule_engine import build_aria_rules
+
         engine = build_aria_rules()
         result = engine.first_match({"daily_spend_usd": 55, "budget_cap_usd": 50}, tags=["budget"])
         assert result is not None
@@ -269,6 +306,7 @@ class TestRuleEngine:
 
     def test_aria_rules_depth_limit(self):
         from apps.core.deterministic.rule_engine import build_aria_rules
+
         engine = build_aria_rules()
         result = engine.first_match({"delegation_depth": 5}, tags=["agents"])
         assert result is not None
@@ -277,52 +315,71 @@ class TestRuleEngine:
 
 # ── Constraint Validators ─────────────────────────────────────────────────────
 
+
 class TestConstraints:
     def test_require_str_valid(self):
         from apps.core.deterministic.constraints import require_str
+
         r = require_str("hello", "name")
         assert r.valid
 
     def test_require_str_too_short(self):
         from apps.core.deterministic.constraints import require_str
+
         r = require_str("", "name", min_len=1)
         assert not r.valid
 
     def test_require_float_out_of_range(self):
         from apps.core.deterministic.constraints import require_float
+
         r = require_float(-1.0, "revenue", min_val=0.0)
         assert not r.valid
 
     def test_require_in_valid(self):
         from apps.core.deterministic.constraints import require_in
+
         r = require_in("content", {"content", "ecommerce"}, "category")
         assert r.valid
 
     def test_require_in_invalid(self):
         from apps.core.deterministic.constraints import require_in
+
         r = require_in("unknown", {"content", "ecommerce"}, "category")
         assert not r.valid
 
     def test_validate_opportunity_input_full(self):
         from apps.core.deterministic.constraints import validate_opportunity_input
-        r = validate_opportunity_input({
-            "name": "Test Opp", "category": "content",
-            "estimated_revenue_usd": 500.0, "estimated_effort_hours": 10.0,
-            "risk_level": 0.3, "confidence": 0.8,
-        })
+
+        r = validate_opportunity_input(
+            {
+                "name": "Test Opp",
+                "category": "content",
+                "estimated_revenue_usd": 500.0,
+                "estimated_effort_hours": 10.0,
+                "risk_level": 0.3,
+                "confidence": 0.8,
+            }
+        )
         assert r.valid
 
     def test_validate_opportunity_input_bad_category(self):
         from apps.core.deterministic.constraints import validate_opportunity_input
-        r = validate_opportunity_input({
-            "name": "T", "category": "invalid_cat",
-            "estimated_revenue_usd": 500.0, "estimated_effort_hours": 10.0,
-            "risk_level": 0.3, "confidence": 0.8,
-        })
+
+        r = validate_opportunity_input(
+            {
+                "name": "T",
+                "category": "invalid_cat",
+                "estimated_revenue_usd": 500.0,
+                "estimated_effort_hours": 10.0,
+                "risk_level": 0.3,
+                "confidence": 0.8,
+            }
+        )
         assert not r.valid
 
     def test_constraint_result_merge(self):
         from apps.core.deterministic.constraints import ConstraintResult
+
         ok = ConstraintResult(True)
         err = ConstraintResult(False, [{"field": "x", "message": "bad"}])
         merged = ok.merge(err)
@@ -331,6 +388,7 @@ class TestConstraints:
 
     def test_raise_if_invalid(self):
         from apps.core.deterministic.constraints import ConstraintResult, ConstraintViolation
+
         r = ConstraintResult(False, [{"field": "x", "message": "bad x"}])
         with pytest.raises(ConstraintViolation):
             r.raise_if_invalid()
@@ -338,10 +396,12 @@ class TestConstraints:
 
 # ── Tiered Memory ─────────────────────────────────────────────────────────────
 
+
 class TestTieredMemory:
     @pytest.fixture
     def mem(self):
         from apps.core.memory.tiering.tiered_memory import TieredMemory
+
         return TieredMemory()
 
     @pytest.mark.asyncio
@@ -354,8 +414,10 @@ class TestTieredMemory:
 
     @pytest.mark.asyncio
     async def test_search_finds_by_keyword(self, mem):
-        with patch.object(mem._warm, "put", new=AsyncMock()), \
-             patch.object(mem._warm, "search", new=AsyncMock(return_value=[])):
+        with (
+            patch.object(mem._warm, "put", new=AsyncMock()),
+            patch.object(mem._warm, "search", new=AsyncMock(return_value=[])),
+        ):
             await mem.store("Shopify revenue strategy works", category="business")
             await mem.store("Unrelated medical knowledge", category="general")
             results = await mem.search("revenue strategy")
@@ -364,8 +426,10 @@ class TestTieredMemory:
 
     @pytest.mark.asyncio
     async def test_search_category_filter(self, mem):
-        with patch.object(mem._warm, "put", new=AsyncMock()), \
-             patch.object(mem._warm, "search", new=AsyncMock(return_value=[])):
+        with (
+            patch.object(mem._warm, "put", new=AsyncMock()),
+            patch.object(mem._warm, "search", new=AsyncMock(return_value=[])),
+        ):
             await mem.store("Business fact", category="business")
             await mem.store("System fact", category="system")
             results = await mem.search("fact", category="business")
@@ -374,13 +438,19 @@ class TestTieredMemory:
     def test_hot_tier_lru_eviction(self):
         from apps.core.memory.tiering.tiered_memory import HotTier, MemoryItem
         import time
+
         hot = HotTier(capacity=3)
         now = time.time()
         for i in range(4):
             item = MemoryItem(
-                id=f"item_{i}", content=f"Content {i}", category="test",
-                source="aria", confidence=0.8, importance=0.5,
-                ts=now, ts_iso="2026-01-01T00:00:00Z",
+                id=f"item_{i}",
+                content=f"Content {i}",
+                category="test",
+                source="aria",
+                confidence=0.8,
+                importance=0.5,
+                ts=now,
+                ts_iso="2026-01-01T00:00:00Z",
             )
             hot.put(item)
         assert hot.size() <= 3
@@ -388,14 +458,22 @@ class TestTieredMemory:
     def test_hot_tier_search(self):
         from apps.core.memory.tiering.tiered_memory import HotTier, MemoryItem
         import time
+
         hot = HotTier(capacity=10)
         now = time.time()
         for term in ["alpha", "beta", "gamma"]:
-            hot.put(MemoryItem(
-                id=f"id_{term}", content=f"Fact about {term}", category="test",
-                source="aria", confidence=0.8, importance=0.5,
-                ts=now, ts_iso="2026-01-01T00:00:00Z",
-            ))
+            hot.put(
+                MemoryItem(
+                    id=f"id_{term}",
+                    content=f"Fact about {term}",
+                    category="test",
+                    source="aria",
+                    confidence=0.8,
+                    importance=0.5,
+                    ts=now,
+                    ts_iso="2026-01-01T00:00:00Z",
+                )
+            )
         results = hot.search("alpha")
         assert len(results) == 1
         assert "alpha" in results[0].content
@@ -403,6 +481,7 @@ class TestTieredMemory:
     def test_memory_item_tier_score_recency(self):
         from apps.core.memory.tiering.tiered_memory import MemoryItem
         import time
+
         recent = MemoryItem("r", "content", "cat", "src", 0.9, 0.9, time.time(), "now")
         old = MemoryItem("o", "content", "cat", "src", 0.9, 0.9, time.time() - 86400 * 10, "old")
         assert recent.tier_score() > old.tier_score()
@@ -416,10 +495,12 @@ class TestTieredMemory:
 
 # ── Executive Agent ───────────────────────────────────────────────────────────
 
+
 class TestExecutiveAgent:
     @pytest.fixture
     def agent(self):
         from apps.core.agents.executive.executive_agent import ExecutiveAgent
+
         return ExecutiveAgent()
 
     @pytest.mark.asyncio
@@ -451,6 +532,7 @@ class TestExecutiveAgent:
     @pytest.mark.asyncio
     async def test_depth_limit_rejects(self, agent):
         from apps.core.agents.executive.executive_agent import TaskStatus, TaskPriority
+
         task = await agent.submit("deep task", depth=5)
         assert task.status == TaskStatus.REJECTED
 
@@ -479,6 +561,7 @@ class TestExecutiveAgent:
     @pytest.mark.asyncio
     async def test_budget_exhausted_rejects(self, agent):
         from apps.core.agents.executive.executive_agent import TaskStatus, ExecutionBudget
+
         exhausted = ExecutionBudget(max_time_seconds=0.0)
         task = await agent.submit("some task", budget=exhausted)
         assert task.status == TaskStatus.REJECTED
@@ -504,10 +587,12 @@ class TestExecutiveAgent:
 
 # ── Business Intelligence Telemetry ──────────────────────────────────────────
 
+
 class TestBITelemetry:
     @pytest.fixture
     def bi(self):
         from apps.core.business.intelligence.bi_telemetry import BITelemetry
+
         b = BITelemetry()
         b._loaded = True
         return b
@@ -516,9 +601,13 @@ class TestBITelemetry:
     async def test_record_workflow_returns_id(self, bi):
         with patch.object(bi, "_persist", new=AsyncMock()):
             wid = await bi.record_workflow(
-                workflow_type="income_cycle", agent_id="income_agent",
-                strategy="shopify", revenue_usd=150.0, cost_usd=2.0,
-                duration_ms=5000.0, success=True,
+                workflow_type="income_cycle",
+                agent_id="income_agent",
+                strategy="shopify",
+                revenue_usd=150.0,
+                cost_usd=2.0,
+                duration_ms=5000.0,
+                success=True,
             )
         assert wid.startswith("wf_")
 
@@ -534,6 +623,7 @@ class TestBITelemetry:
     @pytest.mark.asyncio
     async def test_report_filters_by_window(self, bi):
         import time
+
         with patch.object(bi, "_persist", new=AsyncMock()):
             await bi.record_workflow("income", "a1", "shopify", 100.0, success=True)
         # Manually set timestamp to outside window
@@ -553,8 +643,14 @@ class TestBITelemetry:
     @pytest.mark.asyncio
     async def test_report_tool_attribution(self, bi):
         with patch.object(bi, "_persist", new=AsyncMock()):
-            await bi.record_workflow("income", "a1", "shopify", 300.0, success=True,
-                                     tools_used=["web_search", "content_gen"])
+            await bi.record_workflow(
+                "income",
+                "a1",
+                "shopify",
+                300.0,
+                success=True,
+                tools_used=["web_search", "content_gen"],
+            )
             report = await bi.report(window_hours=24)
         assert "tool_revenue_attribution" in report
 
@@ -565,7 +661,9 @@ class TestBITelemetry:
     @pytest.mark.asyncio
     async def test_workflow_profit_calculation(self, bi):
         with patch.object(bi, "_persist", new=AsyncMock()):
-            wid = await bi.record_workflow("income", "a1", "shopify", 100.0, cost_usd=30.0, success=True)
+            wid = await bi.record_workflow(
+                "income", "a1", "shopify", 100.0, cost_usd=30.0, success=True
+            )
         rec = bi._workflows[-1]
         assert rec.profit_usd == pytest.approx(70.0)
         assert rec.roi_multiple == pytest.approx(100.0 / 30.0)
@@ -573,10 +671,14 @@ class TestBITelemetry:
 
 # ── Benchmark Harness ─────────────────────────────────────────────────────────
 
+
 class TestBenchmarkHarness:
     @pytest.mark.asyncio
     async def test_hallucination_suite_runs(self):
-        from tests.testing.cognition.benchmark_harness import build_hallucination_suite, BenchmarkRunner
+        from tests.testing.cognition.benchmark_harness import (
+            build_hallucination_suite,
+            BenchmarkRunner,
+        )
         from apps.core.observability.cognition.reasoning_tracer import ReasoningTracer
 
         suite = build_hallucination_suite()
@@ -589,7 +691,10 @@ class TestBenchmarkHarness:
 
     @pytest.mark.asyncio
     async def test_rule_engine_suite_runs(self):
-        from tests.testing.cognition.benchmark_harness import build_rule_engine_suite, BenchmarkRunner
+        from tests.testing.cognition.benchmark_harness import (
+            build_rule_engine_suite,
+            BenchmarkRunner,
+        )
         from apps.core.deterministic.rule_engine import build_aria_rules
 
         suite = build_rule_engine_suite()
@@ -602,7 +707,13 @@ class TestBenchmarkHarness:
 
     @pytest.mark.asyncio
     async def test_regression_detection(self):
-        from tests.testing.cognition.benchmark_harness import BenchmarkRunner, BenchmarkSuite, Scenario, ScenarioResult
+        from tests.testing.cognition.benchmark_harness import (
+            BenchmarkRunner,
+            BenchmarkSuite,
+            Scenario,
+            ScenarioResult,
+        )
+
         runner = BenchmarkRunner()
         suite = BenchmarkSuite("test_suite")
         suite.add(Scenario("s1", "d", "", {}, evaluator=lambda _: ScenarioResult("s1", True, 1.0)))
@@ -614,9 +725,14 @@ class TestBenchmarkHarness:
 
     def test_benchmark_report_to_dict(self):
         from tests.testing.cognition.benchmark_harness import BenchmarkReport, ScenarioResult
+
         report = BenchmarkReport(
-            suite_name="test", total=2, passed=1, failed=1,
-            avg_score=0.5, results=[
+            suite_name="test",
+            total=2,
+            passed=1,
+            failed=1,
+            avg_score=0.5,
+            results=[
                 ScenarioResult("s1", True, 1.0),
                 ScenarioResult("s2", False, 0.0),
             ],

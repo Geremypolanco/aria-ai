@@ -1,4 +1,5 @@
 """Phase 11 tests — Memory Extensions (EconomicMemoryStore, ClientMemory, WorkflowMemory)."""
+
 from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,7 +12,9 @@ def _mock_cache():
     return c
 
 
-def _mock_ai(content="1. Focus on highest ROI channels\n2. Repeat what works\n3. Track all experiments"):
+def _mock_ai(
+    content="1. Focus on highest ROI channels\n2. Repeat what works\n3. Track all experiments",
+):
     ai = MagicMock()
     r = MagicMock()
     r.success = True
@@ -22,18 +25,25 @@ def _mock_ai(content="1. Focus on highest ROI channels\n2. Repeat what works\n3.
 
 # ── Economic Memory Store ─────────────────────────────────────────────────────
 
+
 class TestEconomicMemoryStore:
     @pytest.fixture
     def store(self):
         with patch("apps.memory.economic.economic_memory.get_cache", return_value=_mock_cache()):
-            with patch("apps.memory.economic.economic_memory.get_ai_client", return_value=_mock_ai()):
+            with patch(
+                "apps.memory.economic.economic_memory.get_ai_client", return_value=_mock_ai()
+            ):
                 from apps.memory.economic.economic_memory import EconomicMemoryStore
+
                 return EconomicMemoryStore()
 
     @pytest.mark.asyncio
     async def test_remember_returns_memory(self, store):
         from apps.memory.economic.economic_memory import EconomicMemory
-        mem = await store.remember("profitable_pattern", "Email campaigns yielded 4x ROI", impact_usd=500.0)
+
+        mem = await store.remember(
+            "profitable_pattern", "Email campaigns yielded 4x ROI", impact_usd=500.0
+        )
         assert isinstance(mem, EconomicMemory)
         assert mem.memory_id
 
@@ -44,12 +54,16 @@ class TestEconomicMemoryStore:
 
     @pytest.mark.asyncio
     async def test_remember_with_tags(self, store):
-        mem = await store.remember("experiment", "Quiz drove leads", impact_usd=300.0, tags=["quiz", "lead_gen"])
+        mem = await store.remember(
+            "experiment", "Quiz drove leads", impact_usd=300.0, tags=["quiz", "lead_gen"]
+        )
         assert mem.tags == ["quiz", "lead_gen"]
 
     @pytest.mark.asyncio
     async def test_recall_finds_matching_memory(self, store):
-        await store.remember("profitable", "Email marketing drives 5x ROI", impact_usd=1000.0, tags=["email"])
+        await store.remember(
+            "profitable", "Email marketing drives 5x ROI", impact_usd=1000.0, tags=["email"]
+        )
         results = await store.recall("email")
         assert len(results) >= 1
 
@@ -116,18 +130,22 @@ class TestEconomicMemoryStore:
 
 # ── Client Memory ─────────────────────────────────────────────────────────────
 
+
 class TestClientMemory:
     @pytest.fixture
     def memory(self):
         with patch("apps.memory.client.client_memory.get_cache", return_value=_mock_cache()):
-            with patch("apps.memory.client.client_memory.get_ai_client",
-                       return_value=_mock_ai("positive")):
+            with patch(
+                "apps.memory.client.client_memory.get_ai_client", return_value=_mock_ai("positive")
+            ):
                 from apps.memory.client.client_memory import ClientMemory
+
                 return ClientMemory()
 
     @pytest.mark.asyncio
     async def test_upsert_profile_returns_profile(self, memory):
         from apps.memory.client.client_memory import ClientProfile
+
         profile = await memory.upsert_profile("Alice", "alice@example.com", "TechCorp")
         assert isinstance(profile, ClientProfile)
         assert profile.profile_id
@@ -142,21 +160,28 @@ class TestClientMemory:
     @pytest.mark.asyncio
     async def test_record_interaction_returns_interaction(self, memory):
         from apps.memory.client.client_memory import ClientInteraction
+
         profile = await memory.upsert_profile("Bob", "bob@test.com")
-        interaction = await memory.record_interaction(profile.profile_id, "purchase", "Bought Plan A", value_usd=99.0)
+        interaction = await memory.record_interaction(
+            profile.profile_id, "purchase", "Bought Plan A", value_usd=99.0
+        )
         assert isinstance(interaction, ClientInteraction)
         assert interaction.interaction_id
 
     @pytest.mark.asyncio
     async def test_record_interaction_has_sentiment(self, memory):
         profile = await memory.upsert_profile("Carol", "carol@test.com")
-        interaction = await memory.record_interaction(profile.profile_id, "support", "Great service!", value_usd=0.0)
+        interaction = await memory.record_interaction(
+            profile.profile_id, "support", "Great service!", value_usd=0.0
+        )
         assert interaction.sentiment in ("positive", "neutral", "negative")
 
     @pytest.mark.asyncio
     async def test_purchase_updates_total_spent(self, memory):
         profile = await memory.upsert_profile("Dave", "dave@test.com")
-        await memory.record_interaction(profile.profile_id, "purchase", "Bought item", value_usd=150.0)
+        await memory.record_interaction(
+            profile.profile_id, "purchase", "Bought item", value_usd=150.0
+        )
         updated = next(p for p in memory._profiles if p["profile_id"] == profile.profile_id)
         assert updated["total_spent_usd"] == 150.0
 
@@ -164,7 +189,9 @@ class TestClientMemory:
     async def test_segment_client_vip_for_high_spenders(self, memory):
         profile = await memory.upsert_profile("Eve", "eve@test.com")
         for _ in range(11):
-            await memory.record_interaction(profile.profile_id, "purchase", "Purchased", value_usd=100.0)
+            await memory.record_interaction(
+                profile.profile_id, "purchase", "Purchased", value_usd=100.0
+            )
         segment = await memory.segment_client(profile.profile_id)
         assert segment == "vip"
 
@@ -183,8 +210,8 @@ class TestClientMemory:
 
     def test_get_profile_by_email(self, memory):
         import asyncio
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(memory.upsert_profile("Hank", "hank@test.com", "Corp"))
+
+        asyncio.run(memory.upsert_profile("Hank", "hank@test.com", "Corp"))
         result = memory.get_profile("hank@test.com")
         assert result is not None
         assert result["name"] == "Hank"
@@ -218,22 +245,29 @@ class TestClientMemory:
 
 # ── Workflow Memory ───────────────────────────────────────────────────────────
 
+
 class TestWorkflowMemory:
     @pytest.fixture
     def memory(self):
         with patch("apps.memory.workflow.workflow_memory.get_cache", return_value=_mock_cache()):
-            with patch("apps.memory.workflow.workflow_memory.get_ai_client", return_value=_mock_ai()):
+            with patch(
+                "apps.memory.workflow.workflow_memory.get_ai_client", return_value=_mock_ai()
+            ):
                 from apps.memory.workflow.workflow_memory import WorkflowMemory
+
                 return WorkflowMemory()
 
     @pytest.mark.asyncio
     async def test_record_returns_workflow_record(self, memory):
         from apps.memory.workflow.workflow_memory import WorkflowRecord
+
         rec = await memory.record(
-            "generate_content", "content",
+            "generate_content",
+            "content",
             inputs={"topic": "AI", "length": 800},
             outputs={"word_count": 850, "seo_score": 0.9},
-            success=True, success_score=0.95,
+            success=True,
+            success_score=0.95,
         )
         assert isinstance(rec, WorkflowRecord)
         assert rec.record_id
@@ -252,8 +286,7 @@ class TestWorkflowMemory:
     @pytest.mark.asyncio
     async def test_failed_workflow_has_lessons(self, memory):
         rec = await memory.record(
-            "deploy_quiz", "quiz", {}, {},
-            success=False, success_score=0.0, error="API timeout"
+            "deploy_quiz", "quiz", {}, {}, success=False, success_score=0.0, error="API timeout"
         )
         assert isinstance(rec.lessons, list)
         assert len(rec.lessons) >= 1
@@ -317,8 +350,12 @@ class TestWorkflowMemory:
 
     @pytest.mark.asyncio
     async def test_analytics_reflects_records(self, memory):
-        await memory.record("task_a", "content", {}, {}, success=True, success_score=0.9, duration_seconds=5.0)
-        await memory.record("task_b", "email", {}, {}, success=False, success_score=0.0, duration_seconds=3.0)
+        await memory.record(
+            "task_a", "content", {}, {}, success=True, success_score=0.9, duration_seconds=5.0
+        )
+        await memory.record(
+            "task_b", "email", {}, {}, success=False, success_score=0.0, duration_seconds=3.0
+        )
         analytics = memory.workflow_analytics()
         assert analytics["total_records"] == 2
         assert analytics["success_rate_pct"] == 50.0

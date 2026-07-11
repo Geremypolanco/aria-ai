@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saraph — Building the autonomous future</title>
+<meta name="description" content="Saraph builds autonomous AI that does the work, not just answers questions. Our flagship, ARIA, runs business growth on its own — 24/7.">
+<meta property="og:title" content="Saraph — Building the autonomous future">
+<meta property="og:description" content="Autonomous AI that does the work. Home of ARIA.">
+<link rel="icon" type="image/svg+xml" href="/assets/saraph-logo.svg">
+<link rel="stylesheet" href="/assets/aria-design-system.css">
+<style>
+  .hero { position: relative; overflow: hidden; padding-top: var(--s-9); }
+  .hero::before { content:""; position:absolute; inset:-40% 0 auto 0; height:520px;
+    background: radial-gradient(60% 60% at 50% 0%, rgba(45,212,191,.18), transparent 70%); pointer-events:none; }
+  .product { display:grid; grid-template-columns: 56px 1fr auto; gap: var(--s-4); align-items:center; }
+  .product .ic { width:56px; height:56px; }
+  .launch { display:grid; grid-template-columns: 132px 1fr; gap: var(--s-4); padding: var(--s-5) 0; border-bottom:1px solid var(--border); }
+  .launch .when { color: var(--text-dim); font-size: var(--fs-sm); }
+  .launch .tag { display:inline-block; font-size:var(--fs-xs); font-weight:700; color:var(--aria-accent-3); border:1px solid rgba(45,212,191,.3); background:rgba(45,212,191,.08); padding:3px 10px; border-radius:var(--r-full); margin-bottom:var(--s-2); }
+  footer { border-top:1px solid var(--border); padding-block: var(--s-7); color: var(--text-dim); font-size: var(--fs-sm); }
+  @media (max-width:720px){ .product{ grid-template-columns:48px 1fr; } .product .btn{ grid-column:1/-1; } .launch{ grid-template-columns:1fr; gap:var(--s-2);} }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="/saraph"><img src="/assets/saraph-logo.svg" width="28" height="28" alt="" aria-hidden="true"> Saraph</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#products">Products</a>
+      <a href="#approach">Approach</a>
+      <a href="#launches">Launches</a>
+    </nav>
+    <a class="btn btn-primary" href="/">Meet ARIA</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container stack" style="max-width:820px">
+    <span class="badge"><img src="/assets/saraph-logo.svg" width="16" height="16" alt="" aria-hidden="true"> Saraph</span>
+    <h1 class="h1">We build AI that <span class="gradient-text">does the work</span> — not just answers questions.</h1>
+    <p class="lead">Saraph is a studio building autonomous AI agents that operate on their own: finding opportunities, making decisions, and producing real outcomes around the clock. We don't ship chatbots. We ship operators.</p>
+    <div class="row">
+      <a class="btn btn-primary btn-lg" href="/">Explore ARIA →</a>
+      <a class="btn btn-secondary btn-lg" href="#launches">See what's new</a>
+    </div>
+  </div>
+</section>
+
+<!-- APPROACH -->
+<section class="section" id="approach">
+  <div class="container stack">
+    <span class="eyebrow">Our approach</span>
+    <h2 class="h2">Autonomy, built to be trusted.</h2>
+    <div class="grid grid-auto" style="margin-top:var(--s-5)">
+      <div class="card card-hover"><h3 class="h3">Agents that act</h3><p class="muted">Our systems don't wait to be prompted. They pursue goals, take action, and report outcomes.</p></div>
+      <div class="card card-hover"><h3 class="h3">Honest by design</h3><p class="muted">Every capability is verified. We track what works, expose what's missing, and never ship a promise we can't deliver.</p></div>
+      <div class="card card-hover"><h3 class="h3">Compounding intelligence</h3><p class="muted">Each agent learns from what drives results and doubles down — getting better the longer it runs.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PRODUCTS -->
+<section class="section" id="products">
+  <div class="container stack">
+    <span class="eyebrow">Products</span>
+    <h2 class="h2">What we're building.</h2>
+    <div class="card" style="margin-top:var(--s-5)">
+      <div class="product">
+        <img class="ic" src="/assets/aria-logo.svg" width="56" height="56" alt="ARIA logo">
+        <div>
+          <h3 class="h3">ARIA <span class="dim" style="font-weight:500;font-size:var(--fs-sm)">— flagship</span></h3>
+          <p class="muted">The autonomous AI revenue agent. ARIA finds clients, runs outreach, publishes content and processes payments 24/7 — so businesses grow on autopilot.</p>
+        </div>
+        <a class="btn btn-primary" href="/">Open ARIA →</a>
+      </div>
+    </div>
+    <div class="card" style="opacity:.7">
+      <div class="product">
+        <div class="ic" style="display:grid;place-items:center;border:1px dashed var(--border-strong);border-radius:14px;color:var(--text-dim)">soon</div>
+        <div>
+          <h3 class="h3">More agents, in the works</h3>
+          <p class="muted">Saraph is expanding the family of autonomous agents across new domains. Follow our launches below.</p>
+        </div>
+        <span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- LAUNCHES -->
+<section class="section" id="launches">
+  <div class="container stack" style="max-width:860px">
+    <span class="eyebrow">Launches &amp; updates</span>
+    <h2 class="h2">What's new at Saraph.</h2>
+    <div style="margin-top:var(--s-5)">
+      <div class="launch">
+        <div class="when">June 2026</div>
+        <div><span class="tag">Launch</span><h3 class="h3">ARIA goes live with real payments</h3><p class="muted">ARIA's autonomous revenue funnel is live — real Stripe checkout, instant product delivery, and a free-audit onboarding. The agent now operates the full loop end to end.</p></div>
+      </div>
+      <div class="launch">
+        <div class="when">June 2026</div>
+        <div><span class="tag">Engineering</span><h3 class="h3">A capability registry for ARIA</h3><p class="muted">ARIA now maintains an honest, self-updating map of what it can do, how well, and what's still missing — the foundation for growing to hundreds of integrations.</p></div>
+      </div>
+      <div class="launch">
+        <div class="when">Next</div>
+        <div><span class="tag">Coming</span><h3 class="h3">Live activity, multi-tenant ARIA, and more agents</h3><p class="muted">We're wiring ARIA's real-time activity into the product and building the next agents in the Saraph family.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="section">
+  <div class="container center stack" style="align-items:center">
+    <h2 class="h2">Want ARIA working for your business?</h2>
+    <p class="lead center">Start with a free AI audit — no pitch, zero risk.</p>
+    <a class="btn btn-primary btn-lg" href="/#audit">Claim my free audit →</a>
+  </div>
+</section>
+
+<footer>
+  <div class="container row" style="justify-content:space-between">
+    <span class="brand"><img src="/assets/saraph-logo.svg" width="24" height="24" alt="" aria-hidden="true"> Saraph</span>
+    <span>© Saraph — building the autonomous future. <a href="mailto:saraph.core@gmail.com" style="color:var(--text-muted)">saraph.core@gmail.com</a></span>
+  </div>
+</footer>
+</body>
+</html>

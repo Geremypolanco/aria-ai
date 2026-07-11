@@ -2,15 +2,14 @@
 ARIA AI — Agent Execution Engine.
 Connects the AI to real tools and executes tasks with proper chain-of-thought.
 """
+
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import Any
 
 from apps.core.agent_brain import get_agent
-from apps.core.tool_registry import TOOL_REGISTRY
 from apps.core.tools.ai_client import AIModel
 
 logger = logging.getLogger("aria.execution")
@@ -35,7 +34,7 @@ class TaskExecutor:
         tool_plan = await agent.think_json(
             f"""Dada esta tarea: {task}
 
-¿Qué herramientas se necesitan? 
+¿Qué herramientas se necesitan?
 Responde SOLO con JSON:
 {{
   "tools_needed": ["lista", "de", "herramientas"],

@@ -6,6 +6,23 @@ primary_region = "ord"
 [env]
   PORT = "8080"
   ENVIRONMENT = "production"
+  # The web machine runs an in-process mission worker automatically ONLY when no
+  # REDIS_URL is set (single-container mode). Once REDIS_URL is set it defaults
+  # OFF so the dedicated `worker` group is the sole consumer — no double
+  # processing. Override with ARIA_INPROCESS_WORKER=1/0 if you need to force it.
+
+# ── Process groups ────────────────────────────────────────────────
+# `web`    — the FastAPI/uvicorn API + dashboard (public, autoscaled).
+# `worker` — the stateless mission consumer (`python -m apps.core.scale.worker`).
+#
+# IMPORTANT: the `worker` group only shares the mission queue with `web` when
+# REDIS_URL is set (Redis is the cross-container broker). Without Redis every
+# machine keeps its own in-memory queue, so leave ARIA_INPROCESS_WORKER="1" and
+# run only the `web` group. Once Redis is set, scale the groups independently:
+#   fly scale count web=3 worker=4
+[processes]
+  web = "python -m uvicorn apps.core.main:app --host 0.0.0.0 --port 8080"
+  worker = "python -m apps.core.scale.worker"
 
 [http_service]
   internal_port = 8080
@@ -13,3 +30,4 @@ primary_region = "ord"
   auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
+  processes = ["web"]  # only the web group serves HTTP; workers are headless

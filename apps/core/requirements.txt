@@ -4,7 +4,7 @@ uvicorn[standard]==0.30.6
 
 # ── Configuración ─────────────────────────────────────────
 pydantic==2.8.2
-pydantic-settings==2.4.0
+pydantic-settings==2.8.1  # >=2.5.2 requerido por el SDK mcp (compatible con pydantic 2.8.2)
 python-dotenv==1.0.1
 
 # ── IA ────────────────────────────────────────────────────
@@ -41,11 +41,17 @@ python-multipart==0.0.12
 tenacity==9.0.0
 
 # ── IA adicional (Solo si es necesario) ───────────────────────
-# anthropic>=0.40.0  (API llamada via httpx — no se necesita el SDK)
+# Anthropic SDK oficial + SDK MCP — Cliente MCP y Agente de Uso de Computadora
+# (apps/core/integrations/mcp_agent.py y computer_agent.py)
+anthropic>=0.69
+mcp>=1.2,<1.13  # 1.13+ requiere pydantic>=2.11; 1.12.4 es compatible con pydantic 2.8.2
 # google-generativeai==0.7.2
 
+# ── Distributed queue / pub-sub (optional; in-memory fallback if unset) ─
+redis>=5.0,<6
+
 # ── HTTP async ────────────────────────────────────────────
-aiohttp==3.10.5
+aiohttp==3.14.1  # security: 3.10.5 had many CVEs (see SECURITY_REPORT.md)
 
 # ── Scraping y SEO ────────────────────────────────────────
 beautifulsoup4==4.12.3

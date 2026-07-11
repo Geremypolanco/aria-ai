@@ -1242,9 +1242,12 @@ class TestCashflowEngine:
 class TestBusinessAnalytics:
     @pytest.fixture
     def analytics(self):
+        # yield (not return) so the mocked cache stays active for the whole test —
+        # otherwise the real process-shared cache leaks events across tests and the
+        # count-based assertions below become order-dependent / flaky.
         with patch("apps.business.analytics.business_analytics.get_cache", return_value=_mock_cache()):
             from apps.business.analytics.business_analytics import BusinessAnalytics
-            return BusinessAnalytics()
+            yield BusinessAnalytics()
 
     @pytest.mark.asyncio
     async def test_track_event(self, analytics):

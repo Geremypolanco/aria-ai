@@ -20,3 +20,4 @@ htmlcov/
 node_modules/
 .fly/
 *.pyc
+.claude/

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "docs",
+  "framework": null,
+  "buildCommand": null,
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/access/ai-prompts-x7k2q9", "destination": "/products/200-ai-prompts.html" },
+    { "source": "/access/playbook-m4p8w1c5", "destination": "/products/ai-automation-playbook.html" },
+    { "source": "/access/complete-kit-b3x9k2", "destination": "/products/complete-kit.html" },
+    { "source": "/access/ai-quickstart-free", "destination": "/products/ai-quickstart.html" }
+  ],
+  "redirects": [
+    { "source": "/subscribe/starter", "destination": "https://buy.stripe.com/bJe3cv24B8wd0sdahhdQQ04", "statusCode": 302 },
+    { "source": "/subscribe/pro", "destination": "https://buy.stripe.com/8x2aEXeRn4fXgrb1KLdQQ05", "statusCode": 302 },
+    { "source": "/subscribe/kit", "destination": "https://buy.stripe.com/28E9ATbFb3bT3Ep755dQQ06", "statusCode": 302 }
+  ],
+  "headers": [
+    { "source": "/products/(.*)", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] }
+  ]
+}

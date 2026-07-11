@@ -1,6 +1,7 @@
 """
 Phase 9 tests — Orchestration + Market Intelligence + Reinforcement Learning.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -14,7 +15,9 @@ def _mock_cache():
     return c
 
 
-def _mock_ai(content="ACTION_TYPE: create_content | TITLE: Write SEO posts | IMPACT: 500 | HOURS: 3"):
+def _mock_ai(
+    content="ACTION_TYPE: create_content | TITLE: Write SEO posts | IMPACT: 500 | HOURS: 3",
+):
     ai = MagicMock()
     r = MagicMock()
     r.success = True
@@ -25,17 +28,22 @@ def _mock_ai(content="ACTION_TYPE: create_content | TITLE: Write SEO posts | IMP
 
 # ── Growth Orchestrator ───────────────────────────────────────────────────────
 
+
 class TestGrowthOrchestrator:
     @pytest.fixture
     def orchestrator(self):
         with patch("apps.orchestration.growth_orchestrator.get_cache", return_value=_mock_cache()):
-            with patch("apps.orchestration.growth_orchestrator.get_ai_client", return_value=_mock_ai()):
+            with patch(
+                "apps.orchestration.growth_orchestrator.get_ai_client", return_value=_mock_ai()
+            ):
                 from apps.orchestration.growth_orchestrator import GrowthOrchestrator
+
                 return GrowthOrchestrator()
 
     @pytest.mark.asyncio
     async def test_collect_economic_signals_returns_signals(self, orchestrator):
         from apps.orchestration.growth_orchestrator import EconomicSignals
+
         signals = await orchestrator.collect_economic_signals()
         assert isinstance(signals, EconomicSignals)
 
@@ -48,6 +56,7 @@ class TestGrowthOrchestrator:
     @pytest.mark.asyncio
     async def test_generate_growth_actions_returns_list(self, orchestrator):
         from apps.orchestration.growth_orchestrator import EconomicSignals, GrowthAction
+
         signals = EconomicSignals()
         actions = await orchestrator.generate_growth_actions(signals, "fitness")
         assert isinstance(actions, list)
@@ -57,6 +66,7 @@ class TestGrowthOrchestrator:
     @pytest.mark.asyncio
     async def test_actions_sorted_by_roi(self, orchestrator):
         from apps.orchestration.growth_orchestrator import EconomicSignals
+
         signals = EconomicSignals()
         actions = await orchestrator.generate_growth_actions(signals)
         roi_scores = [a.roi_score for a in actions]
@@ -65,6 +75,7 @@ class TestGrowthOrchestrator:
     @pytest.mark.asyncio
     async def test_actions_have_priority_rank(self, orchestrator):
         from apps.orchestration.growth_orchestrator import EconomicSignals
+
         signals = EconomicSignals()
         actions = await orchestrator.generate_growth_actions(signals)
         assert all(a.priority_rank >= 1 for a in actions)
@@ -72,6 +83,7 @@ class TestGrowthOrchestrator:
     @pytest.mark.asyncio
     async def test_create_weekly_plan_returns_plan(self, orchestrator):
         from apps.orchestration.growth_orchestrator import WeeklyGrowthPlan
+
         plan = await orchestrator.create_weekly_plan("skincare")
         assert isinstance(plan, WeeklyGrowthPlan)
         assert plan.plan_id
@@ -95,6 +107,7 @@ class TestGrowthOrchestrator:
     @pytest.mark.asyncio
     async def test_execute_next_action_returns_action_or_none(self, orchestrator):
         from apps.orchestration.growth_orchestrator import GrowthAction
+
         await orchestrator.create_weekly_plan("beauty")
         action = await orchestrator.execute_next_action()
         assert action is None or isinstance(action, GrowthAction)
@@ -104,7 +117,9 @@ class TestGrowthOrchestrator:
         await orchestrator.create_weekly_plan("home")
         action = await orchestrator.execute_next_action()
         if action:
-            result = await orchestrator.mark_action_complete(action.action_id, revenue_generated=250.0)
+            result = await orchestrator.mark_action_complete(
+                action.action_id, revenue_generated=250.0
+            )
             assert result is True
 
     @pytest.mark.asyncio
@@ -130,16 +145,19 @@ class TestGrowthOrchestrator:
 
 # ── Resource Allocator ────────────────────────────────────────────────────────
 
+
 class TestResourceAllocator:
     @pytest.fixture
     def allocator(self):
         with patch("apps.orchestration.resource_allocator.get_cache", return_value=_mock_cache()):
             from apps.orchestration.resource_allocator import ResourceAllocator
+
             return ResourceAllocator()
 
     @pytest.mark.asyncio
     async def test_allocate_returns_allocation(self, allocator):
         from apps.orchestration.resource_allocator import ResourceAllocation
+
         alloc = await allocator.allocate(1000.0, 40.0)
         assert isinstance(alloc, ResourceAllocation)
         assert alloc.allocation_id
@@ -162,6 +180,7 @@ class TestResourceAllocator:
     @pytest.mark.asyncio
     async def test_optimize_allocation_from_campaigns(self, allocator):
         from apps.orchestration.resource_allocator import ResourceAllocation
+
         campaigns = [
             {"channel": "content_seo", "spend": 200, "revenue": 800, "roas": 4.0},
             {"channel": "paid_ads", "spend": 300, "revenue": 600, "roas": 2.0},
@@ -181,7 +200,8 @@ class TestResourceAllocator:
 
     def test_efficiency_report_after_allocation(self, allocator):
         import asyncio
-        asyncio.get_event_loop().run_until_complete(allocator.allocate(500.0, 20.0))
+
+        asyncio.run(allocator.allocate(500.0, 20.0))
         report = allocator.efficiency_report()
         assert "total_allocations" in report
         assert report["total_allocations"] >= 1
@@ -189,11 +209,16 @@ class TestResourceAllocator:
 
 # ── Reinforcement Optimizer ───────────────────────────────────────────────────
 
+
 class TestReinforcementOptimizer:
     @pytest.fixture
     def optimizer(self):
-        with patch("apps.learning.optimization.reinforcement_optimizer.get_cache", return_value=_mock_cache()):
+        with patch(
+            "apps.learning.optimization.reinforcement_optimizer.get_cache",
+            return_value=_mock_cache(),
+        ):
             from apps.learning.optimization.reinforcement_optimizer import ReinforcementOptimizer
+
             return ReinforcementOptimizer()
 
     @pytest.mark.asyncio
@@ -206,11 +231,13 @@ class TestReinforcementOptimizer:
     async def test_select_action_from_default_arms(self, optimizer):
         action = await optimizer.select_action()
         from apps.learning.optimization.reinforcement_optimizer import _DEFAULT_ACTIONS
+
         assert action in _DEFAULT_ACTIONS
 
     @pytest.mark.asyncio
     async def test_record_outcome_returns_arm(self, optimizer):
         from apps.learning.optimization.reinforcement_optimizer import ActionArm
+
         arm = await optimizer.record_outcome("create_content", 500.0)
         assert isinstance(arm, ActionArm)
         assert arm.total_pulls == 1
@@ -270,18 +297,27 @@ class TestReinforcementOptimizer:
 
 # ── Market Intelligence ───────────────────────────────────────────────────────
 
+
 class TestMarketIntelligence:
     @pytest.fixture
     def intel(self):
-        with patch("apps.market.intelligence.market_intelligence.get_cache", return_value=_mock_cache()):
-            with patch("apps.market.intelligence.market_intelligence.get_ai_client",
-                       return_value=_mock_ai('{"position": "AI leader", "unique_angle": "fast", "key_message": "best", "target_segment": "entrepreneurs", "differentiation": "speed"}')):
+        with patch(
+            "apps.market.intelligence.market_intelligence.get_cache", return_value=_mock_cache()
+        ):
+            with patch(
+                "apps.market.intelligence.market_intelligence.get_ai_client",
+                return_value=_mock_ai(
+                    '{"position": "AI leader", "unique_angle": "fast", "key_message": "best", "target_segment": "entrepreneurs", "differentiation": "speed"}'
+                ),
+            ):
                 from apps.market.intelligence.market_intelligence import MarketIntelligence
+
                 return MarketIntelligence()
 
     @pytest.mark.asyncio
     async def test_analyze_market_returns_snapshot(self, intel):
         from apps.market.intelligence.market_intelligence import MarketSnapshot
+
         snap = await intel.analyze_market("fitness")
         assert isinstance(snap, MarketSnapshot)
         assert snap.snapshot_id
@@ -316,7 +352,8 @@ class TestMarketIntelligence:
 
     def test_latest_snapshot_returns_most_recent(self, intel):
         import asyncio
-        asyncio.get_event_loop().run_until_complete(intel.analyze_market("cooking"))
+
+        asyncio.run(intel.analyze_market("cooking"))
         snap = intel.latest_snapshot("cooking")
         assert snap is not None
         assert snap["niche"] == "cooking"

@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     # ── CONTENIDO / SEO ───────────────────────────────────
     NEWS_API_KEY: str | None = None
     SERP_API_KEY: str | None = None
+    # Alternative web-search providers (free tiers, work from servers). Set either
+    # to keep research working when SerpAPI is out of quota.
+    TAVILY_API_KEY: str | None = None
+    BRAVE_API_KEY: str | None = None
     PEXELS_API_KEY: str | None = None
     ELEVENLABS_API_KEY: str | None = None
 
@@ -169,6 +173,9 @@ class Settings(BaseSettings):
     CANVA_CLIENT_SECRET: str | None = None
     ARIA_BASE_URL: str = "https://aria-ai.fly.dev"
     ZAPIER_WEBHOOK_URL: str | None = None
+    # Full Zapier MCP endpoint URL (embeds its own key) copied from mcp.zapier.com.
+    # Lets ARIA publish to every account the owner connected in Zapier with one credential.
+    ZAPIER_MCP_URL: str | None = None
     SOCIAL_CONNECT_TOKEN: str = "aria"
 
     # ── COMUNICACIÓN ──────────────────────────────────────
@@ -177,7 +184,22 @@ class Settings(BaseSettings):
 
     # ── API PÚBLICA ───────────────────────────────────────
     ARIA_API_KEY: str | None = None
-    ZAPIER_MCP_URL: str | None = None
+    # Owner-only password gating the /admin control panel (server-side).
+    ADMIN_PASSWORD: str | None = None
+    # Dedicated HMAC key for signing user session cookies + OAuth state.
+    # Set this in production; if unset, auth.py derives an ephemeral per-process
+    # key (sessions won't survive a restart / multiple instances) — never a
+    # public constant.
+    SESSION_SECRET: str | None = None
+    # Secret for signing outbound integration webhooks.
+    WEBHOOK_SECRET: str | None = None
+    # Fly.io API token — enables the live instance counter in the admin console.
+    FLY_API_TOKEN: str | None = None
+    # Social webhook signing secrets (Social Media Monitor controller).
+    # (META_APP_SECRET is already declared with META_APP_ID below.)
+    INSTAGRAM_APP_SECRET: str | None = None
+    META_VERIFY_TOKEN: str | None = None
+    YOUTUBE_WEBHOOK_SECRET: str | None = None
 
     # ── CREDENCIALES DE ARIA (para login stealth en plataformas) ──────────
     ARIA_EMAIL: str | None = None
@@ -188,6 +210,10 @@ class Settings(BaseSettings):
     # Obtén en: console.cloud.google.com → APIs & Services → Credentials → OAuth 2.0
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
+    GITHUB_CLIENT_ID: str | None = None
+    GITHUB_CLIENT_SECRET: str | None = None
+    META_APP_ID: str | None = None
+    META_APP_SECRET: str | None = None
 
     # Slack OAuth (para enviar/leer mensajes en workspaces)
     # Obtén en: api.slack.com/apps → Create App → OAuth & Permissions

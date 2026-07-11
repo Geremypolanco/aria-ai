@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    width: 320px;
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #09090b;
+    color: #f4f4f5;
+    padding: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; }
+  .dot {
+    width: 22px; height: 22px; border-radius: 7px;
+    background: linear-gradient(135deg, #6366f1, #06b6d4);
+    display: grid; place-items: center; font-size: 12px;
+  }
+  .sub { color: #a1a1aa; font-size: 12px; margin: 8px 0 14px; line-height: 1.5; }
+  label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #71717a; margin: 12px 0 5px; }
+  .box {
+    background: #18181b; border: 1px solid #27272a; border-radius: 10px;
+    padding: 9px 11px; font-size: 12.5px; color: #d4d4d8;
+    max-height: 84px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+  }
+  .url { color: #818cf8; }
+  button {
+    width: 100%; margin-top: 14px; padding: 11px; border: 0; border-radius: 10px;
+    font-weight: 700; font-size: 14px; cursor: pointer; color: #fff;
+    background: linear-gradient(92deg, #6366f1, #06b6d4);
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .status { margin-top: 10px; font-size: 12px; min-height: 16px; text-align: center; }
+  .ok { color: #34d399; } .err { color: #fb7185; }
+  a.lnk { color: #818cf8; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="brand"><span class="dot">A</span> ARIA Clipper</div>
+  <p class="sub">Send this page and your highlighted text to ARIA as a research clip.</p>
+
+  <label>Page</label>
+  <div class="box url" id="url">…</div>
+
+  <label>Selected text</label>
+  <div class="box" id="selection">(nothing selected — highlight text on the page first)</div>
+
+  <button id="send">Clip to ARIA</button>
+  <div class="status" id="status"></div>
+  <p class="sub" style="margin-top:12px">Signed in to
+    <a class="lnk" href="https://aria-ai.fly.dev/app" target="_blank">aria-ai.fly.dev</a>? Your clips land in your workspace.</p>
+
+  <script src="popup.js"></script>
+</body>
+</html>

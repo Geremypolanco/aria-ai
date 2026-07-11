@@ -2,25 +2,187 @@
 ARIA AI — Autonomous Intelligence Platform.
 Full-featured FastAPI server with AI integration, chat, and web interface.
 """
+
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
 import os
-import json
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime
-from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from pydantic import BaseModel
 
 from apps.core.config import settings
 
+# ── ADMIN AUTH (server-side gate for the owner-only control panel) ─────────
+_ADMIN_COOKIE = "aria_admin"
+
+# The owner is admin automatically when signed in via OAuth with one of these
+# emails (no separate password needed). Extra emails can be added via OWNER_EMAIL.
+OWNER_EMAILS = {"geremypolancod@gmail.com"}
+
+
+def _owner_emails() -> set[str]:
+    emails = {e.lower() for e in OWNER_EMAILS}
+    extra = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
+    if extra:
+        emails.add(extra)
+    return emails
+
+
+def _admin_token() -> str:
+    """Deterministic session token derived from the admin password. An attacker who
+    doesn't know ADMIN_PASSWORD cannot forge it."""
+    pw = (getattr(settings, "ADMIN_PASSWORD", None) or "").encode()
+    return hmac.new(pw or b"unset", b"aria-admin-session-v1", hashlib.sha256).hexdigest()
+
+
+def _is_owner_user(request: Request) -> bool:
+    """True when the visitor is signed in (Google/GitHub OAuth) as the owner."""
+    try:
+        from apps.core import auth
+
+        u = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+        email = ((u or {}).get("email") or "").strip().lower()
+        return bool(email) and email in _owner_emails()
+    except Exception:
+        return False
+
+
+def _is_admin(request: Request) -> bool:
+    # The owner, signed in via OAuth, is always admin.
+    if _is_owner_user(request):
+        return True
+    if not getattr(settings, "ADMIN_PASSWORD", None):
+        return False  # locked until an admin password is configured
+    return hmac.compare_digest(request.cookies.get(_ADMIN_COOKIE, ""), _admin_token())
+
+
+def _current_user(request: Request) -> dict | None:
+    """The signed-in user (verified session cookie), or None."""
+    try:
+        from apps.core import auth
+
+        return auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    except Exception:
+        return None
+
+
+# ── lightweight in-process rate limiter (no external dependency) ───────────
+# Sliding-window per (client-ip, bucket). Protects expensive/public endpoints
+# from abuse and cost blow-ups. For multi-instance deployments a shared store
+# (Redis) would be stronger, but this bounds abuse on a single instance.
+import time as _time  # noqa: E402
+from collections import defaultdict, deque  # noqa: E402
+
+_RATE_HITS: dict[str, deque] = defaultdict(deque)
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_ok(request: Request, bucket: str, limit: int, window: float) -> bool:
+    """Return True if this client is under `limit` requests in `window` seconds."""
+    key = f"{bucket}:{_client_ip(request)}"
+    now = _time.time()
+    hits = _RATE_HITS[key]
+    while hits and hits[0] <= now - window:
+        hits.popleft()
+    if len(hits) >= limit:
+        return False
+    hits.append(now)
+    if len(_RATE_HITS) > 5000:  # crude memory cap
+        for k in list(_RATE_HITS.keys())[:1000]:
+            if not _RATE_HITS[k]:
+                del _RATE_HITS[k]
+    return True
+
+
+def _json_for_script(obj) -> str:
+    """json.dumps, but safe to embed inside an inline <script> — escapes the
+    characters that could otherwise break out of the script context (XSS)."""
+    out = json.dumps(obj)
+    for a, b in (
+        ("<", "\\u003c"),
+        (">", "\\u003e"),
+        ("&", "\\u0026"),
+        ("\u2028", "\\u2028"),
+        ("\u2029", "\\u2029"),
+    ):
+        out = out.replace(a, b)
+    return out
+
+
+# \u2500\u2500 Global Panic + AI burn-rate accounting \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# Global "panic" freeze \u2014 flipped by the owner from the God Mode console to halt
+# all user missions instantly. In-process (best-effort mirrored to cache).
+_PANIC: dict[str, bool] = {"on": False}
+
+# Conservative model used to *price* usage for the burn-rate cap. We may run on
+# free/flat tiers, but the cap accounts against a paid-model rate to protect
+# margin \u2014 the admin UI labels this "estimated".
+_BILLING_MODEL = "claude-haiku-4-5"
+
+
+async def _record_ai_cost(email: str, plan: str, prompt: str, reply: str) -> None:
+    """Estimate + record the AI cost of a chat turn and enforce the burn cap."""
+    if not email:
+        return
+    try:
+        from apps.core.ops.cost_ledger import get_ledger, notify_burn_cap
+
+        led = get_ledger()
+        in_tokens = max(1, len(prompt) // 4)
+        out_tokens = max(1, len(reply) // 4)
+        led.record(email, _BILLING_MODEL, in_tokens, out_tokens)
+        was_frozen = led.is_frozen(email)
+        if led.evaluate(email, plan) and not was_frozen:
+            frac = led.usage_fraction(email, plan)
+            await notify_burn_cap(email, plan, frac)
+            logger.info("[cost] burn-cap freeze for %s at %.0f%%", email, frac * 100)
+    except Exception as exc:  # noqa: BLE001 \u2014 accounting must never break chat
+        logger.debug("[cost] record failed: %s", exc)
+
+
+_LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIA · Admin</title><style>
+*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:radial-gradient(120% 90% at 20% 10%,rgba(124,58,237,.35),transparent 45%),#0a0a0f;color:#f1f5f9}}
+.card{{width:360px;max-width:92vw;background:rgba(17,17,24,.85);border:1px solid rgba(255,255,255,.1);
+border-radius:18px;padding:36px 30px;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+h1{{font-size:22px;margin-bottom:6px}} p{{color:#94a3b8;font-size:14px;margin-bottom:22px}}
+input{{width:100%;padding:13px 15px;border-radius:11px;border:1px solid rgba(255,255,255,.14);
+background:rgba(255,255,255,.04);color:#fff;font-size:15px;margin-bottom:14px}}
+button{{width:100%;padding:13px;border:0;border-radius:11px;font-weight:600;font-size:15px;cursor:pointer;
+background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}}
+.err{{color:#fb7185;font-size:13px;margin-bottom:12px}} .mut{{color:#64748b;font-size:12px;margin-top:16px;text-align:center}}
+</style></head><body><form class="card" method="post" action="/admin/login">
+<h1>Control panel</h1><p>Admin access only.</p>
+{error}<input type="password" name="password" placeholder="Admin password" autofocus required>
+<button type="submit">Sign in</button>
+<div class="mut">{notice}</div></form></body></html>"""
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("aria")
+
 
 # ── LIFESPAN ──────────────────────────────────────────────
 @asynccontextmanager
@@ -29,13 +191,67 @@ async def lifespan(app: FastAPI):
     # Warm up the AI client
     try:
         from apps.core.tools.ai_client import get_ai_client
+
         client = get_ai_client()
         if client:
             logger.info("✅ AI Client initialized")
     except Exception as e:
         logger.warning(f"⚠️ AI Client init: {e}")
+
+    # Connector health semaphore — ping external APIs every 30 minutes so the
+    # dashboard can hold queued posts when a platform is globally down.
+    health_task = None
+
+    async def _health_loop():
+        import asyncio as _a
+
+        from apps.core.ops.connector_health import CHECK_INTERVAL_SECONDS, check_all
+
+        while True:
+            try:
+                await check_all()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[health] loop check failed: %s", exc)
+            await _a.sleep(CHECK_INTERVAL_SECONDS)
+
+    try:
+        import asyncio as _asyncio
+
+        health_task = _asyncio.create_task(_health_loop())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"⚠️ health loop not started: {e}")
+
+    # In-process mission worker — convenient for single-container dev. In
+    # production run dedicated worker containers instead (see SCALE_ARCH.md) and
+    # set ARIA_INPROCESS_WORKER=0. Enabled by default only when no REDIS_URL
+    # (i.e. single-instance), so multi-container deploys don't double-process.
+    worker_task = None
+    worker_stop = None
+    want_worker = os.environ.get(
+        "ARIA_INPROCESS_WORKER", "1" if not getattr(settings, "REDIS_URL", None) else "0"
+    ) not in ("0", "false", "False", "")
+    if want_worker:
+        try:
+            import asyncio as _asyncio
+
+            from apps.core.scale.worker import run_forever
+
+            worker_stop = _asyncio.Event()
+            worker_task = _asyncio.create_task(run_forever(stop=worker_stop))
+            logger.info("🧵 in-process mission worker started")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"⚠️ in-process worker not started: {e}")
+
     yield
+
+    if health_task is not None:
+        health_task.cancel()
+    if worker_stop is not None:
+        worker_stop.set()
+    if worker_task is not None:
+        worker_task.cancel()
     logger.info("🛑 ARIA AI shutting down...")
+
 
 # ── APP ───────────────────────────────────────────────────
 app = FastAPI(
@@ -52,15 +268,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Feature routers (modular) ─────────────────────────────────────
+try:
+    from apps.core.routes.clipper import router as clipper_router
+    from apps.core.routes.missions import router as missions_router
+    from apps.core.routes.voice_profile import router as voice_router
+    from apps.core.webhooks.webhook_monitor_controller import router as webhook_router
+
+    app.include_router(clipper_router)
+    app.include_router(voice_router)
+    app.include_router(webhook_router)
+    app.include_router(missions_router)
+except Exception as _exc:  # noqa: BLE001 — never let an optional router break boot
+    logging.getLogger("aria").warning("feature routers not fully loaded: %s", _exc)
+
+
 # ── MODELS ────────────────────────────────────────────────
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
 
+
 class ChatResponse(BaseModel):
     reply: str
     model_used: str = ""
     processing_time_ms: int = 0
+
+
+class SupportRequest(BaseModel):
+    message: str
+    session_id: str = "support"
+
+
+class ProfileRequest(BaseModel):
+    name: str = ""
+    work: str = ""
+    goals: list[str] = []
+    plan: str = "free"
+
+
+class ConnectorRequest(BaseModel):
+    app: str = ""
+
 
 # ── FRONTEND ROUTES ───────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
@@ -72,14 +321,851 @@ async def root():
     except FileNotFoundError:
         return HTMLResponse("<h1>ARIA AI</h1><p>Online</p>")
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard():
-    path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
+
+# ── LEGAL PAGES (required to launch a paid product) ────────
+# Premium dark-mode legal pages live as styled HTML files under templates/legal/
+# and are served at /legal/{terms,privacy,refund-policy}. Legacy short paths
+# (/terms, /privacy, /refunds) 301-redirect to the canonical /legal/* URLs so
+# there is a single source of truth.
+_LEGAL_CONTACT = "litesaraph@gmail.com"
+
+_LEGAL_FILES = {
+    "terms": "terms.html",
+    "privacy": "privacy.html",
+    "refund-policy": "refund-policy.html",
+}
+
+
+def _serve_legal(slug: str) -> HTMLResponse:
+    filename = _LEGAL_FILES.get(slug)
+    if not filename:
+        return HTMLResponse("<h1>Not found</h1>", status_code=404)
+    path = os.path.join(os.path.dirname(__file__), "templates", "legal", filename)
     try:
         with open(path, encoding="utf-8") as f:
-            return f.read()
+            return HTMLResponse(f.read())
     except FileNotFoundError:
-        return HTMLResponse("<h1>Dashboard</h1><p>Not found</p>")
+        return HTMLResponse(
+            f"<h1>ARIA · {slug.title()}</h1><p>Page unavailable.</p>", status_code=404
+        )
+
+
+@app.get("/legal", response_class=HTMLResponse)
+async def legal_index():
+    return RedirectResponse("/legal/terms", status_code=307)
+
+
+@app.get("/legal/{slug}", response_class=HTMLResponse)
+async def legal_page(slug: str):
+    # Tolerate an optional .html suffix (/legal/terms.html).
+    return _serve_legal(slug[:-5] if slug.endswith(".html") else slug)
+
+
+# Backward-compatible redirects to the canonical /legal/* URLs.
+@app.get("/terms")
+async def terms():
+    return RedirectResponse("/legal/terms", status_code=301)
+
+
+@app.get("/privacy")
+async def privacy():
+    return RedirectResponse("/legal/privacy", status_code=301)
+
+
+@app.get("/refunds")
+async def refunds():
+    return RedirectResponse("/legal/refund-policy", status_code=301)
+
+
+def _serve_control_panel() -> HTMLResponse:
+    # God Mode console; falls back to the legacy dashboard if the template is absent.
+    for tpl in ("admin.html", "dashboard.html"):
+        path = os.path.join(os.path.dirname(__file__), "templates", tpl)
+        try:
+            with open(path, encoding="utf-8") as f:
+                return HTMLResponse(f.read())
+        except FileNotFoundError:
+            continue
+    return HTMLResponse("<h1>Panel</h1><p>Not found</p>")
+
+
+@app.get("/dashboard")
+async def dashboard_redirect():
+    # The control panel is now owner-only; old links land on the gate.
+    return RedirectResponse("/admin", status_code=307)
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_page():
+    notice = (
+        "ARIA · Autonomous Intelligence"
+        if getattr(settings, "ADMIN_PASSWORD", None)
+        else "⚠️ Set ADMIN_PASSWORD on the server to enable access."
+    )
+    return HTMLResponse(_LOGIN_HTML.format(error="", notice=notice))
+
+
+@app.post("/admin/login")
+async def admin_login(password: str = Form(...)):
+    real = getattr(settings, "ADMIN_PASSWORD", None)
+    if not real:
+        return HTMLResponse(
+            _LOGIN_HTML.format(
+                error='<div class="err">Panel locked: set ADMIN_PASSWORD.</div>',
+                notice="",
+            ),
+            status_code=403,
+        )
+    if not hmac.compare_digest(password, real):
+        return HTMLResponse(
+            _LOGIN_HTML.format(error='<div class="err">Incorrect password.</div>', notice=""),
+            status_code=401,
+        )
+    resp = RedirectResponse("/admin", status_code=303)
+    resp.set_cookie(
+        _ADMIN_COOKIE,
+        _admin_token(),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,
+    )
+    return resp
+
+
+@app.get("/admin/logout")
+async def admin_logout():
+    resp = RedirectResponse("/admin/login", status_code=303)
+    resp.delete_cookie(_ADMIN_COOKIE)
+    return resp
+
+
+@app.get("/admin")
+async def admin_panel(request: Request):
+    if not _is_admin(request):
+        return RedirectResponse("/admin/login", status_code=307)
+    return _serve_control_panel()
+
+
+# ── GOD MODE: data + operator actions ─────────────────────────────
+async def _fly_instance_count() -> int | None:
+    """Live Fly.io machine count for this app, or None if not configured."""
+    token = os.environ.get("FLY_API_TOKEN") or getattr(settings, "FLY_API_TOKEN", None)
+    app_name = os.environ.get("FLY_APP_NAME", "aria-ai")
+    if not token:
+        return None
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=8.0) as c:
+            r = await c.get(
+                f"https://api.machines.dev/v1/apps/{app_name}/machines",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if r.status_code == 200:
+                return len([m for m in r.json() if m.get("state") == "started"])
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[admin] fly count failed: %s", exc)
+    return None
+
+
+async def _list_users() -> list[dict]:
+    """Signed-up users recorded at login (best-effort; empty if none)."""
+    users: list[dict] = []
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        raw = await get_cache().lrange("aria:users", 0, 500)
+        seen = set()
+        for item in raw or []:
+            try:
+                u = json.loads(item)
+            except Exception:
+                continue
+            em = (u.get("email") or "").strip().lower()
+            if em and em not in seen:
+                seen.add(em)
+                users.append(
+                    {"email": em, "name": u.get("name", ""), "provider": u.get("provider", "")}
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[admin] list users failed: %s", exc)
+    return users
+
+
+@app.get("/admin/api/overview")
+async def admin_overview(request: Request):
+    """Real operational data for the God Mode console (admin-gated)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+
+    from apps.core.ops.connector_health import get_store
+    from apps.core.ops.cost_ledger import get_ledger
+
+    led = get_ledger()
+
+    # Revenue (real, from metrics if tracked) vs estimated API spend.
+    revenue = 0.0
+    try:
+        from apps.core.observability.metrics import get_metrics
+
+        income = get_metrics().to_dict().get("income", {}) or {}
+        revenue = float(income.get("revenue_usd", 0.0) or 0.0)
+    except Exception:
+        revenue = 0.0
+    api_spend = round(sum(led._cost.values()), 2)  # month-to-date estimated
+
+    users = await _list_users()
+    return {
+        "net_margin_usd": round(revenue - api_spend, 2),
+        "revenue_usd": round(revenue, 2),
+        "estimated_api_spend_usd": api_spend,
+        "fly_instances": await _fly_instance_count(),  # None if FLY_API_TOKEN unset
+        "users": users,
+        "user_count": len(users),
+        "frozen_users": led.frozen_users(),
+        "connectors": get_store().get_all(),
+        "panic": _PANIC["on"],
+    }
+
+
+@app.post("/admin/panic")
+async def admin_panic(request: Request):
+    """Global Panic Button — instantly freeze all user missions. Owner-only."""
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    _PANIC["on"] = True
+    logger.warning("[admin] GLOBAL PANIC engaged by owner")
+    return {"ok": True, "panic": True}
+
+
+@app.post("/admin/unpanic")
+async def admin_unpanic(request: Request):
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    _PANIC["on"] = False
+    logger.warning("[admin] global panic released by owner")
+    return {"ok": True, "panic": False}
+
+
+_IMPERSONATOR_COOKIE = "aria_impersonator"
+
+
+@app.post("/admin/impersonate")
+async def admin_impersonate(request: Request, email: str = Form(...)):
+    """Enter a user's dashboard for support. Owner-only. The real owner session
+    is preserved in a signed cookie so it can be restored."""
+    from apps.core import auth
+
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    target = _safe_name(email).strip().lower()
+    if not target or "@" not in target:
+        return JSONResponse({"error": "invalid email"}, status_code=400)
+    owner = auth.verify_user(request.cookies.get(auth.USER_COOKIE)) or {}
+    resp = RedirectResponse("/app", status_code=303)
+    # Remember who we really are (signed) so /admin/stop-impersonate can restore.
+    resp.set_cookie(
+        _IMPERSONATOR_COOKIE,
+        auth.sign_user(owner.get("email", ""), owner.get("name", ""), "owner"),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60,
+    )
+    # Become the target user.
+    resp.set_cookie(
+        auth.USER_COOKIE,
+        auth.sign_user(target, target.split("@")[0], "impersonated"),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60,
+    )
+    logger.warning("[admin] owner impersonating %s", target)
+    return resp
+
+
+@app.get("/admin/stop-impersonate")
+async def admin_stop_impersonate(request: Request):
+    """Restore the owner session after impersonation."""
+    from apps.core import auth
+
+    orig = auth.verify_user(request.cookies.get(_IMPERSONATOR_COOKIE))
+    resp = RedirectResponse("/admin", status_code=303)
+    if orig and orig.get("email"):
+        resp.set_cookie(
+            auth.USER_COOKIE,
+            auth.sign_user(orig["email"], orig.get("name", ""), "google"),
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=60 * 60 * 24 * 30,
+        )
+    else:
+        resp.delete_cookie(auth.USER_COOKIE)
+    resp.delete_cookie(_IMPERSONATOR_COOKIE)
+    return resp
+
+
+@app.get("/api/v1/connectors/health")
+async def connectors_health():
+    """Connector health for the preventive banner. Refreshes lazily if stale
+    (>30 min) so queued posts can be held when a platform is globally down."""
+    import time as _t
+
+    from apps.core.ops.connector_health import CHECK_INTERVAL_SECONDS, check_all, get_store
+
+    store = get_store()
+    statuses = store.get_all()
+    newest = max((s.get("checked_at") or 0 for s in statuses.values()), default=0)
+    if (_t.time() - newest) > CHECK_INTERVAL_SECONDS:
+        try:
+            statuses = await check_all(store=store)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[health] refresh failed: %s", exc)
+    return {"connectors": statuses, "offline": store.offline()}
+
+
+# ── PUBLIC SIGNUP (waitlist until user accounts + billing ship) ────────────
+_SIGNUP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Access</title><style>
+*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:radial-gradient(120% 90% at 80% 10%,rgba(37,99,235,.30),transparent 45%),
+radial-gradient(120% 90% at 10% 90%,rgba(124,58,237,.30),transparent 45%),#0a0a0f;color:#f1f5f9}}
+.card{{width:420px;max-width:92vw;background:rgba(17,17,24,.85);border:1px solid rgba(255,255,255,.1);
+border-radius:20px;padding:40px 34px;text-align:center;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+h1{{font-size:26px;margin-bottom:10px}} p{{color:#94a3b8;font-size:15px;margin-bottom:24px;line-height:1.5}}
+input{{width:100%;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.14);
+background:rgba(255,255,255,.04);color:#fff;font-size:15px;margin-bottom:14px}}
+button{{width:100%;padding:14px;border:0;border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;
+background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}} a{{color:#a78bfa;text-decoration:none}}
+.mut{{color:#64748b;font-size:13px;margin-top:18px}}</style></head><body>
+<form class="card" method="post" action="/signup">
+<h1>{title}</h1><p>{sub}</p>{body}</form></body></html>"""
+
+
+@app.get("/signup", response_class=HTMLResponse)
+async def signup_page():
+    body = (
+        '<input type="email" name="email" placeholder="tu@email.com" required autofocus>'
+        '<button type="submit">Join the access list</button>'
+        '<div class="mut">Are you the admin? <a href="/admin/login">Open the panel</a></div>'
+    )
+    return HTMLResponse(
+        _SIGNUP_HTML.format(
+            title="Be first to use ARIA",
+            sub="We're opening access in waves. Leave your email and we'll let you know when your plan is ready.",
+            body=body,
+        )
+    )
+
+
+@app.post("/signup", response_class=HTMLResponse)
+async def signup_submit(email: str = Form(...)):
+    with suppress(Exception):
+        from apps.core.memory.redis_client import get_cache
+
+        await get_cache().rpush("aria:waitlist", email.strip().lower())
+    return HTMLResponse(
+        _SIGNUP_HTML.format(
+            title="You're in! 🎉",
+            sub="You're on the list. We'll email you when your access is ready.",
+            body='<a href="/" style="display:inline-block;margin-top:6px">← Back</a>',
+        )
+    )
+
+
+# ── USER OAUTH LOGIN (Google / GitHub) → per-user dashboard ────────────────
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    from apps.core import auth
+
+    g = (
+        '<a class="btn" href="/auth/google"><span>Continue with Google</span></a>'
+        if auth.google_enabled()
+        else ""
+    )
+    gh = (
+        '<a class="btn gh" href="/auth/github"><span>Continue with GitHub</span></a>'
+        if auth.github_enabled()
+        else ""
+    )
+    body = g + gh or '<p style="color:#fb7185">Login not configured.</p>'
+    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Sign in</title><style>
+*{{margin:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:radial-gradient(120% 90% at 80% 10%,rgba(34,211,238,.10),transparent 45%),
+radial-gradient(120% 90% at 10% 90%,rgba(52,211,153,.12),transparent 45%),#09090b;color:#fafafa}}
+.card{{width:400px;max-width:92vw;background:rgba(24,24,27,.72);border:1px solid #27272a;
+border-radius:20px;padding:42px 34px;text-align:center;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+.brand{{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:20px}}
+.brand .wm{{font-size:20px;font-weight:800;letter-spacing:.22em;color:#fafafa}}
+h1{{font-size:24px;margin-bottom:8px;color:#fafafa}} p{{color:#a1a1aa;font-size:15px;margin-bottom:26px}}
+.btn{{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;
+border-radius:12px;border:1px solid #3f3f46;background:rgba(255,255,255,.05);
+color:#fafafa;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12px;transition:background .2s}}
+.btn:hover{{background:rgba(255,255,255,.1)}} .btn.gh{{background:#18181b;border-color:#3f3f46}}
+.mut{{color:#71717a;font-size:12px;margin-top:18px}} a.lnk{{color:#34d399;text-decoration:none}}
+</style></head><body><div class="card">
+<div class="brand">
+  <svg width="34" height="34" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <defs><linearGradient id="ariaMarkLogin" x1="5" y1="27" x2="27" y2="5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22d3ee"/><stop offset=".5" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
+    <path d="M6.5 26 L14.4 6.3 C15 4.9 17 4.9 17.6 6.3 L25.5 26" stroke="url(#ariaMarkLogin)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M11 18.6 H21" stroke="url(#ariaMarkLogin)" stroke-width="2.8" stroke-linecap="round"/>
+    <path d="M16 8.2 C19.4 11.6 19.4 15.8 16 19.2 C12.6 15.8 12.6 11.6 16 8.2 Z" stroke="#a7f3d0" stroke-opacity=".55" stroke-width="1" fill="none"/>
+  </svg>
+  <span class="wm">ARIA</span>
+</div>
+<h1>Sign in</h1>
+<p>Access your personal workspace.</p>{body}
+<div class="mut">By continuing you agree to our <a class="lnk" href="/legal/terms">Terms</a>,
+<a class="lnk" href="/legal/privacy">Privacy</a> &amp;
+<a class="lnk" href="/legal/refund-policy">Refund Policy</a>.
+<a class="lnk" href="/">← Home</a></div>
+</div></body></html>"""
+    return HTMLResponse(html)
+
+
+def _oauth_redirect(url: str | None, state: str, fallback: str) -> RedirectResponse:
+    """Redirect to the provider, binding `state` to the browser via a cookie."""
+    if not url:
+        return RedirectResponse(fallback, status_code=307)
+    resp = RedirectResponse(url, status_code=307)
+    from apps.core import auth
+
+    resp.set_cookie(
+        auth.OAUTH_STATE_COOKIE,
+        state,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=auth.STATE_MAX_AGE,
+    )
+    return resp
+
+
+@app.get("/auth/google")
+async def auth_google():
+    from apps.core import auth
+
+    state = auth.make_state()
+    return _oauth_redirect(auth.google_authorize_url(state), state, "/login?e=google_off")
+
+
+@app.get("/auth/github")
+async def auth_github():
+    from apps.core import auth
+
+    state = auth.make_state()
+    return _oauth_redirect(auth.github_authorize_url(state), state, "/login?e=github_off")
+
+
+async def _finish_login(profile: dict | None):
+    from apps.core import auth
+
+    if not profile or not profile.get("email"):
+        return RedirectResponse("/login?e=failed", status_code=303)
+    await auth.remember_user(profile)
+    resp = RedirectResponse("/app", status_code=303)
+    resp.set_cookie(
+        auth.USER_COOKIE,
+        auth.sign_user(profile["email"], profile.get("name", ""), profile.get("provider", "")),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 30,
+    )
+    return resp
+
+
+@app.get("/auth/google/callback")
+async def auth_google_cb(request: Request):
+    from apps.core import auth
+
+    cookie_state = request.cookies.get(auth.OAUTH_STATE_COOKIE)
+    if not auth.check_state(request.query_params.get("state"), cookie_state):
+        return RedirectResponse("/login?e=state", status_code=303)
+    code = request.query_params.get("code")
+    if not code:
+        return RedirectResponse("/login?e=nocode", status_code=303)
+    resp = await _finish_login(await auth.google_exchange(code))
+    resp.delete_cookie(auth.OAUTH_STATE_COOKIE)
+    return resp
+
+
+@app.get("/auth/github/callback")
+async def auth_github_cb(request: Request):
+    from apps.core import auth
+
+    cookie_state = request.cookies.get(auth.OAUTH_STATE_COOKIE)
+    if not auth.check_state(request.query_params.get("state"), cookie_state):
+        return RedirectResponse("/login?e=state", status_code=303)
+    code = request.query_params.get("code")
+    if not code:
+        return RedirectResponse("/login?e=nocode", status_code=303)
+    resp = await _finish_login(await auth.github_exchange(code))
+    resp.delete_cookie(auth.OAUTH_STATE_COOKIE)
+    return resp
+
+
+@app.get("/logout")
+async def user_logout():
+    from apps.core import auth
+
+    resp = RedirectResponse("/", status_code=303)
+    resp.delete_cookie(auth.USER_COOKIE)
+    return resp
+
+
+def _safe_name(s: str) -> str:
+    """Sanitize an OAuth-provided display value for safe embedding in HTML/JS.
+    Strips characters that could break out of an HTML attribute or JS string."""
+    s = (s or "").strip()
+    for ch in ('"', "'", "<", ">", "\\", "\n", "\r", "\t", "`"):
+        s = s.replace(ch, "")
+    return s[:40]
+
+
+@app.get("/app", response_class=HTMLResponse)
+async def user_app(request: Request):
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return RedirectResponse("/login", status_code=307)
+
+    raw_email = (user.get("email") or "").strip().lower()
+    profile = await _get_profile(raw_email)
+
+    # Prefer the name the user chose during onboarding, else the OAuth name.
+    chosen = profile.get("name") if profile else ""
+    name = _safe_name(chosen or user.get("name") or raw_email.split("@")[0] or "there")
+    email = _safe_name(user.get("email", ""))
+    first = name.split(" ")[0] if name else "there"
+    initial = (first[:1] or "Y").upper()
+    is_owner = raw_email in _owner_emails()
+    plan_map = {"pro": "Pro", "business": "Business"}
+    plan = "Business" if is_owner else plan_map.get(await _get_user_plan(raw_email), "Free")
+    onboarded = "true" if (profile and profile.get("onboarded")) else "false"
+    profile_json = _json_for_script(
+        {
+            "work": (profile.get("work", "") if profile else ""),
+            "goals": (profile.get("goals", []) if profile else []),
+        }
+    )
+
+    path = os.path.join(os.path.dirname(__file__), "templates", "app.html")
+    try:
+        with open(path, encoding="utf-8") as f:
+            html = f.read()
+    except FileNotFoundError:
+        return HTMLResponse(f"<h1>Hi {name}</h1><p>Workspace template missing.</p>")
+
+    html = (
+        html.replace("__NAME__", name)
+        .replace("__FIRST__", first)
+        .replace("__INITIAL__", initial)
+        .replace("__EMAIL__", email)
+        .replace("__PLAN__", plan)
+        .replace("__ONBOARDED__", onboarded)
+        .replace("__PROFILE_JSON__", profile_json)
+        .replace("__IS_OWNER__", "true" if is_owner else "false")
+    )
+    return HTMLResponse(html)
+
+
+# ── BILLING (Stripe Checkout, subscription) ───────────────
+_PLAN_KEY = "aria:plan:{email}"
+
+# Researched, margin-positive tiers (2026 market: entry premium ~$20, teams $25-30/seat).
+# ARIA does more than chat (it also researches + publishes), so a slight premium holds.
+BILLING_PLANS = {
+    "pro": {"name": "ARIA Pro", "cents": 2900},  # $29 / month
+    "business": {"name": "ARIA Business", "cents": 9900},  # $99 / month
+}
+
+
+async def _get_user_plan(email: str) -> str:
+    if not email:
+        return "free"
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        val = await get_cache().get(_PLAN_KEY.format(email=email))
+        return val if val in ("free", "pro", "business") else "free"
+    except Exception:
+        return "free"
+
+
+async def _set_user_plan(email: str, plan: str) -> None:
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        await get_cache().set(_PLAN_KEY.format(email=email), plan, ttl_seconds=45 * 24 * 3600)
+    except Exception as e:
+        logger.warning(f"set_user_plan failed: {e}")
+
+
+# Free-plan daily message cap — the concrete reason to upgrade to Pro.
+FREE_DAILY_LIMIT = 15
+
+
+async def _consume_free_quota(email: str) -> tuple[bool, int]:
+    """Count today's message for a Free user. Returns (allowed, remaining).
+    Fails open (allowed) if the cache is unavailable."""
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        cache = get_cache()
+        key = f"aria:usage:{email}:{datetime.utcnow():%Y%m%d}"
+        count = await cache.increment(key)
+        if count == 1:
+            await cache.expire(key, 2 * 24 * 3600)
+        return (count <= FREE_DAILY_LIMIT, max(0, FREE_DAILY_LIMIT - count))
+    except Exception:
+        return (True, FREE_DAILY_LIMIT)
+
+
+# ── USER PROFILE (onboarding + personalization) ───────────
+async def _get_profile(email: str) -> dict:
+    if not email:
+        return {}
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        val = await get_cache().get(f"aria:profile:{email}")
+        if isinstance(val, dict):
+            return val
+        if isinstance(val, str) and val:
+            return json.loads(val)
+    except Exception:
+        pass
+    return {}
+
+
+async def _save_profile(email: str, data: dict) -> None:
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        await get_cache().set(f"aria:profile:{email}", data, ttl_seconds=365 * 24 * 3600)
+    except Exception as e:
+        logger.warning(f"save_profile failed: {e}")
+
+
+def _profile_context(profile: dict) -> str:
+    """A concise personalization note fed to ARIA so it addresses the user by
+    name and tailors help to their work and goals."""
+    if not profile:
+        return ""
+    parts = []
+    if profile.get("name"):
+        parts.append(f"su nombre es {profile['name']}")
+    if profile.get("work"):
+        parts.append(f"se dedica a: {profile['work']}")
+    if profile.get("goals"):
+        parts.append("quiere ayuda con: " + ", ".join(profile["goals"][:6]))
+    if not parts:
+        return ""
+    return (
+        "[Perfil del usuario — personaliza tu respuesta y, cuando sea natural, "
+        "dirígete a él por su nombre: " + "; ".join(parts) + ".]"
+    )
+
+
+# Mandatory pre-checkout acknowledgement (strict no-refund policy). Every path
+# to Stripe passes through this gate — the modal sends agreed=1 inline; direct
+# links (onboarding, deep-links) are stopped here and shown the interstitial.
+NO_REFUND_ACK = (
+    "Entiendo y acepto la política estricta de no reembolso de ARIA debido a los "
+    "costes inmediatos de renderizado y cómputo de IA."
+)
+
+
+def _checkout_confirm_page(tier: str, plan: dict) -> HTMLResponse:
+    price = f"${plan['cents'] // 100}/mo"
+    go = f"/billing/checkout?tier={tier}&amp;agreed=1"
+    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIA · Confirmar {plan['name']}</title><style>
+*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#09090b;color:#e4e4e7;padding:20px}}
+.card{{width:460px;max-width:94vw;background:#111114;border:1px solid #27272a;border-radius:18px;
+padding:32px 28px;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+h1{{font-size:22px;margin-bottom:4px}} .price{{color:#a1a1aa;font-size:14px;margin-bottom:22px}}
+.price b{{color:#f4f4f5}}
+.ack{{display:flex;gap:12px;align-items:flex-start;background:#0b0b0e;border:1px solid #27272a;
+border-radius:12px;padding:14px 14px;margin-bottom:20px}}
+.ack input{{margin-top:3px;width:18px;height:18px;accent-color:#6366f1;flex:0 0 auto;cursor:pointer}}
+.ack label{{font-size:13.5px;line-height:1.55;color:#d4d4d8;cursor:pointer}}
+.btn{{display:block;width:100%;text-align:center;padding:13px;border-radius:12px;border:0;
+background:linear-gradient(90deg,#6366f1,#8b5cf6);color:#fff;font-weight:600;font-size:15px;
+text-decoration:none;cursor:pointer;transition:opacity .15s}}
+.btn[aria-disabled="true"]{{opacity:.4;pointer-events:none}}
+.sub{{text-align:center;margin-top:14px;font-size:12.5px}}
+.sub a{{color:#a1a1aa;text-decoration:none;margin:0 8px}} .sub a:hover{{color:#e4e4e7}}
+</style></head><body><div class="card">
+<h1>Confirmar {plan['name']}</h1>
+<div class="price"><b>{price}</b> · renovación mensual · cancela cuando quieras</div>
+<div class="ack">
+  <input type="checkbox" id="ack" onchange="document.getElementById('go').setAttribute('aria-disabled', this.checked?'false':'true')">
+  <label for="ack">{NO_REFUND_ACK}</label>
+</div>
+<a id="go" class="btn" aria-disabled="true" href="{go}">Continuar al pago seguro →</a>
+<div class="sub"><a href="/app">← Volver</a><a href="/legal/refund-policy">Política de reembolso</a>
+<a href="/legal/terms">Términos</a></div>
+</div></body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/billing/checkout")
+async def billing_checkout(request: Request, tier: str = "pro", agreed: str = ""):
+    """Start a Stripe Checkout session for the given ARIA subscription tier.
+
+    Gated by a mandatory strict-no-refund acknowledgement: without `agreed=1`
+    we render the confirmation interstitial instead of creating the session."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return RedirectResponse("/login", status_code=307)
+
+    tier = tier if tier in BILLING_PLANS else "pro"
+    plan = BILLING_PLANS[tier]
+
+    # Enforce the no-refund acknowledgement before any charge can start.
+    if agreed.lower() not in ("1", "true", "yes", "on"):
+        return _checkout_confirm_page(tier, plan)
+
+    key = getattr(settings, "STRIPE_SECRET_KEY", None)
+    if not key:
+        # Billing not configured yet — send the user back with a clear flag.
+        return RedirectResponse("/app?billing=unavailable", status_code=303)
+
+    email = (user.get("email") or "").strip().lower()
+    base = (getattr(settings, "ARIA_BASE_URL", None) or "https://aria-ai.fly.dev").rstrip("/")
+    tier_key = tier if tier in BILLING_PLANS else "pro"
+    try:
+        import stripe
+
+        stripe.api_key = key
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer_email=email or None,
+            line_items=[
+                {
+                    "quantity": 1,
+                    "price_data": {
+                        "currency": "usd",
+                        "unit_amount": plan["cents"],
+                        "recurring": {"interval": "month"},
+                        "product_data": {"name": plan["name"]},
+                    },
+                }
+            ],
+            allow_promotion_codes=True,
+            success_url=base + "/billing/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=base + "/app?billing=cancel",
+            metadata={"email": email, "tier": tier_key},
+        )
+        return RedirectResponse(session.url, status_code=303)
+    except Exception as e:
+        logger.error(f"Stripe checkout error: {e}")
+        return RedirectResponse("/app?billing=error", status_code=303)
+
+
+@app.get("/billing/success")
+async def billing_success(request: Request, session_id: str = ""):
+    """Verify the completed Checkout session server-side, then mark the user Pro."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    key = getattr(settings, "STRIPE_SECRET_KEY", None)
+    if user and key and session_id:
+        try:
+            import stripe
+
+            stripe.api_key = key
+            s = stripe.checkout.Session.retrieve(session_id)
+            paid = s.get("payment_status") == "paid" or s.get("status") == "complete"
+            email = (user.get("email") or "").strip().lower()
+            tier = (s.get("metadata") or {}).get("tier", "pro")
+            if tier not in BILLING_PLANS:
+                tier = "pro"
+            if paid and email:
+                await _set_user_plan(email, tier)
+        except Exception as e:
+            logger.error(f"Stripe verify error: {e}")
+    return RedirectResponse("/app?billing=success", status_code=303)
+
+
+@app.post("/api/v1/profile")
+async def save_onboarding_profile(req: ProfileRequest, request: Request):
+    """Persist the first-login onboarding answers used to personalize ARIA."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return {"ok": False, "error": "unauthenticated"}
+    email = (user.get("email") or "").strip().lower()
+    data = {
+        "name": _safe_name(req.name)[:60] or (user.get("name") or ""),
+        "work": _safe_name(req.work)[:60],
+        "goals": [_safe_name(g)[:40] for g in (req.goals or []) if g][:8],
+        "plan": req.plan if req.plan in ("free", "pro", "business") else "free",
+        "onboarded": True,
+    }
+    await _save_profile(email, data)
+    return {"ok": True}
+
+
+@app.post("/api/v1/connectors/request")
+async def request_connector(req: ConnectorRequest, request: Request):
+    """Record a user's request to connect an external app (connectors waitlist)."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    email = (user.get("email") or "").strip().lower() if user else "anon"
+    app_id = _safe_name(req.app)[:40]
+    if not app_id:
+        return {"ok": False, "error": "missing app"}
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        await get_cache().rpush(
+            "aria:connector_requests", json.dumps({"email": email, "app": app_id})
+        )
+    except Exception as e:
+        logger.warning(f"connector request failed: {e}")
+    return {"ok": True}
+
+
+@app.post("/api/v1/account/delete")
+async def delete_account(request: Request):
+    """Delete the signed-in user's stored data (profile + plan) and sign out."""
+    from apps.core import auth
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return {"ok": False, "error": "unauthenticated"}
+    email = (user.get("email") or "").strip().lower()
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        cache = get_cache()
+        for key in (f"aria:profile:{email}", _PLAN_KEY.format(email=email)):
+            with suppress(Exception):
+                await cache.delete(key)
+    except Exception as e:
+        logger.warning(f"delete_account failed: {e}")
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.USER_COOKIE)
+    return resp
+
 
 # ── API ROUTES ────────────────────────────────────────────
 @app.get("/health")
@@ -91,32 +1177,206 @@ async def health():
         "env": settings.ENVIRONMENT,
     }
 
-@app.post("/api/v1/chat")
-async def chat(req: ChatRequest):
-    """Chat with ARIA AI."""
-    import time
-    start = time.time()
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus text-format metrics for scraping."""
     try:
-        from apps.core.agent_brain import get_agent
-        agent = get_agent()
-        reply = await agent.think(req.message)
-        elapsed = int((time.time() - start) * 1000)
+        from apps.core.observability.metrics import get_metrics
+
+        body = get_metrics().to_prometheus()
+    except Exception:
+        body = "# HELP aria_up ARIA process is up\n# TYPE aria_up gauge\naria_up 1\n"
+    return PlainTextResponse(body, media_type="text/plain; version=0.0.4")
+
+
+@app.get("/api/v1/metrics")
+async def json_metrics():
+    """Structured JSON metrics for the dashboard / API consumers."""
+    try:
+        from apps.core.observability.metrics import get_metrics
+
+        return get_metrics().to_dict()
+    except Exception as e:
+        logger.warning(f"metrics to_dict failed: {e}")
+        return {"requests_total": 0, "income": {}, "ai": {}}
+
+
+@app.post("/api/v1/chat")
+async def chat(req: ChatRequest, request: Request):
+    """Chat with ARIA — routed through the real cognitive brain (tools + identity),
+    so it actually executes (e.g. generate_image) and knows who it is."""
+    import base64
+    import time
+
+    start = time.time()
+
+    # Rate limit + require sign-in (prevents anonymous/abusive LLM cost).
+    if not _rate_ok(request, "chat", 30, 60):
         return {
-            "reply": reply,
-            "model_used": "huggingface+groq",
+            "reply": "⏳ You're sending messages too fast. Please wait a moment and try again.",
+            "model_used": "ratelimited",
+            "processing_time_ms": 0,
+            "media_type": None,
+            "media_base64": None,
+        }
+    if not _current_user(request):
+        return {
+            "reply": "🔒 Please sign in to use ARIA.",
+            "model_used": "auth",
+            "processing_time_ms": 0,
+            "media_type": None,
+            "media_base64": None,
+        }
+
+    # Personalize + enforce plan limits from the signed-in user.
+    user_context = ""
+    email = ""
+    plan = "free"
+    try:
+        from apps.core import auth
+
+        u = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+        if u:
+            email = (u.get("email") or "").strip().lower()
+            user_context = _profile_context(await _get_profile(email))
+            plan = "business" if email in _owner_emails() else await _get_user_plan(email)
+    except Exception:
+        user_context = ""
+
+    # Free plan has a daily message cap — the reason to upgrade to Pro.
+    if email and plan == "free":
+        allowed, remaining = await _consume_free_quota(email)
+        if not allowed:
+            return {
+                "reply": (
+                    f"🔒 You've reached today's free limit of {FREE_DAILY_LIMIT} messages.\n\n"
+                    "Upgrade to **Pro** for **unlimited** ARIA — unlimited chat, images, "
+                    "video & voice, and autonomous multi-channel publishing.\n\n"
+                    "Open the menu → **Upgrade**, or continue tomorrow when your free "
+                    "messages reset."
+                ),
+                "model_used": "limit",
+                "processing_time_ms": 0,
+                "media_type": None,
+                "media_base64": None,
+            }
+
+    # Global panic freeze + AI burn-rate cap (paid plans frozen over budget).
+    if _PANIC["on"]:
+        return {
+            "reply": "🛑 ARIA is temporarily paused by an operator. Please try again shortly.",
+            "model_used": "paused",
+            "processing_time_ms": 0,
+            "media_type": None,
+            "media_base64": None,
+        }
+    if email and plan in ("pro", "business"):
+        from apps.core.ops.cost_ledger import get_ledger
+
+        if get_ledger().is_frozen(email):
+            return {
+                "reply": (
+                    "🔒 You've reached this month's AI usage cap for your plan, so new "
+                    "missions are paused to protect your account. Upgrade for more "
+                    "capacity, or your allowance resets at the start of next month."
+                ),
+                "model_used": "burn_cap",
+                "processing_time_ms": 0,
+                "media_type": None,
+                "media_base64": None,
+            }
+
+    try:
+        from apps.core.cognition.aria_mind import get_aria_mind
+
+        resp = await get_aria_mind().handle(
+            req.message, req.session_id or "default", user_context=user_context or None
+        )
+        elapsed = int((time.time() - start) * 1000)
+        media_type = None
+        media_b64 = None
+        if resp.image_bytes:
+            media_type, media_b64 = "image", base64.b64encode(resp.image_bytes).decode()
+        reply_text = resp.text or resp.caption or ""
+        await _record_ai_cost(email, plan, req.message, reply_text)
+        return {
+            "reply": reply_text,
+            "model_used": resp.tool_used or "aria",
             "processing_time_ms": elapsed,
+            "media_type": media_type,
+            "media_base64": media_b64,
         }
     except Exception as e:
-        logger.error(f"Chat error: {e}")
-        return {"reply": f"⚠️ Error: {str(e)}", "model_used": "none", "processing_time_ms": 0}
+        logger.error(f"Chat (aria_mind) error: {e}")
+        # Fallback to the lightweight brain if the cognitive path errors (e.g. Redis quota).
+        try:
+            from apps.core.agent_brain import get_agent
+
+            reply = await get_agent().think(req.message)
+            return {"reply": reply, "model_used": "fallback", "processing_time_ms": 0}
+        except Exception as e2:
+            logger.error(f"Chat fallback error: {e2}")
+            return {"reply": f"⚠️ Error: {e}", "model_used": "none", "processing_time_ms": 0}
+
+
+@app.post("/api/v1/support/chat")
+async def support_chat(req: SupportRequest, request: Request):
+    """ARIA Support — the autonomous 24/7 assistant behind the support widget.
+
+    A fast Claude sub-agent (Haiku) with a strict support system prompt when an
+    API key is configured; an honest offline FAQ responder otherwise so support
+    works with no token budget. Kept separate from /api/v1/chat so the main
+    cognitive brain and its plan limits are untouched.
+    """
+    import time
+
+    start = time.time()
+
+    if not _rate_ok(request, "support", 20, 60):
+        return {
+            "reply": "⏳ Estás enviando mensajes muy rápido. Espera un momento e inténtalo de nuevo.",
+            "source": "ratelimited",
+            "processing_time_ms": 0,
+        }
+    if not _current_user(request):
+        return {
+            "reply": "🔒 Inicia sesión para hablar con ARIA Support.",
+            "source": "auth",
+            "processing_time_ms": 0,
+        }
+
+    from apps.core.support.support_agent import answer
+
+    api_key = getattr(settings, "ANTHROPIC_API_KEY", None)
+    try:
+        reply, source = await answer(req.message, api_key=api_key)
+    except Exception as e:  # noqa: BLE001 — the widget must never hard-error.
+        logger.error(f"Support chat error: {e}")
+        from apps.core.support.support_agent import offline_answer
+
+        reply, source = offline_answer(req.message or ""), "offline_error"
+
+    return {
+        "reply": reply,
+        "source": source,
+        "processing_time_ms": int((time.time() - start) * 1000),
+    }
+
 
 @app.post("/api/v1/code")
-async def generate_code(req: ChatRequest):
+async def generate_code(req: ChatRequest, request: Request):
     """Generate code with ARIA."""
     import time
+
+    if not _current_user(request):
+        return {"reply": "🔒 Please sign in to use this endpoint.", "unauthorized": True}
+    if not _rate_ok(request, "code", 20, 60):
+        return {"reply": "⏳ Rate limit reached — please slow down.", "ratelimited": True}
     start = time.time()
     try:
         from apps.core.agent_brain import get_agent
+
         agent = get_agent()
         reply = await agent.generate_code(req.message)
         elapsed = int((time.time() - start) * 1000)
@@ -124,13 +1384,20 @@ async def generate_code(req: ChatRequest):
     except Exception as e:
         return {"reply": f"Error: {e}"}
 
+
 @app.post("/api/v1/research")
-async def research(req: ChatRequest):
+async def research(req: ChatRequest, request: Request):
     """Research a topic with ARIA."""
     import time
+
+    if not _current_user(request):
+        return {"reply": "🔒 Please sign in to use this endpoint.", "unauthorized": True}
+    if not _rate_ok(request, "research", 20, 60):
+        return {"reply": "⏳ Rate limit reached — please slow down.", "ratelimited": True}
     start = time.time()
     try:
         from apps.core.agent_brain import get_agent
+
         agent = get_agent()
         reply = await agent.research(req.message)
         elapsed = int((time.time() - start) * 1000)
@@ -138,12 +1405,14 @@ async def research(req: ChatRequest):
     except Exception as e:
         return {"reply": f"Error: {e}"}
 
+
 @app.get("/api/v1/status")
 async def api_status():
     """Full system status."""
     status = {"aria": "running", "version": "3.0.0", "ts": datetime.utcnow().isoformat()}
     try:
         from apps.core.tools.ai_client import get_ai_client
+
         client = get_ai_client()
         if client:
             status["ai"] = client.get_health_summary()
@@ -151,18 +1420,27 @@ async def api_status():
         status["ai"] = {"error": str(e)}
     return status
 
+
 class RunRequest(BaseModel):
     mission: str
     agent: str = "auto"
     use_pipeline: bool = True
 
+
 @app.post("/api/v1/run")
-async def run_mission(req: RunRequest):
-    """Execute a mission using ARIA's execution engine."""
+async def run_mission(req: RunRequest, request: Request):
+    """Execute a mission using ARIA's execution engine. Owner-only — this drives
+    the autonomous engine and must not be exposed to anonymous callers."""
     import time
+
+    if not _is_owner_user(request):
+        return JSONResponse({"success": False, "error": "forbidden"}, status_code=403)
+    if not _rate_ok(request, "run", 10, 60):
+        return JSONResponse({"success": False, "error": "rate_limited"}, status_code=429)
     start = time.time()
     try:
         from apps.core.execution_engine import get_executor
+
         executor = get_executor()
         result = await executor.execute(req.mission)
         elapsed = int((time.time() - start) * 1000)
@@ -170,7 +1448,9 @@ async def run_mission(req: RunRequest):
             "success": result["success"],
             "result": {
                 "summary": result["result"][:500] if result.get("result") else "",
-                "understanding": result["understanding"][:300] if result.get("understanding") else "",
+                "understanding": (
+                    result["understanding"][:300] if result.get("understanding") else ""
+                ),
                 "tool_plan": result.get("tool_plan", {}),
             },
             "processing_time_ms": elapsed,
@@ -179,10 +1459,12 @@ async def run_mission(req: RunRequest):
         logger.error(f"Run error: {e}")
         return {"success": False, "error": str(e)}
 
+
 @app.get("/api/v1/tools")
 async def list_tools():
     """List all available tools."""
     from apps.core.tool_registry import TOOL_REGISTRY
+
     tools_by_cat = {}
     for tid, t in TOOL_REGISTRY.items():
         cat = t["category"]
@@ -191,26 +1473,85 @@ async def list_tools():
         tools_by_cat[cat].append({"id": tid, "name": t["name"], "description": t["description"]})
     return {"tools": tools_by_cat, "count": len(TOOL_REGISTRY)}
 
+
+# ── CONTENT OPERATOR (autonomous content-marketing wedge) ─────────────
+class ContentOperateRequest(BaseModel):
+    name: str = "SARAPH"
+    product: str
+    price: str | None = None
+    audience: str | None = None
+    url: str | None = None
+    channels: list[str] | None = None
+    dry_run: bool = False
+
+
+@app.post("/api/v1/content/operate")
+async def content_operate(req: ContentOperateRequest):
+    """Run one autonomous content cycle: generate copy + image, optionally publish
+    via Zapier MCP, and record a full observability trail. dry_run skips publishing."""
+    try:
+        from apps.core.tools.content_operator import get_content_operator
+
+        brand = {
+            "name": req.name,
+            "product": req.product,
+            "price": req.price,
+            "audience": req.audience,
+            "url": req.url,
+        }
+        return await get_content_operator().run_once(
+            brand, channels=req.channels, dry_run=req.dry_run
+        )
+    except Exception as e:
+        logger.error(f"Content operate error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/v1/content/runs")
+async def content_runs(limit: int = 20):
+    """Return recent content-operator runs (the observability trail)."""
+    try:
+        from apps.core.tools.content_operator import get_content_operator
+
+        runs = await get_content_operator().recent_runs(limit=limit)
+        return {"count": len(runs), "runs": runs}
+    except Exception as e:
+        logger.error(f"Content runs error: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/api/v1/content/selftest")
+async def content_selftest():
+    """Check that the Zapier MCP bridge is reachable and list available tools."""
+    try:
+        from apps.core.tools.zapier_mcp import get_zapier_mcp
+
+        return await get_zapier_mcp().self_test()
+    except Exception as e:
+        logger.error(f"Content selftest error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
     await ws.accept()
     try:
-        from apps.core.agent_brain import get_agent
-        agent = get_agent()
+        from apps.core.cognition.aria_mind import get_aria_mind
+
+        mind = get_aria_mind()
         while True:
             data = await ws.receive_text()
             msg = json.loads(data)
-            reply = await agent.think(msg.get("message", ""))
-            await ws.send_json({"reply": reply})
+            resp = await mind.handle(msg.get("message", ""), msg.get("session_id", "ws"))
+            await ws.send_json({"reply": resp.text or resp.caption or "", "tool": resp.tool_used})
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        try:
+        with suppress(Exception):
             await ws.send_json({"error": str(e)})
-        except Exception:
-            pass
+
 
 # ── MAIN ──────────────────────────────────────────────────
 if __name__ == "__main__":

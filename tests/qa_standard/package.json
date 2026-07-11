@@ -1,0 +1,14 @@
+{
+  "name": "aria-qa-standard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Premium-standard UI/integration tests for the ARIA dashboard (Playwright).",
+  "scripts": {
+    "test:ui": "playwright test",
+    "test:ui:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}

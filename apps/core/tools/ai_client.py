@@ -17,9 +17,9 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import httpx
 from groq import AsyncGroq
@@ -181,14 +181,14 @@ class ProviderHealth:
         if self.state == CircuitState.OPEN:
             if elapsed >= self._cooldown:
                 self.state = CircuitState.HALF_OPEN
-                logger.info("[%s] Circuit breaker en estado HALF-OPEN (probando recuperación)", self.provider)
+                logger.info(
+                    "[%s] Circuit breaker en estado HALF-OPEN (probando recuperación)",
+                    self.provider,
+                )
                 return True
             return False
 
-        if self.state == CircuitState.HALF_OPEN:
-            return True
-
-        return False
+        return self.state == CircuitState.HALF_OPEN
 
     def record_success(self) -> None:
         self.total_calls += 1
@@ -206,9 +206,13 @@ class ProviderHealth:
         if self.state == CircuitState.HALF_OPEN or self.consecutive_failures >= self._break_after:
             self.state = CircuitState.OPEN
             # Backoff exponencial para el cooldown
-            current_cooldown = self._cooldown * (2 ** (self.consecutive_failures // self._break_after - 1))
+            current_cooldown = self._cooldown * (
+                2 ** (self.consecutive_failures // self._break_after - 1)
+            )
             current_cooldown = min(current_cooldown, 3600)  # Max 1 hora
-            logger.warning("[%s] Circuit breaker ABIERTO — cooldown %.0fs", self.provider, current_cooldown)
+            logger.warning(
+                "[%s] Circuit breaker ABIERTO — cooldown %.0fs", self.provider, current_cooldown
+            )
 
 
 class AriaAIClient:
@@ -220,8 +224,9 @@ class AriaAIClient:
     _OAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 
     def __init__(self) -> None:
-        self._zapier_mcp_url = settings.ZAPIER_MCP_URL
-        self._health: dict[AIProvider, ProviderHealth] = {p: ProviderHealth(provider=p) for p in AIProvider}
+        self._health: dict[AIProvider, ProviderHealth] = {
+            p: ProviderHealth(provider=p) for p in AIProvider
+        }
         self._groq = AsyncGroq(api_key=settings.GROQ_API_KEY or "no-key")
         self._http = httpx.AsyncClient(
             timeout=httpx.Timeout(45.0, connect=10.0),
@@ -304,14 +309,17 @@ class AriaAIClient:
                 response.attempts = attempts
                 if json_mode:
                     response.content = self._extract_json_safe(response.content)
-                
+
                 logger.info(
                     "[%s] OK %s via %s — %dms",
-                    agent_name, model.value, provider.value, response.latency_ms
+                    agent_name,
+                    model.value,
+                    provider.value,
+                    response.latency_ms,
                 )
                 return response
 
-            except (asyncio.TimeoutError, TimeoutError):
+            except TimeoutError:
                 self._health[provider].record_failure()
                 last_error = f"{provider.value}: timeout"
                 self._total_fallbacks += 1
@@ -356,7 +364,7 @@ class AriaAIClient:
                                 self._call_huggingface(
                                     model_id, system, user, max_tokens, temperature, hf_provider
                                 ),
-                                timeout=PROVIDER_TIMEOUTS[AIProvider.HUGGINGFACE]
+                                timeout=PROVIDER_TIMEOUTS[AIProvider.HUGGINGFACE],
                             )
                             latency = int((time.time() - t0) * 1000)
                             self._total_tokens += tokens
@@ -373,7 +381,12 @@ class AriaAIClient:
                             err_str = str(e).lower()
                             if "503" in err_str or "loading" in err_str:
                                 if retry == 0:
-                                    logger.info("[%s] HF cold start %s@%s — reintentando en 2s", agent_name, short_name, hf_provider)
+                                    logger.info(
+                                        "[%s] HF cold start %s@%s — reintentando en 2s",
+                                        agent_name,
+                                        short_name,
+                                        hf_provider,
+                                    )
                                     await asyncio.sleep(2.0)
                                     continue
                             raise e
@@ -381,14 +394,24 @@ class AriaAIClient:
                 except Exception as exc:
                     err_str = str(exc).lower()
                     if "404" in err_str or "not supported" in err_str:
-                        logger.debug("[%s] HF %s no soportado en %s", agent_name, short_name, hf_provider)
-                        break # Probar siguiente modelo
-                    
-                    logger.warning("[%s] HF fallo %s@%s: %s", agent_name, short_name, hf_provider, err_str[:60])
-                    continue # Probar siguiente provider/modelo
+                        logger.debug(
+                            "[%s] HF %s no soportado en %s", agent_name, short_name, hf_provider
+                        )
+                        break  # Probar siguiente modelo
+
+                    logger.warning(
+                        "[%s] HF fallo %s@%s: %s", agent_name, short_name, hf_provider, err_str[:60]
+                    )
+                    continue  # Probar siguiente provider/modelo
 
         self._health[AIProvider.HUGGINGFACE].record_failure()
-        return AIResponse(content="", provider=AIProvider.HUGGINGFACE, model="none", success=False, error="HF rotation exhausted")
+        return AIResponse(
+            content="",
+            provider=AIProvider.HUGGINGFACE,
+            model="none",
+            success=False,
+            error="HF rotation exhausted",
+        )
 
     async def _dispatch(
         self,
@@ -401,16 +424,22 @@ class AriaAIClient:
     ) -> AIResponse:
         model_id = MODEL_REGISTRY[model][provider]
         t0 = time.time()
-        
+
         if provider == AIProvider.GROQ:
             content, tokens = await self._call_groq(model_id, system, user, max_tokens, temperature)
         elif provider == AIProvider.GEMINI:
-            content, tokens = await self._call_gemini(model_id, system, user, max_tokens, temperature)
+            content, tokens = await self._call_gemini(
+                model_id, system, user, max_tokens, temperature
+            )
         elif provider == AIProvider.ANTHROPIC:
-            content, tokens = await self._call_anthropic(model_id, system, user, max_tokens, temperature)
+            content, tokens = await self._call_anthropic(
+                model_id, system, user, max_tokens, temperature
+            )
         else:
-            content, tokens = await self._call_openai(model_id, system, user, max_tokens, temperature)
-            
+            content, tokens = await self._call_openai(
+                model_id, system, user, max_tokens, temperature
+            )
+
         latency = int((time.time() - t0) * 1000)
         self._total_tokens += tokens
         return AIResponse(
@@ -422,7 +451,15 @@ class AriaAIClient:
             success=True,
         )
 
-    async def _call_huggingface(self, model_id: str, system: str, user: str, max_tokens: int, temperature: float, provider: str) -> tuple[str, int]:
+    async def _call_huggingface(
+        self,
+        model_id: str,
+        system: str,
+        user: str,
+        max_tokens: int,
+        temperature: float,
+        provider: str,
+    ) -> tuple[str, int]:
         # Use the HF router (OpenAI-compatible) which auto-routes to a working
         # inference provider. Verified live against Qwen2.5-72B and DeepSeek-R1.
         # The previous AsyncInferenceClient(provider=...) path 403'd on providers
@@ -448,14 +485,16 @@ class AriaAIClient:
         tokens = data.get("usage", {}).get("total_tokens") or len(content.split()) * 2
         return content, tokens
 
-    async def _call_gemini(self, model_id: str, system: str, user: str, max_tokens: int, temperature: float) -> tuple[str, int]:
+    async def _call_gemini(
+        self, model_id: str, system: str, user: str, max_tokens: int, temperature: float
+    ) -> tuple[str, int]:
         if not settings.GOOGLE_API_KEY:
             raise ValueError("GOOGLE_API_KEY no configurado para Gemini")
-        
+
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={settings.GOOGLE_API_KEY}"
         payload = {
             "contents": [{"parts": [{"text": f"System: {system}\n\nUser: {user}"}]}],
-            "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature}
+            "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
         }
         resp = await self._http.post(url, json=payload)
         resp.raise_for_status()
@@ -463,7 +502,9 @@ class AriaAIClient:
         content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
         return content, len(content.split()) * 2
 
-    async def _call_groq(self, model_id: str, system: str, user: str, max_tokens: int, temperature: float) -> tuple[str, int]:
+    async def _call_groq(
+        self, model_id: str, system: str, user: str, max_tokens: int, temperature: float
+    ) -> tuple[str, int]:
         resp = await self._groq.chat.completions.create(
             model=model_id,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -472,12 +513,17 @@ class AriaAIClient:
         )
         return resp.choices[0].message.content.strip(), resp.usage.total_tokens
 
-    async def _call_openai(self, model_id: str, system: str, user: str, max_tokens: int, temperature: float) -> tuple[str, int]:
+    async def _call_openai(
+        self, model_id: str, system: str, user: str, max_tokens: int, temperature: float
+    ) -> tuple[str, int]:
         resp = await self._http.post(
             self._OAI_ENDPOINT,
             json={
                 "model": model_id,
-                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             },
@@ -485,9 +531,13 @@ class AriaAIClient:
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"].strip(), data.get("usage", {}).get("total_tokens", 0)
+        return data["choices"][0]["message"]["content"].strip(), data.get("usage", {}).get(
+            "total_tokens", 0
+        )
 
-    async def _call_anthropic(self, model_id: str, system: str, user: str, max_tokens: int, temperature: float) -> tuple[str, int]:
+    async def _call_anthropic(
+        self, model_id: str, system: str, user: str, max_tokens: int, temperature: float
+    ) -> tuple[str, int]:
         resp = await self._http.post(
             "https://api.anthropic.com/v1/messages",
             json={
@@ -506,7 +556,25 @@ class AriaAIClient:
         resp.raise_for_status()
         data = resp.json()
         usage = data.get("usage", {})
-        return data["content"][0]["text"].strip(), usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+        return data["content"][0]["text"].strip(), usage.get("input_tokens", 0) + usage.get(
+            "output_tokens", 0
+        )
+
+    def configured_providers(self) -> list[str]:
+        """Nombres de los proveedores LLM que tienen una API key configurada.
+
+        Sin llamadas de red. Permite que /health diga la verdad: el cliente
+        siempre existe, pero sin ninguna key toda completación falla — una lista
+        vacía significa que la IA está efectivamente caída.
+        """
+        keyed = {
+            "huggingface": bool(settings.hf_key),
+            "groq": bool(settings.GROQ_API_KEY),
+            "gemini": bool(settings.GOOGLE_API_KEY),
+            "anthropic": bool(settings.ANTHROPIC_API_KEY),
+            "openai": bool(settings.OPENAI_API_KEY),
+        }
+        return [name for name, present in keyed.items() if present]
 
     def _get_available_providers(self) -> list[AIProvider]:
         base_order = [
@@ -516,7 +584,7 @@ class AriaAIClient:
             AIProvider.ANTHROPIC,
             AIProvider.OPENAI,
         ]
-        
+
         has_key = {
             AIProvider.HUGGINGFACE: bool(settings.hf_key),
             AIProvider.GROQ: bool(settings.GROQ_API_KEY),
@@ -524,14 +592,17 @@ class AriaAIClient:
             AIProvider.ANTHROPIC: bool(settings.ANTHROPIC_API_KEY),
             AIProvider.OPENAI: bool(settings.OPENAI_API_KEY),
         }
-        
+
         available = [p for p in base_order if has_key.get(p) and self._health[p].is_available()]
-        
+
         # Si HF ha fallado recientemente, priorizar Groq
-        if self._health[AIProvider.HUGGINGFACE].consecutive_failures >= 1 and AIProvider.GROQ in available:
+        if (
+            self._health[AIProvider.HUGGINGFACE].consecutive_failures >= 1
+            and AIProvider.GROQ in available
+        ):
             available.remove(AIProvider.GROQ)
             available.insert(0, AIProvider.GROQ)
-            
+
         return available
 
     def _extract_json_safe(self, text: str) -> str:
@@ -558,49 +629,8 @@ class AriaAIClient:
             "_totals": {
                 "tokens_used": self._total_tokens,
                 "fallbacks_triggered": self._total_fallbacks,
-                "zapier_mcp_active": bool(self._zapier_mcp_url),
             }
         }
-
-    async def get_zapier_tools(self) -> list[dict]:
-        """Fetch available tools from Zapier MCP server."""
-        if not self._zapier_mcp_url:
-            return []
-        try:
-            # Zapier MCP implementation for tool listing
-            resp = await self._http.post(
-                self._zapier_mcp_url,
-                json={"method": "list_tools", "params": {}},
-                timeout=10.0
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                return data.get("result", {}).get("tools", [])
-        except Exception as e:
-            logger.error("Error fetching Zapier tools: %s", e)
-        return []
-
-    async def execute_zapier_tool(self, tool_name: str, arguments: dict) -> dict:
-        """Execute a tool via Zapier MCP server."""
-        if not self._zapier_mcp_url:
-            return {"success": False, "error": "Zapier MCP not configured"}
-        try:
-            resp = await self._http.post(
-                self._zapier_mcp_url,
-                json={
-                    "method": "call_tool",
-                    "params": {
-                        "name": tool_name,
-                        "arguments": arguments
-                    }
-                },
-                timeout=30.0
-            )
-            if resp.status_code == 200:
-                return resp.json().get("result", {"success": False})
-        except Exception as e:
-            logger.error("Error executing Zapier tool %s: %s", tool_name, e)
-        return {"success": False, "error": "Zapier MCP execution failed"}
 
     async def stream_complete(
         self,
@@ -615,7 +645,10 @@ class AriaAIClient:
             try:
                 stream = await self._groq.chat.completions.create(
                     model=MODEL_REGISTRY[model][AIProvider.GROQ],
-                    messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
                     max_tokens=max_tokens,
                     temperature=temperature,
                     stream=True,
@@ -626,7 +659,7 @@ class AriaAIClient:
                 return
             except Exception:
                 pass
-        
+
         # Fallback a no-streaming
         res = await self.complete(system, user, model, max_tokens, temperature)
         yield res.content
@@ -637,12 +670,14 @@ class AriaAIClient:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={settings.GOOGLE_API_KEY}"
                 payload = {
-                    "contents": [{
-                        "parts": [
-                            {"text": question},
-                            {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}}
-                        ]
-                    }]
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": question},
+                                {"inline_data": {"mime_type": "image/jpeg", "data": image_base64}},
+                            ]
+                        }
+                    ]
                 }
                 resp = await self._http.post(url, json=payload)
                 if resp.status_code == 200:
@@ -650,14 +685,18 @@ class AriaAIClient:
                     return data["candidates"][0]["content"]["parts"][0]["text"].strip()
             except Exception:
                 pass
-        
+
         # Fallback a HF Vision si Gemini falla
-        res = await self.complete(system="Analiza esta imagen.", user=question, model=AIModel.VISION)
+        res = await self.complete(
+            system="Analiza esta imagen.", user=question, model=AIModel.VISION
+        )
         return res.content
+
 
 # ── SINGLETON ─────────────────────────────────────────────
 _client_instance: AriaAIClient | None = None
 _client_lock = asyncio.Lock()
+
 
 async def get_ai_client_async() -> AriaAIClient:
     global _client_instance
@@ -667,6 +706,7 @@ async def get_ai_client_async() -> AriaAIClient:
         if _client_instance is None:
             _client_instance = AriaAIClient()
     return _client_instance
+
 
 def get_ai_client() -> AriaAIClient | None:
     global _client_instance

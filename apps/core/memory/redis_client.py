@@ -37,6 +37,17 @@ class AriaCache:
         except Exception:
             return None
 
+    async def ping(self) -> bool:
+        """Ping honesto: True sólo si Redis responde PONG en un ida-y-vuelta real.
+
+        Usado por /health para reflejar la verdad — el objeto de caché siempre
+        existe, así que su mera presencia no es señal de que el backend funcione.
+        """
+        try:
+            return (await self._cmd("PING")) == "PONG"
+        except Exception:
+            return False
+
     # ── CACHÉ BÁSICO ──────────────────────────────────────
     async def set(self, key: str, value: Any, ttl_seconds: int = 3600) -> bool:
         serialized = json.dumps(value) if not isinstance(value, str) else value
