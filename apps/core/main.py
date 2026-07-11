@@ -70,6 +70,65 @@ def _is_admin(request: Request) -> bool:
     return hmac.compare_digest(request.cookies.get(_ADMIN_COOKIE, ""), _admin_token())
 
 
+def _current_user(request: Request) -> dict | None:
+    """The signed-in user (verified session cookie), or None."""
+    try:
+        from apps.core import auth
+
+        return auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    except Exception:
+        return None
+
+
+# ── lightweight in-process rate limiter (no external dependency) ───────────
+# Sliding-window per (client-ip, bucket). Protects expensive/public endpoints
+# from abuse and cost blow-ups. For multi-instance deployments a shared store
+# (Redis) would be stronger, but this bounds abuse on a single instance.
+import time as _time  # noqa: E402
+from collections import defaultdict, deque  # noqa: E402
+
+_RATE_HITS: dict[str, deque] = defaultdict(deque)
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_ok(request: Request, bucket: str, limit: int, window: float) -> bool:
+    """Return True if this client is under `limit` requests in `window` seconds."""
+    key = f"{bucket}:{_client_ip(request)}"
+    now = _time.time()
+    hits = _RATE_HITS[key]
+    while hits and hits[0] <= now - window:
+        hits.popleft()
+    if len(hits) >= limit:
+        return False
+    hits.append(now)
+    if len(_RATE_HITS) > 5000:  # crude memory cap
+        for k in list(_RATE_HITS.keys())[:1000]:
+            if not _RATE_HITS[k]:
+                del _RATE_HITS[k]
+    return True
+
+
+def _json_for_script(obj) -> str:
+    """json.dumps, but safe to embed inside an inline <script> — escapes the
+    characters that could otherwise break out of the script context (XSS)."""
+    out = json.dumps(obj)
+    for a, b in (
+        ("<", "\\u003c"),
+        (">", "\\u003e"),
+        ("&", "\\u0026"),
+        ("\u2028", "\\u2028"),
+        ("\u2029", "\\u2029"),
+    ):
+        out = out.replace(a, b)
+    return out
+
+
 _LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ARIA · Admin</title><style>
@@ -424,20 +483,38 @@ color:#fff;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12p
     return HTMLResponse(html)
 
 
+def _oauth_redirect(url: str | None, state: str, fallback: str) -> RedirectResponse:
+    """Redirect to the provider, binding `state` to the browser via a cookie."""
+    if not url:
+        return RedirectResponse(fallback, status_code=307)
+    resp = RedirectResponse(url, status_code=307)
+    from apps.core import auth
+
+    resp.set_cookie(
+        auth.OAUTH_STATE_COOKIE,
+        state,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=auth.STATE_MAX_AGE,
+    )
+    return resp
+
+
 @app.get("/auth/google")
 async def auth_google():
     from apps.core import auth
 
-    url = auth.google_authorize_url()
-    return RedirectResponse(url or "/login?e=google_off", status_code=307)
+    state = auth.make_state()
+    return _oauth_redirect(auth.google_authorize_url(state), state, "/login?e=google_off")
 
 
 @app.get("/auth/github")
 async def auth_github():
     from apps.core import auth
 
-    url = auth.github_authorize_url()
-    return RedirectResponse(url or "/login?e=github_off", status_code=307)
+    state = auth.make_state()
+    return _oauth_redirect(auth.github_authorize_url(state), state, "/login?e=github_off")
 
 
 async def _finish_login(profile: dict | None):
@@ -462,24 +539,30 @@ async def _finish_login(profile: dict | None):
 async def auth_google_cb(request: Request):
     from apps.core import auth
 
-    if not auth.check_state(request.query_params.get("state")):
+    cookie_state = request.cookies.get(auth.OAUTH_STATE_COOKIE)
+    if not auth.check_state(request.query_params.get("state"), cookie_state):
         return RedirectResponse("/login?e=state", status_code=303)
     code = request.query_params.get("code")
     if not code:
         return RedirectResponse("/login?e=nocode", status_code=303)
-    return await _finish_login(await auth.google_exchange(code))
+    resp = await _finish_login(await auth.google_exchange(code))
+    resp.delete_cookie(auth.OAUTH_STATE_COOKIE)
+    return resp
 
 
 @app.get("/auth/github/callback")
 async def auth_github_cb(request: Request):
     from apps.core import auth
 
-    if not auth.check_state(request.query_params.get("state")):
+    cookie_state = request.cookies.get(auth.OAUTH_STATE_COOKIE)
+    if not auth.check_state(request.query_params.get("state"), cookie_state):
         return RedirectResponse("/login?e=state", status_code=303)
     code = request.query_params.get("code")
     if not code:
         return RedirectResponse("/login?e=nocode", status_code=303)
-    return await _finish_login(await auth.github_exchange(code))
+    resp = await _finish_login(await auth.github_exchange(code))
+    resp.delete_cookie(auth.OAUTH_STATE_COOKIE)
+    return resp
 
 
 @app.get("/logout")
@@ -521,7 +604,7 @@ async def user_app(request: Request):
     plan_map = {"pro": "Pro", "business": "Business"}
     plan = "Business" if is_owner else plan_map.get(await _get_user_plan(raw_email), "Free")
     onboarded = "true" if (profile and profile.get("onboarded")) else "false"
-    profile_json = json.dumps(
+    profile_json = _json_for_script(
         {
             "work": (profile.get("work", "") if profile else ""),
             "goals": (profile.get("goals", []) if profile else []),
@@ -827,6 +910,24 @@ async def chat(req: ChatRequest, request: Request):
 
     start = time.time()
 
+    # Rate limit + require sign-in (prevents anonymous/abusive LLM cost).
+    if not _rate_ok(request, "chat", 30, 60):
+        return {
+            "reply": "⏳ You're sending messages too fast. Please wait a moment and try again.",
+            "model_used": "ratelimited",
+            "processing_time_ms": 0,
+            "media_type": None,
+            "media_base64": None,
+        }
+    if not _current_user(request):
+        return {
+            "reply": "🔒 Please sign in to use ARIA.",
+            "model_used": "auth",
+            "processing_time_ms": 0,
+            "media_type": None,
+            "media_base64": None,
+        }
+
     # Personalize + enforce plan limits from the signed-in user.
     user_context = ""
     email = ""
@@ -892,10 +993,14 @@ async def chat(req: ChatRequest, request: Request):
 
 
 @app.post("/api/v1/code")
-async def generate_code(req: ChatRequest):
+async def generate_code(req: ChatRequest, request: Request):
     """Generate code with ARIA."""
     import time
 
+    if not _current_user(request):
+        return {"reply": "🔒 Please sign in to use this endpoint.", "unauthorized": True}
+    if not _rate_ok(request, "code", 20, 60):
+        return {"reply": "⏳ Rate limit reached — please slow down.", "ratelimited": True}
     start = time.time()
     try:
         from apps.core.agent_brain import get_agent
@@ -909,10 +1014,14 @@ async def generate_code(req: ChatRequest):
 
 
 @app.post("/api/v1/research")
-async def research(req: ChatRequest):
+async def research(req: ChatRequest, request: Request):
     """Research a topic with ARIA."""
     import time
 
+    if not _current_user(request):
+        return {"reply": "🔒 Please sign in to use this endpoint.", "unauthorized": True}
+    if not _rate_ok(request, "research", 20, 60):
+        return {"reply": "⏳ Rate limit reached — please slow down.", "ratelimited": True}
     start = time.time()
     try:
         from apps.core.agent_brain import get_agent
@@ -947,10 +1056,15 @@ class RunRequest(BaseModel):
 
 
 @app.post("/api/v1/run")
-async def run_mission(req: RunRequest):
-    """Execute a mission using ARIA's execution engine."""
+async def run_mission(req: RunRequest, request: Request):
+    """Execute a mission using ARIA's execution engine. Owner-only — this drives
+    the autonomous engine and must not be exposed to anonymous callers."""
     import time
 
+    if not _is_owner_user(request):
+        return JSONResponse({"success": False, "error": "forbidden"}, status_code=403)
+    if not _rate_ok(request, "run", 10, 60):
+        return JSONResponse({"success": False, "error": "rate_limited"}, status_code=429)
     start = time.time()
     try:
         from apps.core.execution_engine import get_executor

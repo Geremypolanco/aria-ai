@@ -16,6 +16,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 import time
 import urllib.parse
@@ -24,15 +25,46 @@ import httpx
 
 from apps.core.config import settings
 
+logger = logging.getLogger("aria.auth")
+
 USER_COOKIE = "aria_user"
+OAUTH_STATE_COOKIE = "aria_oauth_state"
+
+# Max session age (30 days) — tokens older than this are rejected.
+SESSION_MAX_AGE = 60 * 60 * 24 * 30
+# OAuth state is short-lived (10 minutes) to bound the CSRF window.
+STATE_MAX_AGE = 600
+
+# Ephemeral per-process signing key used ONLY when no real secret is configured.
+# This replaces the previous hardcoded public constant, which allowed anyone to
+# forge session cookies. An ephemeral key means sessions don't survive a restart
+# or span multiple instances, but it is never publicly known.
+_EPHEMERAL_SECRET = secrets.token_hex(32)
+_warned_ephemeral = False
 
 
 def _secret() -> bytes:
-    return (
-        getattr(settings, "ADMIN_PASSWORD", None)
+    """HMAC key for signing sessions + OAuth state.
+
+    Preference: SESSION_SECRET → ADMIN_PASSWORD → ARIA_API_KEY → ephemeral.
+    Never falls back to a public constant.
+    """
+    configured = (
+        getattr(settings, "SESSION_SECRET", None)
+        or getattr(settings, "ADMIN_PASSWORD", None)
         or getattr(settings, "ARIA_API_KEY", None)
-        or "aria-session-fallback"
-    ).encode()
+    )
+    if configured:
+        return configured.encode()
+    global _warned_ephemeral
+    if not _warned_ephemeral:
+        logger.warning(
+            "No SESSION_SECRET/ADMIN_PASSWORD/ARIA_API_KEY set — using an ephemeral "
+            "per-process session key. Sessions will not persist across restarts or "
+            "multiple instances. Set SESSION_SECRET in production."
+        )
+        _warned_ephemeral = True
+    return _EPHEMERAL_SECRET.encode()
 
 
 def _base() -> str:
@@ -60,25 +92,43 @@ def verify_user(token: str | None) -> dict | None:
         expected = hmac.new(_secret(), b.encode(), hashlib.sha256).hexdigest()[:32]
         if not hmac.compare_digest(sig, expected):
             return None
-        return json.loads(base64.urlsafe_b64decode(b.encode()).decode())
+        data = json.loads(base64.urlsafe_b64decode(b.encode()).decode())
+        # Reject expired sessions (defence against forever-valid / stolen cookies).
+        issued = int(data.get("t", 0))
+        if issued <= 0 or (time.time() - issued) > SESSION_MAX_AGE:
+            return None
+        return data
     except Exception:
         return None
 
 
-def _make_state() -> str:
-    r = secrets.token_urlsafe(12)
+def make_state() -> str:
+    """A signed, timestamped one-time state value for OAuth CSRF protection.
+
+    The same value is also stored in a short-lived cookie and compared on
+    callback (`check_state`), binding the flow to the initiating browser.
+    """
+    r = f"{secrets.token_urlsafe(12)}:{int(time.time())}"
     sig = hmac.new(_secret(), r.encode(), hashlib.sha256).hexdigest()[:16]
     return f"{r}.{sig}"
 
 
-def check_state(state: str | None) -> bool:
+def check_state(state: str | None, cookie_state: str | None = None) -> bool:
+    """Validate the OAuth state: signature, freshness, and browser binding."""
     if not state or "." not in state:
         return False
     try:
-        r, sig = state.split(".", 1)
-        return hmac.compare_digest(
+        r, sig = state.rsplit(".", 1)
+        if not hmac.compare_digest(
             sig, hmac.new(_secret(), r.encode(), hashlib.sha256).hexdigest()[:16]
-        )
+        ):
+            return False
+        # freshness
+        ts = int(r.rsplit(":", 1)[1])
+        if (time.time() - ts) > STATE_MAX_AGE:
+            return False
+        # browser binding: the callback state must match the cookie we set
+        return cookie_state is None or hmac.compare_digest(state, cookie_state)
     except Exception:
         return False
 
@@ -94,7 +144,7 @@ def github_enabled() -> bool:
     return bool(getattr(settings, "GITHUB_CLIENT_ID", None))
 
 
-def google_authorize_url() -> str | None:
+def google_authorize_url(state: str) -> str | None:
     if not google_enabled():
         return None
     params = {
@@ -102,21 +152,21 @@ def google_authorize_url() -> str | None:
         "redirect_uri": f"{_base()}/auth/google/callback",
         "response_type": "code",
         "scope": "openid email profile",
-        "state": _make_state(),
+        "state": state,
         "access_type": "online",
         "prompt": "select_account",
     }
     return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
 
 
-def github_authorize_url() -> str | None:
+def github_authorize_url(state: str) -> str | None:
     if not github_enabled():
         return None
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
         "redirect_uri": f"{_base()}/auth/github/callback",
         "scope": "read:user user:email",
-        "state": _make_state(),
+        "state": state,
     }
     return "https://github.com/login/oauth/authorize?" + urllib.parse.urlencode(params)
 

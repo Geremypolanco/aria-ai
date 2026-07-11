@@ -186,6 +186,13 @@ class Settings(BaseSettings):
     ARIA_API_KEY: str | None = None
     # Owner-only password gating the /admin control panel (server-side).
     ADMIN_PASSWORD: str | None = None
+    # Dedicated HMAC key for signing user session cookies + OAuth state.
+    # Set this in production; if unset, auth.py derives an ephemeral per-process
+    # key (sessions won't survive a restart / multiple instances) — never a
+    # public constant.
+    SESSION_SECRET: str | None = None
+    # Secret for signing outbound integration webhooks.
+    WEBHOOK_SECRET: str | None = None
 
     # ── CREDENCIALES DE ARIA (para login stealth en plataformas) ──────────
     ARIA_EMAIL: str | None = None

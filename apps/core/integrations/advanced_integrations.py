@@ -415,8 +415,10 @@ class WebhookIntegration:
     ) -> dict[str, Any]:
         """Llama a un webhook."""
         try:
-            # Generar firma HMAC
-            secret = "webhook_secret"  # En producción, usar variable de entorno
+            # Firma HMAC — la clave viene de la configuración (variable de entorno).
+            from apps.core.config import settings
+
+            secret = getattr(settings, "WEBHOOK_SECRET", None) or "webhook_secret_unset"
             signature = hmac.new(
                 secret.encode(),
                 json.dumps(payload).encode(),
