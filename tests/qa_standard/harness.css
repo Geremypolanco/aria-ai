@@ -1,0 +1,49 @@
+/*
+ * harness.css — a MINIMAL test-only stylesheet.
+ *
+ * The production dashboard styles come from the Tailwind Play CDN at runtime.
+ * CI / offline sandboxes may firewall that CDN, so this file re-implements ONLY
+ * the handful of Tailwind utilities the responsive assertions depend on
+ * (positioning, widths, translate transforms, fl-layout, overflow, monospace).
+ * It is NEVER shipped to production — it exists purely so `npm run test:ui`
+ * can validate the responsive contract deterministically without the CDN.
+ * At the iPhone-14 width used by the mobile project, the `lg:` / `xl:` variants
+ * intentionally do NOT apply (they are desktop breakpoints).
+ */
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body { font-family: system-ui, sans-serif; }
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.flex-1 { flex: 1 1 0%; }
+.min-w-0 { min-width: 0; }
+.h-screen { height: 100vh; }
+.w-screen { width: 100vw; }
+.overflow-hidden { overflow: hidden; }
+.overflow-y-auto { overflow-y: auto; }
+
+.fixed { position: fixed; }
+.relative { position: relative; }
+.inset-0 { inset: 0; }
+.inset-y-0 { top: 0; bottom: 0; }
+.left-0 { left: 0; }
+.right-0 { right: 0; }
+.z-40 { z-index: 40; }
+.z-50 { z-index: 50; }
+
+.w-64 { width: 16rem; }
+.w-80 { width: 20rem; }
+.\[max-width\:85vw\], .max-w-\[85vw\] { max-width: 85vw; }
+
+.-translate-x-full { transform: translateX(-100%); }
+.translate-x-full { transform: translateX(100%); }
+.transition-transform { transition: transform .3s ease; }
+
+.hidden { display: none; }
+
+.font-mono { font-family: ui-monospace, "JetBrains Mono", monospace; }
+
+/* The mobile drawers are full-height fixed panels so their inner log stream
+   (flex-1 + overflow-y-auto) becomes independently scrollable. */
+#side, #logs { height: 100vh; }
