@@ -28,8 +28,14 @@
   <header class="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-5">
     <div>
       <div class="flex items-center gap-2.5">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-amber-500/15 text-amber-400 mono text-sm font-bold">⚡</span>
-        <h1 class="text-xl font-extrabold tracking-tight">ARIA · <span class="text-amber-400">God Mode</span></h1>
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="h-8 w-8">
+          <defs><linearGradient id="ariaMarkAdmin" x1="5" y1="27" x2="27" y2="5" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#22d3ee"/><stop offset=".5" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
+          <path d="M6.5 26 L14.4 6.3 C15 4.9 17 4.9 17.6 6.3 L25.5 26" stroke="url(#ariaMarkAdmin)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M11 18.6 H21" stroke="url(#ariaMarkAdmin)" stroke-width="2.8" stroke-linecap="round"/>
+          <path d="M16 8.2 C19.4 11.6 19.4 15.8 16 19.2 C12.6 15.8 12.6 11.6 16 8.2 Z" stroke="#a7f3d0" stroke-opacity=".55" stroke-width="1" fill="none"/>
+        </svg>
+        <h1 class="text-xl font-extrabold tracking-tight"><span class="tracking-[0.18em] text-zinc-50">ARIA</span> · <span class="text-amber-400">God Mode</span></h1>
         <span class="mono rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-400">SYSTEM CONSOLE</span>
       </div>
       <p class="mt-1 text-xs text-zinc-500 mono">owner-only · autonomous SaaS operations</p>

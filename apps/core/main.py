@@ -695,19 +695,32 @@ async def login_page():
     body = g + gh or '<p style="color:#fb7185">Login not configured.</p>'
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Sign in</title><style>
-*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+*{{margin:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:radial-gradient(120% 90% at 80% 10%,rgba(37,99,235,.28),transparent 45%),
-radial-gradient(120% 90% at 10% 90%,rgba(124,58,237,.30),transparent 45%),#0a0a0f;color:#f1f5f9}}
-.card{{width:400px;max-width:92vw;background:rgba(17,17,24,.85);border:1px solid rgba(255,255,255,.1);
+background:radial-gradient(120% 90% at 80% 10%,rgba(34,211,238,.10),transparent 45%),
+radial-gradient(120% 90% at 10% 90%,rgba(52,211,153,.12),transparent 45%),#09090b;color:#fafafa}}
+.card{{width:400px;max-width:92vw;background:rgba(24,24,27,.72);border:1px solid #27272a;
 border-radius:20px;padding:42px 34px;text-align:center;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
-h1{{font-size:26px;margin-bottom:8px}} p{{color:#94a3b8;font-size:15px;margin-bottom:26px}}
+.brand{{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:20px}}
+.brand .wm{{font-size:20px;font-weight:800;letter-spacing:.22em;color:#fafafa}}
+h1{{font-size:24px;margin-bottom:8px;color:#fafafa}} p{{color:#a1a1aa;font-size:15px;margin-bottom:26px}}
 .btn{{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;
-border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);
-color:#fff;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12px}}
-.btn:hover{{background:rgba(255,255,255,.12)}} .btn.gh{{background:#161b22;border-color:#30363d}}
-.mut{{color:#64748b;font-size:12px;margin-top:18px}} a.lnk{{color:#a78bfa;text-decoration:none}}
-</style></head><body><div class="card"><h1>Sign in to ARIA</h1>
+border-radius:12px;border:1px solid #3f3f46;background:rgba(255,255,255,.05);
+color:#fafafa;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12px;transition:background .2s}}
+.btn:hover{{background:rgba(255,255,255,.1)}} .btn.gh{{background:#18181b;border-color:#3f3f46}}
+.mut{{color:#71717a;font-size:12px;margin-top:18px}} a.lnk{{color:#34d399;text-decoration:none}}
+</style></head><body><div class="card">
+<div class="brand">
+  <svg width="34" height="34" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <defs><linearGradient id="ariaMarkLogin" x1="5" y1="27" x2="27" y2="5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22d3ee"/><stop offset=".5" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
+    <path d="M6.5 26 L14.4 6.3 C15 4.9 17 4.9 17.6 6.3 L25.5 26" stroke="url(#ariaMarkLogin)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M11 18.6 H21" stroke="url(#ariaMarkLogin)" stroke-width="2.8" stroke-linecap="round"/>
+    <path d="M16 8.2 C19.4 11.6 19.4 15.8 16 19.2 C12.6 15.8 12.6 11.6 16 8.2 Z" stroke="#a7f3d0" stroke-opacity=".55" stroke-width="1" fill="none"/>
+  </svg>
+  <span class="wm">ARIA</span>
+</div>
+<h1>Sign in</h1>
 <p>Access your personal workspace.</p>{body}
 <div class="mut">By continuing you agree to our <a class="lnk" href="/legal/terms">Terms</a>,
 <a class="lnk" href="/legal/privacy">Privacy</a> &amp;

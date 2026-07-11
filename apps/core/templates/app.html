@@ -51,10 +51,24 @@ if (window.tailwind) {
 </head>
 <body class="font-sans bg-zinc-950 text-zinc-100 h-screen w-screen overflow-hidden antialiased">
 
+<!-- ARIA isotype (3D ribbon 'A', cyan→emerald) — defined once, referenced via <use> -->
+<svg width="0" height="0" class="absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="ariaMarkGrad" x1="5" y1="27" x2="27" y2="5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22d3ee"/><stop offset=".5" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <symbol id="ariaMark" viewBox="0 0 32 32">
+      <path d="M6.5 26 L14.4 6.3 C15 4.9 17 4.9 17.6 6.3 L25.5 26" stroke="url(#ariaMarkGrad)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M11 18.6 H21" stroke="url(#ariaMarkGrad)" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+      <path d="M16 8.2 C19.4 11.6 19.4 15.8 16 19.2 C12.6 15.8 12.6 11.6 16 8.2 Z" stroke="#a7f3d0" stroke-opacity=".55" stroke-width="1" fill="none"/>
+    </symbol>
+  </defs>
+</svg>
+
 <!-- ══════════════════ ONBOARDING / PLANS ══════════════════ -->
 <div id="ov" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6">
   <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-800 bg-zinc-900 p-7 sm:p-8 shadow-2xl">
-    <div class="mb-5 grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-lg font-extrabold">A</div>
+    <div class="mb-5 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-800/60 ring-1 ring-inset ring-emerald-500/20"><svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg></div>
     <div class="mb-1 flex gap-1.5" id="dots">
       <i class="h-1 flex-1 rounded bg-indigo-500"></i><i class="h-1 flex-1 rounded bg-zinc-700"></i>
       <i class="h-1 flex-1 rounded bg-zinc-700"></i><i class="h-1 flex-1 rounded bg-zinc-700"></i>
@@ -129,7 +143,7 @@ if (window.tailwind) {
   <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-800 bg-zinc-900 p-7 sm:p-8 shadow-2xl">
     <div class="flex items-start justify-between">
       <div>
-        <div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-lg font-extrabold">A</div>
+        <div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-800/60 ring-1 ring-inset ring-emerald-500/20"><svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg></div>
         <h2 class="text-2xl font-bold tracking-tight">Upgrade ARIA</h2>
         <p class="mt-2 text-sm text-zinc-400">Do more — autonomous publishing, video, and priority AI.</p>
       </div>
@@ -158,7 +172,7 @@ if (window.tailwind) {
 <div id="supPanel" class="fixed bottom-24 right-5 z-[85] hidden w-[92vw] max-w-[380px] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl sm:right-6">
   <div class="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/70 px-4 py-3">
     <div class="flex items-center gap-2.5">
-      <span class="relative grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-extrabold">A
+      <span class="relative grid h-8 w-8 place-items-center rounded-lg bg-zinc-800/70 ring-1 ring-inset ring-emerald-500/20"><svg class="h-5 w-5" aria-hidden="true"><use href="#ariaMark"/></svg>
         <span class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900 bg-emerald-400"></span></span>
       <div><div class="text-sm font-semibold leading-tight">ARIA Support</div>
         <div class="text-[11px] text-zinc-500">Asistente 24/7 · en línea</div></div>
@@ -172,7 +186,7 @@ if (window.tailwind) {
   </form>
 </div>
 <button id="supFab" onclick="toggleSupport()" class="fixed bottom-5 right-5 z-[84] flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-50 shadow-2xl transition hover:bg-zinc-800 sm:right-6">
-  <span class="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[11px] font-extrabold">A</span>
+  <svg class="h-5 w-5" aria-hidden="true"><use href="#ariaMark"/></svg>
   <span>Soporte</span>
 </button>
 
@@ -180,7 +194,7 @@ if (window.tailwind) {
 <div id="settingsOv" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6">
   <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-800 bg-zinc-900 p-7 sm:p-8 shadow-2xl">
     <div class="flex items-start justify-between">
-      <div><div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-lg font-extrabold">A</div>
+      <div><div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-800/60 ring-1 ring-inset ring-emerald-500/20"><svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg></div>
         <h2 class="text-2xl font-bold tracking-tight">Settings</h2></div>
       <button onclick="closeSettings()" aria-label="Close" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-800">✕</button>
     </div>
@@ -244,10 +258,9 @@ if (window.tailwind) {
   <!-- ░░ COLUMN 1 — SIDEBAR ░░ -->
   <aside id="side" class="fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col border-r border-zinc-800 bg-zinc-900/80 backdrop-blur transition-transform duration-300 lg:static lg:translate-x-0">
     <div class="flex items-center justify-between px-4 pt-4 pb-3">
-      <div class="flex items-center gap-2 font-extrabold tracking-wide">
-        <span class="grid h-6 w-6 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-xs">A</span>
-        SAR<span class="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">APH</span>
-        <span class="text-[11px] font-semibold tracking-[2px] text-zinc-500">ARIA</span>
+      <div class="group flex items-center gap-2.5">
+        <svg class="h-7 w-7 transition-all duration-300 group-hover:scale-105" aria-hidden="true"><use href="#ariaMark"/></svg>
+        <span class="text-base font-extrabold tracking-[0.22em] text-zinc-50">ARIA</span>
       </div>
       <button onclick="toggleSide(false)" aria-label="Close" class="grid h-8 w-8 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-800 lg:hidden">✕</button>
     </div>
