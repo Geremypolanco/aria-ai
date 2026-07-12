@@ -93,7 +93,7 @@ METAS ACTIVAS (persisten entre reinicios):
 
 HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - generate_image  → genera una imagen profesional de inmediato (motor confiable, sin depender de HF). Úsalo siempre que el usuario pida una imagen, visual o gráfico. Args: {{"prompt": "descripción detallada en inglés para mejor calidad"}}
-- generate_video  → genera video con damo-vilab/text-to-video. Args: {{"prompt": "..."}}
+- generate_video  → genera video con Wan2.2 (HF Space, ZeroGPU; puede tener cola). Args: {{"prompt": "..."}}
 - generate_music  → genera música con MusicGen. Args: {{"prompt": "...", "duration": 30}}
 - speak           → convierte texto a voz con Bark TTS. Args: {{"text": "...", "voice": "v2/es_speaker_1"}}
 - translate       → traduce texto entre idiomas. Args: {{"text": "...", "source": "es", "target": "en"}}
@@ -787,6 +787,8 @@ class AriaMind:
                             raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
                     if raw:
                         return f"Video generado ({len(raw)//1024}KB)", {"video_bytes": raw}
+                    if r.get("video_url"):
+                        return f"Video generado: {r['video_url']}", {}
                 return (
                     f"⚠️ Error en generación de video: {r.get('error', 'Proveedor no disponible')}",
                     {},
