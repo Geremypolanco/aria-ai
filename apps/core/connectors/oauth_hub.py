@@ -406,7 +406,9 @@ async def status_for(email: str) -> list[dict]:
                 "state": state,
                 "note": p.note,
                 "special": p.special,
-                "redirect_uri": "" if (pid in ("google", "youtube") or p.special) else callback_uri(pid),
+                "redirect_uri": (
+                    "" if (pid in ("google", "youtube") or p.special) else callback_uri(pid)
+                ),
                 "reuse_login": pid in ("google", "youtube"),
                 "needs": missing_secrets(pid),
             }
