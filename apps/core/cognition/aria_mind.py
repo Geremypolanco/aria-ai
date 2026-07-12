@@ -798,9 +798,7 @@ class AriaMind:
                         v64 = r.get("video_b64") or r.get("video_base64")
                         if v64:
                             raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
-                    tag = r.get("provider") or (
-                        f"{r['scenes']} escenas" if r.get("scenes") else ""
-                    )
+                    tag = r.get("provider") or (f"{r['scenes']} escenas" if r.get("scenes") else "")
                     if raw:
                         extra = f" · {tag}" if tag else ""
                         return f"Video generado ({len(raw)//1024}KB{extra})", {"video_bytes": raw}
