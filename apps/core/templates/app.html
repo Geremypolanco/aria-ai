@@ -788,20 +788,40 @@ async function openConnectors(){
 }
 function renderConnectors(){
   document.getElementById('connList').innerHTML = CONN_STATUS.map(function(c){
-    var label, cls, action;
-    if(c.state==='connected'){ label='Connected ✓'; cls='cursor-default border-emerald-500/40 bg-emerald-500/15 text-emerald-300'; action='disabled'; }
-    else if(c.state==='ready'){ label='Connect'; cls='border-zinc-300 bg-zinc-100 text-zinc-900 hover:bg-zinc-100'; action='onclick="location.href=\'/connectors/'+c.id+'/connect\'"'; }
-    else { label='Set up'; cls='border-indigo-500/40 bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20'; action='onclick="connSetup(\''+c.id+'\')"'; }
-    return '<div class="flex items-center gap-3 border-b border-zinc-200 py-3 last:border-0">'
+    var label, cls, action, gear='';
+    if(c.state==='connected'){ label='Connected ✓'; cls='cursor-default border-emerald-500/40 bg-emerald-500/10 text-emerald-600'; action='disabled'; }
+    else if(c.state==='ready'){ label='Connect'; cls='border-zinc-300 bg-zinc-100 text-zinc-900 hover:bg-zinc-200'; action='onclick="location.href=\'/connectors/'+c.id+'/connect\'"';
+      gear='<button onclick="connToggle(\''+c.id+'\')" title="Datos de configuración" class="flex-none rounded-lg border border-zinc-200 px-2 py-1.5 text-xs text-zinc-500 hover:bg-zinc-100">⚙</button>'; }
+    else { label='Set up'; cls='border-indigo-500/40 bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20'; action='onclick="connToggle(\''+c.id+'\')"'; }
+    return '<div class="border-b border-zinc-200 py-3 last:border-0">'
+      +'<div class="flex items-center gap-3">'
       +'<div class="grid h-9 w-9 flex-none place-items-center rounded-lg text-sm font-extrabold text-white" style="background:'+c.color+'">'+c.icon+'</div>'
-      +'<div class="min-w-0 flex-1"><div class="text-sm font-semibold">'+esc(c.name)+'</div><div class="text-xs text-zinc-500">'+esc(c.desc)+'</div></div>'
-      +'<button '+action+' class="flex-none rounded-lg border px-3 py-1.5 text-xs font-semibold '+cls+'">'+label+'</button></div>';
+      +'<div class="min-w-0 flex-1"><div class="text-sm font-semibold text-zinc-900">'+esc(c.name)+'</div><div class="text-xs text-zinc-500">'+esc(c.desc)+'</div></div>'
+      +gear
+      +'<button '+action+' class="flex-none rounded-lg border px-3 py-1.5 text-xs font-semibold '+cls+'">'+label+'</button></div>'
+      +connDetail(c)+'</div>';
   }).join('');
 }
-function connSetup(id){
-  var c=CONN_STATUS.find(function(x){return x.id===id})||{};
-  toast((c.name||'Este conector')+': aún falta configurar las credenciales de su app OAuth (Client ID/Secret). '+(c.note||''),'');
+function connDetail(c){
+  if(c.state==='connected') return '';
+  var parts='';
+  if(c.needs && c.needs.length){
+    parts+='<div class="mb-2"><div class="mb-1 text-[11px] font-semibold text-zinc-500">1) Añade estos secretos en Fly (Client ID/Secret de la app):</div>'
+      +'<code class="block break-all rounded bg-white border border-zinc-200 px-2 py-1 text-[11px] text-zinc-700">'+c.needs.join('  ·  ')+'</code></div>';
+  }
+  if(c.reuse_login){
+    parts+='<div class="text-[11px] text-zinc-600">✓ Reutiliza el callback de login que ya tienes registrado — <b>no</b> necesitas registrar una URL nueva. Para usar sus permisos, habilítalos en la pantalla de consentimiento de Google.</div>';
+  } else if(c.redirect_uri){
+    parts+='<div><div class="mb-1 text-[11px] font-semibold text-zinc-500">'+(c.needs&&c.needs.length?'2) ':'')+'Registra esta Redirect URI en la app del proveedor:</div>'
+      +'<div class="flex gap-2"><input readonly value="'+c.redirect_uri+'" onclick="this.select()" class="min-w-0 flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] text-zinc-800"/>'
+      +'<button onclick="connCopy(\''+c.redirect_uri+'\',this)" class="flex-none rounded border border-zinc-300 px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100">Copiar</button></div></div>';
+  } else if(c.special){
+    parts+='<div class="text-[11px] text-zinc-600">'+esc(c.note||'')+'</div>';
+  }
+  return '<div id="cd_'+c.id+'" class="hidden mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">'+parts+'</div>';
 }
+function connToggle(id){ var d=document.getElementById('cd_'+id); if(d) d.classList.toggle('hidden'); }
+function connCopy(t,btn){ try{ navigator.clipboard.writeText(t); }catch(e){} var o=btn.textContent; btn.textContent='✓'; setTimeout(function(){btn.textContent=o;},1200); }
 function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
 
 /* ── boot ── */

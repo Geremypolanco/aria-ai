@@ -363,6 +363,31 @@ async def disconnect(email: str, pid: str) -> None:
         pass
 
 
+def callback_uri(pid: str) -> str:
+    """The exact redirect URI to register in the provider's OAuth app.
+
+    Google/YouTube reuse the already-registered login callback, so their setup
+    needs no new redirect URI.
+    """
+    if pid in ("google", "youtube"):
+        return f"{_base_url()}/auth/google/callback"
+    return redirect_uri(pid)
+
+
+def missing_secrets(pid: str) -> list[str]:
+    """Which credential env vars still need setting for this connector."""
+    p = PROVIDERS.get(pid)
+    if not p:
+        return []
+    if p.special == "shopify":
+        keys = ["SHOPIFY_URL", "SHOPIFY_ADMIN_TOKEN"]
+    elif p.special == "apikey":
+        keys = ["ZAPIER_WEBHOOK_URL"]
+    else:
+        keys = [k for k in (p.cid_key, p.csec_key) if k]
+    return [k for k in keys if not _get(k)]
+
+
 async def status_for(email: str) -> list[dict]:
     """UI status for every connector: connected / ready / setup."""
     out = []
@@ -381,6 +406,9 @@ async def status_for(email: str) -> list[dict]:
                 "state": state,
                 "note": p.note,
                 "special": p.special,
+                "redirect_uri": "" if (pid in ("google", "youtube") or p.special) else callback_uri(pid),
+                "reuse_login": pid in ("google", "youtube"),
+                "needs": missing_secrets(pid),
             }
         )
     return out
