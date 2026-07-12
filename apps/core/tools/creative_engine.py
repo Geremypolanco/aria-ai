@@ -52,26 +52,46 @@ class CreativeEngine:
     # ── VIDEO Y ANIMACIÓN ─────────────────────────────────
 
     async def generate_video(self, prompt: str) -> dict[str, Any]:
-        """Genera clips de video usando modelos Text-to-Video."""
+        """Genera clips de video (Text-to-Video).
+
+        Hugging Face retiró los modelos text-to-video de la Inference API
+        serverless — el antiguo endpoint ``damo-vilab/text-to-video-ms-1.7b``
+        ahora devuelve 404/503 y por eso ARIA "no generaba videos". El proveedor
+        real es el Space de Wan2.2 (ZeroGPU). Su cola puede tardar, así que esto
+        es apto para misiones asíncronas, no tiempo real.
+        """
         if not settings.hf_key:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
-            # damo-vilab/text-to-video — modelo funcional via HF Inference API
-            res = await self._http.post(
-                "https://api-inference.huggingface.co/models/damo-vilab/text-to-video-ms-1.7b",
-                headers=self._hf_headers,
-                json={"inputs": prompt},
-            )
-            if res.status_code == 200:
-                video_b64 = base64.b64encode(res.content).decode()
-                return {
-                    "success": True,
-                    "video_base64": video_b64,
-                    "content_type": "video/mp4",
-                    "description": f"Video generado: {prompt}",
-                }
-            return {"success": False, "error": f"HF Video Error {res.status_code}"}
-        except Exception as exc:
+            from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+            r = await HuggingFaceSuite().generate_video_space(prompt)
+            if r.get("success"):
+                raw = r.get("video_bytes")
+                if not raw and r.get("video_url"):
+                    try:
+                        resp = await self._http.get(r["video_url"])
+                        if resp.status_code == 200:
+                            raw = resp.content
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("[creative] no pude descargar el video: %s", exc)
+                if raw:
+                    return {
+                        "success": True,
+                        "video_bytes": raw,
+                        "video_base64": base64.b64encode(raw).decode(),
+                        "content_type": "video/mp4",
+                        "description": f"Video generado: {prompt}",
+                    }
+                if r.get("video_url"):
+                    return {
+                        "success": True,
+                        "video_url": r["video_url"],
+                        "description": f"Video generado: {prompt}",
+                    }
+            return {"success": False, "error": r.get("error", "Proveedor de video no disponible")}
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[creative] generate_video failed: %s", exc)
             return {"success": False, "error": str(exc)}
 
     # ── MANGA, ANIME Y LIBROS ──────────────────────────────
