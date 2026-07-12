@@ -9,7 +9,7 @@
 <meta property="og:description" content="Autonomous AI that researches, creates, and publishes — auditable end to end." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   if (window.tailwind) {
@@ -22,307 +22,246 @@
 <style>
   html{scroll-behavior:smooth}
   body{-webkit-font-smoothing:antialiased}
-  ::selection{background:rgba(79,70,229,.18)}
+  ::selection{background:rgba(255,255,255,.16)}
   .no-sb::-webkit-scrollbar{width:0;height:0}
-  .panel{background:rgba(255,255,255,.85);border:1px solid #e4e4e7;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 1px 2px rgba(24,24,27,.04),0 12px 32px -12px rgba(24,24,27,.10)}
-  .ambient{position:absolute;inset:0;overflow:hidden;pointer-events:none}
-  .ambient::before,.ambient::after{content:'';position:absolute;border-radius:9999px;filter:blur(120px);opacity:.16}
-  .ambient::before{width:620px;height:620px;left:50%;top:-16%;transform:translateX(-50%);background:radial-gradient(circle,#4f46e5,transparent 60%)}
-  .ambient::after{width:440px;height:440px;right:-8%;top:22%;background:radial-gradient(circle,#22d3ee,transparent 62%)}
-  .grid-bg{background-image:linear-gradient(rgba(24,24,27,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(24,24,27,.045) 1px,transparent 1px);background-size:46px 46px;mask-image:radial-gradient(ellipse 80% 55% at 50% 0,#000 38%,transparent 78%);-webkit-mask-image:radial-gradient(ellipse 80% 55% at 50% 0,#000 38%,transparent 78%)}
-  @keyframes blink{50%{opacity:.25}}
+  @keyframes blink{50%{opacity:.2}}
   .blink{animation:blink 1.05s step-end infinite}
-  @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-  .floaty{animation:floaty 6s ease-in-out infinite}
-  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
   html.js .reveal{opacity:0}
-  .reveal.in{animation:rise .6s ease both;opacity:1}
-  .caret{display:inline-block;width:9px;height:1.05em;background:#4f46e5;vertical-align:-2px;border-radius:1px}
-  .chan svg{transition:color .3s ease,filter .3s ease}
-  .chan:hover svg{filter:drop-shadow(0 0 10px currentColor)}
+  .reveal.in{animation:rise .55s ease both;opacity:1}
 </style>
 </head>
-<body class="font-sans bg-white text-zinc-600 antialiased overflow-x-hidden">
+<body class="font-sans bg-zinc-950 text-zinc-400 antialiased overflow-x-hidden">
 
-<!-- ARIA isotype — glossy 3D liquid-glass 'A' (royal blue). Defined once, referenced via <use>. -->
+<!-- ARIA isotype — clean vector 'A' mark -->
 <svg width="0" height="0" class="absolute" aria-hidden="true"><defs>
   <linearGradient id="ariaGlass" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">
     <stop offset="0" stop-color="#93a6ff"/><stop offset=".42" stop-color="#3f52dd"/><stop offset=".78" stop-color="#2530a0"/><stop offset="1" stop-color="#161d70"/>
   </linearGradient>
-  <linearGradient id="ariaSpec" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
-  </linearGradient>
-  <filter id="ariaSh" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2.5" stdDeviation="3" flood-color="#3f52dd" flood-opacity=".35"/></filter>
   <symbol id="ariaMark" viewBox="0 0 100 100">
-    <g filter="url(#ariaSh)" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <g stroke-linecap="round" stroke-linejoin="round" fill="none">
       <path d="M23 83 C 29 52, 40 28, 49 13 C 57 26, 64 36, 70 46" stroke="url(#ariaGlass)" stroke-width="12.5"/>
       <path d="M70 46 C 79 61, 74 79, 56 78 C 41 77, 39 58, 53 53 C 63 50, 70 50, 70 46 Z" stroke="url(#ariaGlass)" stroke-width="12.5"/>
-      <path d="M26 79 C 32 51, 42 30, 49 17" stroke="url(#ariaSpec)" stroke-width="2.6" opacity=".7"/>
     </g>
   </symbol>
 </defs></svg>
 
 <!-- ══════════ NAV ══════════ -->
-<header class="sticky top-0 z-50 border-b border-zinc-200 bg-white/80 backdrop-blur-xl">
+<header class="sticky top-0 z-50 border-b border-zinc-900 bg-zinc-950">
   <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
     <a href="/" class="group flex items-center gap-2.5">
-      <svg class="h-8 w-8 transition-all duration-300 group-hover:scale-105" aria-hidden="true"><use href="#ariaMark"/></svg>
-      <span class="text-lg font-light tracking-[0.3em] text-zinc-900" style="padding-left:.3em">ARIA</span>
+      <svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg>
+      <span class="text-base font-medium tracking-[0.28em] text-zinc-100" style="padding-left:.28em">ARIA</span>
     </a>
-    <nav class="hidden items-center gap-8 text-sm text-zinc-600 md:flex">
-      <a href="#features" class="transition-colors hover:text-zinc-900">Features</a>
-      <a href="#how" class="transition-colors hover:text-zinc-900">How it works</a>
-      <a href="#observability" class="transition-colors hover:text-zinc-900">Observability</a>
-      <a href="#pricing" class="transition-colors hover:text-zinc-900">Pricing</a>
+    <nav class="hidden items-center gap-8 text-sm text-zinc-400 md:flex">
+      <a href="#features" class="transition-colors hover:text-zinc-100">Features</a>
+      <a href="#how" class="transition-colors hover:text-zinc-100">How it works</a>
+      <a href="#observability" class="transition-colors hover:text-zinc-100">Observability</a>
+      <a href="#pricing" class="transition-colors hover:text-zinc-100">Pricing</a>
     </nav>
     <div class="flex items-center gap-3">
-      <a href="/login" class="hidden text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900 sm:block">Sign in</a>
-      <a href="/login" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-500">Get Started</a>
+      <a href="/login" class="hidden text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-100 sm:block">Sign in</a>
+      <a href="/login" class="rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-zinc-200">Get Started</a>
     </div>
   </div>
 </header>
 
 <!-- ══════════ HERO ══════════ -->
-<section class="relative overflow-hidden">
-  <div class="ambient"></div>
-  <div class="grid-bg absolute inset-0"></div>
-  <div class="relative mx-auto max-w-6xl px-5 pb-20 pt-16 md:pt-24">
-    <div class="mx-auto max-w-3xl text-center">
-      <span class="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm">
-        <span class="h-1.5 w-1.5 rounded-full bg-indigo-500"></span> Autonomous · research → create → publish
+<section class="border-b border-zinc-900">
+  <div class="mx-auto max-w-6xl px-5 py-20 md:py-28">
+    <div class="max-w-3xl">
+      <span class="inline-flex items-center gap-2 rounded-full border border-zinc-800 px-3 py-1 text-xs font-medium text-zinc-400">
+        <span class="h-1.5 w-1.5 rounded-full bg-zinc-100"></span> Autonomous · research → create → publish
       </span>
-      <h1 class="mt-6 text-4xl font-extrabold leading-[1.05] tracking-tight text-zinc-900 sm:text-6xl md:text-7xl">
-        The AI that<br />
-        <span class="text-indigo-600">executes.</span>
+      <h1 class="mt-6 text-5xl font-semibold leading-[1.05] tracking-tight text-zinc-50 sm:text-6xl md:text-7xl">
+        The AI that executes.
       </h1>
-      <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-zinc-600">
+      <p class="mt-6 max-w-2xl text-lg leading-relaxed text-zinc-400">
         ARIA doesn't just answer. It researches the live web, generates images, video &amp; voice, and publishes across your channels — and shows you every step it took.
       </p>
-      <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <a href="/login" class="w-full rounded-xl bg-indigo-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition-colors hover:bg-indigo-500 sm:w-auto">Get Started — no card</a>
-        <a href="#how" class="w-full rounded-xl border border-zinc-300 bg-white px-6 py-3.5 text-sm font-semibold text-zinc-800 transition-colors hover:border-zinc-400 hover:bg-zinc-50 sm:w-auto">See how it works</a>
+      <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+        <a href="/login" class="rounded-lg bg-white px-6 py-3 text-center text-sm font-medium text-zinc-950 transition-colors hover:bg-zinc-200">Get Started — no card</a>
+        <a href="#how" class="rounded-lg border border-zinc-700 px-6 py-3 text-center text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-900">See how it works</a>
       </div>
     </div>
 
-    <!-- command box + terminal -->
-    <div class="mx-auto mt-14 grid max-w-5xl gap-4 md:grid-cols-5">
-      <div class="panel rounded-2xl p-1.5 md:col-span-3">
-        <div class="flex items-center gap-2 px-3 pt-2 pb-1">
-          <span class="h-2.5 w-2.5 rounded-full bg-zinc-200"></span>
-          <span class="h-2.5 w-2.5 rounded-full bg-zinc-200"></span>
-          <span class="h-2.5 w-2.5 rounded-full bg-zinc-200"></span>
-          <span class="ml-2 text-[11px] font-medium text-zinc-400">ARIA · command</span>
+    <!-- command + log preview: flat bordered panels, no glow -->
+    <div class="mt-16 grid gap-4 md:grid-cols-5">
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900 md:col-span-3">
+        <div class="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
+          <span class="h-2.5 w-2.5 rounded-full border border-zinc-700"></span>
+          <span class="h-2.5 w-2.5 rounded-full border border-zinc-700"></span>
+          <span class="h-2.5 w-2.5 rounded-full border border-zinc-700"></span>
+          <span class="ml-2 text-[11px] font-medium text-zinc-500">ARIA · command</span>
         </div>
-        <div class="flex items-start gap-3 rounded-xl bg-zinc-50 px-4 py-5">
+        <div class="flex items-start gap-3 px-5 py-6">
           <svg class="mt-0.5 h-6 w-6 flex-none" aria-hidden="true"><use href="#ariaMark"/></svg>
-          <div class="min-h-[3.5rem] flex-1 text-left text-[15px] leading-relaxed text-zinc-700">
-            <span id="typed"></span><span class="caret blink"></span>
+          <div class="min-h-[3.25rem] flex-1 text-[15px] leading-relaxed text-zinc-200">
+            <span id="typed"></span><span class="ml-0.5 inline-block h-[1.05em] w-[8px] translate-y-[2px] rounded-[1px] bg-zinc-100 blink align-baseline"></span>
           </div>
         </div>
-        <div class="flex items-center justify-between px-4 pb-3 pt-1">
-          <span class="text-[11px] text-zinc-400">Try it after sign-in</span>
-          <span class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white">Launch mission ↵</span>
+        <div class="flex items-center justify-between border-t border-zinc-800 px-5 py-3">
+          <span class="text-[11px] text-zinc-500">Try it after sign-in</span>
+          <span class="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-zinc-950">Launch mission ↵</span>
         </div>
       </div>
 
-      <div class="rounded-2xl border border-zinc-800 bg-zinc-900 shadow-lg shadow-zinc-900/10 md:col-span-2">
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900 md:col-span-2">
         <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <span class="text-[11px] font-bold uppercase tracking-widest text-zinc-400">Execution log</span>
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
-            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 blink"></span> Running
+          <span class="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Execution log</span>
+          <span class="inline-flex items-center gap-1.5 text-[10px] font-medium text-zinc-400">
+            <span class="h-1.5 w-1.5 rounded-full bg-zinc-100 blink"></span> Running
           </span>
         </div>
-        <div id="term" class="no-sb h-[190px] overflow-hidden px-4 py-3 font-mono text-[12px] leading-relaxed"></div>
+        <div id="term" class="no-sb h-[188px] overflow-hidden px-4 py-3 font-mono text-[12px] leading-relaxed"></div>
       </div>
     </div>
-    <p class="mt-4 text-center text-xs text-zinc-400">Illustrative run. ARIA logs every real action it takes — see <a href="#observability" class="text-indigo-600 underline underline-offset-2 hover:text-indigo-500">Observability</a>.</p>
   </div>
 </section>
 
-<!-- ══════════ CHANNELS STRIP ══════════ -->
-<section class="border-y border-zinc-200 bg-zinc-50">
-  <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-10 gap-y-4 px-5 py-6">
-    <span class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Publishes to</span>
-    <span class="chan text-zinc-400 hover:text-red-600" title="YouTube"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.8.5 9.4.5 9.4.5s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg></span>
-    <span class="chan text-zinc-400 hover:text-blue-600" title="LinkedIn"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.22.79 24 1.77 24h20.45C23.2 24 24 23.22 24 22.27V1.73C24 .77 23.2 0 22.22 0z"/></svg></span>
-    <span class="chan text-zinc-400 hover:text-pink-600" title="Instagram"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="currentColor"><path d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.16-.42-.36-1.06-.41-2.23C2.17 15.58 2.16 15.2 2.16 12s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16zM12 5.84A6.16 6.16 0 1 0 18.16 12 6.16 6.16 0 0 0 12 5.84zm0 10.16A4 4 0 1 1 16 12a4 4 0 0 1-4 4zm6.4-11.85a1.44 1.44 0 1 0 1.44 1.44 1.44 1.44 0 0 0-1.44-1.44z"/></svg></span>
-    <span class="chan text-zinc-400 hover:text-zinc-900" title="X"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="currentColor"><path d="M17.9 2h3.3l-7.2 8.3L22.6 22h-6.6l-5.2-6.8L4.9 22H1.6l7.7-8.9L1.1 2h6.8l4.7 6.2L17.9 2zm-1.2 18h1.8L7.1 3.9H5.2L16.7 20z"/></svg></span>
-    <span class="chan text-zinc-400 hover:text-indigo-600" title="Publishing"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="currentColor"><path d="M5.8 22a1.3 1.3 0 0 1-1.3-1.3V3.3A1.3 1.3 0 0 1 5.8 2h8.9L19.5 6.8V20.7A1.3 1.3 0 0 1 18.2 22H5.8zm8-14.4V3.6H5.9v16.8h12.2V7.6h-4.3z"/></svg></span>
-  </div>
-</section>
-
-<!-- ══════════ FEATURES · BENTO ══════════ -->
-<section id="features" class="mx-auto max-w-6xl px-5 py-24">
-  <div class="max-w-2xl">
-    <h2 class="text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">One agent. The whole workflow.</h2>
-    <p class="mt-4 text-zinc-600">Research, creation and distribution — done end to end, not handed back as a to-do list.</p>
-  </div>
-
-  <div class="mt-10 grid grid-cols-1 gap-4 md:grid-cols-6 md:grid-rows-2">
-    <div class="reveal panel rounded-2xl p-6 md:col-span-4 md:row-span-1">
-      <div class="flex items-start justify-between">
-        <div>
-          <h3 class="text-lg font-bold text-zinc-900">Research-first</h3>
-          <p class="mt-1.5 max-w-md text-sm text-zinc-600">Every mission starts by pulling live signals from the web — trends, sources, competitors — so output is grounded, not guessed.</p>
-        </div>
-        <span class="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">live web</span>
-      </div>
-      <svg viewBox="0 0 480 120" class="mt-5 h-28 w-full" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="lg" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stop-color="#4f46e5" stop-opacity=".22"/><stop offset="1" stop-color="#4f46e5" stop-opacity="0"/>
-          </linearGradient>
-        </defs>
-        <path d="M0,95 L60,80 L120,88 L180,55 L240,64 L300,32 L360,44 L420,20 L480,28 L480,120 L0,120 Z" fill="url(#lg)"/>
-        <path d="M0,95 L60,80 L120,88 L180,55 L240,64 L300,32 L360,44 L420,20 L480,28" fill="none" stroke="#4f46e5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="300" cy="32" r="3.5" fill="#4f46e5"/><circle cx="420" cy="20" r="3.5" fill="#4f46e5"/>
-      </svg>
+<!-- ══════════ FEATURES · RECTANGULAR GRID ══════════ -->
+<section id="features" class="border-b border-zinc-900">
+  <div class="mx-auto max-w-6xl px-5 py-20 md:py-24">
+    <div class="max-w-2xl">
+      <h2 class="text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">One agent. The whole workflow.</h2>
+      <p class="mt-4 text-zinc-400">Research, creation and distribution — done end to end, not handed back as a to-do list.</p>
     </div>
 
-    <div class="reveal panel rounded-2xl p-6 md:col-span-2 md:row-span-2">
-      <h3 class="text-lg font-bold text-zinc-900">Content &amp; media</h3>
-      <p class="mt-1.5 text-sm text-zinc-600">Text, images, short-form video and voiceover — generated on brief.</p>
-      <div class="relative mt-6 h-56">
-        <div class="absolute left-2 top-2 h-28 w-40 rotate-[-6deg] overflow-hidden rounded-xl border border-zinc-200 shadow-lg floaty">
-          <svg viewBox="0 0 160 112" class="h-full w-full"><rect width="160" height="112" fill="#eef2ff"/><circle cx="120" cy="30" r="14" fill="#818cf8"/><path d="M0 90 L50 55 L85 80 L120 50 L160 82 L160 112 L0 112Z" fill="#c7d2fe"/></svg>
-          <span class="absolute bottom-1 left-2 text-[10px] font-semibold text-zinc-700">image</span>
+    <div class="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="reveal bg-zinc-950 p-7">
+        <div class="grid h-10 w-10 place-items-center rounded-lg border border-zinc-800 text-zinc-100">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
         </div>
-        <div class="absolute right-1 top-10 h-36 w-24 rotate-[7deg] overflow-hidden rounded-xl border border-zinc-200 bg-gradient-to-b from-indigo-500 to-indigo-700 shadow-lg floaty" style="animation-delay:.8s">
-          <div class="grid h-full place-items-center"><span class="grid h-9 w-9 place-items-center rounded-full bg-white/95 text-indigo-700">▶</span></div>
-          <span class="absolute bottom-1 left-2 text-[10px] font-semibold text-white/90">reel</span>
-        </div>
-        <div class="absolute bottom-1 left-6 h-16 w-44 overflow-hidden rounded-xl border border-zinc-200 bg-white px-3 shadow-lg floaty" style="animation-delay:1.6s">
-          <div class="flex h-full items-center gap-[3px]">
-            <span class="text-[10px] font-semibold text-indigo-600">voice</span>
-            <div class="ml-1 flex items-end gap-[3px]">
-              <i class="w-[3px] rounded bg-indigo-500" style="height:8px"></i><i class="w-[3px] rounded bg-indigo-500" style="height:18px"></i><i class="w-[3px] rounded bg-indigo-500" style="height:11px"></i><i class="w-[3px] rounded bg-indigo-500" style="height:22px"></i><i class="w-[3px] rounded bg-indigo-500" style="height:9px"></i><i class="w-[3px] rounded bg-indigo-500" style="height:16px"></i><i class="w-[3px] rounded bg-indigo-500" style="height:24px"></i><i class="w-[3px] rounded bg-indigo-500" style="height:7px"></i><i class="w-[3px] rounded bg-indigo-500" style="height:14px"></i>
-            </div>
-          </div>
-        </div>
+        <h3 class="mt-5 text-base font-semibold text-zinc-100">Research-first</h3>
+        <p class="mt-2 text-sm leading-relaxed text-zinc-400">Every mission starts by pulling live signals from the web — trends, sources, competitors — so output is grounded, not guessed.</p>
       </div>
-    </div>
-
-    <div class="reveal panel rounded-2xl p-6 md:col-span-4">
-      <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 class="text-lg font-bold text-zinc-900">Multi-channel publishing</h3>
-          <p class="mt-1.5 max-w-md text-sm text-zinc-600">Push the finished asset straight to your connected channels — or schedule it. One click, everywhere.</p>
+      <div class="reveal bg-zinc-950 p-7">
+        <div class="grid h-10 w-10 place-items-center rounded-lg border border-zinc-800 text-zinc-100">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 18v2m8-2v2"/></svg>
         </div>
-        <div class="flex items-center gap-5">
-          <span class="chan text-zinc-400 hover:text-pink-600" title="Instagram"><svg viewBox="0 0 24 24" class="h-8 w-8" fill="currentColor"><path d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.16-.42-.36-1.06-.41-2.23C2.17 15.58 2.16 15.2 2.16 12s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16zM12 5.84A6.16 6.16 0 1 0 18.16 12 6.16 6.16 0 0 0 12 5.84zm0 10.16A4 4 0 1 1 16 12a4 4 0 0 1-4 4zm6.4-11.85a1.44 1.44 0 1 0 1.44 1.44 1.44 1.44 0 0 0-1.44-1.44z"/></svg></span>
-          <span class="chan text-zinc-400 hover:text-blue-600" title="LinkedIn"><svg viewBox="0 0 24 24" class="h-8 w-8" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.22.79 24 1.77 24h20.45C23.2 24 24 23.22 24 22.27V1.73C24 .77 23.2 0 22.22 0z"/></svg></span>
-          <span class="chan text-zinc-400 hover:text-red-600" title="YouTube"><svg viewBox="0 0 24 24" class="h-8 w-8" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.8.5 9.4.5 9.4.5s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg></span>
+        <h3 class="mt-5 text-base font-semibold text-zinc-100">Content &amp; media</h3>
+        <p class="mt-2 text-sm leading-relaxed text-zinc-400">Text, images, short-form video and voiceover — generated on brief, ready to ship.</p>
+      </div>
+      <div class="reveal bg-zinc-950 p-7">
+        <div class="grid h-10 w-10 place-items-center rounded-lg border border-zinc-800 text-zinc-100">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
         </div>
+        <h3 class="mt-5 text-base font-semibold text-zinc-100">Multi-channel publishing</h3>
+        <p class="mt-2 text-sm leading-relaxed text-zinc-400">Push the finished asset straight to your connected channels — or schedule it. One click, everywhere.</p>
+      </div>
+      <div class="reveal bg-zinc-950 p-7">
+        <div class="grid h-10 w-10 place-items-center rounded-lg border border-zinc-800 text-zinc-100">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        </div>
+        <h3 class="mt-5 text-base font-semibold text-zinc-100">Auditable trail</h3>
+        <p class="mt-2 text-sm leading-relaxed text-zinc-400">A timestamped record of every step ARIA took — sources read, media made, posts sent. Nothing is a black box.</p>
+      </div>
+      <div class="reveal bg-zinc-950 p-7">
+        <div class="grid h-10 w-10 place-items-center rounded-lg border border-zinc-800 text-zinc-100">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l7 4v5c0 4-3 7-7 9-4-2-7-5-7-9V7z"/></svg>
+        </div>
+        <h3 class="mt-5 text-base font-semibold text-zinc-100">Yours to control</h3>
+        <p class="mt-2 text-sm leading-relaxed text-zinc-400">Nothing publishes without your account's connection and approval. You stay in the loop, always.</p>
+      </div>
+      <div class="reveal bg-zinc-950 p-7">
+        <div class="grid h-10 w-10 place-items-center rounded-lg border border-zinc-800 text-zinc-100">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg>
+        </div>
+        <h3 class="mt-5 text-base font-semibold text-zinc-100">Runs autonomously</h3>
+        <p class="mt-2 text-sm leading-relaxed text-zinc-400">Give it a goal in one sentence. ARIA plans, executes and assembles the deliverable on its own.</p>
       </div>
     </div>
   </div>
 </section>
 
 <!-- ══════════ HOW ══════════ -->
-<section id="how" class="border-t border-zinc-200 bg-zinc-50">
-  <div class="mx-auto max-w-6xl px-5 py-24">
-    <h2 class="max-w-2xl text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">From a sentence to shipped.</h2>
-    <div class="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
-      <div class="reveal panel rounded-2xl p-6"><div class="font-mono text-sm text-indigo-600">01</div><h3 class="mt-2 font-bold text-zinc-900">Describe the goal</h3><p class="mt-1.5 text-sm text-zinc-600">"Research today's AI trends and draft a launch reel." Plain language — no prompt engineering.</p></div>
-      <div class="reveal panel rounded-2xl p-6"><div class="font-mono text-sm text-indigo-600">02</div><h3 class="mt-2 font-bold text-zinc-900">ARIA executes</h3><p class="mt-1.5 text-sm text-zinc-600">It researches, writes, generates media and assembles the deliverable — autonomously, step by step.</p></div>
-      <div class="reveal panel rounded-2xl p-6"><div class="font-mono text-sm text-indigo-600">03</div><h3 class="mt-2 font-bold text-zinc-900">Review &amp; publish</h3><p class="mt-1.5 text-sm text-zinc-600">You get the finished asset plus a full log of what it did. Approve and publish anywhere.</p></div>
+<section id="how" class="border-b border-zinc-900">
+  <div class="mx-auto max-w-6xl px-5 py-20 md:py-24">
+    <h2 class="max-w-2xl text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">From a sentence to shipped.</h2>
+    <div class="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div class="reveal rounded-xl border border-zinc-800 bg-zinc-900 p-7"><div class="font-mono text-sm text-zinc-500">01</div><h3 class="mt-3 text-base font-semibold text-zinc-100">Describe the goal</h3><p class="mt-2 text-sm leading-relaxed text-zinc-400">"Research today's AI trends and draft a launch reel." Plain language — no prompt engineering.</p></div>
+      <div class="reveal rounded-xl border border-zinc-800 bg-zinc-900 p-7"><div class="font-mono text-sm text-zinc-500">02</div><h3 class="mt-3 text-base font-semibold text-zinc-100">ARIA executes</h3><p class="mt-2 text-sm leading-relaxed text-zinc-400">It researches, writes, generates media and assembles the deliverable — autonomously, step by step.</p></div>
+      <div class="reveal rounded-xl border border-zinc-800 bg-zinc-900 p-7"><div class="font-mono text-sm text-zinc-500">03</div><h3 class="mt-3 text-base font-semibold text-zinc-100">Review &amp; publish</h3><p class="mt-2 text-sm leading-relaxed text-zinc-400">You get the finished asset plus a full log of what it did. Approve and publish anywhere.</p></div>
     </div>
   </div>
 </section>
 
-<!-- ══════════ OBSERVABILITY · TIMELINE ══════════ -->
-<section id="observability" class="mx-auto max-w-6xl px-5 py-24">
-  <div class="grid gap-12 md:grid-cols-2 md:items-center">
+<!-- ══════════ OBSERVABILITY ══════════ -->
+<section id="observability" class="border-b border-zinc-900">
+  <div class="mx-auto grid max-w-6xl gap-12 px-5 py-20 md:grid-cols-2 md:items-center md:py-24">
     <div>
-      <span class="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">Auditable by design</span>
-      <h2 class="mt-5 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">Every action, on the record.</h2>
-      <p class="mt-4 text-zinc-600">Autonomy you can trust means autonomy you can inspect. ARIA writes a timestamped trail of every step — the sources it read, the media it made, the posts it sent — so nothing is a black box.</p>
-      <ul class="mt-6 space-y-3 text-sm text-zinc-700">
-        <li class="flex gap-3"><span class="mt-0.5 text-indigo-600">✓</span> Timestamped step-by-step execution log</li>
-        <li class="flex gap-3"><span class="mt-0.5 text-indigo-600">✓</span> Every source and deliverable is traceable</li>
-        <li class="flex gap-3"><span class="mt-0.5 text-indigo-600">✓</span> Nothing published without your account's connection</li>
+      <span class="inline-flex items-center rounded-full border border-zinc-800 px-3 py-1 text-xs font-medium text-zinc-400">Auditable by design</span>
+      <h2 class="mt-5 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">Every action, on the record.</h2>
+      <p class="mt-4 text-zinc-400">Autonomy you can trust means autonomy you can inspect. ARIA writes a timestamped trail of every step, so nothing is a black box.</p>
+      <ul class="mt-6 space-y-3 text-sm text-zinc-300">
+        <li class="flex gap-3"><span class="mt-0.5 text-zinc-500">—</span> Timestamped step-by-step execution log</li>
+        <li class="flex gap-3"><span class="mt-0.5 text-zinc-500">—</span> Every source and deliverable is traceable</li>
+        <li class="flex gap-3"><span class="mt-0.5 text-zinc-500">—</span> Nothing published without your connection</li>
       </ul>
     </div>
 
-    <div class="panel rounded-2xl p-6">
-      <div class="flex items-center justify-between pb-4">
-        <span class="font-mono text-[11px] font-bold uppercase tracking-widest text-zinc-500">mission trail</span>
-        <span class="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-200">
-          <span class="h-1.5 w-1.5 rounded-full bg-indigo-500 blink"></span> Running
-        </span>
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+      <div class="flex items-center justify-between border-b border-zinc-800 pb-4">
+        <span class="font-mono text-[11px] font-semibold uppercase tracking-widest text-zinc-500">mission trail</span>
+        <span class="inline-flex items-center gap-1.5 text-[10px] font-medium text-zinc-400"><span class="h-1.5 w-1.5 rounded-full bg-zinc-100 blink"></span> Running</span>
       </div>
-      <ol class="relative ml-3 border-l border-zinc-200">
-        <li class="relative mb-6 pl-6">
-          <span class="absolute -left-[7px] top-1 h-3 w-3 rounded-full bg-indigo-500 ring-4 ring-indigo-100"></span>
-          <div class="font-mono text-[11px] text-zinc-400">00:00 · research</div>
-          <div class="text-sm text-zinc-800">Pulled 12 live sources on today's AI trends</div>
-        </li>
-        <li class="relative mb-6 pl-6">
-          <span class="absolute -left-[7px] top-1 h-3 w-3 rounded-full bg-indigo-500 ring-4 ring-indigo-100"></span>
-          <div class="font-mono text-[11px] text-zinc-400">00:14 · draft</div>
-          <div class="text-sm text-zinc-800">Wrote script + caption, on brand</div>
-        </li>
-        <li class="relative mb-6 pl-6">
-          <span class="absolute -left-[7px] top-1 h-3 w-3 rounded-full bg-indigo-500 ring-4 ring-indigo-100"></span>
-          <div class="font-mono text-[11px] text-zinc-400">00:39 · media</div>
-          <div class="text-sm text-zinc-800">Generated hero image + 20s voiceover</div>
-        </li>
-        <li class="relative pl-6">
-          <span class="absolute -left-[7px] top-1 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-emerald-100"></span>
-          <div class="font-mono text-[11px] text-zinc-400">00:52 · publish</div>
-          <div class="text-sm text-zinc-800">Queued to connected channels — awaiting your OK</div>
-        </li>
+      <ol class="relative mt-5 ml-3 border-l border-zinc-800">
+        <li class="relative mb-6 pl-6"><span class="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full bg-zinc-300"></span><div class="font-mono text-[11px] text-zinc-500">00:00 · research</div><div class="text-sm text-zinc-200">Pulled 12 live sources on today's AI trends</div></li>
+        <li class="relative mb-6 pl-6"><span class="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full bg-zinc-300"></span><div class="font-mono text-[11px] text-zinc-500">00:14 · draft</div><div class="text-sm text-zinc-200">Wrote script + caption, on brand</div></li>
+        <li class="relative mb-6 pl-6"><span class="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full bg-zinc-300"></span><div class="font-mono text-[11px] text-zinc-500">00:39 · media</div><div class="text-sm text-zinc-200">Generated hero image + 20s voiceover</div></li>
+        <li class="relative pl-6"><span class="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full bg-zinc-100"></span><div class="font-mono text-[11px] text-zinc-500">00:52 · publish</div><div class="text-sm text-zinc-200">Queued to connected channels — awaiting your OK</div></li>
       </ol>
-      <p class="mt-4 border-t border-zinc-200 pt-3 text-[11px] text-zinc-400">Illustrative trail. Your real runs show your own actions.</p>
     </div>
   </div>
 </section>
 
 <!-- ══════════ PRICING ══════════ -->
-<section id="pricing" class="border-t border-zinc-200 bg-zinc-50">
-  <div class="mx-auto max-w-6xl px-5 py-24">
-    <div class="mx-auto max-w-2xl text-center">
-      <h2 class="text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">Simple, honest pricing.</h2>
-      <p class="mt-4 text-zinc-600">Start free. Upgrade when ARIA is doing real work for you. Cancel anytime.</p>
+<section id="pricing" class="border-b border-zinc-900">
+  <div class="mx-auto max-w-6xl px-5 py-20 md:py-24">
+    <div class="max-w-2xl">
+      <h2 class="text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">Simple, honest pricing.</h2>
+      <p class="mt-4 text-zinc-400">Start free. Upgrade when ARIA is doing real work for you. Cancel anytime.</p>
     </div>
 
-    <div class="mx-auto mt-14 grid max-w-5xl grid-cols-1 items-center gap-6 md:grid-cols-3">
-      <div class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <h3 class="font-bold text-zinc-900">Free</h3>
-        <div class="mt-2 text-4xl font-extrabold text-zinc-900">$0</div>
+    <div class="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-7">
+        <h3 class="text-sm font-semibold text-zinc-100">Free</h3>
+        <div class="mt-3 text-4xl font-semibold text-zinc-50">$0</div>
         <p class="mt-1 text-sm text-zinc-500">To try ARIA</p>
-        <a href="/login" class="mt-6 block rounded-xl border border-zinc-300 bg-white py-2.5 text-center text-sm font-semibold text-zinc-800 transition-colors hover:bg-zinc-50">Start free</a>
-        <ul class="mt-6 space-y-2.5 text-sm text-zinc-600">
-          <li class="flex gap-2"><span class="text-zinc-400">✓</span> ARIA missions: research, write, images</li>
-          <li class="flex gap-2"><span class="text-zinc-400">✓</span> Daily message limit</li>
-          <li class="flex gap-2"><span class="text-zinc-400">✓</span> 1 workspace</li>
+        <a href="/login" class="mt-6 block rounded-lg border border-zinc-700 py-2.5 text-center text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800">Start free</a>
+        <ul class="mt-6 space-y-2.5 text-sm text-zinc-400">
+          <li class="flex gap-2"><span class="text-zinc-600">—</span> ARIA missions: research, write, images</li>
+          <li class="flex gap-2"><span class="text-zinc-600">—</span> Daily message limit</li>
+          <li class="flex gap-2"><span class="text-zinc-600">—</span> 1 workspace</li>
         </ul>
       </div>
 
-      <div class="relative rounded-2xl border border-indigo-300 bg-white p-7 shadow-xl shadow-indigo-600/10 md:scale-105">
-        <span class="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-bold tracking-wide text-white shadow-sm">MOST POPULAR</span>
-        <h3 class="font-bold text-indigo-700">Pro</h3>
-        <div class="mt-2 text-4xl font-extrabold text-zinc-900">$29<span class="text-base font-medium text-zinc-500">/mo</span></div>
-        <p class="mt-1 text-sm text-zinc-600">For creators &amp; founders shipping daily</p>
-        <a href="/login" class="mt-6 block rounded-xl bg-indigo-600 py-2.5 text-center text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition-colors hover:bg-indigo-500">Go Pro</a>
-        <ul class="mt-6 space-y-2.5 text-sm text-zinc-700">
-          <li class="flex gap-2"><span class="text-indigo-600">✓</span> Unlimited missions</li>
-          <li class="flex gap-2"><span class="text-indigo-600">✓</span> Advanced image, video &amp; voice</li>
-          <li class="flex gap-2"><span class="text-indigo-600">✓</span> Autonomous multi-channel publishing</li>
-          <li class="flex gap-2"><span class="text-indigo-600">✓</span> Expanded memory &amp; priority AI</li>
+      <div class="rounded-xl border border-zinc-100 bg-zinc-900 p-7">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-zinc-100">Pro</h3>
+          <span class="rounded-full bg-white px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-zinc-950">POPULAR</span>
+        </div>
+        <div class="mt-3 text-4xl font-semibold text-zinc-50">$29<span class="text-base font-normal text-zinc-500">/mo</span></div>
+        <p class="mt-1 text-sm text-zinc-400">For creators &amp; founders shipping daily</p>
+        <a href="/login" class="mt-6 block rounded-lg bg-white py-2.5 text-center text-sm font-medium text-zinc-950 transition-colors hover:bg-zinc-200">Go Pro</a>
+        <ul class="mt-6 space-y-2.5 text-sm text-zinc-300">
+          <li class="flex gap-2"><span class="text-zinc-500">—</span> Unlimited missions</li>
+          <li class="flex gap-2"><span class="text-zinc-500">—</span> Advanced image, video &amp; voice</li>
+          <li class="flex gap-2"><span class="text-zinc-500">—</span> Autonomous multi-channel publishing</li>
+          <li class="flex gap-2"><span class="text-zinc-500">—</span> Expanded memory &amp; priority AI</li>
         </ul>
       </div>
 
-      <div class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <h3 class="font-bold text-zinc-900">Business</h3>
-        <div class="mt-2 text-4xl font-extrabold text-zinc-900">$99<span class="text-base font-medium text-zinc-500">/mo</span></div>
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-7">
+        <h3 class="text-sm font-semibold text-zinc-100">Business</h3>
+        <div class="mt-3 text-4xl font-semibold text-zinc-50">$99<span class="text-base font-normal text-zinc-500">/mo</span></div>
         <p class="mt-1 text-sm text-zinc-500">For teams &amp; brands</p>
-        <a href="/login" class="mt-6 block rounded-xl border border-zinc-300 bg-white py-2.5 text-center text-sm font-semibold text-zinc-800 transition-colors hover:bg-zinc-50">Start Business</a>
-        <ul class="mt-6 space-y-2.5 text-sm text-zinc-600">
-          <li class="flex gap-2"><span class="text-zinc-400">✓</span> Everything in Pro</li>
-          <li class="flex gap-2"><span class="text-zinc-400">✓</span> Up to 5 brand workspaces &amp; seats</li>
-          <li class="flex gap-2"><span class="text-zinc-400">✓</span> Scheduled autonomy &amp; analytics</li>
-          <li class="flex gap-2"><span class="text-zinc-400">✓</span> Dedicated support</li>
+        <a href="/login" class="mt-6 block rounded-lg border border-zinc-700 py-2.5 text-center text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800">Start Business</a>
+        <ul class="mt-6 space-y-2.5 text-sm text-zinc-400">
+          <li class="flex gap-2"><span class="text-zinc-600">—</span> Everything in Pro</li>
+          <li class="flex gap-2"><span class="text-zinc-600">—</span> Up to 5 brand workspaces &amp; seats</li>
+          <li class="flex gap-2"><span class="text-zinc-600">—</span> Scheduled autonomy &amp; analytics</li>
+          <li class="flex gap-2"><span class="text-zinc-600">—</span> Dedicated support</li>
         </ul>
       </div>
     </div>
@@ -330,31 +269,30 @@
 </section>
 
 <!-- ══════════ CTA ══════════ -->
-<section class="relative overflow-hidden">
-  <div class="ambient"></div>
-  <div class="relative mx-auto max-w-3xl px-5 py-24 text-center">
-    <h2 class="text-4xl font-extrabold tracking-tight text-zinc-900 sm:text-5xl">Give ARIA a goal.</h2>
-    <p class="mx-auto mt-4 max-w-xl text-lg text-zinc-600">Watch it research, create, and get the work done — with the receipts to prove it.</p>
-    <a href="/login" class="mt-8 inline-block rounded-xl bg-indigo-600 px-8 py-4 text-sm font-semibold text-white shadow-xl shadow-indigo-600/25 transition-colors hover:bg-indigo-500">Get Started — no card</a>
+<section class="border-b border-zinc-900">
+  <div class="mx-auto max-w-3xl px-5 py-24 text-center">
+    <h2 class="text-4xl font-semibold tracking-tight text-zinc-50 sm:text-5xl">Give ARIA a goal.</h2>
+    <p class="mx-auto mt-4 max-w-xl text-lg text-zinc-400">Watch it research, create, and get the work done — with the receipts to prove it.</p>
+    <a href="/login" class="mt-8 inline-block rounded-lg bg-white px-8 py-3.5 text-sm font-medium text-zinc-950 transition-colors hover:bg-zinc-200">Get Started — no card</a>
   </div>
 </section>
 
 <!-- ══════════ FOOTER ══════════ -->
-<footer class="border-t border-zinc-200 bg-white">
+<footer class="bg-zinc-950">
   <div class="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-10 sm:flex-row sm:items-center sm:justify-between">
-    <div class="group flex items-center gap-2.5">
-      <svg class="h-7 w-7 transition-all duration-300 group-hover:scale-105" aria-hidden="true"><use href="#ariaMark"/></svg>
-      <span class="text-base font-light tracking-[0.3em] text-zinc-900" style="padding-left:.3em">ARIA</span>
+    <div class="flex items-center gap-2.5">
+      <svg class="h-6 w-6" aria-hidden="true"><use href="#ariaMark"/></svg>
+      <span class="text-sm font-medium tracking-[0.28em] text-zinc-100" style="padding-left:.28em">ARIA</span>
     </div>
-    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-zinc-600">
-      <a href="/legal/terms" class="transition-colors hover:text-zinc-900">Terms</a>
-      <a href="/legal/privacy" class="transition-colors hover:text-zinc-900">Privacy</a>
-      <a href="/legal/refund-policy" class="transition-colors hover:text-zinc-900">Refund Policy</a>
-      <a href="/health" class="inline-flex items-center gap-1.5 transition-colors hover:text-zinc-900"><span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>Status</a>
-      <a href="/login" class="transition-colors hover:text-zinc-900">Sign in</a>
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-zinc-400">
+      <a href="/legal/terms" class="transition-colors hover:text-zinc-100">Terms</a>
+      <a href="/legal/privacy" class="transition-colors hover:text-zinc-100">Privacy</a>
+      <a href="/legal/refund-policy" class="transition-colors hover:text-zinc-100">Refund Policy</a>
+      <a href="/health" class="transition-colors hover:text-zinc-100">Status</a>
+      <a href="/login" class="transition-colors hover:text-zinc-100">Sign in</a>
     </div>
   </div>
-  <div class="mx-auto max-w-6xl px-5 pb-8 text-xs text-zinc-400">© <span id="yr">2026</span> ARIA. The AI that executes.</div>
+  <div class="mx-auto max-w-6xl px-5 pb-8 text-xs text-zinc-600">© <span id="yr">2026</span> ARIA. The AI that executes.</div>
 </footer>
 
 <script>
@@ -363,6 +301,7 @@ document.getElementById('yr').textContent = new Date().getFullYear();
 /* hero: typewriter command */
 (function(){
   const el = document.getElementById('typed');
+  if(!el) return;
   const phrases = [
     "Research today's AI trends and post a reel to Instagram…",
     "Write a LinkedIn post from our latest blog and schedule it…",
@@ -380,27 +319,26 @@ document.getElementById('yr').textContent = new Date().getFullYear();
   tick();
 })();
 
-/* hero: live execution terminal (dark console) */
+/* hero: execution log */
 (function(){
   const term = document.getElementById('term');
+  if(!term) return;
   const script = [
-    ['analysing live sources · web', 'dim'],
-    ['12 sources ranked · drafting outline', 'work'],
-    ['writing script + caption', 'work'],
-    ['generating hero image · FLUX', 'work'],
-    ['synthesizing voiceover · 20s', 'work'],
-    ['assembling short-form video', 'work'],
-    ['render complete · deliverable ready', 'ok'],
-    ['queued to channels · awaiting approval', 'warn'],
+    'analysing live sources · web',
+    '12 sources ranked · drafting outline',
+    'writing script + caption',
+    'generating hero image · FLUX',
+    'synthesizing voiceover · 20s',
+    'assembling short-form video',
+    'render complete · deliverable ready',
+    'queued to channels · awaiting approval',
   ];
-  const color = { dim:'text-zinc-500', work:'text-zinc-300', ok:'text-emerald-400', warn:'text-indigo-300' };
   let n = 0;
   function ts(){ const d=new Date(); return d.toTimeString().slice(0,8); }
   function push(){
-    const item = script[n % script.length];
     const line = document.createElement('div');
-    line.className = color[item[1]] + ' opacity-0 transition-opacity duration-500';
-    line.innerHTML = '<span class="text-zinc-600">'+ts()+'</span> <span class="text-emerald-400/80">[ARIA]</span> ' + item[0];
+    line.className = 'text-zinc-400 opacity-0 transition-opacity duration-500';
+    line.innerHTML = '<span class="text-zinc-600">'+ts()+'</span> <span class="text-zinc-500">[ARIA]</span> ' + script[n % script.length];
     term.appendChild(line);
     requestAnimationFrame(function(){ line.classList.remove('opacity-0'); });
     while(term.children.length > 7) term.removeChild(term.firstChild);
