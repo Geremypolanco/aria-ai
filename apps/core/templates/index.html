@@ -92,7 +92,7 @@
           <span class="h-2.5 w-2.5 rounded-full border border-zinc-300"></span>
           <span class="h-2.5 w-2.5 rounded-full border border-zinc-300"></span>
           <span class="h-2.5 w-2.5 rounded-full border border-zinc-300"></span>
-          <span class="ml-2 text-[11px] font-medium text-zinc-400">ARIA · command</span>
+          <span class="ml-2 text-[11px] font-medium text-zinc-500">ARIA · command</span>
         </div>
         <div class="flex items-start gap-3 px-5 py-6">
           <svg class="mt-0.5 h-6 w-6 flex-none" aria-hidden="true"><use href="#ariaMark"/></svg>
@@ -101,14 +101,14 @@
           </div>
         </div>
         <div class="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
-          <span class="text-[11px] text-zinc-400">Try it after sign-in</span>
+          <span class="text-[11px] text-zinc-500">Try it after sign-in</span>
           <span class="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white">Launch mission ↵</span>
         </div>
       </div>
 
       <div class="rounded-xl border border-zinc-200 bg-zinc-50 md:col-span-2">
         <div class="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
-          <span class="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">Execution log</span>
+          <span class="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Execution log</span>
           <span class="inline-flex items-center gap-1.5 text-[10px] font-medium text-zinc-500">
             <span class="h-1.5 w-1.5 rounded-full bg-zinc-900 blink"></span> Running
           </span>
@@ -175,7 +175,7 @@
 </section>
 
 <!-- ══════════ HOW ══════════ -->
-<section id="how" class="border-b border-zinc-200">
+<section id="how" class="border-b border-zinc-200 bg-zinc-50">
   <div class="mx-auto max-w-6xl px-5 py-20 md:py-24">
     <h2 class="max-w-2xl text-3xl font-semibold tracking-tight text-zinc-900 sm:text-4xl">From a sentence to shipped.</h2>
     <div class="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -202,7 +202,7 @@
 
     <div class="rounded-xl border border-zinc-200 bg-white p-6">
       <div class="flex items-center justify-between border-b border-zinc-200 pb-4">
-        <span class="font-mono text-[11px] font-semibold uppercase tracking-widest text-zinc-400">mission trail</span>
+        <span class="font-mono text-[11px] font-semibold uppercase tracking-widest text-zinc-500">mission trail</span>
         <span class="inline-flex items-center gap-1.5 text-[10px] font-medium text-zinc-500"><span class="h-1.5 w-1.5 rounded-full bg-zinc-900 blink"></span> Running</span>
       </div>
       <ol class="relative mt-5 ml-3 border-l border-zinc-200">
@@ -216,7 +216,7 @@
 </section>
 
 <!-- ══════════ PRICING ══════════ -->
-<section id="pricing" class="border-b border-zinc-200">
+<section id="pricing" class="border-b border-zinc-200 bg-zinc-50">
   <div class="mx-auto max-w-6xl px-5 py-20 md:py-24">
     <div class="max-w-2xl">
       <h2 class="text-3xl font-semibold tracking-tight text-zinc-900 sm:text-4xl">Simple, honest pricing.</h2>
@@ -292,7 +292,7 @@
       <a href="/login" class="transition-colors hover:text-zinc-900">Sign in</a>
     </div>
   </div>
-  <div class="mx-auto max-w-6xl px-5 pb-8 text-xs text-zinc-400">© <span id="yr">2026</span> ARIA. The AI that executes.</div>
+  <div class="mx-auto max-w-6xl px-5 pb-8 text-xs text-zinc-500">© <span id="yr">2026</span> ARIA. The AI that executes.</div>
 </footer>
 
 <script>
@@ -338,7 +338,7 @@ document.getElementById('yr').textContent = new Date().getFullYear();
   function push(){
     const line = document.createElement('div');
     line.className = 'text-zinc-600 opacity-0 transition-opacity duration-500';
-    line.innerHTML = '<span class="text-zinc-400">'+ts()+'</span> <span class="text-zinc-500">[ARIA]</span> ' + script[n % script.length];
+    line.innerHTML = '<span class="text-zinc-500">'+ts()+'</span> <span class="text-zinc-400">[ARIA]</span> ' + script[n % script.length];
     term.appendChild(line);
     requestAnimationFrame(function(){ line.classList.remove('opacity-0'); });
     while(term.children.length > 7) term.removeChild(term.firstChild);
