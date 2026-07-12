@@ -215,6 +215,19 @@ class Settings(BaseSettings):
     META_APP_ID: str | None = None
     META_APP_SECRET: str | None = None
 
+    # ── Connector-hub OAuth apps (one-click "Connect" like Claude's) ──────
+    # Each provider needs its own developer app → Client ID + Secret. The
+    # connector goes live the moment these are set; until then it shows
+    # "Setup required". See docs/CONNECTORS_SETUP.md for per-provider steps.
+    LINKEDIN_CLIENT_ID: str | None = None
+    LINKEDIN_CLIENT_SECRET: str | None = None
+    NOTION_OAUTH_CLIENT_ID: str | None = None
+    NOTION_OAUTH_CLIENT_SECRET: str | None = None
+    TWITTER_OAUTH_CLIENT_ID: str | None = None
+    TWITTER_OAUTH_CLIENT_SECRET: str | None = None
+    STRIPE_CONNECT_CLIENT_ID: str | None = None
+    # (TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET already declared below.)
+
     # Slack OAuth (para enviar/leer mensajes en workspaces)
     # Obtén en: api.slack.com/apps → Create App → OAuth & Permissions
     SLACK_CLIENT_ID: str | None = None

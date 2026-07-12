@@ -1151,6 +1151,91 @@ async def request_connector(req: ConnectorRequest, request: Request):
     return {"ok": True}
 
 
+# ── CONNECTOR HUB — real one-click OAuth connect (like Claude's connectors) ──
+@app.get("/api/v1/connectors/status")
+async def connectors_status(request: Request):
+    """Per-connector state for the signed-in user: connected / ready / setup."""
+    from apps.core import auth
+    from apps.core.connectors import oauth_hub as hub
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    email = (user.get("email") or "").strip().lower() if user else ""
+    return {"connectors": await hub.status_for(email)}
+
+
+@app.get("/connectors/{pid}/connect")
+async def connector_connect(pid: str, request: Request):
+    """Kick off the real OAuth consent flow for a provider."""
+    from apps.core import auth
+    from apps.core.connectors import oauth_hub as hub
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return RedirectResponse("/login", status_code=307)
+    p = hub.PROVIDERS.get(pid)
+    if not p:
+        return RedirectResponse("/app?conn=unknown&s=error", status_code=303)
+    # Not configured, or a non-redirect provider (shopify per-store / zapier key).
+    if p.special or not hub.is_configured(pid):
+        return RedirectResponse(f"/app?conn={pid}&s=setup", status_code=303)
+    state = auth.make_state()
+    url, verifier = hub.build_authorize(pid, state)
+    resp = RedirectResponse(url, status_code=307)
+    resp.set_cookie(
+        hub.STATE_COOKIE,
+        f"{pid}|{state}|{verifier}",
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=600,
+    )
+    return resp
+
+
+@app.get("/connectors/{pid}/callback")
+async def connector_callback(
+    pid: str, request: Request, code: str = "", state: str = "", error: str = ""
+):
+    """Handle the provider redirect: verify state, exchange code, store token."""
+    from apps.core import auth
+    from apps.core.connectors import oauth_hub as hub
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return RedirectResponse("/login", status_code=307)
+    if error or not code or pid not in hub.PROVIDERS:
+        return RedirectResponse(f"/app?conn={pid}&s=error", status_code=303)
+    cookie = request.cookies.get(hub.STATE_COOKIE, "")
+    try:
+        c_pid, c_state, verifier = cookie.split("|", 2)
+    except ValueError:
+        return RedirectResponse(f"/app?conn={pid}&s=error", status_code=303)
+    if c_pid != pid or not auth.check_state(state, c_state):
+        return RedirectResponse(f"/app?conn={pid}&s=error", status_code=303)
+    token = await hub.exchange_code(pid, code, verifier)
+    if not token or not token.get("access_token"):
+        return RedirectResponse(f"/app?conn={pid}&s=error", status_code=303)
+    email = (user.get("email") or "").strip().lower()
+    await hub.save_token(email, pid, token)
+    resp = RedirectResponse(f"/app?conn={pid}&s=connected", status_code=303)
+    resp.delete_cookie(hub.STATE_COOKIE)
+    return resp
+
+
+@app.post("/api/v1/connectors/{pid}/disconnect")
+async def connector_disconnect(pid: str, request: Request):
+    """Remove a stored connector token for the signed-in user."""
+    from apps.core import auth
+    from apps.core.connectors import oauth_hub as hub
+
+    user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    if not user:
+        return {"ok": False, "error": "unauthenticated"}
+    email = (user.get("email") or "").strip().lower()
+    await hub.disconnect(email, pid)
+    return {"ok": True}
+
+
 @app.post("/api/v1/account/delete")
 async def delete_account(request: Request):
     """Delete the signed-in user's stored data (profile + plan) and sign out."""

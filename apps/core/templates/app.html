@@ -776,52 +776,49 @@ async function deleteAccount(){
   location.href='/login';
 }
 
-/* ── connectors ── */
-const CONNECTORS=[
- {id:'google',n:'Google',d:'Gmail, Drive, Calendar',c:'#ea4335',i:'G'},
- {id:'linkedin',n:'LinkedIn',d:'Publish & grow your audience',c:'#0a66c2',i:'in'},
- {id:'youtube',n:'YouTube',d:'Upload & manage videos',c:'#ff0000',i:'▶'},
- {id:'instagram',n:'Instagram',d:'Post reels & images',c:'#e1306c',i:'◎'},
- {id:'facebook',n:'Facebook',d:'Pages & posts',c:'#1877f2',i:'f'},
- {id:'shopify',n:'Shopify',d:'Products, orders, store',c:'#5a8e2f',i:'S'},
- {id:'stripe',n:'Stripe',d:'Payments & billing',c:'#635bff',i:'S'},
- {id:'slack',n:'Slack',d:'Notify your team',c:'#4a154b',i:'#'},
- {id:'notion',n:'Notion',d:'Docs & databases',c:'#1a1a1a',i:'N'},
- {id:'x',n:'X (Twitter)',d:'Post & schedule',c:'#111111',i:'𝕏'},
- {id:'tiktok',n:'TikTok',d:'Short-form video',c:'#111111',i:'♪'},
- {id:'zapier',n:'Zapier',d:'9,000+ apps via automations',c:'#ff4a00',i:'⚡'},
-];
-let connState={};
-function esc2(s){return (s||'').replace(/'/g,"\\'")}
-function openConnectors(){
+/* ── connectors (real OAuth connect, status from the server) ── */
+let CONN_STATUS=[];
+async function openConnectors(){
   document.getElementById('menu').classList.add('hidden'); toggleSide(false);
-  try{connState=JSON.parse(localStorage.getItem('aria_connectors')||'{}')}catch(e){connState={}}
-  document.getElementById('connList').innerHTML = CONNECTORS.map(c=>{
-    const done=!!connState[c.id];
-    return '<div class="flex items-center gap-3 border-b border-zinc-800 py-3 last:border-0">'
-      + '<div class="grid h-9 w-9 flex-none place-items-center rounded-lg text-sm font-extrabold text-white" style="background:'+c.c+'">'+c.i+'</div>'
-      + '<div class="min-w-0 flex-1"><div class="text-sm font-semibold">'+c.n+'</div><div class="text-xs text-zinc-500">'+c.d+'</div></div>'
-      + '<button '+(done?'disabled':'onclick="connectApp(\''+c.id+'\',\''+esc2(c.n)+'\',this)"')
-      + ' class="flex-none rounded-lg border px-3 py-1.5 text-xs font-semibold '
-      + (done?'cursor-default border-emerald-500/40 bg-emerald-500/15 text-emerald-300':'border-zinc-700 bg-zinc-800/60 text-zinc-100 hover:bg-zinc-800')+'">'
-      + (done?'Requested ✓':'Connect')+'</button></div>';
-  }).join('');
+  document.getElementById('connList').innerHTML='<div class="py-6 text-center text-sm text-zinc-500">Cargando conectores…</div>';
   const o=document.getElementById('connOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  try{ const r=await fetch('/api/v1/connectors/status',{credentials:'same-origin'}); const d=await r.json(); CONN_STATUS=d.connectors||[]; }
+  catch(e){ CONN_STATUS=[]; }
+  renderConnectors();
+}
+function renderConnectors(){
+  document.getElementById('connList').innerHTML = CONN_STATUS.map(function(c){
+    var label, cls, action;
+    if(c.state==='connected'){ label='Connected ✓'; cls='cursor-default border-emerald-500/40 bg-emerald-500/15 text-emerald-300'; action='disabled'; }
+    else if(c.state==='ready'){ label='Connect'; cls='border-zinc-700 bg-zinc-800/60 text-zinc-100 hover:bg-zinc-800'; action='onclick="location.href=\'/connectors/'+c.id+'/connect\'"'; }
+    else { label='Set up'; cls='border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'; action='onclick="connSetup(\''+c.id+'\')"'; }
+    return '<div class="flex items-center gap-3 border-b border-zinc-800 py-3 last:border-0">'
+      +'<div class="grid h-9 w-9 flex-none place-items-center rounded-lg text-sm font-extrabold text-white" style="background:'+c.color+'">'+c.icon+'</div>'
+      +'<div class="min-w-0 flex-1"><div class="text-sm font-semibold">'+esc(c.name)+'</div><div class="text-xs text-zinc-500">'+esc(c.desc)+'</div></div>'
+      +'<button '+action+' class="flex-none rounded-lg border px-3 py-1.5 text-xs font-semibold '+cls+'">'+label+'</button></div>';
+  }).join('');
+}
+function connSetup(id){
+  var c=CONN_STATUS.find(function(x){return x.id===id})||{};
+  toast((c.name||'Este conector')+': aún falta configurar las credenciales de su app OAuth (Client ID/Secret). '+(c.note||''),'');
 }
 function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
-async function connectApp(id,name,btn){
-  btn.disabled=true; btn.textContent='…';
-  try{ await fetch('/api/v1/connectors/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({app:id})}); }catch(e){}
-  connState[id]=true; try{localStorage.setItem('aria_connectors',JSON.stringify(connState))}catch(e){}
-  btn.className='flex-none rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300';
-  btn.textContent='Requested ✓';
-  log('🔗 connector requested — '+esc(name), 'ok');
-  toast(name+" requested — we'll enable it for your account and let you know.","ok");
-}
 
 /* ── boot ── */
 if(USER.owner){ const al=document.getElementById('adminLink'); if(al) al.classList.remove('hidden'); }
 loadMissions(); renderMissions(); billingBoot(); checkConnectorHealth();
+
+/* connector OAuth return → toast + clean the URL */
+(function(){ try{
+  var u=new URL(location.href), conn=u.searchParams.get('conn'), s=u.searchParams.get('s');
+  if(conn && s){
+    if(s==='connected'){ toast(conn+' conectado ✓','ok'); log('🔗 '+conn+' conectado','ok'); }
+    else if(s==='setup'){ toast(conn+': falta configurar las credenciales de la app OAuth para activarlo.',''); }
+    else if(s==='error'){ toast('No se pudo conectar '+conn+'. Inténtalo de nuevo.','err'); }
+    u.searchParams.delete('conn'); u.searchParams.delete('s');
+    history.replaceState({},'',u.pathname+(u.search||''));
+  }
+}catch(e){} })();
 
 /* connector-outage banner — holds queued posts when a platform is globally down */
 async function checkConnectorHealth(){
