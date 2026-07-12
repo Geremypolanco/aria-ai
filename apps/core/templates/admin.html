@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -21,11 +21,11 @@
   ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:rgba(245,158,11,.25);border-radius:20px}
 </style>
 </head>
-<body class="min-h-screen bg-zinc-950 text-zinc-100">
+<body class="min-h-screen bg-zinc-50 text-zinc-900">
 
 <div class="mx-auto max-w-7xl px-5 py-6">
   <!-- header -->
-  <header class="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-5">
+  <header class="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-200 pb-5">
     <div>
       <div class="flex items-center gap-2.5">
         <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="h-8 w-8">
@@ -42,8 +42,8 @@
             <path d="M26 79 C 32 51, 42 30, 49 17" stroke="url(#ariaSpecA)" stroke-width="2.6" opacity=".7"/>
           </g>
         </svg>
-        <h1 class="text-xl font-semibold tracking-tight"><span class="font-light tracking-[0.28em] text-zinc-50">ARIA</span> · <span class="text-amber-400">God Mode</span></h1>
-        <span class="mono rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-400">SYSTEM CONSOLE</span>
+        <h1 class="text-xl font-semibold tracking-tight"><span class="font-light tracking-[0.28em] text-zinc-900">ARIA</span> · <span class="text-indigo-600">God Mode</span></h1>
+        <span class="mono rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-600">SYSTEM CONSOLE</span>
       </div>
       <p class="mt-1 text-xs text-zinc-500 mono">owner-only · autonomous SaaS operations</p>
     </div>
@@ -52,7 +52,7 @@
         class="rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 text-sm font-bold text-red-300 transition hover:bg-red-500/25">
         🛑 Global Panic
       </button>
-      <a href="/admin/logout" class="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">Sign out</a>
+      <a href="/admin/logout" class="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">Sign out</a>
     </div>
   </header>
 
@@ -62,22 +62,22 @@
 
   <!-- KPI cards -->
   <section class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div class="rounded-2xl border border-zinc-200 bg-white/50 p-5">
       <div class="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Net margin (real)</div>
-      <div id="kMargin" class="mono mt-2 text-3xl font-extrabold text-amber-400">—</div>
+      <div id="kMargin" class="mono mt-2 text-3xl font-extrabold text-indigo-600">—</div>
       <div id="kMarginSub" class="mt-1 text-xs text-zinc-500">revenue − est. API spend</div>
     </div>
-    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div class="rounded-2xl border border-zinc-200 bg-white/50 p-5">
       <div class="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Est. API spend (MTD)</div>
       <div id="kSpend" class="mono mt-2 text-3xl font-extrabold">—</div>
       <div class="mt-1 text-xs text-zinc-500">conservative model pricing</div>
     </div>
-    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div class="rounded-2xl border border-zinc-200 bg-white/50 p-5">
       <div class="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Live instances · Fly.dev</div>
       <div id="kFly" class="mono mt-2 text-3xl font-extrabold">—</div>
       <div id="kFlySub" class="mt-1 text-xs text-zinc-500">started machines</div>
     </div>
-    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div class="rounded-2xl border border-zinc-200 bg-white/50 p-5">
       <div class="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Users</div>
       <div id="kUsers" class="mono mt-2 text-3xl font-extrabold">—</div>
       <div id="kFrozen" class="mt-1 text-xs text-zinc-500">— frozen (burn cap)</div>
@@ -85,24 +85,24 @@
   </section>
 
   <!-- connector semaphore -->
-  <section class="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+  <section class="mt-6 rounded-2xl border border-zinc-200 bg-white/50 p-5">
     <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-400">Connector health</h2>
-      <span class="mono text-[11px] text-zinc-600">pings every 30 min</span>
+      <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-600">Connector health</h2>
+      <span class="mono text-[11px] text-zinc-400">pings every 30 min</span>
     </div>
     <div id="connectors" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6"></div>
   </section>
 
   <!-- users table -->
-  <section class="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900/50">
-    <div class="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
-      <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-400">Users</h2>
-      <button onclick="refresh()" class="mono rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800">↻ refresh</button>
+  <section class="mt-6 rounded-2xl border border-zinc-200 bg-white/50">
+    <div class="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
+      <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-600">Users</h2>
+      <button onclick="refresh()" class="mono rounded-lg border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-100">↻ refresh</button>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-left text-sm">
         <thead class="text-[11px] uppercase tracking-widest text-zinc-500">
-          <tr class="border-b border-zinc-800">
+          <tr class="border-b border-zinc-200">
             <th class="px-5 py-3 font-semibold">Email</th>
             <th class="px-5 py-3 font-semibold">Name</th>
             <th class="px-5 py-3 font-semibold">Provider</th>
@@ -116,7 +116,7 @@
     <div id="usersEmpty" class="hidden px-5 py-10 text-center text-sm text-zinc-500">No users yet.</div>
   </section>
 
-  <p class="mt-6 text-center text-[11px] text-zinc-600 mono">All figures are real or clearly labeled estimates — no fabricated data.</p>
+  <p class="mt-6 text-center text-[11px] text-zinc-400 mono">All figures are real or clearly labeled estimates — no fabricated data.</p>
 </div>
 
 <!-- hidden impersonate form -->
@@ -130,7 +130,7 @@ let PANIC = false;
 async function refresh(){
   try{
     const r = await fetch('/admin/api/overview', {credentials:'same-origin'});
-    if(!r.ok){ document.body.innerHTML = '<div class="grid h-screen place-items-center text-amber-400 mono">403 — admin only</div>'; return; }
+    if(!r.ok){ document.body.innerHTML = '<div class="grid h-screen place-items-center text-indigo-600 mono">403 — admin only</div>'; return; }
     const d = await r.json();
     render(d);
   }catch(e){ /* keep last state */ }
@@ -140,7 +140,7 @@ function money(n){ const v = Number(n||0); return (v<0?'-$':'$') + Math.abs(v).t
 
 function render(d){
   document.getElementById('kMargin').textContent = money(d.net_margin_usd);
-  document.getElementById('kMargin').className = 'mono mt-2 text-3xl font-extrabold ' + (Number(d.net_margin_usd)>=0?'text-amber-400':'text-red-400');
+  document.getElementById('kMargin').className = 'mono mt-2 text-3xl font-extrabold ' + (Number(d.net_margin_usd)>=0?'text-indigo-600':'text-red-400');
   document.getElementById('kMarginSub').textContent = 'rev ' + money(d.revenue_usd) + ' − spend ' + money(d.estimated_api_spend_usd);
   document.getElementById('kSpend').textContent = money(d.estimated_api_spend_usd);
   const fly = d.fly_instances;
@@ -151,9 +151,9 @@ function render(d){
   document.getElementById('kFrozen').textContent = frozen + ' frozen (burn cap)';
 
   // connectors
-  const dot = s => s==='online'?'bg-emerald-400':s==='degraded'?'bg-amber-400':s==='offline'?'bg-red-500':'bg-zinc-600';
+  const dot = s => s==='online'?'bg-emerald-400':s==='degraded'?'bg-indigo-400':s==='offline'?'bg-red-500':'bg-zinc-600';
   document.getElementById('connectors').innerHTML = Object.values(d.connectors||{}).map(c =>
-    '<div class="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">'
+    '<div class="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-2">'
     + '<span class="h-2 w-2 rounded-full '+dot(c.status)+' '+(c.status==='offline'?'blink':'')+'"></span>'
     + '<div class="min-w-0"><div class="truncate text-xs font-semibold capitalize">'+c.name+'</div>'
     + '<div class="mono text-[10px] text-zinc-500">'+(c.status||'unknown')+'</div></div></div>'
@@ -163,12 +163,12 @@ function render(d){
   const frozenSet = new Set(d.frozen_users||[]);
   const rows = (d.users||[]).map(u => {
     const isFrozen = frozenSet.has(u.email);
-    return '<tr class="border-b border-zinc-800/70 hover:bg-zinc-800/30">'
+    return '<tr class="border-b border-zinc-200 hover:bg-zinc-100">'
       + '<td class="px-5 py-3">'+esc(u.email)+'</td>'
-      + '<td class="px-5 py-3 text-zinc-400">'+esc(u.name||'—')+'</td>'
+      + '<td class="px-5 py-3 text-zinc-600">'+esc(u.name||'—')+'</td>'
       + '<td class="px-5 py-3 text-zinc-500">'+esc(u.provider||'—')+'</td>'
       + '<td class="px-5 py-3">'+(isFrozen?'<span class="rounded bg-red-500/15 px-2 py-0.5 text-[11px] text-red-300">frozen</span>':'<span class="rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300">active</span>')+'</td>'
-      + '<td class="px-5 py-3 text-right"><button onclick="impersonate(\''+esc(u.email)+'\')" class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[12px] font-semibold text-amber-300 hover:bg-amber-500/20">Impersonate</button></td>'
+      + '<td class="px-5 py-3 text-right"><button onclick="impersonate(\''+esc(u.email)+'\')" class="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1 text-[12px] font-semibold text-indigo-600 hover:bg-indigo-500/20">Impersonate</button></td>'
       + '</tr>';
   }).join('');
   document.getElementById('usersBody').innerHTML = rows;

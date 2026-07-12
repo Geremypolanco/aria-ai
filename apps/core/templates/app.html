@@ -49,7 +49,7 @@ if (window.tailwind) {
   textarea { field-sizing: content; }
 </style>
 </head>
-<body class="font-sans bg-zinc-950 text-zinc-100 h-screen w-screen overflow-hidden antialiased">
+<body class="font-sans bg-zinc-50 text-zinc-900 h-screen w-screen overflow-hidden antialiased">
 
 <!-- ARIA isotype — glossy 3D liquid-glass 'A' (royal blue). Defined once, referenced via <use>. -->
 <svg width="0" height="0" class="absolute" aria-hidden="true"><defs>
@@ -70,9 +70,9 @@ if (window.tailwind) {
 </defs></svg>
 
 <!-- ══════════════════ ONBOARDING / PLANS ══════════════════ -->
-<div id="ov" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6">
-  <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-800 bg-zinc-900 p-7 sm:p-8 shadow-2xl">
-    <div class="mb-5 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-800/60 ring-1 ring-inset ring-white/10"><svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg></div>
+<div id="ov" class="fixed inset-0 z-[80] hidden items-center justify-center bg-zinc-900/40 backdrop-blur-sm p-4 sm:p-6">
+  <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-200 bg-white p-7 sm:p-8 shadow-2xl">
+    <div class="mb-5 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-100 ring-1 ring-inset ring-white/10"><svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg></div>
     <div class="mb-1 flex gap-1.5" id="dots">
       <i class="h-1 flex-1 rounded bg-indigo-500"></i><i class="h-1 flex-1 rounded bg-zinc-700"></i>
       <i class="h-1 flex-1 rounded bg-zinc-700"></i><i class="h-1 flex-1 rounded bg-zinc-700"></i>
@@ -80,14 +80,14 @@ if (window.tailwind) {
 
     <div class="step mt-6" data-step="0">
       <h2 class="text-2xl font-bold tracking-tight">Welcome to ARIA 👋</h2>
-      <p class="mt-2 text-sm text-zinc-400">Let's set up your mission control. First — what should we call you?</p>
+      <p class="mt-2 text-sm text-zinc-600">Let's set up your mission control. First — what should we call you?</p>
       <input id="obName" maxlength="60" placeholder="Your name"
-        class="mt-5 w-full rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-3 text-base outline-none focus:border-indigo-500" />
+        class="mt-5 w-full rounded-xl border border-zinc-300 bg-zinc-100 px-4 py-3 text-base outline-none focus:border-indigo-500" />
     </div>
 
     <div class="step mt-6 hidden" data-step="1">
       <h2 class="text-2xl font-bold tracking-tight">What best describes your work?</h2>
-      <p class="mt-2 text-sm text-zinc-400">So ARIA can tailor its missions to you.</p>
+      <p class="mt-2 text-sm text-zinc-600">So ARIA can tailor its missions to you.</p>
       <div id="obWork" class="mt-4 flex flex-wrap gap-2.5">
         <div class="chip2" data-v="Founder / Entrepreneur">Founder / Entrepreneur</div>
         <div class="chip2" data-v="Marketing">Marketing</div>
@@ -101,13 +101,13 @@ if (window.tailwind) {
       </div>
       <div id="obWorkOtherWrap" class="mt-3 hidden">
         <input id="obWorkOther" maxlength="60" placeholder="Tell us what you do"
-          class="w-full rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-3 text-base outline-none focus:border-indigo-500" />
+          class="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-4 py-3 text-base outline-none focus:border-indigo-500" />
       </div>
     </div>
 
     <div class="step mt-6 hidden" data-step="2">
       <h2 class="text-2xl font-bold tracking-tight">What should ARIA help with?</h2>
-      <p class="mt-2 text-sm text-zinc-400">Pick all that apply.</p>
+      <p class="mt-2 text-sm text-zinc-600">Pick all that apply.</p>
       <div id="obGoals" class="mt-4 flex flex-wrap gap-2.5">
         <div class="chip2" data-v="Grow on social media">Grow on social media</div>
         <div class="chip2" data-v="Create content">Create content</div>
@@ -120,51 +120,51 @@ if (window.tailwind) {
 
     <div class="step mt-6 hidden" data-step="3">
       <h2 class="text-2xl font-bold tracking-tight">Choose your plan</h2>
-      <p class="mt-2 text-sm text-zinc-400">Start free — upgrade any time.</p>
+      <p class="mt-2 text-sm text-zinc-600">Start free — upgrade any time.</p>
       <div id="obPlans" class="mt-4 flex flex-col gap-3">
         <div class="plan sel" data-v="free">
           <div class="flex items-baseline justify-between"><span class="font-bold">Free</span><span class="text-lg font-extrabold">$0</span></div>
-          <p class="mt-1.5 text-[13px] text-zinc-400">ARIA missions to research, write and create images. 1 workspace.</p></div>
+          <p class="mt-1.5 text-[13px] text-zinc-600">ARIA missions to research, write and create images. 1 workspace.</p></div>
         <div class="plan" data-v="pro">
           <span class="absolute -top-2.5 right-4 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 px-2 py-0.5 text-[10px] font-bold tracking-wide">MOST POPULAR</span>
           <div class="flex items-baseline justify-between"><span class="font-bold">Pro</span><span class="text-lg font-extrabold">$29<small class="text-xs font-medium text-zinc-500">/mo</small></span></div>
-          <p class="mt-1.5 text-[13px] text-zinc-400">Everything unlimited + advanced image, video &amp; voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
+          <p class="mt-1.5 text-[13px] text-zinc-600">Everything unlimited + advanced image, video &amp; voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
         <div class="plan" data-v="business">
           <div class="flex items-baseline justify-between"><span class="font-bold">Business</span><span class="text-lg font-extrabold">$99<small class="text-xs font-medium text-zinc-500">/mo</small></span></div>
-          <p class="mt-1.5 text-[13px] text-zinc-400">Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
+          <p class="mt-1.5 text-[13px] text-zinc-600">Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
       </div>
     </div>
 
     <div class="mt-7 flex items-center justify-between gap-3">
-      <button id="obBack" onclick="obPrev()" class="invisible rounded-xl px-5 py-3 text-sm font-semibold text-zinc-400 hover:text-zinc-100">← Back</button>
+      <button id="obBack" onclick="obPrev()" class="invisible rounded-xl px-5 py-3 text-sm font-semibold text-zinc-600 hover:text-zinc-900">← Back</button>
       <button id="obNext" onclick="obNext()" class="rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-6 py-3 text-sm font-semibold hover:brightness-110">Continue</button>
     </div>
   </div>
 </div>
 
 <!-- ══════════════════ UPGRADE ══════════════════ -->
-<div id="upOv" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6">
-  <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-800 bg-zinc-900 p-7 sm:p-8 shadow-2xl">
+<div id="upOv" class="fixed inset-0 z-[80] hidden items-center justify-center bg-zinc-900/40 backdrop-blur-sm p-4 sm:p-6">
+  <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-200 bg-white p-7 sm:p-8 shadow-2xl">
     <div class="flex items-start justify-between">
       <div>
-        <div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-800/60 ring-1 ring-inset ring-white/10"><svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg></div>
+        <div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-100 ring-1 ring-inset ring-white/10"><svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg></div>
         <h2 class="text-2xl font-bold tracking-tight">Upgrade ARIA</h2>
-        <p class="mt-2 text-sm text-zinc-400">Do more — autonomous publishing, video, and priority AI.</p>
+        <p class="mt-2 text-sm text-zinc-600">Do more — autonomous publishing, video, and priority AI.</p>
       </div>
-      <button onclick="closeUpgrade()" aria-label="Close" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-800">✕</button>
+      <button onclick="closeUpgrade()" aria-label="Close" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-600 hover:bg-zinc-100">✕</button>
     </div>
     <div id="upPlans" class="mt-5 flex flex-col gap-3">
       <div class="plan" data-v="pro">
         <span class="absolute -top-2.5 right-4 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 px-2 py-0.5 text-[10px] font-bold tracking-wide">MOST POPULAR</span>
         <div class="flex items-baseline justify-between"><span class="font-bold">Pro</span><span class="text-lg font-extrabold">$29<small class="text-xs font-medium text-zinc-500">/mo</small></span></div>
-        <p class="mt-1.5 text-[13px] text-zinc-400">Unlimited missions, advanced image + video + voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
+        <p class="mt-1.5 text-[13px] text-zinc-600">Unlimited missions, advanced image + video + voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
       <div class="plan" data-v="business">
         <div class="flex items-baseline justify-between"><span class="font-bold">Business</span><span class="text-lg font-extrabold">$99<small class="text-xs font-medium text-zinc-500">/mo</small></span></div>
-        <p class="mt-1.5 text-[13px] text-zinc-400">Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
+        <p class="mt-1.5 text-[13px] text-zinc-600">Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
     </div>
-    <label for="upAck" class="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3.5">
+    <label for="upAck" class="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50/60 p-3.5">
       <input id="upAck" type="checkbox" onchange="upAckChanged(this.checked)" class="mt-0.5 h-4 w-4 flex-none accent-indigo-500">
-      <span class="text-[13px] leading-relaxed text-zinc-400">Entiendo y acepto la <a href="/legal/refund-policy" target="_blank" class="text-indigo-400 hover:underline">política estricta de no reembolso</a> de ARIA debido a los costes inmediatos de renderizado y cómputo de IA.</span>
+      <span class="text-[13px] leading-relaxed text-zinc-600">Entiendo y acepto la <a href="/legal/refund-policy" target="_blank" class="text-indigo-400 hover:underline">política estricta de no reembolso</a> de ARIA debido a los costes inmediatos de renderizado y cómputo de IA.</span>
     </label>
     <div class="mt-5 flex justify-end">
       <button id="upGo" onclick="upgradeGo()" disabled class="cursor-not-allowed rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-6 py-3 text-sm font-semibold opacity-40">Continue</button>
@@ -173,52 +173,52 @@ if (window.tailwind) {
 </div>
 
 <!-- ══════════════════ ARIA SUPPORT WIDGET (24/7) ══════════════════ -->
-<div id="supPanel" class="fixed bottom-24 right-5 z-[85] hidden w-[92vw] max-w-[380px] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl sm:right-6">
-  <div class="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/70 px-4 py-3">
+<div id="supPanel" class="fixed bottom-24 right-5 z-[85] hidden w-[92vw] max-w-[380px] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl sm:right-6">
+  <div class="flex items-center justify-between border-b border-zinc-200 bg-zinc-50/70 px-4 py-3">
     <div class="flex items-center gap-2.5">
-      <span class="relative grid h-8 w-8 place-items-center rounded-lg bg-zinc-800/70 ring-1 ring-inset ring-white/10"><svg class="h-5 w-5" aria-hidden="true"><use href="#ariaMark"/></svg>
-        <span class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900 bg-emerald-400"></span></span>
+      <span class="relative grid h-8 w-8 place-items-center rounded-lg bg-zinc-100 ring-1 ring-inset ring-white/10"><svg class="h-5 w-5" aria-hidden="true"><use href="#ariaMark"/></svg>
+        <span class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-200 bg-emerald-400"></span></span>
       <div><div class="text-sm font-semibold leading-tight">ARIA Support</div>
         <div class="text-[11px] text-zinc-500">Asistente 24/7 · en línea</div></div>
     </div>
-    <button onclick="toggleSupport(false)" aria-label="Cerrar soporte" class="grid h-8 w-8 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-800">✕</button>
+    <button onclick="toggleSupport(false)" aria-label="Cerrar soporte" class="grid h-8 w-8 place-items-center rounded-lg text-zinc-600 hover:bg-zinc-100">✕</button>
   </div>
   <div id="supLog" class="flex h-[46vh] max-h-[380px] flex-col gap-3 overflow-y-auto no-sb px-4 py-4 text-sm"></div>
-  <form id="supForm" onsubmit="return supSend(event)" class="flex items-center gap-2 border-t border-zinc-800 bg-zinc-950/70 p-3">
-    <input id="supInput" autocomplete="off" placeholder="Facturación, misiones, conectores…" class="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-3.5 py-2.5 text-sm text-zinc-50 placeholder-zinc-600 outline-none focus:border-zinc-600">
+  <form id="supForm" onsubmit="return supSend(event)" class="flex items-center gap-2 border-t border-zinc-200 bg-zinc-50/70 p-3">
+    <input id="supInput" autocomplete="off" placeholder="Facturación, misiones, conectores…" class="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-none focus:border-zinc-600">
     <button type="submit" aria-label="Enviar" class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 hover:brightness-110">↑</button>
   </form>
 </div>
-<button id="supFab" onclick="toggleSupport()" class="fixed bottom-5 right-5 z-[84] flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-50 shadow-2xl transition hover:bg-zinc-800 sm:right-6">
+<button id="supFab" onclick="toggleSupport()" class="fixed bottom-5 right-5 z-[84] flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 shadow-2xl transition hover:bg-zinc-100 sm:right-6">
   <svg class="h-5 w-5" aria-hidden="true"><use href="#ariaMark"/></svg>
   <span>Soporte</span>
 </button>
 
 <!-- ══════════════════ SETTINGS ══════════════════ -->
-<div id="settingsOv" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6">
-  <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-800 bg-zinc-900 p-7 sm:p-8 shadow-2xl">
+<div id="settingsOv" class="fixed inset-0 z-[80] hidden items-center justify-center bg-zinc-900/40 backdrop-blur-sm p-4 sm:p-6">
+  <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-200 bg-white p-7 sm:p-8 shadow-2xl">
     <div class="flex items-start justify-between">
-      <div><div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-800/60 ring-1 ring-inset ring-white/10"><svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg></div>
+      <div><div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-100 ring-1 ring-inset ring-white/10"><svg class="h-7 w-7" aria-hidden="true"><use href="#ariaMark"/></svg></div>
         <h2 class="text-2xl font-bold tracking-tight">Settings</h2></div>
-      <button onclick="closeSettings()" aria-label="Close" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-800">✕</button>
+      <button onclick="closeSettings()" aria-label="Close" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-600 hover:bg-zinc-100">✕</button>
     </div>
 
     <div class="mt-6">
       <div class="mb-3 text-xs font-bold uppercase tracking-widest text-zinc-500">Account</div>
-      <div class="flex items-center justify-between border-b border-zinc-800 py-2 text-sm"><span>Email</span><span class="text-zinc-400">__EMAIL__</span></div>
+      <div class="flex items-center justify-between border-b border-zinc-200 py-2 text-sm"><span>Email</span><span class="text-zinc-600">__EMAIL__</span></div>
       <div class="flex items-center justify-between py-2 text-sm"><span>Plan</span>
         <span><b id="setPlan" class="text-indigo-400">Free</b>
-          <button onclick="closeSettings();openUpgrade()" class="ml-2 rounded-lg border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-xs hover:bg-zinc-800">Upgrade</button></span></div>
+          <button onclick="closeSettings();openUpgrade()" class="ml-2 rounded-lg border border-zinc-300 bg-zinc-100 px-2.5 py-1 text-xs hover:bg-zinc-100">Upgrade</button></span></div>
     </div>
 
-    <div class="mt-6 border-t border-zinc-800 pt-5">
+    <div class="mt-6 border-t border-zinc-200 pt-5">
       <div class="mb-2 text-xs font-bold uppercase tracking-widest text-zinc-500">Personalization</div>
-      <p class="text-sm text-zinc-400">How ARIA addresses you and tailors its missions.</p>
-      <label class="mt-4 mb-1.5 block text-[13px] text-zinc-400">What ARIA should call you</label>
-      <input id="setName" maxlength="60" class="w-full rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-3 text-base outline-none focus:border-indigo-500" />
-      <label class="mt-4 mb-1.5 block text-[13px] text-zinc-400">What you do</label>
-      <input id="setWork" maxlength="60" placeholder="e.g. Founder, Marketer, Creator…" class="w-full rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-3 text-base outline-none focus:border-indigo-500" />
-      <label class="mt-4 mb-1.5 block text-[13px] text-zinc-400">Goals</label>
+      <p class="text-sm text-zinc-600">How ARIA addresses you and tailors its missions.</p>
+      <label class="mt-4 mb-1.5 block text-[13px] text-zinc-600">What ARIA should call you</label>
+      <input id="setName" maxlength="60" class="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-4 py-3 text-base outline-none focus:border-indigo-500" />
+      <label class="mt-4 mb-1.5 block text-[13px] text-zinc-600">What you do</label>
+      <input id="setWork" maxlength="60" placeholder="e.g. Founder, Marketer, Creator…" class="w-full rounded-xl border border-zinc-300 bg-zinc-100 px-4 py-3 text-base outline-none focus:border-indigo-500" />
+      <label class="mt-4 mb-1.5 block text-[13px] text-zinc-600">Goals</label>
       <div id="setGoals" class="flex flex-wrap gap-2.5">
         <div class="chip2" data-v="Grow on social media">Grow on social media</div>
         <div class="chip2" data-v="Create content">Create content</div>
@@ -231,22 +231,22 @@ if (window.tailwind) {
         <button id="setSaveBtn" onclick="saveSettings()" class="rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-6 py-3 text-sm font-semibold hover:brightness-110">Save changes</button></div>
     </div>
 
-    <div class="mt-6 border-t border-zinc-800 pt-5">
+    <div class="mt-6 border-t border-zinc-200 pt-5">
       <div class="mb-2 text-xs font-bold uppercase tracking-widest text-rose-400">Danger zone</div>
-      <p class="text-sm text-zinc-400">Permanently delete your ARIA data — profile, plan and saved missions. This can't be undone.</p>
+      <p class="text-sm text-zinc-600">Permanently delete your ARIA data — profile, plan and saved missions. This can't be undone.</p>
       <button onclick="deleteAccount()" class="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/15 px-5 py-3 text-sm font-semibold text-rose-300 hover:bg-rose-500/25">Delete account &amp; data</button>
     </div>
   </div>
 </div>
 
 <!-- ══════════════════ CONNECTORS ══════════════════ -->
-<div id="connOv" class="fixed inset-0 z-[80] hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6">
-  <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-800 bg-zinc-900 p-7 sm:p-8 shadow-2xl">
+<div id="connOv" class="fixed inset-0 z-[80] hidden items-center justify-center bg-zinc-900/40 backdrop-blur-sm p-4 sm:p-6">
+  <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto no-sb rounded-3xl border border-zinc-200 bg-white p-7 sm:p-8 shadow-2xl">
     <div class="flex items-start justify-between">
-      <div><div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-800 text-lg">🔗</div>
+      <div><div class="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-100 text-lg">🔗</div>
         <h2 class="text-2xl font-bold tracking-tight">Connectors</h2>
-        <p class="mt-2 text-sm text-zinc-400">Connect ARIA to the apps you already use — so it can research, publish and act across them.</p></div>
-      <button onclick="closeConnectors()" aria-label="Close" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-800">✕</button>
+        <p class="mt-2 text-sm text-zinc-600">Connect ARIA to the apps you already use — so it can research, publish and act across them.</p></div>
+      <button onclick="closeConnectors()" aria-label="Close" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-600 hover:bg-zinc-100">✕</button>
     </div>
     <div id="connList" class="mt-5"></div>
     <p class="mt-4 text-xs text-zinc-500">More connectors are added regularly. Request one and we'll enable it for your account.</p>
@@ -257,19 +257,19 @@ if (window.tailwind) {
 <div class="flex h-screen w-screen overflow-hidden">
 
   <!-- backdrop for mobile sidebar -->
-  <div id="sideBackdrop" onclick="toggleSide(false)" class="fixed inset-0 z-40 hidden bg-black/60 lg:hidden"></div>
+  <div id="sideBackdrop" onclick="toggleSide(false)" class="fixed inset-0 z-40 hidden bg-zinc-900/40 lg:hidden"></div>
 
   <!-- ░░ COLUMN 1 — SIDEBAR ░░ -->
-  <aside id="side" class="fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col border-r border-zinc-800 bg-zinc-900/80 backdrop-blur transition-transform duration-300 lg:static lg:translate-x-0">
+  <aside id="side" class="fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col border-r border-zinc-200 bg-white/80 backdrop-blur transition-transform duration-300 lg:static lg:translate-x-0">
     <div class="flex items-center justify-between px-4 pt-4 pb-3">
       <div class="group flex items-center gap-2.5">
         <svg class="h-7 w-7 transition-all duration-300 group-hover:scale-105" aria-hidden="true"><use href="#ariaMark"/></svg>
-        <span class="text-base font-light tracking-[0.3em] text-zinc-50" style="padding-left:.3em">ARIA</span>
+        <span class="text-base font-light tracking-[0.3em] text-zinc-900" style="padding-left:.3em">ARIA</span>
       </div>
-      <button onclick="toggleSide(false)" aria-label="Close" class="grid h-8 w-8 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-800 lg:hidden">✕</button>
+      <button onclick="toggleSide(false)" aria-label="Close" class="grid h-8 w-8 place-items-center rounded-lg text-zinc-600 hover:bg-zinc-100 lg:hidden">✕</button>
     </div>
 
-    <button onclick="focusIgniter()" class="mx-3 mb-3 flex items-center gap-2.5 rounded-xl border border-zinc-800 bg-zinc-800/50 px-3.5 py-2.5 text-sm font-semibold hover:bg-zinc-800">
+    <button onclick="focusIgniter()" class="mx-3 mb-3 flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-zinc-100 px-3.5 py-2.5 text-sm font-semibold hover:bg-zinc-100">
       <span class="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold">+</span> New mission
     </button>
 
@@ -277,7 +277,7 @@ if (window.tailwind) {
       <div class="px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-[1.5px] text-zinc-500">Workspace</div>
       <button onclick="setFilter('all',this)" class="navlink active" data-nav>
         <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
-        Missions <span id="navCount" class="ml-auto rounded-md bg-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-400">0</span>
+        Missions <span id="navCount" class="ml-auto rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-600">0</span>
       </button>
       <button onclick="setFilter('running',this)" class="navlink" data-nav>
         <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
@@ -301,28 +301,28 @@ if (window.tailwind) {
     <div class="px-4 pb-2">
       <div class="mb-2 text-[11px] font-bold uppercase tracking-[1.5px] text-zinc-500">Channels</div>
       <div class="flex items-center gap-2">
-        <a href="#" onclick="openConnectors();return false" title="YouTube" class="grid h-8 w-8 place-items-center rounded-lg bg-zinc-800/70 text-zinc-400 hover:text-red-500">
+        <a href="#" onclick="openConnectors();return false" title="YouTube" class="grid h-8 w-8 place-items-center rounded-lg bg-zinc-100 text-zinc-600 hover:text-red-500">
           <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.8.5 9.4.5 9.4.5s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg>
         </a>
-        <a href="#" onclick="openConnectors();return false" title="LinkedIn" class="grid h-8 w-8 place-items-center rounded-lg bg-zinc-800/70 text-zinc-400 hover:text-sky-500">
+        <a href="#" onclick="openConnectors();return false" title="LinkedIn" class="grid h-8 w-8 place-items-center rounded-lg bg-zinc-100 text-zinc-600 hover:text-sky-500">
           <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.22.79 24 1.77 24h20.45C23.2 24 24 23.22 24 22.27V1.73C24 .77 23.2 0 22.22 0z"/></svg>
         </a>
-        <a href="#" onclick="openConnectors();return false" title="Instagram" class="grid h-8 w-8 place-items-center rounded-lg bg-zinc-800/70 text-zinc-400 hover:text-pink-500">
+        <a href="#" onclick="openConnectors();return false" title="Instagram" class="grid h-8 w-8 place-items-center rounded-lg bg-zinc-100 text-zinc-600 hover:text-pink-500">
           <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor"><path d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.16-.42-.36-1.06-.41-2.23C2.17 15.58 2.16 15.2 2.16 12s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16zM12 0C8.74 0 8.33.01 7.05.07 5.78.13 4.9.33 4.14.63a5.9 5.9 0 0 0-2.13 1.39A5.9 5.9 0 0 0 .63 4.14c-.3.76-.5 1.64-.56 2.91C.01 8.33 0 8.74 0 12s.01 3.67.07 4.95c.06 1.27.26 2.15.56 2.91.31.79.72 1.46 1.39 2.13a5.9 5.9 0 0 0 2.13 1.39c.76.3 1.64.5 2.91.56C8.33 23.99 8.74 24 12 24s3.67-.01 4.95-.07c1.27-.06 2.15-.26 2.91-.56a5.9 5.9 0 0 0 2.13-1.39 5.9 5.9 0 0 0 1.39-2.13c.3-.76.5-1.64.56-2.91.06-1.28.07-1.69.07-4.95s-.01-3.67-.07-4.95c-.06-1.27-.26-2.15-.56-2.91a5.9 5.9 0 0 0-1.39-2.13A5.9 5.9 0 0 0 19.86.63c-.76-.3-1.64-.5-2.91-.56C15.67.01 15.26 0 12 0zm0 5.84A6.16 6.16 0 1 0 18.16 12 6.16 6.16 0 0 0 12 5.84zm0 10.16A4 4 0 1 1 16 12a4 4 0 0 1-4 4zm6.4-11.85a1.44 1.44 0 1 0 1.44 1.44 1.44 1.44 0 0 0-1.44-1.44z"/></svg>
         </a>
       </div>
     </div>
 
     <!-- user + menu -->
-    <div class="relative border-t border-zinc-800 p-3">
-      <div id="menu" class="absolute inset-x-3 bottom-16 hidden rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-2xl">
+    <div class="relative border-t border-zinc-200 p-3">
+      <div id="menu" class="absolute inset-x-3 bottom-16 hidden rounded-xl border border-zinc-200 bg-white p-1.5 shadow-2xl">
         <a href="#" onclick="openConnectors();return false" class="menulink">🔗 Connectors</a>
         <a href="#" onclick="openSettings();return false" class="menulink">⚙ Settings</a>
         <a href="#" id="upgradeLink" onclick="openUpgrade();return false" class="menulink text-indigo-400">⚡ Upgrade — see plans</a>
         <a href="/" class="menulink">⌂ Home</a>
         <a href="/logout" class="menulink">↩ Sign out</a>
       </div>
-      <button onclick="toggleMenu()" class="flex w-full items-center gap-2.5 rounded-xl p-2 text-left hover:bg-zinc-800/70">
+      <button onclick="toggleMenu()" class="flex w-full items-center gap-2.5 rounded-xl p-2 text-left hover:bg-zinc-100">
         <span class="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 font-bold">__INITIAL__</span>
         <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold">__NAME__</span><span class="block text-[11px] font-semibold text-indigo-400">__PLAN__ plan</span></span>
         <span class="text-zinc-500">⋯</span>
@@ -333,16 +333,16 @@ if (window.tailwind) {
   <!-- ░░ COLUMN 2 — CONSOLE ░░ -->
   <main class="flex min-w-0 flex-1 flex-col">
     <!-- topbar -->
-    <header class="flex h-14 flex-shrink-0 items-center gap-3 border-b border-zinc-800/80 px-4 md:px-6">
-      <button onclick="toggleSide(true)" aria-label="Menu" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-300 hover:bg-zinc-800 lg:hidden">
+    <header class="flex h-14 flex-shrink-0 items-center gap-3 border-b border-zinc-200 px-4 md:px-6">
+      <button onclick="toggleSide(true)" aria-label="Menu" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-700 hover:bg-zinc-100 lg:hidden">
         <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
       </button>
-      <div class="flex-1 truncate text-sm font-semibold text-zinc-400">Mission Control</div>
-      <span class="flex items-center gap-2 rounded-full border border-zinc-800 px-3 py-1.5 text-[11px] font-semibold text-zinc-400">
+      <div class="flex-1 truncate text-sm font-semibold text-zinc-600">Mission Control</div>
+      <span class="flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1.5 text-[11px] font-semibold text-zinc-600">
         <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span> ARIA online
       </span>
       <!-- mobile logs pill -->
-      <button onclick="toggleLogs(true)" aria-label="Live logs" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-300 hover:bg-zinc-800 xl:hidden">
+      <button onclick="toggleLogs(true)" aria-label="Live logs" class="grid h-9 w-9 place-items-center rounded-lg text-zinc-700 hover:bg-zinc-100 xl:hidden">
         <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
       </button>
     </header>
@@ -351,20 +351,20 @@ if (window.tailwind) {
     <div class="flex-1 overflow-y-auto no-sb p-4 md:p-8">
       <div class="mx-auto max-w-5xl">
         <!-- connector-outage banner (shown when a platform is globally down) -->
-        <div id="outageBanner" class="mb-4 hidden rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div id="outageBanner" class="mb-4 hidden rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200">
           <span class="font-semibold">⚠️ Publishing paused:</span>
           <span id="outageList"></span> appears to be down globally. Queued posts are held until it recovers.
         </div>
         <!-- hero -->
         <h1 class="text-2xl font-bold tracking-tight md:text-3xl">Good <span id="tod">day</span>, <span class="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent" id="greetName">__FIRST__</span>.</h1>
-        <p class="mt-1.5 text-sm text-zinc-400">Describe a goal and ARIA will run it as an autonomous mission — research, writing, images.</p>
+        <p class="mt-1.5 text-sm text-zinc-600">Describe a goal and ARIA will run it as an autonomous mission — research, writing, images.</p>
 
         <!-- GOAL IGNITER -->
-        <div class="mt-5 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-2 focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20">
+        <div class="mt-5 rounded-2xl border border-zinc-200 bg-white/60 p-2 focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20">
           <div class="flex flex-col gap-2 md:flex-row md:items-end">
             <textarea id="igniter" rows="1" placeholder="e.g. Research the top 5 AI newsletters and draft a launch post…"
               onkeydown="onIgniterKey(event)"
-              class="min-h-[46px] w-full flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] leading-relaxed text-zinc-100 outline-none placeholder:text-zinc-500"></textarea>
+              class="min-h-[46px] w-full flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-500"></textarea>
             <button id="ignite" onclick="dispatchMission()"
               class="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-5 py-2.5 text-sm font-semibold hover:brightness-110 disabled:opacity-40 md:w-auto">
               <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
@@ -382,10 +382,10 @@ if (window.tailwind) {
         <div class="mt-7 flex items-center justify-between">
           <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-500">Missions</h2>
         </div>
-        <div id="emptyMissions" class="mt-4 rounded-2xl border border-dashed border-zinc-800 p-10 text-center">
-          <div class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-zinc-800/70 text-2xl">🛰️</div>
+        <div id="emptyMissions" class="mt-4 rounded-2xl border border-dashed border-zinc-200 p-10 text-center">
+          <div class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-zinc-100 text-2xl">🛰️</div>
           <p class="mt-3 text-sm font-semibold">No missions yet</p>
-          <p class="mx-auto mt-1 max-w-sm text-[13px] text-zinc-400">Launch your first mission above. ARIA will work on it and drop the deliverables right here.</p>
+          <p class="mx-auto mt-1 max-w-sm text-[13px] text-zinc-600">Launch your first mission above. ARIA will work on it and drop the deliverables right here.</p>
         </div>
         <div id="missions" class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6"></div>
       </div>
@@ -393,35 +393,35 @@ if (window.tailwind) {
   </main>
 
   <!-- ░░ COLUMN 3 — LIVE AGENT LOGS ░░ -->
-  <aside id="logs" class="fixed inset-y-0 right-0 z-50 flex w-80 max-w-[85vw] translate-x-full flex-col border-l border-zinc-800 bg-zinc-900/90 backdrop-blur transition-transform duration-300 xl:static xl:z-auto xl:w-80 xl:translate-x-0 xl:bg-zinc-900/40">
-    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3.5">
-      <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-400">
+  <aside id="logs" class="fixed inset-y-0 right-0 z-50 flex w-80 max-w-[85vw] translate-x-full flex-col border-l border-zinc-200 bg-white/90 backdrop-blur transition-transform duration-300 xl:static xl:z-auto xl:w-80 xl:translate-x-0 xl:bg-white/40">
+    <div class="flex items-center justify-between border-b border-zinc-200 px-4 py-3.5">
+      <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-600">
         <span class="h-1.5 w-1.5 rounded-full bg-indigo-400 blink"></span> Live agent logs
       </div>
-      <button onclick="toggleLogs(false)" aria-label="Close logs" class="grid h-7 w-7 place-items-center rounded-lg text-zinc-500 hover:bg-zinc-800 xl:hidden">✕</button>
+      <button onclick="toggleLogs(false)" aria-label="Close logs" class="grid h-7 w-7 place-items-center rounded-lg text-zinc-500 hover:bg-zinc-100 xl:hidden">✕</button>
     </div>
     <div id="logStream" class="flex-1 overflow-y-auto no-sb px-4 py-3 font-mono text-xs leading-relaxed text-indigo-400"></div>
-    <div class="border-t border-zinc-800 px-4 py-2.5 font-mono text-[11px] text-zinc-600">
+    <div class="border-t border-zinc-200 px-4 py-2.5 font-mono text-[11px] text-zinc-400">
       <span class="text-emerald-400">●</span> aria@saraph:~$ <span class="blink">▌</span>
     </div>
   </aside>
 
   <!-- mobile logs backdrop -->
-  <div id="logsBackdrop" onclick="toggleLogs(false)" class="fixed inset-0 z-40 hidden bg-black/60 xl:hidden"></div>
+  <div id="logsBackdrop" onclick="toggleLogs(false)" class="fixed inset-0 z-40 hidden bg-zinc-900/40 xl:hidden"></div>
 </div>
 
 <!-- shared component classes — compiled by the Tailwind Play CDN (@apply requires type="text/tailwindcss") -->
 <style type="text/tailwindcss">
-  .chip2 { @apply cursor-pointer rounded-xl border border-zinc-700 bg-zinc-800/40 px-4 py-2.5 text-sm text-zinc-200 transition hover:bg-zinc-800; }
+  .chip2 { @apply cursor-pointer rounded-xl border border-zinc-300 bg-zinc-100 px-4 py-2.5 text-sm text-zinc-800 transition hover:bg-zinc-100; }
   .chip2.sel { @apply border-indigo-500/60 bg-indigo-500/15 text-indigo-300; }
-  .plan { @apply relative cursor-pointer rounded-2xl border border-zinc-800 bg-zinc-800/30 p-4 pr-12 transition hover:bg-zinc-800/60; }
+  .plan { @apply relative cursor-pointer rounded-2xl border border-zinc-200 bg-zinc-100 p-4 pr-12 transition hover:bg-zinc-100; }
   .plan.sel { @apply border-indigo-500/60 bg-indigo-500/10; }
   .plan::after { content:''; @apply absolute right-4 top-4 h-4 w-4 rounded-full border-2 border-zinc-600; }
   .plan.sel::after { @apply border-indigo-400 bg-indigo-400; }
-  .navlink { @apply mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-400 transition hover:bg-zinc-800/70 hover:text-zinc-100; }
+  .navlink { @apply mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900; }
   .navlink.active { @apply bg-indigo-500/15 text-indigo-300; }
-  .menulink { @apply flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-zinc-200 no-underline transition hover:bg-zinc-800; }
-  .quick { @apply rounded-lg border border-zinc-800 bg-zinc-800/40 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800; }
+  .menulink { @apply flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-zinc-800 no-underline transition hover:bg-zinc-100; }
+  .quick { @apply rounded-lg border border-zinc-200 bg-zinc-100 px-2.5 py-1.5 text-xs text-zinc-700 transition hover:bg-zinc-100; }
 </style>
 
 <script>
@@ -446,11 +446,11 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function ts(){ const d=new Date(); return d.toTimeString().slice(0,8); }
 function log(msg, level){
   const el=document.getElementById('logStream');
-  const color = level==='ok' ? 'text-emerald-400' : level==='warn' ? 'text-amber-400'
+  const color = level==='ok' ? 'text-emerald-400' : level==='warn' ? 'text-indigo-600'
               : level==='err' ? 'text-rose-400' : level==='dim' ? 'text-zinc-500' : 'text-indigo-400';
   const line=document.createElement('div');
   line.className='rise '+color;
-  line.innerHTML='<span class="text-zinc-600">'+ts()+'</span> '+msg;
+  line.innerHTML='<span class="text-zinc-400">'+ts()+'</span> '+msg;
   el.appendChild(line);
   while(el.children.length>200) el.removeChild(el.firstChild);
   el.scrollTop=el.scrollHeight;   // auto-scroll to bottom
@@ -461,12 +461,12 @@ function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 function md(src){
   if(!src) return '';
   const blocks=[];
-  src=src.replace(/```(\w+)?\n?([\s\S]*?)```/g,(m,l,c)=>{blocks.push('<pre class="mt-2 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-[12px] text-zinc-300"><code>'+esc(c.replace(/\n$/,''))+'</code></pre>');return '  '+(blocks.length-1)+'  '});
+  src=src.replace(/```(\w+)?\n?([\s\S]*?)```/g,(m,l,c)=>{blocks.push('<pre class="mt-2 overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-[12px] text-zinc-700"><code>'+esc(c.replace(/\n$/,''))+'</code></pre>');return '  '+(blocks.length-1)+'  '});
   let h=esc(src);
-  h=h.replace(/`([^`]+)`/g,(m,c)=>'<code class="rounded bg-zinc-800 px-1.5 py-0.5 text-[12px]">'+c+'</code>');
-  h=h.replace(/\*\*([^*]+)\*\*/g,'<strong class="font-semibold text-zinc-100">$1</strong>');
+  h=h.replace(/`([^`]+)`/g,(m,c)=>'<code class="rounded bg-zinc-100 px-1.5 py-0.5 text-[12px]">'+c+'</code>');
+  h=h.replace(/\*\*([^*]+)\*\*/g,'<strong class="font-semibold text-zinc-900">$1</strong>');
   h=h.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener" class="text-indigo-400 underline underline-offset-2">$1</a>');
-  h=h.replace(/^(#{1,3})\s+(.+)$/gm,(m,hs,t)=>'<h3 class="mt-3 mb-1 font-bold text-zinc-100">'+t+'</h3>');
+  h=h.replace(/^(#{1,3})\s+(.+)$/gm,(m,hs,t)=>'<h3 class="mt-3 mb-1 font-bold text-zinc-900">'+t+'</h3>');
   const lines=h.split('\n'); let out=[],inUl=false;
   for(let ln of lines){
     if(/^\s*[-*]\s+/.test(ln)){ if(!inUl){out.push('<ul class="my-1.5 list-disc space-y-1 pl-5">');inUl=true} out.push('<li>'+ln.replace(/^\s*[-*]\s+/,'')+'</li>'); continue }
@@ -492,15 +492,15 @@ function missionCard(m){
   if(hasImgs){
     media = '<div class="relative mt-3">'
       + '<div class="carousel flex snap-x gap-2 overflow-x-auto no-sb" id="car-'+m.id+'">'
-      + m.imgs.map(src=>'<img src="'+src+'" alt="deliverable" class="aspect-video w-full flex-none rounded-xl border border-zinc-800 object-cover" />').join('')
+      + m.imgs.map(src=>'<img src="'+src+'" alt="deliverable" class="aspect-video w-full flex-none rounded-xl border border-zinc-200 object-cover" />').join('')
       + '</div>'
-      + (m.imgs.length>1 ? '<button onclick="carScroll(\''+m.id+'\',-1)" class="absolute left-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black/80">‹</button>'
-         + '<button onclick="carScroll(\''+m.id+'\',1)" class="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white hover:bg-black/80">›</button>' : '')
+      + (m.imgs.length>1 ? '<button onclick="carScroll(\''+m.id+'\',-1)" class="absolute left-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-zinc-900/40 text-white hover:bg-zinc-900/40">‹</button>'
+         + '<button onclick="carScroll(\''+m.id+'\',1)" class="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-zinc-900/40 text-white hover:bg-zinc-900/40">›</button>' : '')
       + '</div>';
   }
   let progress='';
   if(m.status==='running'){
-    progress = '<div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800"><div class="bar-anim h-full w-2/3 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"></div></div>'
+    progress = '<div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100"><div class="bar-anim h-full w-2/3 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"></div></div>'
       + '<p class="mt-2 font-mono text-[11px] text-indigo-400/80">rendering deliverables<span class="blink">…</span></p>';
   }
   let body='';
@@ -509,16 +509,16 @@ function missionCard(m){
   } else if(m.status==='error'){
     body = '<p class="mt-3 text-[13px] text-rose-300">⚠️ ARIA couldn\'t complete this mission. Try relaunching it.</p>';
   } else {
-    body = '<div class="mt-3 max-h-56 overflow-y-auto no-sb text-[14px] leading-relaxed text-zinc-300">'+md(m.text||'')+'</div>';
+    body = '<div class="mt-3 max-h-56 overflow-y-auto no-sb text-[14px] leading-relaxed text-zinc-700">'+md(m.text||'')+'</div>';
   }
-  return '<article class="rise rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 md:p-5">'
+  return '<article class="rise rounded-2xl border border-zinc-200 bg-white/50 p-4 md:p-5">'
     + '<div class="flex items-start justify-between gap-3">'
     +   '<div class="min-w-0"><div class="text-[11px] font-mono text-zinc-500">'+new Date(m.ts).toLocaleString()+'</div>'
-    +   '<h3 class="mt-0.5 line-clamp-2 text-[15px] font-semibold text-zinc-100">'+esc(m.goal)+'</h3></div>'
+    +   '<h3 class="mt-0.5 line-clamp-2 text-[15px] font-semibold text-zinc-900">'+esc(m.goal)+'</h3></div>'
     +   statusPill(m.status)
     + '</div>'
     + media + progress + body
-    + '<div class="mt-4 flex items-center gap-2 border-t border-zinc-800/70 pt-3">'
+    + '<div class="mt-4 flex items-center gap-2 border-t border-zinc-200 pt-3">'
     +   (m.status!=='running' ? '<button onclick="copyMission(\''+m.id+'\')" class="quick">⧉ Copy</button>' : '')
     +   (hasImgs ? '<button onclick="dlImg(\''+m.id+'\')" class="quick">↓ Image</button>' : '')
     +   (m.status!=='running' ? '<button onclick="relaunch(\''+m.id+'\')" class="quick">↻ Relaunch</button>' : '')
@@ -551,7 +551,7 @@ async function dispatchMission(){
   const m={ id:uid(), goal, sid:'mission-'+uid(), status:'running', text:'', imgs:[], ts:Date.now() };
   missions.unshift(m); saveMissions(); renderMissions();
   inp.value='';
-  log('▶ mission dispatched — <span class="text-zinc-300">'+esc(goal.slice(0,60))+'</span>');
+  log('▶ mission dispatched — <span class="text-zinc-700">'+esc(goal.slice(0,60))+'</span>');
   log('· routing to ARIA cognition core', 'dim');
   try{
     const r=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -607,7 +607,7 @@ document.addEventListener('click',e=>{ const m=document.getElementById('menu'); 
 function toast(msg,kind){
   const t=document.createElement('div');
   t.className='fixed left-1/2 bottom-6 z-[90] max-w-[92vw] -translate-x-1/2 translate-y-3 rounded-xl border px-4 py-3 text-sm opacity-0 shadow-2xl transition-all '
-    + (kind==='ok'?'border-emerald-500/50 bg-zinc-900':kind==='err'?'border-rose-500/50 bg-zinc-900':'border-zinc-700 bg-zinc-900');
+    + (kind==='ok'?'border-emerald-500/50 bg-white':kind==='err'?'border-rose-500/50 bg-white':'border-zinc-300 bg-white');
   t.textContent=msg; document.body.appendChild(t);
   requestAnimationFrame(()=>{ t.classList.remove('opacity-0','translate-y-3'); });
   setTimeout(()=>{ t.classList.add('opacity-0'); setTimeout(()=>t.remove(),300); },4600);
@@ -710,13 +710,13 @@ function supAppend(who,text){
   const log=document.getElementById('supLog');
   const row=document.createElement('div');
   if(who==='user'){
-    row.className='self-end max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-600 px-3.5 py-2 text-zinc-50';
+    row.className='self-end max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-600 px-3.5 py-2 text-zinc-900';
     row.textContent=text;
   } else if(who==='typing'){
-    row.className='self-start rounded-2xl rounded-bl-sm bg-zinc-800 px-3.5 py-2 text-zinc-400'; row.id='supTyping';
+    row.className='self-start rounded-2xl rounded-bl-sm bg-zinc-100 px-3.5 py-2 text-zinc-600'; row.id='supTyping';
     row.textContent='ARIA está escribiendo…';
   } else {
-    row.className='self-start max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-zinc-800 px-3.5 py-2 text-zinc-200';
+    row.className='self-start max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-zinc-100 px-3.5 py-2 text-zinc-800';
     row.textContent=text;
   }
   log.appendChild(row); log.scrollTop=log.scrollHeight;
@@ -790,9 +790,9 @@ function renderConnectors(){
   document.getElementById('connList').innerHTML = CONN_STATUS.map(function(c){
     var label, cls, action;
     if(c.state==='connected'){ label='Connected ✓'; cls='cursor-default border-emerald-500/40 bg-emerald-500/15 text-emerald-300'; action='disabled'; }
-    else if(c.state==='ready'){ label='Connect'; cls='border-zinc-700 bg-zinc-800/60 text-zinc-100 hover:bg-zinc-800'; action='onclick="location.href=\'/connectors/'+c.id+'/connect\'"'; }
-    else { label='Set up'; cls='border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'; action='onclick="connSetup(\''+c.id+'\')"'; }
-    return '<div class="flex items-center gap-3 border-b border-zinc-800 py-3 last:border-0">'
+    else if(c.state==='ready'){ label='Connect'; cls='border-zinc-300 bg-zinc-100 text-zinc-900 hover:bg-zinc-100'; action='onclick="location.href=\'/connectors/'+c.id+'/connect\'"'; }
+    else { label='Set up'; cls='border-indigo-500/40 bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20'; action='onclick="connSetup(\''+c.id+'\')"'; }
+    return '<div class="flex items-center gap-3 border-b border-zinc-200 py-3 last:border-0">'
       +'<div class="grid h-9 w-9 flex-none place-items-center rounded-lg text-sm font-extrabold text-white" style="background:'+c.color+'">'+c.icon+'</div>'
       +'<div class="min-w-0 flex-1"><div class="text-sm font-semibold">'+esc(c.name)+'</div><div class="text-xs text-zinc-500">'+esc(c.desc)+'</div></div>'
       +'<button '+action+' class="flex-none rounded-lg border px-3 py-1.5 text-xs font-semibold '+cls+'">'+label+'</button></div>';
