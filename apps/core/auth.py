@@ -202,6 +202,48 @@ async def google_exchange(code: str) -> dict | None:
         return None
 
 
+def google_connector_authorize_url(state: str, scope: str) -> str | None:
+    """Authorize URL for linking a Google-based *connector* (Gmail/Drive/YouTube).
+
+    Reuses the already-registered login callback (/auth/google/callback) so the
+    owner does NOT have to register a separate connector redirect URI. The
+    callback disambiguates login vs connector-link via a short-lived cookie.
+    """
+    if not google_enabled():
+        return None
+    params = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": f"{_base()}/auth/google/callback",
+        "response_type": "code",
+        "scope": scope,
+        "state": state,
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+
+
+async def google_token_exchange(code: str) -> dict | None:
+    """Exchange a Google auth code for the raw token dict (for connector storage)."""
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as c:
+            tok = await c.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": f"{_base()}/auth/google/callback",
+                    "grant_type": "authorization_code",
+                },
+            )
+            if tok.status_code == 200:
+                return tok.json()
+    except Exception:
+        pass
+    return None
+
+
 async def github_exchange(code: str) -> dict | None:
     try:
         async with httpx.AsyncClient(timeout=20.0) as c:
