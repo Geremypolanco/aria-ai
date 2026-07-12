@@ -28,14 +28,21 @@
   <header class="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-5">
     <div>
       <div class="flex items-center gap-2.5">
-        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="h-8 w-8">
-          <defs><linearGradient id="ariaMarkAdmin" x1="5" y1="27" x2="27" y2="5" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#22d3ee"/><stop offset=".5" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
-          <path d="M6.5 26 L14.4 6.3 C15 4.9 17 4.9 17.6 6.3 L25.5 26" stroke="url(#ariaMarkAdmin)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M11 18.6 H21" stroke="url(#ariaMarkAdmin)" stroke-width="2.8" stroke-linecap="round"/>
-          <path d="M16 8.2 C19.4 11.6 19.4 15.8 16 19.2 C12.6 15.8 12.6 11.6 16 8.2 Z" stroke="#a7f3d0" stroke-opacity=".55" stroke-width="1" fill="none"/>
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="h-8 w-8">
+          <defs>
+            <linearGradient id="ariaGlassA" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#93a6ff"/><stop offset=".42" stop-color="#3f52dd"/><stop offset=".78" stop-color="#2530a0"/><stop offset="1" stop-color="#161d70"/></linearGradient>
+            <linearGradient id="ariaSpecA" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+            <filter id="ariaShA" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2.5" stdDeviation="3" flood-color="#141a63" flood-opacity=".5"/></filter>
+          </defs>
+          <g filter="url(#ariaShA)" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M23 83 C 29 52, 40 28, 49 13 C 57 26, 64 36, 70 46" stroke="url(#ariaGlassA)" stroke-width="12.5"/>
+            <path d="M70 46 C 79 61, 74 79, 56 78 C 41 77, 39 58, 53 53 C 63 50, 70 50, 70 46 Z" stroke="url(#ariaGlassA)" stroke-width="12.5"/>
+            <path d="M26 79 C 32 51, 42 30, 49 17" stroke="url(#ariaSpecA)" stroke-width="2.6" opacity=".7"/>
+          </g>
         </svg>
-        <h1 class="text-xl font-extrabold tracking-tight"><span class="tracking-[0.18em] text-zinc-50">ARIA</span> · <span class="text-amber-400">God Mode</span></h1>
+        <h1 class="text-xl font-semibold tracking-tight"><span class="font-light tracking-[0.28em] text-zinc-50">ARIA</span> · <span class="text-amber-400">God Mode</span></h1>
         <span class="mono rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-400">SYSTEM CONSOLE</span>
       </div>
       <p class="mt-1 text-xs text-zinc-500 mono">owner-only · autonomous SaaS operations</p>

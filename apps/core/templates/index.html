@@ -9,7 +9,7 @@
 <meta property="og:description" content="Autonomous AI that researches, creates, and publishes — auditable end to end." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   if (window.tailwind) {
@@ -50,21 +50,30 @@
 </head>
 <body class="font-sans bg-zinc-950 text-zinc-100 antialiased overflow-x-hidden">
 
+<!-- ARIA isotype — glossy 3D liquid-glass 'A' (royal blue). Defined once, referenced via <use>. -->
+<svg width="0" height="0" class="absolute" aria-hidden="true"><defs>
+  <linearGradient id="ariaGlass" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#93a6ff"/><stop offset=".42" stop-color="#3f52dd"/><stop offset=".78" stop-color="#2530a0"/><stop offset="1" stop-color="#161d70"/>
+  </linearGradient>
+  <linearGradient id="ariaSpec" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+  </linearGradient>
+  <filter id="ariaSh" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2.5" stdDeviation="3" flood-color="#141a63" flood-opacity=".5"/></filter>
+  <symbol id="ariaMark" viewBox="0 0 100 100">
+    <g filter="url(#ariaSh)" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M23 83 C 29 52, 40 28, 49 13 C 57 26, 64 36, 70 46" stroke="url(#ariaGlass)" stroke-width="12.5"/>
+      <path d="M70 46 C 79 61, 74 79, 56 78 C 41 77, 39 58, 53 53 C 63 50, 70 50, 70 46 Z" stroke="url(#ariaGlass)" stroke-width="12.5"/>
+      <path d="M26 79 C 32 51, 42 30, 49 17" stroke="url(#ariaSpec)" stroke-width="2.6" opacity=".7"/>
+    </g>
+  </symbol>
+</defs></svg>
+
 <!-- ══════════ NAV ══════════ -->
 <header class="sticky top-0 z-50 border-b border-zinc-900/80 bg-zinc-950/70 backdrop-blur-xl">
   <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
     <a href="/" class="group flex items-center gap-2.5">
-      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="h-8 w-8 transition-all duration-300 group-hover:scale-105">
-        <defs>
-          <linearGradient id="ariaMarkNav" x1="5" y1="27" x2="27" y2="5" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#22d3ee"/><stop offset=".5" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/>
-          </linearGradient>
-        </defs>
-        <path d="M6.5 26 L14.4 6.3 C15 4.9 17 4.9 17.6 6.3 L25.5 26" stroke="url(#ariaMarkNav)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M11 18.6 H21" stroke="url(#ariaMarkNav)" stroke-width="2.8" stroke-linecap="round"/>
-        <path d="M16 8.2 C19.4 11.6 19.4 15.8 16 19.2 C12.6 15.8 12.6 11.6 16 8.2 Z" stroke="#a7f3d0" stroke-opacity=".55" stroke-width="1" fill="none"/>
-      </svg>
-      <span class="text-lg font-extrabold tracking-[0.22em] text-zinc-50">ARIA</span>
+      <svg class="h-8 w-8 transition-all duration-300 group-hover:scale-105" aria-hidden="true"><use href="#ariaMark"/></svg>
+      <span class="text-lg font-light tracking-[0.3em] text-zinc-50" style="padding-left:.3em">ARIA</span>
     </a>
     <nav class="hidden items-center gap-8 text-sm text-zinc-400 md:flex">
       <a href="#features" class="transition-colors hover:text-zinc-50">Features</a>
@@ -360,17 +369,8 @@
 <footer class="border-t border-zinc-900/80">
   <div class="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-10 sm:flex-row sm:items-center sm:justify-between">
     <div class="group flex items-center gap-2.5">
-      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="h-7 w-7 transition-all duration-300 group-hover:scale-105">
-        <defs>
-          <linearGradient id="ariaMarkFoot" x1="5" y1="27" x2="27" y2="5" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#22d3ee"/><stop offset=".5" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/>
-          </linearGradient>
-        </defs>
-        <path d="M6.5 26 L14.4 6.3 C15 4.9 17 4.9 17.6 6.3 L25.5 26" stroke="url(#ariaMarkFoot)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M11 18.6 H21" stroke="url(#ariaMarkFoot)" stroke-width="2.8" stroke-linecap="round"/>
-        <path d="M16 8.2 C19.4 11.6 19.4 15.8 16 19.2 C12.6 15.8 12.6 11.6 16 8.2 Z" stroke="#a7f3d0" stroke-opacity=".55" stroke-width="1" fill="none"/>
-      </svg>
-      <span class="text-base font-extrabold tracking-[0.22em] text-zinc-50">ARIA</span>
+      <svg class="h-7 w-7 transition-all duration-300 group-hover:scale-105" aria-hidden="true"><use href="#ariaMark"/></svg>
+      <span class="text-base font-light tracking-[0.3em] text-zinc-50" style="padding-left:.3em">ARIA</span>
     </div>
     <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-zinc-400">
       <a href="/legal/terms" class="transition-colors hover:text-zinc-50">Terms</a>
