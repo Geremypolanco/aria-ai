@@ -93,7 +93,7 @@ METAS ACTIVAS (persisten entre reinicios):
 
 HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - generate_image  → genera una imagen profesional de inmediato (motor confiable, sin depender de HF). Úsalo siempre que el usuario pida una imagen, visual o gráfico. Args: {{"prompt": "descripción detallada en inglés para mejor calidad"}}
-- generate_video  → genera video con Wan2.2 (HF Space, ZeroGPU; puede tener cola). Args: {{"prompt": "..."}}
+- generate_video  → genera un reel de video (motor propio: imágenes + movimiento + voz). Args: {{"prompt": "..."}}
 - generate_music  → genera música con MusicGen. Args: {{"prompt": "...", "duration": 30}}
 - speak           → convierte texto a voz con Bark TTS. Args: {{"text": "...", "voice": "v2/es_speaker_1"}}
 - translate       → traduce texto entre idiomas. Args: {{"text": "...", "source": "es", "target": "en"}}
@@ -774,19 +774,27 @@ class AriaMind:
             # ── VIDEO ─────────────────────────────────────────────────────
             if tool == "generate_video":
                 prompt = args.get("prompt", "")
-                from apps.core.tools.creative_engine import CreativeEngine
+                import base64 as _b64
 
-                r = await CreativeEngine().generate_video(prompt)
+                # Layer 1: our own ffmpeg reel engine (FLUX stills + Ken Burns +
+                # voiceover + captions). Reliable, free, no GPU. If it can't run,
+                # fall back to the AI-footage provider (Wan2.2 Space).
+                from apps.core.tools.video_engine import get_video_engine
+
+                r = await get_video_engine().generate(prompt)
+                if not r.get("success"):
+                    from apps.core.tools.creative_engine import CreativeEngine
+
+                    r = await CreativeEngine().generate_video(prompt)
                 if r.get("success"):
-                    import base64 as _b64
-
                     raw = r.get("video_bytes")
                     if not raw:
                         v64 = r.get("video_b64") or r.get("video_base64")
                         if v64:
                             raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
                     if raw:
-                        return f"Video generado ({len(raw)//1024}KB)", {"video_bytes": raw}
+                        extra = f" · {r['scenes']} escenas" if r.get("scenes") else ""
+                        return f"Video generado ({len(raw)//1024}KB{extra})", {"video_bytes": raw}
                     if r.get("video_url"):
                         return f"Video generado: {r['video_url']}", {}
                 return (
