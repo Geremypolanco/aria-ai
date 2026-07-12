@@ -1,13 +1,10 @@
 name: Deploy Aria Core to Fly.io
+# NOTE: the push trigger was removed to stop this workflow from running
+# concurrently with deploy.yml on every push to main — two simultaneous
+# `flyctl deploy` runs fought over the same machine leases and one always failed
+# ("lease currently held by …@tokens.fly.io"). deploy.yml is the canonical
+# auto-deploy; this one stays available for manual runs only.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'apps/core/**'
-      - 'fly.toml'
-      - 'Dockerfile'
-      - '.github/workflows/deploy-core.yml'
   workflow_dispatch:
     inputs:
       reason:
