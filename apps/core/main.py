@@ -702,7 +702,7 @@ radial-gradient(120% 90% at 10% 90%,rgba(52,211,153,.12),transparent 45%),#09090
 .card{{width:400px;max-width:92vw;background:rgba(24,24,27,.72);border:1px solid #27272a;
 border-radius:20px;padding:42px 34px;text-align:center;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
 .brand{{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:20px}}
-.brand .wm{{font-size:20px;font-weight:800;letter-spacing:.22em;color:#fafafa}}
+.brand .wm{{font-size:21px;font-weight:300;letter-spacing:.3em;padding-left:.3em;color:#fafafa}}
 h1{{font-size:24px;margin-bottom:8px;color:#fafafa}} p{{color:#a1a1aa;font-size:15px;margin-bottom:26px}}
 .btn{{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;
 border-radius:12px;border:1px solid #3f3f46;background:rgba(255,255,255,.05);
@@ -711,12 +711,19 @@ color:#fafafa;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:
 .mut{{color:#71717a;font-size:12px;margin-top:18px}} a.lnk{{color:#34d399;text-decoration:none}}
 </style></head><body><div class="card">
 <div class="brand">
-  <svg width="34" height="34" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-    <defs><linearGradient id="ariaMarkLogin" x1="5" y1="27" x2="27" y2="5" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#22d3ee"/><stop offset=".5" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
-    <path d="M6.5 26 L14.4 6.3 C15 4.9 17 4.9 17.6 6.3 L25.5 26" stroke="url(#ariaMarkLogin)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M11 18.6 H21" stroke="url(#ariaMarkLogin)" stroke-width="2.8" stroke-linecap="round"/>
-    <path d="M16 8.2 C19.4 11.6 19.4 15.8 16 19.2 C12.6 15.8 12.6 11.6 16 8.2 Z" stroke="#a7f3d0" stroke-opacity=".55" stroke-width="1" fill="none"/>
+  <svg width="38" height="38" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="ariaGlassL" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#93a6ff"/><stop offset=".42" stop-color="#3f52dd"/><stop offset=".78" stop-color="#2530a0"/><stop offset="1" stop-color="#161d70"/></linearGradient>
+      <linearGradient id="ariaSpecL" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <filter id="ariaShL" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2.5" stdDeviation="3" flood-color="#141a63" flood-opacity=".5"/></filter>
+    </defs>
+    <g filter="url(#ariaShL)" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M23 83 C 29 52, 40 28, 49 13 C 57 26, 64 36, 70 46" stroke="url(#ariaGlassL)" stroke-width="12.5"/>
+      <path d="M70 46 C 79 61, 74 79, 56 78 C 41 77, 39 58, 53 53 C 63 50, 70 50, 70 46 Z" stroke="url(#ariaGlassL)" stroke-width="12.5"/>
+      <path d="M26 79 C 32 51, 42 30, 49 17" stroke="url(#ariaSpecL)" stroke-width="2.6" opacity=".7"/>
+    </g>
   </svg>
   <span class="wm">ARIA</span>
 </div>
