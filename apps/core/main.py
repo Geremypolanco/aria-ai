@@ -165,15 +165,15 @@ _LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>ARIA · Admin</title><style>
 *{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:radial-gradient(120% 90% at 20% 10%,rgba(124,58,237,.35),transparent 45%),#0a0a0f;color:#f1f5f9}}
-.card{{width:360px;max-width:92vw;background:rgba(17,17,24,.85);border:1px solid rgba(255,255,255,.1);
-border-radius:18px;padding:36px 30px;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
-h1{{font-size:22px;margin-bottom:6px}} p{{color:#94a3b8;font-size:14px;margin-bottom:22px}}
-input{{width:100%;padding:13px 15px;border-radius:11px;border:1px solid rgba(255,255,255,.14);
-background:rgba(255,255,255,.04);color:#fff;font-size:15px;margin-bottom:14px}}
+background:radial-gradient(120% 90% at 20% 10%,rgba(79,70,229,.10),transparent 45%),#ffffff;color:#18181b}}
+.card{{width:360px;max-width:92vw;background:#ffffff;border:1px solid #e4e4e7;
+border-radius:18px;padding:36px 30px;box-shadow:0 1px 2px rgba(24,24,27,.04),0 24px 60px -20px rgba(24,24,27,.15)}}
+h1{{font-size:22px;margin-bottom:6px;color:#18181b}} p{{color:#52525b;font-size:14px;margin-bottom:22px}}
+input{{width:100%;padding:13px 15px;border-radius:11px;border:1px solid #d4d4d8;
+background:#fff;color:#18181b;font-size:15px;margin-bottom:14px}}
 button{{width:100%;padding:13px;border:0;border-radius:11px;font-weight:600;font-size:15px;cursor:pointer;
-background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}}
-.err{{color:#fb7185;font-size:13px;margin-bottom:12px}} .mut{{color:#64748b;font-size:12px;margin-top:16px;text-align:center}}
+background:#4f46e5;color:#fff}}
+.err{{color:#e11d48;font-size:13px;margin-bottom:12px}} .mut{{color:#71717a;font-size:12px;margin-top:16px;text-align:center}}
 </style></head><body><form class="card" method="post" action="/admin/login">
 <h1>Control panel</h1><p>Admin access only.</p>
 {error}<input type="password" name="password" placeholder="Admin password" autofocus required>
@@ -632,16 +632,16 @@ _SIGNUP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Access</title><style>
 *{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:radial-gradient(120% 90% at 80% 10%,rgba(37,99,235,.30),transparent 45%),
-radial-gradient(120% 90% at 10% 90%,rgba(124,58,237,.30),transparent 45%),#0a0a0f;color:#f1f5f9}}
-.card{{width:420px;max-width:92vw;background:rgba(17,17,24,.85);border:1px solid rgba(255,255,255,.1);
-border-radius:20px;padding:40px 34px;text-align:center;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
-h1{{font-size:26px;margin-bottom:10px}} p{{color:#94a3b8;font-size:15px;margin-bottom:24px;line-height:1.5}}
-input{{width:100%;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.14);
-background:rgba(255,255,255,.04);color:#fff;font-size:15px;margin-bottom:14px}}
+background:radial-gradient(120% 90% at 80% 10%,rgba(79,70,229,.08),transparent 45%),
+radial-gradient(120% 90% at 10% 90%,rgba(34,211,238,.08),transparent 45%),#ffffff;color:#18181b}}
+.card{{width:420px;max-width:92vw;background:#ffffff;border:1px solid #e4e4e7;
+border-radius:20px;padding:40px 34px;text-align:center;box-shadow:0 1px 2px rgba(24,24,27,.04),0 24px 60px -20px rgba(24,24,27,.15)}}
+h1{{font-size:26px;margin-bottom:10px;color:#18181b}} p{{color:#52525b;font-size:15px;margin-bottom:24px;line-height:1.5}}
+input{{width:100%;padding:14px 16px;border-radius:12px;border:1px solid #d4d4d8;
+background:#fff;color:#18181b;font-size:15px;margin-bottom:14px}}
 button{{width:100%;padding:14px;border:0;border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;
-background:linear-gradient(92deg,#7c3aed,#2563eb);color:#fff}} a{{color:#a78bfa;text-decoration:none}}
-.mut{{color:#64748b;font-size:13px;margin-top:18px}}</style></head><body>
+background:#4f46e5;color:#fff}} a{{color:#4f46e5;text-decoration:none}}
+.mut{{color:#71717a;font-size:13px;margin-top:18px}}</style></head><body>
 <form class="card" method="post" action="/signup">
 <h1>{title}</h1><p>{sub}</p>{body}</form></body></html>"""
 
@@ -697,18 +697,18 @@ async def login_page():
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Sign in</title><style>
 *{{margin:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:radial-gradient(120% 90% at 80% 10%,rgba(34,211,238,.10),transparent 45%),
-radial-gradient(120% 90% at 10% 90%,rgba(52,211,153,.12),transparent 45%),#09090b;color:#fafafa}}
-.card{{width:400px;max-width:92vw;background:rgba(24,24,27,.72);border:1px solid #27272a;
-border-radius:20px;padding:42px 34px;text-align:center;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+background:radial-gradient(120% 90% at 80% 10%,rgba(79,70,229,.08),transparent 45%),
+radial-gradient(120% 90% at 10% 90%,rgba(34,211,238,.08),transparent 45%),#ffffff;color:#18181b}}
+.card{{width:400px;max-width:92vw;background:#ffffff;border:1px solid #e4e4e7;
+border-radius:20px;padding:42px 34px;text-align:center;box-shadow:0 1px 2px rgba(24,24,27,.04),0 24px 60px -20px rgba(24,24,27,.15)}}
 .brand{{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:20px}}
-.brand .wm{{font-size:21px;font-weight:300;letter-spacing:.3em;padding-left:.3em;color:#fafafa}}
-h1{{font-size:24px;margin-bottom:8px;color:#fafafa}} p{{color:#a1a1aa;font-size:15px;margin-bottom:26px}}
+.brand .wm{{font-size:21px;font-weight:300;letter-spacing:.3em;padding-left:.3em;color:#18181b}}
+h1{{font-size:24px;margin-bottom:8px;color:#18181b}} p{{color:#52525b;font-size:15px;margin-bottom:26px}}
 .btn{{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;
-border-radius:12px;border:1px solid #3f3f46;background:rgba(255,255,255,.05);
-color:#fafafa;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12px;transition:background .2s}}
-.btn:hover{{background:rgba(255,255,255,.1)}} .btn.gh{{background:#18181b;border-color:#3f3f46}}
-.mut{{color:#71717a;font-size:12px;margin-top:18px}} a.lnk{{color:#34d399;text-decoration:none}}
+border-radius:12px;border:1px solid #d4d4d8;background:#ffffff;
+color:#18181b;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12px;transition:background .2s}}
+.btn:hover{{background:#f4f4f5}} .btn.gh{{background:#fafafa;border-color:#d4d4d8}}
+.mut{{color:#71717a;font-size:12px;margin-top:18px}} a.lnk{{color:#4f46e5;text-decoration:none}}
 </style></head><body><div class="card">
 <div class="brand">
   <svg width="38" height="38" viewBox="0 0 100 100" fill="none" aria-hidden="true">
@@ -1020,21 +1020,21 @@ def _checkout_confirm_page(tier: str, plan: dict) -> HTMLResponse:
 <title>ARIA · Confirmar {plan['name']}</title><style>
 *{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:#09090b;color:#e4e4e7;padding:20px}}
-.card{{width:460px;max-width:94vw;background:#111114;border:1px solid #27272a;border-radius:18px;
-padding:32px 28px;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
-h1{{font-size:22px;margin-bottom:4px}} .price{{color:#a1a1aa;font-size:14px;margin-bottom:22px}}
-.price b{{color:#f4f4f5}}
-.ack{{display:flex;gap:12px;align-items:flex-start;background:#0b0b0e;border:1px solid #27272a;
+background:#ffffff;color:#3f3f46;padding:20px}}
+.card{{width:460px;max-width:94vw;background:#ffffff;border:1px solid #e4e4e7;border-radius:18px;
+padding:32px 28px;box-shadow:0 1px 2px rgba(24,24,27,.04),0 24px 60px -20px rgba(24,24,27,.15)}}
+h1{{font-size:22px;margin-bottom:4px;color:#18181b}} .price{{color:#52525b;font-size:14px;margin-bottom:22px}}
+.price b{{color:#18181b}}
+.ack{{display:flex;gap:12px;align-items:flex-start;background:#f8f8fc;border:1px solid #e4e4e7;
 border-radius:12px;padding:14px 14px;margin-bottom:20px}}
 .ack input{{margin-top:3px;width:18px;height:18px;accent-color:#6366f1;flex:0 0 auto;cursor:pointer}}
-.ack label{{font-size:13.5px;line-height:1.55;color:#d4d4d8;cursor:pointer}}
+.ack label{{font-size:13.5px;line-height:1.55;color:#3f3f46;cursor:pointer}}
 .btn{{display:block;width:100%;text-align:center;padding:13px;border-radius:12px;border:0;
-background:linear-gradient(90deg,#6366f1,#8b5cf6);color:#fff;font-weight:600;font-size:15px;
+background:#4f46e5;color:#fff;font-weight:600;font-size:15px;
 text-decoration:none;cursor:pointer;transition:opacity .15s}}
 .btn[aria-disabled="true"]{{opacity:.4;pointer-events:none}}
 .sub{{text-align:center;margin-top:14px;font-size:12.5px}}
-.sub a{{color:#a1a1aa;text-decoration:none;margin:0 8px}} .sub a:hover{{color:#e4e4e7}}
+.sub a{{color:#71717a;text-decoration:none;margin:0 8px}} .sub a:hover{{color:#18181b}}
 </style></head><body><div class="card">
 <h1>Confirmar {plan['name']}</h1>
 <div class="price"><b>{price}</b> · renovación mensual · cancela cuando quieras</div>
