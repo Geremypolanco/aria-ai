@@ -799,6 +799,26 @@ async def auth_google_cb(request: Request):
     code = request.query_params.get("code")
     if not code:
         return RedirectResponse("/login?e=nocode", status_code=303)
+    # Connector-link flow: Google/YouTube connectors reuse this callback. The
+    # login path below is unchanged when the aria_glink cookie is absent.
+    glink = request.cookies.get("aria_glink")
+    if glink:
+        from apps.core.connectors import oauth_hub as hub
+
+        user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+        if not user:
+            return RedirectResponse("/login", status_code=303)
+        token = await auth.google_token_exchange(code) if glink in hub.PROVIDERS else None
+        status = "connected"
+        if not token or not token.get("access_token"):
+            status = "error"
+        else:
+            email = (user.get("email") or "").strip().lower()
+            await hub.save_token(email, glink, token)
+        resp = RedirectResponse(f"/app?conn={glink}&s={status}", status_code=303)
+        resp.delete_cookie(auth.OAUTH_STATE_COOKIE)
+        resp.delete_cookie("aria_glink")
+        return resp
     resp = await _finish_login(await auth.google_exchange(code))
     resp.delete_cookie(auth.OAUTH_STATE_COOKIE)
     return resp
@@ -1178,6 +1198,31 @@ async def connector_connect(pid: str, request: Request):
     # Not configured, or a non-redirect provider (shopify per-store / zapier key).
     if p.special or not hub.is_configured(pid):
         return RedirectResponse(f"/app?conn={pid}&s=setup", status_code=303)
+    # Google-based connectors reuse the already-registered login callback
+    # (/auth/google/callback) so the owner needn't register a separate connector
+    # redirect URI — this is what caused the "redirect_uri_mismatch" errors.
+    if pid in ("google", "youtube") and auth.google_enabled():
+        gstate = auth.make_state()
+        gurl = auth.google_connector_authorize_url(gstate, p.scope)
+        if gurl:
+            resp = RedirectResponse(gurl, status_code=307)
+            resp.set_cookie(
+                auth.OAUTH_STATE_COOKIE,
+                gstate,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+                max_age=600,
+            )
+            resp.set_cookie(
+                "aria_glink",
+                pid,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+                max_age=600,
+            )
+            return resp
     state = auth.make_state()
     url, verifier = hub.build_authorize(pid, state)
     resp = RedirectResponse(url, status_code=307)
