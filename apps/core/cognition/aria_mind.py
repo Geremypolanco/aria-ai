@@ -776,12 +776,18 @@ class AriaMind:
                 prompt = args.get("prompt", "")
                 import base64 as _b64
 
-                # Layer 1: our own ffmpeg reel engine (FLUX stills + Ken Burns +
-                # voiceover + captions). Reliable, free, no GPU. If it can't run,
-                # fall back to the AI-footage provider (Wan2.2 Space).
-                from apps.core.tools.video_engine import get_video_engine
+                # Layer 2: real AI-generated footage on rented GPU (LTX/Wan2.2),
+                # when a provider token is configured. Otherwise → layer 1: our
+                # own ffmpeg reel engine (FLUX stills + Ken Burns + voiceover).
+                # Last resort: the free Wan2.2 HF Space.
+                from apps.core.tools.video_ai import get_ai_video
 
-                r = await get_video_engine().generate(prompt)
+                ai = get_ai_video()
+                r = await ai.generate(prompt) if ai.available() else {"success": False}
+                if not r.get("success"):
+                    from apps.core.tools.video_engine import get_video_engine
+
+                    r = await get_video_engine().generate(prompt)
                 if not r.get("success"):
                     from apps.core.tools.creative_engine import CreativeEngine
 
@@ -792,8 +798,11 @@ class AriaMind:
                         v64 = r.get("video_b64") or r.get("video_base64")
                         if v64:
                             raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
+                    tag = r.get("provider") or (
+                        f"{r['scenes']} escenas" if r.get("scenes") else ""
+                    )
                     if raw:
-                        extra = f" · {r['scenes']} escenas" if r.get("scenes") else ""
+                        extra = f" · {tag}" if tag else ""
                         return f"Video generado ({len(raw)//1024}KB{extra})", {"video_bytes": raw}
                     if r.get("video_url"):
                         return f"Video generado: {r['video_url']}", {}

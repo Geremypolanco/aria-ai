@@ -57,6 +57,15 @@ class Settings(BaseSettings):
         """Compatibilidad con ai_client.py: devuelve el HF token."""
         return self.HF_TOKEN or self.HF_API_KEY or self.HUGGING_FACE_TOKEN
 
+    # ── AI video (layer 2): open-weights text-to-video on rented GPU ──
+    # Set one token to enable real AI-generated moving footage (LTX-Video /
+    # Wan2.2). Costs per clip. Without a token, ARIA falls back to the layer-1
+    # ffmpeg reel engine. See docs/CONNECTORS_SETUP.md.
+    REPLICATE_API_TOKEN: str | None = None
+    REPLICATE_VIDEO_MODEL: str = "lightricks/ltx-video"
+    FAL_KEY: str | None = None
+    FAL_VIDEO_MODEL: str = "fal-ai/ltx-video"
+
     # ── Modelos HF primarios ───────────────────────────────
     HF_MODEL_STRATEGY: str = "Qwen/Qwen2.5-72B-Instruct"
     HF_MODEL_CODE: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
