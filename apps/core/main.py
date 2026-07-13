@@ -31,7 +31,7 @@ _ADMIN_COOKIE = "aria_admin"
 
 # The owner is admin automatically when signed in via OAuth with one of these
 # emails (no separate password needed). Extra emails can be added via OWNER_EMAIL.
-OWNER_EMAILS = {"litesaraph@gmail.com", "geremypolancod@gmail.com"}
+OWNER_EMAILS = {"geremypolancod@gmail.com"}
 
 
 def _owner_emails() -> set[str]:
