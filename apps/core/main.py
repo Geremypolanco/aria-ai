@@ -31,7 +31,7 @@ _ADMIN_COOKIE = "aria_admin"
 
 # The owner is admin automatically when signed in via OAuth with one of these
 # emails (no separate password needed). Extra emails can be added via OWNER_EMAIL.
-OWNER_EMAILS = {"geremypolancod@gmail.com"}
+OWNER_EMAILS = {"litesaraph@gmail.com", "geremypolancod@gmail.com"}
 
 
 def _owner_emails() -> set[str]:
@@ -905,6 +905,17 @@ async def user_app(request: Request):
     except FileNotFoundError:
         return HTMLResponse(f"<h1>Hi {name}</h1><p>Workspace template missing.</p>")
 
+    # The admin link is rendered server-side ONLY for the owner — non-owners
+    # never receive the markup at all (not merely CSS-hidden).
+    admin_link = (
+        '<a href="/admin" class="navlink">'
+        '<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" '
+        'stroke-width="1.8"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z"/></svg>'
+        "Admin panel</a>"
+        if is_owner
+        else ""
+    )
+
     html = (
         html.replace("__NAME__", name)
         .replace("__FIRST__", first)
@@ -914,6 +925,7 @@ async def user_app(request: Request):
         .replace("__ONBOARDED__", onboarded)
         .replace("__PROFILE_JSON__", profile_json)
         .replace("__IS_OWNER__", "true" if is_owner else "false")
+        .replace("__ADMIN_LINK__", admin_link)
     )
     return HTMLResponse(html)
 
