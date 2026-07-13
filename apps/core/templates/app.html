@@ -291,10 +291,7 @@ if (window.tailwind) {
         <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 15 3.5 20.5M15 9l5.5-5.5M8 8l8 8"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/></svg>
         Connectors
       </button>
-      <a href="/admin" id="adminLink" class="navlink hidden">
-        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z"/></svg>
-        Admin panel
-      </a>
+      __ADMIN_LINK__
     </nav>
 
     <!-- social reach (inline brand SVGs) -->
@@ -825,7 +822,6 @@ function connCopy(t,btn){ try{ navigator.clipboard.writeText(t); }catch(e){} var
 function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
 
 /* ── boot ── */
-if(USER.owner){ const al=document.getElementById('adminLink'); if(al) al.classList.remove('hidden'); }
 loadMissions(); renderMissions(); billingBoot(); checkConnectorHealth();
 
 /* connector OAuth return → toast + clean the URL */
