@@ -268,6 +268,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def _no_cache_html(request: Request, call_next):
+    """Never cache HTML documents, so UI/design updates always reach the browser
+    (mobile browsers were serving stale cached pages). Static assets/API are
+    unaffected."""
+    resp = await call_next(request)
+    if resp.headers.get("content-type", "").startswith("text/html"):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 # ── Feature routers (modular) ─────────────────────────────────────
 try:
     from apps.core.routes.clipper import router as clipper_router
