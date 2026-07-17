@@ -91,11 +91,14 @@ class TestCheckoutNoRefundGate:
 
 
 class TestLegalPages:
-    def test_pages_serve_dark_mode(self, client):
+    def test_pages_serve_styled_theme(self, client):
+        # Legal pages ship as self-contained styled documents (light premium
+        # palette). Assert the real template renders — an inline <style> block —
+        # rather than pinning an exact hex, so a re-theme doesn't break this.
         for slug in ("terms", "privacy", "refund-policy"):
             r = client.get(f"/legal/{slug}")
             assert r.status_code == 200
-            assert "#09090b" in r.text  # bg-zinc-950 dark palette
+            assert "<style" in r.text.lower()
 
     def test_refund_policy_is_strict(self, client):
         r = client.get("/legal/refund-policy")

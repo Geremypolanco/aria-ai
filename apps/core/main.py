@@ -1579,6 +1579,83 @@ async def research(req: ChatRequest, request: Request):
         return {"reply": f"Error: {e}"}
 
 
+class WorkflowRequest(BaseModel):
+    goal: str
+    context: str | None = None
+
+
+@app.post("/api/v1/workflow")
+async def dynamic_workflow(req: WorkflowRequest, request: Request):
+    """ARIA Dynamic Workflows — el patrón insignia de las IA frontera 2026.
+
+    Descompone un objetivo en subtareas, ejecuta subagentes en paralelo enrutando
+    cada uno al modelo óptimo, verifica cada resultado de forma adversarial y
+    sintetiza la entrega final. Requiere sesión; es costoso, así que va con un
+    límite de tasa más estricto y respeta el freeze global y el tope de gasto.
+    """
+    import time
+
+    start = time.time()
+
+    if not _current_user(request):
+        return JSONResponse(
+            {"ok": False, "error": "auth", "synthesis": "🔒 Inicia sesión para usar ARIA."},
+            status_code=401,
+        )
+    # Los flujos abren varios subagentes por llamada → límite deliberadamente bajo.
+    if not _rate_ok(request, "workflow", 6, 300):
+        return JSONResponse(
+            {"ok": False, "error": "rate_limited", "synthesis": "⏳ Demasiados flujos seguidos."},
+            status_code=429,
+        )
+    if _PANIC["on"]:
+        return JSONResponse(
+            {"ok": False, "error": "paused", "synthesis": "🛑 ARIA está pausada por un operador."},
+            status_code=503,
+        )
+
+    email = ""
+    plan = "free"
+    context = req.context
+    try:
+        from apps.core import auth
+
+        u = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+        if u:
+            email = (u.get("email") or "").strip().lower()
+            plan = "business" if email in _owner_emails() else await _get_user_plan(email)
+            if not context:
+                context = _profile_context(await _get_profile(email)) or None
+    except Exception:
+        pass
+
+    if email and plan in ("pro", "business"):
+        from apps.core.ops.cost_ledger import get_ledger
+
+        if get_ledger().is_frozen(email):
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "burn_cap",
+                    "synthesis": "🔒 Alcanzaste el tope de uso de IA de tu plan este mes.",
+                },
+                status_code=402,
+            )
+
+    try:
+        from apps.core.orchestration.dynamic_workflow import get_dynamic_workflow
+
+        wf = await get_dynamic_workflow()
+        result = await wf.run(req.goal, context=context)
+        payload = result.to_dict()
+        await _record_ai_cost(email, plan, req.goal, payload.get("synthesis", ""))
+        payload["processing_time_ms"] = int((time.time() - start) * 1000)
+        return payload
+    except Exception as e:
+        logger.error(f"Workflow error: {e}")
+        return JSONResponse({"ok": False, "error": str(e), "synthesis": ""}, status_code=500)
+
+
 @app.get("/api/v1/status")
 async def api_status():
     """Full system status."""
