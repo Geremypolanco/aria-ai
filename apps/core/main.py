@@ -21,6 +21,7 @@ from fastapi.responses import (
     JSONResponse,
     PlainTextResponse,
     RedirectResponse,
+    StreamingResponse,
 )
 from pydantic import BaseModel
 
@@ -1654,6 +1655,69 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
     except Exception as e:
         logger.error(f"Workflow error: {e}")
         return JSONResponse({"ok": False, "error": str(e), "synthesis": ""}, status_code=500)
+
+
+@app.post("/api/v1/workflow/stream")
+async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
+    """Streaming (SSE) de /api/v1/workflow — emite cada subagente en cuanto
+    termina para que el dashboard renderice el flujo en vivo. Mismos guards que
+    la ruta no-streaming (comparte el bucket de rate limit para que cambiar de
+    endpoint no evada el tope). El cliente cae al POST normal si el stream falla.
+    """
+    if not _current_user(request):
+        return JSONResponse({"ok": False, "error": "auth"}, status_code=401)
+    if not _rate_ok(request, "workflow", 6, 300):
+        return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=429)
+    if _PANIC["on"]:
+        return JSONResponse({"ok": False, "error": "paused"}, status_code=503)
+
+    email = ""
+    plan = "free"
+    context = req.context
+    try:
+        from apps.core import auth
+
+        u = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+        if u:
+            email = (u.get("email") or "").strip().lower()
+            plan = "business" if email in _owner_emails() else await _get_user_plan(email)
+            if not context:
+                context = _profile_context(await _get_profile(email)) or None
+    except Exception:
+        pass
+
+    if email and plan in ("pro", "business"):
+        from apps.core.ops.cost_ledger import get_ledger
+
+        if get_ledger().is_frozen(email):
+            return JSONResponse({"ok": False, "error": "burn_cap"}, status_code=402)
+
+    async def _sse():
+        synthesis = ""
+        try:
+            from apps.core.orchestration.dynamic_workflow import get_dynamic_workflow
+
+            wf = await get_dynamic_workflow()
+            async for ev in wf.run_events(req.goal, context=context):
+                if ev.get("type") == "done":
+                    synthesis = ev.get("synthesis", "")
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        except Exception as e:  # noqa: BLE001 — the stream must always close cleanly.
+            logger.error(f"Workflow stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)[:200]})}\n\n"
+        finally:
+            with suppress(Exception):
+                await _record_ai_cost(email, plan, req.goal, synthesis)
+
+    return StreamingResponse(
+        _sse(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable proxy buffering so events flush live
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.get("/api/v1/status")
