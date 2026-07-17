@@ -40,7 +40,7 @@ textarea{field-sizing:content}
 
 /* ── app shell ── */
 .shell{display:flex;height:100vh;width:100vw;overflow:hidden}
-.side{position:fixed;inset:0 auto 0 0;z-index:50;width:264px;display:flex;flex-direction:column;background:var(--bg);border-right:1px solid var(--line);transform:translateX(-100%);transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.side{position:fixed;inset:0 auto 0 0;z-index:50;width:264px;display:flex;flex-direction:column;background:var(--bg);border-right:1px solid var(--line);transition:transform .3s cubic-bezier(.2,.7,.2,1)}
 .side.-translate-x-full{transform:translateX(-100%)}
 .side .head{display:flex;align-items:center;justify-content:space-between;padding:18px 16px 12px}
 .side .logo{display:flex;align-items:center;gap:10px}
@@ -143,7 +143,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .act.danger:hover{background:var(--rose-soft)}
 
 /* logs column */
-.logs{position:fixed;inset:0 0 0 auto;z-index:50;width:320px;max-width:85vw;display:flex;flex-direction:column;background:#07110c;color:#8aa79a;transform:translateX(100%);transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.logs{position:fixed;inset:0 0 0 auto;z-index:50;width:320px;max-width:85vw;display:flex;flex-direction:column;background:#07110c;color:#8aa79a;transition:transform .3s cubic-bezier(.2,.7,.2,1)}
 .logs.translate-x-full{transform:translateX(100%)}
 .logs .lh{height:58px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #16241c}
 .logs .lh .lt{display:flex;align-items:center;gap:9px;font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#7fe0aa}
@@ -247,6 +247,14 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .toast{position:fixed;left:50%;bottom:24px;z-index:90;max-width:92vw;transform:translate(-50%,14px);opacity:0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:14px;color:var(--ink);box-shadow:var(--sh3);transition:opacity .3s,transform .3s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .toast.ok{border-color:#b6f0d3}.toast.err{border-color:#f6c9d4}
+
+/* mobile bottom bar — brings the PC "cockpit" (nav + logs) one tap away */
+.botbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:none;align-items:center;justify-content:space-around;height:62px;padding:0 6px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);box-shadow:0 -8px 26px -18px rgba(10,20,15,.55)}
+.botbar .t{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;color:var(--muted);background:transparent;border:0;padding:4px 12px}
+.botbar .t svg{width:21px;height:21px}
+.botbar .t:active{color:var(--green-ink)}
+.botbar .fab{width:52px;height:52px;margin-top:-20px;border-radius:16px;background:var(--neon);color:#04150d;box-shadow:var(--glow);display:grid;place-items:center;border:3px solid var(--soft)}
+@media(max-width:1023px){.botbar{display:flex}.scroll{padding-bottom:84px}.supfab{display:none!important}.suppanel{bottom:74px}}
 </style>
 </head>
 <body>
@@ -498,6 +506,15 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 
   <div id="logsBackdrop" onclick="toggleLogs(false)" class="backdrop hidden"></div>
 </div>
+
+<!-- mobile bottom bar -->
+<nav class="botbar">
+  <button class="t" onclick="toggleSide(true)" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Menu</button>
+  <button class="t" onclick="toggleLogs(true)" aria-label="Live logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg>Logs</button>
+  <button class="fab" onclick="focusIgniter()" aria-label="New mission"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#04150d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></button>
+  <button class="t" onclick="openConnectors()" aria-label="Apps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 15 3.5 20.5M15 9l5.5-5.5M8 8l8 8"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/></svg>Apps</button>
+  <button class="t" onclick="toggleSupport()" aria-label="Support"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Support</button>
+</nav>
 
 <script>
 const USER = { name: "__NAME__", email: "__EMAIL__", plan: "__PLAN__", onboarded: __ONBOARDED__, owner: __IS_OWNER__ };
