@@ -161,6 +161,26 @@ async def _record_ai_cost(email: str, plan: str, prompt: str, reply: str) -> Non
         logger.debug("[cost] record failed: %s", exc)
 
 
+def _log_workflow_run(
+    email: str, goal: str, subtasks: list, tokens: int, duration_ms: int, ok: bool
+) -> None:
+    """Record a finished Deep Workflow for the user's usage panel (best-effort)."""
+    with suppress(Exception):
+        from apps.core.ops.workflow_ledger import get_workflow_ledger
+
+        subs = subtasks or []
+        get_workflow_ledger().record(
+            email,
+            goal=goal,
+            subtasks=len(subs),
+            verified=sum(1 for s in subs if s.get("verified")),
+            repaired=sum(1 for s in subs if s.get("repaired")),
+            tokens=tokens or 0,
+            duration_ms=duration_ms or 0,
+            ok=bool(ok),
+        )
+
+
 _LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ARIA · Admin</title><style>
@@ -1649,6 +1669,14 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
         wf = await get_dynamic_workflow()
         result = await wf.run(req.goal, context=context)
         payload = result.to_dict()
+        _log_workflow_run(
+            email,
+            req.goal,
+            payload.get("subtasks", []),
+            payload.get("total_tokens", 0),
+            payload.get("duration_ms", 0),
+            payload.get("ok", False),
+        )
         await _record_ai_cost(email, plan, req.goal, payload.get("synthesis", ""))
         payload["processing_time_ms"] = int((time.time() - start) * 1000)
         return payload
@@ -1701,6 +1729,14 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
             async for ev in wf.run_events(req.goal, context=context):
                 if ev.get("type") == "done":
                     synthesis = ev.get("synthesis", "")
+                    _log_workflow_run(
+                        email,
+                        req.goal,
+                        ev.get("subtasks", []),
+                        ev.get("total_tokens", 0),
+                        ev.get("duration_ms", 0),
+                        ev.get("ok", False),
+                    )
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         except Exception as e:  # noqa: BLE001 — the stream must always close cleanly.
             logger.error(f"Workflow stream error: {e}")
@@ -1718,6 +1754,32 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.get("/api/v1/workflow/runs")
+async def workflow_runs(request: Request):
+    """Panel de uso del usuario: agregados de por vida + últimos flujos.
+
+    Es la base del modelo 'cobra por resultado' — `deliverables` cuenta flujos
+    completados, no tokens. Cada usuario ve solo lo suyo.
+    """
+    if not _current_user(request):
+        return JSONResponse({"ok": False, "error": "auth"}, status_code=401)
+
+    email = ""
+    try:
+        from apps.core import auth
+
+        u = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+        if u:
+            email = (u.get("email") or "").strip().lower()
+    except Exception:
+        pass
+
+    from apps.core.ops.workflow_ledger import get_workflow_ledger
+
+    led = get_workflow_ledger()
+    return {"ok": True, "stats": led.stats(email), "runs": led.recent(email, 8)}
 
 
 @app.get("/api/v1/status")

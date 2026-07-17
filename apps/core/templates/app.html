@@ -109,6 +109,13 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .skills-lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green-ink);font-weight:700;width:100%}
 .skill{display:inline-flex;align-items:center;gap:6px;border:1px solid #cbefda;background:var(--neon-soft);border-radius:10px;padding:7px 12px;font-size:12.5px;color:var(--green-ink);font-weight:600;transition:.15s;cursor:pointer}
 .skill:hover{border-color:var(--neon);box-shadow:0 4px 12px -6px rgba(21,224,106,.5)}
+.usage{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--sh1);margin-top:18px}
+.usage-h{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--green-ink);font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.usage-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:560px){.usage-grid{grid-template-columns:repeat(2,1fr)}}
+.ustat{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-align:center}
+.uval{font-size:23px;font-weight:750;color:var(--ink);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.ulbl{font-size:11px;color:var(--muted);margin-top:2px}
 .wf-steps{margin-top:12px;display:grid;gap:8px}
 .wf-cap{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--green-ink);font-weight:700;display:flex;align-items:center;gap:7px}
 .wf-cap .ct{color:var(--muted);font-weight:600;letter-spacing:0;text-transform:none}
@@ -520,6 +527,15 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
           <span class="skills-lbl">⚡ Deep Workflow skills — one click, ARIA runs the whole play</span>
         </div>
       </div>
+      <div id="usageCard" class="usage hidden">
+        <div class="usage-h">⚡ Your Deep Workflow usage</div>
+        <div class="usage-grid">
+          <div class="ustat"><div class="uval" id="uDeliverables">0</div><div class="ulbl">Deliverables</div></div>
+          <div class="ustat"><div class="uval" id="uWorkflows">0</div><div class="ulbl">Workflows</div></div>
+          <div class="ustat"><div class="uval" id="uSubagents">0</div><div class="ulbl">Subagents run</div></div>
+          <div class="ustat"><div class="uval" id="uVerify">0%</div><div class="ulbl">Verified</div></div>
+        </div>
+      </div>
       <div class="mh">Missions</div>
       <div id="emptyMissions" class="empty">
         <div class="e">🛰️</div>
@@ -601,6 +617,21 @@ function useSkill(i){
   const a=s.prompt.indexOf('{'), z=s.prompt.indexOf('}');
   if(a!==-1 && z>a){ inp.setSelectionRange(a, z+1); }
   else { inp.setSelectionRange(inp.value.length, inp.value.length); }
+}
+
+async function loadUsage(){
+  try{
+    const r=await fetch('/api/v1/workflow/runs');
+    if(!r.ok) return;
+    const d=await r.json();
+    if(!d.ok || !d.stats || (d.stats.workflows||0)<1) return;  // hide until real usage exists
+    const s=d.stats;
+    document.getElementById('uDeliverables').textContent=s.deliverables||0;
+    document.getElementById('uWorkflows').textContent=s.workflows||0;
+    document.getElementById('uSubagents').textContent=s.subagents||0;
+    document.getElementById('uVerify').textContent=(s.verify_rate_pct||0)+'%';
+    document.getElementById('usageCard').classList.remove('hidden');
+  }catch(_){}
 }
 
 (function(){const h=new Date().getHours();document.getElementById('tod').textContent=h<12?'morning':h<18?'afternoon':'evening';})();
@@ -779,6 +810,7 @@ async function dispatchWorkflow(goal, inp){
       const verified = m.workflow.filter(s=>s.verified).length;
       log('✓ '+m.workflow.length+' subagents · '+verified+' verified', 'ok');
       if(ev.total_tokens){ log('· '+ev.total_tokens+' tokens · '+(ev.duration_ms||0)+'ms', 'dim'); }
+      loadUsage();
     } else if(ev.type==='error'){
       m.status='error'; log('✕ deep workflow error — '+esc(ev.error||''), 'err');
     }
@@ -828,6 +860,7 @@ async function workflowFallback(m, goal){
       m.text = d.synthesis || '(no synthesis)'; m.status='done';
       const verified = m.workflow.filter(s=>s.verified).length;
       log('✓ '+m.workflow.length+' subagents ran · '+verified+' verified', 'ok');
+      loadUsage();
     }
   }catch(e){ m.status='error'; log('✕ deep workflow failed to reach ARIA', 'err'); }
 }
@@ -1022,7 +1055,7 @@ function connCopy(t,btn){ try{ navigator.clipboard.writeText(t); }catch(e){} var
 function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
 
 /* boot */
-loadMissions(); renderMissions(); renderSkills(); billingBoot(); checkConnectorHealth();
+loadMissions(); renderMissions(); renderSkills(); loadUsage(); billingBoot(); checkConnectorHealth();
 
 (function(){ try{
   var u=new URL(location.href), conn=u.searchParams.get('conn'), s=u.searchParams.get('s');
