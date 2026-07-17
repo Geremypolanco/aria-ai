@@ -101,6 +101,25 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .launch:disabled{opacity:.45;pointer-events:none;box-shadow:none}
 .quicks{display:flex;flex-wrap:wrap;gap:8px;padding:4px 6px 6px}
 .quick{border:1px solid var(--line);background:var(--soft);border-radius:10px;padding:7px 12px;font-size:12.5px;color:var(--ink2);transition:.15s}
+.wfmode{display:flex;align-items:center;gap:10px;padding:2px 6px 4px}
+.wf-t{cursor:pointer}
+.wf-t.on{background:var(--neon-soft);border-color:#9fe9c6;color:var(--green-ink);font-weight:700}
+.wfhint{font-size:11.5px;color:var(--muted)}
+.wf-steps{margin-top:12px;display:grid;gap:8px}
+.wf-cap{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--green-ink);font-weight:700;display:flex;align-items:center;gap:7px}
+.wf-cap .ct{color:var(--muted);font-weight:600;letter-spacing:0;text-transform:none}
+.wf-step{border:1px solid var(--line);background:var(--soft);border-radius:12px;padding:10px 12px}
+.wf-step-meta{display:flex;align-items:center;gap:8px}
+.wf-step-t{font-size:13px;font-weight:650;color:var(--ink);margin-top:5px}
+.wf-kind{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:var(--neon-soft);color:var(--green-ink);font-weight:700;flex:none}
+.wf-model{font-family:var(--mono);font-size:10px;color:var(--muted);flex:none;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-out{margin-top:6px;font-size:12.5px;line-height:1.55;color:var(--ink2);max-height:120px;overflow:auto;white-space:pre-wrap}
+.wf-vpill{font-family:var(--mono);font-size:9.5px;padding:2px 7px;border-radius:999px;font-weight:700;flex:none}
+.wf-vpill.ok{background:var(--neon-soft);color:var(--green-ink)}
+.wf-vpill.fix{background:#fff6e5;color:#b7791f}
+.wf-vpill.bad{background:var(--rose-soft);color:var(--rose)}
+.wf-synth{margin-top:14px}
+.wf-synth-lbl{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--green-ink);font-weight:700;margin-bottom:4px}
 .quick:hover{background:#fff;box-shadow:var(--sh1);color:var(--ink);border-color:#cdeadd}
 .mh{margin:28px 0 14px;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .empty{margin-top:14px;border:1px dashed var(--line);border-radius:18px;padding:40px 20px;text-align:center;background:#fff}
@@ -477,7 +496,11 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       <div class="igniter">
         <div class="igrow">
           <textarea id="igniter" rows="1" placeholder="e.g. Research the top 5 AI newsletters and draft a launch post…" onkeydown="onIgniterKey(event)"></textarea>
-          <button id="ignite" onclick="dispatchMission()" class="launch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#04150d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg> Launch mission</button>
+          <button id="ignite" onclick="dispatchMission()" class="launch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#04150d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg> <span id="igniteLabel">Launch mission</span></button>
+        </div>
+        <div class="wfmode">
+          <button id="wfToggle" onclick="toggleDeep()" class="quick wf-t" aria-pressed="false">⚡ Deep Workflow</button>
+          <span id="wfHint" class="wfhint">Off · single-pass mission</span>
         </div>
         <div class="quicks">
           <button onclick="quickGoal(this)" class="quick">📈 Research a trend &amp; summarize</button>
@@ -523,6 +546,16 @@ const MKEY = "aria_missions_v1";
 let missions = [];
 let busy = false;
 let filter = 'all';
+let deepMode = false;
+
+function toggleDeep(){
+  deepMode = !deepMode;
+  const t=document.getElementById('wfToggle'), h=document.getElementById('wfHint'), lbl=document.getElementById('igniteLabel');
+  t.classList.toggle('on', deepMode);
+  t.setAttribute('aria-pressed', deepMode ? 'true' : 'false');
+  h.textContent = deepMode ? 'On · parallel subagents + verification' : 'Off · single-pass mission';
+  if(lbl) lbl.textContent = deepMode ? 'Run deep workflow' : 'Launch mission';
+}
 
 (function(){const h=new Date().getHours();document.getElementById('tod').textContent=h<12?'morning':h<18?'afternoon':'evening';})();
 
@@ -570,6 +603,28 @@ function statusPill(s){
   if(s==='error')   return '<span class="st err">Failed</span>';
   return '<span class="st done"><span class="d"></span>Done</span>';
 }
+function wfShortModel(mm){ if(!mm) return ''; const p=String(mm).split('/'); return p[p.length-1].slice(0,22); }
+function wfVPill(s){
+  if(s.repaired) return '<span class="wf-vpill fix">repaired</span>';
+  if(s.verified) return '<span class="wf-vpill ok">verified</span>';
+  if(s.ok===false) return '<span class="wf-vpill bad">failed</span>';
+  return '';
+}
+function wfStepsHTML(m){
+  if(!m.workflow||!m.workflow.length) return '';
+  const rows = m.workflow.map(s=>{
+    const out = s.output ? '<div class="wf-out">'+esc(String(s.output).slice(0,600))+'</div>' : '';
+    return '<div class="wf-step"><div class="wf-step-meta">'
+      + '<span class="wf-kind">'+esc(s.kind||'task')+'</span>'
+      + wfVPill(s)
+      + (s.model_used?'<span class="wf-model">'+esc(wfShortModel(s.model_used))+'</span>':'')
+      + '</div>'
+      + '<div class="wf-step-t">'+esc(s.title||'Subtask')+'</div>'
+      + out+'</div>';
+  }).join('');
+  return '<div class="wf-cap">◇ Subagents <span class="ct">'+m.workflow.length+' ran in parallel</span></div>'
+    + '<div class="wf-steps">'+rows+'</div>';
+}
 function missionCard(m){
   const hasImgs = m.imgs && m.imgs.length;
   let media='';
@@ -582,11 +637,18 @@ function missionCard(m){
   }
   let progress='';
   if(m.status==='running'){
-    progress = '<div class="mbar"><div class="mbar-fill bar-anim"></div></div><p class="mbar-label">rendering deliverables<span class="blink">…</span></p>';
+    progress = '<div class="mbar"><div class="mbar-fill bar-anim"></div></div><p class="mbar-label">'+(m.deep?'orchestrating parallel subagents':'rendering deliverables')+'<span class="blink">…</span></p>';
   }
   let body='';
   if(m.status==='running'){ body=''; }
-  else if(m.status==='error'){ body = '<p style="margin-top:12px;font-size:13px;color:#b3123a">⚠️ ARIA couldn\'t complete this mission. Try relaunching it.</p>'; }
+  else if(m.status==='error'){
+    body = m.text ? '<div class="md">'+md(m.text)+'</div>'
+                  : '<p style="margin-top:12px;font-size:13px;color:#b3123a">⚠️ ARIA couldn\'t complete this mission. Try relaunching it.</p>';
+  }
+  else if(m.deep){
+    body = wfStepsHTML(m)
+      + '<div class="wf-synth"><div class="wf-synth-lbl">◆ Synthesis</div><div class="md">'+md(m.text||'')+'</div></div>';
+  }
   else { body = '<div class="md">'+md(m.text||'')+'</div>'; }
   return '<article class="mcard rise"><div class="b">'
     + '<div class="mc-top"><div style="min-width:0"><div class="mc-date">'+new Date(m.ts).toLocaleString()+'</div>'
@@ -616,6 +678,7 @@ function onIgniterKey(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); 
 async function dispatchMission(){
   const inp=document.getElementById('igniter'); const goal=inp.value.trim();
   if(!goal||busy) return;
+  if(deepMode){ return dispatchWorkflow(goal, inp); }
   busy=true; document.getElementById('ignite').disabled=true;
   const m={ id:uid(), goal, sid:'mission-'+uid(), status:'running', text:'', imgs:[], ts:Date.now() };
   missions.unshift(m); saveMissions(); renderMissions();
@@ -630,6 +693,33 @@ async function dispatchMission(){
     m.status='done';
     log('✓ mission complete', 'ok');
   }catch(e){ m.status='error'; log('✕ mission failed to reach ARIA', 'err'); }
+  finally{ busy=false; document.getElementById('ignite').disabled=false; saveMissions(); renderMissions(); }
+}
+
+async function dispatchWorkflow(goal, inp){
+  busy=true; document.getElementById('ignite').disabled=true;
+  const m={ id:uid(), goal, sid:'wf-'+uid(), status:'running', text:'', imgs:[], deep:true, workflow:[], ts:Date.now() };
+  missions.unshift(m); saveMissions(); renderMissions();
+  inp.value='';
+  log('⚡ deep workflow dispatched — <span class="lg-hi">'+esc(goal.slice(0,60))+'</span>');
+  log('· decomposing goal → parallel subagents', 'dim');
+  try{
+    const r=await fetch('/api/v1/workflow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal})});
+    const d=await r.json();
+    if(!r.ok || d.ok===false){
+      m.status='error';
+      if(d.synthesis){ m.text=d.synthesis; }
+      log('✕ deep workflow blocked — '+esc(d.error||('HTTP '+r.status)), 'err');
+    } else {
+      m.workflow = Array.isArray(d.subtasks) ? d.subtasks : [];
+      m.text = d.synthesis || '(no synthesis)';
+      m.status='done';
+      const verified = m.workflow.filter(s=>s.verified).length;
+      const repaired = m.workflow.filter(s=>s.repaired).length;
+      log('✓ '+m.workflow.length+' subagents ran · '+verified+' verified'+(repaired?' · '+repaired+' repaired':''), 'ok');
+      if(d.total_tokens){ log('· '+d.total_tokens+' tokens · '+(d.duration_ms||0)+'ms', 'dim'); }
+    }
+  }catch(e){ m.status='error'; log('✕ deep workflow failed to reach ARIA', 'err'); }
   finally{ busy=false; document.getElementById('ignite').disabled=false; saveMissions(); renderMissions(); }
 }
 function relaunch(id){ const m=missions.find(x=>x.id===id); if(!m||busy)return; document.getElementById('igniter').value=m.goal; dispatchMission(); }
