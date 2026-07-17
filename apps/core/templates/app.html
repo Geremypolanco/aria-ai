@@ -105,6 +105,10 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .wf-t{cursor:pointer}
 .wf-t.on{background:var(--neon-soft);border-color:#9fe9c6;color:var(--green-ink);font-weight:700}
 .wfhint{font-size:11.5px;color:var(--muted)}
+.skills{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 6px 4px;margin-top:4px;border-top:1px dashed var(--line)}
+.skills-lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green-ink);font-weight:700;width:100%}
+.skill{display:inline-flex;align-items:center;gap:6px;border:1px solid #cbefda;background:var(--neon-soft);border-radius:10px;padding:7px 12px;font-size:12.5px;color:var(--green-ink);font-weight:600;transition:.15s;cursor:pointer}
+.skill:hover{border-color:var(--neon);box-shadow:0 4px 12px -6px rgba(21,224,106,.5)}
 .wf-steps{margin-top:12px;display:grid;gap:8px}
 .wf-cap{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--green-ink);font-weight:700;display:flex;align-items:center;gap:7px}
 .wf-cap .ct{color:var(--muted);font-weight:600;letter-spacing:0;text-transform:none}
@@ -507,6 +511,9 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
           <button onclick="quickGoal(this)" class="quick">✍️ Write a LinkedIn post</button>
           <button onclick="quickGoal(this)" class="quick">🎨 Generate a hero image</button>
         </div>
+        <div class="skills" id="skillRow">
+          <span class="skills-lbl">⚡ Deep Workflow skills — one click, ARIA runs the whole play</span>
+        </div>
       </div>
       <div class="mh">Missions</div>
       <div id="emptyMissions" class="empty">
@@ -555,6 +562,40 @@ function toggleDeep(){
   t.setAttribute('aria-pressed', deepMode ? 'true' : 'false');
   h.textContent = deepMode ? 'On · parallel subagents + verification' : 'Off · single-pass mission';
   if(lbl) lbl.textContent = deepMode ? 'Run deep workflow' : 'Launch mission';
+}
+
+// ── Deep Workflow Skills — packaged multi-agent plays (Claude "Skills" pattern).
+// Each is a well-structured goal that decomposes into strong parallel subtasks.
+const SKILLS = [
+  {icon:'🚀', name:'Launch plan', prompt:'Design and validate a complete go-to-market launch plan for {product}: positioning and ideal customer, three pricing tiers with rationale, and a 2-week launch sequence across the right channels.'},
+  {icon:'🔍', name:'Competitor teardown', prompt:'Research and compare the top 3 competitors in {market}: value proposition, pricing, strengths, and the specific weaknesses we can exploit. End with 3 positioning angles for us.'},
+  {icon:'📅', name:'Content calendar', prompt:'Create a 7-day content calendar for {brand} on LinkedIn and Instagram: for each day give the hook, the full post copy, and a visual idea. Match the tone to {audience}.'},
+  {icon:'💰', name:'Pricing strategy', prompt:'Design a tiered pricing structure for {product}: three tiers with names, prices, what each includes, the psychological anchoring, and the single change most likely to raise revenue.'},
+  {icon:'📈', name:'Funnel audit', prompt:'Audit the conversion funnel for {business} stage by stage (traffic → lead → activation → paid) and propose 5 experiments ranked by impact vs. effort, each with a hypothesis and a metric.'},
+  {icon:'✉️', name:'Cold outreach', prompt:'Write a 4-email cold outreach sequence to sell {product} to {audience}: subject lines, bodies, and the follow-up cadence. Keep it human, specific, and non-spammy.'},
+];
+function renderSkills(){
+  const row=document.getElementById('skillRow'); if(!row || row.dataset.done) return;
+  SKILLS.forEach((s,i)=>{
+    const b=document.createElement('button');
+    b.className='skill'; b.type='button';
+    b.innerHTML='<span>'+s.icon+'</span> '+esc(s.name);
+    b.onclick=()=>useSkill(i);
+    row.appendChild(b);
+  });
+  row.dataset.done='1';
+}
+function useSkill(i){
+  const s=SKILLS[i]; if(!s) return;
+  const inp=document.getElementById('igniter');
+  inp.value=s.prompt;
+  if(!deepMode) toggleDeep();          // skills always run as deep workflows
+  toggleSide(false);
+  inp.focus(); inp.scrollIntoView({behavior:'smooth',block:'center'});
+  // Preselect the first {placeholder} so the user just types their specifics.
+  const a=s.prompt.indexOf('{'), z=s.prompt.indexOf('}');
+  if(a!==-1 && z>a){ inp.setSelectionRange(a, z+1); }
+  else { inp.setSelectionRange(inp.value.length, inp.value.length); }
 }
 
 (function(){const h=new Date().getHours();document.getElementById('tod').textContent=h<12?'morning':h<18?'afternoon':'evening';})();
@@ -913,7 +954,7 @@ function connCopy(t,btn){ try{ navigator.clipboard.writeText(t); }catch(e){} var
 function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
 
 /* boot */
-loadMissions(); renderMissions(); billingBoot(); checkConnectorHealth();
+loadMissions(); renderMissions(); renderSkills(); billingBoot(); checkConnectorHealth();
 
 (function(){ try{
   var u=new URL(location.href), conn=u.searchParams.get('conn'), s=u.searchParams.get('s');
