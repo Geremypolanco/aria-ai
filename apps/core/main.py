@@ -335,6 +335,17 @@ async def root():
         return HTMLResponse("<h1>ARIA AI</h1><p>Online</p>")
 
 
+@app.get("/saraph", response_class=HTMLResponse)
+async def saraph_page():
+    """Official page for SARAPH — the AI studio behind ARIA."""
+    path = os.path.join(os.path.dirname(__file__), "templates", "saraph.html")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return HTMLResponse("<h1>SARAPH</h1><p>Maker of ARIA.</p>")
+
+
 # ── LEGAL PAGES (required to launch a paid product) ────────
 # Premium dark-mode legal pages live as styled HTML files under templates/legal/
 # and are served at /legal/{terms,privacy,refund-policy}. Legacy short paths
