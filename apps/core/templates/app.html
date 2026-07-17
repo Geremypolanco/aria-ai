@@ -120,6 +120,11 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .wf-out{margin-top:6px;font-size:12.5px;line-height:1.55;color:var(--ink2);max-height:120px;overflow:auto;white-space:pre-wrap}
 .wf-vpill{font-family:var(--mono);font-size:9.5px;padding:2px 7px;border-radius:999px;font-weight:700;flex:none}
 .wf-vpill.ok{background:var(--neon-soft);color:var(--green-ink)}
+.wf-vpill.run{background:#eef3ff;color:#3358d4}
+.wf-pending{opacity:.72}
+.wf-pending .wf-step-t{color:var(--muted)}
+@keyframes wfpulse{0%,100%{opacity:.72}50%{opacity:.4}}
+@media(prefers-reduced-motion:no-preference){.wf-pending{animation:wfpulse 1.4s ease-in-out infinite}}
 .wf-vpill.fix{background:#fff6e5;color:#b7791f}
 .wf-vpill.bad{background:var(--rose-soft);color:var(--rose)}
 .wf-synth{margin-top:14px}
@@ -651,19 +656,32 @@ function wfVPill(s){
   if(s.ok===false) return '<span class="wf-vpill bad">failed</span>';
   return '';
 }
+function wfStepRow(s, pending){
+  const meta = '<div class="wf-step-meta"><span class="wf-kind">'+esc(s.kind||'task')+'</span>'
+    + (pending ? '<span class="wf-vpill run">running…</span>'
+               : wfVPill(s) + (s.model_used?'<span class="wf-model">'+esc(wfShortModel(s.model_used))+'</span>':''))
+    + '</div>';
+  const title = '<div class="wf-step-t">'+esc(s.title||'Subtask')+'</div>';
+  const out = (!pending && s.output) ? '<div class="wf-out">'+esc(String(s.output).slice(0,600))+'</div>' : '';
+  return '<div class="wf-step'+(pending?' wf-pending':'')+'">'+meta+title+out+'</div>';
+}
 function wfStepsHTML(m){
-  if(!m.workflow||!m.workflow.length) return '';
-  const rows = m.workflow.map(s=>{
-    const out = s.output ? '<div class="wf-out">'+esc(String(s.output).slice(0,600))+'</div>' : '';
-    return '<div class="wf-step"><div class="wf-step-meta">'
-      + '<span class="wf-kind">'+esc(s.kind||'task')+'</span>'
-      + wfVPill(s)
-      + (s.model_used?'<span class="wf-model">'+esc(wfShortModel(s.model_used))+'</span>':'')
-      + '</div>'
-      + '<div class="wf-step-t">'+esc(s.title||'Subtask')+'</div>'
-      + out+'</div>';
-  }).join('');
-  return '<div class="wf-cap">◇ Subagents <span class="ct">'+m.workflow.length+' ran in parallel</span></div>'
+  const done = m.workflow||[];
+  const planned = m.planned||null;
+  if(!done.length && !(planned&&planned.length)) return '';
+  const byId={}; done.forEach(s=>{ if(s.id) byId[s.id]=s; });
+  let rows, total;
+  if(planned && planned.length){
+    total = planned.length;
+    rows = planned.map(p=> byId[p.id] ? wfStepRow(byId[p.id],false) : wfStepRow(p,true)).join('');
+  } else {
+    total = done.length;
+    rows = done.map(s=>wfStepRow(s,false)).join('');
+  }
+  const cap = (planned && done.length<total)
+    ? done.length+' / '+total+' subagents done'
+    : total+' ran in parallel';
+  return '<div class="wf-cap">◇ Subagents <span class="ct">'+cap+'</span></div>'
     + '<div class="wf-steps">'+rows+'</div>';
 }
 function missionCard(m){
@@ -681,7 +699,7 @@ function missionCard(m){
     progress = '<div class="mbar"><div class="mbar-fill bar-anim"></div></div><p class="mbar-label">'+(m.deep?'orchestrating parallel subagents':'rendering deliverables')+'<span class="blink">…</span></p>';
   }
   let body='';
-  if(m.status==='running'){ body=''; }
+  if(m.status==='running'){ body = m.deep ? wfStepsHTML(m) : ''; }
   else if(m.status==='error'){
     body = m.text ? '<div class="md">'+md(m.text)+'</div>'
                   : '<p style="margin-top:12px;font-size:13px;color:#b3123a">⚠️ ARIA couldn\'t complete this mission. Try relaunching it.</p>';
@@ -739,29 +757,79 @@ async function dispatchMission(){
 
 async function dispatchWorkflow(goal, inp){
   busy=true; document.getElementById('ignite').disabled=true;
-  const m={ id:uid(), goal, sid:'wf-'+uid(), status:'running', text:'', imgs:[], deep:true, workflow:[], ts:Date.now() };
+  const m={ id:uid(), goal, sid:'wf-'+uid(), status:'running', text:'', imgs:[], deep:true, workflow:[], planned:null, ts:Date.now() };
   missions.unshift(m); saveMissions(); renderMissions();
   inp.value='';
   log('⚡ deep workflow dispatched — <span class="lg-hi">'+esc(goal.slice(0,60))+'</span>');
   log('· decomposing goal → parallel subagents', 'dim');
+
+  const applyEvent = (ev)=>{
+    if(ev.type==='plan'){
+      m.planned = ev.subtasks||[];
+      log('· plan ready — '+m.planned.length+' parallel subagents', 'dim');
+      renderMissions();
+    } else if(ev.type==='subtask_done'){
+      m.workflow.push(ev.result);
+      const t=ev.result||{}; log('  ✓ '+esc((t.title||'subagent').slice(0,42))+(t.repaired?' (repaired)':t.verified?' (verified)':''), 'ok');
+      renderMissions();
+    } else if(ev.type==='done'){
+      m.workflow = Array.isArray(ev.subtasks)&&ev.subtasks.length ? ev.subtasks : m.workflow;
+      m.text = ev.synthesis || m.text || '(no synthesis)';
+      m.status = ev.ok===false ? 'error' : 'done';
+      const verified = m.workflow.filter(s=>s.verified).length;
+      log('✓ '+m.workflow.length+' subagents · '+verified+' verified', 'ok');
+      if(ev.total_tokens){ log('· '+ev.total_tokens+' tokens · '+(ev.duration_ms||0)+'ms', 'dim'); }
+    } else if(ev.type==='error'){
+      m.status='error'; log('✕ deep workflow error — '+esc(ev.error||''), 'err');
+    }
+  };
+
+  try{
+    const r = await fetch('/api/v1/workflow/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal})});
+    if(!r.ok || !r.body){
+      // Blocked (auth/rate/panic) or no stream support → fall back to one-shot POST.
+      let err='HTTP '+r.status; try{ const j=await r.json(); err=j.error||err; }catch(_){}
+      if(r.status && r.status!==200 && r.status!==0){ throw new Error(err); }
+      return await workflowFallback(m, goal);
+    }
+    // Parse the SSE stream incrementally.
+    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf='';
+    while(true){
+      const {value,done} = await reader.read();
+      if(done) break;
+      buf += dec.decode(value,{stream:true});
+      let idx;
+      while((idx=buf.indexOf('\n\n'))>=0){
+        const chunk = buf.slice(0,idx); buf = buf.slice(idx+2);
+        const line = chunk.split('\n').find(l=>l.startsWith('data:'));
+        if(!line) continue;
+        try{ applyEvent(JSON.parse(line.slice(5).trim())); }catch(_){}
+      }
+    }
+    if(m.status==='running'){ m.status='done'; }  // stream ended without explicit done
+  }catch(e){
+    // Any streaming failure → graceful fallback to the non-streaming endpoint.
+    log('· streaming unavailable, falling back', 'dim');
+    await workflowFallback(m, goal);
+  }
+  finally{ busy=false; document.getElementById('ignite').disabled=false; saveMissions(); renderMissions(); }
+}
+
+async function workflowFallback(m, goal){
   try{
     const r=await fetch('/api/v1/workflow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal})});
     const d=await r.json();
     if(!r.ok || d.ok===false){
-      m.status='error';
-      if(d.synthesis){ m.text=d.synthesis; }
+      m.status='error'; if(d.synthesis){ m.text=d.synthesis; }
       log('✕ deep workflow blocked — '+esc(d.error||('HTTP '+r.status)), 'err');
     } else {
+      m.planned=null;
       m.workflow = Array.isArray(d.subtasks) ? d.subtasks : [];
-      m.text = d.synthesis || '(no synthesis)';
-      m.status='done';
+      m.text = d.synthesis || '(no synthesis)'; m.status='done';
       const verified = m.workflow.filter(s=>s.verified).length;
-      const repaired = m.workflow.filter(s=>s.repaired).length;
-      log('✓ '+m.workflow.length+' subagents ran · '+verified+' verified'+(repaired?' · '+repaired+' repaired':''), 'ok');
-      if(d.total_tokens){ log('· '+d.total_tokens+' tokens · '+(d.duration_ms||0)+'ms', 'dim'); }
+      log('✓ '+m.workflow.length+' subagents ran · '+verified+' verified', 'ok');
     }
   }catch(e){ m.status='error'; log('✕ deep workflow failed to reach ARIA', 'err'); }
-  finally{ busy=false; document.getElementById('ignite').disabled=false; saveMissions(); renderMissions(); }
 }
 function relaunch(id){ const m=missions.find(x=>x.id===id); if(!m||busy)return; document.getElementById('igniter').value=m.goal; dispatchMission(); }
 function delMission(id){ missions=missions.filter(m=>m.id!==id); saveMissions(); renderMissions(); log('· mission removed','dim'); }

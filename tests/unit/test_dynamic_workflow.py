@@ -205,3 +205,47 @@ async def test_concurrency_cap_is_respected():
 async def test_subtask_model_defaults_to_strategy():
     t = SubTask(id="t1", title="x", prompt="p", kind=TaskKind.RESEARCH)
     assert t.model() == AIModel.STRATEGY
+
+
+# ── STREAMING (run_events) ────────────────────────────────────────────────────
+
+
+async def test_run_events_streams_all_phases():
+    client = FakeClient(plan=_plan("research", "research"))
+    wf = DynamicWorkflow(client, verify=False)
+    events = [ev async for ev in wf.run_events("do a thing")]
+
+    types = [e["type"] for e in events]
+    assert types[0] == "start"
+    assert types[1] == "plan"
+    assert types.count("subtask_done") == 2
+    assert types[-1] == "done"
+
+    assert len(events[1]["subtasks"]) == 2
+    assert all("id" in s and "title" in s and "kind" in s for s in events[1]["subtasks"])
+
+    done = events[-1]
+    assert done["ok"] is True
+    assert done["synthesis"] == "FINAL SYNTHESIS"
+    assert len(done["subtasks"]) == 2
+    assert done["total_tokens"] > 0
+
+
+async def test_run_events_empty_goal_emits_single_done():
+    client = FakeClient(plan=_plan("fast"))
+    wf = DynamicWorkflow(client)
+    events = [ev async for ev in wf.run_events("   ")]
+    assert events == [
+        {"type": "done", "ok": False, "synthesis": "", "subtasks": [], "total_tokens": 0}
+    ]
+    assert client.calls == []  # never touched the model
+
+
+async def test_run_events_verify_marks_subtasks():
+    client = FakeClient(plan=_plan("code"), verifier={"ok": False, "critique": "bug"})
+    wf = DynamicWorkflow(client, verify=True)
+    events = [ev async for ev in wf.run_events("write code")]
+    done = [e for e in events if e["type"] == "subtask_done"]
+    assert len(done) == 1
+    assert done[0]["result"]["repaired"] is True
+    assert done[0]["result"]["output"] == "REPAIRED OUTPUT"

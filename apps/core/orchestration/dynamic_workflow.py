@@ -261,6 +261,65 @@ class DynamicWorkflow:
             duration_ms=int((time.time() - t0) * 1000),
         )
 
+    # ── STREAMING ─────────────────────────────────────────────────────────
+
+    async def run_events(self, goal: str, context: str | None = None):
+        """Igual que run(), pero emite eventos a medida que avanza — para SSE.
+
+        Yields dicts con `type`:
+            start        — {goal}
+            plan         — {subtasks:[{id,title,kind}]}
+            subtask_done — {result:{...}}   (uno por subagente, al completar+verificar)
+            done         — {ok, synthesis, subtasks:[...], total_tokens, duration_ms}
+            error        — {error}          (solo si algo irrecuperable ocurre)
+
+        Los subagentes se completan con as_completed → el cliente ve cada uno
+        aparecer en cuanto termina, en vez de esperar a todo el lote.
+        """
+        t0 = time.time()
+        goal = (goal or "").strip()
+        if not goal:
+            yield {"type": "done", "ok": False, "synthesis": "", "subtasks": [], "total_tokens": 0}
+            return
+
+        self._plan_tokens = 0
+        self._synth_tokens = 0
+
+        try:
+            yield {"type": "start", "goal": goal}
+
+            plan = await self._plan(goal, context)
+            yield {
+                "type": "plan",
+                "subtasks": [{"id": t.id, "title": t.title, "kind": t.kind.value} for t in plan],
+            }
+
+            async def _one(task: SubTask) -> SubTaskResult:
+                res = await self._execute(task)
+                if self._verify:
+                    res = await self._verify_and_repair(res)
+                return res
+
+            results: list[SubTaskResult] = []
+            for fut in asyncio.as_completed([_one(t) for t in plan]):
+                res = await fut
+                results.append(res)
+                yield {"type": "subtask_done", "result": res.to_dict()}
+
+            synthesis = await self._synthesize(goal, results)
+            total = sum(r.tokens for r in results) + self._plan_tokens + self._synth_tokens
+            yield {
+                "type": "done",
+                "ok": any(r.ok for r in results) and bool(synthesis),
+                "synthesis": synthesis,
+                "subtasks": [r.to_dict() for r in results],
+                "total_tokens": total,
+                "duration_ms": int((time.time() - t0) * 1000),
+            }
+        except Exception as exc:  # noqa: BLE001 — el stream nunca debe colgar sin cerrar.
+            logger.warning("[workflow] run_events falló: %s", exc)
+            yield {"type": "error", "error": str(exc)[:200]}
+
     # ── FASE 1: PLAN ──────────────────────────────────────────────────────
 
     async def _plan(self, goal: str, context: str | None) -> list[SubTask]:
