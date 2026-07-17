@@ -21,3 +21,8 @@ node_modules/
 .fly/
 *.pyc
 .claude/
+
+# Local SQLite runtime artifacts (never commit)
+*.db
+*.sqlite
+*.sqlite3

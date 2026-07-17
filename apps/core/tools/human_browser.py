@@ -564,13 +564,11 @@ class HumanBrowser:
         await page.add_init_script(_STEALTH_JS)
 
         # Override navigator properties that Playwright sets
-        await page.add_init_script(
-            """
+        await page.add_init_script("""
             Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
             Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
             Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-        """
-        )
+        """)
 
         human_page = HumanPage(page, session_name)
         return human_page

@@ -46,6 +46,7 @@ class AIModel(StrEnum):
     FAST = "fast"
     CREATIVE = "creative"
     VISION = "vision"
+    REASONING = "reasoning"  # cadena de pensamiento profunda (Opus / o-series / Deep Think)
 
 
 # Provider rotation per task — only free tier; paid providers require separate subscriptions
@@ -86,44 +87,66 @@ HF_MODEL_ROTATION: dict[AIModel, list[str]] = {
         "Qwen/Qwen2-VL-7B-Instruct",
         "microsoft/Phi-3.5-vision-instruct",
     ],
+    AIModel.REASONING: [
+        "deepseek-ai/DeepSeek-R1",
+        "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        "Qwen/QwQ-32B",
+        "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+    ],
 }
 
-# Modelo primario por proveedor
+# Modelo primario por proveedor.
+# Los IDs de proveedores premium se actualizaron a la generación 2026
+# (Claude Opus 4.8 / Sonnet 5 / Haiku 4.5, Gemini 2.5). HF sigue siendo el
+# motor primario gratuito; estos disparan solo cuando HF/Groq no responden y
+# la key correspondiente está configurada.
+_ANTHROPIC_FRONTIER = "claude-opus-4-8"
+_ANTHROPIC_BALANCED = "claude-sonnet-5"
+_ANTHROPIC_FAST = "claude-haiku-4-5-20251001"
+
 MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
     AIModel.STRATEGY: {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-72B-Instruct",
         AIProvider.GROQ: "llama-3.3-70b-versatile",
-        AIProvider.GEMINI: "gemini-1.5-pro",
+        AIProvider.GEMINI: "gemini-2.5-pro",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
-        AIProvider.ANTHROPIC: "claude-3-5-sonnet-20240620",
+        AIProvider.ANTHROPIC: _ANTHROPIC_BALANCED,
     },
     AIModel.CODE: {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-Coder-32B-Instruct",
         AIProvider.GROQ: "llama-3.3-70b-versatile",
-        AIProvider.GEMINI: "gemini-1.5-pro",
+        AIProvider.GEMINI: "gemini-2.5-pro",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
-        AIProvider.ANTHROPIC: "claude-3-5-sonnet-20240620",
+        AIProvider.ANTHROPIC: _ANTHROPIC_BALANCED,
     },
     AIModel.FAST: {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-7B-Instruct",
         AIProvider.GROQ: "llama-3.1-8b-instant",
-        AIProvider.GEMINI: "gemini-1.5-flash",
+        AIProvider.GEMINI: "gemini-2.5-flash",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
-        AIProvider.ANTHROPIC: "claude-3-5-haiku-20241022",
+        AIProvider.ANTHROPIC: _ANTHROPIC_FAST,
     },
     AIModel.CREATIVE: {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-72B-Instruct",
         AIProvider.GROQ: "llama-3.3-70b-versatile",
-        AIProvider.GEMINI: "gemini-1.5-pro",
+        AIProvider.GEMINI: "gemini-2.5-pro",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
-        AIProvider.ANTHROPIC: "claude-3-5-sonnet-20240620",
+        AIProvider.ANTHROPIC: _ANTHROPIC_BALANCED,
     },
     AIModel.VISION: {
         AIProvider.HUGGINGFACE: "meta-llama/Llama-3.2-11B-Vision-Instruct",
         AIProvider.GROQ: "llava-v1.5-7b-4096-preview",
-        AIProvider.GEMINI: "gemini-1.5-flash",
+        AIProvider.GEMINI: "gemini-2.5-flash",
         AIProvider.OPENAI: "gpt-4o-mini",
-        AIProvider.ANTHROPIC: "claude-3-5-sonnet-20240620",
+        AIProvider.ANTHROPIC: _ANTHROPIC_BALANCED,
+    },
+    # Cadena de pensamiento profunda: se enruta al modelo más capaz de cada casa.
+    AIModel.REASONING: {
+        AIProvider.HUGGINGFACE: "deepseek-ai/DeepSeek-R1",
+        AIProvider.GROQ: "deepseek-r1-distill-llama-70b",
+        AIProvider.GEMINI: "gemini-2.5-pro",
+        AIProvider.OPENAI: settings.OPENAI_MODEL,
+        AIProvider.ANTHROPIC: _ANTHROPIC_FRONTIER,
     },
 }
 
