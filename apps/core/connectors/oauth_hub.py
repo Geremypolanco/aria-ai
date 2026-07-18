@@ -331,11 +331,14 @@ async def save_token(email: str, pid: str, token: dict) -> None:
         "expires_in": token.get("expires_in"),
     }
     try:
+        from apps.core.connectors import token_crypto
         from apps.core.memory.redis_client import get_cache
 
+        # Encrypt the whole record (access + refresh tokens) at rest — AES-256-GCM.
+        blob = token_crypto.encrypt(json.dumps(record))
         await get_cache().set(
             _TOKEN_KEY.format(email=email, pid=pid),
-            json.dumps(record),
+            blob,
             ttl_seconds=400 * 24 * 3600,
         )
     except Exception as exc:  # noqa: BLE001
@@ -344,14 +347,17 @@ async def save_token(email: str, pid: str, token: dict) -> None:
 
 async def get_token(email: str, pid: str) -> dict | None:
     try:
+        from apps.core.connectors import token_crypto
         from apps.core.memory.redis_client import get_cache
 
         raw = await get_cache().get(_TOKEN_KEY.format(email=email, pid=pid))
-        if raw:
-            return json.loads(raw) if isinstance(raw, str) else raw
+        if not raw:
+            return None
+        # decrypt() transparently passes through any legacy plaintext record.
+        decoded = token_crypto.decrypt(raw) if isinstance(raw, str) else raw
+        return json.loads(decoded) if isinstance(decoded, str) else decoded
     except Exception:
-        pass
-    return None
+        return None
 
 
 async def disconnect(email: str, pid: str) -> None:

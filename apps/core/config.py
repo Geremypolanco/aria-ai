@@ -200,6 +200,9 @@ class Settings(BaseSettings):
     # key (sessions won't survive a restart / multiple instances) — never a
     # public constant.
     SESSION_SECRET: str | None = None
+    # Dedicated master key for encrypting connector OAuth tokens at rest
+    # (AES-256-GCM). If unset, the key is derived from SESSION_SECRET/ARIA_API_KEY.
+    CONNECTOR_ENC_KEY: str | None = None
     # Secret for signing outbound integration webhooks.
     WEBHOOK_SECRET: str | None = None
     # Fly.io API token — enables the live instance counter in the admin console.
