@@ -948,7 +948,12 @@ async def _finish_login(profile: dict | None):
     resp = RedirectResponse("/app", status_code=303)
     resp.set_cookie(
         auth.USER_COOKIE,
-        auth.sign_user(profile["email"], profile.get("name", ""), profile.get("provider", "")),
+        auth.sign_user(
+            profile["email"],
+            profile.get("name", ""),
+            profile.get("provider", ""),
+            profile.get("picture", ""),
+        ),
         httponly=True,
         secure=True,
         samesite="lax",
@@ -1042,6 +1047,14 @@ async def user_app(request: Request):
     email = _safe_name(user.get("email", ""))
     first = name.split(" ")[0] if name else "there"
     initial = (first[:1] or "Y").upper()
+    # Real account photo (from Google/GitHub OAuth, carried in the signed cookie),
+    # falling back to the initial. The URL is provider-issued and lives in an
+    # HMAC-signed cookie; still require https + strip quotes/brackets defensively.
+    picture = (user.get("picture") or "").strip()
+    if picture.startswith("https://") and '"' not in picture and "<" not in picture:
+        avatar_html = f'<img class="avimg" src="{picture}" alt="" referrerpolicy="no-referrer">'
+    else:
+        avatar_html = initial
     is_owner = raw_email in _owner_emails()
     plan_map = {"pro": "Pro", "business": "Business"}
     plan = "Business" if is_owner else plan_map.get(await _get_user_plan(raw_email), "Free")
@@ -1074,6 +1087,7 @@ async def user_app(request: Request):
     html = (
         html.replace("__NAME__", name)
         .replace("__FIRST__", first)
+        .replace("__AVATAR__", avatar_html)
         .replace("__INITIAL__", initial)
         .replace("__EMAIL__", email)
         .replace("__PLAN__", plan)

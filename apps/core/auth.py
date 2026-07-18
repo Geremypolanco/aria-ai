@@ -74,11 +74,11 @@ def _base() -> str:
 # ── signed user session ────────────────────────────────────────────────────
 
 
-def sign_user(email: str, name: str = "", provider: str = "") -> str:
-    payload = json.dumps(
-        {"email": email, "name": name, "provider": provider, "t": int(time.time())},
-        separators=(",", ":"),
-    )
+def sign_user(email: str, name: str = "", provider: str = "", picture: str = "") -> str:
+    data = {"email": email, "name": name, "provider": provider, "t": int(time.time())}
+    if picture:
+        data["picture"] = picture
+    payload = json.dumps(data, separators=(",", ":"))
     b = base64.urlsafe_b64encode(payload.encode()).decode()
     sig = hmac.new(_secret(), b.encode(), hashlib.sha256).hexdigest()[:32]
     return f"{b}.{sig}"
@@ -197,7 +197,12 @@ async def google_exchange(code: str) -> dict | None:
             if ui.status_code != 200:
                 return None
             d = ui.json()
-            return {"email": d.get("email", ""), "name": d.get("name", ""), "provider": "google"}
+            return {
+                "email": d.get("email", ""),
+                "name": d.get("name", ""),
+                "picture": d.get("picture", ""),
+                "provider": "google",
+            }
     except Exception:
         return None
 
@@ -276,6 +281,7 @@ async def github_exchange(code: str) -> dict | None:
             return {
                 "email": email or "",
                 "name": ud.get("name") or ud.get("login", ""),
+                "picture": ud.get("avatar_url", ""),
                 "provider": "github",
             }
     except Exception:
