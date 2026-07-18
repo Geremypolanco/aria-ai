@@ -192,7 +192,7 @@
         online: false,
         aiProviders: '0',
         toolsCount: '0',
-        messages: [{ role: 'aria', text: '👋 ¡Hola! Soy **ARIA**. ¿En qué puedo ayudarte hoy?' }],
+        messages: [{ role: 'aria', text: '¡Hola! Soy **ARIA**. ¿En qué puedo ayudarte hoy?' }],
         chatInput: '',
         thinking: false,
 
@@ -233,9 +233,9 @@
               body: JSON.stringify({ message: text, session_id: 'web_' + Date.now() })
             });
             const d = await r.json();
-            this.messages.push({ role: 'aria', text: d.reply || '⚠️ Sin respuesta' });
+            this.messages.push({ role: 'aria', text: d.reply || 'Sin respuesta' });
           } catch(e) {
-            this.messages.push({ role: 'aria', text: '⚠️ Error de conexión. Verifica que el servidor esté corriendo.' });
+            this.messages.push({ role: 'aria', text: 'Error de conexión. Verifica que el servidor esté corriendo.' });
           } finally {
             this.thinking = false;
             this.$nextTick(() => this.scrollChat());

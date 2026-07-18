@@ -208,16 +208,16 @@ logger = logging.getLogger("aria")
 # ── LIFESPAN ──────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("🚀 ARIA AI v3.0 starting...")
+    logger.info("ARIA AI v3.0 starting...")
     # Warm up the AI client
     try:
         from apps.core.tools.ai_client import get_ai_client
 
         client = get_ai_client()
         if client:
-            logger.info("✅ AI Client initialized")
+            logger.info("AI Client initialized")
     except Exception as e:
-        logger.warning(f"⚠️ AI Client init: {e}")
+        logger.warning(f"AI Client init: {e}")
 
     # Connector health semaphore — ping external APIs every 30 minutes so the
     # dashboard can hold queued posts when a platform is globally down.
@@ -240,7 +240,7 @@ async def lifespan(app: FastAPI):
 
         health_task = _asyncio.create_task(_health_loop())
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"⚠️ health loop not started: {e}")
+        logger.warning(f"health loop not started: {e}")
 
     # In-process mission worker — convenient for single-container dev. In
     # production run dedicated worker containers instead (see SCALE_ARCH.md) and
@@ -261,7 +261,7 @@ async def lifespan(app: FastAPI):
             worker_task = _asyncio.create_task(run_forever(stop=worker_stop))
             logger.info("🧵 in-process mission worker started")
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"⚠️ in-process worker not started: {e}")
+            logger.warning(f"in-process worker not started: {e}")
 
     yield
 
@@ -271,7 +271,7 @@ async def lifespan(app: FastAPI):
         worker_stop.set()
     if worker_task is not None:
         worker_task.cancel()
-    logger.info("🛑 ARIA AI shutting down...")
+    logger.info("ARIA AI shutting down...")
 
 
 # ── APP ───────────────────────────────────────────────────
@@ -445,7 +445,7 @@ async def admin_login_page():
     notice = (
         "ARIA · Autonomous Intelligence"
         if getattr(settings, "ADMIN_PASSWORD", None)
-        else "⚠️ Set ADMIN_PASSWORD on the server to enable access."
+        else "Set ADMIN_PASSWORD on the server to enable access."
     )
     return HTMLResponse(_LOGIN_HTML.format(error="", notice=notice))
 
@@ -1545,7 +1545,7 @@ async def chat(req: ChatRequest, request: Request):
     # Rate limit + require sign-in (prevents anonymous/abusive LLM cost).
     if not _rate_ok(request, "chat", 30, 60):
         return {
-            "reply": "⏳ You're sending messages too fast. Please wait a moment and try again.",
+            "reply": "You're sending messages too fast. Please wait a moment and try again.",
             "model_used": "ratelimited",
             "processing_time_ms": 0,
             "media_type": None,
@@ -1553,7 +1553,7 @@ async def chat(req: ChatRequest, request: Request):
         }
     if not _current_user(request):
         return {
-            "reply": "🔒 Please sign in to use ARIA.",
+            "reply": "Please sign in to use ARIA.",
             "model_used": "auth",
             "processing_time_ms": 0,
             "media_type": None,
@@ -1581,7 +1581,7 @@ async def chat(req: ChatRequest, request: Request):
         if not allowed:
             return {
                 "reply": (
-                    f"🔒 You've reached today's free limit of {FREE_DAILY_LIMIT} messages.\n\n"
+                    f"You've reached today's free limit of {FREE_DAILY_LIMIT} messages.\n\n"
                     "Upgrade to **Pro** for **unlimited** ARIA — unlimited chat, images, "
                     "video & voice, and autonomous multi-channel publishing.\n\n"
                     "Open the menu → **Upgrade**, or continue tomorrow when your free "
@@ -1596,7 +1596,7 @@ async def chat(req: ChatRequest, request: Request):
     # Global panic freeze + AI burn-rate cap (paid plans frozen over budget).
     if _PANIC["on"]:
         return {
-            "reply": "🛑 ARIA is temporarily paused by an operator. Please try again shortly.",
+            "reply": "ARIA is temporarily paused by an operator. Please try again shortly.",
             "model_used": "paused",
             "processing_time_ms": 0,
             "media_type": None,
@@ -1608,7 +1608,7 @@ async def chat(req: ChatRequest, request: Request):
         if get_ledger().is_frozen(email):
             return {
                 "reply": (
-                    "🔒 You've reached this month's AI usage cap for your plan, so new "
+                    "You've reached this month's AI usage cap for your plan, so new "
                     "missions are paused to protect your account. Upgrade for more "
                     "capacity, or your allowance resets at the start of next month."
                 ),
@@ -1648,7 +1648,7 @@ async def chat(req: ChatRequest, request: Request):
             return {"reply": reply, "model_used": "fallback", "processing_time_ms": 0}
         except Exception as e2:
             logger.error(f"Chat fallback error: {e2}")
-            return {"reply": f"⚠️ Error: {e}", "model_used": "none", "processing_time_ms": 0}
+            return {"reply": f"Error: {e}", "model_used": "none", "processing_time_ms": 0}
 
 
 @app.post("/api/v1/support/chat")
@@ -1666,13 +1666,13 @@ async def support_chat(req: SupportRequest, request: Request):
 
     if not _rate_ok(request, "support", 20, 60):
         return {
-            "reply": "⏳ Estás enviando mensajes muy rápido. Espera un momento e inténtalo de nuevo.",
+            "reply": "Estás enviando mensajes muy rápido. Espera un momento e inténtalo de nuevo.",
             "source": "ratelimited",
             "processing_time_ms": 0,
         }
     if not _current_user(request):
         return {
-            "reply": "🔒 Inicia sesión para hablar con ARIA Support.",
+            "reply": "Inicia sesión para hablar con ARIA Support.",
             "source": "auth",
             "processing_time_ms": 0,
         }
@@ -1701,9 +1701,9 @@ async def generate_code(req: ChatRequest, request: Request):
     import time
 
     if not _current_user(request):
-        return {"reply": "🔒 Please sign in to use this endpoint.", "unauthorized": True}
+        return {"reply": "Please sign in to use this endpoint.", "unauthorized": True}
     if not _rate_ok(request, "code", 20, 60):
-        return {"reply": "⏳ Rate limit reached — please slow down.", "ratelimited": True}
+        return {"reply": "Rate limit reached — please slow down.", "ratelimited": True}
     start = time.time()
     try:
         from apps.core.agent_brain import get_agent
@@ -1722,9 +1722,9 @@ async def research(req: ChatRequest, request: Request):
     import time
 
     if not _current_user(request):
-        return {"reply": "🔒 Please sign in to use this endpoint.", "unauthorized": True}
+        return {"reply": "Please sign in to use this endpoint.", "unauthorized": True}
     if not _rate_ok(request, "research", 20, 60):
-        return {"reply": "⏳ Rate limit reached — please slow down.", "ratelimited": True}
+        return {"reply": "Rate limit reached — please slow down.", "ratelimited": True}
     start = time.time()
     try:
         from apps.core.agent_brain import get_agent
@@ -1757,18 +1757,18 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
 
     if not _current_user(request):
         return JSONResponse(
-            {"ok": False, "error": "auth", "synthesis": "🔒 Inicia sesión para usar ARIA."},
+            {"ok": False, "error": "auth", "synthesis": "Inicia sesión para usar ARIA."},
             status_code=401,
         )
     # Los flujos abren varios subagentes por llamada → límite deliberadamente bajo.
     if not _rate_ok(request, "workflow", 6, 300):
         return JSONResponse(
-            {"ok": False, "error": "rate_limited", "synthesis": "⏳ Demasiados flujos seguidos."},
+            {"ok": False, "error": "rate_limited", "synthesis": "Demasiados flujos seguidos."},
             status_code=429,
         )
     if _PANIC["on"]:
         return JSONResponse(
-            {"ok": False, "error": "paused", "synthesis": "🛑 ARIA está pausada por un operador."},
+            {"ok": False, "error": "paused", "synthesis": "ARIA está pausada por un operador."},
             status_code=503,
         )
 
@@ -1795,7 +1795,7 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
                 {
                     "ok": False,
                     "error": "burn_cap",
-                    "synthesis": "🔒 Alcanzaste el tope de uso de IA de tu plan este mes.",
+                    "synthesis": "Alcanzaste el tope de uso de IA de tu plan este mes.",
                 },
                 status_code=402,
             )

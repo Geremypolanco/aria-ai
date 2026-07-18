@@ -50,14 +50,14 @@
     <div class="flex items-center gap-2">
       <button id="panicBtn" onclick="togglePanic()"
         class="rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 text-sm font-bold text-red-300 transition hover:bg-red-500/25">
-        🛑 Global Panic
+        Global Panic
       </button>
       <a href="/admin/logout" class="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">Sign out</a>
     </div>
   </header>
 
   <div id="panicBanner" class="mt-4 hidden rounded-xl border border-red-500/50 bg-red-500/15 px-4 py-3 text-sm font-semibold text-red-200">
-    🛑 GLOBAL PANIC ACTIVE — all user missions are frozen. <button onclick="togglePanic()" class="ml-2 underline">Release</button>
+    GLOBAL PANIC ACTIVE — all user missions are frozen. <button onclick="togglePanic()" class="ml-2 underline">Release</button>
   </div>
 
   <!-- KPI cards -->
@@ -176,7 +176,7 @@ function render(d){
 
   PANIC = !!d.panic;
   document.getElementById('panicBanner').classList.toggle('hidden', !PANIC);
-  document.getElementById('panicBtn').textContent = PANIC ? '🟢 Release Panic' : '🛑 Global Panic';
+  document.getElementById('panicBtn').textContent = PANIC ? 'Release Panic' : 'Global Panic';
 }
 
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;')}
