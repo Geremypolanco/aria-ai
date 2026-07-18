@@ -672,59 +672,182 @@ async def connectors_health():
     return {"connectors": statuses, "offline": store.offline()}
 
 
-# ── PUBLIC SIGNUP (waitlist until user accounts + billing ship) ────────────
-_SIGNUP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Access</title><style>
-*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
-body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:radial-gradient(120% 90% at 80% 10%,rgba(79,70,229,.08),transparent 45%),
-radial-gradient(120% 90% at 10% 90%,rgba(34,211,238,.08),transparent 45%),#ffffff;color:#18181b}}
-.card{{width:420px;max-width:92vw;background:#ffffff;border:1px solid #e4e4e7;
-border-radius:20px;padding:40px 34px;text-align:center;box-shadow:0 1px 2px rgba(24,24,27,.04),0 24px 60px -20px rgba(24,24,27,.15)}}
-h1{{font-size:26px;margin-bottom:10px;color:#18181b}} p{{color:#52525b;font-size:15px;margin-bottom:24px;line-height:1.5}}
-input{{width:100%;padding:14px 16px;border-radius:12px;border:1px solid #d4d4d8;
-background:#fff;color:#18181b;font-size:15px;margin-bottom:14px}}
-button{{width:100%;padding:14px;border:0;border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;
-background:#4f46e5;color:#fff}} a{{color:#4f46e5;text-decoration:none}}
-.mut{{color:#71717a;font-size:13px;margin-top:18px}}</style></head><body>
-<form class="card" method="post" action="/signup">
-<h1>{title}</h1><p>{sub}</p>{body}</form></body></html>"""
+# ── Real user accounts: email + password signup/login (+ OAuth) ────────────
+def _esc_html(s: str) -> str:
+    return (
+        (s or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+_ARIA_MARK = (
+    '<svg width="38" height="38" viewBox="0 0 100 100" fill="none" aria-hidden="true">'
+    '<defs><linearGradient id="am1" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">'
+    '<stop offset="0" stop-color="#5fe6c2"/><stop offset=".5" stop-color="#12b7a6"/>'
+    '<stop offset="1" stop-color="#057a52"/></linearGradient></defs>'
+    '<g stroke-linecap="round" stroke-linejoin="round" fill="none">'
+    '<path d="M23 83 C 29 52, 40 28, 49 13 C 57 26, 64 36, 70 46" stroke="url(#am1)" stroke-width="12.5"/>'
+    '<path d="M70 46 C 79 61, 74 79, 56 78 C 41 77, 39 58, 53 53 C 63 50, 70 50, 70 46 Z" '
+    'stroke="url(#am1)" stroke-width="12.5"/></g></svg>'
+)
+
+
+def _auth_page(mode: str, error: str = "", email: str = "") -> str:
+    """Shared signup/login page — real email accounts + optional OAuth buttons."""
+    from apps.core import auth
+
+    is_signup = mode == "signup"
+    title = "Create your account" if is_signup else "Welcome back"
+    sub = (
+        "Start free — no card. You land in your workspace in seconds."
+        if is_signup
+        else "Sign in to your ARIA workspace."
+    )
+    action = "/signup" if is_signup else "/login"
+    submit = "Create account & start" if is_signup else "Sign in"
+    name_field = (
+        '<input name="name" placeholder="Your name" autocomplete="name" required>'
+        if is_signup
+        else ""
+    )
+    pw_auto = "new-password" if is_signup else "current-password"
+    pw_hint = ' minlength="8"' if is_signup else ""
+    err = f'<div class="err">{_esc_html(error)}</div>' if error else ""
+    ev = _esc_html(email)
+    oauth = ""
+    if auth.google_enabled():
+        oauth += '<a class="btn" href="/auth/google">Continue with Google</a>'
+    if auth.github_enabled():
+        oauth += '<a class="btn gh" href="/auth/github">Continue with GitHub</a>'
+    oauth_block = f'<div class="divider"><span>or</span></div>{oauth}' if oauth else ""
+    switch = (
+        'Already have an account? <a class="lnk" href="/login">Sign in</a>'
+        if is_signup
+        else 'New to ARIA? <a class="lnk" href="/signup">Create a free account</a>'
+    )
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · {title}</title><style>
+*{{margin:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+background:radial-gradient(120% 90% at 80% 8%,rgba(21,224,106,.10),transparent 46%),
+radial-gradient(120% 90% at 8% 92%,rgba(18,183,166,.10),transparent 46%),#ffffff;color:#0a0f0c}}
+.card{{width:420px;max-width:100%;background:#fff;border:1px solid #e5ece8;border-radius:22px;
+padding:38px 32px;box-shadow:0 1px 2px rgba(10,20,15,.05),0 26px 64px -22px rgba(10,20,15,.22)}}
+.brand{{display:flex;align-items:center;gap:11px;margin-bottom:22px}}
+.brand .wm{{font-size:20px;font-weight:300;letter-spacing:.3em;padding-left:.3em}}
+h1{{font-size:23px;margin-bottom:7px}} .sub{{color:#52605a;font-size:14.5px;margin-bottom:22px}}
+label{{display:block;font-size:12px;font-weight:600;color:#3f4a44;margin:0 0 6px}}
+input{{width:100%;padding:13px 15px;border-radius:12px;border:1px solid #d7e0da;background:#fff;
+color:#0a0f0c;font-size:15px;margin-bottom:14px;transition:border .15s,box-shadow .15s}}
+input:focus{{outline:0;border-color:#9fe9c6;box-shadow:0 0 0 4px rgba(21,224,106,.14)}}
+button{{width:100%;padding:14px;border:0;border-radius:12px;font-weight:700;font-size:15px;cursor:pointer;
+background:#15E06A;color:#04150d;box-shadow:0 8px 24px -6px rgba(21,224,106,.45);transition:filter .15s}}
+button:hover{{filter:brightness(1.03)}}
+.err{{background:#fef2f4;border:1px solid #f6cdd6;color:#b3123a;font-size:13.5px;padding:10px 13px;
+border-radius:11px;margin-bottom:16px}}
+.divider{{display:flex;align-items:center;gap:12px;margin:18px 0;color:#9aa8a1;font-size:12px}}
+.divider::before,.divider::after{{content:"";flex:1;height:1px;background:#e5ece8}}
+.btn{{display:flex;align-items:center;justify-content:center;width:100%;padding:13px;border-radius:12px;
+border:1px solid #d7e0da;background:#fff;color:#0a0f0c;text-decoration:none;font-weight:600;
+font-size:14.5px;margin-bottom:11px;transition:background .15s}}
+.btn:hover{{background:#f3f8f5}}
+.switch{{text-align:center;font-size:14px;color:#52605a;margin-top:18px}}
+.mut{{color:#8592a3;font-size:11.5px;margin-top:16px;text-align:center;line-height:1.7}}
+a.lnk{{color:#057a52;text-decoration:none;font-weight:600}} a.lnk:hover{{text-decoration:underline}}
+</style></head><body><div class="card">
+<div class="brand">{_ARIA_MARK}<span class="wm">ARIA</span></div>
+<h1>{title}</h1><p class="sub">{sub}</p>
+{err}
+<form method="post" action="{action}" autocomplete="on">
+{name_field}
+<input type="email" name="email" placeholder="you@email.com" value="{ev}" autocomplete="email" required autofocus>
+<input type="password" name="password" placeholder="Password" autocomplete="{pw_auto}"{pw_hint} required>
+<button type="submit">{submit}</button>
+</form>
+{oauth_block}
+<div class="switch">{switch}</div>
+<div class="mut">By continuing you agree to our <a class="lnk" href="/legal/terms">Terms</a> &amp;
+<a class="lnk" href="/legal/privacy">Privacy</a>. <a class="lnk" href="/">← Home</a></div>
+</div></body></html>"""
+
+
+def _auth_success_redirect(email: str, name: str, provider: str) -> RedirectResponse:
+    from apps.core import auth
+
+    resp = RedirectResponse("/app", status_code=303)
+    resp.set_cookie(
+        auth.USER_COOKIE,
+        auth.sign_user(email, name, provider),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 30,
+    )
+    return resp
 
 
 @app.get("/signup", response_class=HTMLResponse)
-async def signup_page():
-    body = (
-        '<input type="email" name="email" placeholder="tu@email.com" required autofocus>'
-        '<button type="submit">Join the access list</button>'
-        '<div class="mut">Are you the admin? <a href="/admin/login">Open the panel</a></div>'
-    )
-    return HTMLResponse(
-        _SIGNUP_HTML.format(
-            title="Be first to use ARIA",
-            sub="We're opening access in waves. Leave your email and we'll let you know when your plan is ready.",
-            body=body,
+async def signup_page(request: Request):
+    if _current_user(request):
+        return RedirectResponse("/app", status_code=303)
+    return HTMLResponse(_auth_page("signup"))
+
+
+@app.post("/signup")
+async def signup_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    name: str = Form(""),
+):
+    if not _rate_ok(request, "signup", 10, 3600):
+        return HTMLResponse(
+            _auth_page("signup", "Too many attempts — please wait a minute.", email),
+            status_code=429,
         )
-    )
+    from apps.core import auth, auth_accounts
 
-
-@app.post("/signup", response_class=HTMLResponse)
-async def signup_submit(email: str = Form(...)):
+    ok, err = await auth_accounts.create_account(email, password, name)
+    if not ok:
+        return HTMLResponse(_auth_page("signup", err, email), status_code=400)
     with suppress(Exception):
-        from apps.core.memory.redis_client import get_cache
-
-        await get_cache().rpush("aria:waitlist", email.strip().lower())
-    return HTMLResponse(
-        _SIGNUP_HTML.format(
-            title="You're in! 🎉",
-            sub="You're on the list. We'll email you when your access is ready.",
-            body='<a href="/" style="display:inline-block;margin-top:6px">← Back</a>',
+        await auth.remember_user(
+            {"email": email.strip().lower(), "name": name, "provider": "email"}
         )
-    )
+    return _auth_success_redirect(email.strip().lower(), name.strip(), "email")
 
 
-# ── USER OAUTH LOGIN (Google / GitHub) → per-user dashboard ────────────────
 @app.get("/login", response_class=HTMLResponse)
-async def login_page():
+async def login_page(request: Request):
+    if _current_user(request):
+        return RedirectResponse("/app", status_code=303)
+    return HTMLResponse(_auth_page("login"))
+
+
+@app.post("/login")
+async def login_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+):
+    if not _rate_ok(request, "login", 20, 900):
+        return HTMLResponse(
+            _auth_page("login", "Too many attempts — please wait a moment.", email),
+            status_code=429,
+        )
+    from apps.core import auth_accounts
+
+    profile = await auth_accounts.verify_credentials(email, password)
+    if not profile:
+        return HTMLResponse(_auth_page("login", "Wrong email or password.", email), status_code=401)
+    return _auth_success_redirect(profile["email"], profile.get("name", ""), "email")
+
+
+# ── legacy OAuth-only login card (kept for reference; no longer routed) ─────
+def _legacy_login_card():
     from apps.core import auth
 
     g = (
