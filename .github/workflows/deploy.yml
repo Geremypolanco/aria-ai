@@ -74,6 +74,21 @@ jobs:
             ZAPIER_WEBHOOK_URL="${{ secrets.ZAPIER_WEBHOOK_URL }}" \
             SENTRY_DSN="${{ secrets.SENTRY_DSN }}" \
             ARIA_API_KEY="${{ secrets.ARIA_API_KEY }}" \
+            GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
+            GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+            LINKEDIN_CLIENT_ID="${{ secrets.LINKEDIN_CLIENT_ID }}" \
+            LINKEDIN_CLIENT_SECRET="${{ secrets.LINKEDIN_CLIENT_SECRET }}" \
+            META_APP_ID="${{ secrets.META_APP_ID }}" \
+            META_APP_SECRET="${{ secrets.META_APP_SECRET }}" \
+            STRIPE_CONNECT_CLIENT_ID="${{ secrets.STRIPE_CONNECT_CLIENT_ID }}" \
+            SLACK_CLIENT_ID="${{ secrets.SLACK_CLIENT_ID }}" \
+            SLACK_CLIENT_SECRET="${{ secrets.SLACK_CLIENT_SECRET }}" \
+            NOTION_OAUTH_CLIENT_ID="${{ secrets.NOTION_OAUTH_CLIENT_ID }}" \
+            NOTION_OAUTH_CLIENT_SECRET="${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}" \
+            TWITTER_OAUTH_CLIENT_ID="${{ secrets.TWITTER_OAUTH_CLIENT_ID }}" \
+            TWITTER_OAUTH_CLIENT_SECRET="${{ secrets.TWITTER_OAUTH_CLIENT_SECRET }}" \
+            TIKTOK_CLIENT_KEY="${{ secrets.TIKTOK_CLIENT_KEY }}" \
+            TIKTOK_CLIENT_SECRET="${{ secrets.TIKTOK_CLIENT_SECRET }}" \
             --app "$FLY_APP" 2>/dev/null || true
 
       - name: Deploy

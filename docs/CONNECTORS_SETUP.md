@@ -20,14 +20,24 @@ provider's app to exactly:
 https://aria-ai.fly.dev/connectors/<id>/callback
 ```
 
-…where `<id>` is the connector id (`google`, `linkedin`, `slack`, …). Then set the
-matching Fly secrets:
+…where `<id>` is the connector id (`google`, `linkedin`, `slack`, …). Then provide
+the matching Client ID + Secret. Two ways — pick one:
+
+**A) GitHub repo secrets (recommended, plug-and-play).** Add each value under
+*Repo → Settings → Secrets and variables → Actions* using the exact names in the
+table below (e.g. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`). The deploy workflow
+(`.github/workflows/deploy.yml`) already propagates every connector secret to Fly
+on each deploy — you never touch code. Trigger a deploy (or push to `main`) and the
+connector flips to **Connect**.
+
+**B) Directly on Fly.**
 
 ```bash
-fly secrets set <PROVIDER>_CLIENT_ID="..." <PROVIDER>_CLIENT_SECRET="..."
+fly secrets set <PROVIDER>_CLIENT_ID="..." <PROVIDER>_CLIENT_SECRET="..." -a aria-ai
 ```
 
-A deploy picks them up and the connector flips to **Connect** (ready).
+Either way, the moment the values exist the connector goes live and users can just
+sign in and grant permission. Empty/unset secrets keep it honestly at **"Set up"**.
 
 ---
 
