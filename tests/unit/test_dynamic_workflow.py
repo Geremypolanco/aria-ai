@@ -31,9 +31,14 @@ class FakeClient:
     every call so tests can assert routing (which AIModel each phase used).
     """
 
-    def __init__(self, plan: dict | None = None, verifier: dict | None = None):
+    def __init__(
+        self, plan: dict | None = None, verifier: dict | None = None, clarifier: dict | None = None
+    ):
         self._plan = plan
         self._verifier = verifier
+        # Default: "ready" with 0 tokens so the clarify gate is a no-op for the
+        # execution/token tests. A test can pass clarifier={"ready":false,...}.
+        self._clarifier = clarifier
         self.calls: list[dict] = []
 
     async def complete(
@@ -47,6 +52,10 @@ class FakeClient:
         agent_name: str = "aria",
     ) -> AIResponse:
         self.calls.append({"agent": agent_name, "model": model, "user": user})
+
+        if agent_name == "workflow.clarify":
+            content = json.dumps(self._clarifier or {"ready": True})
+            return _resp(content, tokens=0)
 
         if agent_name == "workflow.planner":
             content = json.dumps(self._plan) if self._plan is not None else "not json at all"
@@ -249,3 +258,60 @@ async def test_run_events_verify_marks_subtasks():
     assert len(done) == 1
     assert done[0]["result"]["repaired"] is True
     assert done[0]["result"]["output"] == "REPAIRED OUTPUT"
+
+
+# ── CLARIFY-BEFORE-EXECUTE GATE ───────────────────────────────────────────────
+
+
+async def test_clarify_gate_asks_instead_of_guessing():
+    # Under-specified goal → ARIA asks, runs NO subagents (no guessed deliverable).
+    client = FakeClient(
+        plan=_plan("reason", "creative"),
+        clarifier={
+            "ready": False,
+            "questions": ["What does your SaaS do?", "Who is it for?"],
+            "intro": "Quick — a couple things first:",
+        },
+    )
+    wf = DynamicWorkflow(client)
+    result = await wf.run("make me 3 prices for my SaaS")
+
+    assert result.ok is True
+    assert result.results == []  # no subagents ran
+    assert "Quick — a couple things first:" in result.synthesis
+    assert "What does your SaaS do?" in result.synthesis
+    assert "Who is it for?" in result.synthesis
+    # The planner and subagents were never called.
+    assert not any(c["agent"] == "workflow.planner" for c in client.calls)
+
+
+async def test_clarify_gate_proceeds_when_ready():
+    client = FakeClient(plan=_plan("research", "research"), clarifier={"ready": True})
+    result = await DynamicWorkflow(client).run("Compare X and Y with these specifics ...")
+    assert result.synthesis == "FINAL SYNTHESIS"
+    assert len(result.results) == 2  # executed normally
+
+
+async def test_clarify_can_be_disabled():
+    client = FakeClient(
+        plan=_plan("reason"), clarifier={"ready": False, "questions": ["ignored?"]}
+    )
+    # clarify=False → skips the gate and executes even a vague goal.
+    result = await DynamicWorkflow(client, clarify=False).run("vague goal")
+    assert len(result.results) == 1
+    assert not any(c["agent"] == "workflow.clarify" for c in client.calls)
+
+
+async def test_run_events_clarify_emits_single_done():
+    client = FakeClient(
+        plan=_plan("reason"),
+        clarifier={"ready": False, "questions": ["What's the goal?"], "intro": "One sec:"},
+    )
+    wf = DynamicWorkflow(client)
+    events = [ev async for ev in wf.run_events("do something big")]
+    types = [e["type"] for e in events]
+    assert "plan" not in types  # never planned
+    assert types[-1] == "done"
+    done = events[-1]
+    assert done["subtasks"] == []
+    assert "What's the goal?" in done["synthesis"]
