@@ -95,6 +95,53 @@ textarea{field-sizing:content}
 @media(min-width:1280px){.topbar .ltoggle{display:none}}
 .scroll{flex:1;overflow:auto;padding:30px 22px}
 .inner{max-width:920px;margin:0 auto}
+/* chat */
+.chatscroll{flex:1;overflow-y:auto;overflow-x:hidden}
+.chatwrap{max-width:760px;margin:0 auto;padding:22px 20px 8px}
+.chat-empty{text-align:center;padding:5vh 0 2vh}
+.ce-mark{width:52px;height:52px;border-radius:16px;background:var(--neon-soft);color:var(--green-ink);display:grid;place-items:center;margin:0 auto 18px}
+.chat-empty h1{font-size:26px;font-weight:750;color:var(--ink);letter-spacing:-.02em}
+.chat-empty .g{color:var(--teal)}
+.ce-sub{color:var(--muted);font-size:15px;margin:8px auto 22px;max-width:46ch}
+.chat-empty .quicks{justify-content:center}
+.chat-empty .skills{border-top:0;justify-content:center;margin-top:8px;padding-top:0}
+.chat-empty .skills-lbl{width:100%;text-align:center}
+.thread{display:flex;flex-direction:column}
+.turn{display:flex;width:100%}
+.turn.user{justify-content:flex-end}
+.ubub{background:var(--neon-soft);border:1px solid #d3f2e2;color:var(--ink);border-radius:16px 16px 5px 16px;padding:11px 15px;font-size:15px;line-height:1.5;max-width:82%;white-space:pre-wrap;word-break:break-word;margin:12px 0 6px}
+.turn.aria{gap:11px;margin:4px 0 16px}
+.tava{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--neon),var(--teal));display:grid;place-items:center;flex:none;margin-top:2px}
+.tava svg{width:18px;height:18px}
+.acontent{min-width:0;flex:1;padding-top:4px}
+.acontent .md{margin-top:0;max-height:none;overflow:visible;font-size:15px;color:var(--ink)}
+.typing{display:inline-flex;gap:4px;padding:8px 2px}
+.typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:tp 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.18s}.typing span:nth-child(3){animation-delay:.36s}
+@keyframes tp{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+.work{border:1px solid var(--line);border-radius:12px;background:var(--soft);margin-bottom:12px;overflow:hidden}
+.work>summary{cursor:pointer;list-style:none;padding:10px 13px;font-size:12px;font-weight:650;color:var(--green-ink);font-family:var(--mono);letter-spacing:.03em}
+.work>summary::-webkit-details-marker{display:none}
+.work .wf-cap{padding:2px 13px 0}
+.work .wf-steps{padding:8px 13px 12px}
+.tmedia{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
+.timg{max-width:100%;border-radius:12px;border:1px solid var(--line)}
+.turn-foot{display:flex;gap:6px;margin-top:9px}
+.tact{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:var(--ink2);cursor:pointer}
+.tact:hover{background:var(--soft)}
+.composer{flex:none;border-top:1px solid var(--line);background:rgba(255,255,255,.9);backdrop-filter:blur(10px);padding:12px 20px}
+.composer-wrap{max-width:760px;margin:0 auto}
+.composer-box{display:flex;align-items:flex-end;gap:8px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:8px 8px 8px 15px;box-shadow:var(--sh1)}
+.composer-box:focus-within{border-color:#9fe9c6;box-shadow:var(--sh1),0 0 0 4px rgba(21,224,106,.13)}
+.composer-box textarea{flex:1;border:0;outline:0;resize:none;font-family:inherit;font-size:15px;color:var(--ink);background:transparent;max-height:180px;padding:6px 0;line-height:1.5}
+.sendbtn{flex:none;width:38px;height:38px;border-radius:12px;border:0;background:var(--neon);display:grid;place-items:center;cursor:pointer;box-shadow:var(--glow);transition:filter .15s}
+.sendbtn:hover{filter:brightness(1.03)}
+.sendbtn:disabled{opacity:.45;cursor:default;box-shadow:none}
+.composer-row{display:flex;align-items:center;gap:10px;padding:9px 4px 0}
+.deep-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.15s}
+.deep-chip.on{background:var(--neon-soft);border-color:#9fe9c6;color:var(--green-ink)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+@media(max-width:760px){.composer{padding-bottom:calc(70px + env(safe-area-inset-bottom))}}
 h1.greet{font-size:clamp(24px,4vw,32px);font-weight:800;letter-spacing:-.02em;color:var(--ink)}
 h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .subline{margin-top:7px;color:var(--ink2);font-size:14.5px}
@@ -515,51 +562,56 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       <button onclick="toggleSide(true)" aria-label="Menu" class="iconbtn mtoggle">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
       </button>
-      <span class="t">Mission Control</span>
-      <span class="pill"><span class="g"></span> ARIA online</span>
-      <button onclick="toggleLogs(true)" aria-label="Live logs" class="iconbtn ltoggle">
+      <span class="t">ARIA</span>
+      <span class="pill"><span class="g"></span> Online</span>
+      <button onclick="toggleLogs(true)" aria-label="Activity log" class="iconbtn ltoggle">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
       </button>
     </header>
-    <div class="scroll"><div class="inner">
-      <div id="outageBanner" class="banner hidden"><b>Publishing paused:</b> <span id="outageList"></span> appears to be down globally. Queued posts are held until it recovers.</div>
-      <h1 class="greet">Good <span id="tod">day</span>, <span class="g" id="greetName">__FIRST__</span>.</h1>
-      <p class="subline">Describe a goal and ARIA will run it as an autonomous mission — research, writing, images &amp; video.</p>
-      <div class="igniter">
-        <div class="igrow">
-          <textarea id="igniter" rows="1" placeholder="e.g. Research the top 5 AI newsletters and draft a launch post…" onkeydown="onIgniterKey(event)"></textarea>
-          <button id="ignite" onclick="dispatchMission()" class="launch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#04150d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg> <span id="igniteLabel">Launch mission</span></button>
+    <div id="outageBanner" class="banner hidden"><b>Publishing paused:</b> <span id="outageList"></span> appears to be down globally. Queued posts are held until it recovers.</div>
+    <div id="chatScroll" class="chatscroll">
+      <div class="chatwrap">
+        <div id="emptyMissions" class="chat-empty">
+          <div class="ce-mark"><svg width="30" height="30" aria-hidden="true"><use href="#ariaMark"/></svg></div>
+          <h1>Good <span id="tod">day</span>, <span class="g" id="greetName">__FIRST__</span></h1>
+          <p class="ce-sub">Ask ARIA to research, write, or create — you'll watch it work in real time.</p>
+          <div id="usageCard" class="usage hidden">
+            <div class="usage-h">Your Deep Workflow usage</div>
+            <div class="usage-grid">
+              <div class="ustat"><div class="uval" id="uDeliverables">0</div><div class="ulbl">Deliverables</div></div>
+              <div class="ustat"><div class="uval" id="uWorkflows">0</div><div class="ulbl">Workflows</div></div>
+              <div class="ustat"><div class="uval" id="uSubagents">0</div><div class="ulbl">Subagents run</div></div>
+              <div class="ustat"><div class="uval" id="uVerify">0%</div><div class="ulbl">Verified</div></div>
+            </div>
+          </div>
+          <div class="quicks">
+            <button onclick="quickGoal(this)" class="quick">Research a trend &amp; summarize</button>
+            <button onclick="quickGoal(this)" class="quick">Write a LinkedIn post</button>
+            <button onclick="quickGoal(this)" class="quick">Generate a hero image</button>
+          </div>
+          <div class="skills" id="skillRow">
+            <span class="skills-lbl">Deep Workflow — one click, ARIA runs the whole play</span>
+          </div>
         </div>
-        <div class="wfmode">
-          <button id="wfToggle" onclick="toggleDeep()" class="quick wf-t" aria-pressed="false">Deep Workflow</button>
-          <span id="wfHint" class="wfhint">Off · single-pass mission</span>
+        <div id="missions" class="thread"></div>
+      </div>
+    </div>
+    <div class="composer">
+      <div class="composer-wrap">
+        <div class="composer-box">
+          <textarea id="igniter" rows="1" placeholder="Message ARIA…" onkeydown="onIgniterKey(event)"></textarea>
+          <button id="ignite" onclick="dispatchMission()" class="sendbtn" aria-label="Send">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#04150d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            <span id="igniteLabel" class="sr-only">Send</span>
+          </button>
         </div>
-        <div class="quicks">
-          <button onclick="quickGoal(this)" class="quick">Research a trend &amp; summarize</button>
-          <button onclick="quickGoal(this)" class="quick">Write a LinkedIn post</button>
-          <button onclick="quickGoal(this)" class="quick">Generate a hero image</button>
-        </div>
-        <div class="skills" id="skillRow">
-          <span class="skills-lbl">Deep Workflow skills — one click, ARIA runs the whole play</span>
+        <div class="composer-row">
+          <button id="wfToggle" onclick="toggleDeep()" class="deep-chip" aria-pressed="false">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg> Deep Workflow</button>
+          <span id="wfHint" class="wfhint">Off · quick answer</span>
         </div>
       </div>
-      <div id="usageCard" class="usage hidden">
-        <div class="usage-h">Your Deep Workflow usage</div>
-        <div class="usage-grid">
-          <div class="ustat"><div class="uval" id="uDeliverables">0</div><div class="ulbl">Deliverables</div></div>
-          <div class="ustat"><div class="uval" id="uWorkflows">0</div><div class="ulbl">Workflows</div></div>
-          <div class="ustat"><div class="uval" id="uSubagents">0</div><div class="ulbl">Subagents run</div></div>
-          <div class="ustat"><div class="uval" id="uVerify">0%</div><div class="ulbl">Verified</div></div>
-        </div>
-      </div>
-      <div class="mh">Missions</div>
-      <div id="emptyMissions" class="empty">
-        <div class="e"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></div>
-        <p class="t1">No missions yet</p>
-        <p class="t2">Launch your first mission above. ARIA will work on it and drop the deliverables right here.</p>
-      </div>
-      <div id="missions" class="grid"></div>
-    </div></div>
+    </div>
   </main>
 
   <aside id="logs" class="logs translate-x-full">
@@ -597,8 +649,8 @@ function toggleDeep(){
   const t=document.getElementById('wfToggle'), h=document.getElementById('wfHint'), lbl=document.getElementById('igniteLabel');
   t.classList.toggle('on', deepMode);
   t.setAttribute('aria-pressed', deepMode ? 'true' : 'false');
-  h.textContent = deepMode ? 'On · parallel subagents + verification' : 'Off · single-pass mission';
-  if(lbl) lbl.textContent = deepMode ? 'Run deep workflow' : 'Launch mission';
+  h.textContent = deepMode ? 'On · parallel subagents, live' : 'Off · quick answer';
+  if(lbl) lbl.textContent = deepMode ? 'Run deep workflow' : 'Send';
 }
 
 // ── Deep Workflow Skills — packaged multi-agent plays (Claude "Skills" pattern).
@@ -653,7 +705,7 @@ async function loadUsage(){
 (function(){const h=new Date().getHours();document.getElementById('tod').textContent=h<12?'morning':h<18?'afternoon':'evening';})();
 
 function loadMissions(){ try{missions=JSON.parse(localStorage.getItem(MKEY))||[]}catch(e){missions=[]} }
-function saveMissions(){ try{localStorage.setItem(MKEY,JSON.stringify(missions.slice(0,60)))}catch(e){} }
+function saveMissions(){ try{localStorage.setItem(MKEY,JSON.stringify(missions.slice(-80)))}catch(e){} }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7) }
 
 function ts(){ const d=new Date(); return d.toTimeString().slice(0,8); }
@@ -731,49 +783,43 @@ function wfStepsHTML(m){
   return '<div class="wf-cap">Subagents <span class="ct">'+cap+'</span></div>'
     + '<div class="wf-steps">'+rows+'</div>';
 }
-function missionCard(m){
+function turnHTML(m){
   const hasImgs = m.imgs && m.imgs.length;
-  let media='';
-  if(hasImgs){
-    media = '<div class="mcar"><div class="track carousel" id="car-'+m.id+'">'
-      + m.imgs.map(src=>'<img src="'+src+'" alt="deliverable" class="mimg" />').join('')
-      + '</div>'
-      + (m.imgs.length>1 ? '<button onclick="carScroll(\''+m.id+'\',-1)" class="carbtn l">‹</button><button onclick="carScroll(\''+m.id+'\',1)" class="carbtn r">›</button>' : '')
-      + '</div>';
-  }
-  let progress='';
+  const started = (m.workflow && m.workflow.length) || (m.planned && m.planned.length);
+  let aria;
   if(m.status==='running'){
-    progress = '<div class="mbar"><div class="mbar-fill bar-anim"></div></div><p class="mbar-label">'+(m.deep?'orchestrating parallel subagents':'rendering deliverables')+'<span class="blink">…</span></p>';
+    aria = (m.deep && started) ? wfStepsHTML(m)
+      : '<div class="typing"><span></span><span></span><span></span></div>';
+  } else if(m.status==='error'){
+    aria = '<div class="md">'+md(m.text || "ARIA couldn't complete this. Try again.")+'</div>';
+  } else if(m.deep && started){
+    aria = '<details class="work" open><summary>Worked with '+((m.workflow||[]).length)+' subagents</summary>'
+         + wfStepsHTML(m)+'</details>'
+         + '<div class="md">'+md(m.text||'')+'</div>';
+  } else {
+    aria = '<div class="md">'+md(m.text||'')+'</div>';
   }
-  let body='';
-  if(m.status==='running'){ body = m.deep ? wfStepsHTML(m) : ''; }
-  else if(m.status==='error'){
-    body = m.text ? '<div class="md">'+md(m.text)+'</div>'
-                  : '<p style="margin-top:12px;font-size:13px;color:#b3123a">ARIA couldn\'t complete this mission. Try relaunching it.</p>';
-  }
-  else if(m.deep){
-    body = wfStepsHTML(m)
-      + '<div class="wf-synth"><div class="wf-synth-lbl">Synthesis</div><div class="md">'+md(m.text||'')+'</div></div>';
-  }
-  else { body = '<div class="md">'+md(m.text||'')+'</div>'; }
-  return '<article class="mcard rise"><div class="b">'
-    + '<div class="mc-top"><div style="min-width:0"><div class="mc-date">'+new Date(m.ts).toLocaleString()+'</div>'
-    +   '<h3 class="mc-title">'+esc(m.goal)+'</h3></div>'+statusPill(m.status)+'</div>'
-    + media + progress + body + '</div>'
-    + '<div class="mc-foot">'
-    +   (m.status!=='running' ? '<button onclick="copyMission(\''+m.id+'\')" class="act">⧉ Copy</button>' : '')
-    +   (m.deep && m.status==='done' ? '<button onclick="exportMission(\''+m.id+'\')" class="act">⬇ Export .md</button>' : '')
-    +   (hasImgs ? '<button onclick="dlImg(\''+m.id+'\')" class="act">↓ Image</button>' : '')
-    +   (m.status!=='running' ? '<button onclick="relaunch(\''+m.id+'\')" class="act">↻ Relaunch</button>' : '')
-    +   '<button onclick="delMission(\''+m.id+'\')" class="act danger">Delete</button>'
-    + '</div></article>';
+  const media = hasImgs
+    ? '<div class="tmedia">'+m.imgs.map(src=>'<img src="'+src+'" class="timg" alt="deliverable"/>').join('')+'</div>'
+    : '';
+  const foot = (m.status==='done')
+    ? '<div class="turn-foot"><button class="tact" onclick="copyMission(\''+m.id+'\')">Copy</button>'
+      + (m.deep ? '<button class="tact" onclick="exportMission(\''+m.id+'\')">Export</button>' : '')
+      + '<button class="tact" onclick="relaunch(\''+m.id+'\')">Retry</button>'
+      + '<button class="tact" onclick="delMission(\''+m.id+'\')">Delete</button></div>'
+    : '';
+  return '<div class="turn user"><div class="ubub">'+esc(m.goal)+'</div></div>'
+    + '<div class="turn aria"><span class="tava"><svg aria-hidden="true"><use href="#ariaMark"/></svg></span>'
+    + '<div class="acontent">'+aria+media+foot+'</div></div>';
 }
 function renderMissions(){
   const grid=document.getElementById('missions');
-  const list=missions.filter(m=> filter==='all' ? true : m.status===filter);
-  document.getElementById('navCount').textContent=missions.length;
-  document.getElementById('emptyMissions').style.display = missions.length ? 'none' : 'block';
-  grid.innerHTML = list.map(missionCard).join('');
+  const nav=document.getElementById('navCount'); if(nav) nav.textContent=missions.length;
+  const empty=document.getElementById('emptyMissions'); if(empty) empty.style.display = missions.length ? 'none' : '';
+  const list = missions.filter(m=> filter==='all' ? true
+    : (filter==='running' ? m.status==='running' : m.status==='done'));
+  grid.innerHTML = list.map(turnHTML).join('');
+  const sc=document.getElementById('chatScroll'); if(sc) sc.scrollTop=sc.scrollHeight;
 }
 
 function carScroll(id,dir){ const el=document.getElementById('car-'+id); if(!el)return; el.scrollBy({left: dir*el.clientWidth*0.9, behavior:'smooth'}); }
@@ -788,7 +834,7 @@ async function dispatchMission(){
   if(deepMode){ return dispatchWorkflow(goal, inp); }
   busy=true; document.getElementById('ignite').disabled=true;
   const m={ id:uid(), goal, sid:'mission-'+uid(), status:'running', text:'', imgs:[], ts:Date.now() };
-  missions.unshift(m); saveMissions(); renderMissions();
+  missions.push(m); saveMissions(); renderMissions();
   inp.value='';
   log('Mission dispatched — <span class="lg-hi">'+esc(goal.slice(0,60))+'</span>');
   log('· routing to ARIA cognition core', 'dim');
@@ -806,7 +852,7 @@ async function dispatchMission(){
 async function dispatchWorkflow(goal, inp){
   busy=true; document.getElementById('ignite').disabled=true;
   const m={ id:uid(), goal, sid:'wf-'+uid(), status:'running', text:'', imgs:[], deep:true, workflow:[], planned:null, ts:Date.now() };
-  missions.unshift(m); saveMissions(); renderMissions();
+  missions.push(m); saveMissions(); renderMissions();
   inp.value='';
   log('Deep workflow dispatched — <span class="lg-hi">'+esc(goal.slice(0,60))+'</span>');
   log('· decomposing goal into parallel subagents', 'dim');
