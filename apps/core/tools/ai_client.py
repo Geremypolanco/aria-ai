@@ -88,10 +88,12 @@ HF_MODEL_ROTATION: dict[AIModel, list[str]] = {
         "microsoft/Phi-3.5-vision-instruct",
     ],
     AIModel.REASONING: [
-        "deepseek-ai/DeepSeek-R1",
+        # Reasoning-tuned first, then PROVEN-reliable general models as fallback.
+        # (The full 671B DeepSeek-R1 isn't served by the free HF providers — it
+        # 404'd in prod and dropped every "reason" subagent — so it's out.)
         "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
-        "Qwen/QwQ-32B",
-        "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "meta-llama/Llama-3.3-70B-Instruct",
     ],
 }
 
@@ -141,9 +143,12 @@ MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
         AIProvider.ANTHROPIC: _ANTHROPIC_BALANCED,
     },
     # Cadena de pensamiento profunda: se enruta al modelo más capaz de cada casa.
+    # Groq/HF apuntan a modelos PROBADOS en prod (llama-3.3-70b-versatile es el
+    # workhorse que responde); el R1 completo y su id de Groq fallaban y tumbaban
+    # las subtareas "reason".
     AIModel.REASONING: {
-        AIProvider.HUGGINGFACE: "deepseek-ai/DeepSeek-R1",
-        AIProvider.GROQ: "deepseek-r1-distill-llama-70b",
+        AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-72B-Instruct",
+        AIProvider.GROQ: "llama-3.3-70b-versatile",
         AIProvider.GEMINI: "gemini-2.5-pro",
         AIProvider.OPENAI: settings.OPENAI_MODEL,
         AIProvider.ANTHROPIC: _ANTHROPIC_FRONTIER,
