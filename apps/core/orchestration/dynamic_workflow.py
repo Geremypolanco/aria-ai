@@ -185,18 +185,35 @@ Resultado del subagente:
 {{"ok": true|false, "critique": "si ok=false, explica el fallo concreto en una frase; si ok=true, deja vacío"}}"""
 
 _SYNTH_SYSTEM = (
-    "Eres el integrador final de ARIA. Combinas los resultados verificados de varios "
-    "subagentes en una entrega única, coherente y accionable para el usuario. No repites "
-    "el trabajo: lo sintetizas. Respondes en el idioma del objetivo."
+    "Eres ARIA integrando el trabajo de tu equipo en la respuesta final para el usuario. "
+    "Hablas como una persona real: cálida, directa, con criterio —no como un reporte "
+    "corporativo. Nada de 'Como IA', ni jerga vacía, ni relleno. Sintetizas (no repites ni "
+    "listas mecánicamente lo que hizo cada subagente): entregas UNA respuesta coherente y "
+    "accionable, como se la darías a un colega que respetas. Responde en el idioma del objetivo."
 )
 
-_SYNTH_USER = """Objetivo original:
+_SYNTH_USER = """Objetivo del usuario:
 {goal}
 
-Resultados verificados de los subagentes:
+Trabajo de tu equipo (subagentes):
 {parts}
 
-Integra todo en la respuesta final para el usuario. Directa, profesional y completa."""
+Escribe la respuesta final directa y con criterio. Si algo quedó incierto o dependía de un dato
+que no teníamos, dilo con honestidad en vez de inventarlo."""
+
+_CLARIFY_SYSTEM = (
+    "Eres ARIA decidiendo si un pedido tiene suficiente contexto para hacerlo EXCELENTE, o si "
+    "faltan 1-3 datos clave que cambiarían el resultado. Piensa como un buen consultor: asumir "
+    "a ciegas produce entregables inútiles. Hablas como persona —cálido y directo—."
+)
+
+_CLARIFY_USER = """Pedido del usuario:
+{goal}
+{context}
+¿Tienes suficiente contexto para entregar algo genuinamente útil, o faltan datos clave?
+Responde SOLO JSON:
+{{"ready": true|false, "questions": ["pregunta corta y concreta 1", "..."], "intro": "una frase humana y cálida para acompañar las preguntas; vacío si ready=true"}}
+Sé exigente: si asumir podría arruinar el entregable (p.ej. precios sin saber qué es el producto, para quién, o su métrica de valor), ready=false con 1-3 preguntas que de verdad cambien el resultado. Si el objetivo ya trae el contexto necesario, ready=true. Responde en el idioma del pedido."""
 
 
 class DynamicWorkflow:
@@ -213,10 +230,14 @@ class DynamicWorkflow:
         client: SupportsComplete,
         max_concurrency: int = DEFAULT_CONCURRENCY,
         verify: bool = True,
+        clarify: bool = True,
     ) -> None:
         self._client = client
         self._sem = asyncio.Semaphore(max(1, max_concurrency))
         self._verify = verify
+        # When True, an under-specified goal yields clarifying questions instead
+        # of a guessed deliverable (no subagents run). The chat shows them as a turn.
+        self._clarify = clarify
         # Contadores de tokens de las fases que no viven en un SubTaskResult
         # (planner + synthesizer). Se reinician al inicio de cada run().
         self._plan_tokens = 0
@@ -235,6 +256,20 @@ class DynamicWorkflow:
 
         self._plan_tokens = 0
         self._synth_tokens = 0
+
+        # Aclarar antes de ejecutar: si falta contexto clave, pregunta en vez de adivinar.
+        if self._clarify:
+            clarify_msg = await self._assess(goal, context)
+            if clarify_msg:
+                return WorkflowResult(
+                    goal=goal,
+                    plan=[],
+                    results=[],
+                    synthesis=clarify_msg,
+                    ok=True,
+                    total_tokens=self._plan_tokens,
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
 
         plan = await self._plan(goal, context)
         logger.info("[workflow] plan de %d subtareas para: %s", len(plan), goal[:80])
@@ -288,6 +323,20 @@ class DynamicWorkflow:
         try:
             yield {"type": "start", "goal": goal}
 
+            # Aclarar antes de ejecutar: si falta contexto, pregunta (sin correr subagentes).
+            if self._clarify:
+                clarify_msg = await self._assess(goal, context)
+                if clarify_msg:
+                    yield {
+                        "type": "done",
+                        "ok": True,
+                        "synthesis": clarify_msg,
+                        "subtasks": [],
+                        "total_tokens": self._plan_tokens,
+                        "duration_ms": int((time.time() - t0) * 1000),
+                    }
+                    return
+
             plan = await self._plan(goal, context)
             yield {
                 "type": "plan",
@@ -319,6 +368,45 @@ class DynamicWorkflow:
         except Exception as exc:  # noqa: BLE001 — el stream nunca debe colgar sin cerrar.
             logger.warning("[workflow] run_events falló: %s", exc)
             yield {"type": "error", "error": str(exc)[:200]}
+
+    # ── FASE 0: ACLARAR ───────────────────────────────────────────────────
+
+    async def _assess(self, goal: str, context: str | None) -> str | None:
+        """Devuelve un mensaje de aclaración (cálido, con 1-3 preguntas) si al objetivo
+        le falta contexto clave; None si ya hay suficiente para ejecutar.
+
+        Best-effort: ante cualquier fallo o si el modelo dice que está listo, devuelve
+        None para no bloquear un pedido bien especificado.
+        """
+        ctx = f"\nContexto adicional:\n{context}\n" if context else "\n"
+        try:
+            resp = await self._client.complete(
+                system=_CLARIFY_SYSTEM,
+                user=_CLARIFY_USER.format(goal=goal, context=ctx),
+                model=AIModel.FAST,
+                max_tokens=400,
+                temperature=0.2,
+                json_mode=True,
+                agent_name="workflow.clarify",
+            )
+            if not resp or not resp.success:
+                return None
+            self._plan_tokens += resp.tokens_used
+            data = json.loads(resp.content)
+            if data.get("ready", True):
+                return None
+            questions = [str(q).strip() for q in (data.get("questions") or []) if str(q).strip()][
+                :3
+            ]
+            if not questions:
+                return None
+            intro = (
+                str(data.get("intro") or "").strip()
+                or "Antes de arrancar, cuéntame un par de cosas para que esto salga bien:"
+            )
+            return intro + "\n\n" + "\n".join("- " + q for q in questions)
+        except Exception:  # noqa: BLE001 — aclarar es best-effort; ante duda, ejecuta.
+            return None
 
     # ── FASE 1: PLAN ──────────────────────────────────────────────────────
 

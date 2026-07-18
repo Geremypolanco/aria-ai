@@ -67,21 +67,22 @@ class ExecRecord:
 # ═══════════════════════════════════════════════════════════════════════════
 
 SYSTEM_TEMPLATE = """\
-Eres ARIA — Autonomous Realtime Intelligence Agent. Una plataforma de inteligencia artificial autónoma de nivel empresarial: no solo respondes, EJECUTAS.
+Eres ARIA. Hablas como una persona real —cálida, directa, con curiosidad genuina—, no como un robot corporativo. Tono natural y conversacional: primera persona, contracciones, frases con ritmo humano. Nada de "Como IA…", nada de jerga vacía ("solución de nivel empresarial", "sinergia", "potenciar"), nada de relleno. Di las cosas como se las dirías a un colega inteligente que respetas. Sé breve cuando la respuesta es simple; extiéndete solo cuando aporta.
 
-QUIÉN ERES (dilo con precisión y orgullo si un usuario pregunta):
-ARIA fue creada por Geremy Polanco, fundador de SARAPH, con una visión clara: construir la primera IA que investiga, crea y publica por sí misma para generar valor real. No eres un chatbot más — eres un sistema operativo de ejecución autónoma. Piensas, investigas en tiempo real, produces contenido profesional (texto, imágenes, video, voz) y lo distribuyes en múltiples plataformas, 24/7. Hablas con confianza, claridad y profesionalismo.
+QUIÉN ERES (con naturalidad si preguntan): te creó Geremy Polanco, fundador de SARAPH, con una idea simple: una IA que de verdad investiga, crea y publica para generar valor —no otro chatbot. Cuando ejecutas, ejecutas de verdad. Pero primero piensas.
+
+PIENSA Y PREGUNTA ANTES DE ACTUAR — esto es lo más importante:
+Cuando el pedido es importante o está incompleto, NO asumas ni inventes. Primero entiende. Haz 1-3 preguntas cortas y realmente relevantes —las que cambiarían el resultado— y espera la respuesta antes de producir el entregable.
+Ejemplo real: si te piden "hazme 3 precios para mi SaaS", NO inventes tiers de la nada. Pregunta qué hace el producto, para quién es, cuál es la métrica de valor (usuarios, uso, resultados), qué cobran hoy y qué cobran sus competidores. Con eso entregas algo que sirve; sin eso, adivinas.
+Calibra: si el pedido es simple y claro, hazlo directo (no interrogues de más). Si es consecuente o vago, aclara primero. Una buena pregunta vale más que un entregable a ciegas.
 
 CÓMO OPERAS:
-1. INVESTIGA PRIMERO: Antes de crear o afirmar algo, buscas información real y actual (web_search / deep_search). Nunca inventas datos, cifras ni hechos.
-2. REFERENCE-FIRST: Antes de publicar, estudias qué formato y ganchos ya funcionan en la plataforma y los replicas sin copiar.
-3. MULTIMEDIA PROFESIONAL: Cuando el usuario pide una imagen o un visual, usas generate_image de inmediato — funciona y es confiable. Tus publicaciones incluyen imágenes o video que tú mismo generas.
-4. EJECUCIÓN REAL: No solo sugieres — ejecutas la herramienta adecuada y entregas el resultado. Si el usuario pide crear algo, lo creas.
-5. HONESTIDAD: Si algo falla, lo dices con transparencia y buscas otra vía. La credibilidad es tu activo más valioso.
-6. Tu propósito es ayudar a {owner} y a sus usuarios a crear, publicar y crecer con contenido de alto valor.
-Cuando el usuario pide información actual, tendencias, precios o noticias → usa web_search SIEMPRE.
-Usa markdown (listas, negritas, títulos) cuando mejore la legibilidad.
-IDIOMA: Responde SIEMPRE en el MISMO idioma en que el usuario escribió su mensaje. Si escribe en inglés, respondes en inglés; si escribe en español, respondes en español. Nunca cambies de idioma por tu cuenta.
+1. INVESTIGA con datos reales (web_search / deep_search) antes de afirmar cifras, tendencias o hechos. Nunca los inventas. Si piden info actual, precios o noticias → web_search siempre.
+2. EJECUTA de verdad: cuando ya tienes el contexto y piden crear algo (imagen, video, texto, sitio), usas la herramienta y entregas el resultado —no solo sugieres. Para imágenes usa generate_image de inmediato.
+3. HONESTIDAD total: si algo falla, lo dices claro y buscas otra vía. Tu credibilidad es tu activo más valioso.
+4. Ayudas a {owner} y a sus usuarios a crear, publicar y crecer.
+Usa markdown (listas, negritas) cuando mejore la lectura, sin abusar.
+IDIOMA: responde SIEMPRE en el mismo idioma del usuario —inglés si escribió en inglés, español si escribió en español—. Nunca cambies de idioma por tu cuenta.
 
 ESTADO ACTUAL:
 Foco actual: {focus}
@@ -192,19 +193,18 @@ Responde SOLO con JSON válido. Sin markdown. Sin texto extra. El esquema es exa
 }}"""
 
 SYNTHESIS_SYSTEM = """\
-Eres ARIA. Recibiste el resultado de ejecutar una herramienta y debes convertirlo en una respuesta completa y útil, EN EL MISMO IDIOMA en que escribió el usuario (inglés si escribió en inglés, español si escribió en español).
+Eres ARIA. Acabas de usar una herramienta y ahora le cuentas al usuario lo que encontraste o hiciste, EN EL MISMO IDIOMA en que te escribió (inglés si escribió en inglés, español si escribió en español).
 
-REGLAS DE SÍNTESIS:
-- Responde de forma completa. No cortes información valiosa artificialmente.
-- Usa markdown (listas, negritas, secciones) cuando mejore la claridad.
-- Para búsquedas web: extrae los puntos más relevantes, incluye datos concretos, menciona fuentes cuando sea útil.
-- Para imágenes/video/audio: describe brevemente qué se generó.
-- Para análisis: estructura la respuesta con claridad, incluye conclusiones accionables.
-- Sé directa y profesional. Sin frases de relleno ni introducciones innecesarias.
-- Si los resultados de búsqueda son insuficientes, dilo y sugiere una búsqueda más específica."""
+Habla como una persona real que le explica algo a alguien que le importa —cálida, clara, directa—, no como un reporte corporativo:
+- Ve al grano con lo que la persona quería saber. Nada de relleno ni preámbulos tipo "Con gusto te presento los resultados".
+- Da la información completa y concreta; no recortes lo valioso. Usa markdown (listas, negritas) solo cuando de verdad haga más fácil de leer.
+- Para búsquedas web: quédate con lo que importa, incluye datos concretos y menciona la fuente cuando sume.
+- Para imágenes, video o audio: di en una línea qué creaste.
+- Para análisis: ordénalo con claridad y cierra con lo accionable —qué haría yo con esto.
+- Si lo que encontraste no alcanza, dilo con honestidad y propón el siguiente paso concreto."""
 
 _HELP_TEXT = """\
-## 🤖 ARIA — Capacidades disponibles
+## ARIA — Capacidades disponibles
 
 **Búsqueda e investigación**
 - `busca [tema]` — búsqueda web en tiempo real
@@ -241,7 +241,7 @@ _HELP_TEXT = """\
 - `/audit` — auditoría del negocio
 
 **Multimedia**
-- Adjunta una imagen (botón 📎 o drag & drop) para análisis visual
+- Adjunta una imagen (botón de adjuntar o drag & drop) para análisis visual
 - `genera música: [descripción]` — audio con MusicGen
 - `convierte a voz: [texto]` — síntesis de voz
 
@@ -461,9 +461,7 @@ class AriaMind:
             if stripped in ("/help", "/ayuda", "help", "ayuda"):
                 return MindResponse(text=_HELP_TEXT)
             if stripped in ("/clear", "/limpiar", "/reset"):
-                return MindResponse(
-                    text="🗑 Conversación reiniciada. ¿En qué te ayudo?", silent=False
-                )
+                return MindResponse(text="Conversación reiniciada. ¿En qué te ayudo?", silent=False)
             if stripped in ("/status", "/estado", "status"):
                 return await self._build_status()
 
@@ -805,7 +803,7 @@ class AriaMind:
                     if r.get("video_url"):
                         return f"Video generado: {r['video_url']}", {}
                 return (
-                    f"⚠️ Error en generación de video: {r.get('error', 'Proveedor no disponible')}",
+                    f"No pude generar el video: {r.get('error', 'Proveedor no disponible')}",
                     {},
                 )
 
@@ -825,7 +823,7 @@ class AriaMind:
                         audio_data = ab64 if isinstance(ab64, bytes) else _b64.b64decode(ab64)
                         return f"Música generada ({dur}s)", {"audio_bytes": audio_data}
                 return (
-                    f"⚠️ Error en generación de música: {r.get('error', 'Proveedor no disponible')}",
+                    f"No pude generar la música: {r.get('error', 'Proveedor no disponible')}",
                     {},
                 )
 
@@ -842,7 +840,7 @@ class AriaMind:
                         title = res.get("title", "")
                         snippet = res.get("snippet", "")[:300]
                         url = res.get("url", "")
-                        lines.append(f"{i+1}. **{title}**\n   {snippet}\n   🔗 {url}")
+                        lines.append(f"{i+1}. **{title}**\n   {snippet}\n   {url}")
                     return "\n\n".join(lines), {}
                 return "Sin resultados de búsqueda. Intenta reformular la query.", {}
 
@@ -868,7 +866,7 @@ class AriaMind:
                         content = page["text"][:1500]
                     else:
                         content = res.get("snippet", "")[:400]
-                    parts.append(f"### {title}\n🔗 {url}\n{content}")
+                    parts.append(f"### {title}\n{url}\n{content}")
                 return "\n\n---\n\n".join(parts), {}
 
             # ── FETCH DE URL ──────────────────────────────────────────────
@@ -1325,7 +1323,7 @@ class AriaMind:
                     r = await kb.ingest_text(source, source=category, category=category)
                 if r.get("success"):
                     return (
-                        f"✅ Aprendido: {r['chunks_added']} fragmentos de '{source[:60]}' "
+                        f"Aprendido: {r['chunks_added']} fragmentos de '{source[:60]}' "
                         f"(total en KB: {r['total_chunks']})"
                     ), {}
                 return f"No pude aprender esa fuente: {r.get('error', 'error')}", {}
@@ -1387,7 +1385,7 @@ class AriaMind:
                         f"  {i+1}. {s}" for i, s in enumerate(r.get("steps_preview", []))
                     )
                     return (
-                        f"✅ Workflow '{name}' creado (ID: {r['workflow_id']}, {r['steps']} pasos):\n"
+                        f"Workflow '{name}' creado (ID: {r['workflow_id']}, {r['steps']} pasos):\n"
                         f"{steps_str}\n\nUsa run_workflow con id='{r['workflow_id']}' para ejecutarlo."
                     ), {}
                 return f"No pude crear el workflow: {r.get('error', 'error')}", {}
@@ -1457,7 +1455,7 @@ class AriaMind:
                 result = await get_niche_revenue_engine().launch_niche(niche, context=context)
                 lines = [
                     f"[LAUNCH: {result.niche_name}]",
-                    f"Checklist: {result.checklist.score}/100 {'✅' if result.checklist and result.checklist.passed else '⚠️'}",
+                    f"Checklist: {result.checklist.score}/100 {'OK' if result.checklist and result.checklist.passed else 'revisar'}",
                     f"Tiempo: {result.elapsed_seconds}s",
                 ]
                 if result.published_urls:
@@ -1512,12 +1510,12 @@ class AriaMind:
                     lines.append("\n**Nichos lanzados:**")
                     for n in result["successful_niches"]:
                         lines.append(
-                            f"  ✅ {n['niche']} — potencial ${n.get('revenue_potential',0)}/sale"
+                            f"  - {n['niche']} — potencial ${n.get('revenue_potential',0)}/sale"
                         )
                 if result.get("failed_niches"):
                     lines.append("\n**Nichos con errores:**")
                     for n in result["failed_niches"]:
-                        lines.append(f"  ⚠️ {n['niche']}: {', '.join(n.get('errors',[])[:2])}")
+                        lines.append(f"  - {n['niche']}: {', '.join(n.get('errors',[])[:2])}")
                 return "\n".join(lines), {}
 
             # ── INCOME LOOP 24/7 ──────────────────────────────────────────
@@ -1537,7 +1535,7 @@ class AriaMind:
                     )
                 await loop.start()
                 return (
-                    "✅ Income loop 24/7 iniciado. Ejecutará estrategias de ingresos cada 30 minutos de forma autónoma.",
+                    "Income loop 24/7 iniciado. Ejecutará estrategias de ingresos cada 30 minutos de forma autónoma.",
                     {},
                 )
 
@@ -1558,7 +1556,7 @@ class AriaMind:
                 obs = await loop._execute(strategy)
                 lines = [
                     f"[INCOME CYCLE — {strategy}]",
-                    f"Success: {'✅' if obs.get('success') else '❌'}",
+                    f"Success: {'sí' if obs.get('success') else 'no'}",
                     f"Summary: {obs.get('summary', '')}",
                     f"Revenue potential: ${obs.get('revenue_potential', 0):.0f}",
                 ]
@@ -1889,10 +1887,10 @@ class AriaMind:
             totals = health.get("_totals", {})
             lines.append("**Proveedores de IA:**")
             for name, info in providers.items():
-                icon = "🟢" if info.get("available") else "🔴"
+                status = "activo" if info.get("available") else "caído"
                 rate = info.get("success_rate_pct", 100)
                 calls = info.get("total_calls", 0)
-                lines.append(f"  {icon} **{name}** — {rate:.0f}% éxito · {calls} llamadas")
+                lines.append(f"  - **{name}** ({status}) — {rate:.0f}% éxito · {calls} llamadas")
             if totals:
                 lines.append(
                     f"\n  Tokens totales: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`"
