@@ -91,7 +91,10 @@ jobs:
           # never blank-wipes a value set directly on Fly (e.g. connector creds
           # configured through the Fly dashboard/API). This is idempotent and safe.
           args=()
-          add() { [ -n "$2" ] && args+=("$1=$2"); }
+          # NOTE: must return 0 even when the value is empty — the step runs under
+          # `bash -e`, so a bare `[ -n "$2" ] && ...` would return 1 on an empty
+          # secret and abort the whole deploy before flyctl ever runs.
+          add() { if [ -n "$2" ]; then args+=("$1=$2"); fi; }
           add TELEGRAM_TOKEN "$TELEGRAM_TOKEN"
           add TELEGRAM_CHAT_ID "$TELEGRAM_CHAT_ID"
           add HF_TOKEN "$HF_TOKEN"
