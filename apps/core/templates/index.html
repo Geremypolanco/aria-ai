@@ -13,7 +13,7 @@
 <style>
   :root{
     --bg:#ffffff; --soft:#f6f7f9; --ink:#0a0a0f; --ink2:#3f3f46; --muted:#71717a;
-    --line:#e8e8ee; --brand:#4f46e5; --brand2:#7c3aed; --brandink:#4338ca;
+    --line:#e8e8ee; --brand:#15E06A; --brand2:#12b7a6; --brandink:#057a52;
     --r:14px; --rl:22px; --maxw:1120px;
     --sh1:0 1px 2px rgba(15,17,26,.06);
     --sh2:0 14px 34px -14px rgba(15,17,26,.20);
@@ -26,7 +26,7 @@
   a{color:inherit;text-decoration:none}
   img,svg{display:block;max-width:100%}
   .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
-  ::selection{background:rgba(79,70,229,.16)}
+  ::selection{background:rgba(21,224,106,.18)}
 
   /* nav */
   .nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.75);backdrop-filter:saturate(180%) blur(16px);border-bottom:1px solid var(--line)}
@@ -51,14 +51,14 @@
   .hero{position:relative;overflow:hidden;padding:84px 0 40px;text-align:center}
   .mesh{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
   .mesh i{position:absolute;border-radius:50%;filter:blur(80px);opacity:.5}
-  .mesh .a{width:520px;height:520px;left:-6%;top:-24%;background:radial-gradient(circle,#c7d2fe,transparent 62%)}
-  .mesh .b{width:500px;height:500px;right:-8%;top:-16%;background:radial-gradient(circle,#e9d5ff,transparent 62%)}
+  .mesh .a{width:520px;height:520px;left:-6%;top:-24%;background:radial-gradient(circle,#bbf7d0,transparent 62%)}
+  .mesh .b{width:500px;height:500px;right:-8%;top:-16%;background:radial-gradient(circle,#c7f5e6,transparent 62%)}
   .mesh .c{width:440px;height:440px;left:40%;top:6%;background:radial-gradient(circle,#cffafe,transparent 62%)}
   .hero .wrap{position:relative;z-index:1}
   .eyebrow{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:7px 15px;font-size:12.5px;font-weight:600;color:var(--ink2);box-shadow:var(--sh1)}
   .dot{width:7px;height:7px;border-radius:50%;background:var(--brand)}
   h1{font-size:clamp(38px,7vw,74px);line-height:1.02;letter-spacing:-.03em;font-weight:800;color:var(--ink);margin:26px auto 0;max-width:16ch}
-  .grad{background:linear-gradient(100deg,var(--brand),var(--brand2) 60%,#6366f1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .grad{background:linear-gradient(100deg,var(--brand),var(--brand2) 55%,var(--brandink));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
   .lede{font-size:clamp(17px,2.3vw,20px);color:var(--ink2);max-width:640px;margin:22px auto 0}
   .cta{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:32px}
 
@@ -94,7 +94,7 @@
   .float{position:absolute;z-index:3;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:var(--sh3);overflow:hidden;display:none}
   .float.one{left:-38px;top:96px;width:172px;transform:rotate(-6deg)}
   .float.two{right:-30px;top:150px;width:160px;transform:rotate(6deg);padding:14px}
-  .float .thumb{height:92px;background:linear-gradient(135deg,#6366f1,#a855f7)}
+  .float .thumb{height:92px;background:linear-gradient(135deg,#15E06A,#12b7a6)}
   .float .cap{padding:9px 12px}
   .float .cap b{display:block;font-size:12px;color:var(--ink)}
   .float .cap span{font-size:11px;color:var(--muted)}
@@ -133,10 +133,10 @@
   .dark{background:#0b0b12;border-color:#1c1c26;color:#a1a1aa}
   .dark h3{color:#fff}.dark p{color:#a1a1aa}
   .logline{margin-top:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.9;color:#8b8b98}
-  .logline .g{color:#34d399}.logline .i{color:#818cf8}
+  .logline .g{color:#34d399}.logline .i{color:#5eead4}
   .medias{position:relative;height:220px;margin-top:22px}
   .m1,.m2,.m3{position:absolute;border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh2);overflow:hidden}
-  .m1{left:4px;top:6px;width:150px;height:104px;transform:rotate(-6deg);background:linear-gradient(135deg,#818cf8,#7c3aed)}
+  .m1{left:4px;top:6px;width:150px;height:104px;transform:rotate(-6deg);background:linear-gradient(135deg,#4be3a0,#12b7a6)}
   .m2{right:6px;top:34px;width:96px;height:150px;transform:rotate(7deg);background:linear-gradient(180deg,#111,#333);display:grid;place-items:center}
   .m2 .play{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.95);display:grid;place-items:center;color:var(--brandink);font-size:14px}
   .m3{left:20px;bottom:2px;width:176px;height:56px;background:#fff;display:flex;align-items:center;gap:10px;padding:0 14px}
@@ -164,10 +164,10 @@
   .price .btn{width:100%;margin-top:22px}
 
   /* cta */
-  .ctabox{position:relative;overflow:hidden;border-radius:30px;background:linear-gradient(135deg,#4f46e5,#7c3aed 55%,#4338ca);color:#fff;text-align:center;padding:74px 26px;box-shadow:var(--sh3)}
+  .ctabox{position:relative;overflow:hidden;border-radius:30px;background:linear-gradient(140deg,#0b9e5e,#0e8a7d 52%,#064a34);color:#fff;text-align:center;padding:74px 26px;box-shadow:var(--sh3)}
   .ctabox .blob{position:absolute;border-radius:50%;background:rgba(255,255,255,.12);filter:blur(30px)}
   .ctabox h2{color:#fff}
-  .ctabox p{color:#e0e7ff;max-width:520px;margin:14px auto 0;font-size:17px}
+  .ctabox p{color:#d3f6e6;max-width:520px;margin:14px auto 0;font-size:17px}
   .btn-white{background:#fff;color:var(--brandink)}
   .btn-white:hover{transform:translateY(-1px);box-shadow:var(--sh2);background:#f4f4ff}
 
@@ -186,7 +186,7 @@
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
   <linearGradient id="am" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">
-    <stop offset="0" stop-color="#93a6ff"/><stop offset=".42" stop-color="#3f52dd"/><stop offset=".78" stop-color="#2530a0"/><stop offset="1" stop-color="#161d70"/>
+    <stop offset="0" stop-color="#7bf3b0"/><stop offset=".42" stop-color="#15E06A"/><stop offset=".78" stop-color="#0a9d5a"/><stop offset="1" stop-color="#053b2a"/>
   </linearGradient>
   <symbol id="mark" viewBox="0 0 100 100"><g stroke-linecap="round" stroke-linejoin="round" fill="none">
     <path d="M23 83 C 29 52, 40 28, 49 13 C 57 26, 64 36, 70 46" stroke="url(#am)" stroke-width="12.5"/>
@@ -256,10 +256,10 @@
       <h3>Research-first</h3>
       <p>Every mission starts by pulling live signals from the web — trends, sources, competitors — so the output is grounded, not guessed.</p>
       <svg class="chart" viewBox="0 0 500 120" preserveAspectRatio="none">
-        <defs><linearGradient id="ar" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#6366f1" stop-opacity=".22"/><stop offset="1" stop-color="#6366f1" stop-opacity="0"/></linearGradient></defs>
+        <defs><linearGradient id="ar" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#15E06A" stop-opacity=".22"/><stop offset="1" stop-color="#15E06A" stop-opacity="0"/></linearGradient></defs>
         <path d="M0,98 L62,82 L124,90 L186,56 L248,66 L310,32 L372,46 L434,20 L500,28 L500,120 L0,120Z" fill="url(#ar)"/>
-        <path d="M0,98 L62,82 L124,90 L186,56 L248,66 L310,32 L372,46 L434,20 L500,28" fill="none" stroke="#4f46e5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="310" cy="32" r="4" fill="#4f46e5"/><circle cx="434" cy="20" r="4" fill="#4f46e5"/>
+        <path d="M0,98 L62,82 L124,90 L186,56 L248,66 L310,32 L372,46 L434,20 L500,28" fill="none" stroke="#0aa25c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="310" cy="32" r="4" fill="#0aa25c"/><circle cx="434" cy="20" r="4" fill="#0aa25c"/>
       </svg>
     </div>
     <div class="card c2 reveal" style="grid-row:span 2">
@@ -278,7 +278,7 @@
       <p>Push the finished asset straight to your connected channels — or schedule it. One click, everywhere.</p>
     </div>
     <div class="card c3 dark reveal">
-      <div class="ico" style="background:#15151f;border-color:#26263400;color:#818cf8"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+      <div class="ico" style="background:#15151f;border-color:#26263400;color:#4be3a0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
       <h3>Auditable trail</h3>
       <p>Every step, timestamped — nothing is a black box.</p>
       <div class="logline">00:00 <span class="g">[ok]</span> research · 12 sources<br>00:14 <span class="g">[ok]</span> draft · script + caption<br>00:39 <span class="i">[..]</span> media · image + voice</div>
