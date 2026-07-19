@@ -11,15 +11,15 @@
   <style>
     * { -webkit-tap-highlight-color: transparent; }
     body { font-family: 'Inter', sans-serif; background: #0a0a0f; color: #f1f5f9; }
-    .gradient-text { background: linear-gradient(135deg, #8b5cf6, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .gradient-text { background: linear-gradient(135deg, #15E06A, #12b7a6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     .card { background: #111118; border: 1px solid #1e1e2a; border-radius: 16px; transition: all 0.2s; }
     .card:active { transform: scale(0.98); }
-    .btn-primary { background: linear-gradient(135deg, #8b5cf6, #6d28d9); border-radius: 12px; padding: 12px 20px; font-weight: 600; }
+    .btn-primary { background: linear-gradient(135deg, #15E06A, #057a52); color: #04150d; border-radius: 12px; padding: 12px 20px; font-weight: 600; }
     .btn-primary:active { transform: scale(0.97); }
     .glass { background: rgba(17,17,24,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid #1e1e2a; }
     .badge { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
     .msg-user { background: #1e1e2a; border-radius: 16px 16px 4px 16px; padding: 12px 16px; max-width: 85%; }
-    .msg-aria { background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.2); border-radius: 16px 16px 16px 4px; padding: 12px 16px; max-width: 85%; }
+    .msg-aria { background: rgba(21,224,106,0.12); border: 1px solid rgba(21,224,106,0.22); border-radius: 16px 16px 16px 4px; padding: 12px 16px; max-width: 85%; }
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 2px; }
@@ -41,7 +41,7 @@
         <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="w-7 h-7">
           <defs>
             <linearGradient id="ariaGlassD" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stop-color="#93a6ff"/><stop offset=".42" stop-color="#3f52dd"/><stop offset=".78" stop-color="#2530a0"/><stop offset="1" stop-color="#161d70"/></linearGradient>
+              <stop offset="0" stop-color="#7bf3b0"/><stop offset=".42" stop-color="#15E06A"/><stop offset=".78" stop-color="#0a9d5a"/><stop offset="1" stop-color="#053b2a"/></linearGradient>
             <linearGradient id="ariaSpecD" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
             <filter id="ariaShD" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2.5" stdDeviation="3" flood-color="#141a63" flood-opacity=".5"/></filter>
@@ -69,7 +69,7 @@
   <!-- SIDEBAR -->
   <div class="fixed top-14 left-0 bottom-0 w-64 bg-[#0d0d14] border-r border-[#1e1e2a] z-50 transform transition-transform duration-300" :class="sidebar ? 'translate-x-0' : '-translate-x-full'">
     <div class="p-4 space-y-1">
-      <a href="/dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-500/10 text-purple-300 text-sm font-medium">
+      <a href="/dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/10 text-emerald-300 text-sm font-medium">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
         Dashboard
       </a>
@@ -116,20 +116,20 @@
     <div class="mb-6">
       <h2 class="text-sm font-semibold text-slate-400 mb-3">ACCIONES RÁPIDAS</h2>
       <div class="grid grid-cols-2 gap-2">
-        <button @click="quickAction('chat')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
-          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        <button @click="quickAction('chat')" class="card p-3 text-center text-sm font-medium hover:border-emerald-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
           Chat
         </button>
-        <button @click="quickAction('code')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
-          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        <button @click="quickAction('code')" class="card p-3 text-center text-sm font-medium hover:border-emerald-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
           Código
         </button>
-        <button @click="quickAction('research')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
-          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <button @click="quickAction('research')" class="card p-3 text-center text-sm font-medium hover:border-emerald-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
           Investigar
         </button>
-        <button @click="quickAction('run')" class="card p-3 text-center text-sm font-medium hover:border-purple-500/30 active:scale-95 transition-all">
-          <svg class="w-5 h-5 mx-auto mb-1.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <button @click="quickAction('run')" class="card p-3 text-center text-sm font-medium hover:border-emerald-500/30 active:scale-95 transition-all">
+          <svg class="w-5 h-5 mx-auto mb-1.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           Ejecutar
         </button>
       </div>
@@ -151,16 +151,16 @@
           <div x-show="thinking" class="flex justify-start">
             <div class="msg-aria">
               <div class="flex gap-1.5 py-1">
-                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
-                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
-                <span class="w-2 h-2 rounded-full bg-purple-400 dot-pulse"></span>
+                <span class="w-2 h-2 rounded-full bg-emerald-400 dot-pulse"></span>
+                <span class="w-2 h-2 rounded-full bg-emerald-400 dot-pulse"></span>
+                <span class="w-2 h-2 rounded-full bg-emerald-400 dot-pulse"></span>
               </div>
             </div>
           </div>
         </div>
         <!-- Input -->
         <div class="border-t border-[#1e1e2a] p-3 flex gap-2">
-          <input type="text" x-model="chatInput" @keydown.enter="sendMessage" placeholder="Mensaje para ARIA..." class="flex-1 bg-[#1a1a24] rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-purple-500/30 placeholder-slate-600">
+          <input type="text" x-model="chatInput" @keydown.enter="sendMessage" placeholder="Mensaje para ARIA..." class="flex-1 bg-[#1a1a24] rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-emerald-500/30 placeholder-slate-600">
           <button @click="sendMessage" :disabled="!chatInput.trim() || thinking" class="btn-primary px-4 py-2.5 text-sm disabled:opacity-30" :class="thinking ? 'animate-pulse' : ''">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
           </button>
@@ -263,7 +263,7 @@
           if (!text) return '';
           let h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           h = h.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre class="bg-[#0a0a0f] p-3 rounded-xl overflow-x-auto text-xs my-2"><code>$2</code></pre>');
-          h = h.replace(/`([^`\n]+)`/g, '<code class="bg-[#0a0a0f] px-1.5 py-0.5 rounded text-xs text-purple-300">$1</code>');
+          h = h.replace(/`([^`\n]+)`/g, '<code class="bg-[#0a0a0f] px-1.5 py-0.5 rounded text-xs text-emerald-300">$1</code>');
           h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
           h = h.replace(/\n/g, '<br>');
           return h;

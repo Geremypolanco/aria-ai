@@ -31,7 +31,7 @@
         <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="h-8 w-8">
           <defs>
             <linearGradient id="ariaGlassA" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stop-color="#93a6ff"/><stop offset=".42" stop-color="#3f52dd"/><stop offset=".78" stop-color="#2530a0"/><stop offset="1" stop-color="#161d70"/></linearGradient>
+              <stop offset="0" stop-color="#7bf3b0"/><stop offset=".42" stop-color="#15E06A"/><stop offset=".78" stop-color="#0a9d5a"/><stop offset="1" stop-color="#053b2a"/></linearGradient>
             <linearGradient id="ariaSpecA" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
             <filter id="ariaShA" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2.5" stdDeviation="3" flood-color="#141a63" flood-opacity=".5"/></filter>
@@ -42,8 +42,8 @@
             <path d="M26 79 C 32 51, 42 30, 49 17" stroke="url(#ariaSpecA)" stroke-width="2.6" opacity=".7"/>
           </g>
         </svg>
-        <h1 class="text-xl font-semibold tracking-tight"><span class="font-light tracking-[0.28em] text-zinc-900">ARIA</span> · <span class="text-indigo-600">God Mode</span></h1>
-        <span class="mono rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-600">SYSTEM CONSOLE</span>
+        <h1 class="text-xl font-semibold tracking-tight"><span class="font-light tracking-[0.28em] text-zinc-900">ARIA</span> · <span class="text-emerald-600">God Mode</span></h1>
+        <span class="mono rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">SYSTEM CONSOLE</span>
       </div>
       <p class="mt-1 text-xs text-zinc-500 mono">owner-only · autonomous SaaS operations</p>
     </div>
@@ -64,7 +64,7 @@
   <section class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
     <div class="rounded-2xl border border-zinc-200 bg-white/50 p-5">
       <div class="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Net margin (real)</div>
-      <div id="kMargin" class="mono mt-2 text-3xl font-extrabold text-indigo-600">—</div>
+      <div id="kMargin" class="mono mt-2 text-3xl font-extrabold text-emerald-600">—</div>
       <div id="kMarginSub" class="mt-1 text-xs text-zinc-500">revenue − est. API spend</div>
     </div>
     <div class="rounded-2xl border border-zinc-200 bg-white/50 p-5">
@@ -130,7 +130,7 @@ let PANIC = false;
 async function refresh(){
   try{
     const r = await fetch('/admin/api/overview', {credentials:'same-origin'});
-    if(!r.ok){ document.body.innerHTML = '<div class="grid h-screen place-items-center text-indigo-600 mono">403 — admin only</div>'; return; }
+    if(!r.ok){ document.body.innerHTML = '<div class="grid h-screen place-items-center text-emerald-600 mono">403 — admin only</div>'; return; }
     const d = await r.json();
     render(d);
   }catch(e){ /* keep last state */ }
@@ -140,7 +140,7 @@ function money(n){ const v = Number(n||0); return (v<0?'-$':'$') + Math.abs(v).t
 
 function render(d){
   document.getElementById('kMargin').textContent = money(d.net_margin_usd);
-  document.getElementById('kMargin').className = 'mono mt-2 text-3xl font-extrabold ' + (Number(d.net_margin_usd)>=0?'text-indigo-600':'text-red-400');
+  document.getElementById('kMargin').className = 'mono mt-2 text-3xl font-extrabold ' + (Number(d.net_margin_usd)>=0?'text-emerald-600':'text-red-400');
   document.getElementById('kMarginSub').textContent = 'rev ' + money(d.revenue_usd) + ' − spend ' + money(d.estimated_api_spend_usd);
   document.getElementById('kSpend').textContent = money(d.estimated_api_spend_usd);
   const fly = d.fly_instances;
@@ -151,7 +151,7 @@ function render(d){
   document.getElementById('kFrozen').textContent = frozen + ' frozen (burn cap)';
 
   // connectors
-  const dot = s => s==='online'?'bg-emerald-400':s==='degraded'?'bg-indigo-400':s==='offline'?'bg-red-500':'bg-zinc-600';
+  const dot = s => s==='online'?'bg-emerald-400':s==='degraded'?'bg-amber-400':s==='offline'?'bg-red-500':'bg-zinc-600';
   document.getElementById('connectors').innerHTML = Object.values(d.connectors||{}).map(c =>
     '<div class="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-2">'
     + '<span class="h-2 w-2 rounded-full '+dot(c.status)+' '+(c.status==='offline'?'blink':'')+'"></span>'
@@ -168,7 +168,7 @@ function render(d){
       + '<td class="px-5 py-3 text-zinc-600">'+esc(u.name||'—')+'</td>'
       + '<td class="px-5 py-3 text-zinc-500">'+esc(u.provider||'—')+'</td>'
       + '<td class="px-5 py-3">'+(isFrozen?'<span class="rounded bg-red-500/15 px-2 py-0.5 text-[11px] text-red-300">frozen</span>':'<span class="rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300">active</span>')+'</td>'
-      + '<td class="px-5 py-3 text-right"><button onclick="impersonate(\''+esc(u.email)+'\')" class="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1 text-[12px] font-semibold text-indigo-600 hover:bg-indigo-500/20">Impersonate</button></td>'
+      + '<td class="px-5 py-3 text-right"><button onclick="impersonate(\''+esc(u.email)+'\')" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[12px] font-semibold text-emerald-600 hover:bg-emerald-500/20">Impersonate</button></td>'
       + '</tr>';
   }).join('');
   document.getElementById('usersBody').innerHTML = rows;

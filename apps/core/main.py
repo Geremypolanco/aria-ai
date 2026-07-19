@@ -186,15 +186,16 @@ _LOGIN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>ARIA · Admin</title><style>
 *{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:radial-gradient(120% 90% at 20% 10%,rgba(79,70,229,.10),transparent 45%),#ffffff;color:#18181b}}
-.card{{width:360px;max-width:92vw;background:#ffffff;border:1px solid #e4e4e7;
-border-radius:18px;padding:36px 30px;box-shadow:0 1px 2px rgba(24,24,27,.04),0 24px 60px -20px rgba(24,24,27,.15)}}
-h1{{font-size:22px;margin-bottom:6px;color:#18181b}} p{{color:#52525b;font-size:14px;margin-bottom:22px}}
-input{{width:100%;padding:13px 15px;border-radius:11px;border:1px solid #d4d4d8;
-background:#fff;color:#18181b;font-size:15px;margin-bottom:14px}}
-button{{width:100%;padding:13px;border:0;border-radius:11px;font-weight:600;font-size:15px;cursor:pointer;
-background:#4f46e5;color:#fff}}
-.err{{color:#e11d48;font-size:13px;margin-bottom:12px}} .mut{{color:#71717a;font-size:12px;margin-top:16px;text-align:center}}
+background:radial-gradient(120% 90% at 20% 10%,rgba(21,224,106,.10),transparent 45%),#ffffff;color:#0a0f0c}}
+.card{{width:360px;max-width:92vw;background:#ffffff;border:1px solid #e5ece8;
+border-radius:18px;padding:36px 30px;box-shadow:0 1px 2px rgba(10,20,15,.05),0 24px 60px -20px rgba(10,20,15,.18)}}
+h1{{font-size:22px;margin-bottom:6px;color:#0a0f0c}} p{{color:#52605a;font-size:14px;margin-bottom:22px}}
+input{{width:100%;padding:13px 15px;border-radius:11px;border:1px solid #d7e0da;
+background:#fff;color:#0a0f0c;font-size:15px;margin-bottom:14px}}
+input:focus{{outline:0;border-color:#9fe9c6;box-shadow:0 0 0 4px rgba(21,224,106,.14)}}
+button{{width:100%;padding:13px;border:0;border-radius:11px;font-weight:700;font-size:15px;cursor:pointer;
+background:#15E06A;color:#04150d;box-shadow:0 8px 24px -6px rgba(21,224,106,.45)}}
+.err{{color:#e11d48;font-size:13px;margin-bottom:12px}} .mut{{color:#6b756f;font-size:12px;margin-top:16px;text-align:center}}
 </style></head><body><form class="card" method="post" action="/admin/login">
 <h1>Control panel</h1><p>Admin access only.</p>
 {error}<input type="password" name="password" placeholder="Admin password" autofocus required>
@@ -846,65 +847,6 @@ async def login_submit(
     return _auth_success_redirect(profile["email"], profile.get("name", ""), "email")
 
 
-# ── legacy OAuth-only login card (kept for reference; no longer routed) ─────
-def _legacy_login_card():
-    from apps.core import auth
-
-    g = (
-        '<a class="btn" href="/auth/google"><span>Continue with Google</span></a>'
-        if auth.google_enabled()
-        else ""
-    )
-    gh = (
-        '<a class="btn gh" href="/auth/github"><span>Continue with GitHub</span></a>'
-        if auth.github_enabled()
-        else ""
-    )
-    body = g + gh or '<p style="color:#fb7185">Login not configured.</p>'
-    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Sign in</title><style>
-*{{margin:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
-body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:radial-gradient(120% 90% at 80% 10%,rgba(79,70,229,.08),transparent 45%),
-radial-gradient(120% 90% at 10% 90%,rgba(34,211,238,.08),transparent 45%),#ffffff;color:#18181b}}
-.card{{width:400px;max-width:92vw;background:#ffffff;border:1px solid #e4e4e7;
-border-radius:20px;padding:42px 34px;text-align:center;box-shadow:0 1px 2px rgba(24,24,27,.04),0 24px 60px -20px rgba(24,24,27,.15)}}
-.brand{{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:20px}}
-.brand .wm{{font-size:21px;font-weight:300;letter-spacing:.3em;padding-left:.3em;color:#18181b}}
-h1{{font-size:24px;margin-bottom:8px;color:#18181b}} p{{color:#52525b;font-size:15px;margin-bottom:26px}}
-.btn{{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;
-border-radius:12px;border:1px solid #d4d4d8;background:#ffffff;
-color:#18181b;text-decoration:none;font-weight:600;font-size:15px;margin-bottom:12px;transition:background .2s}}
-.btn:hover{{background:#f4f4f5}} .btn.gh{{background:#fafafa;border-color:#d4d4d8}}
-.mut{{color:#71717a;font-size:12px;margin-top:18px}} a.lnk{{color:#4f46e5;text-decoration:none}}
-</style></head><body><div class="card">
-<div class="brand">
-  <svg width="38" height="38" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-    <defs>
-      <linearGradient id="ariaGlassL" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#93a6ff"/><stop offset=".42" stop-color="#3f52dd"/><stop offset=".78" stop-color="#2530a0"/><stop offset="1" stop-color="#161d70"/></linearGradient>
-      <linearGradient id="ariaSpecL" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-      <filter id="ariaShL" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2.5" stdDeviation="3" flood-color="#141a63" flood-opacity=".5"/></filter>
-    </defs>
-    <g filter="url(#ariaShL)" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <path d="M23 83 C 29 52, 40 28, 49 13 C 57 26, 64 36, 70 46" stroke="url(#ariaGlassL)" stroke-width="12.5"/>
-      <path d="M70 46 C 79 61, 74 79, 56 78 C 41 77, 39 58, 53 53 C 63 50, 70 50, 70 46 Z" stroke="url(#ariaGlassL)" stroke-width="12.5"/>
-      <path d="M26 79 C 32 51, 42 30, 49 17" stroke="url(#ariaSpecL)" stroke-width="2.6" opacity=".7"/>
-    </g>
-  </svg>
-  <span class="wm">ARIA</span>
-</div>
-<h1>Sign in</h1>
-<p>Access your personal workspace.</p>{body}
-<div class="mut">By continuing you agree to our <a class="lnk" href="/legal/terms">Terms</a>,
-<a class="lnk" href="/legal/privacy">Privacy</a> &amp;
-<a class="lnk" href="/legal/refund-policy">Refund Policy</a>.
-<a class="lnk" href="/">← Home</a></div>
-</div></body></html>"""
-    return HTMLResponse(html)
-
-
 def _oauth_redirect(url: str | None, state: str, fallback: str) -> RedirectResponse:
     """Redirect to the provider, binding `state` to the browser via a cookie."""
     if not url:
@@ -1219,13 +1161,13 @@ background:#ffffff;color:#3f3f46;padding:20px}}
 padding:32px 28px;box-shadow:0 1px 2px rgba(24,24,27,.04),0 24px 60px -20px rgba(24,24,27,.15)}}
 h1{{font-size:22px;margin-bottom:4px;color:#18181b}} .price{{color:#52525b;font-size:14px;margin-bottom:22px}}
 .price b{{color:#18181b}}
-.ack{{display:flex;gap:12px;align-items:flex-start;background:#f8f8fc;border:1px solid #e4e4e7;
+.ack{{display:flex;gap:12px;align-items:flex-start;background:#f3f8f5;border:1px solid #e5ece8;
 border-radius:12px;padding:14px 14px;margin-bottom:20px}}
-.ack input{{margin-top:3px;width:18px;height:18px;accent-color:#6366f1;flex:0 0 auto;cursor:pointer}}
-.ack label{{font-size:13.5px;line-height:1.55;color:#3f3f46;cursor:pointer}}
+.ack input{{margin-top:3px;width:18px;height:18px;accent-color:#15E06A;flex:0 0 auto;cursor:pointer}}
+.ack label{{font-size:13.5px;line-height:1.55;color:#3f4a44;cursor:pointer}}
 .btn{{display:block;width:100%;text-align:center;padding:13px;border-radius:12px;border:0;
-background:#4f46e5;color:#fff;font-weight:600;font-size:15px;
-text-decoration:none;cursor:pointer;transition:opacity .15s}}
+background:#15E06A;color:#04150d;font-weight:700;font-size:15px;box-shadow:0 8px 24px -6px rgba(21,224,106,.45);
+text-decoration:none;cursor:pointer;transition:filter .15s}}
 .btn[aria-disabled="true"]{{opacity:.4;pointer-events:none}}
 .sub{{text-align:center;margin-top:14px;font-size:12.5px}}
 .sub a{{color:#71717a;text-decoration:none;margin:0 8px}} .sub a:hover{{color:#18181b}}
