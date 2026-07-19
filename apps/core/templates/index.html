@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>ARIA — The AI that executes</title>
-<meta name="description" content="ARIA is an autonomous AI that researches the live web, creates images, video and voice, and publishes across your channels — with a full, auditable trail of everything it does." />
+<meta name="description" content="Give ARIA a goal and watch it work: it researches the live web, creates images, video and voice, and publishes across your channels — live, end to end, with a full auditable trail." />
 <link rel="canonical" href="https://aria-ai.fly.dev/" />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/favicon.svg" />
@@ -13,13 +13,13 @@
 <meta property="og:site_name" content="ARIA" />
 <meta property="og:url" content="https://aria-ai.fly.dev/" />
 <meta property="og:title" content="ARIA — The AI that executes" />
-<meta property="og:description" content="Autonomous AI that researches the live web, creates images, video and voice, and publishes across your channels — auditable end to end." />
+<meta property="og:description" content="Give ARIA a goal and watch it work — research, creation and publishing, live and end to end, with the receipts to prove it." />
 <meta property="og:image" content="https://aria-ai.fly.dev/og-cover.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="ARIA — The AI that executes" />
-<meta name="twitter:description" content="Autonomous AI that researches, creates, and publishes — auditable end to end." />
+<meta name="twitter:description" content="Give ARIA a goal and watch it work — research, creation and publishing, live and end to end." />
 <meta name="twitter:image" content="https://aria-ai.fly.dev/og-cover.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -46,17 +46,13 @@
   .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
   ::selection{background:rgba(21,224,106,.24)}
 
-  /* ── reveal system ── */
   [data-reveal]{opacity:0;transform:translateY(28px);filter:blur(6px);transition:opacity .9s var(--ease),transform .9s var(--ease),filter .9s var(--ease);transition-delay:var(--d,0ms)}
   [data-reveal].in{opacity:1;transform:none;filter:none}
   @media(prefers-reduced-motion:reduce){[data-reveal]{opacity:1;transform:none;filter:none;transition:none}}
 
-  /* ── buttons ── */
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:15px;border-radius:999px;padding:12px 22px;cursor:pointer;white-space:nowrap;transition:transform .3s var(--ease),box-shadow .3s var(--ease),background .3s,color .3s,border-color .3s}
   .btn-primary{background:var(--neon);color:#04150d;box-shadow:var(--glow)}
   .btn-primary:hover{transform:translateY(-2px);box-shadow:0 22px 68px -12px rgba(21,224,106,.62)}
-  .btn-dark{background:var(--ink);color:#fff}
-  .btn-dark:hover{transform:translateY(-2px);background:#1a1c24;box-shadow:var(--sh2)}
   .btn-outline{background:transparent;border:1px solid var(--line);color:var(--ink)}
   .btn-outline:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:#d3d7dd}
   .btn-lg{padding:15px 30px;font-size:16px}
@@ -65,8 +61,8 @@
   .arrow{transition:transform .3s var(--ease)}
   .btn:hover .arrow{transform:translateX(3px)}
 
-  /* ── nav ── */
-  .nav{position:fixed;top:0;left:0;right:0;z-index:80;transition:background .4s,border-color .4s,box-shadow .4s;border-bottom:1px solid transparent}
+  /* nav */
+  .nav{position:fixed;top:0;left:0;right:0;z-index:80;transition:background .4s,border-color .4s;border-bottom:1px solid transparent}
   .nav .row{display:flex;align-items:center;justify-content:space-between;height:64px}
   .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.26em;font-size:15px;color:#fff;transition:color .4s}
   .brand span{padding-left:.26em}
@@ -75,168 +71,141 @@
   .nav nav a:hover{color:#fff}
   .navr{display:flex;align-items:center;gap:12px}
   .nav .signin{display:none;color:rgba(255,255,255,.82);font-weight:600;font-size:14.5px;transition:color .4s}
-  .nav.scrolled{background:rgba(255,255,255,.78);backdrop-filter:saturate(180%) blur(18px);border-bottom-color:var(--line);box-shadow:0 1px 0 rgba(12,16,24,.02)}
+  .nav.scrolled{background:rgba(255,255,255,.78);backdrop-filter:saturate(180%) blur(18px);border-bottom-color:var(--line)}
   .nav.scrolled .brand{color:var(--ink)}
-  .nav.scrolled nav a{color:var(--ink2)}
-  .nav.scrolled nav a:hover{color:var(--ink)}
-  .nav.scrolled .signin{color:var(--ink2)}
-  .nav.scrolled .signin:hover{color:var(--ink)}
-  @media(min-width:860px){.nav nav{display:flex}.nav .signin{display:inline-flex}}
+  .nav.scrolled nav a{color:var(--ink2)}.nav.scrolled nav a:hover{color:var(--ink)}
+  .nav.scrolled .signin{color:var(--ink2)}.nav.scrolled .signin:hover{color:var(--ink)}
+  @media(min-width:900px){.nav nav{display:flex}.nav .signin{display:inline-flex}}
 
-  /* ── hero (cinematic dark) ── */
-  .hero{position:relative;background:var(--night);color:var(--nink);text-align:center;padding:150px 0 80px;overflow:hidden}
+  /* hero */
+  .hero{position:relative;background:var(--night);color:var(--nink);text-align:center;padding:132px 0 70px;overflow:hidden}
   .aura{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-  .aura i{position:absolute;border-radius:50%;filter:blur(90px);opacity:.55;mix-blend-mode:screen}
-  .aura .g1{width:620px;height:620px;left:-10%;top:-24%;background:radial-gradient(circle,#15E06A,transparent 62%);animation:drift1 16s ease-in-out infinite}
-  .aura .g2{width:560px;height:560px;right:-12%;top:-8%;background:radial-gradient(circle,#12b7a6,transparent 62%);animation:drift2 19s ease-in-out infinite}
-  .aura .g3{width:520px;height:520px;left:44%;top:34%;background:radial-gradient(circle,#0a8f57,transparent 64%);opacity:.4;animation:drift1 22s ease-in-out infinite reverse}
+  .aura i{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;mix-blend-mode:screen}
+  .aura .g1{width:620px;height:620px;left:-10%;top:-26%;background:radial-gradient(circle,#15E06A,transparent 62%);animation:drift1 16s ease-in-out infinite}
+  .aura .g2{width:560px;height:560px;right:-12%;top:-12%;background:radial-gradient(circle,#12b7a6,transparent 62%);animation:drift2 19s ease-in-out infinite}
   @keyframes drift1{50%{transform:translate(38px,30px) scale(1.08)}}
   @keyframes drift2{50%{transform:translate(-34px,26px) scale(1.06)}}
   .grid-fade{position:absolute;inset:0;z-index:0;pointer-events:none;
     background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);
-    background-size:48px 48px;-webkit-mask-image:radial-gradient(120% 78% at 50% 0,#000,transparent 72%);mask-image:radial-gradient(120% 78% at 50% 0,#000,transparent 72%)}
+    background-size:48px 48px;-webkit-mask-image:radial-gradient(120% 74% at 50% 0,#000,transparent 72%);mask-image:radial-gradient(120% 74% at 50% 0,#000,transparent 72%)}
   .hero .wrap{position:relative;z-index:2}
-  .kicker{display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:600;color:#d7f7e6;letter-spacing:.01em}
+  .kicker{display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:600;color:#d7f7e6}
   .kicker .d{width:7px;height:7px;border-radius:50%;background:var(--neon);box-shadow:0 0 12px var(--neon);animation:pulse 1.8s ease-in-out infinite}
   @keyframes pulse{50%{opacity:.45}}
-  .hero h1{font-size:clamp(44px,8.2vw,92px);line-height:.98;letter-spacing:-.045em;font-weight:800;color:#fff;margin:30px auto 0;max-width:15ch}
+  .hero h1{font-size:clamp(42px,7.6vw,84px);line-height:1;letter-spacing:-.045em;font-weight:800;color:#fff;margin:26px auto 0;max-width:15ch}
   .grad{background:linear-gradient(96deg,#4bf0a0,#15E06A 42%,#12b7a6);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .hero .lede{font-size:clamp(17px,2.2vw,21px);color:var(--nmut);max-width:640px;margin:26px auto 0;line-height:1.55}
-  .hero .cta{display:flex;flex-wrap:wrap;gap:13px;justify-content:center;margin-top:38px}
-  .scrollcue{margin-top:60px;display:inline-flex;flex-direction:column;align-items:center;gap:8px;color:var(--nmut);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase}
-  .mouse{width:24px;height:38px;border:1.5px solid rgba(255,255,255,.28);border-radius:14px;position:relative}
-  .mouse::after{content:"";position:absolute;left:50%;top:7px;width:3px;height:7px;border-radius:2px;background:var(--neon);transform:translateX(-50%);animation:scrolldot 1.8s ease-in-out infinite}
-  @keyframes scrolldot{0%{opacity:0;transform:translate(-50%,0)}30%{opacity:1}70%{opacity:1}100%{opacity:0;transform:translate(-50%,12px)}}
+  .hero .lede{font-size:clamp(16px,2.1vw,20px);color:var(--nmut);max-width:600px;margin:22px auto 0;line-height:1.55}
+  .hero .cta{display:flex;flex-wrap:wrap;gap:13px;justify-content:center;margin-top:34px}
 
-  /* ── product showcase ── */
-  .showcase{position:relative;background:var(--night);padding:0 0 130px;overflow:hidden}
-  .showcase .wrap{position:relative;z-index:2}
-  .stage{position:relative;max-width:1000px;margin:0 auto}
-  .stage-glow{position:absolute;left:50%;top:38%;width:80%;height:60%;transform:translate(-50%,-50%);background:radial-gradient(ellipse,rgba(21,224,106,.34),transparent 68%);filter:blur(46px);z-index:0}
-  .window{position:relative;z-index:2;border:1px solid rgba(255,255,255,.1);border-radius:var(--rl);background:#fff;box-shadow:0 60px 120px -40px rgba(0,0,0,.7);overflow:hidden;transform:perspective(1600px) rotateX(6deg) scale(.97);transform-origin:center top;opacity:0;transition:transform 1.2s var(--ease),opacity 1s var(--ease)}
-  .window.in{transform:perspective(1600px) rotateX(0) scale(1);opacity:1}
-  @media(prefers-reduced-motion:reduce){.window{transform:none;opacity:1}}
+  /* ── live mission demo (hero centerpiece) ── */
+  .demowrap{position:relative;max-width:860px;margin:64px auto 0}
+  .demo-glow{position:absolute;left:50%;top:44%;width:78%;height:64%;transform:translate(-50%,-50%);background:radial-gradient(ellipse,rgba(21,224,106,.32),transparent 66%);filter:blur(48px);z-index:0}
+  .demo{position:relative;z-index:2;border:1px solid rgba(255,255,255,.11);border-radius:var(--rl);background:#fff;box-shadow:0 60px 120px -40px rgba(0,0,0,.72);overflow:hidden;text-align:left;
+    transform:perspective(1600px) rotateX(7deg) scale(.97);opacity:0;transition:transform 1.1s var(--ease),opacity .9s var(--ease)}
+  .demo.in{transform:perspective(1600px) rotateX(0) scale(1);opacity:1}
+  @media(prefers-reduced-motion:reduce){.demo{transform:none;opacity:1}}
   .titlebar{display:flex;align-items:center;gap:8px;padding:13px 16px;background:var(--soft);border-bottom:1px solid var(--line)}
   .tl{width:11px;height:11px;border-radius:50%;background:#dfe1e7}
   .url{margin:0 auto;display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 12px;font-size:12px;color:var(--muted);box-shadow:var(--sh1)}
-  .app{display:grid;grid-template-columns:1fr;text-align:left}
-  .side{display:none;border-right:1px solid var(--line);background:#fbfcfd;padding:18px 14px}
-  .side .b{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.18em;color:var(--ink);font-size:12px;margin-bottom:20px}
-  .navi{display:flex;flex-direction:column;gap:4px;font-size:13.5px}
-  .navi a{padding:9px 12px;border-radius:9px;color:var(--muted);font-weight:500}
-  .navi a.on{background:#e9fcf1;color:var(--green-ink);font-weight:600}
-  .main{padding:26px 26px 30px}
-  .hello{font-size:13.5px;color:var(--muted)}
-  .prompt{display:flex;align-items:center;gap:10px;margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:13px 16px;box-shadow:var(--sh1);font-size:14.5px;color:var(--ink2)}
-  .caret{width:2px;height:1.05em;background:var(--neon);display:inline-block;animation:blink 1.05s step-end infinite}
+  .demo-body{padding:24px 26px 26px;min-height:340px}
+  .d-hello{font-size:13px;color:var(--muted)}
+  .d-prompt{display:flex;align-items:center;gap:10px;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--sh1);font-size:14.5px;color:var(--ink);font-weight:500}
+  .d-prompt .go{margin-left:auto;flex:none;width:30px;height:30px;border-radius:8px;background:var(--neon);display:grid;place-items:center;color:#04150d;transition:opacity .3s}
+  .caret{width:2px;height:1.05em;background:var(--neon);display:inline-block;animation:blink 1.05s step-end infinite;vertical-align:-2px}
   @keyframes blink{50%{opacity:0}}
-  .missioncard{margin-top:18px;border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--sh1)}
-  .mc-top{display:flex;align-items:center;justify-content:space-between}
-  .mc-title{font-weight:700;color:var(--ink);font-size:15px}
-  .badge{display:inline-flex;align-items:center;gap:6px;background:#e9fcf1;color:var(--green-ink);border:1px solid #bbf3d5;border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:700}
-  .badge .d{width:6px;height:6px;border-radius:50%;background:var(--neon);animation:pulse 1.4s ease-in-out infinite}
-  .steps{list-style:none;margin-top:16px;display:flex;flex-direction:column;gap:11px}
-  .steps li{display:flex;align-items:center;gap:11px;font-size:13.5px;color:var(--ink2)}
-  .ck{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#fff;flex:none}
-  .ck.ok{background:var(--neon)}.ck.run{background:var(--teal);animation:pulse 1.1s ease-in-out infinite}.ck.wait{background:#fff;border:1.5px solid var(--line)}
-  @media(min-width:760px){.app{grid-template-columns:210px 1fr}.side{display:block}}
-  .float{position:absolute;z-index:3;border:1px solid rgba(255,255,255,.14);border-radius:16px;background:#fff;box-shadow:var(--sh3);overflow:hidden;display:none}
-  .float.one{left:-42px;top:104px;width:176px}
-  .float.two{right:-34px;top:158px;width:164px;padding:14px}
-  .float .thumb{height:94px;background:linear-gradient(135deg,#15E06A,#12b7a6)}
-  .float .cap{padding:9px 12px}
-  .float .cap b{display:block;font-size:12px;color:var(--ink)}
-  .float .cap span{font-size:11px;color:var(--muted)}
-  .wave{display:flex;align-items:flex-end;gap:3px;height:30px;margin-top:8px}
-  .wave i{width:3px;border-radius:2px;background:var(--teal)}
-  @media(min-width:1080px){.float{display:block}}
-  @keyframes floaty{50%{transform:translateY(-12px)}}
-  .float.one{animation:floaty 6s ease-in-out infinite}
-  .float.two{animation:floaty 6s ease-in-out infinite 1.2s}
+  .d-run{margin-top:18px;border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--sh1);opacity:0;transform:translateY(8px);transition:opacity .45s var(--ease),transform .45s var(--ease)}
+  .d-run.show{opacity:1;transform:none}
+  .d-runtop{display:flex;align-items:center;justify-content:space-between;font-size:13px}
+  .d-runtop b{color:var(--ink);font-size:14.5px}
+  .d-status{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:11.5px;border-radius:999px;padding:3px 11px;border:1px solid #bbf3d5;background:#e9fcf1;color:var(--green-ink)}
+  .d-status .dt{width:6px;height:6px;border-radius:50%;background:var(--neon);animation:pulse 1.3s ease-in-out infinite}
+  .d-status.done .dt{animation:none;background:var(--green-ink)}
+  .d-steps{list-style:none;margin-top:15px;display:flex;flex-direction:column;gap:12px}
+  .d-steps li{display:flex;align-items:center;gap:11px;font-size:13.5px;color:var(--muted);opacity:.5;transition:opacity .4s,color .4s}
+  .d-steps li.active{opacity:1;color:var(--ink2)}
+  .d-steps li.ok{opacity:1;color:var(--ink2)}
+  .ck{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;flex:none;background:#eef0f2;border:1.5px solid var(--line);transition:background .3s,border-color .3s}
+  .ck svg{opacity:0;color:#fff;transition:opacity .3s}
+  li.ok .ck{background:var(--neon);border-color:var(--neon)}
+  li.ok .ck svg{opacity:1}
+  li.active .ck{border-color:var(--teal);background:#fff;position:relative}
+  li.active .ck::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--teal);animation:pulse 1s ease-in-out infinite}
+  .d-deliver{margin-top:15px;display:flex;align-items:center;gap:13px;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fbfcfd;max-height:0;opacity:0;overflow:hidden;transition:max-height .5s var(--ease),opacity .5s,margin-top .5s,padding .5s}
+  .d-deliver.show{max-height:110px;opacity:1}
+  .d-thumb{width:74px;height:52px;border-radius:9px;flex:none;background:linear-gradient(135deg,#15E06A,#12b7a6);position:relative;overflow:hidden}
+  .d-thumb::after{content:"▶";position:absolute;inset:0;display:grid;place-items:center;color:rgba(255,255,255,.92);font-size:14px}
+  .d-deliver .meta b{display:block;font-size:13.5px;color:var(--ink)}
+  .d-deliver .meta span{font-size:12px;color:var(--muted)}
+  .d-deliver .grab{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--green-ink);flex:none}
 
-  /* ── marquee (publishes to) ── */
-  .strip{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--soft);overflow:hidden}
+  /* proof strip */
+  .strip{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--soft)}
   .strip-in{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:14px 40px;padding:26px 24px}
   .strip .lbl{font-size:11.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
-  .strip b{font-weight:700;color:#9299a2;font-size:15.5px;letter-spacing:.01em;transition:color .25s}
+  .strip b{font-weight:700;color:#9299a2;font-size:15.5px;transition:color .25s}
   .strip b:hover{color:var(--ink)}
 
-  /* ── statement moments ── */
-  .statement{padding:130px 0;text-align:center}
+  /* statement */
+  .statement{padding:118px 0;text-align:center}
   .statement.dark{background:var(--night);color:#fff}
-  .statement p{font-size:clamp(28px,5.2vw,54px);line-height:1.12;letter-spacing:-.03em;font-weight:800;max-width:17ch;margin:0 auto;color:var(--ink)}
+  .statement p{font-size:clamp(28px,5.2vw,52px);line-height:1.12;letter-spacing:-.03em;font-weight:800;max-width:18ch;margin:0 auto;color:var(--ink)}
   .statement.dark p{color:#fff}
   .statement .hl{color:transparent;background:linear-gradient(96deg,#15E06A,#12b7a6);-webkit-background-clip:text;background-clip:text}
-  .statement .sub{margin-top:22px;font-size:18px;font-weight:400;letter-spacing:normal;color:var(--muted);max-width:40ch}
+  .statement .sub{margin-top:22px;font-size:18px;font-weight:400;letter-spacing:normal;color:var(--muted);max-width:42ch}
   .statement.dark .sub{color:var(--nmut)}
 
-  /* ── sections ── */
+  /* narrative acts */
+  .act{padding:104px 0;border-top:1px solid var(--line)}
+  .act.soft{background:var(--soft)}
+  .actgrid{display:grid;grid-template-columns:1fr;gap:44px;align-items:center}
+  @media(min-width:920px){.actgrid{grid-template-columns:1fr 1fr;gap:70px}.act.flip .actgrid > .visual{order:-1}}
+  .act .step-lbl{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--green-ink)}
+  .act .step-lbl .n{width:24px;height:24px;border-radius:50%;background:var(--neon);color:#04150d;display:grid;place-items:center;font-size:12px;box-shadow:var(--glow)}
+  .act h2{font-size:clamp(28px,4.2vw,40px);line-height:1.08;letter-spacing:-.03em;font-weight:800;color:var(--ink);margin-top:16px}
+  .act p.lede{margin-top:14px;font-size:17px;color:var(--ink2);max-width:46ch}
+  .act .mini{margin-top:20px;display:flex;flex-direction:column;gap:10px}
+  .act .mini .row{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink2)}
+  .act .mini .row svg{flex:none;color:var(--green-ink)}
+
+  .visual{position:relative;border:1px solid var(--line);border-radius:var(--rl);background:#fff;box-shadow:var(--sh2);padding:24px;overflow:hidden;min-height:260px}
+  .visual.dark{background:#0b0c13;border-color:#1b1d27}
+  /* research visual */
+  .src{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;margin-bottom:9px;font-size:13px;color:var(--ink2);background:#fff;box-shadow:var(--sh1)}
+  .src .fav{width:22px;height:22px;border-radius:6px;flex:none;background:linear-gradient(135deg,#15E06A,#12b7a6)}
+  .src .ok{margin-left:auto;color:var(--green-ink)}
+  .src.s2 .fav{background:linear-gradient(135deg,#12b7a6,#0a8f57)}
+  .src.s3 .fav{background:linear-gradient(135deg,#4be3a0,#12b7a6)}
+  /* create visual */
+  .creates{display:grid;grid-template-columns:1.3fr 1fr;gap:14px}
+  .cv-img{border-radius:14px;background:linear-gradient(135deg,#15E06A,#12b7a6);min-height:150px;position:relative;overflow:hidden}
+  .cv-img::after{content:"FLUX";position:absolute;left:12px;bottom:10px;color:rgba(255,255,255,.9);font-size:11px;font-weight:700;letter-spacing:.1em}
+  .cv-side{display:flex;flex-direction:column;gap:14px}
+  .cv-vid{flex:1;border-radius:14px;background:linear-gradient(180deg,#111,#2a2a2a);display:grid;place-items:center;min-height:80px}
+  .cv-vid .p{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.95);display:grid;place-items:center;color:var(--green-ink)}
+  .cv-voice{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px}
+  .cv-voice span{font-size:11px;font-weight:700;color:var(--teal)}
+  .wave{display:flex;align-items:flex-end;gap:3px;height:28px}
+  .wave i{width:3px;border-radius:2px;background:var(--teal);animation:eq 1s ease-in-out infinite}
+  @keyframes eq{50%{transform:scaleY(.45)}}
+  /* publish visual */
+  .chans{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .chan{border:1px solid var(--line);border-radius:13px;padding:14px 10px;text-align:center;font-size:12px;font-weight:600;color:var(--ink2);background:#fff;box-shadow:var(--sh1)}
+  .chan .ic{width:34px;height:34px;border-radius:9px;margin:0 auto 8px;display:grid;place-items:center;background:#f0fdf6;color:var(--green-ink)}
+  .chan .st{display:block;margin-top:5px;font-size:10.5px;font-weight:700;color:var(--green-ink)}
+  /* prove visual */
+  .console{border:1px solid var(--nline);border-radius:16px;background:#0b0c13;overflow:hidden}
+  .console .bar{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--nline)}
+  .console .bar .t{width:9px;height:9px;border-radius:50%;background:#22242f}
+  .console .bar .lbl{margin-left:8px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--nmut)}
+  .console .body{padding:16px 16px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:2;color:#aab2bd}
+  .console .ts{color:#5a626e}.console .okk{color:#34d399}.console .rn{color:#5eead4}
+
+  /* pricing */
   .sec{padding:112px 0}
-  .sec.alt{background:var(--soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-  .head{max-width:660px}
-  .head.center{margin:0 auto;text-align:center}
+  .head{max-width:660px;margin:0 auto;text-align:center}
   .eyebrow{font-size:12.5px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--green-ink)}
-  h2{font-size:clamp(30px,4.8vw,46px);line-height:1.06;letter-spacing:-.03em;font-weight:800;color:var(--ink);margin-top:14px}
+  h2.big{font-size:clamp(30px,4.8vw,46px);line-height:1.06;letter-spacing:-.03em;font-weight:800;color:var(--ink);margin-top:14px}
   .head p{margin-top:16px;font-size:18px;color:var(--ink2)}
-
-  /* ── features bento ── */
-  .bento{display:grid;grid-template-columns:1fr;gap:18px;margin-top:56px}
-  @media(min-width:760px){.bento{grid-template-columns:repeat(6,1fr)}}
-  .card{border:1px solid var(--line);background:#fff;border-radius:var(--rl);padding:32px;box-shadow:var(--sh1);transition:transform .4s var(--ease),box-shadow .4s var(--ease),border-color .4s}
-  .card:hover{transform:translateY(-6px);box-shadow:var(--sh2);border-color:#dfe3e8}
-  .card h3{font-size:19px;color:var(--ink);font-weight:700}
-  .card p{margin-top:10px;font-size:14.5px;color:var(--ink2)}
-  .ico{width:46px;height:46px;border-radius:13px;border:1px solid var(--line);display:grid;place-items:center;color:var(--green-ink);background:#f0fdf6;margin-bottom:18px}
-  .c4{grid-column:span 4}.c2{grid-column:span 2}.c3{grid-column:span 3}
-  @media(max-width:759px){.c4,.c2,.c3{grid-column:auto}}
-  .chart{margin-top:22px;width:100%;height:120px}
-  .dark{background:#0b0c13;border-color:#1b1d27;color:var(--nmut)}
-  .dark:hover{border-color:#282b38}
-  .dark h3{color:#fff}.dark p{color:var(--nmut)}
-  .dark .ico{background:#14161f;border-color:#242734;color:#4be3a0}
-  .logline{margin-top:16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.95;color:#8b909b}
-  .logline .g{color:#34d399}.logline .i{color:#5eead4}
-  .medias{position:relative;height:220px;margin-top:24px}
-  .m1,.m2,.m3{position:absolute;border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh2);overflow:hidden}
-  .m1{left:4px;top:6px;width:150px;height:104px;transform:rotate(-6deg);background:linear-gradient(135deg,#4be3a0,#12b7a6)}
-  .m2{right:6px;top:34px;width:96px;height:150px;transform:rotate(7deg);background:linear-gradient(180deg,#111,#333);display:grid;place-items:center}
-  .m2 .play{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.95);display:grid;place-items:center;color:var(--green-ink);font-size:14px}
-  .m3{left:20px;bottom:2px;width:176px;height:56px;background:#fff;display:flex;align-items:center;gap:10px;padding:0 14px}
-  .m3 span{font-size:11px;font-weight:700;color:var(--teal)}
-
-  /* ── how ── */
-  .how{display:grid;grid-template-columns:1fr;gap:20px;margin-top:56px;position:relative}
-  @media(min-width:760px){.how{grid-template-columns:repeat(3,1fr)}}
-  .step{position:relative}
-  .num{width:46px;height:46px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:800;font-size:15px;box-shadow:var(--sh2)}
-  .step h3{margin-top:20px;font-size:20px;color:var(--ink);font-weight:700}
-  .step p{margin-top:10px;font-size:15px;color:var(--ink2)}
-
-  /* ── observability spotlight (dark) ── */
-  .spot{background:var(--night);color:var(--nink);border-radius:0}
-  .spotgrid{display:grid;grid-template-columns:1fr;gap:44px;align-items:center}
-  @media(min-width:900px){.spotgrid{grid-template-columns:1fr 1fr;gap:64px}}
-  .spot .eyebrow{color:#4be3a0}
-  .spot h2{color:#fff}
-  .spot .lede{margin-top:16px;font-size:18px;color:var(--nmut);max-width:44ch}
-  .spot ul{list-style:none;margin-top:26px;display:flex;flex-direction:column;gap:14px}
-  .spot li{display:flex;gap:12px;font-size:15px;color:var(--nink)}
-  .spot li svg{flex:none;margin-top:3px;color:var(--neon)}
-  .console{border:1px solid var(--nline);border-radius:18px;background:#0b0c13;box-shadow:0 40px 90px -40px rgba(0,0,0,.8);overflow:hidden}
-  .console .bar{display:flex;align-items:center;gap:8px;padding:12px 15px;border-bottom:1px solid var(--nline)}
-  .console .bar .t{width:10px;height:10px;border-radius:50%;background:#22242f}
-  .console .bar .lbl{margin-left:8px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--nmut)}
-  .console .body{padding:18px 18px 20px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:2;color:#aab2bd}
-  .console .ts{color:#5a626e}.console .ok{color:#34d399}.console .rn{color:#5eead4}
-  .console .row2{opacity:0;transform:translateY(6px);transition:opacity .5s var(--ease),transform .5s var(--ease)}
-  .console.in .row2{opacity:1;transform:none}
-  .console.in .row2:nth-child(1){transition-delay:.05s}
-  .console.in .row2:nth-child(2){transition-delay:.35s}
-  .console.in .row2:nth-child(3){transition-delay:.65s}
-  .console.in .row2:nth-child(4){transition-delay:.95s}
-  .console.in .row2:nth-child(5){transition-delay:1.25s}
-
-  /* ── pricing ── */
   .prices{display:grid;grid-template-columns:1fr;gap:20px;margin-top:56px;align-items:center}
   @media(min-width:860px){.prices{grid-template-columns:repeat(3,1fr)}}
   .price{border:1px solid var(--line);background:#fff;border-radius:var(--rl);padding:32px;box-shadow:var(--sh1);transition:transform .4s var(--ease),box-shadow .4s var(--ease)}
@@ -253,17 +222,16 @@
   .price li svg{flex:none;margin-top:3px;color:var(--green-ink)}
   .price .btn{width:100%;margin-top:24px}
 
-  /* ── final cta ── */
+  /* final cta */
   .final{padding:0 0 120px}
-  .ctabox{position:relative;overflow:hidden;border-radius:34px;background:var(--night);color:#fff;text-align:center;padding:92px 26px;box-shadow:var(--sh3)}
+  .ctabox{position:relative;overflow:hidden;border-radius:34px;background:var(--night);color:#fff;text-align:center;padding:96px 26px;box-shadow:var(--sh3)}
   .ctabox .caura{position:absolute;border-radius:50%;filter:blur(80px);opacity:.6;mix-blend-mode:screen}
   .ctabox .ca1{width:340px;height:340px;right:-60px;top:-90px;background:radial-gradient(circle,#15E06A,transparent 62%)}
   .ctabox .ca2{width:320px;height:320px;left:-60px;bottom:-100px;background:radial-gradient(circle,#12b7a6,transparent 62%)}
-  .ctabox h2{position:relative;color:#fff;font-size:clamp(32px,5.4vw,52px)}
+  .ctabox h2{position:relative;color:#fff;font-size:clamp(32px,5.4vw,52px);letter-spacing:-.03em;font-weight:800}
   .ctabox p{position:relative;color:var(--nmut);max-width:520px;margin:16px auto 0;font-size:18px}
   .ctabox .cta{position:relative;margin-top:30px;display:flex;justify-content:center}
 
-  /* ── footer ── */
   footer{border-top:1px solid var(--line);padding:48px 0 40px}
   .foot{display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between}
   .foot .brand{color:var(--ink)}
@@ -287,52 +255,44 @@
 <!-- NAV -->
 <header class="nav" id="nav"><div class="wrap row">
   <a class="brand" href="/"><svg width="30" height="30"><use href="#mark"/></svg><span>ARIA</span></a>
-  <nav><a href="#features">Features</a><a href="#how">How it works</a><a href="#observability">Observability</a><a href="#pricing">Pricing</a></nav>
+  <nav><a href="#watch">Watch it work</a><a href="#how">How</a><a href="#pricing">Pricing</a></nav>
   <div class="navr"><a class="signin" href="/login">Sign in</a><a class="btn btn-primary" href="/signup">Get started</a></div>
 </div></header>
 
 <!-- HERO -->
 <section class="hero">
-  <div class="aura"><i class="g1"></i><i class="g2"></i><i class="g3"></i></div>
+  <div class="aura"><i class="g1"></i><i class="g2"></i></div>
   <div class="grid-fade"></div>
   <div class="wrap">
-    <span class="kicker" data-reveal><span class="d"></span> Autonomous AI · research → create → publish</span>
-    <h1 data-reveal style="--d:80ms">The AI that <span class="grad">executes.</span></h1>
-    <p class="lede" data-reveal style="--d:160ms">ARIA doesn't just answer. It researches the live web, generates images, video &amp; voice, and publishes across your channels — with a full, auditable trail of everything it did.</p>
+    <span class="kicker" data-reveal><span class="d"></span> Autonomous AI · watch it work</span>
+    <h1 data-reveal style="--d:80ms">Give it a goal.<br><span class="grad">Watch it work.</span></h1>
+    <p class="lede" data-reveal style="--d:160ms">Most AI hands you an answer. ARIA does the job — it researches the live web, creates the media, and publishes it. Live, end to end, with the receipts to prove it.</p>
     <div class="cta" data-reveal style="--d:240ms">
       <a class="btn btn-primary btn-lg" href="/signup">Get started — no card <span class="arrow">→</span></a>
-      <a class="btn btn-glass btn-lg" href="#how">See how it works</a>
+      <a class="btn btn-glass btn-lg" href="#watch">See it run</a>
     </div>
-    <div class="scrollcue" data-reveal style="--d:360ms"><span class="mouse"></span>Scroll</div>
-  </div>
-</section>
 
-<!-- PRODUCT SHOWCASE -->
-<section class="showcase">
-  <div class="wrap">
-    <div class="stage">
-      <div class="stage-glow"></div>
-      <div class="float one"><div class="thumb"></div><div class="cap"><b>Hero image</b><span>FLUX · generated</span></div></div>
-      <div class="float two"><b style="font-size:12px;color:var(--ink)">Voiceover</b><div class="wave"><i style="height:9px"></i><i style="height:20px"></i><i style="height:12px"></i><i style="height:26px"></i><i style="height:10px"></i><i style="height:18px"></i><i style="height:28px"></i><i style="height:9px"></i><i style="height:16px"></i></div><span style="font-size:11px;color:var(--muted)">ElevenLabs · 20s</span></div>
-      <div class="window" id="win">
+    <!-- LIVE MISSION DEMO -->
+    <div class="demowrap" id="watch">
+      <div class="demo-glow"></div>
+      <div class="demo" id="demo">
         <div class="titlebar"><span class="tl"></span><span class="tl"></span><span class="tl"></span>
           <span class="url"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> aria-ai.fly.dev/app</span></div>
-        <div class="app">
-          <aside class="side">
-            <div class="b"><svg width="22" height="22"><use href="#mark"/></svg> ARIA</div>
-            <div class="navi"><a class="on">Chat</a><a>Connectors</a><a>Settings</a></div>
-          </aside>
-          <div class="main">
-            <div class="hello">Good morning, Alex</div>
-            <div class="prompt"><svg width="20" height="20"><use href="#mark"/></svg><span id="typed"></span><span class="caret"></span></div>
-            <div class="missioncard">
-              <div class="mc-top"><div class="mc-title">Launch reel · AI trends</div><span class="badge"><span class="d"></span>Running</span></div>
-              <ul class="steps">
-                <li><span class="ck ok"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Researched 12 live sources</li>
-                <li><span class="ck ok"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Wrote script + caption</li>
-                <li><span class="ck run">•</span> Generating hero image + voiceover…</li>
-                <li><span class="ck wait"></span> Queue to connected channels</li>
-              </ul>
+        <div class="demo-body">
+          <div class="d-hello">Good morning, Alex</div>
+          <div class="d-prompt"><svg width="20" height="20"><use href="#mark"/></svg><span id="dtype"></span><span class="caret" id="dcaret"></span><span class="go" id="dgo" style="opacity:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span></div>
+          <div class="d-run" id="drun">
+            <div class="d-runtop"><b>Launch reel · AI trends</b><span class="d-status" id="dstatus"><span class="dt"></span><span id="dstatustxt">Running</span></span></div>
+            <ul class="d-steps" id="dsteps">
+              <li data-s="0"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Researched the live web — 12 sources</li>
+              <li data-s="1"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Wrote the script + caption</li>
+              <li data-s="2"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Generated hero image + 20s voiceover</li>
+              <li data-s="3"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Published to 3 connected channels</li>
+            </ul>
+            <div class="d-deliver" id="ddeliver">
+              <div class="d-thumb"></div>
+              <div class="meta"><b>launch-reel.mp4</b><span>1080×1920 · 22s · ready</span></div>
+              <span class="grab">Open →</span>
             </div>
           </div>
         </div>
@@ -341,98 +301,109 @@
   </div>
 </section>
 
-<!-- PUBLISHES TO -->
+<!-- PROOF STRIP -->
 <div class="strip"><div class="strip-in"><span class="lbl">Publishes to</span><b>YouTube</b><b>LinkedIn</b><b>Instagram</b><b>X</b><b>TikTok</b><b>Facebook</b></div></div>
 
-<!-- STATEMENT 1 -->
+<!-- STATEMENT -->
 <section class="statement"><div class="wrap">
-  <p data-reveal>Most AI stops at the answer.<br><span class="hl">ARIA delivers the finished work.</span></p>
-  <p class="sub" data-reveal style="--d:120ms">No copy-paste. No half-built to-do list. A real deliverable, done end to end.</p>
+  <p data-reveal>You just watched it<br><span class="hl">do the whole job.</span></p>
+  <p class="sub" data-reveal style="--d:120ms">No copy-paste, no half-built to-do list. Here's each move it made — and how you'd run it yourself.</p>
 </div></section>
 
-<!-- FEATURES -->
-<section class="sec alt" id="features"><div class="wrap">
-  <div class="head center" data-reveal><span class="eyebrow">The workflow</span><h2>One agent. The whole workflow.</h2><p>Research, creation and distribution — done end to end, not handed back as a to-do list.</p></div>
-  <div class="bento">
-    <div class="card c4" data-reveal>
-      <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></div>
-      <h3>Research-first</h3>
-      <p>Every task starts by pulling live signals from the web — trends, sources, competitors — so the output is grounded, not guessed.</p>
-      <svg class="chart" viewBox="0 0 500 120" preserveAspectRatio="none">
-        <defs><linearGradient id="ar" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#15E06A" stop-opacity=".22"/><stop offset="1" stop-color="#15E06A" stop-opacity="0"/></linearGradient></defs>
-        <path d="M0,98 L62,82 L124,90 L186,56 L248,66 L310,32 L372,46 L434,20 L500,28 L500,120 L0,120Z" fill="url(#ar)"/>
-        <path d="M0,98 L62,82 L124,90 L186,56 L248,66 L310,32 L372,46 L434,20 L500,28" fill="none" stroke="#0aa25c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="310" cy="32" r="4" fill="#0aa25c"/><circle cx="434" cy="20" r="4" fill="#0aa25c"/>
-      </svg>
+<!-- ACT 1 · RESEARCH -->
+<section class="act soft" id="how"><div class="wrap"><div class="actgrid">
+  <div data-reveal>
+    <span class="step-lbl"><span class="n">1</span> Research</span>
+    <h2>It reads the live web first.</h2>
+    <p class="lede">Every job starts with real signals — current trends, primary sources, competitors — so what ARIA makes is grounded, not guessed. Sources are cited and kept.</p>
+    <div class="mini">
+      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Live web search, read and summarized</div>
+      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Every claim traced to a source</div>
     </div>
-    <div class="card c2" data-reveal style="--d:90ms;grid-row:span 2">
-      <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg></div>
-      <h3>Content &amp; media</h3>
-      <p>Text, images, short-form video and voiceover — generated on brief.</p>
-      <div class="medias">
-        <div class="m1"></div>
-        <div class="m2"><span class="play">▶</span></div>
-        <div class="m3"><span>voice</span><div class="wave"><i style="height:8px"></i><i style="height:18px"></i><i style="height:11px"></i><i style="height:24px"></i><i style="height:9px"></i><i style="height:17px"></i><i style="height:25px"></i></div></div>
+  </div>
+  <div class="visual" data-reveal style="--d:120ms">
+    <div class="src"><span class="fav"></span> techcrunch.com — "AI agents in 2026" <span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l4 4L19 7"/></svg></span></div>
+    <div class="src s2"><span class="fav"></span> arxiv.org — autonomous orchestration <span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l4 4L19 7"/></svg></span></div>
+    <div class="src s3"><span class="fav"></span> news.ycombinator.com — top threads <span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l4 4L19 7"/></svg></span></div>
+    <div class="src"><span class="fav"></span> +9 more sources read <span class="ok" style="font-size:12px;font-weight:700">12 total</span></div>
+  </div>
+</div></div></section>
+
+<!-- ACT 2 · CREATE -->
+<section class="act flip"><div class="wrap"><div class="actgrid">
+  <div data-reveal>
+    <span class="step-lbl"><span class="n">2</span> Create</span>
+    <h2>It makes the media, on brief.</h2>
+    <p class="lede">Text, images, short-form video and voiceover — produced to match the goal, not stitched from stock. One brief in, a finished asset out.</p>
+    <div class="mini">
+      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Images and video generated to spec</div>
+      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Script, caption and voiceover included</div>
+    </div>
+  </div>
+  <div class="visual" data-reveal style="--d:120ms">
+    <div class="creates">
+      <div class="cv-img"></div>
+      <div class="cv-side">
+        <div class="cv-vid"><span class="p"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span></div>
+        <div class="cv-voice"><span>voice</span><div class="wave"><i style="height:9px"></i><i style="height:20px;animation-delay:.1s"></i><i style="height:12px;animation-delay:.2s"></i><i style="height:26px;animation-delay:.3s"></i><i style="height:10px;animation-delay:.4s"></i><i style="height:18px;animation-delay:.5s"></i></div></div>
       </div>
     </div>
-    <div class="card c3" data-reveal>
-      <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg></div>
-      <h3>Multi-channel publishing</h3>
-      <p>Push the finished asset straight to your connected channels — or schedule it. One click, everywhere.</p>
-    </div>
-    <div class="card c3 dark" data-reveal style="--d:90ms">
-      <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
-      <h3>Auditable trail</h3>
-      <p>Every step, timestamped — nothing is a black box.</p>
-      <div class="logline">00:00 <span class="g">[ok]</span> research · 12 sources<br>00:14 <span class="g">[ok]</span> draft · script + caption<br>00:39 <span class="i">[..]</span> media · image + voice</div>
+  </div>
+</div></div></section>
+
+<!-- ACT 3 · PUBLISH -->
+<section class="act soft"><div class="wrap"><div class="actgrid">
+  <div data-reveal>
+    <span class="step-lbl"><span class="n">3</span> Publish</span>
+    <h2>It ships to your channels.</h2>
+    <p class="lede">Connect your accounts once. ARIA pushes the finished asset straight to them — or schedules it. One goal, live everywhere.</p>
+    <div class="mini">
+      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Post now or schedule</div>
+      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> You approve before anything goes out</div>
     </div>
   </div>
-</div></section>
-
-<!-- HOW -->
-<section class="sec" id="how"><div class="wrap">
-  <div class="head center" data-reveal><span class="eyebrow">How it works</span><h2>From a sentence to shipped.</h2></div>
-  <div class="how">
-    <div class="step card" data-reveal><div class="num">1</div><h3>Describe the goal</h3><p>"Research today's AI trends and draft a launch reel." Plain language — no prompt engineering.</p></div>
-    <div class="step card" data-reveal style="--d:120ms"><div class="num">2</div><h3>ARIA executes</h3><p>It researches, writes, generates media and assembles the deliverable — autonomously, step by step.</p></div>
-    <div class="step card" data-reveal style="--d:240ms"><div class="num">3</div><h3>Review &amp; publish</h3><p>You get the finished asset plus a full log of what it did. Approve and publish anywhere.</p></div>
-  </div>
-</div></section>
-
-<!-- OBSERVABILITY SPOTLIGHT -->
-<section class="sec spot" id="observability"><div class="wrap">
-  <div class="spotgrid">
-    <div data-reveal>
-      <span class="eyebrow">Observability</span>
-      <h2>Every move, on the record.</h2>
-      <p class="lede">ARIA works in the open. Watch each step happen live, and keep a timestamped receipt of exactly what ran, what it read, and what it produced.</p>
-      <ul>
-        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Live step-by-step execution — no black box</li>
-        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Sources cited, media logged, timestamps kept</li>
-        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Review before anything is published</li>
-      </ul>
+  <div class="visual" data-reveal style="--d:120ms">
+    <div class="chans">
+      <div class="chan"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.8.5 9.4.5 9.4.5s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg></div>YouTube<span class="st">Posted</span></div>
+      <div class="chan"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45z"/></svg></div>LinkedIn<span class="st">Posted</span></div>
+      <div class="chan"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.16-.42-.36-1.06-.41-2.23C2.17 15.58 2.16 15.2 2.16 12s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16zM12 5.84A6.16 6.16 0 1 0 18.16 12 6.16 6.16 0 0 0 12 5.84z"/></svg></div>Instagram<span class="st">Scheduled</span></div>
     </div>
-    <div class="console" id="console" data-reveal style="--d:120ms">
+  </div>
+</div></div></section>
+
+<!-- ACT 4 · PROVE -->
+<section class="act flip"><div class="wrap"><div class="actgrid">
+  <div data-reveal>
+    <span class="step-lbl"><span class="n">4</span> Prove</span>
+    <h2>Every move, on the record.</h2>
+    <p class="lede">ARIA works in the open. You get a timestamped receipt of exactly what ran, what it read, and what it produced — nothing is a black box.</p>
+    <div class="mini">
+      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Full step-by-step run log</div>
+      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Sources, media and timings kept</div>
+    </div>
+  </div>
+  <div class="visual dark" data-reveal style="--d:120ms">
+    <div class="console">
       <div class="bar"><span class="t"></span><span class="t"></span><span class="t"></span><span class="lbl">aria · run log</span></div>
       <div class="body">
-        <div class="row2"><span class="ts">00:00</span> <span class="ok">[ok]</span> plan · decomposed goal → 4 steps</div>
-        <div class="row2"><span class="ts">00:03</span> <span class="ok">[ok]</span> research · read 12 live sources</div>
-        <div class="row2"><span class="ts">00:14</span> <span class="ok">[ok]</span> draft · script + caption written</div>
-        <div class="row2"><span class="ts">00:39</span> <span class="rn">[..]</span> media · image + 20s voiceover</div>
-        <div class="row2"><span class="ts">00:52</span> <span class="rn">[..]</span> publish · queued to 3 channels</div>
+        <div><span class="ts">00:00</span> <span class="okk">[ok]</span> plan · goal → 4 steps</div>
+        <div><span class="ts">00:03</span> <span class="okk">[ok]</span> research · 12 sources read</div>
+        <div><span class="ts">00:14</span> <span class="okk">[ok]</span> draft · script + caption</div>
+        <div><span class="ts">00:39</span> <span class="okk">[ok]</span> media · image + 20s voice</div>
+        <div><span class="ts">01:12</span> <span class="okk">[ok]</span> publish · 3 channels · done</div>
       </div>
     </div>
   </div>
-</div></section>
+</div></div></section>
 
 <!-- STATEMENT 2 -->
 <section class="statement dark"><div class="wrap">
-  <p data-reveal>Give it a goal.<br><span class="hl">Get back the work.</span></p>
+  <p data-reveal>Stop prompting.<br><span class="hl">Start delegating.</span></p>
 </div></section>
 
 <!-- PRICING -->
-<section class="sec alt" id="pricing"><div class="wrap">
-  <div class="head center" data-reveal><span class="eyebrow">Pricing</span><h2>Simple, honest pricing.</h2><p>Start free. Upgrade when ARIA is doing real work for you. Cancel anytime.</p></div>
+<section class="sec" id="pricing"><div class="wrap">
+  <div class="head" data-reveal><span class="eyebrow">Pricing</span><h2 class="big">Simple, honest pricing.</h2><p>Start free. Upgrade when ARIA is doing real work for you. Cancel anytime.</p></div>
   <div class="prices">
     <div class="price" data-reveal>
       <h3>Free</h3><div class="amt">$0</div><div class="subt">To try ARIA</div>
@@ -466,7 +437,7 @@
 <footer><div class="wrap">
   <div class="foot">
     <a class="brand" href="/"><svg width="26" height="26"><use href="#mark"/></svg><span>ARIA</span></a>
-    <div class="links"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/refund-policy">Refund Policy</a><a href="/health">Status</a><a href="/login">Sign in</a></div>
+    <div class="links"><a href="#watch">Watch it work</a><a href="#pricing">Pricing</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/refund-policy">Refund Policy</a><a href="/health">Status</a><a href="/login">Sign in</a></div>
   </div>
   <div class="copy">© <span id="yr">2026</span> ARIA. The AI that executes.</div>
 </div></footer>
@@ -474,14 +445,12 @@
 <script>
   document.getElementById('yr').textContent = new Date().getFullYear();
 
-  // Adaptive nav: transparent over the dark hero, frosted-light after scroll.
   var nav = document.getElementById('nav');
   function onScroll(){ nav.classList.toggle('scrolled', window.scrollY > 40); }
   onScroll(); window.addEventListener('scroll', onScroll, {passive:true});
 
-  // Scroll reveals.
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var targets = document.querySelectorAll('[data-reveal], #win, #console');
+  var targets = document.querySelectorAll('[data-reveal], #demo');
   if (reduce || !('IntersectionObserver' in window)) {
     targets.forEach(function(el){ el.classList.add('in'); });
   } else {
@@ -491,16 +460,61 @@
     targets.forEach(function(el){ io.observe(el); });
   }
 
-  // Typing demo in the product mockup.
+  // ── Self-running mission demo ──
   (function(){
-    var el = document.getElementById('typed'); if(!el) return;
-    var p = ["Research today's AI trends and post a reel…","Write a LinkedIn post from our blog…","Generate a hero image + 20s voiceover…"];
-    var i=0,j=0,del=false;
-    function t(){ var f=p[i]; j+=del?-1:1; el.textContent=f.slice(0,j);
-      if(!del&&j===f.length){del=true;return setTimeout(t,1500);}
-      if(del&&j===0){del=false;i=(i+1)%p.length;return setTimeout(t,320);}
-      setTimeout(t,del?22:48);
-    } t();
+    var GOAL = "Research today's AI trends and ship a launch reel";
+    var dtype = document.getElementById('dtype'), caret = document.getElementById('dcaret'),
+        go = document.getElementById('dgo'), run = document.getElementById('drun'),
+        steps = Array.prototype.slice.call(document.querySelectorAll('#dsteps li')),
+        deliver = document.getElementById('ddeliver'), status = document.getElementById('dstatus'),
+        statustxt = document.getElementById('dstatustxt');
+    if(!dtype) return;
+    var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+
+    function reset(){
+      dtype.textContent=''; go.style.opacity='0'; caret.style.display='';
+      run.classList.remove('show'); deliver.classList.remove('show');
+      status.classList.remove('done'); statustxt.textContent='Running';
+      steps.forEach(function(s){ s.classList.remove('active','ok'); });
+    }
+
+    async function type(){
+      for(var i=0;i<=GOAL.length;i++){ dtype.textContent=GOAL.slice(0,i); await sleep(34); }
+      go.style.opacity='1'; caret.style.display='none';
+    }
+
+    async function play(){
+      if (reduce){
+        // Static completed state for reduced motion.
+        dtype.textContent=GOAL; caret.style.display='none'; go.style.opacity='1';
+        run.classList.add('show'); steps.forEach(function(s){ s.classList.add('ok'); });
+        deliver.classList.add('show'); status.classList.add('done'); statustxt.textContent='Done · 1m 12s';
+        return;
+      }
+      while(true){
+        reset(); await sleep(700);
+        await type(); await sleep(450);
+        run.classList.add('show'); await sleep(500);
+        for(var i=0;i<steps.length;i++){
+          steps[i].classList.add('active');
+          await sleep(i===2?1250:900);           // media step takes a beat longer
+          steps[i].classList.remove('active'); steps[i].classList.add('ok');
+          if(i===2){ deliver.classList.add('show'); }
+          await sleep(300);
+        }
+        status.classList.add('done'); statustxt.textContent='Done · 1m 12s';
+        await sleep(3600);
+      }
+    }
+    // Kick off once the demo scrolls in (or immediately if already visible).
+    var started=false;
+    function start(){ if(started) return; started=true; play(); }
+    if(reduce){ start(); }
+    else {
+      var d = document.getElementById('demo');
+      var o = new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ start(); o.disconnect(); } }); }, {threshold:.3});
+      o.observe(d);
+    }
   })();
 </script>
 </body>
