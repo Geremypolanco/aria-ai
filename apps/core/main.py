@@ -17,6 +17,7 @@ import uvicorn
 from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
+    FileResponse,
     HTMLResponse,
     JSONResponse,
     PlainTextResponse,
@@ -347,6 +348,9 @@ class ConnectorRequest(BaseModel):
 
 
 # ── FRONTEND ROUTES ───────────────────────────────────────
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     path = os.path.join(os.path.dirname(__file__), "templates", "index.html")
@@ -355,6 +359,27 @@ async def root():
             return f.read()
     except FileNotFoundError:
         return HTMLResponse("<h1>ARIA AI</h1><p>Online</p>")
+
+
+@app.get("/og-cover.png")
+async def og_cover():
+    """Branded 1200x630 social-share card for link unfurls (Open Graph / Twitter)."""
+    path = os.path.join(_STATIC_DIR, "og-cover.png")
+    if not os.path.exists(path):
+        return PlainTextResponse("not found", status_code=404)
+    return FileResponse(
+        path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"}
+    )
+
+
+@app.get("/favicon.svg")
+async def favicon_svg():
+    path = os.path.join(_STATIC_DIR, "favicon.svg")
+    if not os.path.exists(path):
+        return PlainTextResponse("not found", status_code=404)
+    return FileResponse(
+        path, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=604800"}
+    )
 
 
 @app.get("/saraph", response_class=HTMLResponse)
@@ -730,7 +755,8 @@ def _auth_page(mode: str, error: str = "", email: str = "") -> str:
         else 'New to ARIA? <a class="lnk" href="/signup">Create a free account</a>'
     )
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · {title}</title><style>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · {title}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/favicon.svg"><meta name="theme-color" content="#07080d"><style>
 *{{margin:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
 background:radial-gradient(120% 90% at 80% 8%,rgba(21,224,106,.10),transparent 46%),
