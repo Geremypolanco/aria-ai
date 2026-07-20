@@ -21,6 +21,9 @@
 <meta name="twitter:title" content="ARIA — The AI that executes" />
 <meta name="twitter:description" content="Give ARIA a goal and watch it work — research, creation and publishing, live and end to end." />
 <meta name="twitter:image" content="https://aria-ai.fly.dev/og-cover.png" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"ARIA","applicationCategory":"BusinessApplication","operatingSystem":"Web, iOS, Android","url":"https://aria-ai.fly.dev/","image":"https://aria-ai.fly.dev/og-cover.png","description":"Autonomous AI that researches the live web, creates images, video and voice, and publishes across your channels — with a full auditable trail.","offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Pro","price":"29","priceCurrency":"USD"},{"@type":"Offer","name":"Business","price":"99","priceCurrency":"USD"}],"publisher":{"@type":"Organization","name":"SARAPH","url":"https://aria-ai.fly.dev/saraph"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -282,16 +285,16 @@
           <div class="d-hello">Good morning, Alex</div>
           <div class="d-prompt"><svg width="20" height="20"><use href="#mark"/></svg><span id="dtype"></span><span class="caret" id="dcaret"></span><span class="go" id="dgo" style="opacity:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span></div>
           <div class="d-run" id="drun">
-            <div class="d-runtop"><b>Launch reel · AI trends</b><span class="d-status" id="dstatus"><span class="dt"></span><span id="dstatustxt">Running</span></span></div>
+            <div class="d-runtop"><b id="dtitle">Launch reel · AI trends</b><span class="d-status" id="dstatus"><span class="dt"></span><span id="dstatustxt">Running</span></span></div>
             <ul class="d-steps" id="dsteps">
-              <li data-s="0"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Researched the live web — 12 sources</li>
-              <li data-s="1"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Wrote the script + caption</li>
-              <li data-s="2"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Generated hero image + 20s voiceover</li>
-              <li data-s="3"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Published to 3 connected channels</li>
+              <li data-s="0"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> <span class="lb"></span></li>
+              <li data-s="1"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> <span class="lb"></span></li>
+              <li data-s="2"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> <span class="lb"></span></li>
+              <li data-s="3"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> <span class="lb"></span></li>
             </ul>
             <div class="d-deliver" id="ddeliver">
-              <div class="d-thumb"></div>
-              <div class="meta"><b>launch-reel.mp4</b><span>1080×1920 · 22s · ready</span></div>
+              <div class="d-thumb" id="dthumb"></div>
+              <div class="meta"><b id="dname">launch-reel.mp4</b><span id="dmeta">1080×1920 · 22s · ready</span></div>
               <span class="grab">Open →</span>
             </div>
           </div>
@@ -460,52 +463,77 @@
     targets.forEach(function(el){ io.observe(el); });
   }
 
-  // ── Self-running mission demo ──
+  // ── Self-running mission demo (rotates through different jobs) ──
   (function(){
-    var GOAL = "Research today's AI trends and ship a launch reel";
+    var MISSIONS = [
+      { goal:"Research today's AI trends and ship a launch reel", title:"Launch reel · AI trends",
+        steps:["Researched the live web — 12 sources","Wrote the script + caption",
+               "Generated hero image + 20s voiceover","Published to 3 connected channels"],
+        name:"launch-reel.mp4", meta:"1080×1920 · 22s · ready", time:"1m 12s",
+        thumb:"linear-gradient(135deg,#15E06A,#12b7a6)" },
+      { goal:"Turn our latest blog into a LinkedIn post", title:"LinkedIn post · from blog",
+        steps:["Read the post + top comments","Drafted 3 hook variants",
+               "Picked the strongest & wrote it","Scheduled to LinkedIn"],
+        name:"linkedin-post.txt", meta:"1,180 chars · ready to publish", time:"41s",
+        thumb:"linear-gradient(135deg,#12b7a6,#0a8f57)" },
+      { goal:"Create a hero image for the new feature", title:"Hero image · new feature",
+        steps:["Pulled brand palette + references","Generated 4 concepts",
+               "Upscaled the winner to 4K","Exported PNG + web sizes"],
+        name:"hero-image.png", meta:"2400×1350 · PNG · ready", time:"58s",
+        thumb:"linear-gradient(135deg,#4be3a0,#12b7a6)" },
+    ];
     var dtype = document.getElementById('dtype'), caret = document.getElementById('dcaret'),
         go = document.getElementById('dgo'), run = document.getElementById('drun'),
         steps = Array.prototype.slice.call(document.querySelectorAll('#dsteps li')),
         deliver = document.getElementById('ddeliver'), status = document.getElementById('dstatus'),
-        statustxt = document.getElementById('dstatustxt');
+        statustxt = document.getElementById('dstatustxt'), title = document.getElementById('dtitle'),
+        dname = document.getElementById('dname'), dmeta = document.getElementById('dmeta'),
+        dthumb = document.getElementById('dthumb');
     if(!dtype) return;
     var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+    var mi = 0;
 
+    function load(m){
+      title.textContent = m.title;
+      steps.forEach(function(s,i){ s.querySelector('.lb').textContent = m.steps[i]; });
+      dname.textContent = m.name; dmeta.textContent = m.meta; dthumb.style.background = m.thumb;
+    }
     function reset(){
       dtype.textContent=''; go.style.opacity='0'; caret.style.display='';
       run.classList.remove('show'); deliver.classList.remove('show');
       status.classList.remove('done'); statustxt.textContent='Running';
       steps.forEach(function(s){ s.classList.remove('active','ok'); });
     }
-
-    async function type(){
-      for(var i=0;i<=GOAL.length;i++){ dtype.textContent=GOAL.slice(0,i); await sleep(34); }
+    async function type(goal){
+      for(var i=0;i<=goal.length;i++){ dtype.textContent=goal.slice(0,i); await sleep(34); }
       go.style.opacity='1'; caret.style.display='none';
     }
 
     async function play(){
       if (reduce){
-        // Static completed state for reduced motion.
-        dtype.textContent=GOAL; caret.style.display='none'; go.style.opacity='1';
+        var m = MISSIONS[0]; load(m);
+        dtype.textContent=m.goal; caret.style.display='none'; go.style.opacity='1';
         run.classList.add('show'); steps.forEach(function(s){ s.classList.add('ok'); });
-        deliver.classList.add('show'); status.classList.add('done'); statustxt.textContent='Done · 1m 12s';
+        deliver.classList.add('show'); status.classList.add('done'); statustxt.textContent='Done · '+m.time;
         return;
       }
       while(true){
-        reset(); await sleep(700);
-        await type(); await sleep(450);
+        var m = MISSIONS[mi % MISSIONS.length]; mi++;
+        reset(); load(m); await sleep(700);
+        await type(m.goal); await sleep(450);
         run.classList.add('show'); await sleep(500);
         for(var i=0;i<steps.length;i++){
           steps[i].classList.add('active');
-          await sleep(i===2?1250:900);           // media step takes a beat longer
+          await sleep(i===2?1250:900);           // create step takes a beat longer
           steps[i].classList.remove('active'); steps[i].classList.add('ok');
           if(i===2){ deliver.classList.add('show'); }
           await sleep(300);
         }
-        status.classList.add('done'); statustxt.textContent='Done · 1m 12s';
-        await sleep(3600);
+        status.classList.add('done'); statustxt.textContent='Done · '+m.time;
+        await sleep(3800);
       }
     }
+    load(MISSIONS[0]);   // fill labels on first paint, before the loop starts
     // Kick off once the demo scrolls in (or immediately if already visible).
     var started=false;
     function start(){ if(started) return; started=true; play(); }
