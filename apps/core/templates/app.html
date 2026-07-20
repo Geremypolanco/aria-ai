@@ -579,7 +579,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
         <div id="emptyMissions" class="chat-empty">
           <div class="ce-mark"><svg width="30" height="30" aria-hidden="true"><use href="#ariaMark"/></svg></div>
           <h1>Good <span id="tod">day</span>, <span class="g" id="greetName">__FIRST__</span></h1>
-          <p class="ce-sub">Ask ARIA to research, write, or create — you'll watch it work in real time.</p>
+          <p class="ce-sub">Give ARIA a topic and get a week of content — researched, written, designed, and ready to publish. Watch it work in real time.</p>
           <div id="usageCard" class="usage hidden">
             <div class="usage-h">Your Deep Workflow usage</div>
             <div class="usage-grid">
@@ -590,9 +590,9 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
             </div>
           </div>
           <div class="quicks">
-            <button onclick="quickGoal(this)" class="quick">Research a trend &amp; summarize</button>
-            <button onclick="quickGoal(this)" class="quick">Write a LinkedIn post</button>
-            <button onclick="quickGoal(this)" class="quick">Generate a hero image</button>
+            <button onclick="quickGoal(this)" class="quick">Turn a topic into a week of posts</button>
+            <button onclick="quickGoal(this)" class="quick">Write a LinkedIn post from my blog</button>
+            <button onclick="quickGoal(this)" class="quick">Make a hero image for my post</button>
           </div>
           <div class="skills" id="skillRow">
             <span class="skills-lbl">Or let ARIA run a full workflow end to end:</span>
@@ -661,12 +661,12 @@ function toggleDeep(){
 // ── Deep Workflow Skills — packaged multi-agent plays (Claude "Skills" pattern).
 // Each is a well-structured goal that decomposes into strong parallel subtasks.
 const SKILLS = [
-  {name:'Launch plan', prompt:'Design and validate a complete go-to-market launch plan for {product}: positioning and ideal customer, three pricing tiers with rationale, and a 2-week launch sequence across the right channels.'},
-  {name:'Competitor teardown', prompt:'Research and compare the top 3 competitors in {market}: value proposition, pricing, strengths, and the specific weaknesses we can exploit. End with 3 positioning angles for us.'},
+  {name:'A week of content', prompt:'Give me a full week of content on {topic} for founders and creators. Research what is trending this week first, then produce: 5 LinkedIn posts (each with a strong hook and the full copy), 3 short-form video scripts, and a hero image concept for each — ready to publish.'},
+  {name:'Blog to posts', prompt:'Turn this into a week of content: {url or pasted text}. Pull the strongest ideas and write 5 LinkedIn posts (hook + full copy) and 3 short captions, matched to the original tone. Ready to publish.'},
   {name:'Content calendar', prompt:'Create a 7-day content calendar for {brand} on LinkedIn and Instagram: for each day give the hook, the full post copy, and a visual idea. Match the tone to {audience}.'},
-  {name:'Pricing strategy', prompt:'Design a tiered pricing structure for {product}: three tiers with names, prices, what each includes, the psychological anchoring, and the single change most likely to raise revenue.'},
-  {name:'Funnel audit', prompt:'Audit the conversion funnel for {business} stage by stage (traffic to lead to activation to paid) and propose 5 experiments ranked by impact vs. effort, each with a hypothesis and a metric.'},
-  {name:'Cold outreach', prompt:'Write a 4-email cold outreach sequence to sell {product} to {audience}: subject lines, bodies, and the follow-up cadence. Keep it human, specific, and non-spammy.'},
+  {name:'Launch reel', prompt:'Research the top trends in {topic} this week and produce a short-form launch reel: a tight script, an on-screen caption, a hook, and a hero image concept — ready to shoot or generate.'},
+  {name:'Repurpose', prompt:'Repurpose {content} into every format: a LinkedIn post, an X thread, a short video script, an Instagram caption, and a hero image concept — each tuned to the platform while keeping one consistent message.'},
+  {name:'Launch plan', prompt:'Design and validate a complete go-to-market launch plan for {product}: positioning and ideal customer, three pricing tiers with rationale, and a 2-week launch sequence across the right channels.'},
 ];
 function renderSkills(){
   const row=document.getElementById('skillRow'); if(!row || row.dataset.done) return;
