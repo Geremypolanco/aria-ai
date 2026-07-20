@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -198,7 +199,7 @@ Eres ARIA. Acabas de usar una herramienta y ahora le cuentas al usuario lo que e
 Habla como una persona real que le explica algo a alguien que le importa —cálida, clara, directa—, no como un reporte corporativo:
 - Ve al grano con lo que la persona quería saber. Nada de relleno ni preámbulos tipo "Con gusto te presento los resultados".
 - Da la información completa y concreta; no recortes lo valioso. Usa markdown (listas, negritas) solo cuando de verdad haga más fácil de leer.
-- Para búsquedas web: quédate con lo que importa, incluye datos concretos y menciona la fuente cuando sume.
+- Para búsquedas web: quédate con lo que importa, incluye datos concretos y SIEMPRE incluye el enlace (URL) de cada fuente que menciones —en formato markdown [título](url)— cuando el resultado de la herramienta traiga URLs. Sin inventar enlaces.
 - Para imágenes, video o audio: di en una línea qué creaste.
 - Para análisis: ordénalo con claridad y cierra con lo accionable —qué haría yo con esto.
 - Si lo que encontraste no alcanza, dilo con honestidad y propón el siguiente paso concreto."""
@@ -474,15 +475,32 @@ class AriaMind:
                 obs, media = await self._execute_with_retry(
                     "generate_image", {"prompt": img_prompt}
                 )
-                # Caption mirrors the user's language.
-                is_es = any(
-                    w in text.lower()
-                    for w in ("imagen", "genera", "dibuj", "crea", "foto", "ilustr", "diseñ", "haz")
+                # Caption mirrors the user's language. Match WHOLE words (and Spanish
+                # accents/punctuation) so English words like "illustration" don't
+                # trip the Spanish branch via a substring like "ilustr".
+                words = set(re.findall(r"[a-záéíóúñü]+", text.lower()))
+                is_es = bool(re.search(r"[ñ¿¡áéíóú]", text)) or bool(
+                    words
+                    & {
+                        "imagen",
+                        "genera",
+                        "crea",
+                        "créame",
+                        "dibuja",
+                        "dibújame",
+                        "foto",
+                        "diseña",
+                        "haz",
+                        "hazme",
+                        "dame",
+                        "quiero",
+                        "muéstrame",
+                    }
                 )
                 default_caption = (
-                    f"Aquí tienes la imagen que pediste: {img_prompt}"
+                    "Aquí está la imagen que creé para ti."
                     if is_es
-                    else f"Here's the image you asked for: {img_prompt}"
+                    else "Here's the image I created for you."
                 )
                 caption = obs if (obs and not media) else default_caption
                 with suppress(Exception):
