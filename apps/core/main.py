@@ -393,6 +393,17 @@ async def aria_launch_video():
     )
 
 
+@app.get("/proof-hero.png")
+async def proof_hero_image():
+    """A real image ARIA generated on prod — used as proof in social posts."""
+    path = os.path.join(_STATIC_DIR, "proof-hero.png")
+    if not os.path.exists(path):
+        return PlainTextResponse("not found", status_code=404)
+    return FileResponse(
+        path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"}
+    )
+
+
 @app.get("/saraph", response_class=HTMLResponse)
 async def saraph_page():
     """Official page for SARAPH — the AI studio behind ARIA."""
