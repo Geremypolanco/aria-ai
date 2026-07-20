@@ -382,6 +382,17 @@ async def favicon_svg():
     )
 
 
+@app.get("/aria-launch.webm")
+async def aria_launch_video():
+    """Short branded launch clip of ARIA running a mission (used for social/video)."""
+    path = os.path.join(_STATIC_DIR, "aria-launch.webm")
+    if not os.path.exists(path):
+        return PlainTextResponse("not found", status_code=404)
+    return FileResponse(
+        path, media_type="video/webm", headers={"Cache-Control": "public, max-age=86400"}
+    )
+
+
 @app.get("/saraph", response_class=HTMLResponse)
 async def saraph_page():
     """Official page for SARAPH — the AI studio behind ARIA."""
