@@ -166,7 +166,8 @@ _PLANNER_USER = """Objetivo:
 {context}
 Devuelve entre 2 y {max_tasks} subtareas paralelas como JSON con esta forma exacta:
 {{"subtasks": [{{"title": "...", "prompt": "instrucción completa y autónoma para el subagente", "kind": "reason|code|research|creative|fast"}}]}}
-Cada 'prompt' debe ser autosuficiente: el subagente NO ve el objetivo global ni las otras subtareas."""
+Cada 'prompt' debe ser autosuficiente: el subagente NO ve el objetivo global ni las otras subtareas.
+Escribe cada 'title' y 'prompt' EN EL MISMO IDIOMA del objetivo del usuario (si el objetivo está en inglés, en inglés; si está en español, en español). Cada 'prompt' debe pedir el ENTREGABLE final terminado (el texto/copy real listo para usar), no un resumen ni un plan de lo que se haría."""
 
 _VERIFIER_SYSTEM = (
     "Eres un verificador adversarial. Tu trabajo es encontrar fallos reales en el "
@@ -471,7 +472,9 @@ class DynamicWorkflow:
     async def _execute(self, task: SubTask) -> SubTaskResult:
         system = (
             "Eres un subagente especializado de ARIA. Ejecutas UNA tarea concreta con "
-            "rigor y devuelves solo el resultado útil, sin preámbulos ni disculpas."
+            "rigor y devuelves el ENTREGABLE terminado y listo para usar (el texto/copy real, "
+            "no una descripción ni un plan), sin preámbulos ni disculpas. "
+            "Responde en el MISMO idioma en que está escrita la tarea."
         )
         async with self._sem:
             try:
