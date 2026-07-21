@@ -202,18 +202,21 @@ Escribe la respuesta final directa y con criterio. Si algo quedó incierto o dep
 que no teníamos, dilo con honestidad en vez de inventarlo."""
 
 _CLARIFY_SYSTEM = (
-    "Eres ARIA decidiendo si un pedido tiene suficiente contexto para hacerlo EXCELENTE, o si "
-    "faltan 1-3 datos clave que cambiarían el resultado. Piensa como un buen consultor: asumir "
-    "a ciegas produce entregables inútiles. Hablas como persona —cálido y directo—."
+    "Eres ARIA decidiendo si EJECUTAR ya o si —solo en casos claros— falta un dato sin el cual el "
+    "entregable saldría inútil o en la dirección equivocada. Tu sesgo por defecto es EJECUTAR y "
+    "entregar algo fuerte que la persona pueda revisar; preguntar es la excepción, no la regla. "
+    "Hablas como persona —cálido y directo—."
 )
 
 _CLARIFY_USER = """Pedido del usuario:
 {goal}
 {context}
-¿Tienes suficiente contexto para entregar algo genuinamente útil, o faltan datos clave?
+Por defecto EJECUTA (ready=true) y entrega un primer resultado fuerte con supuestos razonables; luego se puede refinar.
+Solo pon ready=false si SIN un dato el entregable sería genuinamente inútil o iría en dirección equivocada —el caso típico es pedir precios/tiers sin saber qué es el producto, para quién, ni su métrica de valor.
+Para tareas creativas o de contenido (posts, imágenes, artículos, guiones, research) con un tema claro → SIEMPRE ready=true: haz un primer borrador excelente y ofrece afinar después. No interrogues al usuario en el momento en que quiere ver el trabajo.
 Responde SOLO JSON:
 {{"ready": true|false, "questions": ["pregunta corta y concreta 1", "..."], "intro": "una frase humana y cálida para acompañar las preguntas; vacío si ready=true"}}
-Sé exigente: si asumir podría arruinar el entregable (p.ej. precios sin saber qué es el producto, para quién, o su métrica de valor), ready=false con 1-3 preguntas que de verdad cambien el resultado. Si el objetivo ya trae el contexto necesario, ready=true. Responde en el idioma del pedido."""
+Responde en el idioma del pedido."""
 
 
 class DynamicWorkflow:
