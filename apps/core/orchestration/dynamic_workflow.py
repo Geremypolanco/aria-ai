@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -152,6 +153,38 @@ class WorkflowResult:
 
 # ── PROMPTS ───────────────────────────────────────────────────────────────
 
+
+def _detect_lang(text: str) -> str:
+    """Best-effort 'en'/'es' from the goal, so we can FORCE the output language
+    instead of hoping the model follows a soft instruction (ARIA's whole prompt
+    scaffold is Spanish, which otherwise drags English goals into Spanish)."""
+    t = (text or "").lower()
+    es = len(re.findall(r"[ñáéíóú¿¡]", t)) + len(
+        re.findall(
+            r"\b(el|la|los|las|un|una|para|con|que|de|del|y|escribe|dame|hazme|"
+            r"contenido|semana|publicaci[oó]n|posts?|imagen)\b",
+            t,
+        )
+    )
+    en = len(
+        re.findall(
+            r"\b(the|a|an|and|your|you|with|that|this|for|write|give|make|me|"
+            r"content|week|research|posts?|image)\b",
+            t,
+        )
+    )
+    return "es" if es > en else "en"
+
+
+def _lang_directive(lang: str) -> str:
+    return (
+        "IMPORTANT: Write your ENTIRE response in English, no matter what language "
+        "these instructions are in. "
+        if lang == "en"
+        else "IMPORTANTE: Escribe TODA tu respuesta en español. "
+    )
+
+
 _PLANNER_SYSTEM = (
     "Eres el planificador de ARIA, un sistema de agentes autónomo. Descompones un "
     "objetivo en subtareas INDEPENDIENTES que puedan ejecutarse en paralelo (sin que "
@@ -252,6 +285,7 @@ class DynamicWorkflow:
         # (planner + synthesizer). Se reinician al inicio de cada run().
         self._plan_tokens = 0
         self._synth_tokens = 0
+        self._out_lang = "en"  # set per-run from the goal in run()/run_events()
 
     # ── ORQUESTACIÓN PRINCIPAL ────────────────────────────────────────────
 
@@ -266,6 +300,7 @@ class DynamicWorkflow:
 
         self._plan_tokens = 0
         self._synth_tokens = 0
+        self._out_lang = _detect_lang(goal)
 
         # Aclarar antes de ejecutar: si falta contexto clave, pregunta en vez de adivinar.
         if self._clarify:
@@ -329,6 +364,7 @@ class DynamicWorkflow:
 
         self._plan_tokens = 0
         self._synth_tokens = 0
+        self._out_lang = _detect_lang(goal)
 
         try:
             yield {"type": "start", "goal": goal}
@@ -470,11 +506,10 @@ class DynamicWorkflow:
     # ── FASE 2: EJECUTAR SUBAGENTE ────────────────────────────────────────
 
     async def _execute(self, task: SubTask) -> SubTaskResult:
-        system = (
+        system = _lang_directive(self._out_lang) + (
             "Eres un subagente especializado de ARIA. Ejecutas UNA tarea concreta con "
             "rigor y devuelves el ENTREGABLE terminado y listo para usar (el texto/copy real, "
-            "no una descripción ni un plan), sin preámbulos ni disculpas. "
-            "Responde en el MISMO idioma en que está escrita la tarea."
+            "no una descripción ni un plan), sin preámbulos ni disculpas."
         )
         async with self._sem:
             try:
@@ -602,7 +637,7 @@ class DynamicWorkflow:
         parts = "\n\n".join(f"### {r.task.title}\n{r.output[:2500]}" for r in usable)
         try:
             resp = await self._client.complete(
-                system=_SYNTH_SYSTEM,
+                system=_lang_directive(self._out_lang) + _SYNTH_SYSTEM,
                 user=_SYNTH_USER.format(goal=goal, parts=parts),
                 model=AIModel.STRATEGY,
                 max_tokens=2200,
