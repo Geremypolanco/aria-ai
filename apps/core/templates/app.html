@@ -310,8 +310,11 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 /* team */
 .team-grid{display:grid;grid-template-columns:1fr;gap:12px}
 @media(min-width:560px){.team-grid{grid-template-columns:1fr 1fr}}
-.tm-card{border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;gap:13px;align-items:flex-start;background:#fff;transition:transform .2s,box-shadow .2s,border-color .2s}
+.tm-card{border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;gap:13px;align-items:flex-start;background:#fff;transition:transform .2s,box-shadow .2s,border-color .2s;cursor:pointer}
 .tm-card:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:#dfe3e8}
+.tm-card:hover .tm-more{gap:7px;color:var(--green-ink)}
+.tm-card:focus-visible{outline:2px solid var(--neon);outline-offset:2px}
+.tm-more{display:inline-flex;align-items:center;gap:4px;margin-top:11px;font-size:12.5px;font-weight:700;color:var(--green-ink);transition:gap .2s}
 .tm-av{width:54px;height:54px;border-radius:13px;flex:none;object-fit:cover;background:var(--soft);border:1px solid var(--line)}
 .tm-body{min-width:0;flex:1}
 .tm-name{font-size:15px;font-weight:700;color:var(--ink)}
@@ -319,13 +322,6 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .tm-spec{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.4}
 .tm-hire{border:0;border-radius:9px;padding:7px 13px;font-size:12.5px;font-weight:700;background:var(--neon);color:#04150d;cursor:pointer;box-shadow:var(--glow-sm,0 6px 18px -6px rgba(21,224,106,.5))}
 .tm-hire:hover{filter:brightness(1.03)}
-.tm-metrics{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
-.tm-metric{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:4px 8px;line-height:1.2}
-.tm-metric b{display:block;font-size:12.5px;font-weight:800;color:var(--ink)}
-.tm-metric span{display:block;font-size:9.5px;color:var(--muted);max-width:96px}
-.tm-actions{display:flex;gap:8px;align-items:center;margin-top:11px}
-.tm-view{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer}
-.tm-view:hover{border-color:#cfd4da;background:var(--soft)}
 /* profile modal */
 .pf-hero{display:flex;gap:14px;align-items:center}
 .pf-av{width:66px;height:66px;border-radius:15px;flex:none;object-fit:cover;background:var(--soft);border:1px solid var(--line)}
@@ -1240,19 +1236,15 @@ async function openTeam(){
 }
 function renderTeam(){
   document.getElementById('teamGrid').innerHTML = (TEAM_CACHE||[]).map(function(m){
-    var mx=(m.metrics||[]).slice(0,3).map(function(x){
-      return '<div class="tm-metric"><b>'+esc(x.value)+'</b><span>'+esc(x.label)+'</span></div>';
-    }).join('');
-    return '<div class="tm-card">'
+    return '<div class="tm-card" onclick="openProfile(\''+m.id+'\')" role="button" tabindex="0" '
+      +'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openProfile(\''+m.id+'\')}">'
       +'<img class="tm-av" src="'+m.avatar+'" alt="" onerror="this.style.visibility=\'hidden\'">'
       +'<div class="tm-body"><div class="tm-name">'+esc(m.name)+'</div>'
       +'<div class="tm-title">'+esc(m.title)+'</div>'
       +'<div class="tm-spec">'+esc(m.specialty)+'</div>'
-      +(mx?'<div class="tm-metrics">'+mx+'</div>':'')
-      +'<div class="tm-actions">'
-      +'<button class="tm-hire" onclick="hire(\''+m.id+'\')">Put to work</button>'
-      +'<button class="tm-view" onclick="openProfile(\''+m.id+'\')">View profile</button>'
-      +'</div></div></div>';
+      +'<span class="tm-more">View more'
+      +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
+      +'</span></div></div>';
   }).join('');
 }
 async function openProfile(id){
