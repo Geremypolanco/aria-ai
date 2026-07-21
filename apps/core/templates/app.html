@@ -307,6 +307,24 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .cn-main{display:flex;align-items:center;gap:12px}
 .cn-ic{width:36px;height:36px;flex:none;border-radius:10px;display:grid;place-items:center;font-size:14px;font-weight:800;color:#fff}
 .cn-name{font-size:14px;font-weight:600;color:var(--ink)}.cn-desc{font-size:12px;color:var(--muted)}
+/* team */
+.team-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:560px){.team-grid{grid-template-columns:1fr 1fr}}
+.tm-card{border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;gap:13px;align-items:flex-start;background:#fff;transition:transform .2s,box-shadow .2s,border-color .2s}
+.tm-card:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:#dfe3e8}
+.tm-av{width:54px;height:54px;border-radius:13px;flex:none;object-fit:cover;background:var(--soft);border:1px solid var(--line)}
+.tm-body{min-width:0;flex:1}
+.tm-name{font-size:15px;font-weight:700;color:var(--ink)}
+.tm-title{font-size:12px;font-weight:600;color:var(--green-ink);margin-top:1px}
+.tm-spec{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.4}
+.tm-hire{margin-top:11px;border:0;border-radius:9px;padding:7px 13px;font-size:12.5px;font-weight:700;background:var(--neon);color:#04150d;cursor:pointer;box-shadow:var(--glow-sm,0 6px 18px -6px rgba(21,224,106,.5))}
+.tm-hire:hover{filter:brightness(1.03)}
+.persona-bar{display:none;align-items:center;gap:9px;margin:0 auto 8px;max-width:760px;background:var(--neon-soft);border:1px solid #bbf3d5;border-radius:12px;padding:7px 8px 7px 12px;width:fit-content}
+.persona-bar.show{display:flex}
+.persona-bar img{width:26px;height:26px;border-radius:7px;object-fit:cover}
+.persona-bar .pb-txt{font-size:12.5px;color:var(--green-ink)}.persona-bar .pb-txt b{color:var(--ink)}
+.persona-bar .pb-x{border:0;background:transparent;color:var(--green-ink);cursor:pointer;font-size:15px;line-height:1;padding:2px 6px;border-radius:6px}
+.persona-bar .pb-x:hover{background:#d4f5e2}
 .cn-gear{flex:none;border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 9px;font-size:12px;color:var(--muted)}
 .cn-gear:hover{background:var(--soft)}
 .cn-btn{flex:none;border-radius:9px;padding:7px 13px;font-size:12.5px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--ink)}
@@ -517,6 +535,17 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
   </div>
 </div>
 
+<!-- TEAM overlay -->
+<div id="teamOv" class="ov">
+  <div class="modal">
+    <div class="mrow">
+      <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h2>Your AI team</h2><p class="lead">A team of specialists — give one a goal and it does the work, end to end. Each is powered by ARIA.</p></div>
+      <button onclick="closeTeam()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="teamGrid" class="team-grid" style="margin-top:18px"></div>
+  </div>
+</div>
+
 <!-- ══ APP SHELL ══ -->
 <div class="shell">
   <div id="sideBackdrop" onclick="toggleSide(false)" class="backdrop sb hidden"></div>
@@ -532,6 +561,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       <button onclick="setFilter('all',this)" class="nl active" data-nav><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg> Chats <span id="navCount" class="c">0</span></button>
       <button onclick="setFilter('running',this)" class="nl" data-nav><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> In progress</button>
       <button onclick="setFilter('done',this)" class="nl" data-nav><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg> Completed</button>
+      <button onclick="openTeam()" class="nl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg> Team</button>
       <button onclick="openConnectors()" class="nl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 15 3.5 20.5M15 9l5.5-5.5M8 8l8 8"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/></svg> Connectors</button>
       __ADMIN_LINK__
     </nav>
@@ -603,6 +633,11 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
     </div>
     <div class="composer">
       <div class="composer-wrap">
+        <div id="personaBar" class="persona-bar">
+          <img id="pbAv" src="" alt="">
+          <span class="pb-txt">Working with <b id="pbName"></b> · <span id="pbTitle"></span></span>
+          <button class="pb-x" onclick="clearPersona()" aria-label="Leave this specialist">✕</button>
+        </div>
         <div class="composer-box">
           <textarea id="igniter" rows="1" placeholder="Message ARIA…" onkeydown="onIgniterKey(event)"></textarea>
           <button id="ignite" onclick="dispatchMission()" class="sendbtn" aria-label="Send">
@@ -645,6 +680,7 @@ const USER = { name: "__NAME__", email: "__EMAIL__", plan: "__PLAN__", onboarded
 const PROFILE = __PROFILE_JSON__;
 const MKEY = "aria_missions_v1";
 let missions = [];
+let activePersona = null;   // {id,name,title,avatar} of the selected team pro
 let busy = false;
 let filter = 'all';
 let deepMode = false;
@@ -844,7 +880,7 @@ async function dispatchMission(){
   log('Mensaje enviado — <span class="lg-hi">'+esc(goal.slice(0,60))+'</span>');
   log('· ARIA está pensando', 'dim');
   try{
-    const r=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:goal, session_id:m.sid})});
+    const r=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:goal, session_id:m.sid, persona:(activePersona&&activePersona.id)||null})});
     const d=await r.json();
     m.text=d.reply||'(no response)';
     if(d.media_base64){ m.imgs=['data:image/png;base64,'+d.media_base64]; log('Imagen generada ('+Math.round(d.media_base64.length*0.75/1024)+' KB)','ok'); }
@@ -1148,6 +1184,47 @@ function connDetail(c){
 function connToggle(id){ var d=document.getElementById('cd_'+id); if(d) d.classList.toggle('hidden'); }
 function connCopy(t,btn){ try{ navigator.clipboard.writeText(t); }catch(e){} var o=btn.textContent; btn.textContent='Copied'; setTimeout(function(){btn.textContent=o;},1200); }
 function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
+
+// ── Team of AI professionals ──
+let TEAM_CACHE = null;
+async function openTeam(){
+  document.getElementById('menu').classList.add('hidden'); toggleSide(false);
+  const o=document.getElementById('teamOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  const grid=document.getElementById('teamGrid');
+  if(!TEAM_CACHE){
+    grid.innerHTML='<div class="cn-loading">Loading your team…</div>';
+    try{ const r=await fetch('/api/v1/team',{credentials:'same-origin'}); TEAM_CACHE=(await r.json()).team||[]; }
+    catch(e){ TEAM_CACHE=[]; }
+  }
+  renderTeam();
+}
+function renderTeam(){
+  document.getElementById('teamGrid').innerHTML = (TEAM_CACHE||[]).map(function(m){
+    return '<div class="tm-card">'
+      +'<img class="tm-av" src="'+m.avatar+'" alt="" onerror="this.style.visibility=\'hidden\'">'
+      +'<div class="tm-body"><div class="tm-name">'+esc(m.name)+'</div>'
+      +'<div class="tm-title">'+esc(m.title)+'</div>'
+      +'<div class="tm-spec">'+esc(m.specialty)+'</div>'
+      +'<button class="tm-hire" onclick="hire(\''+m.id+'\')">Put to work</button></div></div>';
+  }).join('');
+}
+function hire(id){
+  const m=(TEAM_CACHE||[]).find(function(x){return x.id===id;}); if(!m) return;
+  activePersona=m;
+  document.getElementById('pbAv').src=m.avatar;
+  document.getElementById('pbName').textContent=m.name;
+  document.getElementById('pbTitle').textContent=m.title;
+  document.getElementById('personaBar').classList.add('show');
+  const inp=document.getElementById('igniter');
+  inp.placeholder='Give '+m.name.split(' ')[0]+' a task…';
+  closeTeam(); inp.focus();
+}
+function clearPersona(){
+  activePersona=null;
+  document.getElementById('personaBar').classList.remove('show');
+  document.getElementById('igniter').placeholder='Message ARIA…';
+}
+function closeTeam(){ const o=document.getElementById('teamOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
 
 /* boot */
 loadMissions(); renderMissions(); renderSkills(); loadUsage(); billingBoot(); checkConnectorHealth();
