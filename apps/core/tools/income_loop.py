@@ -1243,7 +1243,7 @@ JSON:
                             if _cr_cp.status_code in (200, 201, 409):
                                 import base64 as _hf_b64_cp
 
-                                await _hfc.put(
+                                _put_cp = await _hfc.put(
                                     f"https://huggingface.co/api/datasets/{_hf_un}/{_rn_cp}/raw/main/README.md",
                                     headers={
                                         "Authorization": f"Bearer {_hf_token_cp}",
@@ -1256,9 +1256,10 @@ JSON:
                                         "message": f"Publish: {_t_cp}",
                                     },
                                 )
-                                _hf_urls_cp.append(
-                                    f"https://huggingface.co/datasets/{_hf_un}/{_rn_cp}"
-                                )
+                                if _put_cp.status_code in (200, 201):
+                                    _hf_urls_cp.append(
+                                        f"https://huggingface.co/datasets/{_hf_un}/{_rn_cp}"
+                                    )
                     if _hf_urls_cp:
                         return {
                             "success": True,
@@ -2136,7 +2137,7 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                             },
                         )
                         if _cr_nr.status_code in (200, 201, 409):
-                            await _hnr.put(
+                            _put_nr = await _hnr.put(
                                 f"https://huggingface.co/api/spaces/{_hf_un_nr}/{_nr_rn}/raw/main/README.md",
                                 headers={
                                     "Authorization": f"Bearer {_hf_tok_nr}",
@@ -2147,13 +2148,16 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                                     "message": f"Publish niche: {_nr_name[:50]}",
                                 },
                             )
-                            _nr_hf_url = f"https://huggingface.co/spaces/{_hf_un_nr}/{_nr_rn}"
-                            return {
-                                "success": True,
-                                "summary": f"Niche '{target}': service page published on HuggingFace Spaces",
-                                "revenue_potential": float(_nr_price),
-                                "urls": [_nr_hf_url],
-                            }
+                            if _put_nr.status_code in (200, 201):
+                                _nr_hf_url = (
+                                    f"https://huggingface.co/spaces/{_hf_un_nr}/{_nr_rn}"
+                                )
+                                return {
+                                    "success": True,
+                                    "summary": f"Niche '{target}': service page published on HuggingFace Spaces",
+                                    "revenue_potential": float(_nr_price),
+                                    "urls": [_nr_hf_url],
+                                }
                 except Exception as _nr_hf_exc:
                     logger.debug("[IncomeLoop] niche_rotator HF fallback: %s", _nr_hf_exc)
 
@@ -2528,7 +2532,7 @@ Output JSON:
                             },
                         )
                         if _cr_pf.status_code in (200, 201, 409):
-                            await _hpf.put(
+                            _put_pf = await _hpf.put(
                                 f"https://huggingface.co/api/spaces/{_hf_un_pf}/{_pf_rn}/raw/main/README.md",
                                 headers={
                                     "Authorization": f"Bearer {_hf_tok_pf}",
@@ -2539,13 +2543,16 @@ Output JSON:
                                     "message": f"Publish product: {_pf_name[:50]}",
                                 },
                             )
-                            _pf_hf_url = f"https://huggingface.co/spaces/{_hf_un_pf}/{_pf_rn}"
-                            return {
-                                "success": True,
-                                "summary": f"Product '{_pf_name[:50]}' at ${_pf_price:.2f} published on HuggingFace Spaces",
-                                "revenue_potential": _pf_price,
-                                "urls": [_pf_hf_url],
-                            }
+                            if _put_pf.status_code in (200, 201):
+                                _pf_hf_url = (
+                                    f"https://huggingface.co/spaces/{_hf_un_pf}/{_pf_rn}"
+                                )
+                                return {
+                                    "success": True,
+                                    "summary": f"Product '{_pf_name[:50]}' at ${_pf_price:.2f} published on HuggingFace Spaces",
+                                    "revenue_potential": _pf_price,
+                                    "urls": [_pf_hf_url],
+                                }
                 except Exception as _pf_hf_exc:
                     logger.warning("[IncomeLoop] product_factory HF fallback: %s", _pf_hf_exc)
 
@@ -3336,7 +3343,7 @@ JSON:
                             import base64 as _hf_b64
 
                             _readme_b64 = _hf_b64.b64encode(_readme.encode()).decode()
-                            await _hc.put(
+                            _put_sl = await _hc.put(
                                 f"https://huggingface.co/api/spaces/{_hf_username}/{_repo_name}/raw/main/README.md",
                                 headers={
                                     "Authorization": f"Bearer {hf_token}",
@@ -3347,13 +3354,16 @@ JSON:
                                     "message": f"Add product landing page: {prod_title[:50]}",
                                 },
                             )
-                            _hf_url = f"https://huggingface.co/spaces/{_hf_username}/{_repo_name}"
-                            return {
-                                "success": True,
-                                "summary": f"Product '{prod_title[:50]}' published as HuggingFace Space at ${price:.2f}",
-                                "revenue_potential": price,
-                                "urls": [_hf_url],
-                            }
+                            if _put_sl.status_code in (200, 201):
+                                _hf_url = (
+                                    f"https://huggingface.co/spaces/{_hf_username}/{_repo_name}"
+                                )
+                                return {
+                                    "success": True,
+                                    "summary": f"Product '{prod_title[:50]}' published as HuggingFace Space at ${price:.2f}",
+                                    "revenue_potential": price,
+                                    "urls": [_hf_url],
+                                }
                 except Exception as _hf_exc:
                     logger.warning("[IncomeLoop] shopify_listing HF fallback: %s", _hf_exc)
 
