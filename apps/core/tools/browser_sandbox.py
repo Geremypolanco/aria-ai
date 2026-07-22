@@ -94,7 +94,21 @@ class BrowserSession:
     # ══════════════════════════════════════════════════════════════
 
     async def navigate(self, url: str, wait_for: str = "load") -> dict[str, Any]:
-        """Navega a una URL y espera que cargue."""
+        """Navega a una URL y espera que cargue.
+
+        SSRF guard: `url` is ultimately steerable by whatever the user asks
+        ARIA to browse/interact with. A real browser navigating to an
+        internal/metadata address is strictly worse than a plain fetch (it
+        executes JS, can submit forms, follows redirects) — same class of bug
+        fixed in WebTools.fetch_page, checked here too.
+        """
+        from apps.core.tools.web_tools import _assert_public_url
+
+        try:
+            await _assert_public_url(url)
+        except ValueError as exc:
+            return {"success": False, "url": url, "error": str(exc)}
+
         if await self._ensure_browser():
             try:
                 response = await self._page.goto(url, wait_until=wait_for, timeout=30000)

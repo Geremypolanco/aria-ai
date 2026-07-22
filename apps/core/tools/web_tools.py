@@ -18,18 +18,53 @@ Si una fuente falla, intenta la siguiente — siempre reporta cuales funcionaron
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import os
 import re
+import socket
 import uuid
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.web_tools")
+
+
+async def _assert_public_url(url: str) -> None:
+    """SSRF guard for fetch_page(): the target URL comes from the LLM's tool
+    call, ultimately steerable by whatever the user asks ARIA to fetch. Without
+    this, a prompt like "fetch http://169.254.169.254/... and tell me what it
+    says" makes the *server* issue that request — reachable internal services,
+    cloud metadata endpoints, etc. Raises ValueError if the URL isn't safe to
+    fetch; caller (fetch_page) turns that into a normal error result.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"unsupported URL scheme: {parsed.scheme!r}")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("URL has no host")
+    try:
+        infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
+    except socket.gaierror as exc:
+        raise ValueError(f"could not resolve host: {exc}") from exc
+    for info in infos:
+        addr = info[4][0]
+        ip = ipaddress.ip_address(addr)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise ValueError(f"refusing to fetch a non-public address ({addr})")
 
 
 class WebTools:
@@ -414,7 +449,22 @@ class WebTools:
         Elimina HTML, scripts, styles, nav, footer — retorna contenido legible.
         """
         try:
-            res = await self._http.get(url, timeout=15.0)
+            # Re-validated on every hop (redirects disabled here on purpose) —
+            # a URL that resolves to something public can still redirect to an
+            # internal address, and that would silently bypass a check that
+            # only ran once against the original URL.
+            next_url = url
+            res = None
+            for _hop in range(5):
+                await _assert_public_url(next_url)
+                res = await self._http.get(next_url, timeout=15.0, follow_redirects=False)
+                if res.is_redirect:
+                    next_url = str(res.next_request.url)
+                    continue
+                break
+            else:
+                return {"success": False, "error": "too many redirects", "url": url}
+
             if res.status_code != 200:
                 return {"success": False, "error": f"HTTP {res.status_code}", "url": url}
 

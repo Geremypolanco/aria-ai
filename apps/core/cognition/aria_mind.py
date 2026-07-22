@@ -462,6 +462,7 @@ class AriaMind:
             if stripped in ("/help", "/ayuda", "help", "ayuda"):
                 return MindResponse(text=_HELP_TEXT)
             if stripped in ("/clear", "/limpiar", "/reset"):
+                await self._clear_conversation(chat_id)
                 return MindResponse(text="Conversación reiniciada. ¿En qué te ayudo?", silent=False)
             if stripped in ("/status", "/estado", "status"):
                 return await self._build_status()
@@ -1731,6 +1732,19 @@ class AriaMind:
             if isinstance(l, list):
                 return l
         return []
+
+    async def _clear_conversation(self, chat_id: str) -> None:
+        """Actually reset this chat's history/state (goals and learned rules
+        are global, persistent memory — /clear must not touch those)."""
+        cache = self._cache_client()
+        if not cache:
+            return
+        with suppress(Exception):
+            await cache.delete(self.K_HISTORY.format(cid=chat_id))
+        with suppress(Exception):
+            await cache.delete(self.K_STATE.format(cid=chat_id))
+        with suppress(Exception):
+            await cache.delete(self.K_ICOUNT.format(cid=chat_id))
 
     async def _load_history(self, chat_id: str) -> list[dict]:
         cache = self._cache_client()
