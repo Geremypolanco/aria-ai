@@ -92,8 +92,11 @@ REQUISITOS:
                 max_tokens=4000,
             )
 
+            if not response.success:
+                return {"success": False, "error": response.error or "Generación de código falló"}
+
             # Extraer código del response
-            code = self._extract_code(response)
+            code = self._extract_code(response.content)
 
             return {
                 "success": True,

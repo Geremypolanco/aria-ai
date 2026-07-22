@@ -283,9 +283,12 @@ class MultimodalEngine:
                 ),
             )
 
+            if not synthesis.success:
+                return {"success": False, "error": synthesis.error or "Síntesis de video falló"}
+
             return {
                 "success": True,
-                "analysis": synthesis,
+                "analysis": synthesis.content,
                 "frames_analyzed": len(analyses),
             }
 
