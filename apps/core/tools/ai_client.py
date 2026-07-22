@@ -527,7 +527,8 @@ class AriaAIClient:
         resp = await self._http.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
-        content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        parts = data["candidates"][0].get("content", {}).get("parts", [{}])
+        content = (parts[0].get("text") or "").strip()
         return content, len(content.split()) * 2
 
     async def _call_groq(
@@ -539,7 +540,8 @@ class AriaAIClient:
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        return resp.choices[0].message.content.strip(), resp.usage.total_tokens
+        content = (resp.choices[0].message.content or "").strip()
+        return content, resp.usage.total_tokens
 
     async def _call_openai(
         self, model_id: str, system: str, user: str, max_tokens: int, temperature: float
@@ -559,9 +561,8 @@ class AriaAIClient:
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"].strip(), data.get("usage", {}).get(
-            "total_tokens", 0
-        )
+        content = (data["choices"][0]["message"].get("content") or "").strip()
+        return content, data.get("usage", {}).get("total_tokens", 0)
 
     async def _call_anthropic(
         self, model_id: str, system: str, user: str, max_tokens: int, temperature: float
@@ -584,9 +585,9 @@ class AriaAIClient:
         resp.raise_for_status()
         data = resp.json()
         usage = data.get("usage", {})
-        return data["content"][0]["text"].strip(), usage.get("input_tokens", 0) + usage.get(
-            "output_tokens", 0
-        )
+        blocks = [b for b in data.get("content", []) if b.get("type") == "text"]
+        content = (blocks[0].get("text") if blocks else "") or ""
+        return content.strip(), usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
 
     def configured_providers(self) -> list[str]:
         """Nombres de los proveedores LLM que tienen una API key configurada.
@@ -635,13 +636,20 @@ class AriaAIClient:
 
     def _extract_json_safe(self, text: str) -> str:
         text = text.strip()
-        text = re.sub(r"```(?:json)?\n?", "", text).strip().rstrip("```").strip()
-        for start_char, end_char in [("{", "}"), ("[", "]")]:
-            idx = text.find(start_char)
-            if idx != -1:
-                end_idx = text.rfind(end_char)
-                if end_idx > idx:
-                    return text[idx : end_idx + 1]
+        text = re.sub(r"```(?:json)?\n?", "", text).strip().rstrip("`").strip()
+        # Pick whichever bracket actually opens first — a hardcoded "{" before
+        # "[" preference mis-extracts top-level JSON arrays of objects (e.g.
+        # `[{"a":1},{"b":2}]`): it would find the "{" nested inside the array
+        # before the "[", then greedily grab up to the last "}", landing
+        # before the array's closing "]" and producing invalid JSON.
+        candidates = [(text.find(c), c) for c in ("{", "[") if text.find(c) != -1]
+        if not candidates:
+            return text
+        idx, start_char = min(candidates, key=lambda pair: pair[0])
+        end_char = "}" if start_char == "{" else "]"
+        end_idx = text.rfind(end_char)
+        if end_idx > idx:
+            return text[idx : end_idx + 1]
         return text
 
     def get_health_summary(self) -> dict:
@@ -710,7 +718,10 @@ class AriaAIClient:
                 resp = await self._http.post(url, json=payload)
                 if resp.status_code == 200:
                     data = resp.json()
-                    return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    parts = data["candidates"][0].get("content", {}).get("parts", [{}])
+                    text = (parts[0].get("text") or "").strip()
+                    if text:
+                        return text
             except Exception:
                 pass
 

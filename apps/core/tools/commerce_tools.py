@@ -361,7 +361,9 @@ class CommerceTools:
         if not shop_url or not token:
             return {"success": False, "error": "Shopify no configurado"}
         try:
-            url = f"https://{shop_url}/admin/api/2024-01/orders.json"
+            # Normalize URL: strip scheme prefix if present (env var may include https://)
+            _base = shop_url.removeprefix("https://").removeprefix("http://").rstrip("/")
+            url = f"https://{_base}/admin/api/2024-01/orders.json"
             headers = {"X-Shopify-Access-Token": token}
             res = await self._http.get(
                 url, headers=headers, params={"limit": limit, "status": "any"}

@@ -434,6 +434,8 @@ async def github_dispatch(action: str, args: dict) -> str:
             return "Necesito una query para buscar en GitHub."
         if kind == "code":
             data = await gh.search_code(query)
+            if isinstance(data, dict) and "error" in data:
+                return f"Error: {data['error']}"
             items = data.get("items", [])
             lines = [f"Resultados de código para '{query}':"]
             for item in items[:5]:
@@ -443,6 +445,8 @@ async def github_dispatch(action: str, args: dict) -> str:
             return "\n".join(lines) if len(lines) > 1 else "Sin resultados."
         if kind == "issues":
             data = await gh.search_issues(query)
+            if isinstance(data, dict) and "error" in data:
+                return f"Error: {data['error']}"
             items = data.get("items", [])
             lines = [f"Issues para '{query}':"]
             for item in items[:5]:

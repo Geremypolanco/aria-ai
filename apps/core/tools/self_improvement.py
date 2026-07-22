@@ -408,6 +408,60 @@ class SelfImprovementEngine:
             logger.error("[SelfImprovement] generate error %s: %s", file_path, exc)
             return {"success": False, "error": str(exc)}
 
+    async def push_file(
+        self, file_path: str, content: str, commit_message: str
+    ) -> dict[str, Any]:
+        """Create or update a single file on GitHub (fetches the current sha
+        itself when updating) — for callers that generate content directly
+        and don't already have a sha from a prior read_file() call, e.g.
+        EvolutionAgent's feature-creation flow and DeveloperAgent's deploy step."""
+        if not self._can_push():
+            return {
+                "success": False,
+                "error": f"Rate limit o GITHUB_TOKEN no disponible. "
+                f"Proximo push disponible en {self.MIN_PUSH_INTERVAL_SECONDS}s",
+            }
+        if file_path in self.PROTECTED_FILES:
+            return {
+                "success": False,
+                "error": f"{file_path} es archivo protegido — no se puede modificar automaticamente",
+            }
+        try:
+            existing = await self.read_file(file_path)
+            sha = existing.get("sha") if existing.get("success") else None
+            body: dict[str, Any] = {
+                "message": commit_message,
+                "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+                "branch": BRANCH,
+            }
+            if sha:
+                body["sha"] = sha
+            res = await self._http.put(
+                f"{GITHUB_API}/repos/{REPO}/contents/{file_path}",
+                headers=self._gh_headers,
+                json=body,
+            )
+            if res.status_code in (200, 201):
+                SelfImprovementEngine._last_push_time = time.time()
+                commit = res.json().get("commit", {})
+                logger.info(
+                    "[SelfImprovement] push_file exitoso: %s -> %s",
+                    file_path,
+                    commit.get("sha", "")[:8],
+                )
+                return {
+                    "success": True,
+                    "file": file_path,
+                    "commit_sha": commit.get("sha", "")[:8],
+                }
+            return {
+                "success": False,
+                "error": f"GitHub HTTP {res.status_code}: {res.text[:300]}",
+            }
+        except Exception as exc:
+            logger.error("[SelfImprovement] push_file %s: %s", file_path, exc)
+            return {"success": False, "error": str(exc)}
+
     def _validate_python(self, code: str) -> dict[str, Any]:
         """Valida sintaxis Python real con ast.parse."""
         try:

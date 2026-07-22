@@ -384,6 +384,12 @@ _PLATFORM_SPECS = {
         "tone": "friendly, community",
         "format": "Conversational opener + value + question to engage + CTA.",
     },
+    "pinterest": {
+        "max_chars": 500,
+        "hashtags": "2-5",
+        "tone": "aspirational, visual, keyword-rich",
+        "format": "Short catchy title (max 100 chars) on the first line, then a keyword-rich description with a clear CTA.",
+    },
     "youtube": {
         "max_chars": 5000,
         "hashtags": "10 tags",
@@ -516,6 +522,8 @@ class SocialContentEngine:
                     post_r = await poster.post_discord_webhook(topic, text)
                 elif platform == "reddit":
                     post_r = await poster.post_reddit(topic, text)
+                elif platform == "pinterest":
+                    post_r = await poster.post_pinterest(topic, text)
                 else:
                     post_r = await poster.post_via_oauth_accounts(text)
                 results["posting"][platform] = post_r

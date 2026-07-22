@@ -88,7 +88,23 @@ class KnowledgeBase:
         """Descarga y procesa una URL."""
         await self._ensure_loaded()
         try:
-            resp = await self._http.get(url, timeout=20, follow_redirects=True)
+            from apps.core.tools.web_tools import _assert_public_url
+
+            # Re-validated on every hop (redirects disabled here on purpose) —
+            # a URL that resolves to something public can still redirect to an
+            # internal address, which would silently bypass a check that only
+            # ran once against the original URL.
+            next_url = url
+            resp = None
+            for _hop in range(5):
+                await _assert_public_url(next_url)
+                resp = await self._http.get(next_url, timeout=20, follow_redirects=False)
+                if resp.is_redirect:
+                    next_url = str(resp.next_request.url)
+                    continue
+                break
+            else:
+                return {"success": False, "error": "too many redirects"}
             resp.raise_for_status()
             text = self._html_to_text(resp.text)
             return await self.ingest_text(text, source=url, category=category)

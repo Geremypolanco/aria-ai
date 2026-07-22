@@ -194,6 +194,8 @@ class CrewEngine:
 
         accumulated = context
         all_outputs: list[str] = []
+        any_success = False
+        last_error: str | None = None
 
         from apps.core.agents.business_hub import BusinessHub
 
@@ -221,8 +223,10 @@ class CrewEngine:
                     or str(result)
                 )
                 member.output = str(output)[:3000]
+                any_success = True
             except Exception as exc:
                 member.output = f"[Error: {exc}]"
+                last_error = str(exc)
                 logger.warning("[Crew:%s] member '%s' failed: %s", run.id, member.role, exc)
 
             all_outputs.append(f"### {member.role}\n{member.output}")
@@ -230,7 +234,8 @@ class CrewEngine:
 
         run.final_output = await self._synthesize(mission, members)
         run.completed_at = datetime.now(UTC).isoformat()
-        run.success = True
+        run.success = any_success
+        run.error = None if any_success else (last_error or "todos los miembros del equipo fallaron")
         return run
 
     async def run_custom(
@@ -276,6 +281,8 @@ class CrewEngine:
         hub = BusinessHub()
         accumulated = context
         all_outputs: list[str] = []
+        any_success = False
+        last_error: str | None = None
 
         for member in members:
             prompt = f"Misión: {mission}\nRol: {member.role}\n" + (
@@ -284,14 +291,17 @@ class CrewEngine:
             try:
                 result = await hub.dispatch(member.agent_type, prompt, {})
                 member.output = str(result.get("output") or result)[:2500]
+                any_success = True
             except Exception as exc:
                 member.output = f"[Error: {exc}]"
+                last_error = str(exc)
             all_outputs.append(f"### {member.role}\n{member.output}")
             accumulated = "\n\n".join(all_outputs)
 
         run.final_output = await self._synthesize(mission, members)
         run.completed_at = datetime.now(UTC).isoformat()
-        run.success = True
+        run.success = any_success
+        run.error = None if any_success else (last_error or "todos los miembros del equipo fallaron")
         return run
 
     def list_crews(self) -> list[str]:

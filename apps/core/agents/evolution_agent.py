@@ -253,7 +253,7 @@ class EvolutionAgent(BaseAgent):
                 return {"success": False, "error": f"Sintaxis invalida: {se}", "feature": name}
             if len(code.splitlines()) < 20:
                 return {"success": False, "error": "Codigo corto", "feature": name}
-            push = await engine._push_file(
+            push = await engine.push_file(
                 file_path=file_path,
                 content=code,
                 commit_message=f"feat: {name}\n\n{description[:200]}\n\nGenerado por ARIA EvolutionAgent.",

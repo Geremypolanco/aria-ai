@@ -1334,7 +1334,7 @@ class AriaMind:
                 mgr = get_task_manager()
                 task_id = await mgr.submit(
                     name=task_name,
-                    coro=_bg(),
+                    coro_factory=_bg,
                     description=f"{agent_name}: {task_name}",
                     session_id=None,
                 )
@@ -1448,13 +1448,14 @@ class AriaMind:
                 from apps.core.tools.workflow_engine import get_workflow_engine
 
                 r = await get_workflow_engine().run(wid)
-                if r.get("success"):
+                if "results" in r:
                     steps_summary = "; ".join(
                         f"paso{s['step']}={'OK' if s['success'] else 'FAIL'}"
                         for s in r.get("results", [])
                     )
+                    status = "" if r.get("success") else " (con errores)"
                     return (
-                        f"[WORKFLOW '{r.get('name', wid)}' — {r['steps_run']} pasos]\n"
+                        f"[WORKFLOW '{r.get('name', wid)}'{status} — {r['steps_run']} pasos]\n"
                         f"{steps_summary}\n\n{r.get('final_output', '')}"
                     ), {}
                 return f"Error ejecutando workflow: {r.get('error', 'error')}", {}

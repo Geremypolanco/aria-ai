@@ -100,7 +100,12 @@ class DeveloperAgent(BaseAgent):
         results["tests"] = tests
 
         # 5. Opcional: push a GitHub
-        if deploy and context.get("github_path"):
+        # Same rationale as the auto_run gate above: pushing to the live repo
+        # (and triggering an automatic Fly.io deploy) must be owner-only,
+        # not something any signed-up user can trigger via run_business_agent.
+        if deploy and context.get("github_path") and not context.get("is_owner"):
+            results["deploy_skipped"] = "GitHub push is owner-only; code was generated but not pushed."
+        elif deploy and context.get("github_path"):
             push_result = await self._push_to_github(context["github_path"], results["code"], task)
             results["github"] = push_result
 
@@ -177,7 +182,7 @@ class DeveloperAgent(BaseAgent):
 
             engine = SelfImprovementEngine()
             return await engine.push_file(
-                path=path, content=content, message=f"feat: {message[:70]}"
+                file_path=path, content=content, commit_message=f"feat: {message[:70]}"
             )
         except Exception as exc:
             return {"success": False, "error": str(exc)}

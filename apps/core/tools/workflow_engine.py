@@ -188,7 +188,7 @@ class WorkflowEngine:
         await self._persist()
 
         return {
-            "success": True,
+            "success": all(r["success"] for r in results) if results else False,
             "workflow_id": workflow_id,
             "name": wf.name,
             "steps_run": len(results),

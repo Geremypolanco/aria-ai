@@ -312,11 +312,17 @@ class AffiliateTools:
 
         # Solo amazon tag-based (no requiere PA API, solo el tag)
         if "amazon" in available_platforms and platform in ("amazon", "all"):
+            import urllib.parse
+
             tag = getattr(settings, "AMAZON_ASSOCIATE_TAG", "")
-            # Inyectar llamada a accion al final del contenido
+            # No hay ASIN especifico disponible aqui (solo topic/content) —
+            # build_amazon_link("", tag) generaba un link roto (/dp/?tag=...,
+            # sin producto). Un link de busqueda con el tag es un link real
+            # que efectivamente funciona y atribuye la comision.
+            search_url = f"https://www.amazon.com/s?k={urllib.parse.quote(topic)}&tag={tag}"
             cta = (
                 f"\n\n---\n*Links de afiliado: Los productos mencionados pueden encontrarse "
-                f'en [Amazon]({self.build_amazon_link("", tag)}). '
+                f"en [Amazon]({search_url}). "
                 f"Como afiliado de Amazon, recibo una comision por compras elegibles.*"
             )
             injected_content += cta
