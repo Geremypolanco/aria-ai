@@ -454,7 +454,7 @@ class AriaMind:
     # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
 
     async def handle(
-        self, text: str, chat_id: str, user_context: str | None = None
+        self, text: str, chat_id: str, user_context: str | None = None, email: str = ""
     ) -> MindResponse:
         try:
             # Fast-path for built-in commands
@@ -572,7 +572,7 @@ class AriaMind:
 
             # Ejecutar herramienta si hay una
             if has_tool:
-                obs, media = await self._execute_with_retry(tool, tool_args)
+                obs, media = await self._execute_with_retry(tool, tool_args, email=email)
                 final_text = await self._synthesize(text, tool, obs)
                 await self._record_exec(tool, tool_args, obs, bool(media or obs))
                 await self._store_interaction(chat_id, text, final_text, tool)
@@ -688,7 +688,7 @@ class AriaMind:
     # ── EJECUCIÓN CON RETRY + FALLBACK ────────────────────────────────────
 
     async def _execute_with_retry(
-        self, tool: str, args: dict, max_retries: int = 3
+        self, tool: str, args: dict, max_retries: int = 3, email: str = ""
     ) -> tuple[str, dict]:
         """
         Ejecuta la herramienta con hasta max_retries intentos.
@@ -700,7 +700,7 @@ class AriaMind:
             if attempt > 0:
                 await asyncio.sleep(2**attempt)  # backoff: 2s, 4s
 
-            obs, media = await self._execute_tool(tool, args, attempt)
+            obs, media = await self._execute_tool(tool, args, attempt, email=email)
 
             # Si hay media o la obs no indica error → éxito
             if media or (
@@ -732,11 +732,28 @@ class AriaMind:
             args = {"query": " ".join(words[:4])}  # query más corta
         return args
 
-    async def _execute_tool(self, tool: str, args: dict, attempt: int = 0) -> tuple[str, dict]:
+    # Tools that write to a real, external system of record on the owner's
+    # behalf — not merely "generate content for the requesting user", but
+    # "commit code to a GitHub repo (including ARIA's own production repo via
+    # github_self)". These must never be reachable by an arbitrary signed-up
+    # account; only the owner.
+    _OWNER_ONLY_TOOLS = frozenset({"github_write", "github_pr", "github_issues", "github_self"})
+
+    async def _execute_tool(
+        self, tool: str, args: dict, attempt: int = 0, email: str = ""
+    ) -> tuple[str, dict]:
         """
         Ejecuta la herramienta. Devuelve (obs_text, media_dict).
         media_dict: {image_bytes, video_bytes, audio_bytes} — solo el que aplica.
         """
+        if tool in self._OWNER_ONLY_TOOLS:
+            from apps.core import auth
+
+            if not auth.is_owner_email(email):
+                return (
+                    "Esta acción (escribir en GitHub) está reservada al dueño de ARIA.",
+                    {},
+                )
         try:
             # ── IMAGEN ────────────────────────────────────────────────────
             if tool == "generate_image":
@@ -1610,7 +1627,7 @@ class AriaMind:
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
-            return f"Error en {tool}: {str(exc)[:200]}", {}
+            return f"No pude completar la herramienta '{tool}' — inténtalo de nuevo.", {}
 
         return "Herramienta desconocida", {}
 

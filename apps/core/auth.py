@@ -35,6 +35,26 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 30
 # OAuth state is short-lived (10 minutes) to bound the CSRF window.
 STATE_MAX_AGE = 600
 
+# The owner is treated as owner automatically when signed in via OAuth with
+# one of these emails (no separate password needed). Extra emails can be
+# added via the OWNER_EMAIL setting. Single source of truth for "is this the
+# owner" — anything gating an owner-only capability (the /admin panel,
+# powerful tools like writing to ARIA's own GitHub repo) must check this,
+# not maintain its own separate copy that can drift out of sync.
+OWNER_EMAILS = {"geremypolancod@gmail.com"}
+
+
+def owner_emails() -> set[str]:
+    emails = {e.lower() for e in OWNER_EMAILS}
+    extra = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
+    if extra:
+        emails.add(extra)
+    return emails
+
+
+def is_owner_email(email: str | None) -> bool:
+    return bool(email) and (email or "").strip().lower() in owner_emails()
+
 # Ephemeral per-process signing key used ONLY when no real secret is configured.
 # This replaces the previous hardcoded public constant, which allowed anyone to
 # forge session cookies. An ephemeral key means sessions don't survive a restart

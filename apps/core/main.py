@@ -31,17 +31,12 @@ from apps.core.config import settings
 # ── ADMIN AUTH (server-side gate for the owner-only control panel) ─────────
 _ADMIN_COOKIE = "aria_admin"
 
-# The owner is admin automatically when signed in via OAuth with one of these
-# emails (no separate password needed). Extra emails can be added via OWNER_EMAIL.
-OWNER_EMAILS = {"geremypolancod@gmail.com"}
-
-
+# Owner identity is centralized in apps.core.auth (single source of truth —
+# see its docstring for why this must not have a second, driftable copy).
 def _owner_emails() -> set[str]:
-    emails = {e.lower() for e in OWNER_EMAILS}
-    extra = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
-    if extra:
-        emails.add(extra)
-    return emails
+    from apps.core import auth
+
+    return auth.owner_emails()
 
 
 def _admin_token() -> str:
@@ -1733,7 +1728,7 @@ async def chat(req: ChatRequest, request: Request):
         from apps.core.cognition.aria_mind import get_aria_mind
 
         resp = await get_aria_mind().handle(
-            req.message, req.session_id or "default", user_context=user_context or None
+            req.message, req.session_id or "default", user_context=user_context or None, email=email
         )
         elapsed = int((time.time() - start) * 1000)
         media_type = None
@@ -2231,7 +2226,7 @@ async def websocket_chat(ws: WebSocket):
                     continue
 
             msg = json.loads(data)
-            resp = await mind.handle(msg.get("message", ""), msg.get("session_id", "ws"))
+            resp = await mind.handle(msg.get("message", ""), msg.get("session_id", "ws"), email=email)
             reply_text = resp.text or resp.caption or ""
             await _record_ai_cost(email, plan, msg.get("message", ""), reply_text)
             await ws.send_json({"reply": reply_text, "tool": resp.tool_used})
