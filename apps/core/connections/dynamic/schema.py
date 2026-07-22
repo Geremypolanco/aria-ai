@@ -23,7 +23,7 @@ class AuthSpec(BaseModel):
     # stores the token (defaults to the connector's own id).
     service_id: str | None = None
 
-    # api_key / basic
+    # api_key
     in_: Literal["header", "query"] = Field("header", alias="in")
     header_name: str = "Authorization"
     query_param: str = "api_key"
@@ -31,6 +31,10 @@ class AuthSpec(BaseModel):
     # Name of the attribute on apps.core.config.settings holding the secret
     # (e.g. "STRIPE_SECRET_KEY"). Never the secret value itself.
     settings_key: str | None = None
+
+    # basic — real HTTP Basic Auth (base64("user:pass")), two separate secrets.
+    username_settings_key: str | None = None
+    password_settings_key: str | None = None
 
     model_config = {"populate_by_name": True}
 

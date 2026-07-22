@@ -74,7 +74,10 @@ def _autodiscover() -> None:
 
     for info in pkgutil.iter_modules(pkg.__path__, pkg.__name__ + "."):
         short_name = info.name.rsplit(".", 1)[-1]
-        if short_name in _NON_CONNECTOR_MODULES:
+        # Subpackages (e.g. dynamic/) are a different connector mechanism —
+        # importing them here wouldn't reach classes nested in their own
+        # submodules anyway, and they self-manage their own loading.
+        if short_name in _NON_CONNECTOR_MODULES or info.ispkg:
             continue
         try:
             importlib.import_module(info.name)

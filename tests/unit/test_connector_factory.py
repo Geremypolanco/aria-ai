@@ -5,6 +5,8 @@ no other file has to change."""
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from apps.core.connections.base import BaseConnector
@@ -92,7 +94,13 @@ async def test_manager_handle_callback_uses_the_factory(monkeypatch):
         manager = ConnectionManager()
         ok = await manager.handle_callback("acme_test_crm2", "code-xyz", "chat-1")
         assert ok is True
-        assert calls["stored"][1] == {"access_token": "tok-abc"}
+        # Tokens are encrypted at rest (AES-256-GCM via token_crypto), never
+        # stored as a plain dict — decrypt to verify the actual content.
+        from apps.core.connectors import token_crypto
+
+        stored_key, stored_blob = calls["stored"]
+        assert token_crypto.is_encrypted(stored_blob)
+        assert json.loads(token_crypto.decrypt(stored_blob)) == {"access_token": "tok-abc"}
     finally:
         from apps.core.connections import registry as _registry
 

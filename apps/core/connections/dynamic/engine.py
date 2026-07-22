@@ -63,6 +63,7 @@ class _RetryableHTTPError(Exception):
     def __init__(self, status_code: int, body: str):
         self.status_code = status_code
         self.body = body
+        super().__init__(f"HTTP {status_code} (retryable): {body[:200]}")
 
 
 # ── spec loading (auto-discovery — the "no core changes" mechanism) ──────
@@ -170,7 +171,18 @@ class DynamicConnectorEngine:
                 f"'{self.spec.id}' base_url needs {exc}, not present in the token or variables"
             ) from exc
 
-        query.update({name: variables[name] for name in ep.query_params if name in variables})
+        declared_query = {name: variables[name] for name in ep.query_params if name in variables}
+        auth_query_param = (
+            self.spec.auth.query_param
+            if (self.spec.auth.type == "api_key" and self.spec.auth.in_ == "query")
+            else None
+        )
+        if auth_query_param and auth_query_param in declared_query:
+            raise ConnectorConfigError(
+                f"'{self.spec.id}.{endpoint_name}': '{auth_query_param}' is reserved for "
+                "auth and cannot be passed as a call variable"
+            )
+        query.update(declared_query)
         body = {name: variables[name] for name in ep.body_params if name in variables}
 
         url = base_url.rstrip("/") + path
@@ -200,7 +212,7 @@ class DynamicConnectorEngine:
             headers["Authorization"] = f"Bearer {token['access_token']}"
             return token
 
-        if auth.type in ("api_key", "basic"):
+        if auth.type == "api_key":
             from apps.core.config import settings
 
             value = getattr(settings, auth.settings_key, None) if auth.settings_key else None
@@ -214,39 +226,60 @@ class DynamicConnectorEngine:
                 headers[auth.header_name] = f"{auth.value_prefix}{value}"
             return {}
 
+        if auth.type == "basic":
+            import base64
+
+            from apps.core.config import settings
+
+            user = getattr(settings, auth.username_settings_key, None) if auth.username_settings_key else None
+            pwd = getattr(settings, auth.password_settings_key, None) if auth.password_settings_key else None
+            if not user or not pwd:
+                raise ConnectorAuthError(
+                    f"'{self.spec.id}' requires {auth.username_settings_key}/"
+                    f"{auth.password_settings_key} to be configured."
+                )
+            b64 = base64.b64encode(f"{user}:{pwd}".encode()).decode()
+            headers["Authorization"] = f"Basic {b64}"
+            return {}
+
         raise ConnectorConfigError(f"Unknown auth type '{auth.type}' for '{self.spec.id}'")
 
     async def _execute_with_retry(
         self, ep: EndpointSpec, url: str, headers: dict, query: dict, body: dict
     ):
         retry_cfg = self.spec.retry
+        kwargs = {"data": body or None} if ep.body_encoding == "form" else {"json": body or None}
         try:
-            async for attempt in AsyncRetrying(
-                stop=stop_after_attempt(retry_cfg.max_attempts),
-                wait=wait_exponential(
-                    multiplier=retry_cfg.base_delay_seconds, max=retry_cfg.max_delay_seconds
-                ),
-                retry=retry_if_exception_type((_RetryableHTTPError, httpx.TransportError)),
-                reraise=True,
-            ):
-                with attempt:
-                    async with httpx.AsyncClient(
-                        timeout=ep.timeout_seconds, transport=self._transport
-                    ) as client:
-                        kwargs = {"data": body or None} if ep.body_encoding == "form" else {
-                            "json": body or None
-                        }
+            # One client for every attempt — retries reuse the connection pool
+            # instead of paying a fresh TCP/TLS handshake per attempt.
+            async with httpx.AsyncClient(
+                timeout=ep.timeout_seconds, transport=self._transport
+            ) as client:
+                async for attempt in AsyncRetrying(
+                    stop=stop_after_attempt(retry_cfg.max_attempts),
+                    wait=wait_exponential(
+                        multiplier=retry_cfg.base_delay_seconds, max=retry_cfg.max_delay_seconds
+                    ),
+                    retry=retry_if_exception_type((_RetryableHTTPError, httpx.TransportError)),
+                    reraise=True,
+                ):
+                    with attempt:
                         r = await client.request(
                             ep.method, url, headers=headers, params=query or None, **kwargs
                         )
-                    if r.status_code in retry_cfg.retry_on_status:
-                        raise _RetryableHTTPError(r.status_code, r.text)
-                    if r.status_code >= 400:
-                        raise ConnectorHTTPError(r.status_code, r.text)
-                    data = r.json() if r.content else None
-                    if ep.response_path and data is not None:
-                        return _dig(data, ep.response_path)
-                    return data
+                        if r.status_code in retry_cfg.retry_on_status:
+                            raise _RetryableHTTPError(r.status_code, r.text)
+                        if r.status_code >= 400:
+                            raise ConnectorHTTPError(r.status_code, r.text)
+                        try:
+                            data = r.json() if r.content else None
+                        except ValueError as exc:
+                            raise ConnectorHTTPError(
+                                r.status_code, f"non-JSON response: {r.text[:200]}"
+                            ) from exc
+                        if ep.response_path and data is not None:
+                            return _dig(data, ep.response_path)
+                        return data
         except _RetryableHTTPError as exc:
             raise ConnectorHTTPError(exc.status_code, exc.body) from exc
         except httpx.TransportError as exc:

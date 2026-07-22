@@ -46,9 +46,14 @@ def _owner_emails() -> set[str]:
 
 def _admin_token() -> str:
     """Deterministic session token derived from the admin password. An attacker who
-    doesn't know ADMIN_PASSWORD cannot forge it."""
+    doesn't know ADMIN_PASSWORD cannot forge it.
+
+    Only called once ADMIN_PASSWORD is already confirmed set (see _is_admin /
+    admin_login, which both refuse to reach here otherwise) — the `or ""` below
+    is purely a type guard for `.encode()`, not a security fallback.
+    """
     pw = (getattr(settings, "ADMIN_PASSWORD", None) or "").encode()
-    return hmac.new(pw or b"unset", b"aria-admin-session-v1", hashlib.sha256).hexdigest()
+    return hmac.new(pw, b"aria-admin-session-v1", hashlib.sha256).hexdigest()
 
 
 def _is_owner_user(request: Request) -> bool:
@@ -331,12 +336,6 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
     persona: str | None = None  # team-member id → ARIA answers as that professional
-
-
-class ChatResponse(BaseModel):
-    reply: str
-    model_used: str = ""
-    processing_time_ms: int = 0
 
 
 class SupportRequest(BaseModel):
@@ -688,6 +687,9 @@ async def admin_impersonate(request: Request, email: str = Form(...)):
     target = _safe_name(email).strip().lower()
     if not target or "@" not in target:
         return JSONResponse({"error": "invalid email"}, status_code=400)
+    users = await _list_users()
+    if not any(u["email"] == target for u in users):
+        return JSONResponse({"error": "no such user"}, status_code=404)
     owner = auth.verify_user(request.cookies.get(auth.USER_COOKIE)) or {}
     resp = RedirectResponse("/app", status_code=303)
     # Remember who we really are (signed) so /admin/stop-impersonate can restore.
@@ -1569,8 +1571,10 @@ async def connector_disconnect(pid: str, request: Request):
 
 @app.post("/api/v1/account/delete")
 async def delete_account(request: Request):
-    """Delete the signed-in user's stored data (profile + plan) and sign out."""
+    """Delete the signed-in user's stored data (profile, plan, connected
+    connector tokens) and sign out."""
     from apps.core import auth
+    from apps.core.connectors import oauth_hub as hub
 
     user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
     if not user:
@@ -1580,7 +1584,10 @@ async def delete_account(request: Request):
         from apps.core.memory.redis_client import get_cache
 
         cache = get_cache()
-        for key in (f"aria:profile:{email}", _PLAN_KEY.format(email=email)):
+        keys = [f"aria:profile:{email}", _PLAN_KEY.format(email=email)]
+        # Live OAuth credentials must not outlive the account they belong to.
+        keys += [hub._TOKEN_KEY.format(email=email, pid=pid) for pid in hub.PROVIDERS]
+        for key in keys:
             with suppress(Exception):
                 await cache.delete(key)
     except Exception as e:
@@ -1745,10 +1752,22 @@ async def chat(req: ChatRequest, request: Request):
             from apps.core.agent_brain import get_agent
 
             reply = await get_agent().think(req.message)
-            return {"reply": reply, "model_used": "fallback", "processing_time_ms": 0}
+            return {
+                "reply": reply,
+                "model_used": "fallback",
+                "processing_time_ms": 0,
+                "media_type": None,
+                "media_base64": None,
+            }
         except Exception as e2:
             logger.error(f"Chat fallback error: {e2}")
-            return {"reply": f"Error: {e}", "model_used": "none", "processing_time_ms": 0}
+            return {
+                "reply": "Something went wrong on our end. Please try again in a moment.",
+                "model_used": "none",
+                "processing_time_ms": 0,
+                "media_type": None,
+                "media_base64": None,
+            }
 
 
 @app.post("/api/v1/support/chat")
@@ -1813,7 +1832,8 @@ async def generate_code(req: ChatRequest, request: Request):
         elapsed = int((time.time() - start) * 1000)
         return {"reply": reply, "processing_time_ms": elapsed}
     except Exception as e:
-        return {"reply": f"Error: {e}"}
+        logger.error(f"Code generation error: {e}")
+        return {"reply": "Something went wrong generating that. Please try again."}
 
 
 @app.post("/api/v1/research")
@@ -1834,7 +1854,8 @@ async def research(req: ChatRequest, request: Request):
         elapsed = int((time.time() - start) * 1000)
         return {"reply": reply, "processing_time_ms": elapsed}
     except Exception as e:
-        return {"reply": f"Error: {e}"}
+        logger.error(f"Research error: {e}")
+        return {"reply": "Something went wrong researching that. Please try again."}
 
 
 class WorkflowRequest(BaseModel):
@@ -1919,7 +1940,9 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
         return payload
     except Exception as e:
         logger.error(f"Workflow error: {e}")
-        return JSONResponse({"ok": False, "error": str(e), "synthesis": ""}, status_code=500)
+        return JSONResponse(
+            {"ok": False, "error": "workflow_failed", "synthesis": ""}, status_code=500
+        )
 
 
 @app.post("/api/v1/workflow/stream")
@@ -1977,7 +2000,7 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         except Exception as e:  # noqa: BLE001 — the stream must always close cleanly.
             logger.error(f"Workflow stream error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)[:200]})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': 'workflow_failed'})}\n\n"
         finally:
             with suppress(Exception):
                 await _record_ai_cost(email, plan, req.goal, synthesis)

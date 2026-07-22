@@ -20,6 +20,9 @@ class BaseConnector(ABC):
     Subclasses implement `get_auth_url` and `exchange_code`; `refresh_token`
     is optional because not every provider issues refresh tokens (override it
     where it does — see GoogleConnection for the pattern).
+
+    Contract: ConnectorFactory.create() instantiates subclasses with zero
+    arguments (`cls()`) — don't declare a required __init__ parameter.
     """
 
     # Set by @register_connector — the key used everywhere else in the system

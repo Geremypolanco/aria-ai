@@ -87,11 +87,13 @@ class ConnectionManager:
     }
 
     # Servicios que no requieren OAuth (usan API key/webhook directamente)
+    # "quickbooks" removido: QuickBooksConnection implementa OAuth2 real
+    # (get_auth_url/exchange_code), registrado en ConnectorFactory.
     NO_OAUTH = {
         "indeed",
         "discord",
         "airtable",
-        "quickbooks",
+        "trello",
         "calcom",
         "mixpanel",
         "amplitude",
@@ -122,16 +124,31 @@ class ConnectionManager:
     async def store(self, chat_id: str, service: str, tokens: dict) -> None:
         cache = self._cache()
         if cache:
+            import json
+
+            from apps.core.connectors import token_crypto
+
             key = self.K_CONN.format(chat_id=chat_id, service=service)
-            await cache.set(key, tokens, ttl_seconds=self.TTL)
+            blob = token_crypto.encrypt(json.dumps(tokens))
+            await cache.set(key, blob, ttl_seconds=self.TTL)
             logger.info("[Connections] %s conectado para chat %s", service, chat_id)
 
     async def get(self, chat_id: str, service: str) -> dict | None:
         cache = self._cache()
         if not cache:
             return None
+        import json
+
+        from apps.core.connectors import token_crypto
+
         key = self.K_CONN.format(chat_id=chat_id, service=service)
-        data = await cache.get(key)
+        raw = await cache.get(key)
+        if not raw:
+            return None
+        # decrypt() transparently passes through any legacy plaintext record,
+        # matching the same forward-compatible pattern oauth_hub.get_token uses.
+        decoded = token_crypto.decrypt(raw) if isinstance(raw, str) else raw
+        data = json.loads(decoded) if isinstance(decoded, str) else decoded
         return data if isinstance(data, dict) else None
 
     async def remove(self, chat_id: str, service: str) -> None:
@@ -157,7 +174,7 @@ class ConnectionManager:
             "discord": "DISCORD_WEBHOOK_URL",
             "airtable": "AIRTABLE_TOKEN",
             "notion": "NOTION_TOKEN",
-            "quickbooks": "QUICKBOOKS_CLIENT_ID",
+            "trello": "TRELLO_API_KEY",
             "calcom": "CALCOM_API_KEY",
             "mixpanel": "MIXPANEL_API_SECRET",
             "amplitude": "AMPLITUDE_API_KEY",
