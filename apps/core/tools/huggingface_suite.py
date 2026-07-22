@@ -51,8 +51,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -246,15 +248,15 @@ class HuggingFaceSuite:
                     "target": target,
                     "model": model,
                 }
-            # Fallback: try multilingual model
-            result2 = await self._call("Helsinki-NLP/opus-mt-tc-big-en-es", {"inputs": text})
-            if result2:
-                return {
-                    "success": True,
-                    "translated": result2[0].get("translation_text", ""),
-                    "source": source,
-                    "target": target,
-                }
+            # NOTE: a prior "fallback" here unconditionally called the
+            # fixed en->es model Helsinki-NLP/opus-mt-tc-big-en-es for ANY
+            # unsupported pair (despite being labeled "multilingual model"
+            # in a comment — it isn't) and returned that mistranslated
+            # output tagged with the original source/target and
+            # "success": True, with no isinstance guard on the result
+            # shape. Removed: there's no safe universal fallback without
+            # knowing the actual target language, so report unavailability
+            # explicitly instead of returning silently-wrong text.
             return {"success": False, "error": "Traducción no disponible para este par de idiomas"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -275,14 +277,17 @@ class HuggingFaceSuite:
         if not targets:
             targets = ["en", "fr", "de", "pt", "it", "ja", "zh"]
         results: dict[str, dict] = {}
+        any_success = False
         for lang in targets:
             name = await self.translate(listing.get("name", ""), source, lang)
             desc = await self.translate(listing.get("description", ""), source, lang)
+            if name.get("success") or desc.get("success"):
+                any_success = True
             results[lang] = {
                 "name": name.get("translated", ""),
                 "description": desc.get("translated", ""),
             }
-        return {"success": True, "listings": results}
+        return {"success": any_success, "listings": results}
 
     # ══════════════════════════════════════════════════════════════
     # 3. RESUMEN AUTOMÁTICO — BART, Pegasus, mT5
@@ -1247,30 +1252,51 @@ class HuggingFaceSuite:
             from huggingface_hub import AsyncInferenceClient
 
             client = AsyncInferenceClient(provider="hf-inference", api_key=self._token)
-            sys_msg = (
-                system
-                or "You are a structured data extraction assistant. Always respond with valid JSON following the provided schema exactly."
-            )
-            messages = [
-                {"role": "system", "content": sys_msg},
-                {"role": "user", "content": prompt},
-            ]
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    max_tokens=1024,
-                    temperature=0.1,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {"name": "structured_output", "schema": schema},
-                    },
-                ),
-                timeout=60.0,
-            )
-            content = (response.choices[0].message.content or "").strip()
             try:
-                parsed = json.loads(content)
+                sys_msg = (
+                    system
+                    or "You are a structured data extraction assistant. Always respond with valid JSON following the provided schema exactly."
+                )
+                messages = [
+                    {"role": "system", "content": sys_msg},
+                    {"role": "user", "content": prompt},
+                ]
+                response = await asyncio.wait_for(
+                    client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        max_tokens=1024,
+                        temperature=0.1,
+                        response_format={
+                            "type": "json_schema",
+                            "json_schema": {"name": "structured_output", "schema": schema},
+                        },
+                    ),
+                    timeout=60.0,
+                )
+            finally:
+                with contextlib.suppress(Exception):
+                    await client.close()
+            content = (response.choices[0].message.content or "").strip()
+            # response_format is a best-effort request — not every
+            # provider/model routed via AsyncInferenceClient honors strict
+            # JSON-schema constrained decoding, so the content can still
+            # arrive markdown-fenced or with leading/trailing prose. Strip
+            # fences and slice to the outermost matching bracket before
+            # parsing (same recoverable-extraction approach as
+            # ai_client.py's _extract_json_safe) instead of hard-failing on
+            # a payload that's actually recoverable.
+            cleaned = content
+            cleaned = re.sub(r"```(?:json)?\n?", "", cleaned).strip().rstrip("`").strip()
+            candidates = [(cleaned.find(c), c) for c in ("{", "[") if cleaned.find(c) != -1]
+            if candidates:
+                idx, start_char = min(candidates, key=lambda pair: pair[0])
+                end_char = "}" if start_char == "{" else "]"
+                end_idx = cleaned.rfind(end_char)
+                if end_idx > idx:
+                    cleaned = cleaned[idx : end_idx + 1]
+            try:
+                parsed = json.loads(cleaned)
                 return {"success": True, "data": parsed, "raw": content, "model": model}
             except json.JSONDecodeError:
                 return {"success": False, "error": f"JSON inválido: {content[:200]}"}
@@ -1381,26 +1407,30 @@ class HuggingFaceSuite:
 
             img_b64 = base64.b64encode(image_bytes).decode()
             client = AsyncInferenceClient(provider="hf-inference", api_key=self._token)
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
-                                },
-                                {"type": "text", "text": question},
-                            ],
-                        }
-                    ],
-                    max_tokens=512,
-                    temperature=0.4,
-                ),
-                timeout=90.0,
-            )
+            try:
+                response = await asyncio.wait_for(
+                    client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                                    },
+                                    {"type": "text", "text": question},
+                                ],
+                            }
+                        ],
+                        max_tokens=512,
+                        temperature=0.4,
+                    ),
+                    timeout=90.0,
+                )
+            finally:
+                with contextlib.suppress(Exception):
+                    await client.close()
             answer = (response.choices[0].message.content or "").strip()
             if answer:
                 return {"success": True, "answer": answer, "model": model, "question": question}
@@ -1786,11 +1816,27 @@ class HuggingFaceSuite:
                     )
         except Exception:
             pass
-        # Fallback: Gradio 3.x /api/predict
+        # Fallback: Gradio 3.x /api/predict — resolve the real fn_index for
+        # fn_name via /config instead of hardcoding 0, which silently routed
+        # every call to whatever function happens to sit at index 0 on the
+        # Space (wrong results or "Sin resultado" on any multi-function
+        # Space, since every caller here passes a different fn_name).
         try:
+            fn_index = 0
+            try:
+                cfg_r = await self._http.get(f"{base_url}/config", headers=headers, timeout=10.0)
+                if cfg_r.status_code == 200:
+                    deps = cfg_r.json().get("dependencies", [])
+                    for idx, dep in enumerate(deps):
+                        api_name = (dep.get("api_name") or "").lstrip("/")
+                        if api_name == fn_name:
+                            fn_index = idx
+                            break
+            except Exception:
+                pass
             r2 = await self._http.post(
                 f"{base_url}/api/predict",
-                json={"data": data, "fn_index": 0},
+                json={"data": data, "fn_index": fn_index},
                 headers=headers,
                 timeout=timeout,
             )
