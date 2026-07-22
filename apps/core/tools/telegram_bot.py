@@ -216,7 +216,7 @@ class AriaTelegramBot:
                 from apps.core.cognition.aria_mind import get_aria_mind
 
                 mind = get_aria_mind()
-                await mind._clear_history(chat_id)
+                await mind._clear_conversation(chat_id)
             except Exception:
                 pass
             await self._edit_or_send(
@@ -310,13 +310,6 @@ class AriaTelegramBot:
             if not img_bytes:
                 await self._send(chat_id, "⚠️ No pude descargar la imagen.")
                 return ""
-
-            # Store image in AriaMind context — enables VQA, img2img, document_qa
-            import base64 as _b64
-
-            from apps.core.cognition.aria_mind import set_image_context
-
-            set_image_context(chat_id, _b64.b64encode(img_bytes).decode())
 
             # If caption looks like a question → route directly to VQA
             _is_question = caption and (
@@ -603,7 +596,47 @@ class AriaTelegramBot:
                 logger.error("[Bot] _send: %s", exc)
         return True
 
+    async def _send_message(self, chat_id: str, text: str, already_html: bool = False) -> bool:
+        """Alias expected by aria_commands.py, deep_think.py, and
+        task_manager.py — those callers referenced a method that never
+        existed on this class (only _send did), so every notification they
+        tried to send silently failed via their own except-and-pass."""
+        return await self._send(chat_id, text, already_html=already_html)
+
     # ── Media sending ──────────────────────────────────────────────────────
+
+    async def _send_photo(self, chat_id: str, image: bytes | str, caption: str = None) -> bool:
+        """Alias expected by orchestrator.py, which referenced a method that
+        never existed on this class. Accepts raw bytes, an http(s) URL
+        (Telegram fetches it server-side), or a local file path."""
+        if isinstance(image, bytes):
+            return await self._send_photo_bytes(chat_id, image, caption=caption)
+        if isinstance(image, str) and image.startswith(("http://", "https://")):
+            if not settings.telegram_token:
+                return False
+            try:
+                d: dict = {"chat_id": chat_id, "photo": image}
+                if caption:
+                    d["caption"] = self._md_to_html(caption)[:1024]
+                    d["parse_mode"] = "HTML"
+                r = await self._http.post(
+                    f"{TELEGRAM_API}{settings.telegram_token}/sendPhoto", json=d
+                )
+                if r.status_code != 200:
+                    logger.error("[Bot] sendPhoto(url) %d: %s", r.status_code, r.text[:150])
+                return r.status_code == 200
+            except Exception as exc:
+                logger.error("[Bot] _send_photo(url): %s", exc)
+                return False
+        if isinstance(image, str):
+            try:
+                with open(image, "rb") as f:
+                    data = f.read()
+            except Exception as exc:
+                logger.error("[Bot] _send_photo(path) could not read %s: %s", image, exc)
+                return False
+            return await self._send_photo_bytes(chat_id, data, caption=caption)
+        return False
 
     async def _send_photo_bytes(
         self, chat_id: str, image_bytes: bytes, caption: str = None, filename: str = "aria.png"

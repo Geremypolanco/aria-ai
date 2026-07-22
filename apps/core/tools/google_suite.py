@@ -207,7 +207,7 @@ class GoogleSuite:
                 json=body,
             )
             if res.status_code == 200:
-                r = res.json().get("responses", [{}])[0]
+                r = (res.json().get("responses") or [{}])[0]
                 result: dict[str, Any] = {"success": True}
 
                 # Labels (objetos detectados)
@@ -375,7 +375,7 @@ class GoogleSuite:
                 json=body,
             )
             if res.status_code == 200:
-                t = res.json().get("data", {}).get("translations", [{}])[0]
+                t = (res.json().get("data", {}).get("translations") or [{}])[0]
                 return {
                     "success": True,
                     "translated": t.get("translatedText", ""),
@@ -397,7 +397,7 @@ class GoogleSuite:
                 json={"q": text},
             )
             if res.status_code == 200:
-                d = res.json().get("data", {}).get("detections", [[{}]])[0][0]
+                d = (res.json().get("data", {}).get("detections") or [[{}]])[0][0]
                 return {
                     "success": True,
                     "language": d.get("language", ""),
@@ -731,17 +731,19 @@ class GoogleSuite:
         if not self._ok():
             return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
         try:
-            res = await self._http.get(
-                f"{BASE}/youtube/v3/videos",
-                params={
-                    "part": "snippet,statistics",
-                    "chart": "mostPopular",
-                    "regionCode": region,
-                    "videoCategoryId": category_id,
-                    "maxResults": 50,
-                    "key": self._key,
-                },
-            )
+            params = {
+                "part": "snippet,statistics",
+                "chart": "mostPopular",
+                "regionCode": region,
+                "maxResults": 50,
+                "key": self._key,
+            }
+            # "0" isn't a real YouTube category id (they start at "1") — the
+            # API rejects it with a 400, so only send it when a real category
+            # was actually requested.
+            if category_id and category_id != "0":
+                params["videoCategoryId"] = category_id
+            res = await self._http.get(f"{BASE}/youtube/v3/videos", params=params)
             if res.status_code == 200:
                 items = res.json().get("items", [])
                 return {
@@ -1040,8 +1042,11 @@ class GoogleSuite:
         nlp_task = self.nlp_analyze(web_snippets[:3000]) if web_snippets else asyncio.sleep(0)
         nlp = await nlp_task
 
+        any_succeeded = any(
+            isinstance(x, dict) and x.get("success") for x in (web, youtube, books, kg, trends)
+        )
         return {
-            "success": True,
+            "success": any_succeeded,
             "niche": niche,
             "web_results": web.get("results", [])[:5] if isinstance(web, dict) else [],
             "youtube_videos": youtube.get("results", [])[:5] if isinstance(youtube, dict) else [],
