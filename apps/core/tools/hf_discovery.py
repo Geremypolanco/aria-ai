@@ -459,7 +459,7 @@ class HFDiscovery:
             "summarization",
             {"inputs": text[:2000], "parameters": {"max_length": max_length, "min_length": 40}},
         )
-        if result["success"] and isinstance(result["result"], list):
+        if result["success"] and isinstance(result["result"], list) and result["result"]:
             result["summary"] = result["result"][0].get("summary_text", "")
         return result
 
@@ -485,7 +485,7 @@ class HFDiscovery:
             "sentiment-analysis",
             {"inputs": text[:512]},
         )
-        if result["success"] and isinstance(result["result"], list):
+        if result["success"] and isinstance(result["result"], list) and result["result"]:
             r = (
                 result["result"][0]
                 if isinstance(result["result"][0], dict)
@@ -567,7 +567,7 @@ class HFDiscovery:
             image_bytes,
             binary_input=True,
         )
-        if result["success"] and isinstance(result["result"], list):
+        if result["success"] and isinstance(result["result"], list) and result["result"]:
             result["caption"] = result["result"][0].get("generated_text", "")
         return result
 
