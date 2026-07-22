@@ -88,6 +88,21 @@ async def logs_ws(websocket: WebSocket, task_id: str):
     if not user or not user.get("email"):
         await websocket.close(code=4401)  # unauthenticated
         return
+
+    # Same BOLA guard as GET /api/v1/missions/{id} — task_ids are unguessable
+    # (secrets.token_urlsafe), but that's not authorization: this endpoint
+    # exposes the same per-mission data and must enforce ownership the same
+    # way, not rely solely on the id being hard to guess.
+    email = (user.get("email") or "").strip().lower()
+    status = await get_queue().get_status(task_id)
+    if status and status.get("user_email") and status["user_email"] != email:
+        from apps.core.config import settings
+
+        owner = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
+        if email != owner:
+            await websocket.close(code=4403)  # forbidden
+            return
+
     await websocket.accept()
     try:
         async for line in log_bus.subscribe(task_id):
