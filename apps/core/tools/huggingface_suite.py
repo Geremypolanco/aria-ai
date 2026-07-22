@@ -58,6 +58,7 @@ from typing import Any
 import httpx
 
 from apps.core.config import settings
+from apps.core.tools.web_tools import _assert_public_url
 
 logger = logging.getLogger("aria.huggingface_suite")
 HF_API = "https://api-inference.huggingface.co/models"
@@ -703,6 +704,7 @@ class HuggingFaceSuite:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
             if image_url and not image_bytes:
+                await _assert_public_url(image_url)
                 res = await self._http.get(image_url, timeout=30.0)
                 image_bytes = res.content
 

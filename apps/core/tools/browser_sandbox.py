@@ -384,6 +384,9 @@ class BrowserSession:
     async def download_file(self, url: str) -> dict[str, Any]:
         """Descarga un archivo y retorna los bytes."""
         try:
+            from apps.core.tools.web_tools import _assert_public_url
+
+            await _assert_public_url(url)
             r = await self._http.get(url)
             if r.status_code == 200:
                 filename = url.split("/")[-1].split("?")[0] or "download"
