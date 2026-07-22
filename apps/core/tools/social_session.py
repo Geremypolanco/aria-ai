@@ -271,13 +271,21 @@ class SocialSessionManager:
     ) -> dict[str, Any]:
         """Guarda la sesión en Redis y Supabase para persistencia."""
         try:
+            from apps.core.connectors.token_crypto import encrypt
             from apps.core.memory.redis_client import get_cache
 
             cache = get_cache()
 
+            # These cookies are live session credentials for the user's real
+            # social accounts (auth_token, li_at, sessionid, ...) — encrypt at
+            # rest the same way connector OAuth tokens already are, instead
+            # of storing them in plaintext despite this module's own
+            # docstring claiming "ARIA stores the cookies encrypted."
+            encrypted_cookies = encrypt(json.dumps(cookies))
+
             session_data = {
                 "platform": platform,
-                "cookies": cookies,
+                "cookies": encrypted_cookies,
                 "user_info": user_info or {},
                 "saved_at": time.time(),
                 "active": True,
@@ -295,7 +303,7 @@ class SocialSessionManager:
                     "social_sessions",
                     {
                         "platform": platform,
-                        "cookies_json": json.dumps(cookies),
+                        "cookies_json": encrypted_cookies,
                         "user_info": json.dumps(user_info or {}),
                         "active": True,
                         "updated_at": "now()",
@@ -314,12 +322,27 @@ class SocialSessionManager:
     async def load_session(self, platform: str) -> dict[str, Any] | None:
         """Carga la sesión guardada para una plataforma."""
         try:
+            from apps.core.connectors.token_crypto import decrypt
             from apps.core.memory.redis_client import get_cache
 
             cache = get_cache()
             key = self.SESSION_KEY.format(platform=platform)
             session = await cache.get(key)
             if session and isinstance(session, dict):
+                raw_cookies = session.get("cookies")
+                if isinstance(raw_cookies, str):
+                    # New encrypted format (decrypt() transparently passes
+                    # through legacy plaintext JSON too, so this also covers
+                    # sessions saved before encryption shipped).
+                    try:
+                        session["cookies"] = json.loads(decrypt(raw_cookies))
+                    except Exception as dec_exc:
+                        logger.warning(
+                            "[SocialSession] No pude descifrar cookies de %s: %s",
+                            platform,
+                            dec_exc,
+                        )
+                        session["cookies"] = {}
                 return session
             # Fallback: intentar Supabase
             try:
@@ -329,9 +352,14 @@ class SocialSessionManager:
                 rows = await db.query("social_sessions", {"platform": platform, "active": True})
                 if rows:
                     row = rows[0]
+                    raw_cookies = row.get("cookies_json", "{}")
+                    try:
+                        cookies = json.loads(decrypt(raw_cookies))
+                    except Exception:
+                        cookies = {}
                     return {
                         "platform": platform,
-                        "cookies": json.loads(row.get("cookies_json", "{}")),
+                        "cookies": cookies,
                         "user_info": json.loads(row.get("user_info", "{}")),
                         "active": True,
                     }
@@ -390,6 +418,20 @@ class SocialSessionManager:
     # 2. VERIFICAR QUE LA SESION FUNCIONA
     # ══════════════════════════════════════════════════════════════
 
+    def _resolve_shop_name(self, session: dict[str, Any]) -> str:
+        """Resolve the Shopify {shop_name} template placeholder — prefer a
+        value already recorded on the session, fall back to the configured
+        SHOPIFY_URL (normalized the same way commerce_tools.py does, since
+        the env var may include a scheme prefix)."""
+        stored = (session.get("user_info") or {}).get("shop_name")
+        if stored:
+            return stored
+        from apps.core.config import settings
+
+        shop_url = getattr(settings, "SHOPIFY_URL", None) or ""
+        base = shop_url.removeprefix("https://").removeprefix("http://").rstrip("/")
+        return base.split(".myshopify.com")[0] if base else ""
+
     async def test_session(self, platform: str) -> dict[str, Any]:
         """Hace una petición de prueba para verificar que la sesión está activa."""
         session = await self.load_session(platform)
@@ -400,6 +442,20 @@ class SocialSessionManager:
         test_url = cfg.get("test_endpoint")
         if not test_url:
             return {"success": True, "message": "Sin endpoint de prueba configurado"}
+
+        if "{shop_name}" in test_url:
+            # Previously never substituted — every request went to the
+            # literal, invalid hostname "{shop_name}.myshopify.com".
+            shop_name = self._resolve_shop_name(session)
+            if not shop_name:
+                return {
+                    "success": False,
+                    "error": (
+                        "No se pudo determinar el shop_name de Shopify — "
+                        "configura SHOPIFY_URL o vuelve a importar la sesión"
+                    ),
+                }
+            test_url = test_url.format(shop_name=shop_name)
 
         headers = await self.get_session_headers(platform)
         if not headers:
@@ -470,10 +526,6 @@ class SocialSessionManager:
                 "error": "No hay sesión de Twitter activa. Usa /sesion twitter",
             }
 
-        session = await self.load_session("twitter")
-        cookies = session.get("cookies", {})
-        cookies.get("ct0", "")
-
         try:
             payload = {
                 "variables": {
@@ -541,7 +593,6 @@ class SocialSessionManager:
             }
 
         session = await self.load_session("linkedin")
-        session.get("cookies", {})
         user_info = session.get("user_info", {})
         person_id = user_info.get("id") or user_info.get("person_id", "")
 
