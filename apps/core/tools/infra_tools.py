@@ -49,11 +49,14 @@ class InfraTools:
         """Verifica si las APIs críticas están respondiendo."""
         import httpx
 
+        from apps.core.tools.web_tools import _assert_public_url
+
         results = {}
         async with httpx.AsyncClient() as client:
             for url in endpoints:
                 try:
-                    resp = await client.get(url, timeout=5)
+                    await _assert_public_url(url)
+                    resp = await client.get(url, timeout=5, follow_redirects=False)
                     results[url] = {"status": resp.status_code, "up": resp.status_code < 400}
                 except Exception as e:
                     results[url] = {"status": "error", "up": False, "error": str(e)}

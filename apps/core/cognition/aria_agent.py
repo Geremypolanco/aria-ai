@@ -21,7 +21,20 @@ class AriaAgent:
     # docker nor vercel CLI installed) — but that's incidental, not a real
     # guard, so gate it properly rather than relying on "it happens to be
     # broken today". Mirrors aria_mind.py's _OWNER_ONLY_TOOLS.
-    _OWNER_ONLY_TOOLS = frozenset({"github", "docker", "deployment"})
+    #
+    # "infra" (InfraTools) runs arbitrary shell commands (execute_system_command,
+    # shell=True, guarded only by a trivially-bypassable substring blocklist)
+    # and arbitrary file read/write/delete (manage_files) — at least as
+    # dangerous as github/docker/deployment. It's currently unreachable only
+    # because _execute_tool()'s dispatch has no case for it (InfraTools has no
+    # run() method) — the exact same "broken by accident, not by design"
+    # situation the comment above already warns about. Gated here (plus the
+    # two names the LLM is actually told to call, per _get_tools_desc()) so a
+    # future dispatch fix doesn't silently turn this into an unauthenticated
+    # RCE / arbitrary-file primitive.
+    _OWNER_ONLY_TOOLS = frozenset(
+        {"github", "docker", "deployment", "infra", "execute_system_command", "manage_files"}
+    )
 
     def __init__(self, name: str = "Aria", identity: str = "", is_owner: bool = False):
         self.name = name

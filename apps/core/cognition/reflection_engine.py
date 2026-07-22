@@ -181,10 +181,15 @@ REASON: [why this matters]
             from apps.core.tools.ai_client import AIModel, get_ai_client
 
             client = get_ai_client()
-            response = await client.complete(prompt, model=AIModel.STRATEGY, max_tokens=600)
+            response = await client.complete(
+                system="You are ARIA AI's reflection system, analyzing failures to generate concrete improvement decisions.",
+                user=prompt,
+                model=AIModel.STRATEGY,
+                max_tokens=600,
+            )
 
-            if response:
-                blocks = response.split("---")
+            if response and response.success and response.content:
+                blocks = response.content.split("---")
                 for block in blocks:
                     if "DECISION:" not in block:
                         continue

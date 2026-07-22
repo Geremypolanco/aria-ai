@@ -116,7 +116,7 @@ class PresentationBuilder:
             ),
         )
 
-        slides = self._parse_slides_json(content) or self._default_pitch_deck(
+        slides = self._parse_slides_json(content.content) or self._default_pitch_deck(
             company, problem, solution
         )
         html = self._render_html(f"{company} — Pitch Deck", slides, "corporate", True)
@@ -186,7 +186,7 @@ class PresentationBuilder:
                 f"Responde SOLO con una lista numerada: 1. Título\\n2. Título\\n..."
             ),
         )
-        lines = [l.strip() for l in resp.split("\n") if l.strip()]
+        lines = [l.strip() for l in resp.content.split("\n") if l.strip()]
         titles = [re.sub(r"^\d+[\.\)]\s*", "", l) for l in lines if re.match(r"^\d", l)]
         return titles[:count] if titles else [f"Slide {i+1}" for i in range(count)]
 
@@ -208,7 +208,7 @@ class PresentationBuilder:
                     f"Máximo 5 bullets concisos. Responde SOLO JSON."
                 ),
             )
-            slide = self._parse_single_slide(resp)
+            slide = self._parse_single_slide(resp.content)
             slide.setdefault("title", slide_title)
             return slide
 
