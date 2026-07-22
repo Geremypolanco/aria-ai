@@ -22172,7 +22172,7 @@ JSON:
             product_name = sub_data.get("name", "ARIA Pro Subscription")
             tagline = sub_data.get("tagline", "")
             monthly_cents = int(sub_data.get("monthly_price_cents", 1900))
-            int(sub_data.get("annual_price_cents", 18000))
+            annual_cents = int(sub_data.get("annual_price_cents", 18000))
             description = sub_data.get("description", "")
             deliverables = sub_data.get("monthly_deliverables", [])
             tier = sub_data.get("tier_name", "Pro")
@@ -22180,6 +22180,7 @@ JSON:
 
             urls_created: list[str] = []
             platform_used = ""
+            annual_checkout_url = ""
 
             # Try Stripe subscription billing
             stripe_key = getattr(settings, "STRIPE_SECRET_KEY", None)
@@ -22229,6 +22230,39 @@ JSON:
                                     if checkout_url:
                                         urls_created.append(checkout_url)
                                         platform_used = "Stripe Subscriptions"
+
+                            # Mirror the monthly flow for the annual plan the AI
+                            # was asked to design (annual_price_cents) — it used
+                            # to be computed and silently discarded.
+                            annual_price_r = await _client.post(
+                                "https://api.stripe.com/v1/prices",
+                                data={
+                                    "product": stripe_pid,
+                                    "unit_amount": str(annual_cents),
+                                    "currency": "usd",
+                                    "recurring[interval]": "year",
+                                    "nickname": f"{tier} Annual",
+                                },
+                                auth=(stripe_key, ""),
+                            )
+                            annual_checkout_url = ""
+                            if annual_price_r.status_code == 200:
+                                annual_price_id = annual_price_r.json().get("id", "")
+                                annual_link_data: dict = {
+                                    "line_items[0][price]": annual_price_id,
+                                    "line_items[0][quantity]": "1",
+                                }
+                                if trial_days > 0:
+                                    annual_link_data["subscription_data[trial_period_days]"] = (
+                                        str(trial_days)
+                                    )
+                                annual_link_r = await _client.post(
+                                    "https://api.stripe.com/v1/payment_links",
+                                    data=annual_link_data,
+                                    auth=(stripe_key, ""),
+                                )
+                                if annual_link_r.status_code == 200:
+                                    annual_checkout_url = annual_link_r.json().get("url", "")
                 except Exception as _se:
                     logger.debug("[IncomeLoop] stripe_subscription: %s", _se)
 
@@ -22289,10 +22323,15 @@ JSON:
                     slug = product_name[:35].lower().replace(" ", "-").replace("'", "")
                     buy_url = urls_created[0] if urls_created else "#"
                     deliverables_md = "\n".join(f"- ✅ {d}" for d in deliverables[:6])
+                    annual_md = (
+                        f" | **${annual_cents/100:.0f}/year** [Save with annual billing →]({annual_checkout_url})"
+                        if annual_checkout_url
+                        else ""
+                    )
                     md = (
                         f"# {product_name} — {tier} Membership\n\n"
                         f"*{tagline}*\n\n"
-                        f"**${monthly_cents/100:.0f}/month** | [Subscribe Now →]({buy_url})\n\n"
+                        f"**${monthly_cents/100:.0f}/month** | [Subscribe Now →]({buy_url}){annual_md}\n\n"
                         f"*{trial_days}-day free trial included*\n\n"
                         f"{description}\n\n"
                         f"## What You Get Every Month\n\n{deliverables_md}\n\n"
