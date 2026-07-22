@@ -105,6 +105,10 @@ class Settings(BaseSettings):
     # ── COMERCIO ──────────────────────────────────────────
     GUMROAD_TOKEN: str | None = None
     STRIPE_SECRET_KEY: str | None = None
+    # Signing secret for the /billing/webhook endpoint (Stripe dashboard →
+    # Webhooks → signing secret, starts with "whsec_"). Required to verify
+    # inbound Stripe events; without it the endpoint rejects all events.
+    STRIPE_WEBHOOK_SECRET: str | None = None
     PAYPAL_CLIENT_ID: str | None = None
     PAYPAL_SECRET: str | None = None
     SHOPIFY_URL: str | None = None

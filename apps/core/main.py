@@ -283,9 +283,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# credentials=True forbids a literal "*" (Starlette would reflect any request
+# Origin instead, which defeats the purpose) — so the allowlist must be explicit.
+_cors_origins = {"http://localhost:8000", "http://127.0.0.1:8000"}
+_base_url = getattr(settings, "ARIA_BASE_URL", None)
+if _base_url:
+    _cors_origins.add(_base_url.rstrip("/"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=sorted(_cors_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -520,7 +527,12 @@ async def admin_login_page():
 
 
 @app.post("/admin/login")
-async def admin_login(password: str = Form(...)):
+async def admin_login(request: Request, password: str = Form(...)):
+    if not _rate_ok(request, "admin_login", 10, 900):
+        return HTMLResponse(
+            _LOGIN_HTML.format(error='<div class="err">Too many attempts. Try again later.</div>', notice=""),
+            status_code=429,
+        )
     real = getattr(settings, "ADMIN_PASSWORD", None)
     if not real:
         return HTMLResponse(
@@ -1312,7 +1324,16 @@ async def billing_checkout(request: Request, tier: str = "pro", agreed: str = ""
 
 @app.get("/billing/success")
 async def billing_success(request: Request, session_id: str = ""):
-    """Verify the completed Checkout session server-side, then mark the user Pro."""
+    """Verify the completed Checkout session server-side, then mark the user Pro.
+
+    A session_id is authorization-bearing (Stripe treats it as a bearer of the
+    checkout result) but it can leak — browser history, a shared screenshot, a
+    support ticket, a Referer header. Without binding the grant to the account
+    that actually paid, anyone who obtains a valid session_id could redeem it
+    from a different logged-in account. We therefore require the requester's
+    email to match the session's paying email, and consume the session_id once
+    so a single payment can't be redeemed repeatedly.
+    """
     from apps.core import auth
 
     user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
@@ -1321,18 +1342,78 @@ async def billing_success(request: Request, session_id: str = ""):
         try:
             import stripe
 
+            from apps.core.memory.redis_client import get_cache
+
             stripe.api_key = key
             s = stripe.checkout.Session.retrieve(session_id)
             paid = s.get("payment_status") == "paid" or s.get("status") == "complete"
-            email = (user.get("email") or "").strip().lower()
+            requester_email = (user.get("email") or "").strip().lower()
+            paying_email = ((s.get("metadata") or {}).get("email") or "").strip().lower()
             tier = (s.get("metadata") or {}).get("tier", "pro")
             if tier not in BILLING_PLANS:
                 tier = "pro"
-            if paid and email:
-                await _set_user_plan(email, tier)
+            if paid and requester_email and requester_email == paying_email:
+                cache = get_cache()
+                consumed_key = f"aria:billing:consumed:{session_id}"
+                if not await cache.get(consumed_key):
+                    await _set_user_plan(requester_email, tier)
+                    await cache.set(consumed_key, "1", ttl_seconds=90 * 24 * 3600)
         except Exception as e:
             logger.error(f"Stripe verify error: {e}")
     return RedirectResponse("/app?billing=success", status_code=303)
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request):
+    """Stripe webhook: keeps plan state in sync with the subscription lifecycle
+    (renewals, cancellations, failed payments) instead of relying solely on the
+    success-redirect, which never fires for later billing-cycle events."""
+    secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", None)
+    if not secret:
+        return JSONResponse({"error": "webhook not configured"}, status_code=503)
+
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    try:
+        import stripe
+
+        event = stripe.Webhook.construct_event(payload, sig, secret)
+    except Exception as e:
+        logger.warning(f"Stripe webhook signature rejected: {e}")
+        return JSONResponse({"error": "invalid signature"}, status_code=400)
+
+    try:
+        etype = event.get("type", "")
+        obj = (event.get("data") or {}).get("object") or {}
+
+        if etype in ("customer.subscription.deleted", "invoice.payment_failed"):
+            email = (
+                (obj.get("metadata") or {}).get("email")
+                or obj.get("customer_email")
+                or ""
+            ).strip().lower()
+            if email:
+                await _set_user_plan(email, "free")
+
+        elif etype == "customer.subscription.updated":
+            email = ((obj.get("metadata") or {}).get("email") or "").strip().lower()
+            status = obj.get("status")
+            if email and status in ("canceled", "unpaid", "incomplete_expired"):
+                await _set_user_plan(email, "free")
+
+        elif etype == "checkout.session.completed":
+            meta = obj.get("metadata") or {}
+            email = (meta.get("email") or "").strip().lower()
+            tier = meta.get("tier", "pro")
+            if tier not in BILLING_PLANS:
+                tier = "pro"
+            paid = obj.get("payment_status") == "paid"
+            if email and paid:
+                await _set_user_plan(email, tier)
+    except Exception as e:
+        logger.error(f"Stripe webhook handling error: {e}")
+
+    return JSONResponse({"received": True})
 
 
 @app.post("/api/v1/profile")
