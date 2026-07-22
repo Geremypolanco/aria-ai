@@ -77,9 +77,11 @@ class CEOAgent(BaseAgent):
             pass
         return metrics
 
-    def _identify_required_agents(self, plan: str, mission: str) -> list[str]:
+    def _identify_required_agents(self, plan: str | None, mission: str) -> list[str]:
         """Identifica qué agentes especializados se necesitan activar."""
-        plan_lower = (plan + mission).lower()
+        # think() returns None when the AI client is unavailable/errors —
+        # `plan + mission` would raise TypeError in exactly that case.
+        plan_lower = ((plan or "") + mission).lower()
         agents = []
         if any(w in plan_lower for w in ["market", "seo", "content", "blog", "social"]):
             agents.append("marketing")
