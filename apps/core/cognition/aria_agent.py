@@ -14,7 +14,16 @@ class AriaAgent:
     Implementa un bucle ReAct (Reasoning + Acting) para ejecución autónoma.
     """
 
-    def __init__(self, name: str = "Aria", identity: str = ""):
+    # Tool-registry entries that shell out (docker/vercel CLI) or write to a
+    # real external system of record (GitHub) on the owner's behalf. Not
+    # currently exploitable in production (no GITHUB_TOKEN wired into
+    # ToolRegistry's GitHubTool, and the Fly.io container has neither the
+    # docker nor vercel CLI installed) — but that's incidental, not a real
+    # guard, so gate it properly rather than relying on "it happens to be
+    # broken today". Mirrors aria_mind.py's _OWNER_ONLY_TOOLS.
+    _OWNER_ONLY_TOOLS = frozenset({"github", "docker", "deployment"})
+
+    def __init__(self, name: str = "Aria", identity: str = "", is_owner: bool = False):
         self.name = name
         self.identity = (
             identity
@@ -23,6 +32,7 @@ class AriaAgent:
         self.ai = get_ai_client()
         self.max_steps = 15
         self.history = []
+        self.is_owner = is_owner
 
     async def run(self, task: str) -> dict[str, Any]:
         """Ejecuta una tarea de forma autónoma hasta completarla o fallar."""
@@ -105,6 +115,9 @@ class AriaAgent:
 
     async def _execute_tool(self, name: str, args: dict[str, Any]) -> Any:
         """Busca y ejecuta la herramienta en el registro global."""
+        if name in self._OWNER_ONLY_TOOLS and not self.is_owner:
+            return {"error": f"'{name}' está reservada al dueño de ARIA."}
+
         # 1. Buscar en tool_registry
         tool_obj = tool_registry.get_tool(name)
         if tool_obj:

@@ -541,6 +541,7 @@ class AriaMind:
             # devolver un error crudo.
             if plan.get("autonomous_execution") and not has_tool:
                 try:
+                    from apps.core import auth
                     from apps.core.cognition.aria_agent import AriaAgent
                     from apps.core.config import settings
 
@@ -553,7 +554,8 @@ class AriaMind:
                             goals="\n".join([g["text"] for g in goals]),
                             learned="\n".join(learned),
                             history="",
-                        )
+                        ),
+                        is_owner=auth.is_owner_email(email),
                     )
                     agent_result = await agent.run(text)
                     if agent_result.get("success"):
