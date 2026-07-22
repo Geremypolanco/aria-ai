@@ -71,10 +71,13 @@ Mientras tanto, puedes usar el dashboard para ver el estado del sistema."""
             )
             if fb_response and fb_response.success:
                 return fb_response.content
-            return f"⚠️ Error en todos los proveedores de IA. Último error: {response.error if response else 'Sin respuesta'}"
+            logger.error(
+                "All AI providers failed: %s", response.error if response else "no response"
+            )
+            return "⚠️ Todos los proveedores de IA fallaron. Intenta de nuevo en un momento."
         except Exception as e:
             logger.error(f"AriaAgent.think error: {e}")
-            return f"""⚠️ **Error interno**: {str(e)}
+            return """⚠️ **Error interno**
 
 Posibles causas:
 - API key inválida o sin fondos

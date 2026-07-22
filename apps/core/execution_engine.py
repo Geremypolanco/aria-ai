@@ -51,8 +51,12 @@ Responde SOLO con JSON:
             max_tokens=8192,
         )
 
+        # agent.think() never raises — it swallows provider/config failures into
+        # a "⚠️ ..." string instead, so "success" must actually inspect the
+        # result rather than being hardcoded True regardless of outcome.
+        succeeded = not (isinstance(result, str) and result.startswith("⚠️"))
         return {
-            "success": True,
+            "success": succeeded,
             "task": task,
             "understanding": understanding,
             "tool_plan": tool_plan,
@@ -63,13 +67,15 @@ Responde SOLO con JSON:
         """Execute a code generation task."""
         agent = get_agent()
         code = await agent.generate_code(prompt, language)
-        return {"success": True, "code": code, "language": language}
+        succeeded = not (isinstance(code, str) and code.startswith("⚠️"))
+        return {"success": succeeded, "code": code, "language": language}
 
     async def research_topic(self, topic: str) -> dict[str, Any]:
         """Execute a research task."""
         agent = get_agent()
         research = await agent.research(topic)
-        return {"success": True, "topic": topic, "research": research}
+        succeeded = not (isinstance(research, str) and research.startswith("⚠️"))
+        return {"success": succeeded, "topic": topic, "research": research}
 
 
 # ── SINGLETON ─────────────────────────────────────────────
