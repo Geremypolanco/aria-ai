@@ -14,6 +14,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY apps/core/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# `pip install playwright` only installs the Python driver — it does NOT
+# bundle a browser. Without this step, every Playwright launch()
+# (human_browser.py's stealth browsing, browser_sandbox.py) fails at
+# runtime with "Executable doesn't exist" because no browser binary was
+# ever downloaded into the image. The apt packages above provide the OS
+# shared libraries Chromium needs; this downloads the browser itself.
+# PLAYWRIGHT_BROWSERS_PATH is set before install so the browser lands in a
+# path the non-root `aria` user (created below) can read — the default
+# /root/.cache/ms-playwright wouldn't be.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-browsers
+RUN playwright install chromium && chmod -R a+rX /ms-browsers
+
 # Copy entire project
 COPY . .
 
