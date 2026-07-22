@@ -177,6 +177,7 @@ class Settings(BaseSettings):
     # ── AFILIADOS ─────────────────────────────────────────
     AMAZON_ASSOCIATE_TAG: str | None = None
     CLICKBANK_AFFILIATE_ID: str | None = None
+    HOTMART_AFFILIATE_ID: str | None = None
 
     # ── MULTIMEDIA ────────────────────────────────────────
     CLOUDINARY_CLOUD_NAME: str | None = None

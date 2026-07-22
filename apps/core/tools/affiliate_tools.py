@@ -2,7 +2,7 @@
 ARIA Affiliate Tools — Gestion de programas de afiliados.
 
 Plataformas soportadas:
-- Amazon Associates (PA API v5 — requiere AMAZON_PA_ACCESS_KEY, AMAZON_PA_SECRET_KEY, AMAZON_PA_PARTNER_TAG)
+- Amazon Associates (PA API v5 — requiere AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_ASSOCIATE_TAG)
 - Amazon link builder (solo tag — requiere AMAZON_ASSOCIATE_TAG)
 - ClickBank (hop links — no requiere API)
 - Hotmart (afiliados Latam — no requiere API)
@@ -51,22 +51,22 @@ class AffiliateTools:
     async def search_amazon_products(self, keywords: str, category: str = "All") -> dict[str, Any]:
         """
         Busca productos en Amazon usando PA API v5.
-        Requiere: AMAZON_PA_ACCESS_KEY, AMAZON_PA_SECRET_KEY, AMAZON_PA_PARTNER_TAG
+        Requiere: AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_ASSOCIATE_TAG
 
         Si no estan configurados, retorna error explicito.
         NO retorna datos hardcodeados como fallback.
         """
-        access_key = getattr(settings, "AMAZON_PA_ACCESS_KEY", None)
-        secret_key = getattr(settings, "AMAZON_PA_SECRET_KEY", None)
-        partner_tag = getattr(settings, "AMAZON_PA_PARTNER_TAG", None)
+        access_key = getattr(settings, "AMAZON_ACCESS_KEY", None)
+        secret_key = getattr(settings, "AMAZON_SECRET_KEY", None)
+        partner_tag = getattr(settings, "AMAZON_ASSOCIATE_TAG", None)
 
         missing = []
         if not access_key:
-            missing.append("AMAZON_PA_ACCESS_KEY")
+            missing.append("AMAZON_ACCESS_KEY")
         if not secret_key:
-            missing.append("AMAZON_PA_SECRET_KEY")
+            missing.append("AMAZON_SECRET_KEY")
         if not partner_tag:
-            missing.append("AMAZON_PA_PARTNER_TAG")
+            missing.append("AMAZON_ASSOCIATE_TAG")
 
         if missing:
             return {
@@ -153,8 +153,7 @@ class AffiliateTools:
                     asin = item.get("ASIN", "")
                     title = item.get("ItemInfo", {}).get("Title", {}).get("DisplayValue", "")
                     price = (
-                        item.get("Offers", {})
-                        .get("Listings", [{}])[0]
+                        (item.get("Offers", {}).get("Listings") or [{}])[0]
                         .get("Price", {})
                         .get("DisplayAmount", "N/A")
                     )
@@ -346,9 +345,9 @@ class AffiliateTools:
         amazon_tag = getattr(settings, "AMAZON_ASSOCIATE_TAG", None)
         amazon_pa = all(
             [
-                getattr(settings, "AMAZON_PA_ACCESS_KEY", None),
-                getattr(settings, "AMAZON_PA_SECRET_KEY", None),
-                getattr(settings, "AMAZON_PA_PARTNER_TAG", None),
+                getattr(settings, "AMAZON_ACCESS_KEY", None),
+                getattr(settings, "AMAZON_SECRET_KEY", None),
+                getattr(settings, "AMAZON_ASSOCIATE_TAG", None),
             ]
         )
         clickbank = bool(getattr(settings, "CLICKBANK_AFFILIATE_ID", None))
