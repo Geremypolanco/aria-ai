@@ -72,3 +72,13 @@ async def test_fetch_page_succeeds_for_a_safe_url():
     result = await wt.fetch_page("https://example.com/")
     assert result["success"] is True
     assert "Hello world" in result["text"]
+
+
+async def test_take_screenshot_refuses_internal_url():
+    """take_screenshot() launches a real headless browser against the given
+    URL — a real browser navigating to an internal/metadata address is
+    strictly worse than a plain fetch, yet this method had no SSRF guard
+    at all, unlike fetch_page()/browser_sandbox.navigate()."""
+    wt = WebTools()
+    result = await wt.take_screenshot("http://169.254.169.254/latest/meta-data/")
+    assert result["success"] is False

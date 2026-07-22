@@ -372,6 +372,8 @@ class WebTools:
         Retorna la ruta local del archivo generado.
         """
         try:
+            await _assert_public_url(url)
+
             from playwright.async_api import async_playwright
 
             # Crear directorio de screenshots si no existe
@@ -429,7 +431,7 @@ class WebTools:
                         {
                             "title": a.get("title", ""),
                             "url": a.get("url", ""),
-                            "snippet": a.get("description", "") or a.get("content", "")[:300],
+                            "snippet": a.get("description") or (a.get("content") or "")[:300],
                             "published": a.get("publishedAt", ""),
                         }
                         for a in articles[:num]

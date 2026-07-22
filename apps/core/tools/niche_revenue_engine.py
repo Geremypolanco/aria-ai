@@ -1545,10 +1545,17 @@ class PrePublicationChecklist:
 
         # 5. Pricing tiers complete
         if all(t in listing.pricing_tiers for t in ("basic", "standard", "premium")):
-            prices_ok = all(
-                listing.pricing_tiers[t].get("price", 0) > 0
-                for t in ("basic", "standard", "premium")
-            )
+            tier_prices = [
+                listing.pricing_tiers[t].get("price", 0) for t in ("basic", "standard", "premium")
+            ]
+            # Ad/affiliate-monetized content niches (e.g. affiliate_seo_blog,
+            # amazon_affiliate_content, ai_tools_directory) intentionally price
+            # every tier at $0 in NICHE_CATALOG — the revenue model is ad/affiliate
+            # clicks, not a paid service, so requiring price > 0 made this gate
+            # permanently fail and blocked launch_niche() for those niches on
+            # every run. Only flag as incomplete when tiers are inconsistently
+            # priced (a mix of zero and nonzero), not when deliberately all zero.
+            prices_ok = all(p > 0 for p in tier_prices) or all(p == 0 for p in tier_prices)
             if prices_ok:
                 passed.append("pricing_tiers_complete")
             else:
@@ -1660,7 +1667,9 @@ class NicheTeam:
         self.niche_key = niche_key
         self.niche_data = niche_data
 
-    async def _ai(self, system: str, user: str, max_tokens: int = 2000) -> str:
+    async def _ai(
+        self, system: str, user: str, max_tokens: int = 2000, json_mode: bool = True
+    ) -> str:
         from apps.core.tools.ai_client import AIModel, get_ai_client
 
         ai = get_ai_client()
@@ -1672,7 +1681,7 @@ class NicheTeam:
             model=AIModel.STRATEGY,
             max_tokens=max_tokens,
             temperature=0.7,
-            json_mode=True,
+            json_mode=json_mode,
             agent_name=f"niche_{self.niche_key}",
         )
         return resp.content.strip() if resp and resp.success and resp.content else ""
@@ -1834,6 +1843,7 @@ Include the service pricing: ${listing.pricing_tiers['basic']['price']} - ${list
             system="You are an SEO content strategist. Write articles that rank in Google, build trust, and convert readers into customers.",
             user=article_prompt,
             max_tokens=2500,
+            json_mode=False,
         )
 
         # Parse article

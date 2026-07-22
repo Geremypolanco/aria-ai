@@ -82,6 +82,26 @@ class SelfImprovementEngine:
     _last_push_time: float = 0.0
     MIN_PUSH_INTERVAL_SECONDS: int = 1200
 
+    def _is_writable_path(self, file_path: str) -> bool:
+        """Guards push_file()/push_improvement() against writing to anything
+        outside the app's own tool/agent modules. PROTECTED_FILES alone is a
+        10-entry blacklist — it doesn't stop a write to e.g.
+        .github/workflows/deploy.yml, docs/*, tests/*, or .env*. This matters
+        because push_file() is called with an LLM-generated file_path
+        (EvolutionAgent._implement_feature_code's proposal["file_to_create"]),
+        so an untrusted/hallucinated path must never reach the GitHub write —
+        it would trigger a real CI/CD deploy per this module's own docstring.
+        """
+        if file_path in self.PROTECTED_FILES:
+            return False
+        if not file_path.endswith(".py"):
+            return False
+        if file_path in self.MODIFIABLE_FILES:
+            return True
+        return file_path.startswith("apps/core/tools/") or file_path.startswith(
+            "apps/core/agents/"
+        )
+
     def __init__(self) -> None:
         self._token = getattr(settings, "GITHUB_TOKEN", None)
         self._fly_token = getattr(settings, "FLY_API_TOKEN", None)
@@ -421,10 +441,10 @@ class SelfImprovementEngine:
                 "error": f"Rate limit o GITHUB_TOKEN no disponible. "
                 f"Proximo push disponible en {self.MIN_PUSH_INTERVAL_SECONDS}s",
             }
-        if file_path in self.PROTECTED_FILES:
+        if not self._is_writable_path(file_path):
             return {
                 "success": False,
-                "error": f"{file_path} es archivo protegido — no se puede modificar automaticamente",
+                "error": f"{file_path} no esta permitido — solo .py bajo apps/core/tools/ o apps/core/agents/",
             }
         try:
             existing = await self.read_file(file_path)
@@ -490,10 +510,10 @@ class SelfImprovementEngine:
                 "error": f"Rate limit o GITHUB_TOKEN no disponible. "
                 f"Proximo push disponible en {self.MIN_PUSH_INTERVAL_SECONDS}s",
             }
-        if file_path in self.PROTECTED_FILES:
+        if not self._is_writable_path(file_path):
             return {
                 "success": False,
-                "error": f"{file_path} es archivo protegido — no se puede modificar automaticamente",
+                "error": f"{file_path} no esta permitido — solo .py bajo apps/core/tools/ o apps/core/agents/",
             }
 
         try:

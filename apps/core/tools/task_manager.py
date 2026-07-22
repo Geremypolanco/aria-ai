@@ -78,7 +78,7 @@ class TaskManager:
 
     def __init__(self) -> None:
         self._tasks: dict[str, TaskRecord] = {}
-        self._queue: asyncio.Queue = asyncio.Queue()
+        self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         self._workers: list[asyncio.Task] = []
         self._started = False
 
