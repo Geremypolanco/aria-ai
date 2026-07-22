@@ -32,4 +32,5 @@ async def complete_json(
         system=system,
         user=user,
         model=ai_model,
+        **kwargs,
     )

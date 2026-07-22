@@ -156,8 +156,11 @@ class CreativeEngine:
         """Genera una imagen real usando Hugging Face y notifica a Zapier."""
         logger.info("[CreativeEngine] Generando imagen para sector %s: %s", sector, prompt)
         try:
+            import urllib.parse
+
             # Generación real vía Pollinations (proxy rápido y gratuito para HF/SD)
-            image_url = f"https://image.pollinations.ai/prompt/{prompt.replace(' ', '%20')}?width=1024&height=1024&nologo=true"
+            prompt_enc = urllib.parse.quote(prompt)
+            image_url = f"https://image.pollinations.ai/prompt/{prompt_enc}?width=1024&height=1024&nologo=true"
 
             result = {
                 "success": True,
@@ -190,7 +193,12 @@ class CreativeEngine:
             return {"success": False, "error": "SCREENSHOT_API_KEY no configurado"}
 
         # Ejemplo con servicio externo
-        api_url = f"https://api.screenshotlayer.com/api/capture?access_key={settings.SCREENSHOT_API_KEY}&url={url}&viewport=1440x900&format=PNG"
+        import urllib.parse
+
+        api_url = (
+            f"https://api.screenshotlayer.com/api/capture?access_key={settings.SCREENSHOT_API_KEY}"
+            f"&url={urllib.parse.quote(url, safe='')}&viewport=1440x900&format=PNG"
+        )
         try:
             res = await self._http.get(api_url)
             if res.status_code == 200:

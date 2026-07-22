@@ -761,9 +761,8 @@ JSON:
                     from apps.core.tools.human_browser import get_platform_login
 
                     _plat2 = await get_platform_login()
-                    _hn_pg = await _plat2.hashnode(_dt_ae, _dt_ap)
                     _hn_url = await _plat2.hashnode_publish_article(
-                        _dt_ae, _dt_ap, title=title, content=body, tags=tags[:5]
+                        _dt_ae, _dt_ap, title=title, content_markdown=body, tags=tags[:5]
                     )
                     if _hn_url:
                         logger.info("[IncomeLoop] Product announcement on Hashnode: %s", _hn_url)
@@ -2683,7 +2682,10 @@ Output JSON:
             _ae = getattr(settings, "ARIA_EMAIL", None)
             _ap = getattr(settings, "ARIA_PASSWORD", None)
             for ls in live[:3]:
-                product_url = ls.listing_urls[0] if ls.listing_urls else ""
+                # listing_urls is a dict keyed by platform name (e.g. "gumroad"),
+                # not a list — indexing with [0] raised KeyError whenever it was
+                # non-empty (exactly the condition that put `ls` into `live`).
+                product_url = next(iter(ls.listing_urls.values()), "")
                 if ai:
                     try:
                         tweet_text = await ai.complete(
@@ -7590,7 +7592,7 @@ We're actively seeking collaborators in the {niche} space.
 
                     _po_plat2 = await get_platform_login()
                     _po_li_pg = await _po_plat2.linkedin(_po_ae, _po_ap)
-                    await _po_plat2.linkedin_post(_po_li_pg, _po_li)
+                    await _po_plat2.linkedin_create_post(_po_li_pg, _po_li)
                 except Exception:
                     pass
 
@@ -16164,7 +16166,7 @@ Return JSON (keep content fields under 80 words each):
 
                         plat = await get_platform_login()
                         pg = await plat.linkedin(_vc_ae, _vc_ap)
-                        await plat.linkedin_post(pg, li_vc)
+                        await plat.linkedin_create_post(pg, li_vc)
                 except Exception:
                     pass
 
@@ -17784,7 +17786,7 @@ Return JSON:
 
                     _b2b_plat = await get_platform_login()
                     _b2b_li_pg = await _b2b_plat.linkedin(_b2b_ae, _b2b_ap)
-                    await _b2b_plat.linkedin_post(_b2b_li_pg, li_b2b)
+                    await _b2b_plat.linkedin_create_post(_b2b_li_pg, li_b2b)
                 except Exception:
                     pass
 
@@ -18045,7 +18047,7 @@ Create compelling brand story assets that position ARIA as the most advanced aut
 
                     _bs_plat = await get_platform_login()
                     _li_bs_pg = await _bs_plat.linkedin(_ae, _ap)
-                    await _bs_plat.linkedin_post(_li_bs_pg, li_brand)
+                    await _bs_plat.linkedin_create_post(_li_bs_pg, li_brand)
                 except Exception:
                     pass
 
@@ -19959,7 +19961,7 @@ Generate a backlink building plan:
 
                     _jv_plat = await get_platform_login()
                     _jv_li_pg = await _jv_plat.linkedin(_jv_ae, _jv_ap)
-                    await _jv_plat.linkedin_post(_jv_li_pg, _jv_li)
+                    await _jv_plat.linkedin_create_post(_jv_li_pg, _jv_li)
                 except Exception:
                     pass
 
@@ -20799,7 +20801,7 @@ Generate a backlink building plan:
 
                         _mc_plat = await get_platform_login()
                         _li_pg = await _mc_plat.linkedin(_mc_ae, _mc_ap)
-                        await _mc_plat.linkedin_post(_li_pg, li_post)
+                        await _mc_plat.linkedin_create_post(_li_pg, li_post)
                     except Exception:
                         pass
 
@@ -21082,7 +21084,7 @@ Generate a backlink building plan:
 
                     _cm_plat2 = await get_platform_login()
                     _cm_li_pg = await _cm_plat2.linkedin(_cm_ae, _cm_ap)
-                    await _cm_plat2.linkedin_post(_cm_li_pg, li_cm)
+                    await _cm_plat2.linkedin_create_post(_cm_li_pg, li_cm)
                 except Exception:
                     pass
 
