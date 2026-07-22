@@ -65,6 +65,16 @@ class DeveloperAgent(BaseAgent):
         results["code"] = code
 
         # 3. Ejecutar y auto-depurar si se solicita
+        # CodeRunner has no real sandbox isolation (same host, same OS user) —
+        # code GENERATION is safe for anyone, but actually RUNNING it is not a
+        # free-tier capability. context["is_owner"] is threaded through from
+        # aria_mind.py's tool dispatch (both the direct execute_code tool and
+        # this run_business_agent -> developer path reach the same
+        # CodeRunner, so both must be gated the same way).
+        if auto_run and not context.get("is_owner"):
+            auto_run = False
+            results["execution_skipped"] = "Code execution is owner-only; code was generated but not run."
+
         if auto_run and code:
             from apps.core.tools.code_runner import CodeRunner
 

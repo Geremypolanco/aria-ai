@@ -169,7 +169,13 @@ class BusinessHub:
         try:
             agent = self._load_agent(agent_class_path)
             logger.info("[BusinessHub] Dispatching to %s: %s", agent_key, mission[:80])
-            result = await agent.execute(context)
+            # BaseAgent's public entry point is run() (circuit breaker +
+            # metrics wrapper around _execute()) — there is no execute()
+            # method on any agent class. Calling it unconditionally raised
+            # AttributeError for every single dispatch, meaning
+            # run_business_agent / launch_niche's agent hooks / anything
+            # routed through this method has never actually worked.
+            result = await agent.run(context)
             return result
         except Exception as exc:
             logger.error("[BusinessHub] dispatch error agent=%s: %s", agent_key, exc, exc_info=True)

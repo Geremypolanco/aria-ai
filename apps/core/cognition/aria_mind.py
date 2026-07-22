@@ -1195,9 +1195,15 @@ class AriaMind:
             elif tool == "run_business_agent":
                 agent_name = args.get("agent", "ceo")
                 mission = args.get("mission", "")
-                context = args.get("context", {})
+                context = dict(args.get("context") or {})
+                from apps.core import auth
                 from apps.core.agents.business_hub import BusinessHub
 
+                # Threaded through so developer_agent.py can refuse to
+                # *execute* generated code for non-owners — auto-routing
+                # (agent="auto") can reach the developer agent from mission
+                # text alone, so this can't be gated by agent_name up front.
+                context["is_owner"] = auth.is_owner_email(email)
                 r = await BusinessHub().dispatch(agent_name, mission, context)
                 summary = r.get("summary", r.get("result", str(r))[:400])
                 return f"[{agent_name.upper()}] {summary}", {}
