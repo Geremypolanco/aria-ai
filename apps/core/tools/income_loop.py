@@ -8539,9 +8539,6 @@ JSON:
                 today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 for i, post in enumerate(posts):
-                    post["title"][:35].lower().replace(" ", "-").replace("'", "").replace(
-                        "[", ""
-                    ).replace("]", "")
                     md = (
                         f"# r/{post['subreddit']}: {post['title']}\n\n"
                         f"*Subreddit: r/{post['subreddit']} | Flair: {post.get('flair', '')}*\n\n"
@@ -8945,7 +8942,6 @@ JSON:
                 for i, script in enumerate(scripts[:3]):
                     niche = script.niche
                     hook = script.hook[:60] if script.hook else f"script-{i}"
-                    hook.lower().replace(" ", "-").replace("'", "")[:35]
                     md = (
                         f"# TikTok Script: {hook}\n\n"
                         f"*Niche: {niche} | Platform: {script.platform} | Duration: {script.duration_seconds}s*\n"
@@ -17066,7 +17062,6 @@ Return JSON:
                 )
 
             # Twitter launch
-            sum(t.get("price_usd_per_month", 0) for t in pricing[1:])  # non-free tiers
             tweet = f"🚀 Launching {api_name} on RapidAPI!\n\n{tagline}\n\n✅ {endpoints[0].get('path', '') if endpoints else ''}\n✅ {endpoints[1].get('path', '') if len(endpoints) > 1 else ''}\n\nPlans from ${pricing[1].get('price_usd_per_month', 9) if len(pricing) > 1 else 9}/mo\n\n{urls_created[0] if urls_created else ''}"
             _tw_ok = False
             try:
