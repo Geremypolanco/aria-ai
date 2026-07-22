@@ -124,6 +124,8 @@ class Settings(BaseSettings):
     SHOPIFY_API_KEY: str | None = None
     SHOPIFY_ADMIN_TOKEN: str | None = None
     SHOPIFY_AUTOMATION_TOKEN: str | None = None
+    LEMONSQUEEZY_API_KEY: str | None = None
+    LEMONSQUEEZY_STORE_ID: str | None = None
 
     # ── REDES SOCIALES ────────────────────────────────────
     BUFFER_TOKEN: str | None = None
@@ -147,6 +149,7 @@ class Settings(BaseSettings):
     REDDIT_USERNAME: str | None = None
     REDDIT_PASSWORD: str | None = None
     REDDIT_TARGET_SUBREDDIT: str | None = None
+    REDDIT_REFRESH_TOKEN: str | None = None
 
     # Pinterest
     PINTEREST_ACCESS_TOKEN: str | None = None
@@ -173,6 +176,11 @@ class Settings(BaseSettings):
     MAILGUN_DOMAIN: str | None = None
     EMAIL_FROM: str | None = None
     NEWSLETTER_LIST_EMAIL: str | None = None
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_FROM: str | None = None
 
     # ── AFILIADOS ─────────────────────────────────────────
     AMAZON_ASSOCIATE_TAG: str | None = None
@@ -187,6 +195,7 @@ class Settings(BaseSettings):
     # ── DESARROLLO ────────────────────────────────────────
     GITHUB_TOKEN: str | None = None
     GITHUB_USERNAME: str = "Geremypolanco"
+    GITHUB_REPO: str | None = None
     VERCEL_TOKEN: str | None = None
     NOTION_TOKEN: str | None = None
     FACEBOOK_MARKETING_TOKEN: str | None = None
@@ -226,6 +235,7 @@ class Settings(BaseSettings):
     INSTAGRAM_APP_SECRET: str | None = None
     META_VERIFY_TOKEN: str | None = None
     YOUTUBE_WEBHOOK_SECRET: str | None = None
+    YOUTUBE_API_KEY: str | None = None
 
     # ── CREDENCIALES DE ARIA (para login stealth en plataformas) ──────────
     ARIA_EMAIL: str | None = None
@@ -247,6 +257,11 @@ class Settings(BaseSettings):
     # "Setup required". See docs/CONNECTORS_SETUP.md for per-provider steps.
     LINKEDIN_CLIENT_ID: str | None = None
     LINKEDIN_CLIENT_SECRET: str | None = None
+    # Direct-API posting creds (distinct from the OAuth app id/secret above):
+    # a person-scoped access token + author URN, for posting without the
+    # connector-hub OAuth flow.
+    LINKEDIN_ACCESS_TOKEN: str | None = None
+    LINKEDIN_PERSON_URN: str | None = None
     NOTION_OAUTH_CLIENT_ID: str | None = None
     NOTION_OAUTH_CLIENT_SECRET: str | None = None
     TWITTER_OAUTH_CLIENT_ID: str | None = None
