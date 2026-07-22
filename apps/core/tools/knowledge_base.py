@@ -40,6 +40,14 @@ class KnowledgeChunk:
     def cosine_similarity(self, other: list[float]) -> float:
         if not self.embedding or not other:
             return 0.0
+        if len(self.embedding) != len(other):
+            # Mixed embedding sources (e.g. the 384-dim HF model vs. the
+            # 128-dim offline _hash_embed fallback) produce vectors that
+            # aren't comparable — zip(strict=False) would silently truncate
+            # the dot product to the shorter length while the norms below
+            # still use each vector's full length, yielding a meaningless,
+            # systematically deflated score instead of an explicit "no match".
+            return 0.0
         dot = sum(a * b for a, b in zip(self.embedding, other, strict=False))
         norm1 = sum(a**2 for a in self.embedding) ** 0.5
         norm2 = sum(b**2 for b in other) ** 0.5

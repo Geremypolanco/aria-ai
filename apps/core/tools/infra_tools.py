@@ -60,4 +60,4 @@ class InfraTools:
                     results[url] = {"status": resp.status_code, "up": resp.status_code < 400}
                 except Exception as e:
                     results[url] = {"status": "error", "up": False, "error": str(e)}
-        return {"success": True, "health": results}
+        return {"success": all(r.get("up") for r in results.values()), "health": results}
