@@ -10418,7 +10418,8 @@ Return JSON array:
             }
             if sha:
                 body_put["sha"] = sha
-            await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            archived = "error" not in file_r
 
             archive_url = f"https://github.com/{owner}/aria-insights/blob/main/{path}"
 
@@ -10432,10 +10433,10 @@ Return JSON array:
                 summary = f"Pinterest: {len(pins_data)} pin concepts ready — add PINTEREST_ACCESS_TOKEN + PINTEREST_BOARD_ID to post them"
 
             return {
-                "success": True,
+                "success": pins_created > 0 or archived,
                 "summary": summary,
                 "revenue_potential": float(pins_created * 15 + len(pins_data) * 2),
-                "urls": [archive_url],
+                "urls": [archive_url] if archived else [],
             }
 
         except Exception as exc:
@@ -10597,7 +10598,8 @@ Return JSON:
             }
             if sha:
                 body_put["sha"] = sha
-            await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            archived = "error" not in file_r
 
             archive_url = f"https://github.com/{owner}/aria-insights/blob/main/{path}"
 
@@ -10607,10 +10609,10 @@ Return JSON:
                 summary = f"Cold email: {emails_archived} prospects + emails ready — add SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM to send"
 
             return {
-                "success": True,
+                "success": emails_sent > 0 or archived,
                 "summary": summary,
                 "revenue_potential": float(emails_sent * 50 + emails_archived * 5),
-                "urls": [archive_url],
+                "urls": [archive_url] if archived else [],
             }
 
         except Exception as exc:
@@ -11157,9 +11159,9 @@ Return JSON:
                 }
 
             return {
-                "success": True,
+                "success": False,
                 "summary": f"YouTube strategy generated: {title[:60]} (archive failed, data in memory)",
-                "revenue_potential": 10.0,
+                "revenue_potential": 0.0,
                 "urls": [],
             }
 
@@ -11408,9 +11410,9 @@ Return JSON:
                 [archive_url] if "content" in result or "commit" in result else []
             ) + extra_urls
             return {
-                "success": True,
+                "success": bool(all_urls),
                 "summary": f"PH launch kit: '{tagline}' — {len(extra_urls)} live posts (HN/Twitter) + kit archived",
-                "revenue_potential": 200.0,
+                "revenue_potential": 200.0 if all_urls else 0.0,
                 "urls": all_urls[:5],
             }
 
@@ -12453,9 +12455,9 @@ JSON:
                 avg_lift,
             )
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"Smart pricing: {len(matrix)} products optimized — avg revenue lift +{avg_lift}% | {strategy_note[:60]}",
-                "revenue_potential": 35.0,  # pricing optimization is a pure revenue multiplier
+                "revenue_potential": 35.0 if urls_created else 0.0,
                 "urls": urls_created[:2],
             }
 
@@ -12917,13 +12919,15 @@ JSON:
                 mrr,
             )
             return {
-                "success": True,
+                "success": bool(urls_created or distributed_to),
                 "summary": (
                     f"Community: '{community_name}' — ${mrr:,}/mo MRR at 100 members | "
-                    f"announced on: {', '.join(distributed_to) or 'GitHub'}"
+                    f"announced on: {', '.join(distributed_to) or 'nowhere (all channels failed)'}"
                 ),
                 "revenue_potential": (
-                    float(tiers[0].get("price_monthly", 19) * 50) if tiers else 950.0
+                    (float(tiers[0].get("price_monthly", 19) * 50) if tiers else 950.0)
+                    if (urls_created or distributed_to)
+                    else 0.0
                 ),
                 "urls": urls_created[:2],
             }
@@ -15116,7 +15120,7 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
                 await cache.increment("aria:engagement:total_replies")
 
             return {
-                "success": True,
+                "success": replies_sent > 0,
                 "summary": f"auto_responder: {replies_sent} replies sent across {len({a.split(':')[0] for a in actions})} platforms",
                 "revenue_potential": float(replies_sent) * 2.0,
             }
@@ -20252,9 +20256,9 @@ Generate a backlink building plan:
                         pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"seo_content_cluster: '{pillar_title[:40]}' | 1 pillar + {posts_published} supporting posts | est. {monthly_traffic} monthly visits | {len(urls_created)} URLs",
-                "revenue_potential": float(monthly_traffic) * 0.05,
+                "revenue_potential": float(monthly_traffic) * 0.05 if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20340,9 +20344,13 @@ Generate a backlink building plan:
 
             revenue_delta = (main_price - current_price) * 10
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"price_anchoring: '{product_name[:40]}' | ${current_price} → ${main_price} | anchor: ${anchor_price} | expected AOV +{aov_increase:.0f}% | pricing page deployed",
-                "revenue_potential": max(revenue_delta, aov_increase * current_price / 100 * 10),
+                "revenue_potential": (
+                    max(revenue_delta, aov_increase * current_price / 100 * 10)
+                    if urls_created
+                    else 0.0
+                ),
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20456,9 +20464,13 @@ Generate a backlink building plan:
                         pass
 
             return {
-                "success": True,
+                "success": bool(urls_created) or testimonials_stored > 0,
                 "summary": f"social_proof_automation: {trust_badge} | {testimonials_stored} testimonials archived | wall-of-love deployed | proof tweet posted",
-                "revenue_potential": float(len(buyers) + 1) * 5.0,
+                "revenue_potential": (
+                    float(len(buyers) + 1) * 5.0
+                    if (urls_created or testimonials_stored > 0)
+                    else 0.0
+                ),
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20560,9 +20572,9 @@ Generate a backlink building plan:
 
             revenue_potential = float(expected_conversions) * 29.0
             return {
-                "success": True,
+                "success": bool(urls_created) or dms_queued > 0,
                 "summary": f"influencer_collab: {len(influencers)} influencers targeted | {collab_type} deal | reach: {expected_reach:,} | {dms_queued} DMs queued | {expected_conversions} expected conversions",
-                "revenue_potential": revenue_potential,
+                "revenue_potential": revenue_potential if (urls_created or dms_queued > 0) else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20694,9 +20706,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"content_licensing: '{pkg_name[:40]}' | ${monthly_fee}/mo | {expected_clients} expected clients | ${revenue_potential:,.0f}/mo MRR potential | Twitter announced",
-                "revenue_potential": revenue_potential,
+                "revenue_potential": revenue_potential if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20844,9 +20856,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"micro_consulting: '{session_title[:40]}' | ${price}/session | {sessions_available} slots | ${revenue_potential:,.0f} potential this week | promoted on LinkedIn+Twitter",
-                "revenue_potential": revenue_potential,
+                "revenue_potential": revenue_potential if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20954,9 +20966,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"saas_upsell_sequence: '{seq_name[:40]}' | {len(emails)} emails | {upgrade_rate:.1f}% upgrade rate | ${mrr_per_100}/100 users MRR | sequence archived + announced",
-                "revenue_potential": mrr_per_100,
+                "revenue_potential": mrr_per_100 if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21105,9 +21117,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"community_monetize: '{community_name[:40]}' on {community.get('platform','Discord')} | {len(tiers)} tiers | {members_m1} members month-1 | ${expected_mrr:,.0f} MRR month-3 | launched + promoted",
-                "revenue_potential": expected_mrr,
+                "revenue_potential": expected_mrr if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21268,13 +21280,13 @@ Generate a backlink building plan:
 
             estimated_shares = int(piece.get("estimated_shares", 50))
             return {
-                "success": True,
+                "success": bool(published_channels),
                 "summary": (
                     f"thought_leadership: '{title[:50]}' | "
-                    f"published to: {', '.join(published_channels) or 'GitHub'} | "
+                    f"published to: {', '.join(published_channels) or 'nowhere (all channels failed)'} | "
                     f"est. {estimated_shares} shares"
                 ),
-                "revenue_potential": float(estimated_shares) * 2.0,
+                "revenue_potential": float(estimated_shares) * 2.0 if published_channels else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21390,9 +21402,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"token_economy: '{token_name}' ({token_symbol}) | {earn_count} earn actions | {redeem_count} rewards | whitepaper published + announced | virality: {economy.get('virality_mechanic','')[:50]}",
-                "revenue_potential": 500.0,
+                "revenue_potential": 500.0 if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21511,9 +21523,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"api_product_launch: '{api_name[:40]}' | {len(api_product.get('endpoints',[]))} endpoints | {len(tiers)} pricing tiers | top tier: ${highest_price}/mo | README + Postman published + announced",
-                "revenue_potential": highest_price * 3,
+                "revenue_potential": highest_price * 3 if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21635,9 +21647,11 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"growth_experiment: '{exp_name[:40]}' | {experiment.get('experiment_type','')} | {experiment.get('confidence_level','medium')} confidence | +{experiment.get('expected_lift_pct',0):.1f}% expected lift | experiment doc published + shared",
-                "revenue_potential": experiment.get("expected_lift_pct", 5.0) * 10.0,
+                "revenue_potential": (
+                    experiment.get("expected_lift_pct", 5.0) * 10.0 if urls_created else 0.0
+                ),
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21741,9 +21755,11 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"app_store_listing: '{app_name[:40]}' → {marketplace} | ASO score: {aso_score}/100 | {listing.get('pricing','Free')} | listing published + announced",
-                "revenue_potential": 300.0 if listing.get("pricing") != "Free" else 50.0,
+                "revenue_potential": (
+                    (300.0 if listing.get("pricing") != "Free" else 50.0) if urls_created else 0.0
+                ),
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21907,14 +21923,13 @@ Generate a backlink building plan:
                 except Exception:
                     pass
 
-            case_study.get("distribution_plan", [])
             return {
-                "success": True,
+                "success": bool(urls_created or distributed_to),
                 "summary": (
                     f"case_study_publisher: '{title[:45]}' | hero: {hero_stat} | "
-                    f"published to: {', '.join(distributed_to) or 'GitHub'}"
+                    f"published to: {', '.join(distributed_to) or 'nowhere (all channels failed)'}"
                 ),
-                "revenue_potential": 150.0,
+                "revenue_potential": 150.0 if (urls_created or distributed_to) else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
