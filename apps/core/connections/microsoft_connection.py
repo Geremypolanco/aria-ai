@@ -17,6 +17,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.microsoft")
 
 REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/microsoft"
@@ -27,7 +30,8 @@ SCOPES = "offline_access Mail.ReadWrite Mail.Send Calendars.ReadWrite Files.Read
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 
-class MicrosoftConnection:
+@register_connector("microsoft", display_name="Microsoft (Outlook, Teams, OneDrive)")
+class MicrosoftConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings

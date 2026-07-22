@@ -12,6 +12,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.ecommerce")
 
 ETSY_AUTH_URL = "https://www.etsy.com/oauth/connect"
@@ -21,7 +24,8 @@ ETSY_REDIRECT = "https://aria-ai.fly.dev/oauth/callback/etsy"
 ETSY_SCOPES = "listings_r listings_w shops_r transactions_r"
 
 
-class EtsyConnection:
+@register_connector("etsy", display_name="Etsy (tienda artesanal)")
+class EtsyConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings

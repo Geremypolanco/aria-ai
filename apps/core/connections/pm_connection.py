@@ -18,13 +18,17 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.pm")
 
 
 # ── ASANA ─────────────────────────────────────────────────────────────────────
 
 
-class AsanaConnection:
+@register_connector("asana", display_name="Asana (tareas, proyectos)")
+class AsanaConnection(BaseConnector):
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/asana"
     AUTH_URL = "https://app.asana.com/-/oauth_authorize"
@@ -282,7 +286,8 @@ class TrelloConnection:
 # ── LINEAR ────────────────────────────────────────────────────────────────────
 
 
-class LinearConnection:
+@register_connector("linear", display_name="Linear (issues, sprints)")
+class LinearConnection(BaseConnector):
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/linear"
     AUTH_URL = "https://linear.app/oauth/authorize"
@@ -429,7 +434,8 @@ class LinearConnection:
 # ── JIRA ──────────────────────────────────────────────────────────────────────
 
 
-class JiraConnection:
+@register_connector("jira", display_name="Jira (tickets, sprints)")
+class JiraConnection(BaseConnector):
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/jira"
     AUTH_URL = "https://auth.atlassian.com/authorize"
@@ -581,7 +587,8 @@ class JiraConnection:
 # ── MONDAY ────────────────────────────────────────────────────────────────────
 
 
-class MondayConnection:
+@register_connector("monday", display_name="Monday.com (proyectos)")
+class MondayConnection(BaseConnector):
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/monday"
     AUTH_URL = "https://auth.monday.com/oauth2/authorize"

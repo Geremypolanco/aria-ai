@@ -18,6 +18,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.google")
 
 REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/google"
@@ -35,7 +38,8 @@ SCOPES = " ".join(
 )
 
 
-class GoogleConnection:
+@register_connector("google", display_name="Google (Gmail, Calendar, Drive)")
+class GoogleConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings

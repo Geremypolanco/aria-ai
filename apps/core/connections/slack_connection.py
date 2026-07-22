@@ -16,6 +16,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.slack")
 
 REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/slack"
@@ -24,7 +27,8 @@ TOKEN_URL = "https://slack.com/api/oauth.v2.access"
 SCOPES = "channels:read,channels:history,chat:write,files:read,users:read"
 
 
-class SlackConnection:
+@register_connector("slack", display_name="Slack (mensajes, canales)")
+class SlackConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings

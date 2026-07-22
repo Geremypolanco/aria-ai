@@ -19,6 +19,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.crm")
 
 # ── HUBSPOT CONSTANTS ──────────────────────────────────────────────────────────
@@ -40,7 +43,8 @@ SALESFORCE_TOKEN_URL = "https://login.salesforce.com/services/oauth2/token"
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class HubSpotConnection:
+@register_connector("hubspot", display_name="HubSpot (contactos, deals, pipelines)")
+class HubSpotConnection(BaseConnector):
 
     REDIRECT_URI = HUBSPOT_REDIRECT_URI
     AUTH_URL = HUBSPOT_AUTH_URL
@@ -333,7 +337,8 @@ class HubSpotConnection:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class SalesforceConnection:
+@register_connector("salesforce", display_name="Salesforce (CRM enterprise)")
+class SalesforceConnection(BaseConnector):
 
     REDIRECT_URI = SALESFORCE_REDIRECT_URI
     AUTH_URL = SALESFORCE_AUTH_URL

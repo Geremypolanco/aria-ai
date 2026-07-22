@@ -10,6 +10,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.design")
 
 FIGMA_AUTH_URL = "https://www.figma.com/oauth"
@@ -25,7 +28,8 @@ CANVA_REDIRECT = "https://aria-ai.fly.dev/oauth/callback/canva"
 CANVA_SCOPES = "design:content:read design:meta:read asset:read"
 
 
-class FigmaConnection:
+@register_connector("figma", display_name="Figma (diseño UI/UX, prototipos)")
+class FigmaConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings
@@ -140,7 +144,8 @@ class FigmaConnection:
             ]
 
 
-class CanvaConnection:
+@register_connector("canva", display_name="Canva (diseño gráfico)")
+class CanvaConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings

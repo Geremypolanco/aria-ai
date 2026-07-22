@@ -11,6 +11,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.analytics")
 
 GA4_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -20,7 +23,8 @@ GA4_REDIRECT = "https://aria-ai.fly.dev/oauth/callback/google_analytics"
 GA4_SCOPES = "https://www.googleapis.com/auth/analytics.readonly"
 
 
-class GoogleAnalyticsConnection:
+@register_connector("google_analytics", display_name="Google Analytics 4")
+class GoogleAnalyticsConnection(BaseConnector):
     """Google Analytics 4 via OAuth (reutiliza Google OAuth infraestructura)."""
 
     def _client_id(self) -> str | None:

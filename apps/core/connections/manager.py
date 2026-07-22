@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 
+from apps.core.connections.registry import ConnectorFactory
+
 logger = logging.getLogger("aria.connections")
 
 
@@ -189,153 +191,23 @@ class ConnectionManager:
         return connected
 
     def get_auth_url(self, service: str, chat_id: str) -> str | None:
-        """Genera URL de autenticación OAuth para el servicio."""
-        if service == "google":
-            from apps.core.connections.google_connection import GoogleConnection
+        """Genera URL de autenticación OAuth para el servicio.
 
-            return GoogleConnection().get_auth_url(chat_id)
-        if service == "slack":
-            from apps.core.connections.slack_connection import SlackConnection
-
-            return SlackConnection().get_auth_url(chat_id)
-        if service == "microsoft":
-            from apps.core.connections.microsoft_connection import MicrosoftConnection
-
-            return MicrosoftConnection().get_auth_url(chat_id)
-        if service == "zoom":
-            from apps.core.connections.zoom_connection import ZoomConnection
-
-            return ZoomConnection().get_auth_url(chat_id)
-        if service == "hubspot":
-            from apps.core.connections.crm_connection import HubSpotConnection
-
-            return HubSpotConnection().get_auth_url(chat_id)
-        if service == "salesforce":
-            from apps.core.connections.crm_connection import SalesforceConnection
-
-            return SalesforceConnection().get_auth_url(chat_id)
-        if service == "dropbox":
-            from apps.core.connections.storage_connection import DropboxConnection
-
-            return DropboxConnection().get_auth_url(chat_id)
-        if service == "box":
-            from apps.core.connections.storage_connection import BoxConnection
-
-            return BoxConnection().get_auth_url(chat_id)
-        if service == "calendly":
-            from apps.core.connections.scheduling_connection import CalendlyConnection
-
-            return CalendlyConnection().get_auth_url(chat_id)
-        if service == "figma":
-            from apps.core.connections.design_connection import FigmaConnection
-
-            return FigmaConnection().get_auth_url(chat_id)
-        if service == "canva":
-            from apps.core.connections.design_connection import CanvaConnection
-
-            return CanvaConnection().get_auth_url(chat_id)
-        if service == "etsy":
-            from apps.core.connections.ecommerce_connection import EtsyConnection
-
-            return EtsyConnection().get_auth_url(chat_id)
-        if service == "google_analytics":
-            from apps.core.connections.analytics_connection import GoogleAnalyticsConnection
-
-            return GoogleAnalyticsConnection().get_auth_url(chat_id)
-        if service == "spotify":
-            from apps.core.connections.media_connection import SpotifyConnection
-
-            return SpotifyConnection().get_auth_url(chat_id)
-        if service == "youtube":
-            from apps.core.connections.media_connection import YouTubeConnection
-
-            return YouTubeConnection().get_auth_url(chat_id)
-        if service == "tiktok":
-            from apps.core.connections.media_connection import TikTokConnection
-
-            return TikTokConnection().get_auth_url(chat_id)
-        if service == "twitch":
-            from apps.core.connections.media_connection import TwitchConnection
-
-            return TwitchConnection().get_auth_url(chat_id)
-        return None
+        Dispatched entirely through ConnectorFactory — adding connector #23
+        (or #300) never touches this method. See apps/core/connections/base.py
+        and registry.py for the interface + Factory Manager.
+        """
+        connector = ConnectorFactory.create(service)
+        return connector.get_auth_url(chat_id) if connector else None
 
     async def handle_callback(self, service: str, code: str, chat_id: str) -> bool:
         """Exchange authorization code for tokens and store them."""
+        connector = ConnectorFactory.create(service)
+        if not connector:
+            logger.warning("[Connections] Servicio desconocido: %s", service)
+            return False
         try:
-            tokens = None
-            if service == "google":
-                from apps.core.connections.google_connection import GoogleConnection
-
-                tokens = await GoogleConnection().exchange_code(code, chat_id)
-            elif service == "slack":
-                from apps.core.connections.slack_connection import SlackConnection
-
-                tokens = await SlackConnection().exchange_code(code, chat_id)
-            elif service == "microsoft":
-                from apps.core.connections.microsoft_connection import MicrosoftConnection
-
-                tokens = await MicrosoftConnection().exchange_code(code, chat_id)
-            elif service == "zoom":
-                from apps.core.connections.zoom_connection import ZoomConnection
-
-                tokens = await ZoomConnection().exchange_code(code, chat_id)
-            elif service == "hubspot":
-                from apps.core.connections.crm_connection import HubSpotConnection
-
-                tokens = await HubSpotConnection().exchange_code(code, chat_id)
-            elif service == "salesforce":
-                from apps.core.connections.crm_connection import SalesforceConnection
-
-                tokens = await SalesforceConnection().exchange_code(code, chat_id)
-            elif service == "dropbox":
-                from apps.core.connections.storage_connection import DropboxConnection
-
-                tokens = await DropboxConnection().exchange_code(code, chat_id)
-            elif service == "box":
-                from apps.core.connections.storage_connection import BoxConnection
-
-                tokens = await BoxConnection().exchange_code(code, chat_id)
-            elif service == "calendly":
-                from apps.core.connections.scheduling_connection import CalendlyConnection
-
-                tokens = await CalendlyConnection().exchange_code(code, chat_id)
-            elif service == "figma":
-                from apps.core.connections.design_connection import FigmaConnection
-
-                tokens = await FigmaConnection().exchange_code(code, chat_id)
-            elif service == "canva":
-                from apps.core.connections.design_connection import CanvaConnection
-
-                tokens = await CanvaConnection().exchange_code(code, chat_id)
-            elif service == "etsy":
-                from apps.core.connections.ecommerce_connection import EtsyConnection
-
-                tokens = await EtsyConnection().exchange_code(code, chat_id)
-            elif service == "google_analytics":
-                from apps.core.connections.analytics_connection import GoogleAnalyticsConnection
-
-                tokens = await GoogleAnalyticsConnection().exchange_code(code, chat_id)
-            elif service == "spotify":
-                from apps.core.connections.media_connection import SpotifyConnection
-
-                tokens = await SpotifyConnection().exchange_code(code, chat_id)
-            elif service == "youtube":
-                from apps.core.connections.media_connection import YouTubeConnection
-
-                tokens = await YouTubeConnection().exchange_code(code, chat_id)
-            elif service == "tiktok":
-                from apps.core.connections.media_connection import TikTokConnection
-
-                tokens = await TikTokConnection().exchange_code(code, chat_id)
-            elif service == "twitch":
-                from apps.core.connections.media_connection import TwitchConnection
-
-                tokens = await TwitchConnection().exchange_code(code, chat_id)
-            else:
-                logger.warning("[Connections] Servicio desconocido: %s", service)
-                return False
-
+            tokens = await connector.exchange_code(code, chat_id)
             if tokens:
                 await self.store(chat_id, service, tokens)
                 return True

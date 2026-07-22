@@ -10,6 +10,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.media")
 
 # ── Spotify ────────────────────────────────────────────────────────────────────
@@ -43,7 +46,8 @@ TWITCH_SCOPES = (
 )
 
 
-class SpotifyConnection:
+@register_connector("spotify", display_name="Spotify (música, playlists)")
+class SpotifyConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings
@@ -164,7 +168,8 @@ class SpotifyConnection:
             return r.json()
 
 
-class YouTubeConnection:
+@register_connector("youtube", display_name="YouTube (videos, canal)")
+class YouTubeConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings
@@ -287,7 +292,8 @@ class YouTubeConnection:
             ]
 
 
-class TikTokConnection:
+@register_connector("tiktok", display_name="TikTok (videos, cuenta)")
+class TikTokConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings
@@ -378,7 +384,8 @@ class TikTokConnection:
             return r.json().get("data", {}).get("videos", [])
 
 
-class TwitchConnection:
+@register_connector("twitch", display_name="Twitch (streams, canal)")
+class TwitchConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings

@@ -15,6 +15,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.zoom")
 
 REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/zoom"
@@ -25,7 +28,8 @@ SCOPES = "meeting:read meeting:write user:read"
 ZOOM_BASE = "https://api.zoom.us/v2"
 
 
-class ZoomConnection:
+@register_connector("zoom", display_name="Zoom (meetings, grabaciones)")
+class ZoomConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings

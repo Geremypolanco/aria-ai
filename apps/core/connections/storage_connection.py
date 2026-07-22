@@ -16,13 +16,17 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.storage")
 
 
 # ── DROPBOX ───────────────────────────────────────────────────────────────────
 
 
-class DropboxConnection:
+@register_connector("dropbox", display_name="Dropbox (archivos, carpetas)")
+class DropboxConnection(BaseConnector):
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/dropbox"
     AUTH_URL = "https://www.dropbox.com/oauth2/authorize"
@@ -222,7 +226,8 @@ class DropboxConnection:
 # ── BOX ───────────────────────────────────────────────────────────────────────
 
 
-class BoxConnection:
+@register_connector("box", display_name="Box (almacenamiento empresarial)")
+class BoxConnection(BaseConnector):
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/box"
     AUTH_URL = "https://account.box.com/api/oauth2/authorize"
