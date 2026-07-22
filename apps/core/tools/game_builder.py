@@ -66,10 +66,12 @@ class GameBuilder:
             ("requirements.txt", "Python dependencies (pygame, etc.)"),
         ]
 
-        files = await self._generate_files(name, genre, description, "pygame Python", files_to_gen)
+        files, failed = await self._generate_files(
+            name, genre, description, "pygame Python", files_to_gen
+        )
         files["README.md"] = self._pygame_readme(name, genre)
 
-        return self._pack_zip(name, "pygame", files)
+        return self._pack_zip(name, "pygame", files, len(files_to_gen), failed)
 
     async def _build_phaser(self, name: str, genre: str, description: str) -> dict[str, Any]:
         """Generate a self-contained Phaser 3 HTML5 game."""
@@ -81,7 +83,7 @@ class GameBuilder:
             ("scenes/UIScene.js", "HUD overlay: score, lives, timer"),
         ]
 
-        files = await self._generate_files(
+        files, failed = await self._generate_files(
             name, genre, description, "Phaser 3 JavaScript", files_to_gen
         )
 
@@ -91,7 +93,7 @@ class GameBuilder:
             f"# {name}\n\nA {genre} game built with Phaser 3.\n\nOpen `index.html` in a browser to play.\n"
         )
 
-        return self._pack_zip(name, "phaser", files)
+        return self._pack_zip(name, "phaser", files, len(files_to_gen), failed)
 
     async def _build_godot(self, name: str, genre: str, description: str) -> dict[str, Any]:
         """Generate a Godot 4 GDScript project."""
@@ -103,7 +105,7 @@ class GameBuilder:
             ("GameData.gd", "Global game data singleton"),
         ]
 
-        files = await self._generate_files(
+        files, failed = await self._generate_files(
             name, genre, description, "Godot 4 GDScript", files_to_gen
         )
         files["project.godot"] = self._godot_project(name)
@@ -111,7 +113,7 @@ class GameBuilder:
             f"# {name}\n\nA {genre} game for Godot 4.\n\nOpen `project.godot` in Godot Engine to run.\n"
         )
 
-        return self._pack_zip(name, "godot", files)
+        return self._pack_zip(name, "godot", files, len(files_to_gen), failed)
 
     async def _generate_files(
         self,
@@ -120,16 +122,25 @@ class GameBuilder:
         description: str,
         engine_desc: str,
         files_to_gen: list[tuple[str, str]],
-    ) -> dict[str, str]:
-        """Use AI to generate each game file concurrently."""
+    ) -> tuple[dict[str, str], list[str]]:
+        """Use AI to generate each game file concurrently.
+
+        Returns (files, failed_paths) — failed_paths lists every file that
+        fell back to a stub/TODO/error placeholder instead of real
+        AI-generated code, so callers can tell a genuinely-built game apart
+        from one that's mostly empty stubs.
+        """
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
         except Exception:
-            return {path: f"# {path}\n# TODO: implement {role}\n" for path, role in files_to_gen}
+            return (
+                {path: f"# {path}\n# TODO: implement {role}\n" for path, role in files_to_gen},
+                [path for path, _role in files_to_gen],
+            )
 
-        async def gen(path: str, role: str) -> tuple[str, str]:
+        async def gen(path: str, role: str) -> tuple[str, str, bool]:
             try:
                 resp = await ai.complete(
                     system=(
@@ -146,33 +157,59 @@ class GameBuilder:
                     temperature=0.3,
                     agent_name="game_builder",
                 )
-                content = resp.content.strip() if (resp and resp.success) else f"# {path}\n# TODO\n"
+                if resp and resp.success:
+                    content = resp.content.strip()
+                    failed = False
+                else:
+                    content = f"# {path}\n# TODO\n"
+                    failed = True
                 if content.startswith("```"):
                     lines = content.split("\n")
                     content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
-                return path, content
+                return path, content, failed
             except Exception as exc:
-                return path, f"# {path}\n# Error generating: {exc}\n"
+                return path, f"# {path}\n# Error generating: {exc}\n", True
 
         tasks = [gen(path, role) for path, role in files_to_gen]
         results = await asyncio.gather(*tasks)
-        return dict(results)
+        files = {path: content for path, content, _failed in results}
+        failed_paths = [path for path, _content, failed in results if failed]
+        return files, failed_paths
 
-    def _pack_zip(self, name: str, engine: str, files: dict[str, str]) -> dict[str, Any]:
+    def _pack_zip(
+        self,
+        name: str,
+        engine: str,
+        files: dict[str, str],
+        total_generated: int,
+        failed: list[str],
+    ) -> dict[str, Any]:
         root = name.replace(" ", "-").lower()
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for filepath, content in files.items():
                 zf.writestr(f"{root}/{filepath}", content)
         zip_bytes = buf.getvalue()
-        return {
-            "success": True,
+
+        # A game where every generated file is a stub/error placeholder
+        # isn't a working game — don't report success for it.
+        all_failed = total_generated > 0 and len(failed) >= total_generated
+        result: dict[str, Any] = {
+            "success": not all_failed,
             "zip_bytes": zip_bytes,
             "filename": f"{root}-{engine}.zip",
             "engine": engine,
             "files": list(files.keys()),
             "size_kb": len(zip_bytes) // 1024,
         }
+        if failed:
+            result["generation_warnings"] = failed
+        if all_failed:
+            result["error"] = (
+                f"AI code generation failed for all {total_generated} files — "
+                "project contains only stub placeholders."
+            )
+        return result
 
     def _pygame_readme(self, name: str, genre: str) -> str:
         return (

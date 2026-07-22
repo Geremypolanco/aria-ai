@@ -441,6 +441,7 @@ class HFDiscovery:
                         "result": out,
                         "binary": binary_output,
                     }
+                res = res2
 
             logger.warning("[HFDiscovery] %s HTTP %d: %s", model, res.status_code, res.text[:150])
             return {"success": False, "model_used": model, "error": f"HTTP {res.status_code}"}
@@ -475,7 +476,7 @@ class HFDiscovery:
                 "translation",
                 {"inputs": text},
             )
-        if result["success"] and isinstance(result["result"], list):
+        if result["success"] and isinstance(result["result"], list) and result["result"]:
             result["translation"] = result["result"][0].get("translation_text", "")
         return result
 
