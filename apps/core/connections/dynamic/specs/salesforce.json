@@ -1,0 +1,36 @@
+{
+  "id": "salesforce",
+  "name": "Salesforce",
+  "category": "crm",
+  "base_url": "{instance_url}/services/data/v59.0",
+  "auth": {
+    "type": "oauth2",
+    "service_id": "salesforce"
+  },
+  "default_headers": {
+    "Content-Type": "application/json"
+  },
+  "retry": {
+    "max_attempts": 4,
+    "base_delay_seconds": 0.5,
+    "max_delay_seconds": 8,
+    "retry_on_status": [429, 500, 502, 503, 504]
+  },
+  "endpoints": {
+    "query": {
+      "method": "GET",
+      "path": "/query",
+      "query_params": ["q"],
+      "response_path": "records"
+    },
+    "get_account": {
+      "method": "GET",
+      "path": "/sobjects/Account/{account_id}"
+    },
+    "create_lead": {
+      "method": "POST",
+      "path": "/sobjects/Lead",
+      "body_params": ["LastName", "Company", "Email"]
+    }
+  }
+}

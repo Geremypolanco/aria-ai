@@ -1,0 +1,38 @@
+{
+  "id": "stripe",
+  "name": "Stripe",
+  "category": "payments",
+  "base_url": "https://api.stripe.com/v1",
+  "auth": {
+    "type": "api_key",
+    "in": "header",
+    "header_name": "Authorization",
+    "value_prefix": "Bearer ",
+    "settings_key": "STRIPE_SECRET_KEY"
+  },
+  "default_headers": {},
+  "retry": {
+    "max_attempts": 4,
+    "base_delay_seconds": 0.5,
+    "max_delay_seconds": 8,
+    "retry_on_status": [429, 500, 502, 503, 504]
+  },
+  "endpoints": {
+    "list_charges": {
+      "method": "GET",
+      "path": "/charges",
+      "query_params": ["limit"],
+      "response_path": "data"
+    },
+    "create_charge": {
+      "method": "POST",
+      "path": "/charges",
+      "body_params": ["amount", "currency", "source", "description"],
+      "body_encoding": "form"
+    },
+    "get_customer": {
+      "method": "GET",
+      "path": "/customers/{customer_id}"
+    }
+  }
+}
