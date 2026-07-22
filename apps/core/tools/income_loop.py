@@ -282,7 +282,7 @@ _SELF_DISTRIBUTING_STRATEGIES: frozenset[str] = frozenset(
         "crowdfunding_kit",
         "premium_offer",
         "product_factory",
-        "github_blog",
+        "github_publish",
         "content_pipeline",
         "catalog_repromoter",
         "stripe_subscription",
@@ -3862,7 +3862,7 @@ JSON:
             aff_link = (
                 f"https://amazon.com/s?k=ai+tools+productivity&tag={assoc}"
                 if assoc
-                else "https://github.com/{owner}/aria-insights"
+                else f"https://github.com/{owner}/aria-insights"
             )
 
             newsletter_md = (
@@ -7789,12 +7789,18 @@ JSON:
                     from apps.core.tools.mailchimp_tools import MailchimpTools
 
                     mc = MailchimpTools()
-                    mc_r = await mc.create_campaign(
-                        subject=f"ARIA Weekly #{issue_num}: {subject}",
-                        body=full_issue,
-                    )
-                    if mc_r and mc_r.get("id"):
-                        mailchimp_ok = True
+                    mc_lists = await mc.get_lists()
+                    if mc_lists.get("lists"):
+                        mc_r = await mc.create_campaign(
+                            list_id=mc_lists["lists"][0]["id"],
+                            subject=f"ARIA Weekly #{issue_num}: {subject}",
+                            from_name=getattr(settings, "MAILCHIMP_FROM_NAME", None) or "ARIA AI",
+                            reply_to=getattr(settings, "MAILCHIMP_REPLY_TO", None)
+                            or "noreply@aria.ai",
+                            body_html=full_issue,
+                        )
+                        if mc_r.get("success"):
+                            mailchimp_ok = True
                 except Exception:
                     pass
 
