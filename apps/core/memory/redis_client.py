@@ -54,6 +54,14 @@ class AriaCache:
         result = await self._cmd("SET", key, serialized, "EX", ttl_seconds)
         return result == "OK"
 
+    async def set_if_not_exists(self, key: str, value: Any, ttl_seconds: int = 3600) -> bool:
+        """Atomic create-only write (Redis SET NX). Returns True iff this call
+        created the key — False means it already existed and was left alone.
+        Use this instead of a separate exists()-then-set() pair, which races."""
+        serialized = json.dumps(value) if not isinstance(value, str) else value
+        result = await self._cmd("SET", key, serialized, "NX", "EX", ttl_seconds)
+        return result == "OK"
+
     async def get(self, key: str) -> Any | None:
         result = await self._cmd("GET", key)
         if result is None:

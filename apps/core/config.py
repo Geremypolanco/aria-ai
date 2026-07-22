@@ -39,12 +39,21 @@ class Settings(BaseSettings):
     @field_validator("SUPABASE_URL", mode="before")
     @classmethod
     def fix_supabase_url(cls, v: str) -> str:
-        """Corrige URL del dashboard a URL REST del proyecto."""
+        """Corrige URL del dashboard a URL REST del proyecto.
+
+        Toma el segmento que sigue a "project/" específicamente, no "el último
+        segmento no vacío" — pegar la URL mientras se está en /editor, /sql,
+        /settings/api, etc. (el caso normal al copiarla del navegador) rompía
+        esto silenciosamente, generando un host inválido como "editor.supabase.co".
+        """
         if not v:
             return v
-        if "supabase.com/dashboard/project/" in v:
-            project_ref = v.rstrip("/").split("/")[-1]
-            return f"https://{project_ref}.supabase.co"
+        marker = "supabase.com/dashboard/project/"
+        if marker in v:
+            after = v.split(marker, 1)[1]
+            project_ref = after.split("/")[0].split("?")[0]
+            if project_ref:
+                return f"https://{project_ref}.supabase.co"
         return v
 
     # ── HuggingFace (motor principal) ─────────────────────

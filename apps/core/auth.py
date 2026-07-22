@@ -289,10 +289,17 @@ async def github_exchange(code: str) -> dict | None:
 
 
 async def remember_user(profile: dict) -> None:
-    """Best-effort persistence of the user (email) for later plan/billing work."""
+    """Best-effort persistence of the user (email) for later plan/billing work.
+
+    Called on every login, not just signup — the underlying list is an
+    unbounded append log (repeat logins add duplicate entries), so it's
+    trimmed here to keep it from growing forever.
+    """
     try:
         from apps.core.memory.redis_client import get_cache
 
-        await get_cache().rpush("aria:users", json.dumps(profile, ensure_ascii=False))
+        cache = get_cache()
+        await cache.rpush("aria:users", json.dumps(profile, ensure_ascii=False))
+        await cache.ltrim("aria:users", -5000, -1)
     except Exception:
         pass

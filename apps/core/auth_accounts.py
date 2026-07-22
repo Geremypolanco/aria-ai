@@ -74,6 +74,10 @@ async def create_account(email: str, password: str, name: str = "") -> tuple[boo
         return False, "Enter a valid email address."
     if len(password or "") < 8:
         return False, "Password must be at least 8 characters."
+    # Fast-path check (avoids the PBKDF2 cost for the common case), but the
+    # real guarantee against a duplicate-signup race is the atomic write below
+    # — two concurrent requests for the same email must not let the second
+    # silently overwrite the first's password hash.
     if await account_exists(email):
         return False, "An account with this email already exists — try signing in."
     salt, pwhash = hash_password(password)
@@ -85,12 +89,14 @@ async def create_account(email: str, password: str, name: str = "") -> tuple[boo
         "created": int(time.time()),
     }
     try:
-        await (await _cache()).set(
+        created = await (await _cache()).set_if_not_exists(
             _ACCOUNT_KEY.format(email=email), json.dumps(record), ttl_seconds=_ACCOUNT_TTL
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("[accounts] create persist failed for %s: %s", email, exc)
         return False, "Sign-up is temporarily unavailable — please try again in a moment."
+    if not created:
+        return False, "An account with this email already exists — try signing in."
     logger.info("[accounts] created %s", email)
     return True, ""
 

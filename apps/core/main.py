@@ -600,7 +600,11 @@ async def _list_users() -> list[dict]:
     try:
         from apps.core.memory.redis_client import get_cache
 
-        raw = await get_cache().lrange("aria:users", 0, 500)
+        # remember_user() appends one entry per login (not per unique user),
+        # so "aria:users" keeps growing — read from the tail (most recent),
+        # not the head, or a returning user's repeat logins permanently push
+        # genuinely new signups outside this window once the list exceeds 500.
+        raw = await get_cache().lrange("aria:users", -500, -1)
         seen = set()
         for item in raw or []:
             try:
