@@ -239,6 +239,7 @@ class SocialMediaManager:
     ) -> bool:
         """Guarda la cuenta conectada en Supabase."""
         try:
+            from apps.core.connectors.token_crypto import encrypt
             from apps.core.memory.supabase_client import get_db
 
             db = get_db()
@@ -247,13 +248,17 @@ class SocialMediaManager:
                 expires_at = time.strftime(
                     "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + expires_in)
                 )
+            # These are live OAuth tokens for the user's real connected
+            # accounts — encrypt at rest (same AES-256-GCM used for
+            # apps/core/connections' connector tokens) instead of storing
+            # them in plaintext in Supabase.
             record = {
                 "platform": platform,
                 "account_id": str(profile.get("id", "")),
                 "username": profile.get("username", ""),
                 "email": profile.get("email", ""),
-                "access_token": access_token,
-                "refresh_token": refresh_token,
+                "access_token": encrypt(access_token),
+                "refresh_token": encrypt(refresh_token) if refresh_token else None,
                 "expires_at": expires_at,
                 "is_active": True,
                 "scopes": PLATFORM_CONFIGS.get(platform, {}).get("scopes", ""),
@@ -293,6 +298,7 @@ class SocialMediaManager:
     async def get_account_token(self, platform: str) -> str | None:
         """Obtiene el access token de una plataforma conectada."""
         try:
+            from apps.core.connectors.token_crypto import decrypt
             from apps.core.memory.supabase_client import get_db
 
             db = get_db()
@@ -307,7 +313,10 @@ class SocialMediaManager:
             if not result.data:
                 return None
             account = result.data[0]
-            return account.get("access_token")
+            token = account.get("access_token")
+            # decrypt() transparently passes through legacy plaintext tokens
+            # written before this encryption shipped.
+            return decrypt(token) if token else None
         except Exception as exc:
             logger.error("[SocialMedia] get_account_token error: %s", exc)
             return None
