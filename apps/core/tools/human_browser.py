@@ -240,15 +240,22 @@ def _load_session(name: str) -> SessionData | None:
     if not path.exists():
         return None
     try:
-        return SessionData.from_dict(json.loads(path.read_text()))
+        from apps.core.connectors.token_crypto import decrypt, is_encrypted
+
+        raw = path.read_text()
+        if is_encrypted(raw):
+            raw = decrypt(raw)
+        return SessionData.from_dict(json.loads(raw))
     except Exception:
         return None
 
 
 def _save_session(name: str, data: SessionData) -> None:
+    from apps.core.connectors.token_crypto import encrypt
+
     data.last_used = time.time()
     path = _SESSION_DIR / f"{name}.json"
-    path.write_text(json.dumps(data.to_dict(), indent=2))
+    path.write_text(encrypt(json.dumps(data.to_dict(), indent=2)))
 
 
 # ── Core classes ──────────────────────────────────────────────────────────────
