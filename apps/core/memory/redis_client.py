@@ -5,12 +5,15 @@ Usa REST API de Upstash — no requiere conexión persistente.
 
 import contextlib
 import json
+import logging
 import time
 from typing import Any
 
 import httpx
 
 from apps.core.config import settings
+
+logger = logging.getLogger("aria.cache")
 
 
 class AriaCache:
@@ -33,8 +36,16 @@ class AriaCache:
                 json=list(args),
             )
             data = response.json()
+            if "error" in data:
+                # Upstash returns 200 with an "error" field for a rejected
+                # command (bad auth, wrong arity, etc.) — that's not the same
+                # as "no result", and silently swallowing it here made every
+                # cache failure in the app invisible in production.
+                logger.warning("[cache] %s -> %s", args[0] if args else "?", data["error"])
+                return None
             return data.get("result")
-        except Exception:
+        except Exception as exc:
+            logger.warning("[cache] %s failed: %s", args[0] if args else "?", exc)
             return None
 
     async def ping(self) -> bool:
