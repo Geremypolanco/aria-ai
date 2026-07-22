@@ -31,7 +31,7 @@ class MetaMarketingTools:
                 "error": "FACEBOOK_MARKETING_TOKEN o AD_ACCOUNT_ID no configurados",
             }
         try:
-            url = f"https://graph.facebook.com/v19.0/{self._ad_account}/campaigns"
+            url = f"https://graph.facebook.com/v25.0/{self._ad_account}/campaigns"
             params = {
                 "access_token": self._token,
                 "fields": "name,status,objective,insights{spend,impressions,clicks,cpc,ctr}",
@@ -50,7 +50,7 @@ class MetaMarketingTools:
         if not self._ok():
             return {"success": False, "error": "No configurado"}
         try:
-            url = f"https://graph.facebook.com/v19.0/{self._ad_account}/campaigns"
+            url = f"https://graph.facebook.com/v25.0/{self._ad_account}/campaigns"
             data = {
                 "access_token": self._token,
                 "name": name,

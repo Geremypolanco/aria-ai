@@ -62,20 +62,8 @@ class MultimodalEngine:
 
             img_b64 = base64.standard_b64encode(image_bytes).decode()
 
-            # Detect content type
-            media_type = "image/jpeg"
-            if image_bytes[:4] == b"\x89PNG":
-                media_type = "image/png"
-            elif image_bytes[:4] == b"GIF8":
-                media_type = "image/gif"
-            elif image_bytes[:2] == b"\xff\xd8":
-                media_type = "image/jpeg"
-            elif image_bytes[:4] == b"RIFF":
-                media_type = "image/webp"
-
             analysis = await client.analyze_image(
                 image_base64=img_b64,
-                media_type=media_type,
                 question=question,
             )
 
