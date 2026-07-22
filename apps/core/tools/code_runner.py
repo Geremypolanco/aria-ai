@@ -119,17 +119,36 @@ class CodeRunner:
         return await self._exec(["bash", "-c", code], timeout)
 
     async def _exec(self, cmd: list[str], timeout: int, cwd: str | None = None) -> dict[str, Any]:
-        """Ejecuta comando y captura output con timeout."""
+        """Ejecuta comando y captura output con timeout.
+
+        SECURITY NOTE — this is NOT a real sandbox. The subprocess runs as the
+        same OS user, on the same filesystem, with network access, as the
+        ARIA server itself; there is no container/VM/seccomp isolation here.
+        The only thing this function controls is *which secrets the process
+        can trivially read* — passing the full `os.environ` through used to
+        hand every configured secret (STRIPE_SECRET_KEY, ANTHROPIC_API_KEY,
+        GITHUB_TOKEN, SESSION_SECRET, ADMIN_PASSWORD, ...) to whatever code
+        the model decided to run, retrievable with a one-line `import os;
+        print(os.environ)`. Real isolation (containers/microVMs, filesystem
+        and network restriction, resource limits) is a separate, larger
+        infra project — this only closes the environment-variable leak.
+        """
         import time
 
         start = time.monotonic()
+        safe_env = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", "/tmp"),
+            "LANG": os.environ.get("LANG", "C.UTF-8"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
-                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                env=safe_env,
             )
             try:
                 stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)

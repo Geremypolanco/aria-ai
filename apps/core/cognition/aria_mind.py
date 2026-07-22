@@ -739,7 +739,16 @@ class AriaMind:
     # "commit code to a GitHub repo (including ARIA's own production repo via
     # github_self)". These must never be reachable by an arbitrary signed-up
     # account; only the owner.
-    _OWNER_ONLY_TOOLS = frozenset({"github_write", "github_pr", "github_issues", "github_self"})
+    #
+    # execute_code is here too: CodeRunner (apps/core/tools/code_runner.py)
+    # runs the model-chosen code as a plain subprocess on the same host —
+    # no container/VM isolation — and its "blocked imports" check is a
+    # handful of substring matches, trivially bypassed. Until real sandboxing
+    # exists, this is effectively host code execution and must stay
+    # owner-only, not a free-tier chat capability.
+    _OWNER_ONLY_TOOLS = frozenset(
+        {"github_write", "github_pr", "github_issues", "github_self", "execute_code"}
+    )
 
     async def _execute_tool(
         self, tool: str, args: dict, attempt: int = 0, email: str = ""
