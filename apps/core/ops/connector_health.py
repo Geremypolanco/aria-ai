@@ -116,20 +116,33 @@ async def _default_getter(url: str) -> tuple[int | None, str | None]:
         return None, f"{type(exc).__name__}: {exc}"
 
 
+async def _probe_one(name: str, url: str, getter: Getter, store: HealthStore) -> None:
+    t0 = time.time()
+    status_code, error = await getter(url)
+    latency = int((time.time() - t0) * 1000)
+    status = classify(status_code, error)
+    store.set(
+        name, status, latency if error is None else None, detail=error or f"HTTP {status_code}"
+    )
+    if status == "offline":
+        logger.warning("[health] %s is OFFLINE (%s)", name, error or status_code)
+
+
 async def check_all(
     getter: Getter | None = None, store: HealthStore | None = None
 ) -> dict[str, dict]:
-    """Probe every connector once and update the store."""
+    """Probe every connector once (concurrently) and update the store.
+
+    Sequential awaits here would mean up to len(CONNECTOR_ENDPOINTS) *
+    _TIMEOUT seconds in the worst case — and this can run inline on a request
+    (see /api/v1/connectors/health's stale-cache refresh), so a slow/hanging
+    host would stall an unrelated user's HTTP response for that whole time.
+    """
+    import asyncio
+
     getter = getter or _default_getter
     store = store or get_store()
-    for name, url in CONNECTOR_ENDPOINTS.items():
-        t0 = time.time()
-        status_code, error = await getter(url)
-        latency = int((time.time() - t0) * 1000)
-        status = classify(status_code, error)
-        store.set(
-            name, status, latency if error is None else None, detail=error or f"HTTP {status_code}"
-        )
-        if status == "offline":
-            logger.warning("[health] %s is OFFLINE (%s)", name, error or status_code)
+    await asyncio.gather(
+        *(_probe_one(name, url, getter, store) for name, url in CONNECTOR_ENDPOINTS.items())
+    )
     return store.get_all()

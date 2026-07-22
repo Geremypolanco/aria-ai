@@ -158,8 +158,8 @@ async def _record_ai_cost(email: str, plan: str, prompt: str, reply: str) -> Non
         in_tokens = max(1, len(prompt) // 4)
         out_tokens = max(1, len(reply) // 4)
         led.record(email, _BILLING_MODEL, in_tokens, out_tokens)
-        was_frozen = led.is_frozen(email)
-        if led.evaluate(email, plan) and not was_frozen:
+        was_frozen = await led.is_frozen(email)
+        if await led.evaluate(email, plan) and not was_frozen:
             frac = led.usage_fraction(email, plan)
             await notify_burn_cap(email, plan, frac)
             logger.info("[cost] burn-cap freeze for %s at %.0f%%", email, frac * 100)
@@ -1708,7 +1708,7 @@ async def chat(req: ChatRequest, request: Request):
     if email and plan in ("pro", "business"):
         from apps.core.ops.cost_ledger import get_ledger
 
-        if get_ledger().is_frozen(email):
+        if await get_ledger().is_frozen(email):
             return {
                 "reply": (
                     "You've reached this month's AI usage cap for your plan, so new "
@@ -1915,7 +1915,7 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
     if email and plan in ("pro", "business"):
         from apps.core.ops.cost_ledger import get_ledger
 
-        if get_ledger().is_frozen(email):
+        if await get_ledger().is_frozen(email):
             return JSONResponse(
                 {
                     "ok": False,
@@ -1981,7 +1981,7 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
     if email and plan in ("pro", "business"):
         from apps.core.ops.cost_ledger import get_ledger
 
-        if get_ledger().is_frozen(email):
+        if await get_ledger().is_frozen(email):
             return JSONResponse({"ok": False, "error": "burn_cap"}, status_code=402)
 
     async def _sse():
@@ -2226,7 +2226,7 @@ async def websocket_chat(ws: WebSocket):
             if plan in ("pro", "business"):
                 from apps.core.ops.cost_ledger import get_ledger
 
-                if get_ledger().is_frozen(email):
+                if await get_ledger().is_frozen(email):
                     await ws.send_json({"error": "Monthly AI usage cap reached for your plan."})
                     continue
 
