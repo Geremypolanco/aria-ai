@@ -20,6 +20,8 @@ from typing import Any
 
 import httpx
 
+from apps.core.tools.web_tools import _assert_public_url
+
 logger = logging.getLogger("aria.multimodal")
 
 
@@ -51,6 +53,7 @@ class MultimodalEngine:
             client = get_ai_client()
 
             if image_url and not image_bytes:
+                await _assert_public_url(image_url)
                 resp = await self._http.get(image_url, timeout=20)
                 image_bytes = resp.content
 
@@ -141,6 +144,7 @@ class MultimodalEngine:
 
         try:
             if image_url and not image_bytes:
+                await _assert_public_url(image_url)
                 resp = await self._http.get(image_url, timeout=20)
                 image_bytes = resp.content
 
@@ -188,6 +192,7 @@ class MultimodalEngine:
 
         try:
             if image_url and not image_bytes:
+                await _assert_public_url(image_url)
                 resp = await self._http.get(image_url, timeout=20)
                 image_bytes = resp.content
 
@@ -220,6 +225,7 @@ class MultimodalEngine:
         """
         try:
             # Download video
+            await _assert_public_url(video_url)
             resp = await self._http.get(video_url, timeout=30)
             if resp.status_code != 200:
                 return {"success": False, "error": f"Cannot download video: {resp.status_code}"}
