@@ -2191,7 +2191,11 @@ class NicheRevenueEngine:
             "[NicheEngine] Checklist: score=%d passed=%s", checklist.score, checklist.passed
         )
 
-        if not checklist.passed and checklist.score < 70:
+        # PrePublicationChecklist's own contract is "no exceptions, no
+        # shortcuts" (all 14 gates must pass) — the previous `and` here
+        # meant a listing failing 1-4 gates (score 71-92, passed=False)
+        # silently bypassed the block and published anyway.
+        if not checklist.passed:
             errors.append(
                 f"Checklist failed ({checklist.score}/100). Failed gates: {checklist.gates_failed}"
             )
