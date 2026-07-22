@@ -488,16 +488,18 @@ class AriaAIClient:
         temperature: float,
         provider: str,
     ) -> tuple[str, int]:
-        # Use the HF router (OpenAI-compatible) which auto-routes to a working
-        # inference provider. Verified live against Qwen2.5-72B and DeepSeek-R1.
-        # The previous AsyncInferenceClient(provider=...) path 403'd on providers
-        # that don't serve the requested model, which tripped HF's circuit breaker
-        # and left only Groq/Gemini (both currently 403) → total AI failure on
-        # every tool. Routing through the router endpoint restores HF as primary.
+        # Use the HF router (OpenAI-compatible) which dispatches to a specific
+        # inference provider via the "model:provider" suffix syntax (e.g.
+        # "Qwen/Qwen2.5-72B-Instruct:together"). Without the suffix, every
+        # entry in HF_PROVIDER_ROTATION produced the exact same unrouted
+        # request — the rotation loop was silently retrying the identical
+        # call up to 4x per model instead of actually trying different
+        # providers, and the "HF fallo %s@%s" log lines were misleading
+        # about which provider had actually failed.
         resp = await self._http.post(
             "https://router.huggingface.co/v1/chat/completions",
             json={
-                "model": model_id,
+                "model": f"{model_id}:{provider}",
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
