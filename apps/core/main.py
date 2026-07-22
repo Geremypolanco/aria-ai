@@ -2122,9 +2122,18 @@ class ContentOperateRequest(BaseModel):
 
 
 @app.post("/api/v1/content/operate")
-async def content_operate(req: ContentOperateRequest):
+async def content_operate(req: ContentOperateRequest, request: Request):
     """Run one autonomous content cycle: generate copy + image, optionally publish
-    via Zapier MCP, and record a full observability trail. dry_run skips publishing."""
+    via Zapier MCP, and record a full observability trail. dry_run skips publishing.
+
+    Owner-only: this spends real AI generation cost and, unless dry_run=True,
+    publishes to real external channels — it must never be reachable
+    unauthenticated.
+    """
+    if not _is_owner_user(request):
+        return JSONResponse({"success": False, "error": "forbidden"}, status_code=403)
+    if not _rate_ok(request, "content_operate", 10, 300):
+        return JSONResponse({"success": False, "error": "rate_limited"}, status_code=429)
     try:
         from apps.core.tools.content_operator import get_content_operator
 
@@ -2140,12 +2149,14 @@ async def content_operate(req: ContentOperateRequest):
         )
     except Exception as e:
         logger.error(f"Content operate error: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "content_operate_failed"}
 
 
 @app.get("/api/v1/content/runs")
-async def content_runs(limit: int = 20):
-    """Return recent content-operator runs (the observability trail)."""
+async def content_runs(request: Request, limit: int = 20):
+    """Return recent content-operator runs (the observability trail). Owner-only."""
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         from apps.core.tools.content_operator import get_content_operator
 
@@ -2153,24 +2164,40 @@ async def content_runs(limit: int = 20):
         return {"count": len(runs), "runs": runs}
     except Exception as e:
         logger.error(f"Content runs error: {e}")
-        return {"error": str(e)}
+        return {"error": "content_runs_failed"}
 
 
 @app.get("/api/v1/content/selftest")
-async def content_selftest():
-    """Check that the Zapier MCP bridge is reachable and list available tools."""
+async def content_selftest(request: Request):
+    """Check that the Zapier MCP bridge is reachable and list available tools.
+    Owner-only: reveals internal infrastructure/integration state."""
+    if not _is_owner_user(request):
+        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     try:
         from apps.core.tools.zapier_mcp import get_zapier_mcp
 
         return await get_zapier_mcp().self_test()
     except Exception as e:
         logger.error(f"Content selftest error: {e}")
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": "selftest_failed"}
 
 
 # ── WEBSOCKET ─────────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
+    """WebSocket twin of /api/v1/chat — must carry the same guards (sign-in,
+    per-message rate limit, free-tier quota, panic freeze, burn cap), or it's
+    a free unlimited/unauthenticated bypass of all of them."""
+    from apps.core import auth
+
+    user = auth.verify_user(ws.cookies.get(auth.USER_COOKIE))
+    if not user:
+        await ws.close(code=4401)  # policy violation: unauthenticated
+        return
+
+    email = (user.get("email") or "").strip().lower()
+    plan = "business" if email in _owner_emails() else await _get_user_plan(email)
+
     await ws.accept()
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
@@ -2178,15 +2205,38 @@ async def websocket_chat(ws: WebSocket):
         mind = get_aria_mind()
         while True:
             data = await ws.receive_text()
+
+            if not _rate_ok(ws, "ws_chat", 30, 60):
+                await ws.send_json({"error": "You're sending messages too fast."})
+                continue
+            if _PANIC["on"]:
+                await ws.send_json({"error": "ARIA is temporarily paused by an operator."})
+                continue
+            if plan == "free":
+                allowed, _remaining = await _consume_free_quota(email)
+                if not allowed:
+                    await ws.send_json(
+                        {"error": f"Daily free limit of {FREE_DAILY_LIMIT} messages reached."}
+                    )
+                    continue
+            if plan in ("pro", "business"):
+                from apps.core.ops.cost_ledger import get_ledger
+
+                if get_ledger().is_frozen(email):
+                    await ws.send_json({"error": "Monthly AI usage cap reached for your plan."})
+                    continue
+
             msg = json.loads(data)
             resp = await mind.handle(msg.get("message", ""), msg.get("session_id", "ws"))
-            await ws.send_json({"reply": resp.text or resp.caption or "", "tool": resp.tool_used})
+            reply_text = resp.text or resp.caption or ""
+            await _record_ai_cost(email, plan, msg.get("message", ""), reply_text)
+            await ws.send_json({"reply": reply_text, "tool": resp.tool_used})
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         with suppress(Exception):
-            await ws.send_json({"error": str(e)})
+            await ws.send_json({"error": "Something went wrong. Please try again."})
 
 
 # ── MAIN ──────────────────────────────────────────────────
