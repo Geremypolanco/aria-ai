@@ -216,14 +216,21 @@ class CrewEngine:
 
             try:
                 result = await hub.dispatch(member.agent_type, agent_prompt, {})
-                output = (
-                    result.get("output")
-                    or result.get("result")
-                    or result.get("plan")
-                    or str(result)
-                )
-                member.output = str(output)[:3000]
-                any_success = True
+                if not result.get("success", True):
+                    member.output = f"[Error: {result.get('error', 'agente falló')}]"
+                    last_error = result.get("error") or "agente falló"
+                    logger.warning(
+                        "[Crew:%s] member '%s' failed: %s", run.id, member.role, last_error
+                    )
+                else:
+                    output = (
+                        result.get("output")
+                        or result.get("result")
+                        or result.get("plan")
+                        or str(result)
+                    )
+                    member.output = str(output)[:3000]
+                    any_success = True
             except Exception as exc:
                 member.output = f"[Error: {exc}]"
                 last_error = str(exc)
@@ -290,8 +297,12 @@ class CrewEngine:
             )
             try:
                 result = await hub.dispatch(member.agent_type, prompt, {})
-                member.output = str(result.get("output") or result)[:2500]
-                any_success = True
+                if not result.get("success", True):
+                    member.output = f"[Error: {result.get('error', 'agente falló')}]"
+                    last_error = result.get("error") or "agente falló"
+                else:
+                    member.output = str(result.get("output") or result)[:2500]
+                    any_success = True
             except Exception as exc:
                 member.output = f"[Error: {exc}]"
                 last_error = str(exc)
@@ -333,7 +344,9 @@ class CrewEngine:
             ),
             max_tokens=2500,
         )
-        return resp.content if hasattr(resp, "content") else str(resp)
+        if not resp.success:
+            return "\n\n".join(f"**{m.role}:**\n{m.output or 'N/A'}" for m in members)
+        return resp.content
 
 
 _engine: CrewEngine | None = None

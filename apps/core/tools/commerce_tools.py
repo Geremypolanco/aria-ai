@@ -363,7 +363,7 @@ class CommerceTools:
         try:
             # Normalize URL: strip scheme prefix if present (env var may include https://)
             _base = shop_url.removeprefix("https://").removeprefix("http://").rstrip("/")
-            url = f"https://{_base}/admin/api/2024-01/orders.json"
+            url = f"https://{_base}/admin/api/2025-07/orders.json"
             headers = {"X-Shopify-Access-Token": token}
             res = await self._http.get(
                 url, headers=headers, params={"limit": limit, "status": "any"}

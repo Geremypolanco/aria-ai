@@ -38,5 +38,5 @@ async def test_shopify_get_orders_normalizes_url_with_scheme_prefix(monkeypatch)
     with patch.object(tools._http, "get", fake_get):
         await tools.shopify_get_orders()
 
-    assert captured_url["url"] == "https://mystore.myshopify.com/admin/api/2024-01/orders.json"
+    assert captured_url["url"] == "https://mystore.myshopify.com/admin/api/2025-07/orders.json"
     assert "https://https://" not in captured_url["url"]
