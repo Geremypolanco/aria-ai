@@ -263,12 +263,12 @@ class ContentTools:
         height: int = 1024,
     ) -> dict[str, Any]:
         """Genera imagen con FLUX.1 via HuggingFace."""
-        if not settings.HF_TOKEN:
+        if not settings.hf_key:
             return {"success": False, "error": "HF_TOKEN no configurado"}
         try:
             res = await self._http.post(
                 f"https://api-inference.huggingface.co/models/{model}",
-                headers={"Authorization": f"Bearer {settings.HF_TOKEN}"},
+                headers={"Authorization": f"Bearer {settings.hf_key}"},
                 json={
                     "inputs": prompt,
                     "parameters": {"width": width, "height": height},
