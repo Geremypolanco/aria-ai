@@ -1063,7 +1063,11 @@ function turnHTML(m){
     aria = (m.deep && started) ? wfStepsHTML(m)
       : '<div class="typing"><span></span><span></span><span></span></div>';
   } else if(m.status==='error'){
-    aria = '<div class="md">'+md(m.text || "ARIA couldn't complete this. Try again.")+'</div>';
+    aria = (m.deep && started)
+      ? '<details class="work" open><summary>Worked with '+((m.workflow||[]).length)+' subagents</summary>'
+        + wfStepsHTML(m)+'</details>'
+        + '<div class="md">'+md(m.text || "ARIA couldn't complete this. Try again.")+'</div>'
+      : '<div class="md">'+md(m.text || "ARIA couldn't complete this. Try again.")+'</div>';
   } else if(m.deep && started){
     aria = '<details class="work" open><summary>Worked with '+((m.workflow||[]).length)+' subagents</summary>'
          + wfStepsHTML(m)+'</details>'
@@ -1078,6 +1082,9 @@ function turnHTML(m){
     ? '<div class="turn-foot"><button class="tact" onclick="copyMission(\''+m.id+'\')">Copy</button>'
       + (m.deep ? '<button class="tact" onclick="exportMission(\''+m.id+'\')">Export</button>' : '')
       + '<button class="tact" onclick="relaunch(\''+m.id+'\')">Retry</button>'
+      + '<button class="tact" onclick="delMission(\''+m.id+'\')">Delete</button></div>'
+    : (m.status==='error')
+    ? '<div class="turn-foot"><button class="tact" onclick="relaunch(\''+m.id+'\')">Retry</button>'
       + '<button class="tact" onclick="delMission(\''+m.id+'\')">Delete</button></div>'
     : '';
   return '<div class="turn user"><div class="ubub">'+esc(m.goal)+'</div></div>'
@@ -1174,7 +1181,13 @@ async function dispatchWorkflow(goal, inp){
         try{ applyEvent(JSON.parse(line.slice(5).trim())); }catch(_){}
       }
     }
-    if(m.status==='running'){ m.status='done'; }  // stream ended without explicit done
+    if(m.status==='running'){
+      // Stream closed without ever sending a done/error event (dropped connection,
+      // proxy timeout) — never claim success for a workflow that never finished.
+      m.status='error';
+      if(!m.text) m.text='Connection lost before ARIA finished this workflow. What ran so far is shown above — try again to pick up from here.';
+      log('Deep workflow connection lost before finishing', 'err');
+    }
   }catch(e){
     // Any streaming failure → graceful fallback to the non-streaming endpoint.
     log('· streaming unavailable, falling back', 'dim');
