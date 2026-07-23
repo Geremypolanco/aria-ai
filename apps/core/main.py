@@ -1203,16 +1203,16 @@ def _profile_context(profile: dict) -> str:
         return ""
     parts = []
     if profile.get("name"):
-        parts.append(f"su nombre es {profile['name']}")
+        parts.append(f"their name is {profile['name']}")
     if profile.get("work"):
-        parts.append(f"se dedica a: {profile['work']}")
+        parts.append(f"they work in/on: {profile['work']}")
     if profile.get("goals"):
-        parts.append("quiere ayuda con: " + ", ".join(profile["goals"][:6]))
+        parts.append("they want help with: " + ", ".join(profile["goals"][:6]))
     if not parts:
         return ""
     return (
-        "[Perfil del usuario — personaliza tu respuesta y, cuando sea natural, "
-        "dirígete a él por su nombre: " + "; ".join(parts) + ".]"
+        "[User profile — personalize your reply and, when natural, "
+        "address them by name: " + "; ".join(parts) + ".]"
     )
 
 
@@ -1220,17 +1220,17 @@ def _profile_context(profile: dict) -> str:
 # to Stripe passes through this gate — the modal sends agreed=1 inline; direct
 # links (onboarding, deep-links) are stopped here and shown the interstitial.
 NO_REFUND_ACK = (
-    "Entiendo y acepto la política estricta de no reembolso de ARIA debido a los "
-    "costes inmediatos de renderizado y cómputo de IA."
+    "I understand and accept ARIA's strict no-refund policy, due to the "
+    "immediate rendering and AI compute costs involved."
 )
 
 
 def _checkout_confirm_page(tier: str, plan: dict) -> HTMLResponse:
     price = f"${plan['cents'] // 100}/mo"
     go = f"/billing/checkout?tier={tier}&amp;agreed=1"
-    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ARIA · Confirmar {plan['name']}</title><style>
+<title>ARIA · Confirm {plan['name']}</title><style>
 *{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
 background:#ffffff;color:#3f3f46;padding:20px}}
@@ -1249,15 +1249,15 @@ text-decoration:none;cursor:pointer;transition:filter .15s}}
 .sub{{text-align:center;margin-top:14px;font-size:12.5px}}
 .sub a{{color:#71717a;text-decoration:none;margin:0 8px}} .sub a:hover{{color:#18181b}}
 </style></head><body><div class="card">
-<h1>Confirmar {plan['name']}</h1>
-<div class="price"><b>{price}</b> · renovación mensual · cancela cuando quieras</div>
+<h1>Confirm {plan['name']}</h1>
+<div class="price"><b>{price}</b> · renews monthly · cancel anytime</div>
 <div class="ack">
   <input type="checkbox" id="ack" onchange="document.getElementById('go').setAttribute('aria-disabled', this.checked?'false':'true')">
   <label for="ack">{NO_REFUND_ACK}</label>
 </div>
-<a id="go" class="btn" aria-disabled="true" href="{go}">Continuar al pago seguro →</a>
-<div class="sub"><a href="/app">← Volver</a><a href="/legal/refund-policy">Política de reembolso</a>
-<a href="/legal/terms">Términos</a></div>
+<a id="go" class="btn" aria-disabled="true" href="{go}">Continue to secure checkout →</a>
+<div class="sub"><a href="/app">← Back</a><a href="/legal/refund-policy">Refund policy</a>
+<a href="/legal/terms">Terms</a></div>
 </div></body></html>"""
     return HTMLResponse(html)
 
@@ -1723,13 +1723,13 @@ async def support_chat(req: SupportRequest, request: Request):
 
     if not _rate_ok(request, "support", 20, 60):
         return {
-            "reply": "Estás enviando mensajes muy rápido. Espera un momento e inténtalo de nuevo.",
+            "reply": "You're sending messages too fast. Please wait a moment and try again.",
             "source": "ratelimited",
             "processing_time_ms": 0,
         }
     if not _current_user(request):
         return {
-            "reply": "Inicia sesión para hablar con ARIA Support.",
+            "reply": "Please sign in to chat with ARIA Support.",
             "source": "auth",
             "processing_time_ms": 0,
         }
@@ -1814,18 +1814,22 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
 
     if not _current_user(request):
         return JSONResponse(
-            {"ok": False, "error": "auth", "synthesis": "Inicia sesión para usar ARIA."},
+            {"ok": False, "error": "auth", "synthesis": "Please sign in to use ARIA."},
             status_code=401,
         )
     # Los flujos abren varios subagentes por llamada → límite deliberadamente bajo.
     if not _rate_ok(request, "workflow", 6, 300):
         return JSONResponse(
-            {"ok": False, "error": "rate_limited", "synthesis": "Demasiados flujos seguidos."},
+            {
+                "ok": False,
+                "error": "rate_limited",
+                "synthesis": "Too many workflows in a row — please wait a bit and try again.",
+            },
             status_code=429,
         )
     if _PANIC["on"]:
         return JSONResponse(
-            {"ok": False, "error": "paused", "synthesis": "ARIA está pausada por un operador."},
+            {"ok": False, "error": "paused", "synthesis": "ARIA is paused by an operator right now."},
             status_code=503,
         )
 
