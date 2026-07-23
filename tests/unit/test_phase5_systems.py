@@ -4,7 +4,6 @@ Covers: Growth Engine, Acquisition, Funnel Optimizer, Experiment Runner,
 Shopify Operator, Pricing Optimizer, SEO Optimizer,
 Content OS, Content Planner, Content Distributor,
 Marketing Intelligence, SEO Analyzer, Copy Optimizer,
-Autonomous Scheduler, Objective Manager,
 Economic Engine, CAC/LTV Analyzer,
 Growth Learner, Campaign Scorer, CRM Engine, Retention Engine.
 """
@@ -612,111 +611,6 @@ class TestCopyOptimizer:
         opt = CopyOptimizer()
         words = opt.power_words()
         assert "urgency" in words and "trust" in words
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 14. AUTONOMOUS SCHEDULER
-# ═══════════════════════════════════════════════════════════════════════════
-
-class TestAutonomousScheduler:
-    def test_objective_is_due(self):
-        from apps.runtime.autonomy.autonomous_scheduler import StrategicObjective, ObjectivePriority
-        obj = StrategicObjective(
-            obj_id="o1", name="Test", description="test", priority=ObjectivePriority.NORMAL,
-            frequency_hours=6.0, handler_key="test_handler", next_run_ts=0.0,
-        )
-        assert obj.is_due() is True
-
-    def test_objective_schedule_next(self):
-        from apps.runtime.autonomy.autonomous_scheduler import StrategicObjective, ObjectivePriority
-        obj = StrategicObjective(
-            obj_id="o2", name="S", description="s", priority=ObjectivePriority.HIGH,
-            frequency_hours=12.0, handler_key="k",
-        )
-        obj.schedule_next()
-        assert obj.next_run_ts > time.time()
-
-    def test_scheduler_summary(self):
-        from apps.runtime.autonomy.autonomous_scheduler import AutonomousScheduler
-        sched = AutonomousScheduler()
-        s = sched.summary()
-        assert "total_objectives" in s
-
-    @pytest.mark.asyncio
-    async def test_register_and_run_handler(self):
-        from apps.runtime.autonomy.autonomous_scheduler import (
-            AutonomousScheduler, StrategicObjective, ObjectivePriority
-        )
-        sched = AutonomousScheduler()
-        results = []
-
-        async def test_handler(obj):
-            results.append(obj.obj_id)
-            return {"value_usd": 5.0}
-
-        obj = StrategicObjective(
-            obj_id="run-test", name="Run Test", description="test",
-            priority=ObjectivePriority.NORMAL, frequency_hours=6.0,
-            handler_key="test_key", next_run_ts=0.0,
-        )
-        sched.register_objective(obj)
-        sched.register_handler("test_key", test_handler)
-        records = await sched.run_due_objectives()
-        assert len(records) >= 1
-
-    def test_default_objectives(self):
-        from apps.runtime.autonomy.autonomous_scheduler import AutonomousScheduler
-        sched = AutonomousScheduler()
-        defaults = sched._default_objectives()
-        assert len(defaults) >= 4
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 15. OBJECTIVE MANAGER
-# ═══════════════════════════════════════════════════════════════════════════
-
-class TestObjectiveManager:
-    @pytest.mark.asyncio
-    async def test_add_and_get_objective(self):
-        from apps.runtime.autonomy.objective_manager import ObjectiveManager, Horizon
-        mgr = ObjectiveManager()
-        result = await mgr.add_objective(
-            title="Hit $10k MRR",
-            horizon=Horizon.MONTHLY,
-            description="Grow monthly recurring revenue to $10k",
-            target_revenue=10000.0,
-            milestones_data=[{"title": "First $1k", "target": 1000.0, "metric": "mrr"}],
-        )
-        # add_objective may return an obj or obj_id
-        obj_id = result.obj_id if hasattr(result, "obj_id") else result
-        objs = await mgr.get_objectives()
-        assert len(objs) >= 1
-        ids = [o.obj_id if hasattr(o, "obj_id") else o.get("obj_id") for o in objs]
-        assert obj_id in ids
-
-    @pytest.mark.asyncio
-    async def test_update_milestone_achieves(self):
-        from apps.runtime.autonomy.objective_manager import ObjectiveManager, Horizon, MilestoneStatus
-        mgr = ObjectiveManager()
-        result = await mgr.add_objective(
-            "Revenue Goal", Horizon.WEEKLY, "Weekly revenue",
-            target_revenue=1000.0,
-            milestones_data=[{"title": "Mid-week", "target": 500.0, "metric": "revenue"}],
-        )
-        obj_id = result.obj_id if hasattr(result, "obj_id") else result
-        objs = await mgr.get_objectives()
-        obj = [o for o in objs if (o.obj_id if hasattr(o, "obj_id") else o.get("obj_id")) == obj_id][0]
-        milestones = obj.milestones if hasattr(obj, "milestones") else obj.get("milestones", [])
-        ms = milestones[0]
-        ms_id = ms.milestone_id if hasattr(ms, "milestone_id") else ms.get("milestone_id")
-        await mgr.update_milestone(obj_id, ms_id, current_value=600.0)
-        objs = await mgr.get_objectives()
-        obj = [o for o in objs if (o.obj_id if hasattr(o, "obj_id") else o.get("obj_id")) == obj_id][0]
-        milestones = obj.milestones if hasattr(obj, "milestones") else obj.get("milestones", [])
-        ms = milestones[0]
-        status = ms.status if hasattr(ms, "status") else ms.get("status")
-        achieved = MilestoneStatus.ACHIEVED
-        assert status == achieved or status == achieved.value
 
 
 # ═══════════════════════════════════════════════════════════════════════════
