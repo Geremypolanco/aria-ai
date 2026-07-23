@@ -18,6 +18,16 @@ class AriaDatabase:
     def __init__(self):
         self._client: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
+    def table(self, name: str):
+        """Passthrough to the underlying Supabase client's query builder.
+
+        Several callers (world_state.py, episodic_memory.py) do
+        `db.table(...).upsert(...)/.insert(...)` for tables this class has no
+        dedicated method for — without this, that's an AttributeError on
+        every call, silently swallowed by their own broad except blocks.
+        """
+        return self._client.table(name)
+
     # ── LOGS ──────────────────────────────────────────────
 
     async def log(

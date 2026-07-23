@@ -62,7 +62,7 @@ async def test_push_file_refuses_protected_files():
         file_path="apps/core/main.py", content="x", commit_message="msg"
     )
     assert result["success"] is False
-    assert "protegido" in result["error"]
+    assert "no esta permitido" in result["error"]
 
 
 async def test_developer_agent_push_to_github_calls_real_method():

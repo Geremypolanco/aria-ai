@@ -172,8 +172,11 @@ class WorldState:
 
             cache = get_cache()
             if cache:
+                # ttl_seconds belongs on cache.set(), not json.dumps() — the
+                # old call raised TypeError on every invocation, so Redis
+                # persistence never actually happened (swallowed below).
                 await cache.set(
-                    "aria:world_state", json.dumps(self._state, default=str, ttl_seconds=3600)
+                    "aria:world_state", json.dumps(self._state, default=str), ttl_seconds=3600
                 )
         except Exception as exc:
             logger.warning("[WorldState] Redis persist failed: %s", exc)
@@ -205,7 +208,8 @@ class WorldState:
             if cache:
                 raw = await cache.get("aria:world_state")
                 if raw:
-                    self._state = json.loads(raw)
+                    # cache.get() already deserializes JSON.
+                    self._state = raw
                     logger.info(
                         "[WorldState] Estado cargado desde Redis (%d proyectos, %d tareas)",
                         len(self._state.get("projects", {})),

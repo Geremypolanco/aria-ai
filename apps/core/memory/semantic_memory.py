@@ -294,7 +294,8 @@ class SemanticMemory:
             if cache:
                 raw = await cache.get(f"aria:semantic:{fact_id}")
                 if raw:
-                    return Fact.from_dict(json.loads(raw))
+                    # cache.get() already deserializes JSON.
+                    return Fact.from_dict(raw)
         except Exception as exc:
             logger.debug("[SemanticMem] Load fact %s failed: %s", fact_id, exc)
         return None

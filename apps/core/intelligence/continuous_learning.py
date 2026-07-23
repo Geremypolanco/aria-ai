@@ -247,7 +247,7 @@ class ContinuousLearningEngine:
         interactions = await self._load_interactions_from_redis(max_count=200)
         if not interactions:
             logger.info("[Learning] Sin interacciones para procesar")
-            await cache.set(LAST_CYCLE_KEY, str(time.time()), ttl=LEARNING_TTL)
+            await cache.set(LAST_CYCLE_KEY, str(time.time()), ttl_seconds=LEARNING_TTL)
             return {"processed": 0, "message": "Sin interacciones nuevas"}
 
         logger.info("[Learning] Procesando %d interacciones con HF models", len(interactions))
@@ -284,7 +284,7 @@ class ContinuousLearningEngine:
         results["model_performance"] = model_insights
 
         # 7. Marcar ciclo como completado
-        await cache.set(LAST_CYCLE_KEY, str(time.time()), ttl=LEARNING_TTL)
+        await cache.set(LAST_CYCLE_KEY, str(time.time()), ttl_seconds=LEARNING_TTL)
         results["duration_s"] = round(time.time() - t0, 1)
 
         logger.info(
@@ -464,7 +464,7 @@ class ContinuousLearningEngine:
         try:
             cache = self._get_cache()
             await cache.set(
-                topic_key, json.dumps(crystal.to_dict(), ensure_ascii=False), ttl=LEARNING_TTL
+                topic_key, json.dumps(crystal.to_dict(), ensure_ascii=False), ttl_seconds=LEARNING_TTL
             )
             logger.info(
                 "[Learning] Cristal guardado: '%s' (%d interacciones)",
@@ -479,10 +479,12 @@ class ContinuousLearningEngine:
         try:
             cache = self._get_cache()
             raw = await cache.get(TOPIC_FREQ_KEY)
-            freq = json.loads(raw) if raw else {}
+            # cache.get() already deserializes JSON — re-decoding raised
+            # TypeError on every call once data existed, silently swallowed.
+            freq = raw if raw else {}
             for topic, interactions in topics_map.items():
                 freq[topic] = freq.get(topic, 0) + len(interactions)
-            await cache.set(TOPIC_FREQ_KEY, json.dumps(freq), ttl=LEARNING_TTL)
+            await cache.set(TOPIC_FREQ_KEY, json.dumps(freq), ttl_seconds=LEARNING_TTL)
         except Exception as exc:
             logger.warning("[Learning] Error actualizando frecuencia de temas: %s", exc)
 

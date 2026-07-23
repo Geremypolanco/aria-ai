@@ -218,10 +218,13 @@ class EpisodicMemory:
             cache = get_cache()
             if cache:
                 key = f"aria:episode:{episode['id']}"
+                # value/ttl_seconds were transposed — the episode content was
+                # never actually stored (the cached value was the literal
+                # string "604800"), and the malformed ttl broke Redis's EX arg.
                 await cache.set(
                     key,
-                    86400 * 7,
                     json.dumps({k: v for k, v in episode.items() if k != "embedding"}),
+                    ttl_seconds=86400 * 7,
                 )
         except Exception:
             pass

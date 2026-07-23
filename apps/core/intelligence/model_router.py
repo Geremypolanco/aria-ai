@@ -488,7 +488,7 @@ class ModelRouter:
             await cache.set(
                 "aria:model_router:hf_rotation",
                 json.dumps(rotation),
-                ttl=ROUTING_TTL,
+                ttl_seconds=ROUTING_TTL,
             )
             logger.info("[ModelRouter] HF_MODEL_ROTATION actualizado: %s", list(rotation.keys()))
 
@@ -500,7 +500,7 @@ class ModelRouter:
             "models": results["models_evaluated"],
             "entries": results["routing_entries_updated"],
         }
-        await cache.set(LAST_DISCOVERY_KEY, str(time.time()), ttl=ROUTING_TTL)
+        await cache.set(LAST_DISCOVERY_KEY, str(time.time()), ttl_seconds=ROUTING_TTL)
         await cache.lpush(DISCOVERY_LOG_KEY, json.dumps(log_entry))
         await cache.ltrim(DISCOVERY_LOG_KEY, 0, 29)  # mantener últimos 30
 
@@ -588,7 +588,7 @@ class ModelRouter:
                 await cache.set(
                     BENCHMARK_KEY.format(model_id=safe_id),
                     json.dumps(asdict(score)),
-                    ttl=ROUTING_TTL,
+                    ttl_seconds=ROUTING_TTL,
                 )
             except Exception:
                 pass
@@ -612,7 +612,7 @@ class ModelRouter:
             cache = self._get_cache()
             serialized = {k: v.to_dict() for k, v in self._routing_table.items()}
             await cache.set(
-                ROUTING_TABLE_KEY, json.dumps(serialized, ensure_ascii=False), ttl=ROUTING_TTL
+                ROUTING_TABLE_KEY, json.dumps(serialized, ensure_ascii=False), ttl_seconds=ROUTING_TTL
             )
             logger.info(
                 "[ModelRouter] Tabla de enrutamiento guardada (%d entradas)", len(serialized)

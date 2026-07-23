@@ -233,8 +233,11 @@ REASON: [why this matters]
 
             cache = get_cache()
             if cache and decisions:
+                # ttl_seconds belongs on cache.set(), not json.dumps() — the
+                # old call raised TypeError on every invocation, so decisions
+                # were never actually persisted (silently swallowed below).
                 await cache.set(
-                    "aria:reflection:decisions", json.dumps(decisions, ttl_seconds=86400)
+                    "aria:reflection:decisions", json.dumps(decisions), ttl_seconds=86400
                 )
         except Exception as exc:
             logger.warning("[Reflection] Redis persist failed: %s", exc)
@@ -248,7 +251,8 @@ REASON: [why this matters]
             if cache:
                 raw = await cache.get("aria:reflection:decisions")
                 if raw:
-                    return json.loads(raw)
+                    # cache.get() already deserializes JSON.
+                    return raw
         except Exception:
             pass
         return self._decisions
