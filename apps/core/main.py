@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 
 import uvicorn
-from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -1546,8 +1546,19 @@ async def json_metrics():
         return {"requests_total": 0, "income": {}, "ai": {}}
 
 
+async def _remember_turn(email: str, user_msg: str, aria_reply: str) -> None:
+    """Persist a conversation turn to episodic memory after the response has
+    already been sent — storing is not on the critical path for chat latency."""
+    try:
+        from apps.core.cognition.episodic_memory import get_episodic_memory
+
+        await get_episodic_memory().store_conversation(email, user_msg, aria_reply)
+    except Exception as exc:
+        logger.warning(f"Memory store failed (non-fatal): {exc}")
+
+
 @app.post("/api/v1/chat")
-async def chat(req: ChatRequest, request: Request):
+async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundTasks):
     """Chat with ARIA — routed through the real cognitive brain (tools + identity),
     so it actually executes (e.g. generate_image) and knows who it is."""
     import base64
@@ -1639,6 +1650,23 @@ async def chat(req: ChatRequest, request: Request):
         if pctx:
             user_context = f"{pctx}\n\n{user_context}".strip()
 
+    # Recall relevant memory from PAST sessions (different chat threads, earlier
+    # days) — distinct from aria_mind's own history, which only covers this one
+    # chat_id. Signed-in users only; there is no identity to scope memory to
+    # for an anonymous request.
+    if email:
+        try:
+            from apps.core.cognition.episodic_memory import get_episodic_memory
+
+            recalled = await get_episodic_memory().recall(email, req.message, n=4)
+            if recalled:
+                mem_lines = "\n".join(f"- {e['content']}" for e in recalled)
+                user_context = (
+                    f"[From earlier sessions with this user:\n{mem_lines}]\n\n{user_context}"
+                ).strip()
+        except Exception as exc:
+            logger.warning(f"Memory recall failed (non-fatal): {exc}")
+
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
 
@@ -1652,6 +1680,8 @@ async def chat(req: ChatRequest, request: Request):
             media_type, media_b64 = "image", base64.b64encode(resp.image_bytes).decode()
         reply_text = resp.text or resp.caption or ""
         await _record_ai_cost(email, plan, req.message, reply_text)
+        if email and reply_text:
+            background_tasks.add_task(_remember_turn, email, req.message, reply_text)
         return {
             "reply": reply_text,
             "model_used": resp.tool_used or "aria",
