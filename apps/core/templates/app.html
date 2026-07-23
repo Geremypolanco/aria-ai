@@ -421,7 +421,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </defs></svg>
 
 <!-- ══ ONBOARDING ══ -->
-<div id="ov" class="ov">
+<div id="ov" class="ov" role="dialog" aria-modal="true" aria-label="Welcome to ARIA — onboarding">
   <div class="modal">
     <div class="ov-ic"><svg width="26" height="26" aria-hidden="true"><use href="#ariaMark"/></svg></div>
     <div class="dots" id="dots"><i class="on"></i><i></i><i></i><i></i></div>
@@ -477,12 +477,12 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </div>
 
 <!-- ══ UPGRADE ══ -->
-<div id="upOv" class="ov">
+<div id="upOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="upTitle">
   <div class="modal">
     <div class="mrow">
       <div>
         <div class="ov-ic"><svg width="26" height="26" aria-hidden="true"><use href="#ariaMark"/></svg></div>
-        <h2>Upgrade ARIA</h2>
+        <h2 id="upTitle">Upgrade ARIA</h2>
         <p class="lead">Do more — autonomous publishing, video, and priority AI.</p>
       </div>
       <button onclick="closeUpgrade()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
@@ -521,10 +521,10 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </button>
 
 <!-- ══ SETTINGS ══ -->
-<div id="settingsOv" class="ov">
+<div id="settingsOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
   <div class="modal">
     <div class="mrow">
-      <div><div class="ov-ic"><svg width="26" height="26" aria-hidden="true"><use href="#ariaMark"/></svg></div><h2>Settings</h2></div>
+      <div><div class="ov-ic"><svg width="26" height="26" aria-hidden="true"><use href="#ariaMark"/></svg></div><h2 id="settingsTitle">Settings</h2></div>
       <button onclick="closeSettings()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div class="setsec" style="border-top:0;padding-top:14px">
@@ -560,10 +560,10 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </div>
 
 <!-- ══ CONNECTORS ══ -->
-<div id="connOv" class="ov">
+<div id="connOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="connTitle">
   <div class="modal">
     <div class="mrow">
-      <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15 3.5 20.5M15 9l5.5-5.5M8 8l8 8"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/></svg></div><h2>Connectors</h2><p class="lead">Connect ARIA to the apps you already use — so it can research, publish and act across them.</p></div>
+      <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15 3.5 20.5M15 9l5.5-5.5M8 8l8 8"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/></svg></div><h2 id="connTitle">Connectors</h2><p class="lead">Connect ARIA to the apps you already use — so it can research, publish and act across them.</p></div>
       <button onclick="closeConnectors()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div id="connList" style="margin-top:18px"></div>
@@ -572,10 +572,10 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </div>
 
 <!-- TEAM overlay -->
-<div id="teamOv" class="ov">
+<div id="teamOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="teamTitle">
   <div class="modal">
     <div class="mrow">
-      <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h2>Your AI team</h2><p class="lead">A team of specialists — give one a goal and it does the work, end to end. Each is powered by ARIA.</p></div>
+      <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h2 id="teamTitle">Your AI team</h2><p class="lead">A team of specialists — give one a goal and it does the work, end to end. Each is powered by ARIA.</p></div>
       <button onclick="closeTeam()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div id="teamGrid" class="team-grid" style="margin-top:18px"></div>
@@ -583,7 +583,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </div>
 
 <!-- ══ CONFIRM ══ -->
-<div id="confirmOv" class="ov">
+<div id="confirmOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
   <div class="modal" style="max-width:400px">
     <h2 id="confirmTitle">Are you sure?</h2>
     <p class="lead" id="confirmBody"></p>
