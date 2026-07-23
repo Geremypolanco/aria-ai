@@ -365,6 +365,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .cn-btn.ready{background:var(--neon);border-color:var(--neon);color:#04150d;box-shadow:var(--glow)}
 .cn-btn.setup{background:var(--neon-soft);border-color:#b6f0d3;color:var(--green-ink)}
 .cn-btn.done{background:#eefaf3;border-color:#bfead4;color:#0f7a4f;cursor:default}
+.cn-btn.soon{background:var(--soft);border-color:var(--line);color:var(--muted);cursor:default}
 .cn-detail{margin-top:10px;border:1px solid var(--line);background:var(--soft);border-radius:11px;padding:12px}
 .cn-detail .k{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:5px}
 .cn-detail code{display:block;word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:11px;color:var(--ink2)}
@@ -1423,7 +1424,7 @@ function renderConnectors(){
     else if(c.state==='ready'){ label='Connect'; cls='ready'; action='onclick="location.href=\'/connectors/'+c.id+'/connect\'"';
       if(isOwner) gear='<button onclick="connToggle(\''+c.id+'\')" title="Setup details" class="cn-gear"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>'; }
     else if(isOwner){ label='Set up'; cls='setup'; action='onclick="connToggle(\''+c.id+'\')"'; }
-    else { label='Coming soon'; cls='setup'; action='disabled'; }
+    else { label='Coming soon'; cls='soon'; action='disabled'; }
     return '<div class="cn-row"><div class="cn-main">'
       +'<div class="cn-ic" style="background:'+c.color+'">'+c.icon+'</div>'
       +'<div style="min-width:0;flex:1"><div class="cn-name">'+esc(c.name)+'</div><div class="cn-desc">'+esc(c.desc)+'</div></div>'
