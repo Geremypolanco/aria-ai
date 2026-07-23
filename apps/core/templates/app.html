@@ -25,6 +25,7 @@ html,body{height:100%}
 body{font-family:var(--font);color:var(--ink2);background:var(--soft);-webkit-font-smoothing:antialiased;overflow:hidden}
 svg{display:block}
 button{font-family:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--neon);outline-offset:2px;border-radius:6px}
 /* utility classes toggled by JS */
 .hidden{display:none!important}
 .flex{display:flex!important}
@@ -399,15 +400,15 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       <h2>What best describes your work?</h2>
       <p class="lead">So ARIA can tailor its missions to you.</p>
       <div id="obWork" class="chips">
-        <div class="chip2" data-v="Founder / Entrepreneur">Founder / Entrepreneur</div>
-        <div class="chip2" data-v="Marketing">Marketing</div>
-        <div class="chip2" data-v="Content creator">Content creator</div>
-        <div class="chip2" data-v="Freelancer">Freelancer</div>
-        <div class="chip2" data-v="Developer / Engineer">Developer / Engineer</div>
-        <div class="chip2" data-v="Agency">Agency</div>
-        <div class="chip2" data-v="Sales">Sales</div>
-        <div class="chip2" data-v="Student">Student</div>
-        <div class="chip2" data-v="Other">Other</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Founder / Entrepreneur">Founder / Entrepreneur</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Marketing">Marketing</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Content creator">Content creator</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Freelancer">Freelancer</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Developer / Engineer">Developer / Engineer</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Agency">Agency</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Sales">Sales</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Student">Student</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Other">Other</div>
       </div>
       <div id="obWorkOtherWrap" class="hidden" style="margin-top:12px">
         <input id="obWorkOther" maxlength="60" placeholder="Tell us what you do" class="inp" />
@@ -417,21 +418,21 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       <h2>What should ARIA help with?</h2>
       <p class="lead">Pick all that apply.</p>
       <div id="obGoals" class="chips">
-        <div class="chip2" data-v="Grow on social media">Grow on social media</div>
-        <div class="chip2" data-v="Create content">Create content</div>
-        <div class="chip2" data-v="Research & analysis">Research &amp; analysis</div>
-        <div class="chip2" data-v="Launch or grow a business">Launch or grow a business</div>
-        <div class="chip2" data-v="Automate publishing">Automate publishing</div>
-        <div class="chip2" data-v="Generate images & video">Generate images &amp; video</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Grow on social media">Grow on social media</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Create content">Create content</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Research & analysis">Research &amp; analysis</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Launch or grow a business">Launch or grow a business</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Automate publishing">Automate publishing</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Generate images & video">Generate images &amp; video</div>
       </div>
     </div>
     <div class="step hidden" data-step="3" style="margin-top:20px">
       <h2>Choose your plan</h2>
       <p class="lead">Start free — upgrade any time.</p>
       <div id="obPlans" class="plans">
-        <div class="plan sel" data-v="free"><div class="pr"><span class="nm">Free</span><span class="amt">$0</span></div><p>ARIA missions to research, write and create images. 1 workspace.</p></div>
-        <div class="plan" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Everything unlimited + advanced image, video &amp; voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
-        <div class="plan" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
+        <div class="plan sel" role="button" tabindex="0" aria-pressed="true" data-v="free"><div class="pr"><span class="nm">Free</span><span class="amt">$0</span></div><p>ARIA missions to research, write and create images. 1 workspace.</p></div>
+        <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Everything unlimited + advanced image, video &amp; voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
+        <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
       </div>
     </div>
     <div style="margin-top:24px;display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -453,8 +454,8 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       <button onclick="closeUpgrade()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div id="upPlans" class="plans">
-      <div class="plan" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Unlimited missions, advanced image + video + voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
-      <div class="plan" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
+      <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Unlimited missions, advanced image + video + voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
+      <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
     </div>
     <label for="upAck" class="ack" style="cursor:pointer">
       <input id="upAck" type="checkbox" onchange="upAckChanged(this.checked)">
@@ -506,12 +507,12 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       <input id="setWork" maxlength="60" placeholder="e.g. Founder, Marketer, Creator…" class="inp" />
       <label class="lbl">Goals</label>
       <div id="setGoals" class="chips">
-        <div class="chip2" data-v="Grow on social media">Grow on social media</div>
-        <div class="chip2" data-v="Create content">Create content</div>
-        <div class="chip2" data-v="Research & analysis">Research &amp; analysis</div>
-        <div class="chip2" data-v="Launch or grow a business">Launch or grow a business</div>
-        <div class="chip2" data-v="Automate publishing">Automate publishing</div>
-        <div class="chip2" data-v="Generate images & video">Generate images &amp; video</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Grow on social media">Grow on social media</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Create content">Create content</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Research & analysis">Research &amp; analysis</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Launch or grow a business">Launch or grow a business</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Automate publishing">Automate publishing</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Generate images & video">Generate images &amp; video</div>
       </div>
       <div style="margin-top:22px;display:flex;justify-content:flex-end"><button id="setSaveBtn" onclick="saveSettings()" class="btn primary">Save changes</button></div>
     </div>
@@ -1024,17 +1025,25 @@ function billingBoot(){
   const m=M[p]; if(m) toast(m[0],m[1]); history.replaceState({},'',location.pathname);
 }
 
+// .chip2/.plan are plain <div>s (styling reasons), so role="button"+tabindex are set in
+// the markup and this keeps them keyboard-operable: Enter/Space triggers the same onclick
+// as a real click, and aria-pressed stays in sync with the visual .sel state.
+function selSync(el,on){ el.classList.toggle('sel',on); el.setAttribute('aria-pressed', on?'true':'false'); }
+document.addEventListener('keydown', e=>{
+  if((e.key==='Enter'||e.key===' ') && e.target.matches('.chip2,.plan')){ e.preventDefault(); e.target.click(); }
+});
+
 let obStep=0, obWork="", obGoals=new Set(), obPlan="free";
 const OB_STEPS=4;
 function obShow(){
   document.getElementById('obName').value=USER.name||'';
   document.querySelectorAll('#obWork .chip2').forEach(c=>c.onclick=()=>{
-    document.querySelectorAll('#obWork .chip2').forEach(x=>x.classList.remove('sel'));
-    c.classList.add('sel'); obWork=c.dataset.v;
+    document.querySelectorAll('#obWork .chip2').forEach(x=>selSync(x,false));
+    selSync(c,true); obWork=c.dataset.v;
     document.getElementById('obWorkOtherWrap').classList.toggle('hidden', obWork!=='Other');
   });
-  document.querySelectorAll('#obGoals .chip2').forEach(c=>c.onclick=()=>{ c.classList.toggle('sel'); const v=c.dataset.v; obGoals.has(v)?obGoals.delete(v):obGoals.add(v); });
-  document.querySelectorAll('#obPlans .plan').forEach(c=>c.onclick=()=>{ document.querySelectorAll('#obPlans .plan').forEach(x=>x.classList.remove('sel')); c.classList.add('sel'); obPlan=c.dataset.v; });
+  document.querySelectorAll('#obGoals .chip2').forEach(c=>c.onclick=()=>{ selSync(c, !c.classList.contains('sel')); const v=c.dataset.v; obGoals.has(v)?obGoals.delete(v):obGoals.add(v); });
+  document.querySelectorAll('#obPlans .plan').forEach(c=>c.onclick=()=>{ document.querySelectorAll('#obPlans .plan').forEach(x=>selSync(x,false)); selSync(c,true); obPlan=c.dataset.v; });
   document.getElementById('ov').classList.remove('hidden'); document.getElementById('ov').classList.add('flex');
   setTimeout(()=>document.getElementById('obName').focus(),120);
 }
@@ -1067,8 +1076,8 @@ async function obNext(){
 let upPlan="pro";
 function upAckChanged(ok){ const b=document.getElementById('upGo'); if(!b) return; b.disabled=!ok; }
 function openUpgrade(){
-  document.querySelectorAll('#upPlans .plan').forEach(c=>{ c.classList.toggle('sel',c.dataset.v===upPlan);
-    c.onclick=()=>{ document.querySelectorAll('#upPlans .plan').forEach(x=>x.classList.remove('sel')); c.classList.add('sel'); upPlan=c.dataset.v; }; });
+  document.querySelectorAll('#upPlans .plan').forEach(c=>{ selSync(c, c.dataset.v===upPlan);
+    c.onclick=()=>{ document.querySelectorAll('#upPlans .plan').forEach(x=>selSync(x,false)); selSync(c,true); upPlan=c.dataset.v; }; });
   const ack=document.getElementById('upAck'); if(ack){ ack.checked=false; upAckChanged(false); }
   document.getElementById('menu').classList.add('hidden');
   const o=document.getElementById('upOv'); o.classList.remove('hidden'); o.classList.add('flex');
@@ -1119,7 +1128,7 @@ function openSettings(){
   document.getElementById('setWork').value = (PROFILE && PROFILE.work) || '';
   document.getElementById('setPlan').textContent = (USER.plan || 'Free') + ' plan';
   const goals = new Set((PROFILE && PROFILE.goals) || []);
-  document.querySelectorAll('#setGoals .chip2').forEach(c=>{ c.classList.toggle('sel', goals.has(c.dataset.v)); c.onclick=()=>c.classList.toggle('sel'); });
+  document.querySelectorAll('#setGoals .chip2').forEach(c=>{ selSync(c, goals.has(c.dataset.v)); c.onclick=()=>selSync(c, !c.classList.contains('sel')); });
   const o=document.getElementById('settingsOv'); o.classList.remove('hidden'); o.classList.add('flex');
 }
 function closeSettings(){ const o=document.getElementById('settingsOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
