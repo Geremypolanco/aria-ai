@@ -101,9 +101,9 @@ textarea{field-sizing:content}
 .scroll{flex:1;overflow:auto;padding:30px 22px}
 .inner{max-width:920px;margin:0 auto}
 /* chat */
-.chatscroll{flex:1;overflow-y:auto;overflow-x:hidden}
-.chatwrap{max-width:760px;margin:0 auto;padding:22px 20px 8px}
-.chat-empty{text-align:center;padding:5vh 0 2vh}
+.chatscroll{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.chatwrap{max-width:760px;width:100%;margin:0 auto;padding:22px 20px 8px;flex:1;display:flex;flex-direction:column}
+.chat-empty{text-align:center;padding:5vh 0 2vh;margin:auto 0}
 .ce-mark{width:52px;height:52px;border-radius:16px;background:var(--neon-soft);color:var(--green-ink);display:grid;place-items:center;margin:0 auto 18px}
 .chat-empty h1{font-size:26px;font-weight:750;color:var(--ink);letter-spacing:-.02em}
 .chat-empty .g{color:var(--teal)}
@@ -111,14 +111,14 @@ textarea{field-sizing:content}
 .chat-empty .quicks{justify-content:center}
 .chat-empty .skills{border-top:0;justify-content:center;margin-top:8px;padding-top:0}
 .chat-empty .skills-lbl{width:100%;text-align:center}
-.thread{display:flex;flex-direction:column}
+.thread{display:flex;flex-direction:column;margin-top:auto}
 .turn{display:flex;width:100%}
 .turn.user{justify-content:flex-end}
 .ubub{background:var(--neon-soft);border:1px solid #d3f2e2;color:var(--ink);border-radius:16px 16px 5px 16px;padding:11px 15px;font-size:15px;line-height:1.5;max-width:82%;white-space:pre-wrap;word-break:break-word;margin:12px 0 6px}
-.turn.aria{gap:11px;margin:4px 0 16px}
+.turn.aria{gap:11px;margin:4px 0 16px;align-items:flex-start}
 .tava{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--neon),var(--teal));display:grid;place-items:center;flex:none;margin-top:2px}
 .tava svg{width:18px;height:18px}
-.acontent{min-width:0;flex:1;padding-top:4px}
+.acontent{min-width:0;flex:1;background:#fff;border:1px solid var(--line);border-radius:4px 16px 16px 16px;padding:13px 16px;box-shadow:var(--sh1);max-width:88%}
 .acontent .md{margin-top:0;max-height:none;overflow:visible;font-size:15px;color:var(--ink)}
 .typing{display:inline-flex;gap:4px;padding:8px 2px}
 .typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:tp 1.2s infinite}
