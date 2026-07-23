@@ -112,6 +112,7 @@ textarea{field-sizing:content}
 .chat-empty .skills{border-top:0;justify-content:center;margin-top:8px;padding-top:0}
 .chat-empty .skills-lbl{width:100%;text-align:center}
 .thread{display:flex;flex-direction:column;margin-top:auto}
+.filter-empty{margin:auto 0;padding:5vh 0;text-align:center;color:var(--muted);font-size:15px}
 .turn{display:flex;width:100%}
 .turn.user{justify-content:flex-end}
 .ubub{background:var(--neon-soft);border:1px solid #d3f2e2;color:var(--ink);border-radius:16px 16px 5px 16px;padding:11px 15px;font-size:15px;line-height:1.5;max-width:82%;white-space:pre-wrap;word-break:break-word;margin:12px 0 6px}
@@ -1097,7 +1098,12 @@ function renderMissions(){
   const empty=document.getElementById('emptyMissions'); if(empty) empty.style.display = missions.length ? 'none' : '';
   const list = missions.filter(m=> filter==='all' ? true
     : (filter==='running' ? m.status==='running' : m.status==='done'));
-  grid.innerHTML = list.map(turnHTML).join('');
+  if(!list.length && missions.length){
+    const label = filter==='running' ? 'in progress' : 'completed';
+    grid.innerHTML = '<div class="filter-empty">No chats '+label+' yet.</div>';
+  } else {
+    grid.innerHTML = list.map(turnHTML).join('');
+  }
   const sc=document.getElementById('chatScroll'); if(sc) sc.scrollTop=sc.scrollHeight;
 }
 
@@ -1400,23 +1406,28 @@ async function deleteAccount(){
 let CONN_STATUS=[];
 async function openConnectors(){
   document.getElementById('menu').classList.add('hidden'); toggleSide(false);
-  document.getElementById('connList').innerHTML='<div class="cn-loading">Cargando conectores…</div>';
+  document.getElementById('connList').innerHTML='<div class="cn-loading">Loading connectors…</div>';
   const o=document.getElementById('connOv'); o.classList.remove('hidden'); o.classList.add('flex');
   try{ const r=await fetch('/api/v1/connectors/status',{credentials:'same-origin'}); const d=await r.json(); CONN_STATUS=d.connectors||[]; }
   catch(e){ CONN_STATUS=[]; }
   renderConnectors();
 }
 function renderConnectors(){
+  // The setup detail panel (env var names, redirect URIs) is instructions for
+  // whoever deploys ARIA, not something a regular signed-in customer can act
+  // on — they have no access to this app's hosting secrets or OAuth console.
+  const isOwner = !!(USER && USER.owner);
   document.getElementById('connList').innerHTML = CONN_STATUS.map(function(c){
     var label, cls, action, gear='';
     if(c.state==='connected'){ label='Connected'; cls='done'; action='disabled'; }
     else if(c.state==='ready'){ label='Connect'; cls='ready'; action='onclick="location.href=\'/connectors/'+c.id+'/connect\'"';
-      gear='<button onclick="connToggle(\''+c.id+'\')" title="Setup details" class="cn-gear"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>'; }
-    else { label='Set up'; cls='setup'; action='onclick="connToggle(\''+c.id+'\')"'; }
+      if(isOwner) gear='<button onclick="connToggle(\''+c.id+'\')" title="Setup details" class="cn-gear"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>'; }
+    else if(isOwner){ label='Set up'; cls='setup'; action='onclick="connToggle(\''+c.id+'\')"'; }
+    else { label='Coming soon'; cls='setup'; action='disabled'; }
     return '<div class="cn-row"><div class="cn-main">'
       +'<div class="cn-ic" style="background:'+c.color+'">'+c.icon+'</div>'
       +'<div style="min-width:0;flex:1"><div class="cn-name">'+esc(c.name)+'</div><div class="cn-desc">'+esc(c.desc)+'</div></div>'
-      +gear+'<button '+action+' class="cn-btn '+cls+'">'+label+'</button></div>'+connDetail(c)+'</div>';
+      +gear+'<button '+action+' class="cn-btn '+cls+'">'+label+'</button></div>'+(isOwner?connDetail(c):'')+'</div>';
   }).join('');
 }
 function connDetail(c){
