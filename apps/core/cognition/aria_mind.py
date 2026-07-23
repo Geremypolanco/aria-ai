@@ -526,7 +526,7 @@ class AriaMind:
             # Construir prompt y razonar
             plan = await self._reason(text, history, state, goals, learned, user_context or "")
             if not plan:
-                return MindResponse(text="No pude procesar eso. Inténtalo de nuevo.")
+                return MindResponse(text="I couldn't process that. Please try again.")
 
             tool = plan.get("tool")
             tool_args = plan.get("tool_args") or {}
@@ -597,7 +597,7 @@ class AriaMind:
 
         except Exception as exc:
             logger.error("[AriaMind] handle: %s", exc, exc_info=True)
-            return MindResponse(text="Error interno. Volviendo a intentarlo.")
+            return MindResponse(text="Internal error. Please try again.")
 
     # ── RAZONAMIENTO ───────────────────────────────────────────────────────
 
@@ -612,7 +612,7 @@ class AriaMind:
     ) -> dict | None:
         ai = self._ai_client()
         if not ai:
-            return {"tool": None, "reply": "Motor de IA no disponible ahora."}
+            return {"tool": None, "reply": "AI engine isn't available right now."}
 
         from apps.core.config import settings
         from apps.core.tools.ai_client import AIModel
@@ -1609,9 +1609,9 @@ class AriaMind:
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
-            return f"Error en {tool}: {str(exc)[:200]}", {}
+            return f"Error in {tool}: {str(exc)[:200]}", {}
 
-        return "Herramienta desconocida", {}
+        return "Unknown tool", {}
 
     # ── SÍNTESIS ───────────────────────────────────────────────────────────
 
@@ -1894,7 +1894,7 @@ class AriaMind:
 
     async def _build_status(self) -> MindResponse:
         """Fast-path /status command — returns rich system status without an LLM call."""
-        lines: list[str] = ["## Estado del Sistema ARIA\n"]
+        lines: list[str] = ["## ARIA System Status\n"]
 
         # AI providers
         try:
@@ -1903,18 +1903,18 @@ class AriaMind:
             health = get_ai_client().get_health_summary()
             providers = {k: v for k, v in health.items() if k != "_totals"}
             totals = health.get("_totals", {})
-            lines.append("**Proveedores de IA:**")
+            lines.append("**AI providers:**")
             for name, info in providers.items():
-                status = "activo" if info.get("available") else "caído"
+                status = "up" if info.get("available") else "down"
                 rate = info.get("success_rate_pct", 100)
                 calls = info.get("total_calls", 0)
-                lines.append(f"  - **{name}** ({status}) — {rate:.0f}% éxito · {calls} llamadas")
+                lines.append(f"  - **{name}** ({status}) — {rate:.0f}% success · {calls} calls")
             if totals:
                 lines.append(
-                    f"\n  Tokens totales: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`"
+                    f"\n  Total tokens: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`"
                 )
         except Exception:
-            lines.append("  Sin datos de proveedores")
+            lines.append("  No provider data")
 
         # Goals
         try:
@@ -1922,12 +1922,12 @@ class AriaMind:
             active = [
                 g for g in goals if isinstance(g, dict) and g.get("status", "active") == "active"
             ]
-            lines.append(f"\n**Metas activas:** {len(active)}")
+            lines.append(f"\n**Active goals:** {len(active)}")
             for g in active[:5]:
                 p = g.get("priority", "")
                 lines.append(f"  - {'[P'+str(p)+'] ' if p else ''}{g.get('text','')[:70]}")
             if len(active) > 5:
-                lines.append(f"  … y {len(active)-5} más")
+                lines.append(f"  … and {len(active)-5} more")
         except Exception:
             pass
 
@@ -1940,7 +1940,7 @@ class AriaMind:
             queued = stats.get("queued", 0)
             completed = stats.get("completed", 0)
             lines.append(
-                f"\n**Tareas en segundo plano:** {running} activas · {queued} en cola · {completed} completadas"
+                f"\n**Background tasks:** {running} running · {queued} queued · {completed} completed"
             )
         except Exception:
             pass
@@ -1952,13 +1952,13 @@ class AriaMind:
             kb = get_knowledge_base()
             kstats = kb.stats()
             lines.append(
-                f"\n**Base de conocimiento:** {kstats.get('total_chunks', 0)} fragmentos en {len(kstats.get('by_category', {}))} categorías"
+                f"\n**Knowledge base:** {kstats.get('total_chunks', 0)} chunks across {len(kstats.get('by_category', {}))} categories"
             )
         except Exception:
             pass
 
         lines.append(f"\n**Timestamp:** `{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}`")
-        lines.append("\nUsa `/help` para ver todas las capacidades disponibles.")
+        lines.append("\nUse `/help` to see all available capabilities.")
         return MindResponse(text="\n".join(lines))
 
 
