@@ -2,6 +2,17 @@
    express as a single class when running off the v4 browser build (no build
    step, no plugins). Everything else lives as classes in the markup/components. */
 
+/* Custom elements default to `display: inline` until the browser knows
+   better — with no CSS telling it otherwise, that default silently breaks
+   padding/width on every one of them (their box never reserves space in
+   normal flow) regardless of how fast their JS module registers. Declare it
+   up front so there's no dependency on script timing at all. */
+aria-hero,
+aria-run-log,
+aria-pricing {
+  display: block;
+}
+
 /* Scroll-reveal choreography, shared by every section on the page. */
 [data-reveal] {
   opacity: 0;

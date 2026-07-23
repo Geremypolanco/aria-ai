@@ -4,250 +4,52 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>ARIA — The AI that executes</title>
-<meta name="description" content="ARIA turns one idea into a week of content — it researches the trend, writes the posts, designs the images and video, and publishes across your channels. The autonomous content engine for founders and creators." />
+<meta name="description" content="ARIA turns one idea into a week of content — it researches the trend, writes the posts, designs the images and video, and publishes across your channels. You approve, it ships." />
 <link rel="canonical" href="https://aria-ai.fly.dev/" />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/favicon.svg" />
-<meta name="theme-color" content="#07080d" />
+<meta name="theme-color" content="#fafaf9" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="ARIA" />
 <meta property="og:url" content="https://aria-ai.fly.dev/" />
 <meta property="og:title" content="ARIA — The AI that executes" />
-<meta property="og:description" content="Turn one idea into a week of content — researched, written, designed and published across your channels. The autonomous content engine for founders and creators." />
+<meta property="og:description" content="One idea in. A week of content, published. ARIA researches, writes, designs and publishes across your channels — you approve, it ships." />
 <meta property="og:image" content="https://aria-ai.fly.dev/og-cover.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="ARIA — The AI that executes" />
-<meta name="twitter:description" content="Turn one idea into a week of content — researched, designed and published across your channels. For founders and creators." />
+<meta name="twitter:description" content="One idea in. A week of content, published. For founders and creators." />
 <meta name="twitter:image" content="https://aria-ai.fly.dev/og-cover.png" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"ARIA","applicationCategory":"BusinessApplication","operatingSystem":"Web, iOS, Android","url":"https://aria-ai.fly.dev/","image":"https://aria-ai.fly.dev/og-cover.png","description":"Autonomous AI that researches the live web, creates images, video and voice, and publishes across your channels — with a full auditable trail.","offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Pro","price":"29","priceCurrency":"USD"},{"@type":"Offer","name":"Business","price":"99","priceCurrency":"USD"}],"publisher":{"@type":"Organization","name":"SARAPH","url":"https://aria-ai.fly.dev/saraph"}}
 </script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-<style>
-  :root{
-    --bg:#ffffff; --soft:#f5f7f8; --ink:#07080c; --ink2:#414751; --muted:#79808a;
-    --line:#e9ebef;
-    --neon:#15E06A; --teal:#12b7a6; --green-ink:#0a8f57; --green-deep:#053b2a;
-    --night:#07080d; --night2:#0d0f17; --nink:#eef1f4; --nmut:#9aa3ad; --nline:rgba(255,255,255,.10);
-    --rl:22px; --maxw:1140px;
-    --sh1:0 1px 2px rgba(12,16,24,.06);
-    --sh2:0 16px 40px -18px rgba(12,16,24,.22);
-    --sh3:0 44px 90px -34px rgba(12,16,24,.46);
-    --glow:0 18px 60px -14px rgba(21,224,106,.5);
-    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-    --ease:cubic-bezier(.19,1,.22,1);
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">
+  @theme {
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+    --animate-blink: blink 1.1s step-end infinite;
   }
-  *{margin:0;padding:0;box-sizing:border-box}
-  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-  body{font-family:var(--font);background:var(--bg);color:var(--ink2);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-  a{color:inherit;text-decoration:none}
-  svg{display:block}
-  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
-  ::selection{background:rgba(21,224,106,.24)}
-
-  [data-reveal]{opacity:0;transform:translateY(28px);filter:blur(6px);transition:opacity .9s var(--ease),transform .9s var(--ease),filter .9s var(--ease);transition-delay:var(--d,0ms)}
-  [data-reveal].in{opacity:1;transform:none;filter:none}
-  @media(prefers-reduced-motion:reduce){[data-reveal]{opacity:1;transform:none;filter:none;transition:none}}
-
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:15px;border-radius:999px;padding:12px 22px;cursor:pointer;white-space:nowrap;transition:transform .3s var(--ease),box-shadow .3s var(--ease),background .3s,color .3s,border-color .3s}
-  .btn-primary{background:var(--neon);color:#04150d;box-shadow:var(--glow)}
-  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 22px 68px -12px rgba(21,224,106,.62)}
-  .btn-outline{background:transparent;border:1px solid var(--line);color:var(--ink)}
-  .btn-outline:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:#d3d7dd}
-  .btn-lg{padding:15px 30px;font-size:16px}
-  .btn-glass{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#fff;backdrop-filter:blur(6px)}
-  .btn-glass:hover{transform:translateY(-2px);background:rgba(255,255,255,.14)}
-  .arrow{transition:transform .3s var(--ease)}
-  .btn:hover .arrow{transform:translateX(3px)}
-
-  /* nav */
-  .nav{position:fixed;top:0;left:0;right:0;z-index:80;transition:background .4s,border-color .4s;border-bottom:1px solid transparent}
-  .nav .row{display:flex;align-items:center;justify-content:space-between;height:64px}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.26em;font-size:15px;color:#fff;transition:color .4s}
-  .brand span{padding-left:.26em}
-  .nav nav{display:none;gap:32px;font-size:14.5px;font-weight:500}
-  .nav nav a{color:rgba(255,255,255,.72);transition:color .4s}
-  .nav nav a:hover{color:#fff}
-  .navr{display:flex;align-items:center;gap:12px}
-  .nav .signin{display:none;color:rgba(255,255,255,.82);font-weight:600;font-size:14.5px;transition:color .4s}
-  .nav.scrolled{background:rgba(255,255,255,.78);backdrop-filter:saturate(180%) blur(18px);border-bottom-color:var(--line)}
-  .nav.scrolled .brand{color:var(--ink)}
-  .nav.scrolled nav a{color:var(--ink2)}.nav.scrolled nav a:hover{color:var(--ink)}
-  .nav.scrolled .signin{color:var(--ink2)}.nav.scrolled .signin:hover{color:var(--ink)}
-  @media(min-width:900px){.nav nav{display:flex}.nav .signin{display:inline-flex}}
-
-  /* hero */
-  .hero{position:relative;background:var(--night);color:var(--nink);text-align:center;padding:132px 0 70px;overflow:hidden}
-  .aura{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-  .aura i{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;mix-blend-mode:screen}
-  .aura .g1{width:620px;height:620px;left:-10%;top:-26%;background:radial-gradient(circle,#15E06A,transparent 62%);animation:drift1 16s ease-in-out infinite}
-  .aura .g2{width:560px;height:560px;right:-12%;top:-12%;background:radial-gradient(circle,#12b7a6,transparent 62%);animation:drift2 19s ease-in-out infinite}
-  @keyframes drift1{50%{transform:translate(38px,30px) scale(1.08)}}
-  @keyframes drift2{50%{transform:translate(-34px,26px) scale(1.06)}}
-  .grid-fade{position:absolute;inset:0;z-index:0;pointer-events:none;
-    background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);
-    background-size:48px 48px;-webkit-mask-image:radial-gradient(120% 74% at 50% 0,#000,transparent 72%);mask-image:radial-gradient(120% 74% at 50% 0,#000,transparent 72%)}
-  .hero .wrap{position:relative;z-index:2}
-  .kicker{display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:600;color:#d7f7e6}
-  .kicker .d{width:7px;height:7px;border-radius:50%;background:var(--neon);box-shadow:0 0 12px var(--neon);animation:pulse 1.8s ease-in-out infinite}
-  @keyframes pulse{50%{opacity:.45}}
-  .hero h1{font-size:clamp(42px,7.6vw,84px);line-height:1;letter-spacing:-.045em;font-weight:800;color:#fff;margin:26px auto 0;max-width:15ch}
-  .grad{background:linear-gradient(96deg,#4bf0a0,#15E06A 42%,#12b7a6);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .hero .lede{font-size:clamp(16px,2.1vw,20px);color:var(--nmut);max-width:600px;margin:22px auto 0;line-height:1.55}
-  .hero .cta{display:flex;flex-wrap:wrap;gap:13px;justify-content:center;margin-top:34px}
-
-  /* ── live mission demo (hero centerpiece) ── */
-  .demowrap{position:relative;max-width:860px;margin:64px auto 0}
-  .demo-glow{position:absolute;left:50%;top:44%;width:78%;height:64%;transform:translate(-50%,-50%);background:radial-gradient(ellipse,rgba(21,224,106,.32),transparent 66%);filter:blur(48px);z-index:0}
-  .demo{position:relative;z-index:2;border:1px solid rgba(255,255,255,.11);border-radius:var(--rl);background:#fff;box-shadow:0 60px 120px -40px rgba(0,0,0,.72);overflow:hidden;text-align:left;
-    transform:perspective(1600px) rotateX(7deg) scale(.97);opacity:0;transition:transform 1.1s var(--ease),opacity .9s var(--ease)}
-  .demo.in{transform:perspective(1600px) rotateX(0) scale(1);opacity:1}
-  @media(prefers-reduced-motion:reduce){.demo{transform:none;opacity:1}}
-  .titlebar{display:flex;align-items:center;gap:8px;padding:13px 16px;background:var(--soft);border-bottom:1px solid var(--line)}
-  .tl{width:11px;height:11px;border-radius:50%;background:#dfe1e7}
-  .url{margin:0 auto;display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 12px;font-size:12px;color:var(--muted);box-shadow:var(--sh1)}
-  .demo-body{padding:24px 26px 26px;min-height:340px}
-  .d-hello{font-size:13px;color:var(--muted)}
-  .d-prompt{display:flex;align-items:center;gap:10px;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--sh1);font-size:14.5px;color:var(--ink);font-weight:500}
-  .d-prompt .go{margin-left:auto;flex:none;width:30px;height:30px;border-radius:8px;background:var(--neon);display:grid;place-items:center;color:#04150d;transition:opacity .3s}
-  .caret{width:2px;height:1.05em;background:var(--neon);display:inline-block;animation:blink 1.05s step-end infinite;vertical-align:-2px}
-  @keyframes blink{50%{opacity:0}}
-  .d-run{margin-top:18px;border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--sh1);opacity:0;transform:translateY(8px);transition:opacity .45s var(--ease),transform .45s var(--ease)}
-  .d-run.show{opacity:1;transform:none}
-  .d-runtop{display:flex;align-items:center;justify-content:space-between;font-size:13px}
-  .d-runtop b{color:var(--ink);font-size:14.5px}
-  .d-status{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:11.5px;border-radius:999px;padding:3px 11px;border:1px solid #bbf3d5;background:#e9fcf1;color:var(--green-ink)}
-  .d-status .dt{width:6px;height:6px;border-radius:50%;background:var(--neon);animation:pulse 1.3s ease-in-out infinite}
-  .d-status.done .dt{animation:none;background:var(--green-ink)}
-  .d-steps{list-style:none;margin-top:15px;display:flex;flex-direction:column;gap:12px}
-  .d-steps li{display:flex;align-items:center;gap:11px;font-size:13.5px;color:var(--muted);opacity:.5;transition:opacity .4s,color .4s}
-  .d-steps li.active{opacity:1;color:var(--ink2)}
-  .d-steps li.ok{opacity:1;color:var(--ink2)}
-  .ck{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;flex:none;background:#eef0f2;border:1.5px solid var(--line);transition:background .3s,border-color .3s}
-  .ck svg{opacity:0;color:#fff;transition:opacity .3s}
-  li.ok .ck{background:var(--neon);border-color:var(--neon)}
-  li.ok .ck svg{opacity:1}
-  li.active .ck{border-color:var(--teal);background:#fff;position:relative}
-  li.active .ck::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--teal);animation:pulse 1s ease-in-out infinite}
-  .d-deliver{margin-top:15px;display:flex;align-items:center;gap:13px;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fbfcfd;max-height:0;opacity:0;overflow:hidden;transition:max-height .5s var(--ease),opacity .5s,margin-top .5s,padding .5s}
-  .d-deliver.show{max-height:110px;opacity:1}
-  .d-thumb{width:74px;height:52px;border-radius:9px;flex:none;background:linear-gradient(135deg,#15E06A,#12b7a6);position:relative;overflow:hidden}
-  .d-thumb::after{content:"▶";position:absolute;inset:0;display:grid;place-items:center;color:rgba(255,255,255,.92);font-size:14px}
-  .d-deliver .meta b{display:block;font-size:13.5px;color:var(--ink)}
-  .d-deliver .meta span{font-size:12px;color:var(--muted)}
-  .d-deliver .grab{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--green-ink);flex:none}
-
-  /* proof strip */
-  .strip{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--soft)}
-  .strip-in{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:14px 40px;padding:26px 24px}
-  .strip .lbl{font-size:11.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
-  .strip b{font-weight:700;color:#9299a2;font-size:15.5px;transition:color .25s}
-  .strip b:hover{color:var(--ink)}
-
-  /* statement */
-  .statement{padding:118px 0;text-align:center}
-  .statement.dark{background:var(--night);color:#fff}
-  .statement p{font-size:clamp(28px,5.2vw,52px);line-height:1.12;letter-spacing:-.03em;font-weight:800;max-width:18ch;margin:0 auto;color:var(--ink)}
-  .statement.dark p{color:#fff}
-  .statement .hl{color:transparent;background:linear-gradient(96deg,#15E06A,#12b7a6);-webkit-background-clip:text;background-clip:text}
-  .statement .sub{margin-top:22px;font-size:18px;font-weight:400;letter-spacing:normal;color:var(--muted);max-width:42ch}
-  .statement.dark .sub{color:var(--nmut)}
-
-  /* narrative acts */
-  .act{padding:104px 0;border-top:1px solid var(--line)}
-  .act.soft{background:var(--soft)}
-  .actgrid{display:grid;grid-template-columns:1fr;gap:44px;align-items:center}
-  @media(min-width:920px){.actgrid{grid-template-columns:1fr 1fr;gap:70px}.act.flip .actgrid > .visual{order:-1}}
-  .act .step-lbl{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--green-ink)}
-  .act .step-lbl .n{width:24px;height:24px;border-radius:50%;background:var(--neon);color:#04150d;display:grid;place-items:center;font-size:12px;box-shadow:var(--glow)}
-  .act h2{font-size:clamp(28px,4.2vw,40px);line-height:1.08;letter-spacing:-.03em;font-weight:800;color:var(--ink);margin-top:16px}
-  .act p.lede{margin-top:14px;font-size:17px;color:var(--ink2);max-width:46ch}
-  .act .mini{margin-top:20px;display:flex;flex-direction:column;gap:10px}
-  .act .mini .row{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink2)}
-  .act .mini .row svg{flex:none;color:var(--green-ink)}
-
-  .visual{position:relative;border:1px solid var(--line);border-radius:var(--rl);background:#fff;box-shadow:var(--sh2);padding:24px;overflow:hidden;min-height:260px}
-  .visual.dark{background:#0b0c13;border-color:#1b1d27}
-  /* research visual */
-  .src{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;margin-bottom:9px;font-size:13px;color:var(--ink2);background:#fff;box-shadow:var(--sh1)}
-  .src .fav{width:22px;height:22px;border-radius:6px;flex:none;background:linear-gradient(135deg,#15E06A,#12b7a6)}
-  .src .ok{margin-left:auto;color:var(--green-ink)}
-  .src.s2 .fav{background:linear-gradient(135deg,#12b7a6,#0a8f57)}
-  .src.s3 .fav{background:linear-gradient(135deg,#4be3a0,#12b7a6)}
-  /* create visual */
-  .creates{display:grid;grid-template-columns:1.3fr 1fr;gap:14px}
-  .cv-img{border-radius:14px;background:linear-gradient(135deg,#15E06A,#12b7a6);min-height:150px;position:relative;overflow:hidden}
-  .cv-img::after{content:"FLUX";position:absolute;left:12px;bottom:10px;color:rgba(255,255,255,.9);font-size:11px;font-weight:700;letter-spacing:.1em}
-  .cv-side{display:flex;flex-direction:column;gap:14px}
-  .cv-vid{flex:1;border-radius:14px;background:linear-gradient(180deg,#111,#2a2a2a);display:grid;place-items:center;min-height:80px}
-  .cv-vid .p{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.95);display:grid;place-items:center;color:var(--green-ink)}
-  .cv-voice{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px}
-  .cv-voice span{font-size:11px;font-weight:700;color:var(--teal)}
-  .wave{display:flex;align-items:flex-end;gap:3px;height:28px}
-  .wave i{width:3px;border-radius:2px;background:var(--teal);animation:eq 1s ease-in-out infinite}
-  @keyframes eq{50%{transform:scaleY(.45)}}
-  /* publish visual */
-  .chans{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .chan{border:1px solid var(--line);border-radius:13px;padding:14px 10px;text-align:center;font-size:12px;font-weight:600;color:var(--ink2);background:#fff;box-shadow:var(--sh1)}
-  .chan .ic{width:34px;height:34px;border-radius:9px;margin:0 auto 8px;display:grid;place-items:center;background:#f0fdf6;color:var(--green-ink)}
-  .chan .st{display:block;margin-top:5px;font-size:10.5px;font-weight:700;color:var(--green-ink)}
-  /* prove visual */
-  .console{border:1px solid var(--nline);border-radius:16px;background:#0b0c13;overflow:hidden}
-  .console .bar{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--nline)}
-  .console .bar .t{width:9px;height:9px;border-radius:50%;background:#22242f}
-  .console .bar .lbl{margin-left:8px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--nmut)}
-  .console .body{padding:16px 16px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:2;color:#aab2bd}
-  .console .ts{color:#5a626e}.console .okk{color:#34d399}.console .rn{color:#5eead4}
-
-  /* pricing */
-  .sec{padding:112px 0}
-  .head{max-width:660px;margin:0 auto;text-align:center}
-  .eyebrow{font-size:12.5px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--green-ink)}
-  h2.big{font-size:clamp(30px,4.8vw,46px);line-height:1.06;letter-spacing:-.03em;font-weight:800;color:var(--ink);margin-top:14px}
-  .head p{margin-top:16px;font-size:18px;color:var(--ink2)}
-  .prices{display:grid;grid-template-columns:1fr;gap:20px;margin-top:56px;align-items:center}
-  @media(min-width:860px){.prices{grid-template-columns:repeat(3,1fr)}}
-  .price{border:1px solid var(--line);background:#fff;border-radius:var(--rl);padding:32px;box-shadow:var(--sh1);transition:transform .4s var(--ease),box-shadow .4s var(--ease)}
-  .price:hover{transform:translateY(-4px);box-shadow:var(--sh2)}
-  .price.pro{border:1.5px solid var(--neon);box-shadow:0 30px 70px -30px rgba(21,224,106,.4);position:relative}
-  @media(min-width:860px){.price.pro{transform:scale(1.045)}.price.pro:hover{transform:scale(1.045) translateY(-4px)}}
-  .tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--neon);color:#04150d;font-size:11px;font-weight:800;letter-spacing:.05em;border-radius:999px;padding:5px 14px;box-shadow:var(--glow)}
-  .price h3{font-size:15px;font-weight:700;color:var(--ink)}
-  .amt{font-size:46px;font-weight:800;color:var(--ink);margin-top:8px;letter-spacing:-.03em}
-  .amt small{font-size:16px;font-weight:500;color:var(--muted)}
-  .price .subt{font-size:13.5px;color:var(--muted);margin-top:2px}
-  .price ul{list-style:none;margin-top:24px;display:flex;flex-direction:column;gap:12px}
-  .price li{display:flex;gap:10px;font-size:14px;color:var(--ink2)}
-  .price li svg{flex:none;margin-top:3px;color:var(--green-ink)}
-  .price .btn{width:100%;margin-top:24px}
-
-  /* final cta */
-  .final{padding:0 0 120px}
-  .ctabox{position:relative;overflow:hidden;border-radius:34px;background:var(--night);color:#fff;text-align:center;padding:96px 26px;box-shadow:var(--sh3)}
-  .ctabox .caura{position:absolute;border-radius:50%;filter:blur(80px);opacity:.6;mix-blend-mode:screen}
-  .ctabox .ca1{width:340px;height:340px;right:-60px;top:-90px;background:radial-gradient(circle,#15E06A,transparent 62%)}
-  .ctabox .ca2{width:320px;height:320px;left:-60px;bottom:-100px;background:radial-gradient(circle,#12b7a6,transparent 62%)}
-  .ctabox h2{position:relative;color:#fff;font-size:clamp(32px,5.4vw,52px);letter-spacing:-.03em;font-weight:800}
-  .ctabox p{position:relative;color:var(--nmut);max-width:520px;margin:16px auto 0;font-size:18px}
-  .ctabox .cta{position:relative;margin-top:30px;display:flex;justify-content:center}
-
-  footer{border-top:1px solid var(--line);padding:48px 0 40px}
-  .foot{display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between}
-  .foot .brand{color:var(--ink)}
-  .foot .links{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;color:var(--ink2)}
-  .foot .links a:hover{color:var(--ink)}
-  .copy{margin-top:22px;font-size:12.5px;color:var(--muted)}
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+<link rel="stylesheet" href="/static/css/aria.css" />
+<style>
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  html { scroll-behavior: smooth; }
+  #nav.is-scrolled { background-color: rgba(250, 250, 249, 0.92); border-bottom-color: rgb(231, 229, 228); }
 </style>
 </head>
-<body>
+<body class="bg-stone-50 text-stone-800">
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
   <linearGradient id="am" x1="26" y1="6" x2="70" y2="88" gradientUnits="userSpaceOnUse">
-    <stop offset="0" stop-color="#7bf3b0"/><stop offset=".42" stop-color="#15E06A"/><stop offset=".78" stop-color="#0a9d5a"/><stop offset="1" stop-color="#053b2a"/>
+    <stop offset="0" stop-color="#6ee7b7"/><stop offset=".42" stop-color="#059669"/><stop offset=".78" stop-color="#065f46"/><stop offset="1" stop-color="#022c22"/>
   </linearGradient>
   <symbol id="mark" viewBox="0 0 100 100"><g stroke-linecap="round" stroke-linejoin="round" fill="none">
     <path d="M23 83 C 29 52, 40 28, 49 13 C 57 26, 64 36, 70 46" stroke="url(#am)" stroke-width="12.5"/>
@@ -256,294 +58,281 @@
 </defs></svg>
 
 <!-- NAV -->
-<header class="nav" id="nav"><div class="wrap row">
-  <a class="brand" href="/"><svg width="30" height="30"><use href="#mark"/></svg><span>ARIA</span></a>
-  <nav><a href="#watch">Watch it work</a><a href="#how">How</a><a href="#pricing">Pricing</a></nav>
-  <div class="navr"><a class="signin" href="/login">Sign in</a><a class="btn btn-primary" href="/signup">Get started</a></div>
-</div></header>
+<header id="nav" class="fixed inset-x-0 top-0 z-50 border-b border-transparent transition-colors duration-300">
+  <div class="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-6">
+    <a href="/" class="flex items-center gap-2.5 text-[15px] font-bold tracking-[0.24em] text-stone-900">
+      <svg width="26" height="26"><use href="#mark"/></svg><span class="pl-[0.24em]">ARIA</span>
+    </a>
+
+    <nav class="hidden items-center gap-8 text-[14.5px] font-medium text-stone-600 md:flex">
+      <a href="#watch" class="transition-colors hover:text-stone-900">Watch it work</a>
+      <a href="#how" class="transition-colors hover:text-stone-900">How it works</a>
+      <a href="#pricing" class="transition-colors hover:text-stone-900">Pricing</a>
+    </nav>
+
+    <div class="flex items-center gap-3">
+      <a href="/login" class="hidden text-[14.5px] font-semibold text-stone-700 transition-colors hover:text-stone-900 md:inline">Sign in</a>
+      <a href="/signup" class="hidden rounded-full bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-stone-800 md:inline-flex">Get started</a>
+      <button id="menuBtn" aria-label="Open menu" aria-expanded="false" class="grid h-10 w-10 place-items-center rounded-full border border-stone-200 text-stone-700 md:hidden">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="mobileMenu" class="hidden flex-col gap-1 border-t border-stone-200 bg-stone-50 px-6 py-4 md:hidden">
+    <a href="#watch" class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-stone-700 hover:bg-stone-100">Watch it work</a>
+    <a href="#how" class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-stone-700 hover:bg-stone-100">How it works</a>
+    <a href="#pricing" class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-stone-700 hover:bg-stone-100">Pricing</a>
+    <a href="/login" class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-stone-700 hover:bg-stone-100">Sign in</a>
+    <a href="/signup" class="mt-2 rounded-full bg-stone-900 px-4 py-3 text-center text-[15px] font-semibold text-white">Get started</a>
+  </div>
+</header>
 
 <!-- HERO -->
-<section class="hero">
-  <div class="aura"><i class="g1"></i><i class="g2"></i></div>
-  <div class="grid-fade"></div>
-  <div class="wrap">
-    <span class="kicker" data-reveal><span class="d"></span> Autonomous content engine · for founders &amp; creators</span>
-    <h1 data-reveal style="--d:80ms">One idea in.<br><span class="grad">A week of content, published.</span></h1>
-    <p class="lede" data-reveal style="--d:160ms">ARIA researches the trend, writes the posts, designs the images and video, and publishes across your channels. You approve — it ships. So you can get back to building.</p>
-    <div class="cta" data-reveal style="--d:240ms">
-      <a class="btn btn-primary btn-lg" href="/signup">Get started — no card <span class="arrow">→</span></a>
-      <a class="btn btn-glass btn-lg" href="#watch">See it run</a>
-    </div>
+<aria-hero></aria-hero>
 
-    <!-- LIVE MISSION DEMO -->
-    <div class="demowrap" id="watch">
-      <div class="demo-glow"></div>
-      <div class="demo" id="demo">
-        <div class="titlebar"><span class="tl"></span><span class="tl"></span><span class="tl"></span>
-          <span class="url"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> aria-ai.fly.dev/app</span></div>
-        <div class="demo-body">
-          <div class="d-hello">Good morning, Alex</div>
-          <div class="d-prompt"><svg width="20" height="20"><use href="#mark"/></svg><span id="dtype"></span><span class="caret" id="dcaret"></span><span class="go" id="dgo" style="opacity:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span></div>
-          <div class="d-run" id="drun">
-            <div class="d-runtop"><b id="dtitle">Launch reel · AI trends</b><span class="d-status" id="dstatus"><span class="dt"></span><span id="dstatustxt">Running</span></span></div>
-            <ul class="d-steps" id="dsteps">
-              <li data-s="0"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> <span class="lb"></span></li>
-              <li data-s="1"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> <span class="lb"></span></li>
-              <li data-s="2"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> <span class="lb"></span></li>
-              <li data-s="3"><span class="ck"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> <span class="lb"></span></li>
-            </ul>
-            <div class="d-deliver" id="ddeliver">
-              <div class="d-thumb" id="dthumb"></div>
-              <div class="meta"><b id="dname">launch-reel.mp4</b><span id="dmeta">1080×1920 · 22s · ready</span></div>
-              <span class="grab">Open →</span>
-            </div>
-          </div>
+<!-- PROOF STRIP -->
+<div class="border-y border-stone-200 bg-white">
+  <div class="mx-auto flex max-w-[1180px] flex-wrap items-center justify-center gap-x-10 gap-y-3 px-6 py-6">
+    <span class="text-[11.5px] font-bold uppercase tracking-widest text-stone-400">Publishes to</span>
+    <b class="text-[15.5px] font-bold text-stone-400 transition-colors hover:text-stone-900">YouTube</b>
+    <b class="text-[15.5px] font-bold text-stone-400 transition-colors hover:text-stone-900">LinkedIn</b>
+    <b class="text-[15.5px] font-bold text-stone-400 transition-colors hover:text-stone-900">Instagram</b>
+    <b class="text-[15.5px] font-bold text-stone-400 transition-colors hover:text-stone-900">X</b>
+    <b class="text-[15.5px] font-bold text-stone-400 transition-colors hover:text-stone-900">TikTok</b>
+    <b class="text-[15.5px] font-bold text-stone-400 transition-colors hover:text-stone-900">Facebook</b>
+  </div>
+</div>
+
+<!-- STATEMENT -->
+<section class="px-6 py-28 text-center">
+  <p data-reveal class="mx-auto max-w-[18ch] text-[clamp(1.75rem,4.4vw,3.25rem)] font-semibold leading-[1.12] tracking-tight text-stone-900">
+    A week of content.<br /><span class="text-emerald-700">One approval away.</span>
+  </p>
+  <p data-reveal style="--d:120ms" class="mx-auto mt-6 max-w-[42ch] text-lg text-stone-600">
+    Every post starts as real research, becomes a script, gets its own image or video, and lands in your queue — ready for one thing: your yes.
+  </p>
+</section>
+
+<!-- ACT 1 · RESEARCH -->
+<section id="how" class="border-t border-stone-200 px-6 py-24">
+  <div class="mx-auto grid max-w-[1180px] items-center gap-12 md:grid-cols-2 md:gap-16">
+    <div data-reveal>
+      <span class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-700">
+        <span class="grid h-6 w-6 place-items-center rounded-full bg-emerald-600 text-[11px] text-white">1</span> Research
+      </span>
+      <h2 class="mt-4 text-[clamp(1.6rem,3vw,2.3rem)] font-semibold leading-tight tracking-tight text-stone-900">It starts by reading the real internet.</h2>
+      <p class="mt-4 max-w-[46ch] text-[17px] leading-relaxed text-stone-600">Every mission opens with actual sources — not a guess dressed up as an answer. ARIA pulls current trends, primary references and competitor moves, and keeps the receipts.</p>
+      <div class="mt-6 flex flex-col gap-3">
+        <div class="flex items-center gap-2.5 text-sm text-stone-700"><svg class="h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Live web search, read in full — not just headlines</div>
+        <div class="flex items-center gap-2.5 text-sm text-stone-700"><svg class="h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Every claim linked back to its source</div>
+      </div>
+    </div>
+    <div data-reveal style="--d:120ms" class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+      <div class="mb-4 flex items-center gap-3 border-b border-stone-100 pb-4">
+        <img src="/team/researcher.png" alt="" class="h-11 w-11 flex-none rounded-full object-cover" />
+        <div><div class="text-sm font-semibold text-stone-900">Sam Okoye</div><div class="text-xs text-stone-500">Researcher, on this mission</div></div>
+      </div>
+      <div class="space-y-2.5">
+        <div class="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
+          <span class="h-5 w-5 flex-none rounded-md bg-gradient-to-br from-emerald-400 to-teal-500"></span> techcrunch.com — "AI agents in 2026"
+          <svg class="ml-auto h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l4 4L19 7"/></svg>
+        </div>
+        <div class="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
+          <span class="h-5 w-5 flex-none rounded-md bg-gradient-to-br from-teal-400 to-emerald-600"></span> arxiv.org — autonomous orchestration
+          <svg class="ml-auto h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l4 4L19 7"/></svg>
+        </div>
+        <div class="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
+          <span class="h-5 w-5 flex-none rounded-md bg-gradient-to-br from-emerald-300 to-teal-500"></span> news.ycombinator.com — top threads
+          <svg class="ml-auto h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l4 4L19 7"/></svg>
+        </div>
+        <div class="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-500">
+          +9 more sources read <span class="ml-auto text-xs font-bold text-emerald-700">12 total</span>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- PROOF STRIP -->
-<div class="strip"><div class="strip-in"><span class="lbl">Publishes to</span><b>YouTube</b><b>LinkedIn</b><b>Instagram</b><b>X</b><b>TikTok</b><b>Facebook</b></div></div>
-
-<!-- STATEMENT -->
-<section class="statement"><div class="wrap">
-  <p data-reveal>That's your week of content.<br><span class="hl">Done in one run.</span></p>
-  <p class="sub" data-reveal style="--d:120ms">Researched, written, designed and published — while you got back to building. Here's each move it made.</p>
-</div></section>
-
-<!-- ACT 1 · RESEARCH -->
-<section class="act soft" id="how"><div class="wrap"><div class="actgrid">
-  <div data-reveal>
-    <span class="step-lbl"><span class="n">1</span> Research</span>
-    <h2>It reads the live web first.</h2>
-    <p class="lede">Every job starts with real signals — current trends, primary sources, competitors — so what ARIA makes is grounded, not guessed. Sources are cited and kept.</p>
-    <div class="mini">
-      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Live web search, read and summarized</div>
-      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Every claim traced to a source</div>
-    </div>
-  </div>
-  <div class="visual" data-reveal style="--d:120ms">
-    <div class="src"><span class="fav"></span> techcrunch.com — "AI agents in 2026" <span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l4 4L19 7"/></svg></span></div>
-    <div class="src s2"><span class="fav"></span> arxiv.org — autonomous orchestration <span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l4 4L19 7"/></svg></span></div>
-    <div class="src s3"><span class="fav"></span> news.ycombinator.com — top threads <span class="ok"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l4 4L19 7"/></svg></span></div>
-    <div class="src"><span class="fav"></span> +9 more sources read <span class="ok" style="font-size:12px;font-weight:700">12 total</span></div>
-  </div>
-</div></div></section>
-
 <!-- ACT 2 · CREATE -->
-<section class="act flip"><div class="wrap"><div class="actgrid">
-  <div data-reveal>
-    <span class="step-lbl"><span class="n">2</span> Create</span>
-    <h2>It makes the media, on brief.</h2>
-    <p class="lede">Text, images, short-form video and voiceover — produced to match the goal, not stitched from stock. One brief in, a finished asset out.</p>
-    <div class="mini">
-      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Images and video generated to spec</div>
-      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Script, caption and voiceover included</div>
+<section class="border-t border-stone-200 bg-white px-6 py-24">
+  <div class="mx-auto grid max-w-[1180px] items-center gap-12 md:grid-cols-2 md:gap-16">
+    <div data-reveal style="--d:120ms" class="order-2 rounded-3xl border border-stone-200 bg-stone-50 p-6 shadow-sm md:order-1">
+      <div class="mb-4 flex items-center gap-3 border-b border-stone-200 pb-4">
+        <img src="/team/artdirector.png" alt="" class="h-11 w-11 flex-none rounded-full object-cover" />
+        <div><div class="text-sm font-semibold text-stone-900">Sofia Reyes</div><div class="text-xs text-stone-500">Art Director, on this mission</div></div>
+      </div>
+      <div class="grid grid-cols-[1.3fr_1fr] gap-3">
+        <div class="min-h-[150px] rounded-2xl bg-gradient-to-br from-emerald-400 via-teal-500 to-emerald-600"></div>
+        <div class="flex flex-col gap-3">
+          <div class="grid min-h-[80px] flex-1 place-items-center rounded-2xl bg-stone-900">
+            <span class="grid h-9 w-9 place-items-center rounded-full bg-white text-emerald-700"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+          </div>
+          <div class="flex items-center gap-2.5 rounded-2xl border border-stone-200 bg-white p-3">
+            <span class="text-[11px] font-bold text-teal-700">VOICE</span>
+            <div class="flex h-6 items-end gap-[3px]">
+              <i class="w-[3px] animate-pulse rounded bg-teal-500" style="height:8px"></i>
+              <i class="w-[3px] animate-pulse rounded bg-teal-500" style="height:18px;animation-delay:.1s"></i>
+              <i class="w-[3px] animate-pulse rounded bg-teal-500" style="height:11px;animation-delay:.2s"></i>
+              <i class="w-[3px] animate-pulse rounded bg-teal-500" style="height:24px;animation-delay:.3s"></i>
+              <i class="w-[3px] animate-pulse rounded bg-teal-500" style="height:9px;animation-delay:.4s"></i>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-  <div class="visual" data-reveal style="--d:120ms">
-    <div class="creates">
-      <div class="cv-img"></div>
-      <div class="cv-side">
-        <div class="cv-vid"><span class="p"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span></div>
-        <div class="cv-voice"><span>voice</span><div class="wave"><i style="height:9px"></i><i style="height:20px;animation-delay:.1s"></i><i style="height:12px;animation-delay:.2s"></i><i style="height:26px;animation-delay:.3s"></i><i style="height:10px;animation-delay:.4s"></i><i style="height:18px;animation-delay:.5s"></i></div></div>
+    <div data-reveal class="order-1 md:order-2">
+      <span class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-700">
+        <span class="grid h-6 w-6 place-items-center rounded-full bg-emerald-600 text-[11px] text-white">2</span> Create
+      </span>
+      <h2 class="mt-4 text-[clamp(1.6rem,3vw,2.3rem)] font-semibold leading-tight tracking-tight text-stone-900">Then it makes the thing, not a draft of the thing.</h2>
+      <p class="mt-4 max-w-[46ch] text-[17px] leading-relaxed text-stone-600">Image, video, voiceover, caption — produced to the brief you gave it, ready to post, not a placeholder waiting on a designer.</p>
+      <div class="mt-6 flex flex-col gap-3">
+        <div class="flex items-center gap-2.5 text-sm text-stone-700"><svg class="h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Images and video generated to spec</div>
+        <div class="flex items-center gap-2.5 text-sm text-stone-700"><svg class="h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Script, caption and voiceover included</div>
       </div>
     </div>
   </div>
-</div></div></section>
+</section>
 
 <!-- ACT 3 · PUBLISH -->
-<section class="act soft"><div class="wrap"><div class="actgrid">
-  <div data-reveal>
-    <span class="step-lbl"><span class="n">3</span> Publish</span>
-    <h2>It ships to your channels.</h2>
-    <p class="lede">Connect your accounts once. ARIA pushes the finished asset straight to them — or schedules it. One goal, live everywhere.</p>
-    <div class="mini">
-      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Post now or schedule</div>
-      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> You approve before anything goes out</div>
+<section class="border-t border-stone-200 px-6 py-24">
+  <div class="mx-auto grid max-w-[1180px] items-center gap-12 md:grid-cols-2 md:gap-16">
+    <div data-reveal>
+      <span class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-700">
+        <span class="grid h-6 w-6 place-items-center rounded-full bg-emerald-600 text-[11px] text-white">3</span> Publish
+      </span>
+      <h2 class="mt-4 text-[clamp(1.6rem,3vw,2.3rem)] font-semibold leading-tight tracking-tight text-stone-900">It ships it — to where your audience actually is.</h2>
+      <p class="mt-4 max-w-[46ch] text-[17px] leading-relaxed text-stone-600">Connect your channels once. ARIA posts the finished piece straight to them, or queues it for the time that performs best.</p>
+      <div class="mt-6 flex flex-col gap-3">
+        <div class="flex items-center gap-2.5 text-sm text-stone-700"><svg class="h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Post now or schedule for later</div>
+        <div class="flex items-center gap-2.5 text-sm text-stone-700"><svg class="h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Nothing goes out until you say so</div>
+      </div>
     </div>
-  </div>
-  <div class="visual" data-reveal style="--d:120ms">
-    <div class="chans">
-      <div class="chan"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.8.5 9.4.5 9.4.5s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg></div>YouTube<span class="st">Posted</span></div>
-      <div class="chan"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45z"/></svg></div>LinkedIn<span class="st">Posted</span></div>
-      <div class="chan"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.16-.42-.36-1.06-.41-2.23C2.17 15.58 2.16 15.2 2.16 12s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16zM12 5.84A6.16 6.16 0 1 0 18.16 12 6.16 6.16 0 0 0 12 5.84z"/></svg></div>Instagram<span class="st">Scheduled</span></div>
-    </div>
-  </div>
-</div></div></section>
-
-<!-- ACT 4 · PROVE -->
-<section class="act flip"><div class="wrap"><div class="actgrid">
-  <div data-reveal>
-    <span class="step-lbl"><span class="n">4</span> Prove</span>
-    <h2>Every move, on the record.</h2>
-    <p class="lede">ARIA works in the open. You get a timestamped receipt of exactly what ran, what it read, and what it produced — nothing is a black box.</p>
-    <div class="mini">
-      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Full step-by-step run log</div>
-      <div class="row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Sources, media and timings kept</div>
-    </div>
-  </div>
-  <div class="visual dark" data-reveal style="--d:120ms">
-    <div class="console">
-      <div class="bar"><span class="t"></span><span class="t"></span><span class="t"></span><span class="lbl">aria · run log</span></div>
-      <div class="body">
-        <div><span class="ts">00:00</span> <span class="okk">[ok]</span> plan · goal → 4 steps</div>
-        <div><span class="ts">00:03</span> <span class="okk">[ok]</span> research · 12 sources read</div>
-        <div><span class="ts">00:14</span> <span class="okk">[ok]</span> draft · script + caption</div>
-        <div><span class="ts">00:39</span> <span class="okk">[ok]</span> media · image + 20s voice</div>
-        <div><span class="ts">01:12</span> <span class="okk">[ok]</span> publish · 3 channels · done</div>
+    <div data-reveal style="--d:120ms" class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+      <div class="mb-4 flex items-center gap-3 border-b border-stone-100 pb-4">
+        <img src="/team/socialmanager.png" alt="" class="h-11 w-11 flex-none rounded-full object-cover" />
+        <div><div class="text-sm font-semibold text-stone-900">Marcus Bell</div><div class="text-xs text-stone-500">Social Media Manager, on this mission</div></div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div class="rounded-2xl border border-stone-200 bg-stone-50 px-2 py-4 text-center">
+          <div class="mx-auto grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.8.5 9.4.5 9.4.5s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg></div>
+          <div class="mt-2 text-xs font-semibold text-stone-700">YouTube</div>
+          <div class="mt-1 text-[10.5px] font-bold text-emerald-700">Posted</div>
+        </div>
+        <div class="rounded-2xl border border-stone-200 bg-stone-50 px-2 py-4 text-center">
+          <div class="mx-auto grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45z"/></svg></div>
+          <div class="mt-2 text-xs font-semibold text-stone-700">LinkedIn</div>
+          <div class="mt-1 text-[10.5px] font-bold text-emerald-700">Posted</div>
+        </div>
+        <div class="rounded-2xl border border-stone-200 bg-stone-50 px-2 py-4 text-center">
+          <div class="mx-auto grid h-9 w-9 place-items-center rounded-xl bg-teal-50 text-teal-700"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.16-.42-.36-1.06-.41-2.23C2.17 15.58 2.16 15.2 2.16 12s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16zM12 5.84A6.16 6.16 0 1 0 18.16 12 6.16 6.16 0 0 0 12 5.84z"/></svg></div>
+          <div class="mt-2 text-xs font-semibold text-stone-700">Instagram</div>
+          <div class="mt-1 text-[10.5px] font-bold text-teal-700">Scheduled</div>
+        </div>
       </div>
     </div>
   </div>
-</div></div></section>
+</section>
 
-<!-- STATEMENT 2 -->
-<section class="statement dark"><div class="wrap">
-  <p data-reveal>Stop prompting.<br><span class="hl">Start delegating.</span></p>
-</div></section>
+<!-- ACT 4 · PROVE -->
+<section class="border-t border-stone-200 bg-white px-6 py-24">
+  <div class="mx-auto grid max-w-[1180px] items-center gap-12 md:grid-cols-2 md:gap-16">
+    <div data-reveal style="--d:120ms" class="order-2 overflow-hidden rounded-3xl border border-stone-800 bg-stone-900 shadow-xl md:order-1">
+      <div class="flex items-center gap-2 border-b border-stone-800 px-4 py-3">
+        <span class="h-2.5 w-2.5 rounded-full bg-stone-700"></span><span class="h-2.5 w-2.5 rounded-full bg-stone-700"></span><span class="h-2.5 w-2.5 rounded-full bg-stone-700"></span>
+        <span class="ml-2 font-mono text-[11px] text-stone-400">aria · run log</span>
+      </div>
+      <div class="space-y-3 p-5 font-mono text-[12.5px] leading-relaxed text-stone-300">
+        <div><span class="text-stone-500">00:00</span> <span class="text-emerald-400">[ok]</span> plan · goal → 4 steps</div>
+        <div><span class="text-stone-500">00:03</span> <span class="text-emerald-400">[ok]</span> research · 12 sources read</div>
+        <div><span class="text-stone-500">00:14</span> <span class="text-emerald-400">[ok]</span> draft · script + caption</div>
+        <div><span class="text-stone-500">00:39</span> <span class="text-emerald-400">[ok]</span> media · image + 20s voice</div>
+        <div><span class="text-stone-500">01:12</span> <span class="text-emerald-400">[ok]</span> publish · 3 channels · done</div>
+      </div>
+    </div>
+    <div data-reveal class="order-1 md:order-2">
+      <span class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-700">
+        <span class="grid h-6 w-6 place-items-center rounded-full bg-emerald-600 text-[11px] text-white">4</span> Prove
+      </span>
+      <h2 class="mt-4 text-[clamp(1.6rem,3vw,2.3rem)] font-semibold leading-tight tracking-tight text-stone-900">And it shows its work, every time.</h2>
+      <p class="mt-4 max-w-[46ch] text-[17px] leading-relaxed text-stone-600">A full timestamped log of what ARIA read, wrote and shipped — so "the AI did something" is never the whole explanation.</p>
+      <div class="mt-6 flex flex-col gap-3">
+        <div class="flex items-center gap-2.5 text-sm text-stone-700"><svg class="h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Step-by-step run log, kept</div>
+        <div class="flex items-center gap-2.5 text-sm text-stone-700"><svg class="h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg> Sources, media and timings on record</div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- PRICING -->
-<section class="sec" id="pricing"><div class="wrap">
-  <div class="head" data-reveal><span class="eyebrow">Pricing</span><h2 class="big">Simple, honest pricing.</h2><p>Start free. Upgrade when ARIA is doing real work for you. Cancel anytime.</p></div>
-  <div class="prices">
-    <div class="price" data-reveal>
-      <h3>Free</h3><div class="amt">$0</div><div class="subt">To try ARIA</div>
-      <a class="btn btn-outline" href="/signup">Start free</a>
-      <ul><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>Tasks: research, write, images</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>Daily message limit</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>1 workspace</li></ul>
-    </div>
-    <div class="price pro" data-reveal style="--d:100ms">
-      <span class="tag">MOST POPULAR</span>
-      <h3 style="color:var(--green-ink)">Pro</h3><div class="amt">$29<small>/mo</small></div><div class="subt">For creators &amp; founders shipping daily</div>
-      <a class="btn btn-primary" href="/signup">Go Pro</a>
-      <ul><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>Unlimited tasks</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>Advanced image, video &amp; voice</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>Autonomous multi-channel publishing</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>Expanded memory &amp; priority AI</li></ul>
-    </div>
-    <div class="price" data-reveal style="--d:200ms">
-      <h3>Business</h3><div class="amt">$99<small>/mo</small></div><div class="subt">For teams &amp; brands</div>
-      <a class="btn btn-outline" href="/signup">Start Business</a>
-      <ul><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>Everything in Pro</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>5 brand workspaces &amp; seats</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>Scheduled autonomy &amp; analytics</li><li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 7"/></svg>Dedicated support</li></ul>
-    </div>
-  </div>
-</div></section>
+<section id="pricing" class="border-t border-stone-200 px-6 py-28">
+  <aria-pricing></aria-pricing>
+</section>
 
 <!-- FINAL CTA -->
-<section class="final"><div class="wrap">
-  <div class="ctabox" data-reveal>
-    <span class="caura ca1"></span><span class="caura ca2"></span>
-    <h2>Give ARIA a topic.</h2>
-    <p>Get a week of posts, images and video — researched, designed and published to your channels. Free to start.</p>
-    <div class="cta"><a class="btn btn-primary btn-lg" href="/signup">Get started — no card <span class="arrow">→</span></a></div>
+<section class="px-6 pb-24">
+  <div data-reveal class="aria-grain relative mx-auto max-w-[1180px] overflow-hidden rounded-[2.25rem] bg-stone-900 px-8 py-20 text-center shadow-2xl">
+    <div aria-hidden="true" class="pointer-events-none absolute inset-0">
+      <div class="absolute -top-24 -right-16 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl"></div>
+      <div class="absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-teal-500/15 blur-3xl"></div>
+    </div>
+    <div class="relative">
+      <h2 class="text-[clamp(1.9rem,4.4vw,3.1rem)] font-semibold tracking-tight text-white">Give ARIA a topic.</h2>
+      <p class="mx-auto mt-4 max-w-[34ch] text-lg text-stone-300">Get a week of posts, images and video — researched, designed and published to your channels. Free to start.</p>
+      <div class="mt-8 flex justify-center">
+        <a href="/signup" class="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-stone-900 transition-transform hover:-translate-y-0.5">
+          Get started — no card
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </div>
+    </div>
   </div>
-</div></section>
+</section>
 
-<footer><div class="wrap">
-  <div class="foot">
-    <a class="brand" href="/"><svg width="26" height="26"><use href="#mark"/></svg><span>ARIA</span></a>
-    <div class="links"><a href="#watch">Watch it work</a><a href="#pricing">Pricing</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/refund-policy">Refund Policy</a><a href="/health">Status</a><a href="/login">Sign in</a></div>
+<!-- FOOTER -->
+<footer class="border-t border-stone-200 px-6 pb-10 pt-16">
+  <div class="mx-auto max-w-[1180px]">
+    <div class="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+      <div>
+        <a href="/" class="flex items-center gap-2.5 text-[15px] font-bold tracking-[0.24em] text-stone-900">
+          <svg width="24" height="24"><use href="#mark"/></svg><span class="pl-[0.24em]">ARIA</span>
+        </a>
+        <p class="mt-4 max-w-[32ch] text-sm text-stone-500">The AI that executes. One idea in, a week of content, published.</p>
+      </div>
+      <div>
+        <div class="text-xs font-bold uppercase tracking-widest text-stone-400">Product</div>
+        <div class="mt-4 flex flex-col gap-3 text-sm text-stone-600">
+          <a href="#watch" class="hover:text-stone-900">Watch it work</a>
+          <a href="#pricing" class="hover:text-stone-900">Pricing</a>
+          <a href="/login" class="hover:text-stone-900">Sign in</a>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-bold uppercase tracking-widest text-stone-400">Company</div>
+        <div class="mt-4 flex flex-col gap-3 text-sm text-stone-600">
+          <a href="/saraph" class="hover:text-stone-900">SARAPH</a>
+          <a href="/health" class="hover:text-stone-900">Status</a>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-bold uppercase tracking-widest text-stone-400">Legal</div>
+        <div class="mt-4 flex flex-col gap-3 text-sm text-stone-600">
+          <a href="/legal/terms" class="hover:text-stone-900">Terms</a>
+          <a href="/legal/privacy" class="hover:text-stone-900">Privacy</a>
+          <a href="/legal/refund-policy" class="hover:text-stone-900">Refund Policy</a>
+        </div>
+      </div>
+    </div>
+    <div class="mt-14 flex flex-col gap-3 border-t border-stone-200 pt-6 text-xs text-stone-400 sm:flex-row sm:items-center sm:justify-between">
+      <span>© <span id="yr">2026</span> ARIA. The AI that executes.</span>
+    </div>
   </div>
-  <div class="copy">© <span id="yr">2026</span> ARIA. The AI that executes.</div>
-</div></footer>
+</footer>
 
-<script>
-  document.getElementById('yr').textContent = new Date().getFullYear();
-
-  var nav = document.getElementById('nav');
-  function onScroll(){ nav.classList.toggle('scrolled', window.scrollY > 40); }
-  onScroll(); window.addEventListener('scroll', onScroll, {passive:true});
-
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var targets = document.querySelectorAll('[data-reveal], #demo');
-  if (reduce || !('IntersectionObserver' in window)) {
-    targets.forEach(function(el){ el.classList.add('in'); });
-  } else {
-    var io = new IntersectionObserver(function(entries){
-      entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
-    }, {threshold:0.16, rootMargin:'0px 0px -8% 0px'});
-    targets.forEach(function(el){ io.observe(el); });
-  }
-
-  // ── Self-running mission demo (rotates through different jobs) ──
-  (function(){
-    var MISSIONS = [
-      { goal:"Research today's AI trends and ship a launch reel", title:"Launch reel · AI trends",
-        steps:["Researched the live web — 12 sources","Wrote the script + caption",
-               "Generated hero image + 20s voiceover","Published to 3 connected channels"],
-        name:"launch-reel.mp4", meta:"1080×1920 · 22s · ready", time:"1m 12s",
-        thumb:"linear-gradient(135deg,#15E06A,#12b7a6)" },
-      { goal:"Turn our latest blog into a LinkedIn post", title:"LinkedIn post · from blog",
-        steps:["Read the post + top comments","Drafted 3 hook variants",
-               "Picked the strongest & wrote it","Scheduled to LinkedIn"],
-        name:"linkedin-post.txt", meta:"1,180 chars · ready to publish", time:"41s",
-        thumb:"linear-gradient(135deg,#12b7a6,#0a8f57)" },
-      { goal:"Create a hero image for the new feature", title:"Hero image · new feature",
-        steps:["Pulled brand palette + references","Generated 4 concepts",
-               "Upscaled the winner to 4K","Exported PNG + web sizes"],
-        name:"hero-image.png", meta:"2400×1350 · PNG · ready", time:"58s",
-        thumb:"linear-gradient(135deg,#4be3a0,#12b7a6)" },
-    ];
-    var dtype = document.getElementById('dtype'), caret = document.getElementById('dcaret'),
-        go = document.getElementById('dgo'), run = document.getElementById('drun'),
-        steps = Array.prototype.slice.call(document.querySelectorAll('#dsteps li')),
-        deliver = document.getElementById('ddeliver'), status = document.getElementById('dstatus'),
-        statustxt = document.getElementById('dstatustxt'), title = document.getElementById('dtitle'),
-        dname = document.getElementById('dname'), dmeta = document.getElementById('dmeta'),
-        dthumb = document.getElementById('dthumb');
-    if(!dtype) return;
-    var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
-    var mi = 0;
-
-    function load(m){
-      title.textContent = m.title;
-      steps.forEach(function(s,i){ s.querySelector('.lb').textContent = m.steps[i]; });
-      dname.textContent = m.name; dmeta.textContent = m.meta; dthumb.style.background = m.thumb;
-    }
-    function reset(){
-      dtype.textContent=''; go.style.opacity='0'; caret.style.display='';
-      run.classList.remove('show'); deliver.classList.remove('show');
-      status.classList.remove('done'); statustxt.textContent='Running';
-      steps.forEach(function(s){ s.classList.remove('active','ok'); });
-    }
-    async function type(goal){
-      for(var i=0;i<=goal.length;i++){ dtype.textContent=goal.slice(0,i); await sleep(34); }
-      go.style.opacity='1'; caret.style.display='none';
-    }
-
-    async function play(){
-      if (reduce){
-        var m = MISSIONS[0]; load(m);
-        dtype.textContent=m.goal; caret.style.display='none'; go.style.opacity='1';
-        run.classList.add('show'); steps.forEach(function(s){ s.classList.add('ok'); });
-        deliver.classList.add('show'); status.classList.add('done'); statustxt.textContent='Done · '+m.time;
-        return;
-      }
-      while(true){
-        var m = MISSIONS[mi % MISSIONS.length]; mi++;
-        reset(); load(m); await sleep(700);
-        await type(m.goal); await sleep(450);
-        run.classList.add('show'); await sleep(500);
-        for(var i=0;i<steps.length;i++){
-          steps[i].classList.add('active');
-          await sleep(i===2?1250:900);           // create step takes a beat longer
-          steps[i].classList.remove('active'); steps[i].classList.add('ok');
-          if(i===2){ deliver.classList.add('show'); }
-          await sleep(300);
-        }
-        status.classList.add('done'); statustxt.textContent='Done · '+m.time;
-        await sleep(3800);
-      }
-    }
-    load(MISSIONS[0]);   // fill labels on first paint, before the loop starts
-    // Kick off once the demo scrolls in (or immediately if already visible).
-    var started=false;
-    function start(){ if(started) return; started=true; play(); }
-    if(reduce){ start(); }
-    else {
-      var d = document.getElementById('demo');
-      var o = new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ start(); o.disconnect(); } }); }, {threshold:.3});
-      o.observe(d);
-    }
-  })();
-</script>
+<script type="module" src="/static/js/components/aria-run-log.js"></script>
+<script type="module" src="/static/js/components/aria-hero.js"></script>
+<script type="module" src="/static/js/components/aria-pricing.js"></script>
+<script type="module" src="/static/js/aria-app.js"></script>
 </body>
 </html>
