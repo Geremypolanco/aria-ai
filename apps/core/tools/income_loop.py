@@ -169,7 +169,7 @@ STRATEGIES = [
     (
         "data_product_seller",
         3,
-    ),  # boostado: compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
+    ),  # boosted: compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
     (
         "b2b_saas_pitch",
         1,
@@ -3678,11 +3678,11 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
                             doc_bytes=pdf_r["pdf_bytes"],
                             filename=fname,
                             caption=(
-                                f"📚 <b>Ebook generado (pendiente publicación)</b>\n"
-                                f"Título: {ebook.get('title','')[:60]}\n"
-                                f"Precio sugerido: ${ebook.get('price_cents',1700)/100:.0f}\n"
-                                f"Sube este PDF a Gumroad para empezar a vender.\n"
-                                f"Falta: <code>GUMROAD_TOKEN</code> en Fly.io secrets"
+                                f"📚 <b>Ebook generated (pending publication)</b>\n"
+                                f"Title: {ebook.get('title','')[:60]}\n"
+                                f"Suggested price: ${ebook.get('price_cents',1700)/100:.0f}\n"
+                                f"Upload this PDF to Gumroad to start selling.\n"
+                                f"Missing: <code>GUMROAD_TOKEN</code> in Fly.io secrets"
                             ),
                         )
                     except Exception as tg_exc:
@@ -9513,33 +9513,33 @@ JSON:
 
             kw = 12  # key column width for <pre> block
             data_rows = [
-                f"{'Módulo':<{kw}} Income Loop",
-                f"{'Estrategias':<{kw}} {len(STRATEGIES)} · c/{INTERVAL_SECONDS//60} min",
-                f"{'Canales':<{kw}} {', '.join(active) if active else 'ninguno'}",
+                f"{'Module':<{kw}} Income Loop",
+                f"{'Strategies':<{kw}} {len(STRATEGIES)} · c/{INTERVAL_SECONDS//60} min",
+                f"{'Channels':<{kw}} {', '.join(active) if active else 'none'}",
             ]
 
             pending_lines = []
             if inactive:
                 top = inactive[:4]
                 if "gumroad" in top:
-                    pending_lines.append("  GUMROAD_TOKEN  →  ventas digitales")
+                    pending_lines.append("  GUMROAD_TOKEN  →  digital sales")
                 if "devto" in top:
-                    pending_lines.append("  DEVTO_API_KEY  →  artículos técnicos")
+                    pending_lines.append("  DEVTO_API_KEY  →  technical articles")
                 if "twitter" in top:
-                    pending_lines.append("  TWITTER_*      →  distribución social")
+                    pending_lines.append("  TWITTER_*      →  social distribution")
                 if "shopify" in top:
                     pending_lines.append("  SHOPIFY_TOKEN  →  e-commerce")
 
             sections = [
-                "🤖 <b>ARIA · SISTEMA EN LÍNEA</b>",
+                "🤖 <b>ARIA · SYSTEM ONLINE</b>",
                 "<pre>" + "\n".join(data_rows) + "</pre>",
             ]
             if pending_lines:
                 sections += [
-                    "💡 <i>Canales pendientes:</i>",
+                    "💡 <i>Pending channels:</i>",
                     "<pre>" + "\n".join(pending_lines) + "</pre>",
                 ]
-            sections.append("<i>Aria trabaja en segundo plano. Te notificaré cada ingreso.</i>")
+            sections.append("<i>Aria works in the background. I'll notify you on every payout.</i>")
 
             await get_bot().notify_owner("\n".join(sections), already_html=True)
         except Exception as exc:
@@ -9629,21 +9629,21 @@ JSON:
             )
 
             if high_value:
-                icon, label = "💰", "INGRESO  ·  ALTO VALOR"
+                icon, label = "💰", "INCOME  ·  HIGH VALUE"
             elif is_product:
-                icon, label = "📦", "PRODUCTO  ·  PUBLICADO"
+                icon, label = "📦", "PRODUCT  ·  PUBLISHED"
             elif is_content:
-                icon, label = "✍️", "CONTENIDO  ·  PUBLICADO"
+                icon, label = "✍️", "CONTENT  ·  PUBLISHED"
             else:
-                icon, label = "✅", "ACCIÓN  ·  COMPLETADA"
+                icon, label = "✅", "ACTION  ·  COMPLETED"
 
             kw = 11
             safe_strategy = _html.escape(result.strategy)
             rev_str = f"${result.revenue_potential:.2f}" + (" ✦" if high_value else "")
             data_rows = [
-                f"{'Estrategia':<{kw}} {safe_strategy}",
-                f"{'Potencial':<{kw}} {rev_str}",
-                f"{'Ciclo':<{kw}} #{result.cycle_id}  ·  {result.elapsed_seconds}s",
+                f"{'Strategy':<{kw}} {safe_strategy}",
+                f"{'Potential':<{kw}} {rev_str}",
+                f"{'Cycle':<{kw}} #{result.cycle_id}  ·  {result.elapsed_seconds}s",
             ]
 
             # Escape AI-generated summary before embedding in HTML context
@@ -9671,9 +9671,9 @@ JSON:
             if is_product or is_content or high_value:
                 footer = []
                 if is_product or is_content:
-                    footer.append("📦 /catalogo")
+                    footer.append("📦 /catalog")
                 if high_value:
-                    footer.append("📊 /reporte")
+                    footer.append("📊 /report")
                 sections.append("  ·  ".join(footer))
 
             await get_bot().notify_owner("\n\n".join(sections), already_html=True)
@@ -9924,14 +9924,14 @@ JSON:
 
             cache = get_cache()
             if not cache:
-                return "⚠️ Redis no disponible — sin catálogo de productos."
+                return "⚠️ Redis unavailable — no product catalog."
 
             raw_items = await cache.lrange("aria:products:catalog", -limit, -1)
             if not raw_items:
                 return (
-                    "📦 <b>Catálogo de Productos ARIA</b>\n\n"
-                    "⏳ Aún no hay productos registrados.\n"
-                    "El income loop irá llenando el catálogo con cada ciclo exitoso."
+                    "📦 <b>ARIA Product Catalog</b>\n\n"
+                    "⏳ No products registered yet.\n"
+                    "The income loop will fill the catalog with each successful cycle."
                 )
 
             items = []
@@ -9940,8 +9940,8 @@ JSON:
                     items.append(json.loads(raw) if isinstance(raw, str) else raw)
 
             lines = [
-                "📦 <b>Catálogo de Productos ARIA</b>",
-                f"<i>{len(items)} productos/publicaciones</i>",
+                "📦 <b>ARIA Product Catalog</b>",
+                f"<i>{len(items)} products/publications</i>",
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             ]
             for i, item in enumerate(items[:limit], 1):
@@ -9951,7 +9951,7 @@ JSON:
                 urls = item.get("urls", [])
                 date = item.get("created_at", "")[:10]
                 lines.append(f"\n<b>{i}. {title}</b>")
-                lines.append(f"   📅 {date}  |  📊 {strat}  |  💰 ${revenue:.0f} potencial")
+                lines.append(f"   📅 {date}  |  📊 {strat}  |  💰 ${revenue:.0f} potential")
                 for url in urls[:2]:
                     if url:
                         lines.append(f"   🔗 {url}")
@@ -9959,8 +9959,8 @@ JSON:
             total_rev = sum(i.get("revenue", 0) for i in items)
             lines += [
                 "",
-                f"<b>Revenue potencial acumulado: ${total_rev:.2f}</b>",
-                "<i>Actualizado automáticamente en cada ciclo exitoso</i>",
+                f"<b>Accumulated revenue potential: ${total_rev:.2f}</b>",
+                "<i>Automatically updated on every successful cycle</i>",
             ]
             return "\n".join(lines)
 
@@ -9975,7 +9975,7 @@ JSON:
 
             cache = get_cache()
             if not cache:
-                return "⚠️ Redis no disponible — sin datos de analíticas."
+                return "⚠️ Redis unavailable — no analytics data."
 
             total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
             success_cycles = int(await cache.get("aria:income:successful_cycles") or 0)
@@ -9996,12 +9996,12 @@ JSON:
             rows.sort(key=lambda r: (-r[3], -r[1]))
 
             lines = [
-                "📊 <b>ARIA — Reporte de Analíticas por Estrategia</b>",
+                "📊 <b>ARIA — Per-Strategy Analytics Report</b>",
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                f"Ciclos totales: <b>{total_cycles}</b>  |  Éxitos: <b>{success_cycles}</b>  ({success_rate:.1f}%)",
-                f"URLs publicadas: <b>{total_urls}</b>  |  Revenue acumulado: <b>${total_tracked_rev:.2f}</b>",
+                f"Total cycles: <b>{total_cycles}</b>  |  Successes: <b>{success_cycles}</b>  ({success_rate:.1f}%)",
+                f"URLs published: <b>{total_urls}</b>  |  Accumulated revenue: <b>${total_tracked_rev:.2f}</b>",
                 "",
-                "<b>Estrategia              Runs  Win%  Revenue  Peso</b>",
+                "<b>Strategy               Runs  Win%  Revenue  Weight</b>",
             ]
             for name, runs, wins, rev, weight in rows:
                 win_pct = (wins / runs * 100) if runs else 0
@@ -10011,11 +10011,11 @@ JSON:
                 )
 
             if total_cycles == 0:
-                lines += ["", "⏳ Sin datos aún — el loop inicia en unos minutos."]
+                lines += ["", "⏳ No data yet — the loop starts in a few minutes."]
             else:
                 best = rows[0] if rows else None
                 if best and best[1] > 0:
-                    lines += ["", f"🏆 Mejor estrategia: <b>{best[0]}</b> (${best[3]:.2f} revenue)"]
+                    lines += ["", f"🏆 Best strategy: <b>{best[0]}</b> (${best[3]:.2f} revenue)"]
 
             # Revenue projection
             if total_cycles > 0 and total_tracked_rev > 0:
@@ -10025,21 +10025,21 @@ JSON:
                 proj_30d = rev_per_cycle * cycles_per_day * 30
                 lines += [
                     "",
-                    "📈 <b>Proyección de ingresos (potencial):</b>",
-                    f"  7 días:  <b>${proj_7d:.2f}</b>",
-                    f"  30 días: <b>${proj_30d:.2f}</b>",
-                    f"  <i>(basado en {total_cycles} ciclos @ ${rev_per_cycle:.3f}/ciclo)</i>",
+                    "📈 <b>Income projection (potential):</b>",
+                    f"  7 days:  <b>${proj_7d:.2f}</b>",
+                    f"  30 days: <b>${proj_30d:.2f}</b>",
+                    f"  <i>(based on {total_cycles} cycles @ ${rev_per_cycle:.3f}/cycle)</i>",
                 ]
 
             lines += [
                 "",
-                f"<i>Datos en tiempo real desde Redis. Ciclo cada {INTERVAL_SECONDS//60} min.</i>",
+                f"<i>Real-time data from Redis. Cycle every {INTERVAL_SECONDS//60} min.</i>",
             ]
             return "\n".join(lines)
 
         except Exception as exc:
             logger.error("[IncomeLoop] analytics_report: %s", exc)
-            return f"⚠️ Error al generar reporte: {exc}"
+            return f"⚠️ Error generating report: {exc}"
 
     async def _exec_landing_page_deploy(self) -> dict:
         """
