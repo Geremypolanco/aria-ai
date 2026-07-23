@@ -13,10 +13,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
 :root{
- --bg:#ffffff;--soft:#f3f8f5;--ink:#0a0f0c;--ink2:#3f4a44;--muted:#6b756f;--line:#e5ece8;
+ --bg:#ffffff;--soft:#f5f5f4;--ink:#1c1917;--ink2:#44403c;--muted:#78716c;--line:#e7e5e4;
  --neon:#15E06A;--neon-soft:#e8fcf1;--teal:#12b7a6;--green-ink:#057a52;--green-deep:#053b2a;
  --rose:#e11d48;--rose-soft:#fef2f4;
- --sh1:0 1px 2px rgba(10,20,15,.06);--sh2:0 14px 34px -14px rgba(10,20,15,.18);--sh3:0 30px 60px -22px rgba(10,20,15,.30);
+ --sh1:0 1px 2px rgba(28,25,23,.06);--sh2:0 14px 34px -14px rgba(28,25,23,.18);--sh3:0 30px 60px -22px rgba(28,25,23,.30);
  --glow:0 8px 24px -6px rgba(21,224,106,.45);
  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
 }
@@ -86,7 +86,7 @@ textarea{field-sizing:content}
 .chev{color:var(--muted);flex:none}
 .userbtn .nm{font-size:14px;font-weight:700;color:var(--ink);line-height:1.2;display:block;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .userbtn .pl{font-size:11px;font-weight:700;color:var(--green-ink)}
-.backdrop{position:fixed;inset:0;z-index:40;background:rgba(6,15,10,.4)}
+.backdrop{position:fixed;inset:0;z-index:40;background:rgba(28,25,23,.4)}
 @media(min-width:1024px){.side{position:static;transform:none!important}.side .head .iconbtn.mtoggle{display:none}.backdrop.sb{display:none}}
 
 .console{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--soft)}
@@ -222,7 +222,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .mcar{position:relative;margin-top:14px}
 .mcar .track{display:flex;gap:8px;overflow-x:auto}
 .mimg{aspect-ratio:16/9;width:100%;flex:none;border-radius:12px;border:1px solid var(--line);object-fit:cover}
-.carbtn{position:absolute;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;background:rgba(6,15,10,.55);color:#fff;border:0;display:grid;place-items:center}
+.carbtn{position:absolute;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;background:rgba(28,25,23,.55);color:#fff;border:0;display:grid;place-items:center}
 .carbtn.l{left:6px}.carbtn.r{right:6px}
 .mbar{margin-top:14px;height:6px;width:100%;border-radius:999px;background:var(--soft);overflow:hidden}
 .mbar-fill{height:100%;width:66%;border-radius:999px;background:linear-gradient(90deg,var(--neon),var(--teal))}
@@ -231,8 +231,8 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .md p{margin:6px 0}.md strong{color:var(--ink);font-weight:700}.md a{color:var(--green-ink);text-decoration:underline;text-underline-offset:2px}
 .md h3{margin:10px 0 4px;font-weight:700;color:var(--ink)}.md ul{margin:6px 0;padding-left:20px;list-style:disc}.md li{margin:3px 0}
 .md code{background:var(--soft);border-radius:5px;padding:1px 6px;font-family:var(--mono);font-size:12px}
-.md pre{margin-top:8px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fbfefc;padding:12px;font-family:var(--mono);font-size:12px;color:var(--ink2)}
-.mc-foot{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:#fbfefc;flex-wrap:wrap}
+.md pre{margin-top:8px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fafaf9;padding:12px;font-family:var(--mono);font-size:12px;color:var(--ink2)}
+.mc-foot{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:#fafaf9;flex-wrap:wrap}
 .act{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 11px;font-size:12.5px;font-weight:600;color:var(--ink2);transition:.15s}
 .act:hover{box-shadow:var(--sh1);color:var(--ink);border-color:#cdeadd}
 .act.danger{color:#b3123a;border-color:#f6c9d4;margin-left:auto}
@@ -253,7 +253,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
    shows inline in the thread, so the terminal panel is never a permanent column. */
 
 /* ── overlays / modals ── */
-.ov{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(6,15,10,.5);backdrop-filter:blur(4px)}
+.ov{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(28,25,23,.5);backdrop-filter:blur(4px)}
 .ov.flex{display:flex}
 .modal{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:var(--sh3)}
 .ov-ic{width:44px;height:44px;border-radius:14px;background:var(--neon-soft);color:var(--green-ink);display:grid;place-items:center;margin-bottom:16px}
@@ -364,7 +364,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .toast.ok{border-color:#b6f0d3}.toast.err{border-color:#f6c9d4}
 
 /* mobile bottom bar — brings the PC "cockpit" (nav + logs) one tap away */
-.botbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:none;align-items:center;justify-content:space-around;height:62px;padding:0 6px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);box-shadow:0 -8px 26px -18px rgba(10,20,15,.55)}
+.botbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:none;align-items:center;justify-content:space-around;height:62px;padding:0 6px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);box-shadow:0 -8px 26px -18px rgba(28,25,23,.4)}
 .botbar .t{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;color:var(--muted);background:transparent;border:0;padding:4px 12px}
 .botbar .t svg{width:21px;height:21px}
 .botbar .t:active{color:var(--green-ink)}
