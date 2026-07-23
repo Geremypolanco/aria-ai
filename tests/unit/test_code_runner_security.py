@@ -38,7 +38,10 @@ async def test_subprocess_env_is_minimal():
     result = await runner.run("import os; print(sorted(os.environ.keys()))", language="python")
     assert result["success"] is True
     visible = eval(result["stdout"])  # noqa: S307 — trusted fixture output, not user input
-    assert set(visible) <= {"HOME", "LANG", "PATH", "PYTHONDONTWRITEBYTECODE"}
+    # PWD/SHLVL are set automatically by the bash wrapper that applies real
+    # ulimit resource limits before exec'ing the interpreter — harmless,
+    # not secrets, not inherited from the server's real environment.
+    assert set(visible) <= {"HOME", "LANG", "PATH", "PYTHONDONTWRITEBYTECODE", "PWD", "SHLVL"}
 
 
 async def test_execute_code_is_owner_only():

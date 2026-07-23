@@ -3,11 +3,16 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # System dependencies
+# bubblewrap (bwrap) provides the real OS-level sandbox for execute_code
+# (apps/core/tools/code_runner.py) — unprivileged mount/pid/net/ipc/uts
+# namespaces around AI-generated code. CodeRunner probes at runtime
+# whether it actually works in this environment and falls back to
+# unsandboxed execution (still with real ulimit resource limits) if not.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc ffmpeg libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
     libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxext6 \
     libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 \
-    libcairo2 fonts-liberation libx11-6 libxcb1 libxss1 \
+    libcairo2 fonts-liberation libx11-6 libxcb1 libxss1 bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
