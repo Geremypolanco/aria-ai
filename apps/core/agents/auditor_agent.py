@@ -1,9 +1,9 @@
 """
-AuditorAgent — Auditor de élite para ARIA AI.
+AuditorAgent — Elite auditor for ARIA AI.
 
-Actúa como tech lead senior de Google/Anthropic: criterioso, directo, sin contemplaciones.
-Detecta errores, gaps lógicos y problemas de calidad ANTES de que lleguen a producción.
-Siempre responde en JSON estructurado.
+Acts as a senior Google/Anthropic tech lead: judicious, direct, no sugarcoating.
+Detects errors, logical gaps, and quality issues BEFORE they reach production.
+Always responds in structured JSON.
 """
 
 from __future__ import annotations
@@ -19,10 +19,10 @@ from apps.core.tools.ai_client import AIModel
 logger = logging.getLogger("aria.auditor_agent")
 
 _SYSTEM_PROMPT = (
-    "Eres el auditor de élite de ARIA AI. Actúas como tech lead senior de Google/Anthropic: "
-    "criterioso, directo, sin contemplaciones. Tu trabajo es detectar errores, gaps lógicos y "
-    "problemas de calidad ANTES de que lleguen a producción. "
-    "Siempre respondes en JSON estructurado."
+    "You are ARIA AI's elite auditor. You act as a senior Google/Anthropic tech lead: "
+    "judicious, direct, no sugarcoating. Your job is to detect errors, logical gaps, and "
+    "quality issues BEFORE they reach production. "
+    "You always respond in structured JSON."
 )
 
 
@@ -64,14 +64,14 @@ class AuditResult:
 
 class AuditorAgent(BaseAgent):
     """
-    Agente auditor que revisa planes, outputs y código antes de que lleguen a producción.
-    Brutalmente honesto. Sin sugar-coating.
+    Auditor agent that reviews plans, outputs, and code before they reach production.
+    Brutally honest. No sugar-coating.
     """
 
     def __init__(self) -> None:
         super().__init__(
             name="auditor",
-            description="Auditor de élite — revisa planes, outputs y código con criterio de tech lead senior",
+            description="Elite auditor — reviews plans, outputs, and code with senior tech lead judgment",
             capabilities=[
                 "plan_audit",
                 "output_audit",
@@ -85,19 +85,19 @@ class AuditorAgent(BaseAgent):
 
     async def audit_plan(self, plan: str, mission: str) -> AuditResult:
         """
-        Revisa un plan antes de su ejecución.
-        Detecta: gaps lógicos, pasos faltantes, suposiciones irreales, riesgos de seguridad.
+        Reviews a plan before execution.
+        Detects: logical gaps, missing steps, unrealistic assumptions, security risks.
         """
         user_prompt = (
-            f"MISIÓN: {mission}\n\n"
-            f"PLAN A AUDITAR:\n{plan}\n\n"
-            "Audita este plan con criterio de tech lead senior. Busca:\n"
-            "1. Gaps lógicos o pasos faltantes\n"
-            "2. Suposiciones no verificadas o irreales\n"
-            "3. Riesgos de seguridad o datos\n"
-            "4. Dependencias no declaradas\n"
-            "5. Estimaciones poco realistas\n\n"
-            "Responde ÚNICAMENTE con JSON (sin markdown, sin texto extra):\n"
+            f"MISSION: {mission}\n\n"
+            f"PLAN TO AUDIT:\n{plan}\n\n"
+            "Audit this plan with senior tech lead judgment. Look for:\n"
+            "1. Logical gaps or missing steps\n"
+            "2. Unverified or unrealistic assumptions\n"
+            "3. Security or data risks\n"
+            "4. Undeclared dependencies\n"
+            "5. Unrealistic estimates\n\n"
+            "Respond ONLY with JSON (no markdown, no extra text):\n"
             '{"score": <0-100>, "issues": [{"severity": "critical|high|medium|low", '
             '"category": "...", "description": "...", "fix": "..."}], '
             '"suggestions": ["..."], "reasoning": "..."}'
@@ -117,27 +117,27 @@ class AuditorAgent(BaseAgent):
         original_plan: str = "",
     ) -> AuditResult:
         """
-        Revisa trabajo completado.
-        Detecta: tarea incompleta, baja calidad, imprecisiones, partes faltantes.
+        Reviews completed work.
+        Detects: incomplete tasks, low quality, inaccuracies, missing parts.
         """
         output_str = (
             json.dumps(output, ensure_ascii=False, default=str)
             if not isinstance(output, str)
             else output
         )
-        plan_section = f"\nPLAN ORIGINAL:\n{original_plan}\n" if original_plan else ""
+        plan_section = f"\nORIGINAL PLAN:\n{original_plan}\n" if original_plan else ""
 
         user_prompt = (
-            f"MISIÓN: {mission}\n"
+            f"MISSION: {mission}\n"
             f"{plan_section}\n"
-            f"OUTPUT COMPLETADO:\n{output_str}\n\n"
-            "Audita este output con criterio de tech lead senior. Evalúa:\n"
-            "1. ¿Se completó la tarea al 100%?\n"
-            "2. ¿La calidad es suficiente para producción?\n"
-            "3. ¿Hay imprecisiones o datos incorrectos?\n"
-            "4. ¿Faltan partes críticas?\n"
-            "5. ¿Qué mejoraría significativamente el resultado?\n\n"
-            "Responde ÚNICAMENTE con JSON (sin markdown, sin texto extra):\n"
+            f"COMPLETED OUTPUT:\n{output_str}\n\n"
+            "Audit this output with senior tech lead judgment. Evaluate:\n"
+            "1. Was the task completed 100%?\n"
+            "2. Is the quality sufficient for production?\n"
+            "3. Are there inaccuracies or incorrect data?\n"
+            "4. Are critical parts missing?\n"
+            "5. What would significantly improve the result?\n\n"
+            "Respond ONLY with JSON (no markdown, no extra text):\n"
             '{"score": <0-100>, "issues": [{"severity": "critical|high|medium|low", '
             '"category": "...", "description": "...", "fix": "..."}], '
             '"suggestions": ["..."], "reasoning": "..."}'
@@ -157,22 +157,22 @@ class AuditorAgent(BaseAgent):
         requirements: str = "",
     ) -> AuditResult:
         """
-        Revisa código específicamente.
-        Detecta: bugs, huecos de seguridad, problemas de performance, manejo de errores faltante.
+        Reviews code specifically.
+        Detects: bugs, security holes, performance issues, missing error handling.
         """
-        req_section = f"\nREQUISITOS:\n{requirements}\n" if requirements else ""
+        req_section = f"\nREQUIREMENTS:\n{requirements}\n" if requirements else ""
 
         user_prompt = (
-            f"LENGUAJE: {language}\n"
+            f"LANGUAGE: {language}\n"
             f"{req_section}\n"
-            f"CÓDIGO A AUDITAR:\n```{language}\n{code}\n```\n\n"
-            "Audita este código como tech lead senior de Google. Busca:\n"
-            "1. Bugs lógicos o de runtime\n"
-            "2. Vulnerabilidades de seguridad (inyección, autenticación, exposición de datos)\n"
-            "3. Problemas de performance (N+1, loops innecesarios, bloqueos)\n"
-            "4. Manejo de errores ausente o insuficiente\n"
-            "5. Violaciones de principios SOLID / DRY / KISS\n\n"
-            "Responde ÚNICAMENTE con JSON (sin markdown, sin texto extra):\n"
+            f"CODE TO AUDIT:\n```{language}\n{code}\n```\n\n"
+            "Audit this code as a senior Google tech lead. Look for:\n"
+            "1. Logical or runtime bugs\n"
+            "2. Security vulnerabilities (injection, authentication, data exposure)\n"
+            "3. Performance issues (N+1, unnecessary loops, blocking calls)\n"
+            "4. Missing or insufficient error handling\n"
+            "5. Violations of SOLID / DRY / KISS principles\n\n"
+            "Respond ONLY with JSON (no markdown, no extra text):\n"
             '{"score": <0-100>, "issues": [{"severity": "critical|high|medium|low", '
             '"category": "...", "description": "...", "fix": "..."}], '
             '"suggestions": ["..."], "reasoning": "..."}'
@@ -189,8 +189,8 @@ class AuditorAgent(BaseAgent):
 
     def _parse_audit_response(self, response: str, context_type: str) -> AuditResult:
         """
-        Parsea la respuesta de la IA en un AuditResult estructurado.
-        Fallback a WARN con score=60 si el JSON es inválido.
+        Parses the AI response into a structured AuditResult.
+        Falls back to WARN with score=60 if the JSON is invalid.
         """
         try:
             # Strip markdown code fences if present
@@ -240,7 +240,7 @@ class AuditorAgent(BaseAgent):
 
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
             logger.warning(
-                "[AuditorAgent] No se pudo parsear respuesta de auditoría (%s): %s",
+                "[AuditorAgent] Could not parse audit response (%s): %s",
                 context_type,
                 exc,
             )
@@ -252,22 +252,22 @@ class AuditorAgent(BaseAgent):
                     AuditIssue(
                         severity="medium",
                         category="parse_error",
-                        description=f"No se pudo parsear la respuesta del auditor para '{context_type}'.",
-                        fix="Revisar manualmente el output.",
+                        description=f"Could not parse the auditor response for '{context_type}'.",
+                        fix="Manually review the output.",
                     )
                 ],
-                suggestions=["Revisar respuesta cruda del auditor manualmente."],
-                reasoning=f"Parse error — respuesta cruda: {response[:200]}",
+                suggestions=["Manually review the auditor's raw response."],
+                reasoning=f"Parse error — raw response: {response[:200]}",
             )
 
     # ── EXECUTE ───────────────────────────────────────────
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """
-        Punto de entrada genérico.
-        - Si el contexto contiene 'output' → audit_output
-        - Si el contexto contiene 'code' → audit_code
-        - Por defecto → audit_plan
+        Generic entry point.
+        - If the context contains 'output' → audit_output
+        - If the context contains 'code' → audit_code
+        - Otherwise → audit_plan
         """
         mission = context.get("mission", "")
 

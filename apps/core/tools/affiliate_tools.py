@@ -1,15 +1,15 @@
 """
-ARIA Affiliate Tools — Gestion de programas de afiliados.
+ARIA Affiliate Tools — Affiliate program management.
 
-Plataformas soportadas:
-- Amazon Associates (PA API v5 — requiere AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_ASSOCIATE_TAG)
-- Amazon link builder (solo tag — requiere AMAZON_ASSOCIATE_TAG)
-- ClickBank (hop links — no requiere API)
-- Hotmart (afiliados Latam — no requiere API)
-- Gumroad / LemonSqueezy (productos propios)
+Supported platforms:
+- Amazon Associates (PA API v5 — requires AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_ASSOCIATE_TAG)
+- Amazon link builder (tag only — requires AMAZON_ASSOCIATE_TAG)
+- ClickBank (hop links — no API required)
+- Hotmart (Latam affiliates — no API required)
+- Gumroad / LemonSqueezy (own products)
 
-Principio: Si una API no esta configurada, lo dice explicitamente.
-NUNCA retorna datos hardcodeados como si fueran resultados reales de busqueda.
+Principle: If an API isn't configured, say so explicitly.
+NEVER returns hardcoded data as if it were real search results.
 """
 
 from __future__ import annotations
@@ -37,24 +37,24 @@ class AffiliateTools:
 
     def build_amazon_link(self, asin: str, tag: str | None = None) -> str:
         """
-        Construye un link de afiliado Amazon usando el tag de Associates.
-        Requiere AMAZON_ASSOCIATE_TAG configurado.
+        Builds an Amazon affiliate link using the Associates tag.
+        Requires AMAZON_ASSOCIATE_TAG to be configured.
         """
         affiliate_tag = tag or getattr(settings, "AMAZON_ASSOCIATE_TAG", None)
         if not affiliate_tag:
             logger.warning(
-                "[Affiliate] AMAZON_ASSOCIATE_TAG no configurado — link sin tag de afiliado"
+                "[Affiliate] AMAZON_ASSOCIATE_TAG not configured — link without affiliate tag"
             )
             return f"https://www.amazon.com/dp/{asin}"
         return f"https://www.amazon.com/dp/{asin}?tag={affiliate_tag}"
 
     async def search_amazon_products(self, keywords: str, category: str = "All") -> dict[str, Any]:
         """
-        Busca productos en Amazon usando PA API v5.
-        Requiere: AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_ASSOCIATE_TAG
+        Searches for products on Amazon using PA API v5.
+        Requires: AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_ASSOCIATE_TAG
 
-        Si no estan configurados, retorna error explicito.
-        NO retorna datos hardcodeados como fallback.
+        If they're not configured, returns an explicit error.
+        Does NOT return hardcoded data as a fallback.
         """
         access_key = getattr(settings, "AMAZON_ACCESS_KEY", None)
         secret_key = getattr(settings, "AMAZON_SECRET_KEY", None)
@@ -71,8 +71,8 @@ class AffiliateTools:
         if missing:
             return {
                 "success": False,
-                "error": f"Amazon PA API no disponible. Faltan secrets: {', '.join(missing)}. "
-                f"Registrate en: https://affiliate-program.amazon.com/",
+                "error": f"Amazon PA API not available. Missing secrets: {', '.join(missing)}. "
+                f"Sign up at: https://affiliate-program.amazon.com/",
                 "products": [],
                 "available": False,
             }
@@ -191,15 +191,15 @@ class AffiliateTools:
 
     def build_clickbank_link(self, vendor: str, affiliate_id: str | None = None) -> dict[str, Any]:
         """
-        Construye hop link de ClickBank.
-        affiliate_id proviene de CLICKBANK_AFFILIATE_ID en secrets.
-        Si no esta configurado, lo dice explicitamente.
+        Builds a ClickBank hop link.
+        affiliate_id comes from CLICKBANK_AFFILIATE_ID in secrets.
+        If it isn't configured, say so explicitly.
         """
         cb_id = affiliate_id or getattr(settings, "CLICKBANK_AFFILIATE_ID", None)
         if not cb_id:
             return {
                 "success": False,
-                "error": "CLICKBANK_AFFILIATE_ID no configurado. Registrate en clickbank.com y agrega el ID a secrets.",
+                "error": "CLICKBANK_AFFILIATE_ID not configured. Sign up at clickbank.com and add the ID to secrets.",
                 "link": None,
             }
         link = f"https://{cb_id}.{vendor}.hop.clickbank.net/"
@@ -211,31 +211,31 @@ class AffiliateTools:
         self, product_id: str, affiliate_id: str | None = None
     ) -> dict[str, Any]:
         """
-        Construye link de afiliado Hotmart.
-        affiliate_id proviene de HOTMART_AFFILIATE_ID en secrets.
+        Builds a Hotmart affiliate link.
+        affiliate_id comes from HOTMART_AFFILIATE_ID in secrets.
         """
         hm_id = affiliate_id or getattr(settings, "HOTMART_AFFILIATE_ID", None)
         if not hm_id:
             return {
                 "success": False,
-                "error": "HOTMART_AFFILIATE_ID no configurado. Registrate en hotmart.com y agrega el ID a secrets.",
+                "error": "HOTMART_AFFILIATE_ID not configured. Sign up at hotmart.com and add the ID to secrets.",
                 "link": None,
             }
         link = f"https://go.hotmart.com/{product_id}?ap={hm_id}"
         return {"success": True, "link": link, "product_id": product_id}
 
-    # ── GUMROAD PROPIOS ───────────────────────────────────
+    # ── OWN GUMROAD PRODUCTS ───────────────────────────────
 
     async def get_own_products(self) -> dict[str, Any]:
         """
-        Obtiene los productos propios de Gumroad para generar links de afiliado.
-        Requiere GUMROAD_TOKEN.
+        Fetches your own Gumroad products to generate affiliate links.
+        Requires GUMROAD_TOKEN.
         """
         token = getattr(settings, "GUMROAD_TOKEN", None)
         if not token:
             return {
                 "success": False,
-                "error": "GUMROAD_TOKEN no configurado. Agrega el token de Gumroad a secrets.",
+                "error": "GUMROAD_TOKEN not configured. Add the Gumroad token to secrets.",
                 "products": [],
             }
         try:
@@ -268,7 +268,7 @@ class AffiliateTools:
             logger.error("[Affiliate] get_own_products error: %s", exc)
             return {"success": False, "error": str(exc), "products": []}
 
-    # ── INYECCION EN CONTENIDO ────────────────────────────
+    # ── CONTENT INJECTION ─────────────────────────────────
 
     def inject_affiliate_links(
         self,
@@ -277,8 +277,8 @@ class AffiliateTools:
         platform: str = "amazon",
     ) -> dict[str, Any]:
         """
-        Inyecta links de afiliado en contenido basado en el tema.
-        Solo inyecta links reales — si no hay credenciales, reporta cuales faltan.
+        Injects affiliate links into content based on the topic.
+        Only injects real links — if credentials are missing, reports which ones.
         """
         available_platforms: list[str] = []
         unavailable: list[str] = []
@@ -286,22 +286,22 @@ class AffiliateTools:
         if getattr(settings, "AMAZON_ASSOCIATE_TAG", None):
             available_platforms.append("amazon")
         else:
-            unavailable.append("amazon (requiere AMAZON_ASSOCIATE_TAG)")
+            unavailable.append("amazon (requires AMAZON_ASSOCIATE_TAG)")
 
         if getattr(settings, "CLICKBANK_AFFILIATE_ID", None):
             available_platforms.append("clickbank")
         else:
-            unavailable.append("clickbank (requiere CLICKBANK_AFFILIATE_ID)")
+            unavailable.append("clickbank (requires CLICKBANK_AFFILIATE_ID)")
 
         if getattr(settings, "HOTMART_AFFILIATE_ID", None):
             available_platforms.append("hotmart")
         else:
-            unavailable.append("hotmart (requiere HOTMART_AFFILIATE_ID)")
+            unavailable.append("hotmart (requires HOTMART_AFFILIATE_ID)")
 
         if not available_platforms:
             return {
                 "success": False,
-                "error": f"No hay plataformas de afiliado configuradas. Faltan: {', '.join(unavailable)}",
+                "error": f"No affiliate platforms configured. Missing: {', '.join(unavailable)}",
                 "content": content,
                 "links_injected": 0,
             }
@@ -309,20 +309,20 @@ class AffiliateTools:
         injected_content = content
         links_injected = 0
 
-        # Solo amazon tag-based (no requiere PA API, solo el tag)
+        # Amazon tag-based only (doesn't require PA API, just the tag)
         if "amazon" in available_platforms and platform in ("amazon", "all"):
             import urllib.parse
 
             tag = getattr(settings, "AMAZON_ASSOCIATE_TAG", "")
-            # No hay ASIN especifico disponible aqui (solo topic/content) —
-            # build_amazon_link("", tag) generaba un link roto (/dp/?tag=...,
-            # sin producto). Un link de busqueda con el tag es un link real
-            # que efectivamente funciona y atribuye la comision.
+            # No specific ASIN is available here (only topic/content) —
+            # build_amazon_link("", tag) used to generate a broken link (/dp/?tag=...,
+            # with no product). A search link with the tag is a real link
+            # that actually works and attributes the commission.
             search_url = f"https://www.amazon.com/s?k={urllib.parse.quote(topic)}&tag={tag}"
             cta = (
-                f"\n\n---\n*Links de afiliado: Los productos mencionados pueden encontrarse "
-                f"en [Amazon]({search_url}). "
-                f"Como afiliado de Amazon, recibo una comision por compras elegibles.*"
+                f"\n\n---\n*Affiliate links: The products mentioned can be found "
+                f"on [Amazon]({search_url}). "
+                f"As an Amazon affiliate, I earn a commission on qualifying purchases.*"
             )
             injected_content += cta
             links_injected += 1
@@ -335,12 +335,12 @@ class AffiliateTools:
             "platforms_unavailable": unavailable,
         }
 
-    # ── REPORTE DE DISPONIBILIDAD ─────────────────────────
+    # ── AVAILABILITY REPORT ────────────────────────────────
 
     def capability_report(self) -> dict[str, Any]:
         """
-        Reporta que funciones de afiliados estan disponibles y cuales no.
-        Llamar antes de usar este modulo para saber que se puede hacer.
+        Reports which affiliate functions are available and which aren't.
+        Call this before using this module to know what's possible.
         """
         amazon_tag = getattr(settings, "AMAZON_ASSOCIATE_TAG", None)
         amazon_pa = all(
@@ -368,7 +368,7 @@ class AffiliateTools:
                     ("Amazon PA API (3 keys)", amazon_pa),
                     ("CLICKBANK_AFFILIATE_ID", clickbank),
                     ("HOTMART_AFFILIATE_ID", hotmart),
-                    ("GUMROAD_TOKEN (productos propios)", gumroad),
+                    ("GUMROAD_TOKEN (own products)", gumroad),
                 ]
                 if not avail
             ],

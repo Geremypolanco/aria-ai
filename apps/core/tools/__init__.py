@@ -1,5 +1,5 @@
 """
-tools/__init__.py — Todas las herramientas de ARIA AI.
+tools/__init__.py — All of ARIA AI's tools.
 """
 
 from apps.core.tools.affiliate_tools import AffiliateTools
