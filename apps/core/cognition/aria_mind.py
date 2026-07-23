@@ -205,48 +205,48 @@ Habla como una persona real que le explica algo a alguien que le importa —cál
 - Si lo que encontraste no alcanza, dilo con honestidad y propón el siguiente paso concreto."""
 
 _HELP_TEXT = """\
-## ARIA — Capacidades disponibles
+## ARIA — Available capabilities
 
-**Búsqueda e investigación**
-- `busca [tema]` — búsqueda web en tiempo real
-- `/research [tema]` — investigación profunda con lectura de páginas
-- `/think [pregunta]` — razonamiento extendido (DeepThink)
+**Search & research**
+- `search [topic]` — real-time web search
+- `/research [topic]` — deep research with full page reading
+- `/think [question]` — extended reasoning (DeepThink)
 
-**Creación de contenido**
-- `crea un artículo sobre [tema]` — artículo SEO completo
-- `crea contenido para redes sobre [tema]` — posts optimizados por plataforma
-- `genera una imagen de [descripción]` — imagen con IA (FLUX/SDXL)
-- `crea una presentación sobre [tema]` — Reveal.js listo para proyectar
-- `crea un pitch deck para [empresa]` — presentación para inversores
+**Content creation**
+- `write an article about [topic]` — full SEO-ready article
+- `create social content about [topic]` — platform-optimized posts
+- `generate an image of [description]` — AI image (FLUX/SDXL)
+- `create a presentation about [topic]` — presentation-ready Reveal.js deck
+- `create a pitch deck for [company]` — investor-ready presentation
 
-**Código y software**
-- `construye un [tipo de app] que [hace X]` — proyecto completo con código
-- `ejecuta este código: [código]` — sandbox Python/JS
-- `analiza esta imagen: [URL]` — visión por computadora
+**Code & software**
+- `build a [type of app] that [does X]` — complete project with code
+- `run this code: [code]` — Python/JS sandbox
+- `analyze this image: [URL]` — computer vision
 
-**Agentes y automatización**
-- `/run [misión]` — ejecuta con pipeline de agentes
-- `/plan [objetivo]` — plan estratégico detallado
-- `corre el equipo de investigación sobre [tema]` — multi-agente colaborativo
-- `crea un workflow: [descripción]` — automatización multi-paso
+**Agents & automation**
+- `/run [mission]` — execute with the agent pipeline
+- `/plan [goal]` — detailed strategic plan
+- `run the research team on [topic]` — collaborative multi-agent run
+- `create a workflow: [description]` — multi-step automation
 
-**Base de conocimiento**
-- `aprende [URL o texto]` — ingesta en base de conocimiento RAG
-- `busca en mis notas: [query]` — búsqueda semántica interna
+**Knowledge base**
+- `learn [URL or text]` — ingest into the RAG knowledge base
+- `search my notes: [query]` — internal semantic search
 
-**Gestión**
-- `/goals` — lista metas activas
-- `/add_goal [meta]` — añade nueva meta persistente
-- `/status` — estado del sistema (proveedores, metas, tareas, KB)
-- `/clear` — reiniciar la conversación
-- `/audit` — auditoría del negocio
+**Management**
+- `/goals` — list active goals
+- `/add_goal [goal]` — add a new persistent goal
+- `/status` — system status (providers, goals, tasks, KB)
+- `/clear` — reset the conversation
+- `/audit` — business audit
 
 **Multimedia**
-- Adjunta una imagen (botón de adjuntar o drag & drop) para análisis visual
-- `genera música: [descripción]` — audio con MusicGen
-- `convierte a voz: [texto]` — síntesis de voz
+- Attach an image (attach button or drag & drop) for visual analysis
+- `generate music: [description]` — audio with MusicGen
+- `convert to speech: [text]` — voice synthesis
 
-Escribe cualquier pregunta o instrucción en lenguaje natural — ARIA entiende contexto y elige la herramienta correcta automáticamente.\
+Type any question or instruction in natural language — ARIA understands context and picks the right tool automatically.\
 """
 
 
