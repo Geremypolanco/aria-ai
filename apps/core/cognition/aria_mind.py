@@ -454,7 +454,7 @@ class AriaMind:
     # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
 
     async def handle(
-        self, text: str, chat_id: str, user_context: str | None = None
+        self, text: str, chat_id: str, user_context: str | None = None, is_owner: bool = False
     ) -> MindResponse:
         try:
             # Fast-path for built-in commands
@@ -462,8 +462,12 @@ class AriaMind:
             if stripped in ("/help", "/ayuda", "help", "ayuda"):
                 return MindResponse(text=_HELP_TEXT)
             if stripped in ("/clear", "/limpiar", "/reset"):
-                return MindResponse(text="Conversación reiniciada. ¿En qué te ayudo?", silent=False)
+                return MindResponse(text="Conversation reset. How can I help?", silent=False)
             if stripped in ("/status", "/estado", "status"):
+                if not is_owner:
+                    return MindResponse(
+                        text="That's an internal diagnostic command — not available on this account."
+                    )
                 return await self._build_status()
 
             # Deterministic fast-path for image generation.

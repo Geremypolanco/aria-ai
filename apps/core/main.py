@@ -1677,7 +1677,10 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
         from apps.core.cognition.aria_mind import get_aria_mind
 
         resp = await get_aria_mind().handle(
-            req.message, req.session_id or "default", user_context=user_context or None
+            req.message,
+            req.session_id or "default",
+            user_context=user_context or None,
+            is_owner=_is_owner_user(request),
         )
         elapsed = int((time.time() - start) * 1000)
         media_type = None
