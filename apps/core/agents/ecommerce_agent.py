@@ -351,7 +351,12 @@ Genera el JSON con este formato exacto:
             engine = ShopifyEngine(shop_name, access_token)
             product_id = engine.create_optimized_product(product_data)
             if product_id:
-                shop_url = f"https://{settings.SHOPIFY_SHOP_NAME}.myshopify.com/products/"
+                # Use the same resolved shop_name as above — building this
+                # from settings.SHOPIFY_SHOP_NAME directly produced
+                # "https://None.myshopify.com/..." whenever only
+                # SHOPIFY_URL was configured (the check a few lines up
+                # already falls back to SHOPIFY_SHOP_NAME when needed).
+                shop_url = f"https://{shop_name}.myshopify.com/products/"
                 logger.info(f"[EcommerceAgent] Listing creado en Shopify: {product_data['title']}")
                 return {
                     "success": True,
@@ -371,7 +376,13 @@ Genera el JSON con este formato exacto:
         try:
             from apps.core.integrations.shopify_engine import ShopifyEngine
 
-            engine = ShopifyEngine(settings.SHOPIFY_SHOP_NAME, settings.SHOPIFY_ACCESS_TOKEN)
+            shop_name = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
+            access_token = (
+                settings.SHOPIFY_ADMIN_TOKEN
+                or settings.SHOPIFY_AUTOMATION_TOKEN
+                or settings.SHOPIFY_ACCESS_TOKEN
+            )
+            engine = ShopifyEngine(shop_name, access_token)
 
             products = engine.get_all_products()
             orders_report = engine.get_orders_report()

@@ -122,7 +122,8 @@ class SalesAgent(BaseAgent):
                 f"Producto: {name} ({product_type})\nContexto: {mission}\n\n"
                 f"Escribe: headline (10 words), subheadline (20 words), "
                 f"description (150 words), 5 bullet benefits, CTA button text, "
-                f"FAQ (3 preguntas), y testimonio fabricado realista."
+                f"FAQ (3 preguntas). No incluyas testimonios ni cifras de clientes — "
+                f"no existen datos reales de clientes todavía; no los inventes."
             ),
         )
         return {"copy": copy, "product": name}

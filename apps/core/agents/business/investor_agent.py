@@ -48,10 +48,27 @@ class InvestorAgent(BaseAgent):
         pitches = await self._generate_pitches(investors, target_amount)
         results["outreach_campaign"] = pitches
 
-        # 3. Ejecutar Outreach si está activado
+        # 3. Ejecutar Outreach si está activado — SIEMPRE requiere aprobación
+        # humana explícita: _research_investors() no es investigación en
+        # tiempo real (ver su docstring), así que un outreach automático
+        # enviaría mensajes personalizados dirigidos a firmas reales
+        # (Sequoia, Y Combinator, etc.) redactados a partir de una lista
+        # fija de ejemplo, no de verificación real. Nunca se auto-aprueba
+        # sin importar `auto_outreach` — el dueño debe confirmar por Telegram.
         if context.get("auto_outreach", False):
-            outreach_results = await self._execute_outreach(pitches)
-            results["outreach_results"] = outreach_results
+            approval = await self.request_human_approval(
+                action="Enviar outreach de inversión en LinkedIn",
+                details=(
+                    f"Pitches listos para: {', '.join(p['investor'] for p in pitches)}. "
+                    "Nota: la lista de inversores es un ejemplo de referencia, no "
+                    "investigación verificada — revisar contenido antes de aprobar."
+                ),
+            )
+            if approval.get("success") and approval.get("status") != "pending":
+                outreach_results = await self._execute_outreach(pitches)
+                results["outreach_results"] = outreach_results
+            else:
+                results["outreach_results"] = approval
 
         results["summary"] = (
             f"Encontrados {len(investors)} inversionistas potenciales. Campaña de outreach lista."
@@ -59,13 +76,41 @@ class InvestorAgent(BaseAgent):
         return results
 
     async def _research_investors(self, niche: str) -> list[dict]:
-        """Simulación de búsqueda profunda de inversores (usaría web_search en producción)."""
+        """Placeholder de ejemplo — NO es investigación real ni verificada.
+
+        Antes esto se devolvía como si fuera el resultado de una búsqueda,
+        con nombres de firmas reales (Sequoia, Y Combinator...), y se usaba
+        para generar pitches personalizados dirigidos a esas firmas por
+        nombre. _execute() ahora bloquea cualquier outreach real detrás de
+        aprobación humana explícita precisamente porque estos datos no son
+        investigación verificada — ver la nota en request_human_approval().
+        """
         # En una ejecución real, esto llamaría a AriaMind.execute_tool("web_search", ...)
         return [
-            {"name": "TechStars AI", "type": "Accelerator", "focus": "AI/ML"},
-            {"name": "Y Combinator", "type": "Accelerator", "focus": "General Tech"},
-            {"name": "Sequoia Capital", "type": "VC", "focus": "High Growth"},
-            {"name": "AngelList AI Syndicate", "type": "Angel Group", "focus": "Early Stage AI"},
+            {
+                "name": "TechStars AI",
+                "type": "Accelerator",
+                "focus": "AI/ML",
+                "verified": False,
+            },
+            {
+                "name": "Y Combinator",
+                "type": "Accelerator",
+                "focus": "General Tech",
+                "verified": False,
+            },
+            {
+                "name": "Sequoia Capital",
+                "type": "VC",
+                "focus": "High Growth",
+                "verified": False,
+            },
+            {
+                "name": "AngelList AI Syndicate",
+                "type": "Angel Group",
+                "focus": "Early Stage AI",
+                "verified": False,
+            },
         ]
 
     async def _generate_pitches(self, investors: list[dict], amount: str) -> list[dict]:
@@ -74,8 +119,10 @@ class InvestorAgent(BaseAgent):
             pitch = await self.think(
                 system=self.IDENTITY,
                 user=f"Redacta un mensaje de LinkedIn personalizado para {inv['name']} ({inv['type']}). "
-                f"Estamos buscando {amount} para escalar Aria AI, una IA autónoma que genera revenue real en Shopify. "
-                f"Enfócate en tracción real y ROI inmediato.",
+                f"Estamos buscando {amount} para escalar Aria AI, una IA autónoma enfocada en generar "
+                f"revenue en Shopify. No inventes cifras de tracción, clientes o ingresos específicos — "
+                f"si no tienes datos verificados a mano, habla del producto y la visión sin afirmar "
+                f"métricas concretas no confirmadas.",
             )
             pitches.append({"investor": inv["name"], "pitch": pitch})
         return pitches

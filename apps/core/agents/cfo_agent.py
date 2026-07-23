@@ -113,12 +113,13 @@ class CFOAgent(BaseAgent):
                     data = res.json().get("product", {})
                     url = data.get("short_url", "")
                     logger.info("[CFOAgent] Publicado en Gumroad: %s", url)
-                    await self._register_revenue(
-                        revenue_type="digital_product",
-                        amount=ebook.get("price_usd", 9.99),
-                        product_name=ebook["title"],
-                        platform="gumroad",
-                    )
+                    # Do NOT register revenue here — this only confirms the
+                    # LISTING was created (HTTP 201), not that anyone bought
+                    # it. Recording ebook["price_usd"] as revenue at this
+                    # point fabricates a sale that hasn't happened, for every
+                    # single product published. Real revenue must come from
+                    # a Gumroad sale webhook/confirmation, not listing
+                    # creation.
                     return {"success": True, "url": url, "product_id": data.get("id")}
                 logger.warning("[CFOAgent] Gumroad error %d: %s", res.status_code, res.text[:200])
                 return {"success": False, "error": f"HTTP {res.status_code}"}
