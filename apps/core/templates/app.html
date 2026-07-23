@@ -146,8 +146,8 @@ textarea{field-sizing:content}
 .micbtn:hover{background:var(--soft)}
 .micbtn.listening{background:var(--rose-soft);border-color:#f6c9d4;color:#b3123a;animation:bl 1.1s ease-in-out infinite}
 .micbtn:disabled{opacity:.4;cursor:not-allowed}
-.composer-row{display:flex;align-items:center;gap:10px;padding:9px 4px 0}
-.deep-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.15s}
+.composer-row{display:flex;align-items:center;gap:10px;padding:9px 4px 0;flex-wrap:wrap}
+.deep-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.15s;white-space:nowrap}
 .deep-chip.on{background:var(--neon-soft);border-color:#9fe9c6;color:var(--green-ink)}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 @media(max-width:760px){.composer{padding-bottom:calc(70px + env(safe-area-inset-bottom))}}
@@ -170,7 +170,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .wfmode{display:flex;align-items:center;gap:10px;padding:2px 6px 4px}
 .wf-t{cursor:pointer}
 .wf-t.on{background:var(--neon-soft);border-color:#9fe9c6;color:var(--green-ink);font-weight:700}
-.wfhint{font-size:11.5px;color:var(--muted)}
+.wfhint{font-size:11.5px;color:var(--muted);white-space:nowrap}
 .skills{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 6px 4px;margin-top:4px;border-top:1px dashed var(--line)}
 .skills-lbl{font-size:12px;color:var(--muted);font-weight:600;width:100%}
 .skill{display:inline-flex;align-items:center;gap:6px;border:1px solid #cbefda;background:var(--neon-soft);border-radius:10px;padding:7px 12px;font-size:12.5px;color:var(--green-ink);font-weight:600;transition:.15s;cursor:pointer}
@@ -402,7 +402,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .botbar .t svg{width:21px;height:21px}
 .botbar .t:active{color:var(--green-ink)}
 .botbar .fab{width:52px;height:52px;margin-top:-20px;border-radius:16px;background:var(--neon);color:#04150d;box-shadow:var(--glow);display:grid;place-items:center;border:3px solid var(--soft)}
-@media(max-width:1023px){.botbar{display:flex}.scroll{padding-bottom:84px}.supfab{display:none!important}.suppanel{bottom:74px}}
+@media(max-width:1023px){.botbar{display:flex}.scroll{padding-bottom:84px}.supfab{display:none!important}.suppanel{bottom:74px}.side{padding-bottom:calc(62px + env(safe-area-inset-bottom))}}
 </style>
 </head>
 <body>
@@ -642,7 +642,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
         <div id="emptyMissions" class="chat-empty">
           <div class="ce-mark"><svg width="30" height="30" aria-hidden="true"><use href="#ariaMark"/></svg></div>
           <h1>Good <span id="tod">day</span>, <span class="g" id="greetName">__FIRST__</span></h1>
-          <p class="ce-sub">Give ARIA a topic and get a week of content — researched, written, designed, and ready to publish. Watch it work in real time.</p>
+          <p class="ce-sub">Give ARIA the job — content, research, revenue reports, store listings. It picks the tools and finishes it. Watch it work in real time.</p>
           <div id="usageCard" class="usage hidden">
             <div class="usage-h">Your Deep Workflow usage</div>
             <div class="usage-grid">
@@ -654,8 +654,8 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
           </div>
           <div class="quicks">
             <button onclick="quickGoal(this)" class="quick">Turn a topic into a week of posts</button>
-            <button onclick="quickGoal(this)" class="quick">Write a LinkedIn post from my blog</button>
-            <button onclick="quickGoal(this)" class="quick">Make a hero image for my post</button>
+            <button onclick="quickGoal(this)" class="quick">Summarize this month's Stripe revenue</button>
+            <button onclick="quickGoal(this)" class="quick">List a new product on Shopify</button>
           </div>
           <div class="skills" id="skillRow">
             <span class="skills-lbl">Or let ARIA run a full workflow end to end:</span>
@@ -826,9 +826,9 @@ function speakText(text){
 const SKILLS = [
   {name:'A week of content', prompt:'Give me a full week of content on {topic} for founders and creators. Research what is trending this week first, then produce: 5 LinkedIn posts (each with a strong hook and the full copy), 3 short-form video scripts, and a hero image concept for each — ready to publish.'},
   {name:'Blog to posts', prompt:'Turn this into a week of content: {url or pasted text}. Pull the strongest ideas and write 5 LinkedIn posts (hook + full copy) and 3 short captions, matched to the original tone. Ready to publish.'},
-  {name:'Content calendar', prompt:'Create a 7-day content calendar for {brand} on LinkedIn and Instagram: for each day give the hook, the full post copy, and a visual idea. Match the tone to {audience}.'},
-  {name:'Launch reel', prompt:'Research the top trends in {topic} this week and produce a short-form launch reel: a tight script, an on-screen caption, a hook, and a hero image concept — ready to shoot or generate.'},
-  {name:'Repurpose', prompt:'Repurpose {content} into every format: a LinkedIn post, an X thread, a short video script, an Instagram caption, and a hero image concept — each tuned to the platform while keeping one consistent message.'},
+  {name:'Revenue report', prompt:'Analyze {timeframe} Stripe revenue and churn, then produce a one-page report with the 3 biggest opportunities and a clear recommendation for what to fix first.'},
+  {name:'List a product', prompt:'Create and publish a new Shopify product listing for {product}: title, description, images, pricing, and inventory — ready to go live.'},
+  {name:'Research brief', prompt:'Research {topic} in depth: gather the best current sources, compare the top options, and produce a one-page brief with a clear recommendation.'},
   {name:'Launch plan', prompt:'Design and validate a complete go-to-market launch plan for {product}: positioning and ideal customer, three pricing tiers with rationale, and a 2-week launch sequence across the right channels.'},
 ];
 function renderSkills(){
@@ -1274,7 +1274,7 @@ function obShow(){
     document.getElementById('obWorkOtherWrap').classList.toggle('hidden', obWork!=='Other');
   });
   document.querySelectorAll('#obGoals .chip2').forEach(c=>c.onclick=()=>{ selSync(c, !c.classList.contains('sel')); const v=c.dataset.v; obGoals.has(v)?obGoals.delete(v):obGoals.add(v); });
-  document.querySelectorAll('#obPlans .plan').forEach(c=>c.onclick=()=>{ document.querySelectorAll('#obPlans .plan').forEach(x=>selSync(x,false)); selSync(c,true); obPlan=c.dataset.v; });
+  document.querySelectorAll('#obPlans .plan').forEach(c=>c.onclick=()=>{ document.querySelectorAll('#obPlans .plan').forEach(x=>selSync(x,false)); selSync(c,true); obPlan=c.dataset.v; obRender(); });
   document.getElementById('ov').classList.remove('hidden'); document.getElementById('ov').classList.add('flex');
   setTimeout(()=>document.getElementById('obName').focus(),120);
 }
