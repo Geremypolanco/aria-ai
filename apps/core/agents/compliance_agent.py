@@ -202,12 +202,17 @@ class ComplianceAgent(BaseAgent):
 
             ai = get_ai_client()
             if not ai:
+                # A compliance gate for costed/high-impact actions (delete,
+                # deploy, publish, send_bulk, purchase) must fail CLOSED when
+                # it can't actually review — auto-approving "provisionally"
+                # defeats the entire point of gating these actions.
+                self._rejected_count += 1
                 return {
                     "success": True,
-                    "approved": True,
-                    "risk_level": "MEDIUM",
-                    "reason": "IA no disponible para revision — aprobado provisionalmente",
-                    "needs_human_review": amount_usd > 50,
+                    "approved": False,
+                    "risk_level": "HIGH",
+                    "reason": "IA no disponible para revision — accion bloqueada, requiere aprobacion humana",
+                    "needs_human_review": True,
                 }
 
             cost_str = f"${amount_usd:.2f} USD"
@@ -251,12 +256,15 @@ class ComplianceAgent(BaseAgent):
         except Exception as exc:
             logger.error("[Compliance] ai_review error: %s", exc)
 
-        self._approved_count += 1
+        # Same fail-closed rule as the "IA no disponible" branch above: a
+        # broken review must block the action, not wave it through.
+        self._rejected_count += 1
         return {
             "success": True,
-            "approved": True,
-            "risk_level": "MEDIUM",
-            "reason": "Error en revision IA — aprobado provisionalmente",
+            "approved": False,
+            "risk_level": "HIGH",
+            "reason": "Error en revision IA — accion bloqueada, requiere aprobacion humana",
+            "needs_human_review": True,
         }
 
     # ══════════════════════════════════════════════════════════════
