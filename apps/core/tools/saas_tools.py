@@ -1,5 +1,5 @@
 """
-saas_tools.py — Gestión de plataformas SaaS (Notion, Vercel) para ARIA AI.
+saas_tools.py — SaaS platform management (Notion, Vercel) for ARIA AI.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ logger = logging.getLogger("aria.saas_tools")
 
 
 class NotionTools:
-    """Gestión de espacios de trabajo en Notion."""
+    """Notion workspace management."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
@@ -35,7 +35,7 @@ class NotionTools:
 
     async def list_pages(self) -> dict[str, Any]:
         if not self._ok():
-            return {"success": False, "error": "NOTION_TOKEN no configurado"}
+            return {"success": False, "error": "NOTION_TOKEN not configured"}
         try:
             res = await self._http.post(
                 "https://api.notion.com/v1/search",
@@ -53,7 +53,7 @@ class NotionTools:
                             "title": p.get("properties", {})
                             .get("title", {})
                             .get("title", [{}])[0]
-                            .get("plain_text", "Sin título"),
+                            .get("plain_text", "Untitled"),
                         }
                         for p in pages
                     ],
@@ -64,7 +64,7 @@ class NotionTools:
 
     async def create_page(self, parent_id: str, title: str, content: str = "") -> dict[str, Any]:
         if not self._ok():
-            return {"success": False, "error": "NOTION_TOKEN no configurado"}
+            return {"success": False, "error": "NOTION_TOKEN not configured"}
         try:
             body = {
                 "parent": {"page_id": parent_id},
@@ -92,7 +92,7 @@ class NotionTools:
 
 
 class VercelTools:
-    """Gestión de despliegues y proyectos en Vercel."""
+    """Vercel deployment and project management."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
@@ -104,7 +104,7 @@ class VercelTools:
 
     async def list_projects(self) -> dict[str, Any]:
         if not self._ok():
-            return {"success": False, "error": "VERCEL_TOKEN no configurado"}
+            return {"success": False, "error": "VERCEL_TOKEN not configured"}
         try:
             res = await self._http.get("https://api.vercel.com/v9/projects", headers=self._headers)
             if res.status_code == 200:
@@ -121,7 +121,7 @@ class VercelTools:
 
     async def get_deployment_status(self, project_id: str) -> dict[str, Any]:
         if not self._ok():
-            return {"success": False, "error": "VERCEL_TOKEN no configurado"}
+            return {"success": False, "error": "VERCEL_TOKEN not configured"}
         try:
             res = await self._http.get(
                 "https://api.vercel.com/v6/deployments",
@@ -131,7 +131,7 @@ class VercelTools:
             if res.status_code == 200:
                 deps = res.json().get("deployments", [])
                 if not deps:
-                    return {"success": False, "error": "No hay despliegues"}
+                    return {"success": False, "error": "No deployments found"}
                 return {"success": True, "status": deps[0]["state"], "url": deps[0]["url"]}
             return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:

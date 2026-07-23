@@ -1,12 +1,12 @@
 """
-multimedia_engine.py — Procesamiento Multimedia para ARIA AI.
+multimedia_engine.py — Multimedia Processing for ARIA AI.
 
-Integra Whisper y ComfyUI para:
-  - Transcripción de audio y video (Whisper)
-  - Generación y edición avanzada de imágenes (ComfyUI / Stable Diffusion)
-  - Creación de activos visuales para campañas
+Integrates Whisper and ComfyUI for:
+  - Audio and video transcription (Whisper)
+  - Advanced image generation and editing (ComfyUI / Stable Diffusion)
+  - Creation of visual assets for campaigns
 
-Referencia:
+Reference:
   - Whisper: https://github.com/openai/whisper
   - ComfyUI: https://github.com/comfyanonymous/ComfyUI
 """
@@ -17,15 +17,15 @@ import logging
 
 logger = logging.getLogger("aria.multimedia")
 
-# ── Whisper Import con fallback ──────────────────────────────────────────────
+# ── Whisper import with fallback ──────────────────────────────────────────────
 try:
     import whisper
 
     WHISPER_AVAILABLE = True
-    logger.info("[Whisper] Librería cargada correctamente.")
+    logger.info("[Whisper] Library loaded successfully.")
 except ImportError:
     WHISPER_AVAILABLE = False
-    logger.warning("[Whisper] whisper no instalado.")
+    logger.warning("[Whisper] whisper not installed.")
 
 # ── ComfyUI API Client ───────────────────────────────────────────────────────
 try:
@@ -38,8 +38,8 @@ except ImportError:
 
 class AriaMultimediaEngine:
     """
-    Motor Multimedia de ARIA.
-    Gestiona la generación y procesamiento de activos visuales y auditivos.
+    ARIA's Multimedia Engine.
+    Manages generation and processing of visual and audio assets.
     """
 
     def __init__(self, comfy_url: str = "http://localhost:8188") -> None:
@@ -47,9 +47,9 @@ class AriaMultimediaEngine:
         self._whisper_model = None
 
     async def transcribe_audio(self, file_path: str) -> str:
-        """Transcribe un archivo de audio usando Whisper."""
+        """Transcribes an audio file using Whisper."""
         if not WHISPER_AVAILABLE:
-            return "Whisper no disponible para transcripción."
+            return "Whisper not available for transcription."
 
         try:
             if self._whisper_model is None:
@@ -58,17 +58,17 @@ class AriaMultimediaEngine:
             result = self._whisper_model.transcribe(file_path)
             return result.get("text", "")
         except Exception as exc:
-            logger.error("[Multimedia] Error en Whisper: %s", exc)
-            return f"Error transcribiendo audio: {exc}"
+            logger.error("[Multimedia] Whisper error: %s", exc)
+            return f"Error transcribing audio: {exc}"
 
     async def generate_image(self, prompt: str, output_path: str):
-        """Genera una imagen usando la API de ComfyUI."""
+        """Generates an image using the ComfyUI API."""
         if not HTTPX_AVAILABLE:
-            return "HTTPX no disponible para conectar con ComfyUI."
+            return "HTTPX not available to connect with ComfyUI."
 
-        logger.info("[Multimedia] Generando imagen con ComfyUI: %s", prompt)
-        # Aquí se enviaría el workflow JSON a la API de ComfyUI
-        return f"Imagen generada y guardada en {output_path} (Simulado ComfyUI)."
+        logger.info("[Multimedia] Generating image with ComfyUI: %s", prompt)
+        # This is where the workflow JSON would be sent to the ComfyUI API
+        return f"Image generated and saved to {output_path} (Simulated ComfyUI)."
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ _multimedia_instance: AriaMultimediaEngine | None = None
 
 
 def get_multimedia_engine() -> AriaMultimediaEngine:
-    """Retorna el singleton del motor multimedia."""
+    """Returns the multimedia engine singleton."""
     global _multimedia_instance
     if _multimedia_instance is None:
         _multimedia_instance = AriaMultimediaEngine()

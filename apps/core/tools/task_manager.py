@@ -123,7 +123,7 @@ class TaskManager:
         await self._queue.put((priority, time.monotonic(), task_id, coro_factory))
         logger.info("[TaskManager] Queued task %s: %s", task_id, name)
 
-        await self._notify_progress(record, "queued", f"Tarea '{name}' en cola (ID: {task_id})")
+        await self._notify_progress(record, "queued", f"Task '{name}' queued (ID: {task_id})")
         return task_id
 
     def get_task(self, task_id: str) -> TaskRecord | None:
@@ -163,12 +163,12 @@ class TaskManager:
 
                 record.status = TaskStatus.RUNNING
                 record.started_at = datetime.now(UTC).isoformat()
-                await self._notify_progress(record, "running", f"▶️ Ejecutando: {record.name}")
+                await self._notify_progress(record, "running", f"▶️ Running: {record.name}")
 
                 try:
                     result = await coro_factory()
                     record.status = TaskStatus.DONE
-                    record.result = str(result)[:2000] if result else "Completado"
+                    record.result = str(result)[:2000] if result else "Completed"
                     record.completed_at = datetime.now(UTC).isoformat()
                     await self._notify_completion(record)
 
@@ -208,11 +208,11 @@ class TaskManager:
             pass
 
     async def _notify_completion(self, record: TaskRecord) -> None:
-        msg = f"✅ **{record.name}** completada\n{record.result or ''}"
+        msg = f"✅ **{record.name}** completed\n{record.result or ''}"
         await self._deliver(record, msg)
 
     async def _notify_failure(self, record: TaskRecord) -> None:
-        msg = f"❌ **{record.name}** falló: {record.error}"
+        msg = f"❌ **{record.name}** failed: {record.error}"
         await self._deliver(record, msg)
 
     async def _deliver(self, record: TaskRecord, message: str) -> None:

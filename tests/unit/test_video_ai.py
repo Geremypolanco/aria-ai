@@ -39,7 +39,7 @@ def test_not_available_without_tokens():
 
 async def test_no_provider_returns_error():
     out = await AIVideoProvider().generate("a dog")
-    assert out["success"] is False and "Ning" in out["error"]
+    assert out["success"] is False and "No AI video provider" in out["error"]
 
 
 async def test_replicate_succeeds_and_downloads(monkeypatch):

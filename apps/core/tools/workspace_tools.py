@@ -1,6 +1,6 @@
 """
-workspace_tools.py — Gestión de Google Workspace (Gmail, Calendar, Drive) para ARIA AI.
-Requiere GOOGLE_API_KEY con los scopes correspondientes o OAuth2.
+workspace_tools.py — Google Workspace management (Gmail, Calendar, Drive) for ARIA AI.
+Requires GOOGLE_API_KEY with the corresponding scopes, or OAuth2.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ logger = logging.getLogger("aria.workspace_tools")
 
 
 class WorkspaceTools:
-    """Herramientas de productividad de Google Workspace."""
+    """Google Workspace productivity tools."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
@@ -30,7 +30,7 @@ class WorkspaceTools:
         self, query: str = "is:unread", max_results: int = 10
     ) -> dict[str, Any]:
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {"key": self._key, "q": query, "maxResults": max_results}
             res = await self._http.get(
@@ -46,7 +46,7 @@ class WorkspaceTools:
     # ── CALENDAR ──────────────────────────────────────────────────
     async def calendar_list_events(self, max_results: int = 10) -> dict[str, Any]:
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {
                 "key": self._key,
@@ -76,7 +76,7 @@ class WorkspaceTools:
     # ── DRIVE ─────────────────────────────────────────────────────
     async def drive_list_files(self, query: str = "", max_results: int = 10) -> dict[str, Any]:
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {
                 "key": self._key,

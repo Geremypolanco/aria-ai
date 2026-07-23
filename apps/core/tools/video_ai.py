@@ -56,7 +56,7 @@ class AIVideoProvider:
                 return r
             return r  # surface fal's error
 
-        return {"success": False, "error": rep_err or "Ningún proveedor de video IA configurado"}
+        return {"success": False, "error": rep_err or "No AI video provider configured"}
 
     # ── helpers ───────────────────────────────────────────────────
     @staticmethod
@@ -77,7 +77,7 @@ class AIVideoProvider:
                 "video_base64": base64.b64encode(raw).decode(),
                 "content_type": "video/mp4",
                 "provider": provider,
-                "description": f"Footage IA generado: {prompt}",
+                "description": f"AI-generated footage: {prompt}",
             }
         return {
             "success": True,
@@ -125,7 +125,7 @@ class AIVideoProvider:
                     else (out if isinstance(out, str) else None)
                 )
                 if not vurl:
-                    return {"success": False, "error": "replicate sin salida de video"}
+                    return {"success": False, "error": "replicate: no video output"}
                 raw = await self._download(c, vurl)
                 return self._ok(raw, vurl, "replicate", prompt)
         except Exception as exc:  # noqa: BLE001
@@ -149,7 +149,7 @@ class AIVideoProvider:
                 data = r.json()
                 vurl = (data.get("video") or {}).get("url") or data.get("url")
                 if not vurl:
-                    return {"success": False, "error": "fal.ai sin URL de video"}
+                    return {"success": False, "error": "fal.ai: no video URL"}
                 raw = await self._download(c, vurl)
                 return self._ok(raw, vurl, "fal", prompt)
         except Exception as exc:  # noqa: BLE001

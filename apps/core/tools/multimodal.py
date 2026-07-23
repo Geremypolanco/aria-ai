@@ -1,14 +1,14 @@
 """
-multimodal.py — Capacidades multimodales de ARIA AI.
+multimodal.py — Multimodal capabilities for ARIA AI.
 
-Inspirado en Gemini Omni:
-  - Análisis de imágenes con texto (imagen + pregunta → respuesta)
-  - Edición de imagen por instrucción natural ("quita el fondo", "hazlo más brillante")
-  - Descripción y análisis de video (frame sampling)
-  - OCR: extrae texto de imágenes
-  - Análisis de documentos/diagramas
+Inspired by Gemini Omni:
+  - Image analysis with text (image + question → answer)
+  - Image editing via natural instruction ("remove the background", "make it brighter")
+  - Video description and analysis (frame sampling)
+  - OCR: extracts text from images
+  - Document/diagram analysis
 
-Usa Claude (vision) para análisis y HF para transformaciones.
+Uses Claude (vision) for analysis and HF for transformations.
 """
 
 from __future__ import annotations
@@ -27,25 +27,25 @@ logger = logging.getLogger("aria.multimodal")
 
 class MultimodalEngine:
     """
-    Motor multimodal de ARIA.
-    Analiza imágenes, videos, y transforma contenido visual por instrucción.
+    ARIA's multimodal engine.
+    Analyzes images and videos, and transforms visual content via instruction.
     """
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=60.0)
 
-    # ── ANÁLISIS DE IMAGEN ────────────────────────────────────────────────
+    # ── IMAGE ANALYSIS ────────────────────────────────────────────────
 
     async def analyze_image(
         self,
         image_url: str = "",
         image_bytes: bytes = b"",
-        question: str = "Describe esta imagen en detalle.",
+        question: str = "Describe this image in detail.",
         language: str = "es",
     ) -> dict[str, Any]:
         """
-        Analiza una imagen con Claude Vision.
-        Acepta URL o bytes directos.
+        Analyzes an image with Claude Vision.
+        Accepts a URL or raw bytes.
         """
         try:
             from apps.core.tools.ai_client import get_ai_client
@@ -78,42 +78,42 @@ class MultimodalEngine:
             return {"success": False, "error": str(exc)}
 
     async def extract_text(self, image_url: str = "", image_bytes: bytes = b"") -> dict[str, Any]:
-        """OCR: extrae texto visible en una imagen."""
+        """OCR: extracts visible text from an image."""
         return await self.analyze_image(
             image_url=image_url,
             image_bytes=image_bytes,
-            question="Extrae TODO el texto visible en esta imagen, exactamente como aparece, preservando estructura y formato.",
+            question="Extract ALL visible text in this image, exactly as it appears, preserving structure and formatting.",
         )
 
     async def analyze_chart(self, image_url: str = "", image_bytes: bytes = b"") -> dict[str, Any]:
-        """Analiza gráficas, tablas y diagramas."""
+        """Analyzes charts, tables, and diagrams."""
         return await self.analyze_image(
             image_url=image_url,
             image_bytes=image_bytes,
             question=(
-                "Analiza este gráfico/tabla/diagrama. Extrae: "
-                "1) Tipo de visualización, "
-                "2) Datos clave y valores, "
-                "3) Tendencias o patrones, "
-                "4) Conclusiones principales."
+                "Analyze this chart/table/diagram. Extract: "
+                "1) Visualization type, "
+                "2) Key data and values, "
+                "3) Trends or patterns, "
+                "4) Main conclusions."
             ),
         )
 
     async def analyze_document(
         self, image_url: str = "", image_bytes: bytes = b""
     ) -> dict[str, Any]:
-        """Analiza documentos, capturas de pantalla, recibos, etc."""
+        """Analyzes documents, screenshots, receipts, etc."""
         return await self.analyze_image(
             image_url=image_url,
             image_bytes=image_bytes,
             question=(
-                "Analiza este documento. Extrae: "
-                "título, fecha, partes/secciones, información clave, "
-                "y cualquier dato importante (números, nombres, fechas, importes)."
+                "Analyze this document. Extract: "
+                "title, date, parties/sections, key information, "
+                "and any important data (numbers, names, dates, amounts)."
             ),
         )
 
-    # ── EDICIÓN DE IMAGEN POR INSTRUCCIÓN ────────────────────────────────
+    # ── IMAGE EDITING VIA INSTRUCTION ────────────────────────────────
 
     async def edit_image(
         self,
@@ -122,13 +122,13 @@ class MultimodalEngine:
         instruction: str = "",
     ) -> dict[str, Any]:
         """
-        Edita imagen por instrucción en lenguaje natural.
-        Usa InstructPix2Pix de HF como motor de edición.
+        Edits an image via a natural-language instruction.
+        Uses HF's InstructPix2Pix as the editing engine.
         """
         from apps.core.config import settings
 
         if not settings.hf_key:
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
 
         try:
             if image_url and not image_bytes:
@@ -172,11 +172,11 @@ class MultimodalEngine:
     async def remove_background(
         self, image_url: str = "", image_bytes: bytes = b""
     ) -> dict[str, Any]:
-        """Elimina el fondo de una imagen."""
+        """Removes the background from an image."""
         from apps.core.config import settings
 
         if not settings.hf_key:
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
 
         try:
             if image_url and not image_bytes:
@@ -199,17 +199,17 @@ class MultimodalEngine:
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    # ── ANÁLISIS DE VIDEO ─────────────────────────────────────────────────
+    # ── VIDEO ANALYSIS ─────────────────────────────────────────────────
 
     async def analyze_video_url(
         self,
         video_url: str,
-        question: str = "Describe este video en detalle.",
+        question: str = "Describe this video in detail.",
         max_frames: int = 4,
     ) -> dict[str, Any]:
         """
-        Analiza un video descargando frames clave y analizando cada uno con Claude Vision.
-        Combina los análisis en una descripción coherente.
+        Analyzes a video by downloading key frames and analyzing each one with Claude Vision.
+        Combines the analyses into a coherent description.
         """
         try:
             # Download video
@@ -228,7 +228,7 @@ class MultimodalEngine:
     async def analyze_video_bytes(
         self,
         video_bytes: bytes,
-        question: str = "Describe este video en detalle.",
+        question: str = "Describe this video in detail.",
         max_frames: int = 4,
     ) -> dict[str, Any]:
         """Extract frames from video bytes and analyze with vision."""
@@ -238,7 +238,7 @@ class MultimodalEngine:
             )
 
             if not frames:
-                return {"success": False, "error": "No se pudieron extraer frames del video"}
+                return {"success": False, "error": "Could not extract frames from the video"}
 
             # Analyze each frame
             tasks = [
@@ -255,7 +255,7 @@ class MultimodalEngine:
             ]
 
             if not analyses:
-                return {"success": False, "error": "No se pudo analizar ningún frame"}
+                return {"success": False, "error": "Could not analyze any frame"}
 
             # Synthesize into coherent description
             from apps.core.tools.ai_client import AIModel, get_ai_client
@@ -263,16 +263,16 @@ class MultimodalEngine:
             client = get_ai_client()
             synthesis = await client.complete(
                 model=AIModel.FAST,
-                system="Eres un analista de video. Sintetiza los análisis de frames en una descripción coherente y fluida del video completo.",
+                system="You are a video analyst. Synthesize the frame analyses into a coherent, fluid description of the whole video.",
                 user=(
-                    f"Análisis de {len(analyses)} frames de video:\n\n"
+                    f"Analysis of {len(analyses)} video frames:\n\n"
                     + "\n\n".join(f"Frame {i+1}: {a}" for i, a in enumerate(analyses))
-                    + f"\n\nPregunta original: {question}\n\nSintetiza en una respuesta completa."
+                    + f"\n\nOriginal question: {question}\n\nSynthesize into a complete answer."
                 ),
             )
 
             if not synthesis.success:
-                return {"success": False, "error": synthesis.error or "Síntesis de video falló"}
+                return {"success": False, "error": synthesis.error or "Video synthesis failed"}
 
             return {
                 "success": True,
@@ -332,17 +332,17 @@ class MultimodalEngine:
         self, image_url: str = "", image_bytes: bytes = b""
     ) -> dict[str, Any]:
         """
-        Convierte un sketch/boceto en una descripción detallada para generación de imagen.
-        Útil para convertir ideas visuales en prompts.
+        Converts a sketch into a detailed description for image generation.
+        Useful for turning visual ideas into prompts.
         """
         return await self.analyze_image(
             image_url=image_url,
             image_bytes=image_bytes,
             question=(
-                "Este es un boceto o sketch. Genera una descripción detallada para usarla como prompt "
-                "de generación de imagen: describe colores, estilo, composición, iluminación, "
-                "y todos los elementos visuales con precisión. Formato: descripción directa en inglés "
-                "lista para usar como prompt."
+                "This is a sketch. Generate a detailed description to use as an image-generation "
+                "prompt: describe colors, style, composition, lighting, "
+                "and all visual elements precisely. Format: direct description in English "
+                "ready to use as a prompt."
             ),
         )
 
@@ -350,16 +350,16 @@ class MultimodalEngine:
         self, image_url: str = "", image_bytes: bytes = b""
     ) -> dict[str, Any]:
         """
-        Genera un prompt de generación de imagen a partir de una imagen existente.
-        Para replicar el estilo o recrear la imagen.
+        Generates an image-generation prompt from an existing image.
+        For replicating the style or recreating the image.
         """
         return await self.analyze_image(
             image_url=image_url,
             image_bytes=image_bytes,
             question=(
-                "Genera un prompt detallado en inglés que reproduzca esta imagen exactamente. "
-                "Incluye: estilo artístico, colores dominantes, composición, iluminación, "
-                "elementos específicos, calidad técnica. Solo el prompt, sin explicaciones."
+                "Generate a detailed prompt in English that reproduces this image exactly. "
+                "Include: artistic style, dominant colors, composition, lighting, "
+                "specific elements, technical quality. Only the prompt, no explanations."
             ),
         )
 

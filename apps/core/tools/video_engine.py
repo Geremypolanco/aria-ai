@@ -138,7 +138,7 @@ class VideoEngine:
         """Produce an MP4 reel for `topic`. Returns {success, video_bytes, ...}."""
         ffmpeg = self.ffmpeg_bin()
         if not ffmpeg:
-            return {"success": False, "error": "ffmpeg no está disponible en el servidor"}
+            return {"success": False, "error": "ffmpeg is not available on the server"}
 
         scenes = await self._plan(topic, max(1, min(n_scenes, 6)))
 
@@ -151,7 +151,7 @@ class VideoEngine:
             if r.get("success") and r.get("image_bytes"):
                 rendered.append((r["image_bytes"], s))
         if not rendered:
-            return {"success": False, "error": "No se pudo generar ninguna imagen para el video"}
+            return {"success": False, "error": "Could not generate any image for the video"}
 
         audio_bytes: bytes | None = None
         if with_voice:
@@ -167,9 +167,9 @@ class VideoEngine:
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("[video] ffmpeg compose failed: %s", exc)
-            return {"success": False, "error": f"Fallo al componer el video: {exc}"}
+            return {"success": False, "error": f"Failed to compose the video: {exc}"}
         if not mp4:
-            return {"success": False, "error": "ffmpeg no produjo el video"}
+            return {"success": False, "error": "ffmpeg did not produce the video"}
 
         return {
             "success": True,
@@ -178,7 +178,7 @@ class VideoEngine:
             "content_type": "video/mp4",
             "scenes": len(rendered),
             "has_audio": audio_bytes is not None,
-            "description": f"Reel generado: {topic}",
+            "description": f"Generated reel: {topic}",
         }
 
     # ── ffmpeg composition (blocking; run via asyncio.to_thread) ───

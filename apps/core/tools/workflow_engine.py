@@ -1,13 +1,13 @@
 """
-workflow_engine.py — Workflow builder con lenguaje natural (Gumloop style) para ARIA AI.
+workflow_engine.py — Natural-language workflow builder (Gumloop style) for ARIA AI.
 
-Permite crear, guardar y ejecutar automatizaciones multi-paso describiendo en texto libre
-qué debe hacer cada paso. ARIA descompone la intención en herramientas concretas.
+Lets you create, save, and run multi-step automations by describing in free text
+what each step should do. ARIA breaks the intent down into concrete tools.
 
-Ejemplos:
-  "Cada mañana investiga tendencias de IA, escribe un resumen y publícalo en Dev.to"
-  "Investiga competidores de [empresa], analiza fortalezas, genera pitch deck"
-  "Monitorea el precio de BTC, si baja 5% envíame alerta por email"
+Examples:
+  "Every morning research AI trends, write a summary, and publish it on Dev.to"
+  "Research competitors of [company], analyze strengths, generate a pitch deck"
+  "Monitor the BTC price, if it drops 5% send me an email alert"
 """
 
 from __future__ import annotations
@@ -60,8 +60,8 @@ class Workflow:
 
 class WorkflowEngine:
     """
-    Motor de automatización de ARIA.
-    Convierte descripciones en lenguaje natural en workflows ejecutables de múltiples pasos.
+    ARIA's automation engine.
+    Converts natural-language descriptions into executable multi-step workflows.
     """
 
     def __init__(self) -> None:
@@ -70,8 +70,8 @@ class WorkflowEngine:
 
     async def create(self, name: str, description: str) -> dict[str, Any]:
         """
-        Crea un workflow desde una descripción en lenguaje natural.
-        ARIA descompone la descripción en pasos concretos automáticamente.
+        Creates a workflow from a natural-language description.
+        ARIA automatically breaks the description down into concrete steps.
         """
         await self._ensure_loaded()
 
@@ -82,29 +82,29 @@ class WorkflowEngine:
         resp = await client.complete(
             model=AIModel.STRATEGY,
             system=(
-                "Eres un arquitecto de automatizaciones. Conviertes descripciones en workflows "
-                "ejecutables. Responde SOLO con un JSON array de pasos."
+                "You are an automation architect. You convert descriptions into executable "
+                "workflows. Respond ONLY with a JSON array of steps."
             ),
             user=(
-                f"Automatización: {description}\n\n"
-                "Descompón en hasta 6 pasos usando SOLO estas herramientas de ARIA:\n"
-                "- web_search(query)  — buscar información en internet\n"
-                "- deep_search(query, num_pages)  — investigación profunda\n"
-                "- fetch_url(url)  — leer contenido de una URL específica\n"
-                "- execute_code(code, language)  — ejecutar código Python/JS\n"
-                "- run_business_agent(agent, mission)  — agentes: research/content/marketing/sales/developer/finance/ceo\n"
-                "- generate_image(prompt)  — generar imagen\n"
-                "- create_presentation(title, topic, slide_count, template)  — presentación\n"
-                "- create_social_content(topic, platforms, tone)  — contenido para redes\n"
-                "- publish_article(title, content, tags, platforms)  — publicar artículo\n"
-                "- send_email(subject, body, to)  — enviar email\n"
-                "- deep_think(question, depth, context)  — análisis profundo\n"
-                "- search_knowledge(query)  — buscar en base de conocimiento interna\n"
-                "- run_crew(mission, crew)  — equipo de agentes colaborando\n\n"
-                "Formato JSON:\n"
-                '[{"tool": "nombre", "args": {"param": "valor"}, "description": "qué hace este paso"}]\n'
-                "Usa {prev_output} en args para referenciar el output del paso anterior.\n"
-                "SOLO el JSON array, sin explicaciones."
+                f"Automation: {description}\n\n"
+                "Break it down into up to 6 steps using ONLY these ARIA tools:\n"
+                "- web_search(query)  — search for information on the internet\n"
+                "- deep_search(query, num_pages)  — deep research\n"
+                "- fetch_url(url)  — read content from a specific URL\n"
+                "- execute_code(code, language)  — execute Python/JS code\n"
+                "- run_business_agent(agent, mission)  — agents: research/content/marketing/sales/developer/finance/ceo\n"
+                "- generate_image(prompt)  — generate an image\n"
+                "- create_presentation(title, topic, slide_count, template)  — presentation\n"
+                "- create_social_content(topic, platforms, tone)  — content for social networks\n"
+                "- publish_article(title, content, tags, platforms)  — publish an article\n"
+                "- send_email(subject, body, to)  — send an email\n"
+                "- deep_think(question, depth, context)  — deep analysis\n"
+                "- search_knowledge(query)  — search the internal knowledge base\n"
+                "- run_crew(mission, crew)  — team of agents collaborating\n\n"
+                "JSON format:\n"
+                '[{"tool": "name", "args": {"param": "value"}, "description": "what this step does"}]\n'
+                "Use {prev_output} in args to reference the previous step's output.\n"
+                "ONLY the JSON array, no explanations."
             ),
         )
 
@@ -134,11 +134,11 @@ class WorkflowEngine:
         }
 
     async def run(self, workflow_id: str) -> dict[str, Any]:
-        """Ejecuta un workflow paso a paso. El output de cada paso alimenta al siguiente."""
+        """Runs a workflow step by step. Each step's output feeds the next."""
         await self._ensure_loaded()
         wf = self._workflows.get(workflow_id)
         if not wf:
-            return {"success": False, "error": f"Workflow '{workflow_id}' no encontrado"}
+            return {"success": False, "error": f"Workflow '{workflow_id}' not found"}
 
         results = []
         prev_output = ""
@@ -213,7 +213,7 @@ class WorkflowEngine:
             return True
         return False
 
-    # ── PRIVADO ───────────────────────────────────────────────────────────────
+    # ── PRIVATE ───────────────────────────────────────────────────────────────
 
     def _parse_steps(self, text: str) -> list[WorkflowStep]:
         try:

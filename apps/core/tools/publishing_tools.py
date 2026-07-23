@@ -1,13 +1,13 @@
 """
-ARIA Publishing Tools — Publicación automática en plataformas de contenido.
+ARIA Publishing Tools — Automatic publishing on content platforms.
 
-Plataformas soportadas:
-- Medium (API oficial)
-- Dev.to (API oficial)
+Supported platforms:
+- Medium (official API)
+- Dev.to (official API)
 - Hashnode (GraphQL API)
 - Substack (via email/web)
 
-Todas tienen tier gratuito y se activan con un API key simple.
+All of them have a free tier and are activated with a simple API key.
 """
 
 from __future__ import annotations
@@ -31,15 +31,15 @@ class PublishingTools:
 
     async def publish_medium(self, article: dict) -> dict:
         """
-        Publica en Medium usando la Integration Token.
-        Requiere: MEDIUM_TOKEN en secrets.
-        Obtenerlo: medium.com/me/settings -> Integration tokens
+        Publishes to Medium using the Integration Token.
+        Requires: MEDIUM_TOKEN in secrets.
+        To obtain it: medium.com/me/settings -> Integration tokens
         """
         if not settings.MEDIUM_TOKEN:
-            return {"success": False, "skipped": True, "reason": "MEDIUM_TOKEN no configurado"}
+            return {"success": False, "skipped": True, "reason": "MEDIUM_TOKEN not configured"}
 
         try:
-            # Obtener ID del usuario
+            # Get user ID
             me_res = await self._http.get(
                 "https://api.medium.com/v1/me",
                 headers={"Authorization": f"Bearer {settings.MEDIUM_TOKEN}"},
@@ -49,7 +49,7 @@ class PublishingTools:
 
             user_id = me_res.json()["data"]["id"]
 
-            title = article.get("title", "Artículo")
+            title = article.get("title", "Article")
             body_html = article.get("body_html", article.get("body", ""))
             tags = article.get("tags", [])[:5]
 
@@ -84,15 +84,15 @@ class PublishingTools:
 
     async def publish_devto(self, article: dict) -> dict:
         """
-        Publica en Dev.to.
-        Requiere: DEVTO_API_KEY en secrets.
-        Obtenerlo: dev.to/settings/extensions -> DEV Community API Keys
+        Publishes to Dev.to.
+        Requires: DEVTO_API_KEY in secrets.
+        To obtain it: dev.to/settings/extensions -> DEV Community API Keys
         """
         if not settings.DEVTO_API_KEY:
-            return {"success": False, "skipped": True, "reason": "DEVTO_API_KEY no configurado"}
+            return {"success": False, "skipped": True, "reason": "DEVTO_API_KEY not configured"}
 
         try:
-            title = article.get("title", "Artículo")
+            title = article.get("title", "Article")
             body = article.get("body", "")
             tags = [
                 t.lower().replace(" ", "").replace("-", "")[:20]
@@ -129,20 +129,20 @@ class PublishingTools:
 
     async def publish_hashnode(self, article: dict) -> dict:
         """
-        Publica en Hashnode via GraphQL.
-        Requiere: HASHNODE_TOKEN y HASHNODE_PUBLICATION_ID en secrets.
-        Obtener token: hashnode.com/settings -> Developer -> Personal Access Token
-        Obtener publication ID: desde el dashboard de tu blog
+        Publishes to Hashnode via GraphQL.
+        Requires: HASHNODE_TOKEN and HASHNODE_PUBLICATION_ID in secrets.
+        To get the token: hashnode.com/settings -> Developer -> Personal Access Token
+        To get the publication ID: from your blog's dashboard
         """
         if not settings.HASHNODE_TOKEN or not settings.HASHNODE_PUBLICATION_ID:
             return {
                 "success": False,
                 "skipped": True,
-                "reason": "HASHNODE_TOKEN o HASHNODE_PUBLICATION_ID no configurados",
+                "reason": "HASHNODE_TOKEN or HASHNODE_PUBLICATION_ID not configured",
             }
 
         try:
-            title = article.get("title", "Artículo")
+            title = article.get("title", "Article")
             body = article.get("body", "")
             tags = [
                 {"name": t, "slug": t.lower().replace(" ", "-")}
@@ -209,9 +209,9 @@ class PublishingTools:
         to_override: str | None = None,
     ) -> dict:
         """
-        Envía newsletter usando el mejor proveedor disponible.
-        Orden: Resend → SendGrid → Mailgun
-        to_override: destinatario específico (si no se usa la lista configurada).
+        Sends a newsletter using the best available provider.
+        Order: Resend → SendGrid → Mailgun
+        to_override: specific recipient (if the configured list is not used).
         """
         if not plain_text:
             plain_text = re.sub(r"<[^>]+>", "", html_content)
@@ -225,16 +225,16 @@ class PublishingTools:
             try:
                 result = await fn(subject, html_content, plain_text, to=to_override)
                 if result.get("success"):
-                    logger.info("[Publishing] Newsletter enviado via %s", name)
+                    logger.info("[Publishing] Newsletter sent via %s", name)
                     return {**result, "provider": name}
             except Exception as exc:
                 logger.warning("[Publishing] %s newsletter error: %s", name, exc)
-        return {"success": False, "error": "Todos los proveedores de email fallaron"}
+        return {"success": False, "error": "All email providers failed"}
 
     async def _send_via_resend(
         self, subject: str, html: str, text: str, to: str | None = None
     ) -> dict:
-        """Resend: 3,000 emails/mes gratis."""
+        """Resend: 3,000 emails/month free."""
         if not settings.RESEND_API_KEY:
             return {"success": False, "skipped": True}
         to_email = (
@@ -263,7 +263,7 @@ class PublishingTools:
     async def _send_via_sendgrid(
         self, subject: str, html: str, text: str, to: str | None = None
     ) -> dict:
-        """SendGrid: 100 emails/día gratis."""
+        """SendGrid: 100 emails/day free."""
         if not settings.SENDGRID_API_KEY:
             return {"success": False, "skipped": True}
         from_email = settings.EMAIL_FROM or "noreply@aria-ai.dev"
@@ -295,7 +295,7 @@ class PublishingTools:
     async def _send_via_mailgun(
         self, subject: str, html: str, text: str, to: str | None = None
     ) -> dict:
-        """Mailgun: 5,000 emails/mes gratis (3 meses trial)."""
+        """Mailgun: 5,000 emails/month free (3-month trial)."""
         if not settings.MAILGUN_API_KEY or not settings.MAILGUN_DOMAIN:
             return {"success": False, "skipped": True}
         to_email = (
