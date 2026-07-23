@@ -581,6 +581,18 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
   </div>
 </div>
 
+<!-- ══ CONFIRM ══ -->
+<div id="confirmOv" class="ov">
+  <div class="modal" style="max-width:400px">
+    <h2 id="confirmTitle">Are you sure?</h2>
+    <p class="lead" id="confirmBody"></p>
+    <div style="margin-top:22px;display:flex;justify-content:flex-end;gap:10px">
+      <button onclick="closeConfirm(false)" class="btn ghost">Cancel</button>
+      <button id="confirmBtn" onclick="closeConfirm(true)" class="btn del">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ APP SHELL ══ -->
 <div class="shell">
   <div id="sideBackdrop" onclick="toggleSide(false)" class="backdrop sb hidden"></div>
@@ -1221,7 +1233,11 @@ async function workflowFallback(m, goal){
   }catch(e){ m.status='error'; log('Deep workflow failed to reach ARIA', 'err'); }
 }
 function relaunch(id){ const m=missions.find(x=>x.id===id); if(!m||busy)return; document.getElementById('igniter').value=m.goal; dispatchMission(); }
-function delMission(id){ missions=missions.filter(m=>m.id!==id); saveMissions(); renderMissions(); log('· mission removed','dim'); }
+async function delMission(id){
+  const ok = await openConfirm('Delete this chat?', 'This removes it from your history. This cannot be undone.', 'Delete chat');
+  if(!ok) return;
+  missions=missions.filter(m=>m.id!==id); saveMissions(); renderMissions(); log('· mission removed','dim');
+}
 function wfMarkdown(m){
   // A clean, shareable deliverable: goal + each subagent's work + synthesis.
   let out = '# '+(m.goal||'ARIA Deep Workflow')+'\n\n';
@@ -1397,8 +1413,21 @@ async function saveSettings(){
   }catch(e){ toast('Could not save settings. Please try again.','err'); }
   finally{ btn.disabled=false; btn.textContent='Save changes'; }
 }
+let _confirmResolve=null;
+function openConfirm(title, body, confirmLabel){
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmBody').textContent=body;
+  document.getElementById('confirmBtn').textContent=confirmLabel||'Confirm';
+  const o=document.getElementById('confirmOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  return new Promise(resolve=>{ _confirmResolve=resolve; });
+}
+function closeConfirm(ok){
+  const o=document.getElementById('confirmOv'); o.classList.add('hidden'); o.classList.remove('flex');
+  if(_confirmResolve){ _confirmResolve(!!ok); _confirmResolve=null; }
+}
 async function deleteAccount(){
-  if(!confirm('Delete your ARIA account data (profile, plan and saved missions)? This cannot be undone.')) return;
+  const ok = await openConfirm('Delete your ARIA account?', 'This permanently removes your profile, plan and saved missions. This cannot be undone.', 'Delete account');
+  if(!ok) return;
   try{ await fetch('/api/v1/account/delete',{method:'POST'}); }catch(e){}
   try{ localStorage.removeItem(MKEY); }catch(e){}
   location.href='/login';
