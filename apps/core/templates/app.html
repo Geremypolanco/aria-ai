@@ -142,6 +142,10 @@ textarea{field-sizing:content}
 .sendbtn{flex:none;width:38px;height:38px;border-radius:12px;border:0;background:var(--neon);display:grid;place-items:center;cursor:pointer;box-shadow:var(--glow);transition:filter .15s}
 .sendbtn:hover{filter:brightness(1.03)}
 .sendbtn:disabled{opacity:.45;cursor:default;box-shadow:none}
+.micbtn{flex:none;width:38px;height:38px;border-radius:12px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;cursor:pointer;color:var(--ink2);transition:.15s}
+.micbtn:hover{background:var(--soft)}
+.micbtn.listening{background:var(--rose-soft);border-color:#f6c9d4;color:#b3123a;animation:bl 1.1s ease-in-out infinite}
+.micbtn:disabled{opacity:.4;cursor:not-allowed}
 .composer-row{display:flex;align-items:center;gap:10px;padding:9px 4px 0}
 .deep-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.15s}
 .deep-chip.on{background:var(--neon-soft);border-color:#9fe9c6;color:var(--green-ink)}
@@ -662,6 +666,9 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
           <button class="pb-x" onclick="clearPersona()" aria-label="Leave this specialist">✕</button>
         </div>
         <div class="composer-box">
+          <button id="micBtn" onclick="toggleDictation()" class="micbtn" aria-label="Dictate message" aria-pressed="false" title="Speak your message">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8"/></svg>
+          </button>
           <textarea id="igniter" rows="1" placeholder="Message ARIA…" onkeydown="onIgniterKey(event)"></textarea>
           <button id="ignite" onclick="dispatchMission()" class="sendbtn" aria-label="Send">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#04150d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -672,6 +679,8 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
           <button id="wfToggle" onclick="toggleDeep()" class="deep-chip" aria-pressed="false">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg> Deep Workflow</button>
           <span id="wfHint" class="wfhint">Off · quick answer</span>
+          <button id="voiceToggle" onclick="toggleVoiceReplies()" class="deep-chip" aria-pressed="false">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg> Voice replies</button>
         </div>
       </div>
     </div>
@@ -726,6 +735,82 @@ function toggleDeep(){
   t.setAttribute('aria-pressed', deepMode ? 'true' : 'false');
   h.textContent = deepMode ? 'On · parallel subagents, live' : 'Off · quick answer';
   if(lbl) lbl.textContent = deepMode ? 'Run deep workflow' : 'Send';
+}
+
+// ── Voice: dictate a message (Web Speech STT) + optionally hear replies
+// (Web Speech TTS). Deliberately browser-native rather than a server round
+// trip - zero added backend cost/latency, works the moment the browser
+// supports it, degrades to a disabled, explained button when it doesn't
+// (Firefox has no SpeechRecognition support as of this writing).
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognizer = null, dictating = false, voiceRepliesOn = false;
+
+function initVoiceUI(){
+  const mic = document.getElementById('micBtn');
+  const voiceBtn = document.getElementById('voiceToggle');
+  if(!SpeechRecognitionCtor){
+    mic.disabled = true;
+    mic.title = "Voice dictation isn't supported in this browser (try Chrome or Edge).";
+  }
+  if(!('speechSynthesis' in window)){
+    voiceBtn.disabled = true;
+    voiceBtn.title = "Spoken replies aren't supported in this browser.";
+  }
+  try{
+    voiceRepliesOn = localStorage.getItem('aria_voice_replies') === '1';
+    voiceBtn.classList.toggle('on', voiceRepliesOn);
+    voiceBtn.setAttribute('aria-pressed', voiceRepliesOn ? 'true' : 'false');
+  }catch(e){}
+}
+
+function toggleDictation(){
+  if(!SpeechRecognitionCtor) return;
+  if(dictating){ recognizer && recognizer.stop(); return; }
+  recognizer = new SpeechRecognitionCtor();
+  recognizer.lang = (navigator.language || 'en-US');
+  recognizer.interimResults = true;
+  recognizer.continuous = false;
+  const mic = document.getElementById('micBtn');
+  const inp = document.getElementById('igniter');
+  dictating = true;
+  mic.classList.add('listening'); mic.setAttribute('aria-pressed','true');
+  recognizer.onresult = (e)=>{
+    let transcript='';
+    for(let i=0;i<e.results.length;i++) transcript += e.results[i][0].transcript;
+    inp.value = transcript;
+  };
+  recognizer.onerror = ()=>{ /* surfaced via onend's cleanup; nothing to speak yet */ };
+  recognizer.onend = ()=>{
+    dictating = false;
+    mic.classList.remove('listening'); mic.setAttribute('aria-pressed','false');
+    inp.focus();
+  };
+  try{ recognizer.start(); }
+  catch(e){ dictating=false; mic.classList.remove('listening'); }
+}
+
+function toggleVoiceReplies(){
+  voiceRepliesOn = !voiceRepliesOn;
+  const b=document.getElementById('voiceToggle');
+  b.classList.toggle('on', voiceRepliesOn);
+  b.setAttribute('aria-pressed', voiceRepliesOn ? 'true' : 'false');
+  try{ localStorage.setItem('aria_voice_replies', voiceRepliesOn ? '1' : '0'); }catch(e){}
+  if(!voiceRepliesOn) window.speechSynthesis.cancel();
+}
+
+function speakText(text){
+  if(!voiceRepliesOn || !('speechSynthesis' in window) || !text) return;
+  // Strip markdown noise a screen reader/TTS voice shouldn't read literally.
+  const clean = text
+    .replace(/```[\s\S]*?```/g,' code block omitted. ')
+    .replace(/[*_#>`]/g,'')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
+    .slice(0,600);
+  if(!clean.trim()) return;
+  window.speechSynthesis.cancel(); // don't queue/overlap replies
+  const u = new SpeechSynthesisUtterance(clean);
+  u.rate = 1.0;
+  window.speechSynthesis.speak(u);
 }
 
 // ── Deep Workflow Skills — packaged multi-agent plays (Claude "Skills" pattern).
@@ -988,6 +1073,7 @@ async function dispatchMission(){
     if(d.media_base64){ m.imgs=['data:image/png;base64,'+d.media_base64]; log('Imagen generada ('+Math.round(d.media_base64.length*0.75/1024)+' KB)','ok'); }
     m.status='done';
     log('Listo', 'ok');
+    speakText(m.text);
   }catch(e){ m.status='error'; log('No pude conectar con ARIA', 'err'); }
   finally{ busy=false; document.getElementById('ignite').disabled=false; saveMissions(); renderMissions(); }
 }
@@ -1337,7 +1423,7 @@ function clearPersona(){
 function closeTeam(){ const o=document.getElementById('teamOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
 
 /* boot */
-loadMissions(); renderMissions(); renderSkills(); loadUsage(); billingBoot(); checkConnectorHealth();
+loadMissions(); renderMissions(); renderSkills(); loadUsage(); billingBoot(); checkConnectorHealth(); initVoiceUI();
 
 (function(){ try{
   var u=new URL(location.href), conn=u.searchParams.get('conn'), s=u.searchParams.get('s');
