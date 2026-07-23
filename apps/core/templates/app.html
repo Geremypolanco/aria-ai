@@ -1201,7 +1201,7 @@ async function openTeam(){
 function renderTeam(){
   document.getElementById('teamGrid').innerHTML = (TEAM_CACHE||[]).map(function(m){
     return '<div class="tm-card">'
-      +'<img class="tm-av" src="'+m.avatar+'" alt="" onerror="this.style.visibility=\'hidden\'">'
+      +'<img class="tm-av" src="'+m.avatar+'" alt="" width="54" height="54" loading="lazy" decoding="async" onerror="this.style.visibility=\'hidden\'">'
       +'<div class="tm-body"><div class="tm-name">'+esc(m.name)+'</div>'
       +'<div class="tm-title">'+esc(m.title)+'</div>'
       +'<div class="tm-spec">'+esc(m.specialty)+'</div>'
