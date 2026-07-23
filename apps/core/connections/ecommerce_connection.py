@@ -37,6 +37,13 @@ class EtsyConnection(BaseConnector):
 
         return getattr(settings, "ETSY_CLIENT_SECRET", None)
 
+    # PKCE verifier keyed by chat_id, so exchange_code() can retrieve the
+    # same value used to build the code_challenge in get_auth_url(). Etsy's
+    # token endpoint recomputes SHA256(code_verifier) and compares it to the
+    # challenge sent earlier — an empty verifier can never match a real
+    # challenge, so every exchange was guaranteed to be rejected.
+    _pkce_verifiers: dict[str, str] = {}
+
     def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
@@ -45,6 +52,7 @@ class EtsyConnection(BaseConnector):
         import secrets
 
         verifier = secrets.token_urlsafe(64)
+        self._pkce_verifiers[chat_id] = verifier
         challenge = (
             base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
             .rstrip(b"=")
@@ -65,6 +73,7 @@ class EtsyConnection(BaseConnector):
         cid = self._client_id()
         if not cid:
             raise ValueError("ETSY_CLIENT_ID no configurado")
+        verifier = self._pkce_verifiers.pop(chat_id, "")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 ETSY_TOKEN_URL,
@@ -73,7 +82,7 @@ class EtsyConnection(BaseConnector):
                     "client_id": cid,
                     "redirect_uri": ETSY_REDIRECT,
                     "code": code,
-                    "code_verifier": "",
+                    "code_verifier": verifier,
                 },
             )
             r.raise_for_status()

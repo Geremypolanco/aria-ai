@@ -31,16 +31,19 @@ class AriaBusinessOSConnector:
         self.client = httpx.AsyncClient(headers={"Authorization": f"token {api_key}"})
 
     async def create_invoice(self, customer_id: str, items: list[dict[str, Any]]):
-        """Crea una factura en el ERP (ERPNext/Odoo)."""
-        logger.info("[BusinessOS] Creando factura para cliente %s...", customer_id)
-        # url = f"{self.erp_url}/api/resource/Sales Invoice"
-        # await self.client.post(url, json={"customer": customer_id, "items": items})
-        return f"Factura creada para {customer_id} (Simulado)."
+        """Crea una factura en el ERP (ERPNext/Odoo). No implementado — el ERP
+        real nunca se llama, así que reportar éxito sería fabricar una
+        factura que no existe en ningún sistema."""
+        raise NotImplementedError(
+            "create_invoice: integración real con ERPNext/Odoo aún no implementada"
+        )
 
     async def update_crm_lead(self, lead_id: str, status: str):
-        """Actualiza el estado de un lead en el CRM."""
-        logger.info("[BusinessOS] Actualizando lead %s a estado %s...", lead_id, status)
-        return f"Lead {lead_id} actualizado a {status}."
+        """Actualiza el estado de un lead en el CRM. No implementado — ver
+        create_invoice."""
+        raise NotImplementedError(
+            "update_crm_lead: integración real con el CRM aún no implementada"
+        )
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
