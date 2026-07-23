@@ -1320,6 +1320,37 @@ document.addEventListener('keydown', e=>{
   if(!document.getElementById('side').classList.contains('-translate-x-full')){ toggleSide(false); return; }
 });
 
+// Focus management for the .ov modals (Settings/Upgrade/Connectors/Team/Confirm):
+// move focus in on open, trap Tab inside while open, restore it to whatever
+// triggered the modal on close. Without this, keyboard/screen-reader focus
+// stays on the (now hidden-behind-the-backdrop) trigger button, or can Tab
+// straight into the dimmed background content. #ov (onboarding) manages its
+// own initial focus already, but still benefits from the Tab trap below.
+let _modalReturnFocus = null;
+function _focusableIn(el){
+  return [...el.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(e => e.offsetParent !== null);
+}
+function openModalFocus(overlayId){
+  _modalReturnFocus = document.activeElement;
+  const ov = document.getElementById(overlayId);
+  setTimeout(()=>{ const f=_focusableIn(ov); if(f.length) f[0].focus(); }, 50);
+}
+function closeModalFocus(){
+  const el = _modalReturnFocus;
+  _modalReturnFocus = null;
+  if(el && typeof el.focus==='function') el.focus();
+}
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Tab') return;
+  const open=[...document.querySelectorAll('.ov.flex')].pop();
+  if(!open) return;
+  const f=_focusableIn(open); if(!f.length) return;
+  const first=f[0], last=f[f.length-1];
+  if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+});
+
 let obStep=0, obWork="", obGoals=new Set(), obPlan="free";
 const OB_STEPS=4;
 function obShow(){
@@ -1368,8 +1399,9 @@ function openUpgrade(){
   const ack=document.getElementById('upAck'); if(ack){ ack.checked=false; upAckChanged(false); }
   document.getElementById('menu').classList.add('hidden');
   const o=document.getElementById('upOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('upOv');
 }
-function closeUpgrade(){ const o=document.getElementById('upOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
+function closeUpgrade(){ const o=document.getElementById('upOv'); o.classList.add('hidden'); o.classList.remove('flex'); closeModalFocus(); }
 function upgradeGo(){ const ack=document.getElementById('upAck'); if(!ack||!ack.checked){ return; } location.href='/billing/checkout?tier='+upPlan+'&agreed=1'; }
 
 let supOpen=false, supBusy=false, supGreeted=false;
@@ -1417,8 +1449,9 @@ function openSettings(){
   const goals = new Set((PROFILE && PROFILE.goals) || []);
   document.querySelectorAll('#setGoals .chip2').forEach(c=>{ selSync(c, goals.has(c.dataset.v)); c.onclick=()=>selSync(c, !c.classList.contains('sel')); });
   const o=document.getElementById('settingsOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('settingsOv');
 }
-function closeSettings(){ const o=document.getElementById('settingsOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
+function closeSettings(){ const o=document.getElementById('settingsOv'); o.classList.add('hidden'); o.classList.remove('flex'); closeModalFocus(); }
 async function saveSettings(){
   const btn=document.getElementById('setSaveBtn'); btn.disabled=true; btn.textContent='Saving…';
   const name=document.getElementById('setName').value.trim()||USER.name;
@@ -1439,10 +1472,12 @@ function openConfirm(title, body, confirmLabel){
   document.getElementById('confirmBody').textContent=body;
   document.getElementById('confirmBtn').textContent=confirmLabel||'Confirm';
   const o=document.getElementById('confirmOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('confirmOv');
   return new Promise(resolve=>{ _confirmResolve=resolve; });
 }
 function closeConfirm(ok){
   const o=document.getElementById('confirmOv'); o.classList.add('hidden'); o.classList.remove('flex');
+  closeModalFocus();
   if(_confirmResolve){ _confirmResolve(!!ok); _confirmResolve=null; }
 }
 async function deleteAccount(){
@@ -1458,6 +1493,7 @@ async function openConnectors(){
   document.getElementById('menu').classList.add('hidden'); toggleSide(false);
   document.getElementById('connList').innerHTML='<div class="cn-loading">Loading connectors…</div>';
   const o=document.getElementById('connOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('connOv');
   try{ const r=await fetch('/api/v1/connectors/status',{credentials:'same-origin'}); const d=await r.json(); CONN_STATUS=d.connectors||[]; }
   catch(e){ CONN_STATUS=[]; }
   renderConnectors();
@@ -1497,13 +1533,14 @@ function connDetail(c){
 }
 function connToggle(id){ var d=document.getElementById('cd_'+id); if(d) d.classList.toggle('hidden'); }
 function connCopy(t,btn){ try{ navigator.clipboard.writeText(t); }catch(e){} var o=btn.textContent; btn.textContent='Copied'; setTimeout(function(){btn.textContent=o;},1200); }
-function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
+function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); closeModalFocus(); }
 
 // ── Team of AI professionals ──
 let TEAM_CACHE = null;
 async function openTeam(){
   document.getElementById('menu').classList.add('hidden'); toggleSide(false);
   const o=document.getElementById('teamOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('teamOv');
   const grid=document.getElementById('teamGrid');
   if(!TEAM_CACHE){
     grid.innerHTML='<div class="cn-loading">Loading your team…</div>';
@@ -1538,7 +1575,7 @@ function clearPersona(){
   document.getElementById('personaBar').classList.remove('show');
   document.getElementById('igniter').placeholder='Message ARIA…';
 }
-function closeTeam(){ const o=document.getElementById('teamOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
+function closeTeam(){ const o=document.getElementById('teamOv'); o.classList.add('hidden'); o.classList.remove('flex'); closeModalFocus(); }
 
 /* boot */
 loadMissions(); renderMissions(); renderSkills(); loadUsage(); billingBoot(); checkConnectorHealth(); initVoiceUI();
