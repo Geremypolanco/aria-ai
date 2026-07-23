@@ -34,6 +34,21 @@ aria-pricing {
   }
 }
 
+/* Baseline keyboard-focus ring for plain links/buttons that don't already
+   carry their own explicit focus-visible: Tailwind utilities (the hero CTAs,
+   run-log replay button and pricing cards do, and those win by specificity —
+   this is the fallback for everything else: nav links, footer links, the
+   mobile menu). Without this they fell back to whatever the browser default
+   happens to be, which is inconsistent and easy to lose against a rounded,
+   light-on-light layout. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* A faint paper-like grain over the warm off-white canvas — OpenAI-style
    pages are never a flat, dead color; this is what keeps large light areas
    from reading as "empty". Pure CSS, no image request. */

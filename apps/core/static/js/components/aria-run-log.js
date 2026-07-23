@@ -113,7 +113,7 @@ class AriaRunLog extends HTMLElement {
   render() {
     this.className = 'block p-6';
     this.innerHTML = `
-      <div class="flex items-center gap-2 border-b border-stone-100 pb-4 font-mono text-xs text-stone-400">
+      <div class="flex items-center gap-2 border-b border-stone-100 pb-4 font-mono text-xs text-stone-500">
         <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
         aria · live run
         <button

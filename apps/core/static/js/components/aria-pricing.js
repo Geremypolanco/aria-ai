@@ -70,7 +70,7 @@ const ARIA_FAQ = [
 ];
 
 const CHECK_ICON = `<svg class="mt-0.5 h-4 w-4 flex-none text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 7"/></svg>`;
-const CHEVRON_ICON = `<svg class="h-4 w-4 flex-none text-stone-400 transition-transform duration-300 group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
+const CHEVRON_ICON = `<svg class="h-4 w-4 flex-none text-stone-500 transition-transform duration-300 group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
 
 class AriaPricing extends HTMLElement {
   connectedCallback() {

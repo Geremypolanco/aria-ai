@@ -817,16 +817,17 @@ button{{width:100%;padding:14px;border:0;border-radius:12px;font-weight:700;font
 background:#1c1917;color:#fff;box-shadow:0 8px 24px -6px rgba(28,25,23,.35);transition:transform .15s,box-shadow .15s,opacity .15s}}
 button:hover{{transform:translateY(-1px);box-shadow:0 12px 28px -6px rgba(28,25,23,.4)}}
 button:disabled{{opacity:.6;cursor:not-allowed;transform:none}}
+button:focus-visible,.btn:focus-visible,a.lnk:focus-visible{{outline:2px solid #047857;outline-offset:2px;border-radius:6px}}
 .err{{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:13.5px;padding:10px 13px;
 border-radius:11px;margin-bottom:16px}}
-.divider{{display:flex;align-items:center;gap:12px;margin:18px 0;color:#a8a29e;font-size:12px}}
+.divider{{display:flex;align-items:center;gap:12px;margin:18px 0;color:#78716c;font-size:12px}}
 .divider::before,.divider::after{{content:"";flex:1;height:1px;background:#e7e5e4}}
 .btn{{display:flex;align-items:center;justify-content:center;width:100%;padding:13px;border-radius:12px;
 border:1px solid #d6d3d1;background:#fff;color:#1c1917;text-decoration:none;font-weight:600;
 font-size:14.5px;margin-bottom:11px;transition:background .15s}}
 .btn:hover{{background:#fafaf9}}
 .switch{{text-align:center;font-size:14px;color:#57534e;margin-top:18px}}
-.mut{{color:#a8a29e;font-size:11.5px;margin-top:16px;text-align:center;line-height:1.7}}
+.mut{{color:#78716c;font-size:11.5px;margin-top:16px;text-align:center;line-height:1.7}}
 a.lnk{{color:#047857;text-decoration:none;font-weight:600}} a.lnk:hover{{text-decoration:underline}}
 </style></head><body><div class="card">
 <div class="brand">{_ARIA_MARK}<span class="wm">ARIA</span></div>
