@@ -433,7 +433,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
     <div class="step hidden" data-step="1" style="margin-top:20px">
       <h2>What best describes your work?</h2>
       <p class="lead">So ARIA can tailor its missions to you.</p>
-      <div id="obWork" class="chips">
+      <div id="obWork" class="chips" role="group" aria-label="What best describes your work?">
         <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Founder / Entrepreneur">Founder / Entrepreneur</div>
         <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Marketing">Marketing</div>
         <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Content creator">Content creator</div>
@@ -451,7 +451,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
     <div class="step hidden" data-step="2" style="margin-top:20px">
       <h2>What should ARIA help with?</h2>
       <p class="lead">Pick all that apply.</p>
-      <div id="obGoals" class="chips">
+      <div id="obGoals" class="chips" role="group" aria-label="What should ARIA help with?">
         <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Grow on social media">Grow on social media</div>
         <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Create content">Create content</div>
         <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Research & analysis">Research &amp; analysis</div>
@@ -463,7 +463,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
     <div class="step hidden" data-step="3" style="margin-top:20px">
       <h2>Choose your plan</h2>
       <p class="lead">Start free — upgrade any time.</p>
-      <div id="obPlans" class="plans">
+      <div id="obPlans" class="plans" role="group" aria-label="Choose your plan">
         <div class="plan sel" role="button" tabindex="0" aria-pressed="true" data-v="free"><div class="pr"><span class="nm">Free</span><span class="amt">$0</span></div><p>ARIA missions to research, write and create images. 1 workspace.</p></div>
         <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Everything unlimited + advanced image, video &amp; voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
         <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
@@ -487,7 +487,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       </div>
       <button onclick="closeUpgrade()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
-    <div id="upPlans" class="plans">
+    <div id="upPlans" class="plans" role="group" aria-label="Choose a plan">
       <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Unlimited missions, advanced image + video + voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
       <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
     </div>
@@ -536,12 +536,12 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
     <div class="setsec">
       <div class="h">Personalization</div>
       <p style="font-size:14px;color:var(--ink2)">How ARIA addresses you and tailors its missions.</p>
-      <label class="lbl">What ARIA should call you</label>
+      <label class="lbl" for="setName">What ARIA should call you</label>
       <input id="setName" maxlength="60" class="inp" />
-      <label class="lbl">What you do</label>
+      <label class="lbl" for="setWork">What you do</label>
       <input id="setWork" maxlength="60" placeholder="e.g. Founder, Marketer, Creator…" class="inp" />
-      <label class="lbl">Goals</label>
-      <div id="setGoals" class="chips">
+      <label class="lbl" id="setGoalsLbl">Goals</label>
+      <div id="setGoals" class="chips" role="group" aria-labelledby="setGoalsLbl">
         <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Grow on social media">Grow on social media</div>
         <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Create content">Create content</div>
         <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Research & analysis">Research &amp; analysis</div>
@@ -1278,6 +1278,8 @@ document.addEventListener('click',e=>{ const m=document.getElementById('menu'); 
 function toast(msg,kind){
   const t=document.createElement('div');
   t.className='toast '+(kind==='ok'?'ok':kind==='err'?'err':'');
+  t.setAttribute('role', kind==='err' ? 'alert' : 'status');
+  t.setAttribute('aria-atomic', 'true');
   t.textContent=msg; document.body.appendChild(t);
   requestAnimationFrame(()=>t.classList.add('show'));
   setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),300); },4600);
