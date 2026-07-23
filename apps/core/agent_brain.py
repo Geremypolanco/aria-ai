@@ -39,14 +39,8 @@ class AriaAgent:
     ) -> str:
         """Process a message through ARIA's reasoning with multi-provider fallback."""
         if not self.client:
-            return """⚠️ **ARIA no está completamente inicializada**
-
-Para activar todas mis capacidades, configura al menos una de estas API keys en tu `.env`:
-- `HF_TOKEN` (HuggingFace - motor principal, gratis)
-- `GROQ_API_KEY` (Groq - respaldo rápido)
-- `OPENAI_API_KEY` (OpenAI - respaldo secundario)
-
-Mientras tanto, puedes usar el dashboard para ver el estado del sistema."""
+            logger.error("AriaAgent.think: no AI client configured (no provider API key set)")
+            return "ARIA isn't fully set up yet — no AI provider is configured for this deployment. Please try again shortly."
 
         full_system = system or build_system_prompt()
         try:
@@ -71,17 +65,14 @@ Mientras tanto, puedes usar el dashboard para ver el estado del sistema."""
             )
             if fb_response and fb_response.success:
                 return fb_response.content
-            return f"⚠️ Error en todos los proveedores de IA. Último error: {response.error if response else 'Sin respuesta'}"
+            logger.error(
+                "AriaAgent.think: all AI providers failed — %s",
+                response.error if response else "no response",
+            )
+            return "ARIA couldn't reach any AI provider right now. Please try again in a moment."
         except Exception as e:
             logger.error(f"AriaAgent.think error: {e}")
-            return f"""⚠️ **Error interno**: {str(e)}
-
-Posibles causas:
-- API key inválida o sin fondos
-- Timeout en la conexión
-- Modelo temporalmente no disponible
-
-Intenta de nuevo o verifica tu configuración."""
+            return "ARIA hit an internal error processing that. Please try again — if it keeps happening, contact support."
 
     async def think_json(
         self,
