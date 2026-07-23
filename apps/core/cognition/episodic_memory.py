@@ -200,7 +200,10 @@ class EpisodicMemory:
 
             db = get_db()
             if db:
-                await db.table("aria_episodic_memory").insert(
+                # create_client() returns a SYNC supabase client — its
+                # .execute() is a regular method, not a coroutine. Awaiting
+                # it raised TypeError on every call, silently swallowed.
+                db.table("aria_episodic_memory").insert(
                     {
                         "episode_id": episode["id"],
                         "episode_type": episode["type"],
@@ -236,8 +239,10 @@ class EpisodicMemory:
 
             db = get_db()
             if db:
+                # create_client() returns a SYNC supabase client — its
+                # .execute() is a regular method, not a coroutine.
                 result = (
-                    await db.table("aria_episodic_memory")
+                    db.table("aria_episodic_memory")
                     .select("*")
                     .order("created_at", desc=True)
                     .limit(100)

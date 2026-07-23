@@ -186,7 +186,10 @@ class WorldState:
 
             db = get_db()
             if db:
-                await db.table("aria_world_state").upsert(
+                # create_client() returns a SYNC supabase client — its
+                # .execute() is a regular method, not a coroutine. Awaiting
+                # it raised TypeError on every call, silently swallowed.
+                db.table("aria_world_state").upsert(
                     {
                         "key": "current",
                         "state": self._state,

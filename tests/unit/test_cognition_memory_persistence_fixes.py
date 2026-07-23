@@ -137,7 +137,10 @@ async def test_world_state_persist_and_load_round_trip():
     cache = FakeCache()
     fake_db = MagicMock()
     fake_table = MagicMock()
-    fake_table.upsert.return_value.execute = AsyncMock(return_value=None)
+    # create_client() returns a SYNC supabase client — .execute() is a plain
+    # method, not a coroutine. A previous version of this test used AsyncMock
+    # here, which would have masked the real "await <sync result>" bug.
+    fake_table.upsert.return_value.execute = MagicMock(return_value=None)
     fake_db.table.return_value = fake_table
 
     with (
@@ -162,7 +165,8 @@ async def test_episodic_memory_persists_actual_content_not_swapped_args():
     cache = FakeCache()
     fake_db = MagicMock()
     fake_table = MagicMock()
-    fake_table.insert.return_value.execute = AsyncMock(return_value=None)
+    # Sync client — see note above on the WorldState test.
+    fake_table.insert.return_value.execute = MagicMock(return_value=None)
     fake_db.table.return_value = fake_table
 
     episode = {
@@ -182,6 +186,39 @@ async def test_episodic_memory_persists_actual_content_not_swapped_args():
     stored_raw = cache._store["aria:episode:ep1"]
     stored = json.loads(stored_raw)
     assert stored["content"] == "user asked about pricing"
+
+
+async def test_episodic_memory_load_does_not_await_sync_execute():
+    """load() used to do `await db.table(...)....execute()` — but
+    create_client() returns a SYNCHRONOUS supabase client, so .execute()
+    isn't a coroutine. Awaiting a plain APIResponse object raised TypeError
+    on every startup, silently swallowed, so episodes were never actually
+    loaded from Supabase."""
+    from apps.core.cognition.episodic_memory import EpisodicMemory
+
+    fake_result = MagicMock()
+    fake_result.data = [
+        {
+            "episode_id": "ep1",
+            "episode_type": "conversation",
+            "content": "hello",
+            "metadata": {},
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+    ]
+    fake_query = MagicMock()
+    fake_query.select.return_value.order.return_value.limit.return_value.execute = MagicMock(
+        return_value=fake_result
+    )
+    fake_db = MagicMock()
+    fake_db.table.return_value = fake_query
+
+    with patch("apps.core.memory.supabase_client.get_db", return_value=fake_db):
+        mem = EpisodicMemory()
+        await mem.load()
+
+    assert mem._episodes
+    assert mem._episodes[0]["id"] == "ep1"
 
 
 async def test_semantic_memory_load_fact_round_trips():
