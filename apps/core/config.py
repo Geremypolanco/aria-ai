@@ -185,6 +185,9 @@ class Settings(BaseSettings):
     # Full Zapier MCP endpoint URL (embeds its own key) copied from mcp.zapier.com.
     # Lets ARIA publish to every account the owner connected in Zapier with one credential.
     ZAPIER_MCP_URL: str | None = None
+    # MCP endpoint URL for a self-hosted Activepieces instance (see infra/activepieces/).
+    # Gives ARIA the same one-credential access to Activepieces' 200+ pieces.
+    ACTIVEPIECES_MCP_URL: str | None = None
     SOCIAL_CONNECT_TOKEN: str = "aria"
 
     # ── COMUNICACIÓN ──────────────────────────────────────

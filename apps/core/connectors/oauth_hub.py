@@ -220,6 +220,16 @@ PROVIDERS: dict[str, Provider] = {
         note="Connect via a Zapier webhook URL / API key in Settings (Zapier "
         "does not use a redirect OAuth for this).",
     ),
+    "activepieces": Provider(
+        "activepieces",
+        "Activepieces",
+        "200+ apps, self-hosted",
+        "#6e41e2",
+        "AP",
+        special="activepieces",
+        note="Self-hosted (see infra/activepieces/) — paste your instance's MCP "
+        "endpoint URL in Settings. No redirect OAuth for this either.",
+    ),
 }
 
 ORDER = list(PROVIDERS.keys())
@@ -239,6 +249,8 @@ def is_configured(pid: str) -> bool:
         return bool(_get("SHOPIFY_ADMIN_TOKEN") and _get("SHOPIFY_URL"))
     if p.special == "apikey":
         return bool(_get("ZAPIER_WEBHOOK_URL") or _get("ZAPIER_MCP_URL"))
+    if p.special == "activepieces":
+        return bool(_get("ACTIVEPIECES_MCP_URL"))
     return bool(_get(p.cid_key) and _get(p.csec_key))
 
 
@@ -389,6 +401,8 @@ def missing_secrets(pid: str) -> list[str]:
         keys = ["SHOPIFY_URL", "SHOPIFY_ADMIN_TOKEN"]
     elif p.special == "apikey":
         keys = ["ZAPIER_WEBHOOK_URL"]
+    elif p.special == "activepieces":
+        keys = ["ACTIVEPIECES_MCP_URL"]
     else:
         keys = [k for k in (p.cid_key, p.csec_key) if k]
     return [k for k in keys if not _get(k)]

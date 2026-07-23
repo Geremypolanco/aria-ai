@@ -2065,6 +2065,18 @@ async def content_selftest():
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/api/v1/activepieces/selftest")
+async def activepieces_selftest():
+    """Check that the Activepieces MCP bridge is reachable and list available tools."""
+    try:
+        from apps.core.tools.activepieces_mcp import get_activepieces_mcp
+
+        return await get_activepieces_mcp().self_test()
+    except Exception as e:
+        logger.error(f"Activepieces selftest error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 # ── WEBSOCKET ─────────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
