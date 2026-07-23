@@ -799,39 +799,40 @@ def _auth_page(mode: str, error: str = "", email: str = "") -> str:
     )
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · {title}</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/favicon.svg"><meta name="theme-color" content="#07080d"><style>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/favicon.svg"><meta name="theme-color" content="#fafaf9"><style>
 *{{margin:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
-background:radial-gradient(120% 90% at 80% 8%,rgba(21,224,106,.10),transparent 46%),
-radial-gradient(120% 90% at 8% 92%,rgba(18,183,166,.10),transparent 46%),#ffffff;color:#0a0f0c}}
-.card{{width:420px;max-width:100%;background:#fff;border:1px solid #e5ece8;border-radius:22px;
-padding:38px 32px;box-shadow:0 1px 2px rgba(10,20,15,.05),0 26px 64px -22px rgba(10,20,15,.22)}}
+background:radial-gradient(120% 90% at 50% -10%,rgba(16,185,129,.14),transparent 55%),
+radial-gradient(90% 70% at 90% 100%,rgba(245,158,11,.08),transparent 60%),#fafaf9;color:#1c1917}}
+.card{{width:420px;max-width:100%;background:#fff;border:1px solid #e7e5e4;border-radius:22px;
+padding:38px 32px;box-shadow:0 1px 2px rgba(28,25,23,.04),0 26px 64px -22px rgba(28,25,23,.16)}}
 .brand{{display:flex;align-items:center;gap:11px;margin-bottom:22px}}
 .brand .wm{{font-size:20px;font-weight:300;letter-spacing:.3em;padding-left:.3em}}
-h1{{font-size:23px;margin-bottom:7px}} .sub{{color:#52605a;font-size:14.5px;margin-bottom:22px}}
-label{{display:block;font-size:12px;font-weight:600;color:#3f4a44;margin:0 0 6px}}
-input{{width:100%;padding:13px 15px;border-radius:12px;border:1px solid #d7e0da;background:#fff;
-color:#0a0f0c;font-size:15px;margin-bottom:14px;transition:border .15s,box-shadow .15s}}
-input:focus{{outline:0;border-color:#9fe9c6;box-shadow:0 0 0 4px rgba(21,224,106,.14)}}
+h1{{font-size:23px;margin-bottom:7px;letter-spacing:-.01em}} .sub{{color:#78716c;font-size:14.5px;margin-bottom:22px}}
+label{{display:block;font-size:12px;font-weight:600;color:#44403c;margin:0 0 6px}}
+input{{width:100%;padding:13px 15px;border-radius:12px;border:1px solid #d6d3d1;background:#fff;
+color:#1c1917;font-size:15px;margin-bottom:14px;transition:border .15s,box-shadow .15s}}
+input:focus{{outline:0;border-color:#a7f3d0;box-shadow:0 0 0 4px rgba(16,185,129,.14)}}
 button{{width:100%;padding:14px;border:0;border-radius:12px;font-weight:700;font-size:15px;cursor:pointer;
-background:#15E06A;color:#04150d;box-shadow:0 8px 24px -6px rgba(21,224,106,.45);transition:filter .15s}}
-button:hover{{filter:brightness(1.03)}}
-.err{{background:#fef2f4;border:1px solid #f6cdd6;color:#b3123a;font-size:13.5px;padding:10px 13px;
+background:#1c1917;color:#fff;box-shadow:0 8px 24px -6px rgba(28,25,23,.35);transition:transform .15s,box-shadow .15s,opacity .15s}}
+button:hover{{transform:translateY(-1px);box-shadow:0 12px 28px -6px rgba(28,25,23,.4)}}
+button:disabled{{opacity:.6;cursor:not-allowed;transform:none}}
+.err{{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:13.5px;padding:10px 13px;
 border-radius:11px;margin-bottom:16px}}
-.divider{{display:flex;align-items:center;gap:12px;margin:18px 0;color:#9aa8a1;font-size:12px}}
-.divider::before,.divider::after{{content:"";flex:1;height:1px;background:#e5ece8}}
+.divider{{display:flex;align-items:center;gap:12px;margin:18px 0;color:#a8a29e;font-size:12px}}
+.divider::before,.divider::after{{content:"";flex:1;height:1px;background:#e7e5e4}}
 .btn{{display:flex;align-items:center;justify-content:center;width:100%;padding:13px;border-radius:12px;
-border:1px solid #d7e0da;background:#fff;color:#0a0f0c;text-decoration:none;font-weight:600;
+border:1px solid #d6d3d1;background:#fff;color:#1c1917;text-decoration:none;font-weight:600;
 font-size:14.5px;margin-bottom:11px;transition:background .15s}}
-.btn:hover{{background:#f3f8f5}}
-.switch{{text-align:center;font-size:14px;color:#52605a;margin-top:18px}}
-.mut{{color:#8592a3;font-size:11.5px;margin-top:16px;text-align:center;line-height:1.7}}
-a.lnk{{color:#057a52;text-decoration:none;font-weight:600}} a.lnk:hover{{text-decoration:underline}}
+.btn:hover{{background:#fafaf9}}
+.switch{{text-align:center;font-size:14px;color:#57534e;margin-top:18px}}
+.mut{{color:#a8a29e;font-size:11.5px;margin-top:16px;text-align:center;line-height:1.7}}
+a.lnk{{color:#047857;text-decoration:none;font-weight:600}} a.lnk:hover{{text-decoration:underline}}
 </style></head><body><div class="card">
 <div class="brand">{_ARIA_MARK}<span class="wm">ARIA</span></div>
 <h1>{title}</h1><p class="sub">{sub}</p>
 {err}
-<form method="post" action="{action}" autocomplete="on">
+<form method="post" action="{action}" autocomplete="on" onsubmit="var b=this.querySelector('button[type=submit]');b.disabled=true;b.textContent='Please wait…';">
 {name_field}
 <input type="email" name="email" placeholder="you@email.com" value="{ev}" autocomplete="email" required autofocus>
 <input type="password" name="password" placeholder="Password" autocomplete="{pw_auto}"{pw_hint} required>
