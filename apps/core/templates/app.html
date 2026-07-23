@@ -253,6 +253,28 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 /* Live agent logs stay an opt-in slide-over at every width — live work already
    shows inline in the thread, so the terminal panel is never a permanent column. */
 
+/* ── artifact panel (live preview of code/HTML ARIA generates) ── */
+.artifact{position:fixed;inset:0 0 0 auto;z-index:51;width:520px;max-width:92vw;display:flex;flex-direction:column;background:#fff;border-left:1px solid var(--line);box-shadow:var(--sh3);transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.artifact.translate-x-full{transform:translateX(100%)}
+.artifact .ah{height:58px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line)}
+.artifact .at{min-width:0;flex:1;font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.artifact .alang{font-family:var(--mono);font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--green-ink);background:var(--neon-soft);border-radius:6px;padding:2px 7px;flex:none}
+.artifact .abtn{flex:none;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 9px;font-size:12px;font-weight:600;color:var(--ink2)}
+.artifact .abtn:hover{background:var(--soft)}
+.artifact .aclose{color:var(--muted);background:transparent;border:0;width:28px;height:28px;border-radius:8px;flex:none}
+.artifact .aclose:hover{background:var(--soft);color:var(--ink)}
+.artifact .abody{flex:1;overflow:auto;background:var(--soft)}
+.artifact .abody iframe{width:100%;height:100%;border:0;background:#fff}
+.artifact .abody pre{margin:0;padding:18px;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:var(--ink2);white-space:pre-wrap;word-break:break-word}
+.artifact-card{display:flex;align-items:center;gap:11px;border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px 14px;margin:8px 0;cursor:pointer;transition:.15s;box-shadow:var(--sh1)}
+.artifact-card:hover{border-color:#cdeadd;box-shadow:var(--sh2)}
+.artifact-card .aic{width:34px;height:34px;border-radius:9px;flex:none;background:var(--neon-soft);color:var(--green-ink);display:grid;place-items:center}
+.artifact-card .abody2{min-width:0;flex:1}
+.artifact-card .an{font-size:13.5px;font-weight:700;color:var(--ink);display:block}
+.artifact-card .as{font-size:11.5px;color:var(--muted)}
+.artifact-card .aopen{flex:none;font-size:12px;font-weight:700;color:var(--green-ink)}
+#artifactBackdrop.hidden{display:none}
+
 /* ── overlays / modals ── */
 .ov{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(28,25,23,.5);backdrop-filter:blur(4px)}
 .ov.flex{display:flex}
@@ -665,6 +687,17 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
   </aside>
 
   <div id="logsBackdrop" onclick="toggleLogs(false)" class="backdrop hidden"></div>
+
+  <aside id="artifact" class="artifact translate-x-full">
+    <div class="ah">
+      <span id="artifactLang" class="alang">CODE</span>
+      <div id="artifactTitle" class="at">Artifact</div>
+      <button id="artifactCopy" onclick="artifactCopy()" class="abtn">Copy</button>
+      <button onclick="closeArtifact()" aria-label="Close artifact" class="aclose"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="artifactBody" class="abody"></div>
+  </aside>
+  <div id="artifactBackdrop" onclick="closeArtifact()" class="backdrop hidden"></div>
 </div>
 
 <!-- mobile bottom bar -->
@@ -763,10 +796,78 @@ function log(msg, level){
 }
 
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+// ── Artifacts: substantial code/HTML ARIA writes renders live in a side
+// panel instead of sitting as a wall of text in the chat thread (same idea
+// as Claude's Artifacts / ChatGPT's Canvas). Short snippets stay inline —
+// only markup-like content or anything past a length threshold gets promoted.
+let ARTIFACT_STORE=[], artifactOpenId=null;
+const ARTIFACT_ICON='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4 3 12l5 8M16 4l5 8-5 8"/></svg>';
+function isArtifactWorthy(lang, code){
+  const l=(lang||'').toLowerCase();
+  if(['html','svg','xml'].includes(l)) return true;
+  return code.split('\n').length>12;
+}
+function artifactLabel(lang){
+  const l=(lang||'').toLowerCase();
+  if(l==='html') return 'HTML page';
+  if(l==='svg') return 'SVG image';
+  return (l||'CODE').toUpperCase()+' file';
+}
+function artifactCardHTML(id,lang,code){
+  const lines=code.split('\n').length;
+  return '<div class="artifact-card" onclick="openArtifact('+id+')">'
+    +'<span class="aic">'+ARTIFACT_ICON+'</span>'
+    +'<div class="abody2"><span class="an">'+esc(artifactLabel(lang))+'</span>'
+    +'<span class="as">'+lines+' lines · click to preview</span></div>'
+    +'<span class="aopen">Open →</span></div>';
+}
+function openArtifact(id){
+  const a=ARTIFACT_STORE[id]; if(!a) return;
+  artifactOpenId=id;
+  document.getElementById('artifactLang').textContent=(a.lang||'code').toUpperCase();
+  document.getElementById('artifactTitle').textContent=artifactLabel(a.lang);
+  const body=document.getElementById('artifactBody');
+  body.innerHTML='';
+  if(a.lang==='html'||a.lang==='svg'){
+    const doc = a.lang==='svg'
+      ? '<!doctype html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh">'+a.code+'</body></html>'
+      : a.code;
+    const iframe=document.createElement('iframe');
+    iframe.setAttribute('sandbox','allow-scripts'); // no allow-same-origin/allow-top-navigation: isolated, can't touch the parent page
+    iframe.srcdoc=doc; // set as a property, not an HTML attribute string, so no manual escaping is needed
+    body.appendChild(iframe);
+  } else {
+    body.innerHTML='<pre><code>'+esc(a.code)+'</code></pre>';
+  }
+  document.getElementById('artifact').classList.remove('translate-x-full');
+  document.getElementById('artifactBackdrop').classList.remove('hidden');
+}
+function closeArtifact(){
+  document.getElementById('artifact').classList.add('translate-x-full');
+  document.getElementById('artifactBackdrop').classList.add('hidden');
+}
+function artifactCopy(){
+  if(artifactOpenId==null) return;
+  const a=ARTIFACT_STORE[artifactOpenId]; if(!a) return;
+  try{ navigator.clipboard.writeText(a.code); }catch(e){}
+  const b=document.getElementById('artifactCopy'); const o=b.textContent;
+  b.textContent='Copied'; setTimeout(()=>{ b.textContent=o; },1200);
+}
+
 function md(src){
   if(!src) return '';
   const blocks=[];
-  src=src.replace(/```(\w+)?\n?([\s\S]*?)```/g,(m,l,c)=>{blocks.push('<pre><code>'+esc(c.replace(/\n$/,''))+'</code></pre>');return '@@B'+(blocks.length-1)+'@@'});
+  src=src.replace(/```(\w+)?\n?([\s\S]*?)```/g,(m,l,c)=>{
+    const code=c.replace(/\n$/,''); const lang=(l||'').toLowerCase();
+    if(isArtifactWorthy(lang,code)){
+      const id=ARTIFACT_STORE.length; ARTIFACT_STORE.push({lang,code});
+      blocks.push(artifactCardHTML(id,lang,code));
+    } else {
+      blocks.push('<pre><code>'+esc(code)+'</code></pre>');
+    }
+    return '@@B'+(blocks.length-1)+'@@';
+  });
   let h=esc(src);
   h=h.replace(/`([^`]+)`/g,(m,c)=>'<code>'+c+'</code>');
   h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
