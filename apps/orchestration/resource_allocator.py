@@ -114,7 +114,7 @@ class ResourceAllocator:
                     "spend": c.get("spend", 0),
                     "revenue": c.get("revenue", 0),
                     "roas": c.get("roas", 0.0)
-                    or (c["revenue"] / c["spend"] if c.get("spend", 0) > 0 else 0.0),
+                    or (c.get("revenue", 0) / c["spend"] if c.get("spend", 0) > 0 else 0.0),
                 }
         total_budget = sum(c.get("spend", 0) for c in campaigns)
         total_hours = len(campaigns) * 5.0
