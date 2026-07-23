@@ -54,7 +54,15 @@ _STEALTH_JS = """
       arr.refresh = () => {};
       arr.item = (i) => arr[i];
       arr.namedItem = (n) => arr.find(p => p.name === n);
-      Object.defineProperty(arr, 'length', { get: () => fakePlugins.length });
+      // NOTE: arr.length is already correct here (it's the real Array.length
+      // from fakePlugins.map() above). A prior version tried to also
+      // Object.defineProperty(arr, 'length', ...) here, but Array.length is
+      // non-configurable per spec (ECMA-262) on every engine — that call
+      // always threw "TypeError: Cannot redefine property: length" the
+      // moment anything (including real bot-detection scripts) touched
+      // navigator.plugins.length, which is far more detectable than a
+      // plain headless browser: a real Chrome never throws just from
+      // reading a property.
       return arr;
     }
   });

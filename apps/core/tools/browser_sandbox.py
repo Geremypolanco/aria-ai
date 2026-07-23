@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import re
 from typing import Any
 
@@ -51,7 +52,19 @@ class BrowserSession:
         self._playwright_available = None  # None = unchecked
 
     async def _ensure_browser(self) -> bool:
-        """Inicializa Playwright si está disponible."""
+        """Inicializa Playwright si está disponible.
+
+        Uses the same anti-detection measures as human_browser.py's stealth
+        engine (launch flags that hide automation signals + the init script
+        that patches navigator.webdriver, fake plugins, canvas/WebGL
+        fingerprint noise, etc.) — this is ARIA's general-purpose "browse any
+        page" tool (browse_page/interact_browser in aria_mind.py), reachable
+        for far more tasks than the platform-specific login flows
+        human_browser.py was written for. Before this, every browse_page/
+        interact_browser call used a vanilla Playwright session with none of
+        that — trivially flagged as a bot by navigator.webdriver alone,
+        which is checked by essentially all basic bot-detection (Cloudflare,
+        DataDome, PerimeterX, and plenty of sites' own JS)."""
         if self._playwright_available is False:
             return False
         if self._page is not None:
@@ -59,10 +72,20 @@ class BrowserSession:
         try:
             from playwright.async_api import async_playwright
 
+            from apps.core.tools.human_browser import _STEALTH_JS
+
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                    "--exclude-switches=enable-automation",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                ],
             )
             self._context = await self._browser.new_context(
                 viewport={"width": 1280, "height": 900},
@@ -71,11 +94,14 @@ class BrowserSession:
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/120.0.0.0 Safari/537.36"
                 ),
+                locale="en-US",
+                timezone_id="America/New_York",
                 java_script_enabled=True,
             )
+            await self._context.add_init_script(_STEALTH_JS)
             self._page = await self._context.new_page()
             self._playwright_available = True
-            logger.info("[BrowserSandbox] Playwright iniciado")
+            logger.info("[BrowserSandbox] Playwright iniciado (stealth)")
             return True
         except Exception as exc:
             logger.warning("[BrowserSandbox] Playwright no disponible: %s — usando httpx", exc)
@@ -199,18 +225,30 @@ class BrowserSession:
         if not await self._ensure_browser():
             return {"success": False, "error": "Playwright requerido para clic"}
         try:
+            # A human doesn't click the instant an element exists — brief
+            # randomized pauses before/after are cheap, low-risk timing
+            # cover against bot-detection that flags inhumanly-uniform
+            # click intervals.
+            await asyncio.sleep(random.uniform(0.15, 0.5))
             await self._page.click(selector, timeout=timeout)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(random.uniform(0.3, 0.8))
             return {"success": True, "selector": selector, "url": self._page.url}
         except Exception as exc:
             return {"success": False, "selector": selector, "error": str(exc)}
 
     async def fill_field(self, selector: str, value: str) -> dict[str, Any]:
-        """Rellena un campo de entrada."""
+        """Rellena un campo de entrada, tecla por tecla con timing humano."""
         if not await self._ensure_browser():
             return {"success": False, "error": "Playwright requerido para fill"}
         try:
-            await self._page.fill(selector, value)
+            await asyncio.sleep(random.uniform(0.1, 0.4))
+            try:
+                await self._page.click(selector, timeout=2000)
+                await self._page.type(selector, value, delay=random.uniform(40, 120))
+            except Exception:
+                # Element may not be clickable/typeable (hidden input, etc.)
+                # — fall back to the instant fill rather than failing.
+                await self._page.fill(selector, value)
             return {"success": True, "selector": selector}
         except Exception as exc:
             return {"success": False, "selector": selector, "error": str(exc)}
