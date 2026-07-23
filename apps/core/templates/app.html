@@ -1300,6 +1300,25 @@ function selSync(el,on){ el.classList.toggle('sel',on); el.setAttribute('aria-pr
 document.addEventListener('keydown', e=>{
   if((e.key==='Enter'||e.key===' ') && e.target.matches('.chip2,.plan')){ e.preventDefault(); e.target.click(); }
 });
+// Escape closes whichever overlay is currently open, topmost first. The
+// onboarding modal (#ov) is deliberately excluded — it has no close button
+// because it's a mandatory first-run flow, not a dismissible dialog.
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape') return;
+  // These overlays start with plain class="ov" (closed via the base .ov{display:none}
+  // rule, no "hidden" class present yet) — only .flex is authoritatively added/removed
+  // by their own open/close functions, so it's the only reliable open-state signal.
+  const isOpen = id => document.getElementById(id).classList.contains('flex');
+  if(isOpen('confirmOv')){ closeConfirm(false); return; }
+  if(!document.getElementById('artifact').classList.contains('translate-x-full')){ closeArtifact(); return; }
+  if(!document.getElementById('logs').classList.contains('translate-x-full')){ toggleLogs(false); return; }
+  if(isOpen('upOv')){ closeUpgrade(); return; }
+  if(isOpen('settingsOv')){ closeSettings(); return; }
+  if(isOpen('connOv')){ closeConnectors(); return; }
+  if(isOpen('teamOv')){ closeTeam(); return; }
+  if(supOpen){ toggleSupport(false); return; }
+  if(!document.getElementById('side').classList.contains('-translate-x-full')){ toggleSide(false); return; }
+});
 
 let obStep=0, obWork="", obGoals=new Set(), obPlan="free";
 const OB_STEPS=4;
