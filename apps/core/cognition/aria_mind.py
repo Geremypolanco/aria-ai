@@ -134,6 +134,10 @@ HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
 - extract_text     → OCR: extrae texto de una imagen. Args: {{"url": "https://..."}}
 - edit_image       → edita imagen por instrucción natural. Args: {{"url": "https://...", "instruction": "quita el fondo"}}
 - analyze_video    → analiza un video por URL, extrae frames clave. Args: {{"url": "https://...", "question": "¿qué ocurre?"}}
+- remove_background → quita el fondo de una imagen con precisión profesional (BiRefNet). Ideal para fotos de producto para ecommerce. Args: {{"url": "https://..."}}
+- classify_image   → clasifica una imagen en 1000 categorías (ImageNet/ViT). Args: {{"url": "https://..."}}
+- document_qa      → extrae información de documentos escaneados, facturas o formularios (LayoutLM). Args: {{"url": "https://...", "question": "¿Cuál es el total?"}}
+- create_product_pack → genera en una sola llamada un pack completo de producto: imagen, imagen para redes, thumbnail de blog, resumen, clasificación de nicho, sentimiento de mercado y traducciones a varios idiomas. Úsalo cuando el usuario lance un producto nuevo. Args: {{"product_name": "...", "product_description": "...", "niche": "...", "languages": ["en","fr","de","pt"]}}
 - run_background   → ejecuta tarea larga en segundo plano y te notifica cuando termina. Args: {{"task": "descripción", "agent": "ceo|research|developer|content"}}
 - task_status      → estado de tareas en segundo plano. Args: {{"task_id": "..."}} o {{}} para listar todas.
 - learn            → ingesta texto o URL en la base de conocimiento para uso futuro. Args: {{"source": "https://... o texto", "category": "tema", "is_url": true}}
@@ -248,6 +252,19 @@ _HELP_TEXT = """\
 
 Escribe cualquier pregunta o instrucción en lenguaje natural — ARIA entiende contexto y elige la herramienta correcta automáticamente.\
 """
+
+
+async def _fetch_image_bytes(url: str, timeout: float = 20.0) -> bytes:
+    """Downloads a URL for HF tools that need raw bytes (SSRF-guarded, like multimodal.py)."""
+    import httpx
+
+    from apps.core.tools.web_tools import _assert_public_url
+
+    await _assert_public_url(url)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return resp.content
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1320,6 +1337,90 @@ class AriaMind:
                     frames = r.get("frames_analyzed", 0)
                     return f"[ANÁLISIS DE VIDEO — {frames} frames]\n{r['analysis']}", {}
                 return f"No pude analizar el video: {r.get('error', 'error desconocido')}", {}
+
+            # ── HERRAMIENTAS HF ADICIONALES (ecommerce/documentos) ────────
+            elif tool == "remove_background":
+                url = args.get("url", "")
+                if not url:
+                    return "Necesito una URL de imagen.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+                try:
+                    img_bytes = await _fetch_image_bytes(url)
+                except Exception as exc:
+                    return f"No pude descargar la imagen: {exc}", {}
+                r = await HuggingFaceSuite().remove_background(img_bytes)
+                if r.get("success") and r.get("image_bytes"):
+                    return "Fondo eliminado.", {"image_bytes": r["image_bytes"]}
+                return r.get("error", "No se pudo eliminar el fondo"), {}
+
+            elif tool == "classify_image":
+                url = args.get("url", "")
+                if not url:
+                    return "Necesito una URL de imagen.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+                try:
+                    img_bytes = await _fetch_image_bytes(url)
+                except Exception as exc:
+                    return f"No pude descargar la imagen: {exc}", {}
+                r = await HuggingFaceSuite().classify_image(img_bytes)
+                if r.get("success"):
+                    top = f"{r['top_label']} ({r['top_score'] * 100:.1f}%)"
+                    others = ", ".join(
+                        f"{a['label']} ({a['score'] * 100:.1f}%)" for a in r.get("all", [])[1:5]
+                    )
+                    obs = f"[CLASIFICACIÓN] {top}" + (f"\nTambién: {others}" if others else "")
+                    return obs, {}
+                return r.get("error", "No se pudo clasificar la imagen"), {}
+
+            elif tool == "document_qa":
+                url = args.get("url", "")
+                question = args.get("question", "")
+                if not url or not question:
+                    return "Necesito una URL de documento y una pregunta.", {}
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+                try:
+                    img_bytes = await _fetch_image_bytes(url)
+                except Exception as exc:
+                    return f"No pude descargar el documento: {exc}", {}
+                r = await HuggingFaceSuite().document_qa(img_bytes, question)
+                if r.get("success"):
+                    return f"[DOCUMENTO] {r['answer']} (confianza: {r['confidence'] * 100:.0f}%)", {}
+                return r.get("error", "No se pudo leer el documento"), {}
+
+            elif tool == "create_product_pack":
+                product_name = args.get("product_name", "")
+                product_description = args.get("product_description", "")
+                niche = args.get("niche", "")
+                languages = args.get("languages") or None
+                from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+                r = await HuggingFaceSuite().create_product_content_pack(
+                    product_name, product_description, niche, languages
+                )
+                media: dict = {}
+                product_bytes = (r.get("product_image") or {}).get("bytes")
+                if product_bytes:
+                    media["image_bytes"] = product_bytes
+                translations = r.get("translations") or {}
+                langs_done = ", ".join(translations.keys()) if translations else "ninguna"
+                extra_imgs = []
+                if (r.get("social_image") or {}).get("bytes"):
+                    extra_imgs.append("social")
+                if (r.get("blog_thumbnail") or {}).get("bytes"):
+                    extra_imgs.append("blog thumbnail")
+                obs = (
+                    f"[PACK DE PRODUCTO: {product_name}]\n"
+                    f"Nicho: {r.get('niche_classification', niche)}\n"
+                    f"Resumen: {r.get('summary', '')}\n"
+                    f"Sentimiento de mercado: {r.get('market_sentiment', '')}\n"
+                    f"Traducciones generadas: {langs_done}\n"
+                    f"Imágenes generadas: producto"
+                    + (f", {', '.join(extra_imgs)}" if extra_imgs else "")
+                )
+                return obs, media
 
             # ── BACKGROUND TASKS ─────────────────────────────────────────
             elif tool == "run_background":

@@ -990,25 +990,16 @@ class HuggingFaceSuite:
             "product_name": product_name,
             "niche": niche,
             "product_image": {
-                "b64": (
-                    img.get("image_b64", "")[:100] + "..."
-                    if isinstance(img, dict) and img.get("success")
-                    else None
-                )
+                "bytes": img.get("image_bytes") if isinstance(img, dict) and img.get("success") else None,
+                "b64": img.get("image_b64") if isinstance(img, dict) and img.get("success") else None,
             },
             "social_image": {
-                "b64": (
-                    social.get("image_b64", "")[:100] + "..."
-                    if isinstance(social, dict) and social.get("success")
-                    else None
-                )
+                "bytes": social.get("image_bytes") if isinstance(social, dict) and social.get("success") else None,
+                "b64": social.get("image_b64") if isinstance(social, dict) and social.get("success") else None,
             },
             "blog_thumbnail": {
-                "b64": (
-                    thumb.get("image_b64", "")[:100] + "..."
-                    if isinstance(thumb, dict) and thumb.get("success")
-                    else None
-                )
+                "bytes": thumb.get("image_bytes") if isinstance(thumb, dict) and thumb.get("success") else None,
+                "b64": thumb.get("image_b64") if isinstance(thumb, dict) and thumb.get("success") else None,
             },
             "summary": summary.get("summary", "") if isinstance(summary, dict) else "",
             "niche_classification": (
