@@ -188,6 +188,12 @@ class Settings(BaseSettings):
     # MCP endpoint URL for a self-hosted Activepieces instance (see infra/activepieces/).
     # Gives ARIA the same one-credential access to Activepieces' 200+ pieces.
     ACTIVEPIECES_MCP_URL: str | None = None
+    # Base URL of a self-hosted Piston code-execution instance (see infra/piston/).
+    # Piston's public API now requires manual, non-commercial-only authorization from
+    # its maintainer, which ARIA (a paid product) doesn't qualify for - self-hosting is
+    # the only path available to us. Code always runs on THAT instance, never inside
+    # ARIA's own container, by design.
+    PISTON_API_URL: str | None = None
     SOCIAL_CONNECT_TOKEN: str = "aria"
 
     # ── COMUNICACIÓN ──────────────────────────────────────

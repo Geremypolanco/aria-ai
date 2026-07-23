@@ -337,6 +337,12 @@ class SupportRequest(BaseModel):
     session_id: str = "support"
 
 
+class CodeExecRequest(BaseModel):
+    language: str
+    code: str
+    stdin: str = ""
+
+
 class ProfileRequest(BaseModel):
     name: str = ""
     work: str = ""
@@ -2106,6 +2112,28 @@ async def activepieces_selftest():
     except Exception as e:
         logger.error(f"Activepieces selftest error: {e}")
         return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/v1/code/execute")
+async def code_execute(req: CodeExecRequest, request: Request):
+    """Run code on the self-hosted Piston sandbox (never inside this container)
+    and return real stdout/stderr — backs the Artifacts panel's Run button."""
+    if not _current_user(request):
+        return {"success": False, "error": "Please sign in to run code."}
+    # Tighter than chat: execution is heavier and more abusable than a text reply.
+    if not _rate_ok(request, "code_exec", 10, 60):
+        return {"success": False, "error": "Too many runs — please wait a moment and try again."}
+    if len(req.code) > 20000:
+        return {"success": False, "error": "Code is too long to run (20,000 character limit)."}
+
+    try:
+        from apps.core.tools.code_sandbox import get_code_sandbox
+
+        result = await get_code_sandbox().execute(req.language, req.code, stdin=req.stdin)
+        return result
+    except Exception as e:
+        logger.error(f"Code execute error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 # ── WEBSOCKET ─────────────────────────────────────────────

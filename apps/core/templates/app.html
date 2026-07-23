@@ -265,6 +265,12 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .artifact .alang{font-family:var(--mono);font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--green-ink);background:var(--neon-soft);border-radius:6px;padding:2px 7px;flex:none}
 .artifact .abtn{flex:none;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 9px;font-size:12px;font-weight:600;color:var(--ink2)}
 .artifact .abtn:hover{background:var(--soft)}
+.artifact .abtn.run{border-color:#b6f0d3;background:var(--neon-soft);color:var(--green-ink)}
+.artifact .abtn.run:hover{background:#d9f7e5}
+.artifact .abtn:disabled{opacity:.5;cursor:not-allowed}
+.aoutput{flex:none;max-height:38vh;overflow:auto;border-top:1px solid var(--line);background:#0b0c13;padding:14px 16px;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:#d7dee8;white-space:pre-wrap;word-break:break-word}
+.aoutput .ao-err{color:#fb6b8a}
+.aoutput .ao-meta{color:#7fe0aa;margin-bottom:6px;font-weight:700}
 .artifact .aclose{color:var(--muted);background:transparent;border:0;width:28px;height:28px;border-radius:8px;flex:none}
 .artifact .aclose:hover{background:var(--soft);color:var(--ink)}
 .artifact .abody{flex:1;overflow:auto;background:var(--soft)}
@@ -701,10 +707,12 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
     <div class="ah">
       <span id="artifactLang" class="alang">CODE</span>
       <div id="artifactTitle" class="at">Artifact</div>
+      <button id="artifactRun" onclick="runArtifact()" class="abtn run hidden">▶ Run</button>
       <button id="artifactCopy" onclick="artifactCopy()" class="abtn">Copy</button>
       <button onclick="closeArtifact()" aria-label="Close artifact" class="aclose"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div id="artifactBody" class="abody"></div>
+    <div id="artifactOutput" class="aoutput hidden"></div>
   </aside>
   <div id="artifactBackdrop" onclick="closeArtifact()" class="backdrop hidden"></div>
 </div>
@@ -907,14 +915,20 @@ function artifactCardHTML(id,lang,code){
     +'<span class="as">'+lines+' lines · click to preview</span></div>'
     +'<span class="aopen">Open →</span></div>';
 }
+// Languages that already get a live preview (the iframe) don't need a
+// separate "Run" — everything else can be sent to the code sandbox.
+const NON_RUNNABLE_LANGS=['html','svg','xml'];
 function openArtifact(id){
   const a=ARTIFACT_STORE[id]; if(!a) return;
   artifactOpenId=id;
   document.getElementById('artifactLang').textContent=(a.lang||'code').toUpperCase();
   document.getElementById('artifactTitle').textContent=artifactLabel(a.lang);
   const body=document.getElementById('artifactBody');
+  const output=document.getElementById('artifactOutput');
+  const runBtn=document.getElementById('artifactRun');
+  output.classList.add('hidden'); output.innerHTML='';
   body.innerHTML='';
-  if(a.lang==='html'||a.lang==='svg'){
+  if(NON_RUNNABLE_LANGS.includes(a.lang)){
     const doc = a.lang==='svg'
       ? '<!doctype html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh">'+a.code+'</body></html>'
       : a.code;
@@ -922,8 +936,11 @@ function openArtifact(id){
     iframe.setAttribute('sandbox','allow-scripts'); // no allow-same-origin/allow-top-navigation: isolated, can't touch the parent page
     iframe.srcdoc=doc; // set as a property, not an HTML attribute string, so no manual escaping is needed
     body.appendChild(iframe);
+    runBtn.classList.add('hidden');
   } else {
     body.innerHTML='<pre><code>'+esc(a.code)+'</code></pre>';
+    runBtn.classList.remove('hidden');
+    runBtn.disabled=false; runBtn.textContent='▶ Run';
   }
   document.getElementById('artifact').classList.remove('translate-x-full');
   document.getElementById('artifactBackdrop').classList.remove('hidden');
@@ -938,6 +955,33 @@ function artifactCopy(){
   try{ navigator.clipboard.writeText(a.code); }catch(e){}
   const b=document.getElementById('artifactCopy'); const o=b.textContent;
   b.textContent='Copied'; setTimeout(()=>{ b.textContent=o; },1200);
+}
+async function runArtifact(){
+  if(artifactOpenId==null) return;
+  const a=ARTIFACT_STORE[artifactOpenId]; if(!a) return;
+  const runBtn=document.getElementById('artifactRun');
+  const output=document.getElementById('artifactOutput');
+  runBtn.disabled=true; runBtn.textContent='Running…';
+  output.classList.remove('hidden');
+  output.innerHTML='<span class="ao-meta">Running…</span>';
+  try{
+    const r=await fetch('/api/v1/code/execute',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({language:a.lang, code:a.code})});
+    const d=await r.json();
+    if(d.error){
+      output.innerHTML='<span class="ao-err">'+esc(d.error)+'</span>';
+    } else {
+      const parts=[];
+      parts.push('<span class="ao-meta">Exit code: '+(d.exit_code==null?'—':d.exit_code)+'</span>');
+      if(d.stdout) parts.push(esc(d.stdout));
+      if(d.stderr) parts.push('<span class="ao-err">'+esc(d.stderr)+'</span>');
+      if(!d.stdout && !d.stderr) parts.push('(no output)');
+      output.innerHTML=parts.join('\n');
+    }
+  }catch(e){
+    output.innerHTML='<span class="ao-err">Could not reach the code sandbox.</span>';
+  }
+  finally{ runBtn.disabled=false; runBtn.textContent='▶ Run'; }
 }
 
 function md(src){
