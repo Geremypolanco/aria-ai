@@ -13,13 +13,13 @@ const ARIA_PLANS = [
     cta: 'Start free',
     href: '/signup',
     highlight: false,
-    features: ['Tasks: research, write, images', 'Daily message limit', '1 workspace'],
+    features: ['Tasks: research, write, build, images', 'Daily message limit', '1 workspace'],
   },
   {
     name: 'Pro',
     price: '$29',
     period: '/mo',
-    sub: 'For creators & founders shipping daily',
+    sub: 'For anyone shipping real work daily',
     cta: 'Go Pro',
     href: '/signup',
     highlight: true,
@@ -27,7 +27,7 @@ const ARIA_PLANS = [
     features: [
       'Unlimited tasks',
       'Advanced image, video & voice',
-      'Autonomous multi-channel publishing',
+      'Autonomous execution across every connected tool',
       'Expanded memory & priority AI',
     ],
   },
@@ -35,13 +35,13 @@ const ARIA_PLANS = [
     name: 'Business',
     price: '$99',
     period: '/mo',
-    sub: 'For teams & brands',
+    sub: 'For teams of any kind',
     cta: 'Start Business',
     href: '/signup',
     highlight: false,
     features: [
       'Everything in Pro',
-      '5 brand workspaces & seats',
+      '5 workspaces & seats',
       'Scheduled autonomy & analytics',
       'Dedicated support',
     ],
@@ -64,8 +64,8 @@ const ARIA_FAQ = [
     linkText: 'Refund policy →',
   },
   {
-    q: 'Does ARIA post anything without my approval?',
-    a: 'No. Every mission ends with you reviewing the result — you approve before anything ships to a connected channel, unless you explicitly turn on scheduled autonomy.',
+    q: 'Does ARIA do anything without my approval?',
+    a: 'No. Every mission ends with you reviewing the result — you approve before anything goes out to a connected tool, unless you explicitly turn on scheduled autonomy.',
   },
 ];
 

@@ -22,16 +22,16 @@ class AriaHero extends HTMLElement {
       <div class="relative z-10 mx-auto max-w-5xl px-6">
         <span data-reveal class="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white/80 px-4 py-2 text-xs font-semibold text-stone-600 shadow-sm shadow-stone-900/5 backdrop-blur">
           <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-          Autonomous content engine · for founders &amp; creators
+          One AI, every integration · for whatever you do
         </span>
 
-        <h1 data-reveal style="--d:80ms" class="mx-auto mt-8 max-w-[16ch] text-[clamp(2.75rem,6.4vw,4.75rem)] font-semibold leading-[1.04] tracking-[-0.03em] text-stone-900">
-          One idea in.<br />
-          <span class="text-emerald-700">A week of content, published.</span>
+        <h1 data-reveal style="--d:80ms" class="mx-auto mt-8 max-w-[17ch] text-[clamp(2.75rem,6.4vw,4.75rem)] font-semibold leading-[1.04] tracking-[-0.03em] text-stone-900">
+          Give it the job.<br />
+          <span class="text-emerald-700">It picks the tools and finishes it.</span>
         </h1>
 
         <p data-reveal style="--d:160ms" class="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-stone-600">
-          ARIA researches the trend, writes the posts, designs the images and video, and publishes across your channels. You approve — it ships.
+          ARIA researches, writes, builds and ships — connected to Gmail, Slack, Notion, Shopify, Stripe and 9,000+ apps through Zapier. Marketer or engineer, founder or ops team: you approve, it executes.
         </p>
 
         <div data-reveal style="--d:240ms" class="mt-9 flex flex-wrap justify-center gap-3">
