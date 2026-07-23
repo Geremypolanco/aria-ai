@@ -912,7 +912,7 @@ function artifactCardHTML(id,lang,code){
   return '<div class="artifact-card" onclick="openArtifact('+id+')">'
     +'<span class="aic">'+ARTIFACT_ICON+'</span>'
     +'<div class="abody2"><span class="an">'+esc(artifactLabel(lang))+'</span>'
-    +'<span class="as">'+lines+' lines · click to preview</span></div>'
+    +'<span class="as">'+lines+' line'+(lines===1?'':'s')+' · click to preview</span></div>'
     +'<span class="aopen">Open →</span></div>';
 }
 // Languages that already get a live preview (the iframe) don't need a

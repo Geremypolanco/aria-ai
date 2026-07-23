@@ -2129,7 +2129,13 @@ async def code_execute(req: CodeExecRequest, request: Request):
     try:
         from apps.core.tools.code_sandbox import get_code_sandbox
 
-        result = await get_code_sandbox().execute(req.language, req.code, stdin=req.stdin)
+        sandbox = get_code_sandbox()
+        result = await sandbox.execute(req.language, req.code, stdin=req.stdin)
+        if not result.get("success") and not sandbox.configured:
+            # code_sandbox.py's message names an internal env var and a repo path —
+            # useful in logs, not something to show a paying user.
+            logger.info("Code execute requested but no sandbox is configured")
+            result = {**result, "error": "Code execution isn't available on this deployment yet."}
         return result
     except Exception as e:
         logger.error(f"Code execute error: {e}")
