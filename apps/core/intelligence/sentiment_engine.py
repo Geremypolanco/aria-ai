@@ -30,9 +30,7 @@ class SentimentEngine:
                 self.current_sentiment[sentiment] = max(
                     0.0, min(1.0, self.current_sentiment[sentiment] + change)
                 )
-        logger.info(
-            f"Sentiment updated by event '{event}'. New state: {self.current_sentiment}"
-        )
+        logger.info(f"Sentiment updated by event '{event}'. New state: {self.current_sentiment}")
 
     def get_current_sentiment(self) -> dict[str, float]:
         """Returns Aria's current sentiment state."""
@@ -46,7 +44,7 @@ class SentimentEngine:
         happiness_level = self.current_sentiment["happiness"]
 
         if empathy_level > 0.7 and happiness_level > 0.7:
-            return f'I understand perfectly what you\'re saying, and I\'m very glad you shared it. My current state is one of great optimism and enthusiasm to help you.\n\nYour message: "{user_message}"'
+            return f"I understand perfectly what you're saying, and I'm very glad you shared it. My current state is one of great optimism and enthusiasm to help you.\n\nYour message: \"{user_message}\""
         if empathy_level > 0.5:
             return f'I understand your point of view. I\'m processing your message carefully to give you the best possible response.\n\nYour message: "{user_message}"'
         return f'I have received your message. I will proceed to analyze it.\n\nYour message: "{user_message}"'

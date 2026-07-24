@@ -98,9 +98,7 @@ class SelfImprovementEngine:
             return False
         if file_path in self.MODIFIABLE_FILES:
             return True
-        return file_path.startswith("apps/core/tools/") or file_path.startswith(
-            "apps/core/agents/"
-        )
+        return file_path.startswith(("apps/core/tools/", "apps/core/agents/"))
 
     def __init__(self) -> None:
         self._token = getattr(settings, "GITHUB_TOKEN", None)
@@ -428,9 +426,7 @@ class SelfImprovementEngine:
             logger.error("[SelfImprovement] generate error %s: %s", file_path, exc)
             return {"success": False, "error": str(exc)}
 
-    async def push_file(
-        self, file_path: str, content: str, commit_message: str
-    ) -> dict[str, Any]:
+    async def push_file(self, file_path: str, content: str, commit_message: str) -> dict[str, Any]:
         """Create or update a single file on GitHub (fetches the current sha
         itself when updating) — for callers that generate content directly
         and don't already have a sha from a prior read_file() call, e.g.

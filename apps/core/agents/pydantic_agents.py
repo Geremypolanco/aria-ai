@@ -49,6 +49,7 @@ except ImportError:
 
 # ── Typed Data Models (Pydantic v2) ───────────────────────────────────
 
+
 class AgentTask(BaseModel):
     """Typed input for any ARIA agent."""
 
@@ -276,6 +277,7 @@ class AriaTypedAgent:
 
 # ── ARIA's Specialized Typed Agents ───────────────────────────────────
 
+
 class AriaStrategyAgent(AriaTypedAgent):
     """
     Typed Strategy Engine for ARIA AI.
@@ -354,6 +356,7 @@ class AriaCodeAgent(AriaTypedAgent):
 
 # ── Typed Agent Registry ──────────────────────────────────────────────
 
+
 class AriaAgentRegistry:
     """
     Centralized registry of ARIA AI's typed agents.
@@ -395,9 +398,7 @@ class AriaAgentRegistry:
         """Runs an agent by name."""
         agent = self.get(name)
         if not agent:
-            raise ValueError(
-                f"Agent '{name}' not found. Available: {list(self._agents.keys())}"
-            )
+            raise ValueError(f"Agent '{name}' not found. Available: {list(self._agents.keys())}")
         return await agent.run(task)
 
     def get_all_stats(self) -> dict[str, Any]:

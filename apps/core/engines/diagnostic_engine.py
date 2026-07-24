@@ -70,7 +70,9 @@ class DiagnosticEngine:
         """
 
         diagnosis = await self.ai.complete_json(
-            system="You are an expert in Social Media Analytics.", user=prompt, model=AIModel.STRATEGY
+            system="You are an expert in Social Media Analytics.",
+            user=prompt,
+            model=AIModel.STRATEGY,
         )
 
         return diagnosis if diagnosis else {"error": "Diagnosis failed"}

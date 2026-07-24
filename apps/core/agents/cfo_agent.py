@@ -256,8 +256,6 @@ class CFOAgent(BaseAgent):
                 platform=platform,
             )
             self.metrics.revenue_generated += amount
-            logger.info(
-                "[CFOAgent] Revenue recorded: $%.2f %s via %s", amount, currency, platform
-            )
+            logger.info("[CFOAgent] Revenue recorded: $%.2f %s via %s", amount, currency, platform)
         except Exception as exc:
             logger.warning("[CFOAgent] Could not record revenue: %s", exc)

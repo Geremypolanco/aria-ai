@@ -62,7 +62,8 @@ class SupportAgent(BaseAgent):
             await self._escalate_ticket(user_id, message, sentiment)
 
         await self._log(
-            "support_response", f"Channel: {channel} | Language: {detected_lang} | Type: {ticket_type}"
+            "support_response",
+            f"Channel: {channel} | Language: {detected_lang} | Type: {ticket_type}",
         )
         return results
 

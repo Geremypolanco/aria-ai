@@ -468,7 +468,9 @@ class ContinuousLearningEngine:
         try:
             cache = self._get_cache()
             await cache.set(
-                topic_key, json.dumps(crystal.to_dict(), ensure_ascii=False), ttl_seconds=LEARNING_TTL
+                topic_key,
+                json.dumps(crystal.to_dict(), ensure_ascii=False),
+                ttl_seconds=LEARNING_TTL,
             )
             logger.info(
                 "[Learning] Crystal saved: '%s' (%d interactions)",

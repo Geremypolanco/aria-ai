@@ -1605,7 +1605,7 @@ function renderConnectors(){
     else if(c.state==='ready'){ label='Connect'; cls='ready'; action='onclick="location.href=\'/connectors/'+c.id+'/connect\'"';
       if(isOwner) gear='<button onclick="connToggle(\''+c.id+'\')" title="Setup details" aria-label="Setup details for '+esc(c.name)+'" class="cn-gear"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>'; }
     else if(isOwner){ label='Set up'; cls='setup'; action='onclick="connToggle(\''+c.id+'\')"'; }
-    else { label='Coming soon'; cls='soon'; action='disabled'; }
+    else { label='Notify me'; cls='soon'; action='onclick="requestConnector(\''+c.id+'\',this)"'; }
     return '<div class="cn-row"><div class="cn-main">'
       +'<div class="cn-ic" style="background:'+c.color+'">'+c.icon+'</div>'
       +'<div style="min-width:0;flex:1"><div class="cn-name">'+esc(c.name)+'</div><div class="cn-desc">'+esc(c.desc)+'</div></div>'
@@ -1628,6 +1628,13 @@ function connDetail(c){
   return '<div id="cd_'+c.id+'" class="cn-detail hidden">'+parts+'</div>';
 }
 function connToggle(id){ var d=document.getElementById('cd_'+id); if(d) d.classList.toggle('hidden'); }
+async function requestConnector(id,btn){
+  btn.disabled=true;
+  try{
+    await fetch('/api/v1/connectors/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({app:id})});
+    btn.textContent='Noted — we\'ll email you';
+  }catch(e){ btn.textContent='Notify me'; btn.disabled=false; }
+}
 function connCopy(t,btn){ try{ navigator.clipboard.writeText(t); }catch(e){} var o=btn.textContent; btn.textContent='Copied'; setTimeout(function(){btn.textContent=o;},1200); }
 function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); closeModalFocus(); }
 

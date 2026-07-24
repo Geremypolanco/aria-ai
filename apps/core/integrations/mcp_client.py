@@ -126,9 +126,7 @@ class McpClient:
                 "content": [{"type": "text", "text": f"Tool {tool_name} not found."}],
             }
 
-        logger.info(
-            f"[MCP Client] Calling tool [32m{tool_name}[0m with arguments: {arguments}"
-        )
+        logger.info(f"[MCP Client] Calling tool [32m{tool_name}[0m with arguments: {arguments}")
         response = await self._send_request(
             method="tools/call",
             params={

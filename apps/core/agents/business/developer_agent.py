@@ -73,7 +73,9 @@ class DeveloperAgent(BaseAgent):
         # CodeRunner, so both must be gated the same way).
         if auto_run and not context.get("is_owner"):
             auto_run = False
-            results["execution_skipped"] = "Code execution is owner-only; code was generated but not run."
+            results["execution_skipped"] = (
+                "Code execution is owner-only; code was generated but not run."
+            )
 
         if auto_run and code:
             from apps.core.tools.code_runner import CodeRunner
@@ -104,7 +106,9 @@ class DeveloperAgent(BaseAgent):
         # (and triggering an automatic Fly.io deploy) must be owner-only,
         # not something any signed-up user can trigger via run_business_agent.
         if deploy and context.get("github_path") and not context.get("is_owner"):
-            results["deploy_skipped"] = "GitHub push is owner-only; code was generated but not pushed."
+            results["deploy_skipped"] = (
+                "GitHub push is owner-only; code was generated but not pushed."
+            )
         elif deploy and context.get("github_path"):
             push_result = await self._push_to_github(context["github_path"], results["code"], task)
             results["github"] = push_result

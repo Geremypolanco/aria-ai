@@ -74,9 +74,7 @@ class EthicsEngine:
 
         if impact.get("user_trust", 0) < 0:
             score -= 0.4 * abs(impact["user_trust"])
-            rationale_points.append(
-                "Risk of losing user trust (Transparency, Accountability)."
-            )
+            rationale_points.append("Risk of losing user trust (Transparency, Accountability).")
             involved_principles.extend(
                 [EthicalPrinciple.TRANSPARENCY, EthicalPrinciple.ACCOUNTABILITY]
             )

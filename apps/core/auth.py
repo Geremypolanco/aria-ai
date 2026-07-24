@@ -55,6 +55,7 @@ def owner_emails() -> set[str]:
 def is_owner_email(email: str | None) -> bool:
     return bool(email) and (email or "").strip().lower() in owner_emails()
 
+
 # Ephemeral per-process signing key used ONLY when no real secret is configured.
 # This replaces the previous hardcoded public constant, which allowed anyone to
 # forge session cookies. An ephemeral key means sessions don't survive a restart

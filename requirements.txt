@@ -1,15 +1,11 @@
 
 # ── ARIA OS: Arquitectura Final (Organización Autónoma Digital) ──────────────
 # Cognition & Optimization
-dspy-ai
 pymc
-graphrag
 
 # Economics & Analytics
 duckdb
-openbb
 stripe
-shopify-api-python
 posthog
 
 # Execution & Swarm
@@ -39,11 +35,10 @@ httpx
 
 # Memory & Graphs
 neo4j
-graphiti-ai
+graphiti-core[falkordb]
 mem0ai
 
 # Governance & Self-Improvement
 aider-chat
 sweagent
-agentops
 langfuse

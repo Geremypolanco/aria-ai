@@ -147,9 +147,7 @@ class BaseAgent(ABC):
                 self.metrics.tasks_failed += 1
                 self._consecutive_failures += 1
                 self._check_circuit_breaker()
-                logger.warning(
-                    "[%s] Task failed: %s", self.name, result.get("error", "no detail")
-                )
+                logger.warning("[%s] Task failed: %s", self.name, result.get("error", "no detail"))
             result["agent_metrics"] = {
                 "tasks_attempted": self.metrics.tasks_attempted,
                 "success_rate": self.metrics.success_rate,
@@ -354,6 +352,7 @@ class BaseAgent(ABC):
             return {
                 "success": False,
                 "error": review.get("reason", "Blocked by compliance review."),
+                "reason": review.get("reason", "Blocked by compliance review."),
                 "compliance_blocked": True,
                 "risk_level": review.get("risk_level"),
             }

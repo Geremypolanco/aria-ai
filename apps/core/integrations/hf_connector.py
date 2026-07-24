@@ -29,9 +29,7 @@ class HFConnector:
         elif not _HF_AVAILABLE:
             logger.warning("huggingface_hub not installed — HFConnector disabled.")
         else:
-            logger.warning(
-                "No Hugging Face token found. Some operations may be limited."
-            )
+            logger.warning("No Hugging Face token found. Some operations may be limited.")
 
     def _get_hf_token(self) -> str | None:
         if not _HF_AVAILABLE:

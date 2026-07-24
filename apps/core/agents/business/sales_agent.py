@@ -87,13 +87,10 @@ class SalesAgent(BaseAgent):
             )
             results["published"] = pub
 
-        results["summary"] = (
-            f"Product '{product_name}' configured — suggested price ${price}. "
-            + (
-                "Published on " + results.get("published", {}).get("platform", "")
-                if auto_publish
-                else "Ready to publish."
-            )
+        results["summary"] = f"Product '{product_name}' configured — suggested price ${price}. " + (
+            "Published on " + results.get("published", {}).get("platform", "")
+            if auto_publish
+            else "Ready to publish."
         )
         return results
 

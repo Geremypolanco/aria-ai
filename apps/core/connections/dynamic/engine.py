@@ -101,7 +101,9 @@ def available_connectors() -> list[str]:
     return sorted(_specs())
 
 
-def get_engine(connector_id: str, transport: httpx.BaseTransport | None = None) -> DynamicConnectorEngine:
+def get_engine(
+    connector_id: str, transport: httpx.BaseTransport | None = None
+) -> DynamicConnectorEngine:
     spec = _specs().get(connector_id)
     if spec is None:
         raise ConnectorConfigError(
@@ -231,8 +233,16 @@ class DynamicConnectorEngine:
 
             from apps.core.config import settings
 
-            user = getattr(settings, auth.username_settings_key, None) if auth.username_settings_key else None
-            pwd = getattr(settings, auth.password_settings_key, None) if auth.password_settings_key else None
+            user = (
+                getattr(settings, auth.username_settings_key, None)
+                if auth.username_settings_key
+                else None
+            )
+            pwd = (
+                getattr(settings, auth.password_settings_key, None)
+                if auth.password_settings_key
+                else None
+            )
             if not user or not pwd:
                 raise ConnectorAuthError(
                     f"'{self.spec.id}' requires {auth.username_settings_key}/"
