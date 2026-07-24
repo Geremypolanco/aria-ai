@@ -1,65 +1,67 @@
-# 🛠️ Guía de Configuración: Aria v2.2.0 (Real Execution)
+# 🛠️ Setup Guide: Connecting Gmail, Shopify, and LinkedIn
 
-Para que Aria pueda operar en tus cuentas reales de Gmail, Shopify y LinkedIn, debes configurar tus credenciales siguiendo estos pasos.
+To let ARIA operate on your real Gmail, Shopify, and LinkedIn accounts, configure the credentials below.
 
 ---
 
-## 📧 1. Gmail API
-Aria utiliza la API de Gmail para la limpieza quirúrgica de tu inbox.
+## 📧 1. Gmail
 
-1. Ve a [Google Cloud Console](https://console.cloud.google.com/).
-2. Crea un nuevo proyecto llamado "Aria-AI".
-3. Habilita la **Gmail API**.
-4. En "Credentials", crea un **OAuth 2.0 Client ID** (Desktop App).
-5. Descarga el archivo JSON y cámbiale el nombre a `credentials.json`.
-6. Coloca `credentials.json` en la raíz de la carpeta `aria-ai`.
-7. Ejecuta Aria; la primera vez se abrirá una ventana en tu navegador para que autorices el acceso. Se generará un archivo `token.json` automáticamente.
+Gmail goes through ARIA's connector hub — the same one-click "Connect" flow used for every other integration (Slack, Notion, HubSpot, etc.), not a manually downloaded credentials file.
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a new project called "Aria-AI".
+3. Enable the **Gmail API**.
+4. Under **Credentials**, create an **OAuth 2.0 Client ID** (Web application), and add your deployed app's URL + `/connectors/google/callback` as an authorized redirect URI.
+5. Set these in your `.env` or Fly.io secrets:
+   ```env
+   GOOGLE_CLIENT_ID="xxxxxxxx.apps.googleusercontent.com"
+   GOOGLE_CLIENT_SECRET="xxxxxxxx"
+   ```
+6. In the running app, open **Settings → Connectors → Google** and click **Connect** to complete the OAuth flow. Tokens are stored server-side, scoped to your account — no local files to manage.
 
 ---
 
 ## 🛍️ 2. Shopify Admin API
-Aria gestiona tu tienda, productos e inventario a través de la API de Administración.
 
-1. Entra a tu panel de Shopify (`tu-tienda.myshopify.com/admin`).
-2. Ve a **Settings > Apps and sales channels > Develop apps**.
-3. Haz clic en **Create an app** y llámala "Aria-Manager".
-4. En **Configuration**, habilita los siguientes scopes:
+ARIA manages your store, products, and inventory through the Admin API using a direct access token (not the connector-hub OAuth flow).
+
+1. Open your Shopify admin (`your-store.myshopify.com/admin`).
+2. Go to **Settings → Apps and sales channels → Develop apps**.
+3. Click **Create an app** and name it "Aria-Manager".
+4. Under **Configuration**, enable these scopes:
    - `write_products`, `read_products`
    - `write_themes`, `read_themes`
    - `write_inventory`, `read_inventory`
-5. Haz clic en **Install app** y copia el **Admin API access token**.
-6. Agrega este token en tu archivo `.env` o en el `SecretsManager` de Aria:
+5. Click **Install app** and copy the **Admin API access token**.
+6. Set these in your `.env` or Fly.io secrets:
    ```env
-   SHOPIFY_SHOP_NAME="tu-tienda"
-   SHOPIFY_ACCESS_TOKEN="shpat_xxxxxxxxxxxxxxxx"
+   SHOPIFY_URL="https://your-store.myshopify.com"
+   SHOPIFY_ADMIN_TOKEN="shpat_xxxxxxxxxxxxxxxx"
    ```
 
 ---
 
 ## 💼 3. LinkedIn API
-Aria publica contenido y realiza outreach B2B.
 
-1. Ve a [LinkedIn Developers](https://www.linkedin.com/developers/).
-2. Crea una aplicación llamada "Aria-Social".
-3. Solicita acceso a los productos:
+ARIA publishes content and runs B2B outreach using a direct access token (not the connector-hub OAuth flow).
+
+1. Go to [LinkedIn Developers](https://www.linkedin.com/developers/).
+2. Create an app called "Aria-Social".
+3. Request access to these products:
    - **Share on LinkedIn**
    - **Sign In with LinkedIn**
-4. En la pestaña **Auth**, obtén tu **Client ID** y **Client Secret**.
-5. Usa una herramienta como Postman o un script de OAuth para obtener un **Access Token** con los scopes `w_member_social` y `r_liteprofile`.
-6. Agrega tus datos al archivo `.env`:
+4. On the **Auth** tab, get your **Client ID** and **Client Secret**.
+5. Use a tool like Postman, or an OAuth script, to get an **Access Token** with the `w_member_social` and `r_liteprofile` scopes, plus your profile's author URN.
+6. Set these in your `.env`:
    ```env
    LINKEDIN_ACCESS_TOKEN="AQXxxxx..."
-   LINKEDIN_PERSON_ID="tu_urn_id"
+   LINKEDIN_PERSON_URN="urn:li:person:xxxxxxxx"
    ```
 
 ---
 
-## 🚀 Ejecución
-Una vez configuradas las llaves, Aria detectará automáticamente los motores reales y pasará del modo "Simulación" al modo "Ejecución Real".
+## 🚀 Verifying the connection
 
-Puedes probar la conexión ejecutando:
-```bash
-python3 scripts/real_transformations.py
-```
+Once credentials are set, ARIA automatically picks up each real integration — no separate "switch to real mode" step. Check `/api/v1/connectors/status` (or **Settings → Connectors** in the app) to confirm each service shows as connected.
 
-**Nota de Seguridad**: Nunca compartas tus archivos `token.json` o `.env` con nadie. Aria los mantendrá seguros en el `SecretsManager`.
+**Security note**: never share your `.env` file or Fly.io secrets with anyone. ARIA keeps tokens server-side and never commits them to the codebase.

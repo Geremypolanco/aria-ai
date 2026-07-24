@@ -1,11 +1,10 @@
 
 import asyncio
 import logging
-import os
 import sys
 from pathlib import Path
 
-# Añadir el path raíz para que las importaciones de apps funcionen
+# Add the repo root so apps.* imports work.
 sys.path.append(str(Path(__file__).parent.parent))
 
 from apps.core.config import settings
@@ -16,51 +15,51 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("test_multimedia")
 
 async def test_all():
-    logger.info("=== TEST DE MULTIMEDIA ARIA ===")
-    
-    # 1. Verificar Configuración
+    logger.info("=== ARIA MULTIMEDIA TEST ===")
+
+    # 1. Check configuration
     hf_token = settings.hf_key
-    logger.info(f"HF_TOKEN configurado: {'SÍ' if hf_token else 'NO'}")
+    logger.info(f"HF_TOKEN configured: {'YES' if hf_token else 'NO'}")
     if hf_token:
-        logger.info(f"HF_TOKEN (primeros 5): {hf_token[:5]}...")
-    
+        logger.info(f"HF_TOKEN (first 5): {hf_token[:5]}...")
+
     hf = HuggingFaceSuite()
     creative = CreativeEngine()
-    
-    # 2. Test Imagen
-    logger.info("\n--- Test Generación de Imagen ---")
+
+    # 2. Image test
+    logger.info("\n--- Image Generation Test ---")
     img_res = await hf.generate_image("A futuristic robot holding a sign that says ARIA OS", width=512, height=512)
     if img_res.get("success"):
-        logger.info(f"✅ Imagen generada exitosamente. Tamaño: {len(img_res.get('image_bytes', b''))} bytes")
+        logger.info(f"✅ Image generated successfully. Size: {len(img_res.get('image_bytes', b''))} bytes")
     else:
-        logger.error(f"❌ Fallo en imagen: {img_res.get('error')}")
-    
-    # 3. Test Música
-    logger.info("\n--- Test Generación de Música ---")
+        logger.error(f"❌ Image failed: {img_res.get('error')}")
+
+    # 3. Music test
+    logger.info("\n--- Music Generation Test ---")
     music_res = await creative.generate_music("Upbeat electronic music for a tech startup", duration=5)
     if music_res.get("success"):
-        logger.info(f"✅ Música generada exitosamente.")
-        # Verificar si hay audio_base64 o audio_b64
+        logger.info(f"✅ Music generated successfully.")
+        # Check for audio_base64 or audio_b64
         ab64 = music_res.get("audio_base64") or music_res.get("audio_b64")
         if ab64:
-            logger.info(f"✅ Base64 de audio encontrado ({len(ab64)} chars)")
+            logger.info(f"✅ Audio base64 found ({len(ab64)} chars)")
         else:
-            logger.error("❌ No se encontró base64 de audio en la respuesta")
+            logger.error("❌ No audio base64 found in the response")
     else:
-        logger.error(f"❌ Fallo en música: {music_res.get('error')}")
+        logger.error(f"❌ Music failed: {music_res.get('error')}")
 
-    # 4. Test Video
-    logger.info("\n--- Test Generación de Video ---")
+    # 4. Video test
+    logger.info("\n--- Video Generation Test ---")
     video_res = await creative.generate_video("A sunset over a digital ocean")
     if video_res.get("success"):
-        logger.info(f"✅ Video generado exitosamente.")
+        logger.info(f"✅ Video generated successfully.")
         v64 = video_res.get("video_base64") or video_res.get("video_b64")
         if v64:
-            logger.info(f"✅ Base64 de video encontrado ({len(v64)} chars)")
+            logger.info(f"✅ Video base64 found ({len(v64)} chars)")
         else:
-            logger.error("❌ No se encontró base64 de video en la respuesta")
+            logger.error("❌ No video base64 found in the response")
     else:
-        logger.error(f"❌ Fallo en video: {video_res.get('error')}")
+        logger.error(f"❌ Video failed: {video_res.get('error')}")
 
 if __name__ == "__main__":
     asyncio.run(test_all())

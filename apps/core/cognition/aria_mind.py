@@ -151,6 +151,9 @@ AVAILABLE TOOLS (you execute them, not the user):
 - learn            → ingests text or a URL into the knowledge base for future use. Args: {{"source": "https://... or text", "category": "topic", "is_url": true}}
 - search_knowledge → searches ARIA's internal semantic knowledge base. Args: {{"query": "...", "top_k": 5}}
 - forget_source    → removes a source from the knowledge base. Args: {{"source": "name_or_url"}}
+- create_research_project → starts a long-running, persistent R&D project ARIA tracks across sessions (distinct from a single-turn deep_search). Use for open-ended, multi-session research goals the user wants revisited over time. Args: {{"name": "...", "goal": "...", "category": "..."}}
+- add_research_finding → logs a new finding under an existing R&D project. Args: {{"project": "project name", "title": "...", "content": "...", "source": "..."}}
+- list_research_projects → lists all active R&D projects and their finding counts. Args: {{}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -172,21 +175,22 @@ REASONING RULES:
 6. If the user asks for a long task that will take minutes → use run_background so you don't block the conversation.
 7. If the user asks you to learn a document/URL → use learn to ingest it into the knowledge base.
 8. Before answering questions about specific topics the user has taught you → use search_knowledge first.
-9. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-10. For recurring automations → use create_workflow + run_workflow.
-11. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-12. If you're unsure what the user wants → interpret the most useful intent and execute it.
-13. Never make up data, prices, statistics, or facts. Search if you don't know.
-14. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-15. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-16. If the user asks to search for repos or projects on GitHub → use github_search.
-17. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-18. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-19. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-20. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-21. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-22. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-23. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+9. If the user wants to start or contribute to an open-ended research effort that spans multiple sessions (not a one-off question) → use create_research_project, then add_research_finding as you learn things over time. This is different from deep_search: deep_search answers one question now; an R&D project persists and accumulates findings across many future conversations.
+10. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+11. For recurring automations → use create_workflow + run_workflow.
+12. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+13. If you're unsure what the user wants → interpret the most useful intent and execute it.
+14. Never make up data, prices, statistics, or facts. Search if you don't know.
+15. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+16. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+17. If the user asks to search for repos or projects on GitHub → use github_search.
+18. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+19. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+20. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+21. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+22. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+23. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+24. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -252,6 +256,11 @@ _HELP_TEXT = """\
 **Knowledge base**
 - `learn [URL or text]` — ingest into the RAG knowledge base
 - `search my notes: [query]` — internal semantic search
+
+**R&D projects** (persist across sessions, unlike a one-off search)
+- `start a research project on [goal]` — create a long-running R&D project
+- `log a finding on [project]: [what you found]` — add to it later
+- `list my research projects` — see what's active
 
 **Management**
 - `/goals` — list active goals
@@ -1538,6 +1547,47 @@ class AriaMind:
                     f"Removed {deleted} chunks of '{source}' from the knowledge base.",
                     {},
                 )
+
+            # ── R&D WING (long-running research projects) ──────────────────
+            elif tool == "create_research_project":
+                name = args.get("name", "")
+                goal = args.get("goal", "")
+                category = args.get("category", "General/Innovation")
+                if not name or not goal:
+                    return "I need both a project name and a goal to create it.", {}
+                from apps.core.intelligence.rd_wing import get_rd_wing
+
+                project = get_rd_wing().create_project(name, goal, category)
+                return (
+                    f"R&D project created: **{project.name}** ({project.category})\n{project.goal}",
+                    {},
+                )
+
+            elif tool == "add_research_finding":
+                project_name = args.get("project", "")
+                title = args.get("title", "")
+                content = args.get("content", "")
+                source = args.get("source", "unspecified")
+                if not project_name or not title or not content:
+                    return "I need a project name, a finding title, and its content.", {}
+                from apps.core.intelligence.rd_wing import get_rd_wing
+
+                rd = get_rd_wing()
+                if not rd.get_project(project_name):
+                    return f"No R&D project named '{project_name}' — create it first.", {}
+                rd.add_finding_to_project(project_name, title, content, source)
+                return f"Finding logged on **{project_name}**: {title}", {}
+
+            elif tool == "list_research_projects":
+                from apps.core.intelligence.rd_wing import get_rd_wing
+
+                projects = get_rd_wing().list_projects()
+                if not projects:
+                    return "No R&D projects yet. Use create_research_project to start one.", {}
+                lines = ["**R&D projects:**"]
+                for p in projects:
+                    lines.append(f"  • {p['name']} ({p['category']}, {p['status']}) — {len(p['findings'])} findings")
+                return "\n".join(lines), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
             elif tool == "run_crew":

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-Script de limpieza inteligente de Gmail para Aria.
-Elimina correos no importantes: promociones, newsletters, notificaciones antiguas.
+Smart Gmail cleanup script for Aria.
+Deletes unimportant email: promotions, newsletters, old notifications.
+
+Note: the actual search-and-delete calls in cleanup_gmail() are commented
+out — this script only logs what it WOULD do (dry-run by design). Wire up
+get_gmail_service()/search_emails()/delete_emails() and uncomment the loop
+body to actually delete anything.
 """
 
 import os
@@ -17,86 +22,86 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("gmail_cleanup")
 
-# Scopes de Gmail
+# Gmail scopes
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
 def get_gmail_service():
-    """Obtiene el servicio de Gmail autenticado."""
+    """Gets the authenticated Gmail service."""
     creds = None
-    
-    # Intenta cargar credenciales guardadas
+
+    # Try loading saved credentials
     if os.path.exists('token.pickle'):
         with open('token.pickle', 'rb') as token:
             creds = pickle.load(token)
-    
-    # Si no hay credenciales válidas, obtén nuevas
+
+    # If there are no valid credentials, get new ones
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            # Nota: Para usar esto, necesitarías un archivo credentials.json
-            # Por ahora, usaremos el token de Zapier si está disponible
-            logger.warning("No se encontraron credenciales de Gmail. Usando token de Zapier...")
+            # Note: to use this, you'd need a credentials.json file.
+            # For now, fall back to the Zapier token if available.
+            logger.warning("No Gmail credentials found. Falling back to the Zapier token...")
             return None
-        
-        # Guarda las credenciales para la próxima ejecución
+
+        # Save the credentials for the next run
         with open('token.pickle', 'wb') as token:
             pickle.dump(creds, token)
-    
+
     return build('gmail', 'v1', credentials=creds)
 
 def search_emails(service, query):
-    """Busca correos que coincidan con la query."""
+    """Searches for emails matching the query."""
     try:
         results = service.users().messages().list(userId='me', q=query, maxResults=100).execute()
         messages = results.get('messages', [])
-        logger.info(f"Encontrados {len(messages)} correos que coinciden con: {query}")
+        logger.info(f"Found {len(messages)} emails matching: {query}")
         return messages
     except Exception as e:
-        logger.error(f"Error al buscar correos: {e}")
+        logger.error(f"Error searching emails: {e}")
         return []
 
 def delete_emails(service, message_ids):
-    """Elimina correos por ID."""
+    """Deletes emails by ID."""
     deleted_count = 0
     for msg_id in message_ids:
         try:
             service.users().messages().delete(userId='me', id=msg_id).execute()
             deleted_count += 1
-            logger.info(f"Eliminado correo ID: {msg_id}")
+            logger.info(f"Deleted email ID: {msg_id}")
         except Exception as e:
-            logger.error(f"Error al eliminar correo {msg_id}: {e}")
-    
+            logger.error(f"Error deleting email {msg_id}: {e}")
+
     return deleted_count
 
 def cleanup_gmail():
-    """Ejecuta la limpieza completa de Gmail."""
-    # Nota: Como no tenemos acceso directo a las credenciales de Gmail,
-    # usaremos Zapier para hacer esto de forma simulada.
-    
-    logger.info("Iniciando limpieza de Gmail...")
-    
-    # Criterios de limpieza
+    """Runs the full Gmail cleanup."""
+    # Note: since we don't have direct Gmail credentials here, this runs
+    # as a dry run — see the module docstring.
+
+    logger.info("Starting Gmail cleanup...")
+
+    # Cleanup criteria
     cleanup_queries = [
-        'from:(noreply OR no-reply) before:2026-05-01',  # Correos de no-reply antiguos
-        'subject:(promotional OR promotion OR promo OR discount)',  # Promociones
+        'from:(noreply OR no-reply) before:2026-05-01',  # Old no-reply emails
+        'subject:(promotional OR promotion OR promo OR discount)',  # Promotions
         'subject:(newsletter OR unsubscribe)',  # Newsletters
-        'from:(amazon OR booking OR expedia OR airbnb) before:2026-05-01',  # Servicios comunes
-        'label:Promotions',  # Etiqueta de promociones de Gmail
+        'from:(amazon OR booking OR expedia OR airbnb) before:2026-05-01',  # Common services
+        'label:Promotions',  # Gmail's own Promotions label
     ]
-    
-    logger.info(f"Criterios de limpieza: {cleanup_queries}")
-    logger.info("Nota: Para ejecutar esta limpieza, Aria usará Zapier o credenciales de Gmail.")
-    
-    # Simulación de resultados
+
+    logger.info(f"Cleanup criteria: {cleanup_queries}")
+    logger.info("Note: to actually run this cleanup, Aria will use Zapier or Gmail credentials.")
+
+    # Dry-run: no deletions happen yet
     total_deleted = 0
     for query in cleanup_queries:
-        # En un escenario real, aquí se buscarían y eliminarían correos
-        logger.info(f"Procesando query: {query}")
+        # In a real run, emails would be searched and deleted here
+        logger.info(f"Processing query: {query}")
         # deleted = delete_emails(service, search_emails(service, query))
         # total_deleted += deleted
-    
-    logger.info(f"Limpieza completada. Total de correos eliminados: {total_deleted}")
+
+    logger.info(f"Cleanup complete. Total emails deleted: {total_deleted}")
     return total_deleted
 
 if __name__ == "__main__":

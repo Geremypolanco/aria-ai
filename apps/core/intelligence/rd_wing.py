@@ -132,8 +132,12 @@ class RDWing:
         return "General/Innovation"
 
 
-# Integrate into the orchestrator and the ResearchAgent
-# Usage example:
-# rd_wing = RDWing()
-# project = rd_wing.create_project("Liver Cancer Cure", "Develop a definitive cure for liver cancer.", "Medicine")
-# rd_wing.add_finding_to_project(project.name, "New compound X shows promise", "Nature Medicine", "Phase II study.")
+# ── SINGLETON ─────────────────────────────────────────────
+_rd_wing: RDWing | None = None
+
+
+def get_rd_wing() -> RDWing:
+    global _rd_wing
+    if _rd_wing is None:
+        _rd_wing = RDWing()
+    return _rd_wing

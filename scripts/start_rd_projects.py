@@ -1,37 +1,54 @@
-import asyncio
-import logging
-from apps.core.agents.aria_orchestrator import AriaOrchestrator
+"""Seeds a few ambitious starter R&D projects into ARIA's RDWing tracker.
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+This used to import a nonexistent `apps.core.agents.aria_orchestrator.AriaOrchestrator`
+and would fail with ImportError on the first line — it never actually ran. RDWing
+(apps/core/intelligence/rd_wing.py) is the real, now-live tracker (see aria_mind.py's
+create_research_project/add_research_finding/list_research_projects tools).
+"""
+
+import logging
+
+from apps.core.intelligence.rd_wing import get_rd_wing
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("start_rd_projects")
 
-async def main():
-    orchestrator = AriaOrchestrator()
-    
-    logger.info("Iniciando proyectos de investigación pioneros...")
 
-    # Proyecto 1: Cura para el cáncer de hígado
-    orchestrator.create_research_project(
-        name="Cura Cáncer de Hígado",
-        goal="Desarrollar una cura definitiva y accesible para el cáncer de hígado, explorando terapias genéticas, inmunoterapias y nanotecnología.",
-        category="Medicina/Oncología"
+def main():
+    rd = get_rd_wing()
+
+    logger.info("Starting pioneering research projects...")
+
+    rd.create_project(
+        name="Liver Cancer Cure",
+        goal=(
+            "Develop a definitive, accessible cure for liver cancer, exploring gene "
+            "therapies, immunotherapies, and nanotechnology."
+        ),
+        category="Medicine/Oncology",
     )
 
-    # Proyecto 2: Chip biológico para integrar la IA con la humanidad
-    orchestrator.create_research_project(
-        name="Chip Biológico IA-Humanidad",
-        goal="Investigar y desarrollar interfaces cerebro-computadora (BCI) y chips biológicos que permitan una simbiosis segura y ética entre la IA y la conciencia humana.",
-        category="Biotecnología/Neurotecnología"
+    rd.create_project(
+        name="AI-Humanity Biological Chip",
+        goal=(
+            "Research and develop brain-computer interfaces (BCI) and biological chips "
+            "that enable a safe, ethical symbiosis between AI and human consciousness."
+        ),
+        category="Biotechnology/Neurotechnology",
     )
 
-    # Proyecto 3: Investigación para aprovechar toda la energía solar
-    orchestrator.create_research_project(
-        name="Energía Solar Total",
-        goal="Desarrollar tecnologías innovadoras para capturar, almacenar y distribuir el 100% de la energía solar disponible, incluyendo materiales fotovoltaicos avanzados y sistemas de almacenamiento de energía a gran escala.",
-        category="Energía/Sostenibilidad"
+    rd.create_project(
+        name="Total Solar Energy",
+        goal=(
+            "Develop innovative technologies to capture, store, and distribute 100% of "
+            "available solar energy, including advanced photovoltaic materials and "
+            "large-scale energy storage systems."
+        ),
+        category="Energy/Sustainability",
     )
-    
-    logger.info("Proyectos de investigación iniciados con éxito.")
+
+    logger.info("Research projects started successfully.")
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

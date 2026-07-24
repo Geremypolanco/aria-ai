@@ -1,12 +1,11 @@
 """
-mcp_demo_server.py — Servidor MCP básico de ejemplo (memoria en RAM).
+mcp_demo_server.py — Basic example MCP server (in-RAM memory).
 
-Sirve para probar localmente el Cliente MCP de ARIA (apps/core/integrations/
-mcp_agent.py) sin depender de servidores externos. Expone 3 herramientas
-sencillas sobre un diccionario en memoria, al estilo del "memory server" de
-referencia de MCP.
+Used to test ARIA's MCP client (apps/core/integrations/mcp_agent.py) locally
+without depending on external servers. Exposes 3 simple tools over an
+in-memory dict, in the style of MCP's reference "memory server".
 
-Se ejecuta por STDIO:  python3 scripts/mcp_demo_server.py
+Run over STDIO:  python3 scripts/mcp_demo_server.py
 """
 
 from __future__ import annotations
@@ -20,24 +19,24 @@ _STORE: dict[str, str] = {}
 
 @mcp.tool()
 def store_memory(key: str, value: str) -> str:
-    """Guarda un valor bajo una clave para recuperarlo más tarde."""
+    """Stores a value under a key to retrieve later."""
     _STORE[key] = value
-    return f"Guardado: {key!r} = {value!r}"
+    return f"Stored: {key!r} = {value!r}"
 
 
 @mcp.tool()
 def get_memory(key: str) -> str:
-    """Recupera el valor guardado bajo una clave."""
+    """Retrieves the value stored under a key."""
     if key not in _STORE:
-        return f"No hay nada guardado bajo {key!r}."
+        return f"Nothing stored under {key!r}."
     return _STORE[key]
 
 
 @mcp.tool()
 def list_memories() -> str:
-    """Lista todas las claves guardadas en memoria."""
+    """Lists all keys currently stored in memory."""
     if not _STORE:
-        return "(memoria vacía)"
+        return "(empty memory)"
     return ", ".join(sorted(_STORE))
 
 
