@@ -74,6 +74,7 @@ class AriaAgentDashboard extends HTMLElement {
     this._paused = false;
     this._timers = [];
     this._balance = START_BALANCE;
+    this._activityGen = 0;
     this._pendingApproval = null; // { resolve } while the HITL card is showing
 
     this._onEnter = () => { this._paused = true; };
@@ -138,8 +139,12 @@ class AriaAgentDashboard extends HTMLElement {
         </a>
       </div>
 
+      <p data-live class="sr-only" aria-live="polite" aria-atomic="true"></p>
+
       <div
         data-hitl
+        inert
+        aria-hidden="true"
         class="pointer-events-none absolute inset-x-4 bottom-4 z-10 translate-y-3 rounded-2xl border border-amber-200/70 bg-white/70 p-4 opacity-0 shadow-2xl shadow-amber-900/10 ring-1 ring-white/40 backdrop-blur-xl transition-all duration-300 ease-out"
       >
         <div class="flex items-start gap-3">
@@ -155,8 +160,8 @@ class AriaAgentDashboard extends HTMLElement {
         <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-amber-900/10 pt-3">
           <span class="text-xs text-stone-600">Funds available: <b data-hitl-balance>${fmt(this._balance)}</b></span>
           <div class="flex gap-2">
-            <button type="button" data-deny class="rounded-full border border-stone-300 bg-white/80 px-3 py-1.5 text-xs font-semibold text-stone-600 transition-colors hover:border-stone-400 hover:text-stone-900">Deny</button>
-            <button type="button" data-approve class="rounded-full bg-amber-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm shadow-amber-900/30 transition-colors hover:bg-amber-700">Approve spend</button>
+            <button type="button" data-deny class="rounded-full border border-stone-300 bg-white/80 px-3 py-1.5 text-xs font-semibold text-stone-600 transition-colors hover:border-stone-400 hover:text-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-400">Deny</button>
+            <button type="button" data-approve class="rounded-full bg-amber-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm shadow-amber-900/30 transition-colors hover:bg-amber-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700">Approve spend</button>
           </div>
         </div>
       </div>
@@ -166,6 +171,7 @@ class AriaAgentDashboard extends HTMLElement {
     this.$balance = this.querySelector('[data-balance]');
     this.$walletAmount = this.querySelector('[data-wallet-amount]');
     this.$activity = this.querySelector('[data-activity]');
+    this.$live = this.querySelector('[data-live]');
     this.$hitl = this.querySelector('[data-hitl]');
     this.$hitlMsg = this.querySelector('[data-hitl-msg]');
     this.$hitlBalance = this.querySelector('[data-hitl-balance]');
@@ -252,6 +258,11 @@ class AriaAgentDashboard extends HTMLElement {
       this.$hitlMsg.innerHTML = `<b>${worker.name}</b> wants to buy <b>${step.spend.item}</b> from ${step.spend.vendor} for <b>${fmt(step.spend.amount)}</b>`;
       this.$hitlBalance.textContent = fmt(this._balance);
       this.$hitl.classList.remove('pointer-events-none', 'opacity-0', 'translate-y-3');
+      this.$hitl.removeAttribute('inert');
+      this.$hitl.setAttribute('aria-hidden', 'false');
+      this.announce(
+        `${worker.name} needs approval to spend ${fmt(step.spend.amount)} on ${step.spend.item}.`
+      );
       this._pendingApproval = { worker, step, resolve, settled: false };
 
       // Passive visitors still see the loop move — auto-approve if nobody clicks.
@@ -261,6 +272,13 @@ class AriaAgentDashboard extends HTMLElement {
     });
   }
 
+  announce(text) {
+    // Re-set even for repeated text so assistive tech re-announces it (a
+    // live region only fires on an actual text change).
+    this.$live.textContent = '';
+    this._timers.push(setTimeout(() => { this.$live.textContent = text; }, 30));
+  }
+
   _resolveApproval(approved) {
     const pending = this._pendingApproval;
     if (!pending || pending.settled) return;
@@ -268,19 +286,30 @@ class AriaAgentDashboard extends HTMLElement {
     clearTimeout(pending.autoTimer);
 
     this.$hitl.classList.add('pointer-events-none', 'opacity-0', 'translate-y-3');
+    this.$hitl.setAttribute('inert', '');
+    this.$hitl.setAttribute('aria-hidden', 'true');
 
+    const gen = ++this._activityGen;
     if (approved) {
       this._balance -= pending.step.spend.amount;
+      // This demo loops forever — reset the wallet once it can no longer
+      // cover the next cycle's purchase instead of drifting negative.
+      if (this._balance < pending.step.spend.amount) {
+        this._balance = START_BALANCE;
+      }
       this.$balance.textContent = fmt(this._balance);
       this.$walletAmount.textContent = fmt(this._balance);
       this.$activity.textContent = `−${fmt(pending.step.spend.amount)} · ${pending.step.spend.item}`;
+      this.announce(`Approved. ${fmt(pending.step.spend.amount)} spent on ${pending.step.spend.item}.`);
       this._timers.push(setTimeout(() => {
-        if (this._balance <= START_BALANCE - pending.step.spend.amount) {
-          this.$activity.textContent = '';
-        }
+        if (gen === this._activityGen) this.$activity.textContent = '';
       }, 3400));
     } else {
       this.$activity.textContent = `Skipped: ${pending.step.spend.item} (denied)`;
+      this.announce(`Denied. ${pending.step.spend.item} was skipped.`);
+      this._timers.push(setTimeout(() => {
+        if (gen === this._activityGen) this.$activity.textContent = '';
+      }, 3400));
     }
 
     this._pendingApproval = null;
@@ -291,9 +320,17 @@ class AriaAgentDashboard extends HTMLElement {
     WORKERS.forEach((worker) => {
       const el = this._laneEls[worker.id];
       this.setPill(worker, 'done');
-      el.step.textContent = worker.steps[worker.steps.length - 1].label + ' — done';
+      const lastStep = worker.steps[worker.steps.length - 1];
+      el.step.textContent = lastStep.label + ' — done';
       el.bar.style.width = '100%';
     });
+    // Reduced-motion visitors never see the animated approval — still tell
+    // the wallet/spend part of the story as a static fact.
+    const opsSpend = WORKERS.find((w) => w.id === 'ops').steps.find((s) => s.spend).spend;
+    this._balance -= opsSpend.amount;
+    this.$balance.textContent = fmt(this._balance);
+    this.$walletAmount.textContent = fmt(this._balance);
+    this.$activity.textContent = `−${fmt(opsSpend.amount)} · ${opsSpend.item} (approved)`;
   }
 }
 
