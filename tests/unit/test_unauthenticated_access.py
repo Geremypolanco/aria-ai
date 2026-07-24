@@ -35,7 +35,11 @@ def test_content_operate_rejects_non_owner(monkeypatch):
 
 def test_content_operate_allows_owner(monkeypatch):
     monkeypatch.setattr(main_module, "_is_owner_user", lambda request: True)
-    monkeypatch.setattr(main_module, "_rate_ok", lambda *a, **k: True)
+
+    async def fake_rate_ok(*a, **k):
+        return True
+
+    monkeypatch.setattr(main_module, "_rate_ok", fake_rate_ok)
     fake_operator = AsyncMock()
     fake_operator.run_once = AsyncMock(return_value={"success": True})
     with patch(

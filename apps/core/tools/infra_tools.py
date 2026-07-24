@@ -29,7 +29,18 @@ class InfraTools:
             return {"success": False, "error": str(e)}
 
     async def execute_system_command(self, command: str) -> dict[str, Any]:
-        """Executes system commands to install dependencies or configure the environment."""
+        """Executes system commands to install dependencies or configure the environment.
+
+        Disabled unless ARIA_ALLOW_SYSTEM_COMMANDS is explicitly set — raw shell
+        with only a substring blocklist is a real RCE primitive, and the
+        blocklist below is defense-in-depth, not the actual control."""
+        from apps.core.config import settings
+
+        if not getattr(settings, "ALLOW_SYSTEM_COMMANDS", False):
+            return {
+                "success": False,
+                "error": "System command execution is disabled on this deployment.",
+            }
         try:
             # List of commands forbidden for security reasons
             forbidden = ["rm -rf /", "mkfs", "shutdown"]
