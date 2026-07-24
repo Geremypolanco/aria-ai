@@ -1296,22 +1296,157 @@ _PLAN_KEY = "aria:plan:{email}"
 
 # Researched, margin-positive tiers (2026 market: entry premium ~$20, teams $25-30/seat).
 # ARIA does more than chat (it also researches + publishes), so a slight premium holds.
+# ``seats`` INCLUDES the owner (so extra invitable members = seats - 1). Only the
+# checkoutable tiers live here; Free and Enterprise are display-only (see PUBLIC_PLANS).
 BILLING_PLANS = {
-    "pro": {"name": "ARIA Pro", "cents": 2900},  # $29 / month
-    "business": {"name": "ARIA Business", "cents": 9900},  # $99 / month
+    "pro": {
+        "name": "ARIA Pro",
+        "cents": 2900,  # $29 / month
+        "seats": 1,
+        "tagline": "For anyone shipping real work daily",
+        "features": [
+            "Unlimited tasks — research, write, build, publish",
+            "The full team of 40+ AI specialists",
+            "Advanced image, video & voice",
+            "Autonomous execution across every connected app",
+            "Expanded memory & priority AI",
+        ],
+    },
+    "business": {
+        "name": "ARIA Business",
+        "cents": 9900,  # $99 / month
+        "seats": 5,
+        "tagline": "For small teams working together",
+        "features": [
+            "Everything in Pro",
+            "Up to 5 members on one shared workspace",
+            "Invite and manage your team's seats",
+            "Scheduled autonomy & analytics",
+            "Priority support",
+        ],
+    },
+    "scale": {
+        "name": "ARIA Scale",
+        "cents": 24900,  # $249 / month
+        "seats": 15,
+        "tagline": "For growing teams that run on ARIA",
+        "features": [
+            "Everything in Business",
+            "Up to 15 members on one shared workspace",
+            "Admin controls & higher usage limits",
+            "Priority execution and support",
+        ],
+    },
 }
 
 
-async def _get_user_plan(email: str) -> str:
+def _plan_seats(tier: str) -> int:
+    """Seat allowance for a tier (owner included). Free/unknown → 1."""
+    return int(BILLING_PLANS.get(tier, {}).get("seats", 1) or 1)
+
+
+# Full display catalog (public) — includes the non-checkoutable Free and
+# Enterprise tiers around the paid ones. Keep prices in sync with the pricing
+# component (apps/core/static/js/components/aria-pricing.js).
+PUBLIC_PLANS = [
+    {
+        "key": "free",
+        "name": "Free",
+        "price": "$0",
+        "seats": 1,
+        "tagline": "To try ARIA",
+        "features": ["Tasks: research, write, build, images", "15 tasks per day", "1 member"],
+        "cta": "Start free",
+        "checkout": False,
+    },
+    {
+        "key": "pro",
+        "name": "Pro",
+        "price": "$29",
+        "period": "/mo",
+        "seats": 1,
+        "highlight": True,
+        "tagline": BILLING_PLANS["pro"]["tagline"],
+        "features": BILLING_PLANS["pro"]["features"],
+        "cta": "Go Pro",
+        "checkout": True,
+    },
+    {
+        "key": "business",
+        "name": "Business",
+        "price": "$99",
+        "period": "/mo",
+        "seats": 5,
+        "tagline": BILLING_PLANS["business"]["tagline"],
+        "features": BILLING_PLANS["business"]["features"],
+        "cta": "Start Business",
+        "checkout": True,
+    },
+    {
+        "key": "scale",
+        "name": "Scale",
+        "price": "$249",
+        "period": "/mo",
+        "seats": 15,
+        "tagline": BILLING_PLANS["scale"]["tagline"],
+        "features": BILLING_PLANS["scale"]["features"],
+        "cta": "Start Scale",
+        "checkout": True,
+    },
+    {
+        "key": "enterprise",
+        "name": "Enterprise",
+        "price": "Custom",
+        "seats": None,
+        "tagline": "For organizations with security & scale needs",
+        "features": [
+            "Unlimited members",
+            "SSO and centralized administration",
+            "Security review & custom terms",
+            "Dedicated support",
+        ],
+        "cta": "Contact sales",
+        "href": "mailto:litesaraph@gmail.com?subject=ARIA%20Enterprise",
+        "checkout": False,
+    },
+]
+
+
+_PAID_TIERS = ("pro", "business", "scale")
+
+
+async def _own_plan(email: str) -> str:
+    """The plan this email pays for directly (ignores team membership)."""
     if not email:
         return "free"
     try:
         from apps.core.memory.redis_client import get_cache
 
         val = await get_cache().get(_PLAN_KEY.format(email=email))
-        return val if val in ("free", "pro", "business") else "free"
+        return val if val in _PAID_TIERS else "free"
     except Exception:
         return "free"
+
+
+async def _get_user_plan(email: str) -> str:
+    """Effective plan: the user's own paid plan, or — if they're a member of a
+    team — the plan the team owner currently pays for (so seats are shared, and
+    revoked automatically if the owner downgrades)."""
+    own = await _own_plan(email)
+    if own in _PAID_TIERS:
+        return own
+    try:
+        from apps.core import seats
+
+        owner = await seats.owner_of(email)
+        if owner:
+            owner_plan = await _own_plan(owner)
+            # Only inherit if the owner's plan actually grants extra seats.
+            if owner_plan in _PAID_TIERS and _plan_seats(owner_plan) > 1:
+                return owner_plan
+    except Exception:
+        pass
+    return "free"
 
 
 async def _set_user_plan(email: str, plan: str) -> None:
@@ -1321,6 +1456,164 @@ async def _set_user_plan(email: str, plan: str) -> None:
         await get_cache().set(_PLAN_KEY.format(email=email), plan, ttl_seconds=45 * 24 * 3600)
     except Exception as e:
         logger.warning(f"set_user_plan failed: {e}")
+
+
+class MemberRequest(BaseModel):
+    email: str
+
+
+@app.get("/api/v1/plans")
+async def api_plans(request: Request):
+    """Public plan catalog + the signed-in user's current plan, for any UI."""
+    user = _current_user(request)
+    email = (user.get("email") or "").strip().lower() if user else ""
+    current = await _get_user_plan(email) if email else "free"
+    from apps.core import seats
+
+    member_of = await seats.owner_of(email) if email else None
+    return {"plans": PUBLIC_PLANS, "current": current, "is_member": bool(member_of)}
+
+
+@app.get("/api/v1/account/members")
+async def account_members(request: Request):
+    """The signed-in owner's team seats — who's on the plan and how many are left."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    email = (user.get("email") or "").strip().lower()
+    from apps.core import seats
+
+    plan = await _own_plan(email)
+    total = _plan_seats(plan)
+    members = await seats.list_members(email)
+    return {
+        "plan": plan,
+        "seats": total,
+        "used": 1 + len(members),
+        "members": members,
+        "can_manage": total > 1,
+        "member_of": await seats.owner_of(email),
+    }
+
+
+@app.post("/api/v1/account/members")
+async def account_add_member(req: MemberRequest, request: Request):
+    """Invite a member to the owner's seat plan (owner-only, seat-limited)."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    email = (user.get("email") or "").strip().lower()
+    from apps.core import seats
+
+    plan = await _own_plan(email)
+    ok, message = await seats.add_member(email, req.email, _plan_seats(plan))
+    return {"ok": ok, "message": message, "members": await seats.list_members(email)}
+
+
+@app.delete("/api/v1/account/members")
+async def account_remove_member(req: MemberRequest, request: Request):
+    """Remove a member from the owner's seat plan (owner-only)."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    email = (user.get("email") or "").strip().lower()
+    from apps.core import seats
+
+    ok = await seats.remove_member(email, req.email)
+    return {"ok": ok, "members": await seats.list_members(email)}
+
+
+@app.get("/account/team", response_class=HTMLResponse)
+async def account_team_page(request: Request):
+    """Self-contained seat-management page: invite/remove members on a team plan.
+
+    Server-rendered and standalone (like the checkout page) so it works
+    independently of the in-app dashboard. Reads/writes via /api/v1/account/members.
+    """
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=307)
+    email = (user.get("email") or "").strip().lower()
+    plan = await _own_plan(email)
+    seats_total = _plan_seats(plan)
+    plan_name = BILLING_PLANS.get(plan, {}).get("name", "Free")
+    has_seats = seats_total > 1
+    body = (
+        (
+            f'<div class="lead">Your <b>{_esc_html(plan_name)}</b> plan includes '
+            f"<b>{seats_total} seats</b> (you plus {seats_total - 1} member"
+            f'{"s" if seats_total - 1 != 1 else ""}). Invite people by email — they get '
+            "full ARIA access on your plan, no separate charge.</div>"
+            '<div class="invite"><input id="mEmail" type="email" placeholder="teammate@company.com" '
+            'autocomplete="off"><button id="mAdd" onclick="addMember()">Invite</button></div>'
+            '<div id="mMsg" class="msg"></div><div id="mList" class="list"></div>'
+        )
+        if has_seats
+        else (
+            '<div class="lead">Your current plan is for a single member. Upgrade to '
+            "<b>Business</b> (5 seats) or <b>Scale</b> (15 seats) to invite your team.</div>"
+            '<a class="btn" href="/app">Go to ARIA to upgrade →</a>'
+        )
+    )
+    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · Your team</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>
+*{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
+body{{min-height:100vh;background:#fafaf9;color:#3f3f46;padding:40px 20px;display:flex;justify-content:center}}
+.card{{width:560px;max-width:100%;background:#fff;border:1px solid #e7e5e4;border-radius:18px;padding:30px 28px;box-shadow:0 24px 60px -24px rgba(28,25,23,.18);height:fit-content}}
+.top{{font-size:13px;margin-bottom:18px}} a{{color:#059669;text-decoration:none}} a:hover{{text-decoration:underline}}
+h1{{font-size:22px;color:#1c1917;margin-bottom:6px}}
+.lead{{font-size:14px;color:#57534e;line-height:1.6;margin:8px 0 18px}}
+.invite{{display:flex;gap:8px}} .invite input{{flex:1;padding:12px 14px;border:1px solid #d6d3d1;border-radius:11px;font-size:14.5px}}
+.invite input:focus{{outline:0;border-color:#6ee7b7;box-shadow:0 0 0 3px rgba(16,185,129,.14)}}
+.invite button,.btn{{border:0;border-radius:11px;padding:12px 18px;font-weight:700;font-size:14px;background:#059669;color:#fff;cursor:pointer;text-decoration:none;display:inline-block}}
+.invite button:hover,.btn:hover{{background:#047857}}
+.msg{{font-size:13px;margin:12px 0;min-height:18px}} .msg.err{{color:#b91c1c}} .msg.ok{{color:#047857}}
+.list{{margin-top:8px}} .mrow{{display:flex;align-items:center;justify-content:space-between;padding:12px 2px;border-top:1px solid #f0efee;font-size:14px}}
+.mrow b{{color:#1c1917;font-weight:600}} .rm{{border:1px solid #e7e5e4;background:#fff;color:#b91c1c;border-radius:8px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer}}
+.rm:hover{{background:#fef2f2;border-color:#fecaca}} .cnt{{color:#78716c;font-size:12.5px;margin-top:14px}}
+</style></head><body><div class="card">
+<div class="top"><a href="/app">← Back to ARIA</a></div>
+<h1>Your team</h1>
+{body}
+</div>
+<script>
+async function loadMembers(){{
+  try{{
+    const r=await fetch('/api/v1/account/members',{{credentials:'same-origin'}});
+    const d=await r.json(); renderMembers(d);
+  }}catch(e){{}}
+}}
+function esc(s){{return (s||'').replace(/[&<>"]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}}[c]));}}
+function renderMembers(d){{
+  const list=document.getElementById('mList'); if(!list) return;
+  const members=d.members||[]; const total=d.seats||1; const used=d.used||1;
+  list.innerHTML = members.map(m=>'<div class="mrow"><b>'+esc(m)+'</b>'
+    +'<button class="rm" onclick="removeMember(\\''+esc(m)+'\\')">Remove</button></div>').join('')
+    + '<div class="cnt">'+used+' of '+total+' seats used</div>';
+}}
+async function addMember(){{
+  const inp=document.getElementById('mEmail'); const msg=document.getElementById('mMsg');
+  const email=(inp.value||'').trim(); if(!email) return;
+  document.getElementById('mAdd').disabled=true;
+  try{{
+    const r=await fetch('/api/v1/account/members',{{method:'POST',headers:{{'Content-Type':'application/json'}},credentials:'same-origin',body:JSON.stringify({{email}})}});
+    const d=await r.json();
+    msg.textContent=d.message||''; msg.className='msg '+(d.ok?'ok':'err');
+    if(d.ok){{ inp.value=''; }} renderMembers({{members:d.members, seats:{seats_total}, used:1+(d.members||[]).length}});
+  }}catch(e){{ msg.textContent='Something went wrong. Try again.'; msg.className='msg err'; }}
+  document.getElementById('mAdd').disabled=false;
+}}
+async function removeMember(email){{
+  try{{
+    const r=await fetch('/api/v1/account/members',{{method:'DELETE',headers:{{'Content-Type':'application/json'}},credentials:'same-origin',body:JSON.stringify({{email}})}});
+    const d=await r.json(); renderMembers({{members:d.members, seats:{seats_total}, used:1+(d.members||[]).length}});
+  }}catch(e){{}}
+}}
+loadMembers();
+</script>
+</body></html>"""
+    return HTMLResponse(html)
 
 
 # Free-plan daily message cap — the concrete reason to upgrade to Pro.
@@ -1400,6 +1693,8 @@ NO_REFUND_ACK = (
 
 def _checkout_confirm_page(tier: str, plan: dict) -> HTMLResponse:
     price = f"${plan['cents'] // 100}/mo"
+    seats = int(plan.get("seats", 1) or 1)
+    seat_note = f" · up to {seats} members" if seats > 1 else ""
     go = f"/billing/checkout?tier={tier}&amp;agreed=1"
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1423,7 +1718,7 @@ text-decoration:none;cursor:pointer;transition:filter .15s}}
 .sub a{{color:#71717a;text-decoration:none;margin:0 8px}} .sub a:hover{{color:#18181b}}
 </style></head><body><div class="card">
 <h1>Confirm {plan['name']}</h1>
-<div class="price"><b>{price}</b> · renews monthly · cancel anytime</div>
+<div class="price"><b>{price}</b>{seat_note} · renews monthly · cancel anytime</div>
 <div class="ack">
   <input type="checkbox" id="ack" onchange="document.getElementById('go').setAttribute('aria-disabled', this.checked?'false':'true')">
   <label for="ack">{NO_REFUND_ACK}</label>
