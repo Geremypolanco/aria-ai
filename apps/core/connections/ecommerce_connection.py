@@ -1,6 +1,6 @@
 """
-Ecommerce connection para ARIA AI.
-Soporta Amazon (Product Advertising API), Etsy (OAuth), WooCommerce (API key).
+Ecommerce connection for ARIA AI.
+Supports Amazon (Product Advertising API), Etsy (OAuth), WooCommerce (API key).
 """
 
 from __future__ import annotations
@@ -12,6 +12,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.ecommerce")
 
 ETSY_AUTH_URL = "https://www.etsy.com/oauth/connect"
@@ -21,7 +24,8 @@ ETSY_REDIRECT = "https://aria-ai.fly.dev/oauth/callback/etsy"
 ETSY_SCOPES = "listings_r listings_w shops_r transactions_r"
 
 
-class EtsyConnection:
+@register_connector("etsy", display_name="Etsy (artisan shop)")
+class EtsyConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings
@@ -33,6 +37,13 @@ class EtsyConnection:
 
         return getattr(settings, "ETSY_CLIENT_SECRET", None)
 
+    # PKCE verifier keyed by chat_id, so exchange_code() can retrieve the
+    # same value used to build the code_challenge in get_auth_url(). Etsy's
+    # token endpoint recomputes SHA256(code_verifier) and compares it to the
+    # challenge sent earlier — an empty verifier can never match a real
+    # challenge, so every exchange was guaranteed to be rejected.
+    _pkce_verifiers: dict[str, str] = {}
+
     def get_auth_url(self, chat_id: str) -> str | None:
         cid = self._client_id()
         if not cid:
@@ -41,6 +52,7 @@ class EtsyConnection:
         import secrets
 
         verifier = secrets.token_urlsafe(64)
+        self._pkce_verifiers[chat_id] = verifier
         challenge = (
             base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
             .rstrip(b"=")
@@ -60,7 +72,8 @@ class EtsyConnection:
     async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         if not cid:
-            raise ValueError("ETSY_CLIENT_ID no configurado")
+            raise ValueError("ETSY_CLIENT_ID not configured")
+        verifier = self._pkce_verifiers.pop(chat_id, "")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 ETSY_TOKEN_URL,
@@ -69,7 +82,7 @@ class EtsyConnection:
                     "client_id": cid,
                     "redirect_uri": ETSY_REDIRECT,
                     "code": code,
-                    "code_verifier": "",
+                    "code_verifier": verifier,
                 },
             )
             r.raise_for_status()
@@ -137,7 +150,7 @@ class EtsyConnection:
 
 
 class WooCommerceConnection:
-    """WooCommerce usando Consumer Key + Secret (no OAuth web flow necesario)."""
+    """WooCommerce using Consumer Key + Secret (no OAuth web flow needed)."""
 
     def _creds(self) -> tuple[str, str, str]:
         from apps.core.config import settings
@@ -150,7 +163,7 @@ class WooCommerceConnection:
     async def list_products(self, per_page: int = 20, status: str = "publish") -> list[dict]:
         url, key, secret = self._creds()
         if not url or not key:
-            return [{"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY no configurados"}]
+            return [{"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY not configured"}]
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{url}/wp-json/wc/v3/products",
@@ -173,7 +186,7 @@ class WooCommerceConnection:
     async def list_orders(self, per_page: int = 20, status: str = "any") -> list[dict]:
         url, key, secret = self._creds()
         if not url or not key:
-            return [{"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY no configurados"}]
+            return [{"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY not configured"}]
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{url}/wp-json/wc/v3/orders",
@@ -196,7 +209,7 @@ class WooCommerceConnection:
     async def get_sales_report(self) -> dict:
         url, key, secret = self._creds()
         if not url or not key:
-            return {"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY no configurados"}
+            return {"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY not configured"}
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{url}/wp-json/wc/v3/reports/sales",
@@ -211,7 +224,7 @@ class WooCommerceConnection:
 
 
 class AmazonConnection:
-    """Amazon Product Advertising API 5.0 — búsqueda de productos."""
+    """Amazon Product Advertising API 5.0 — product search."""
 
     ENDPOINT = "webservices.amazon.com"
     URI = "/paapi5/searchitems"
@@ -229,7 +242,7 @@ class AmazonConnection:
         if not key or not secret or not tag:
             return [
                 {
-                    "error": "AMAZON_ACCESS_KEY / AMAZON_SECRET_KEY / AMAZON_ASSOCIATE_TAG no configurados"
+                    "error": "AMAZON_ACCESS_KEY / AMAZON_SECRET_KEY / AMAZON_ASSOCIATE_TAG not configured"
                 }
             ]
         payload = {

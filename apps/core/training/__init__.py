@@ -1,6 +1,6 @@
 """
-training/ — Módulo de auto-mejora continua de ARIA AI.
-El SelfTrainer corre en background y evalúa/mejora las capacidades de ARIA.
+training/ — Continuous self-improvement module for ARIA AI.
+The SelfTrainer runs in the background and evaluates/improves ARIA's capabilities.
 """
 
 from apps.core.training.continuous_trainer import get_trainer

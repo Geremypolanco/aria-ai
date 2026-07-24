@@ -1,6 +1,6 @@
 """
-market_tools.py — Herramientas de inteligencia de mercado.
-NewsAPI, SerpAPI, scoring de oportunidades, afiliados.
+market_tools.py — Market intelligence tools.
+NewsAPI, SerpAPI, opportunity scoring, affiliates.
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ logger = logging.getLogger("aria.market_tools")
 
 
 class MarketTools:
-    """Herramientas de investigación de mercado."""
+    """Market research tools."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=15.0)
 
-    # ── NOTICIAS (NewsAPI) ────────────────────────────────
+    # ── NEWS (NewsAPI) ────────────────────────────────
 
     async def get_trending_news(
         self,
@@ -29,9 +29,9 @@ class MarketTools:
         language: str = "en",
         page_size: int = 10,
     ) -> list[dict[str, Any]]:
-        """Obtiene noticias trending via NewsAPI."""
+        """Gets trending news via NewsAPI."""
         if not settings.NEWS_API_KEY:
-            logger.warning("[MarketTools] NEWS_API_KEY no configurado")
+            logger.warning("[MarketTools] NEWS_API_KEY not configured")
             return []
         try:
             res = await self._http.get(
@@ -59,13 +59,13 @@ class MarketTools:
                 ]
             logger.warning("[MarketTools] NewsAPI HTTP %d", res.status_code)
         except Exception as exc:
-            logger.error("[MarketTools] Error en NewsAPI: %s", exc)
+            logger.error("[MarketTools] NewsAPI error: %s", exc)
         return []
 
     async def get_top_headlines(
         self, category: str = "technology", country: str = "us"
     ) -> list[dict[str, Any]]:
-        """Top headlines por categoría."""
+        """Top headlines by category."""
         if not settings.NEWS_API_KEY:
             return []
         try:
@@ -81,15 +81,15 @@ class MarketTools:
             if res.status_code == 200:
                 return res.json().get("articles", [])
         except Exception as exc:
-            logger.error("[MarketTools] Error en top headlines: %s", exc)
+            logger.error("[MarketTools] Top headlines error: %s", exc)
         return []
 
-    # ── BÚSQUEDA (SerpAPI) ────────────────────────────────
+    # ── SEARCH (SerpAPI) ────────────────────────────────
 
     async def search_trends(self, query: str, num_results: int = 10) -> list[dict[str, Any]]:
-        """Busca tendencias y resultados via SerpAPI."""
+        """Searches for trends and results via SerpAPI."""
         if not settings.SERP_API_KEY:
-            logger.warning("[MarketTools] SERP_API_KEY no configurado")
+            logger.warning("[MarketTools] SERP_API_KEY not configured")
             return []
         try:
             res = await self._http.get(
@@ -115,11 +115,11 @@ class MarketTools:
                 ]
             logger.warning("[MarketTools] SerpAPI HTTP %d", res.status_code)
         except Exception as exc:
-            logger.error("[MarketTools] Error en SerpAPI: %s", exc)
+            logger.error("[MarketTools] SerpAPI error: %s", exc)
         return []
 
     async def get_related_searches(self, query: str) -> list[str]:
-        """Obtiene búsquedas relacionadas de Google."""
+        """Gets related searches from Google."""
         if not settings.SERP_API_KEY:
             return []
         try:
@@ -136,11 +136,11 @@ class MarketTools:
                 related = data.get("related_searches", [])
                 return [r.get("query", "") for r in related if r.get("query")]
         except Exception as exc:
-            logger.error("[MarketTools] Error en related searches: %s", exc)
+            logger.error("[MarketTools] Related searches error: %s", exc)
         return []
 
     async def search_affiliate_programs(self, niche: str) -> list[dict[str, Any]]:
-        """Busca programas de afiliados relevantes para el nicho."""
+        """Searches for affiliate programs relevant to the niche."""
         if not settings.SERP_API_KEY:
             return []
         try:
@@ -158,10 +158,10 @@ class MarketTools:
                 )
             return programs
         except Exception as exc:
-            logger.error("[MarketTools] Error en affiliate search: %s", exc)
+            logger.error("[MarketTools] Affiliate search error: %s", exc)
         return []
 
-    # ── SCORING DE OPORTUNIDADES ──────────────────────────
+    # ── OPPORTUNITY SCORING ──────────────────────────
 
     def score_opportunity(
         self,
@@ -170,15 +170,15 @@ class MarketTools:
         search_results: list[dict],
         competition_level: str = "medium",
     ) -> dict[str, Any]:
-        """Calcula un score de oportunidad 0-100 para un nicho."""
-        # Base score por noticias recientes (señal de demanda)
+        """Calculates a 0-100 opportunity score for a niche."""
+        # Base score from recent news (demand signal)
         news_score = min(news_count * 5, 30)
 
-        # Score por competencia
+        # Score from competition
         competition_scores = {"low": 40, "medium": 25, "high": 10}
         comp_score = competition_scores.get(competition_level, 20)
 
-        # Score por posición de resultados (menos dominación = más oportunidad)
+        # Score from result position (less domination = more opportunity)
         avg_position = sum(r.get("position", 5) for r in search_results[:5]) / max(
             len(search_results[:5]), 1
         )
@@ -198,15 +198,15 @@ class MarketTools:
 
     def _score_recommendation(self, score: int) -> str:
         if score >= 70:
-            return "🔥 ALTA — Actuar inmediatamente"
+            return "🔥 HIGH — Act immediately"
         if score >= 50:
-            return "✅ MEDIA — Buena oportunidad, explorar"
+            return "✅ MEDIUM — Good opportunity, explore"
         if score >= 30:
-            return "⚠️ BAJA — Considerar con cuidado"
-        return "❌ MUY BAJA — Evitar por ahora"
+            return "⚠️ LOW — Consider carefully"
+        return "❌ VERY LOW — Avoid for now"
 
     def _estimate_commission(self, text: str) -> str:
-        """Estima comisión de un programa de afiliados desde texto."""
+        """Estimates the commission of an affiliate program from text."""
         import re
 
         matches = re.findall(r"(\d+)\s*%", text)
@@ -214,13 +214,13 @@ class MarketTools:
             max_pct = max(int(m) for m in matches)
             return f"{max_pct}%"
         if "recurring" in text.lower() or "recurrente" in text.lower():
-            return "recurrente"
+            return "recurring"
         return "variable"
 
     # ── GOOGLE TRENDS (via Google API) ────────────────────
 
     async def get_google_trends(self, keywords: list[str]) -> dict[str, Any]:
-        """Obtiene datos de tendencias usando Google Custom Search API."""
+        """Gets trend data using the Google Custom Search API."""
         if not settings.GOOGLE_API_KEY:
             return {}
         results = {}

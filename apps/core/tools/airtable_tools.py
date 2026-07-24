@@ -1,6 +1,6 @@
 """
-airtable_tools.py — Base de datos flexible via Airtable API.
-Gestiona registros de productos, leads, campañas y métricas.
+airtable_tools.py — Flexible database via the Airtable API.
+Manages product, lead, campaign, and metrics records.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ AIRTABLE_API = "https://api.airtable.com/v0"
 
 
 class AirtableTools:
-    """Gestión de datos via Airtable REST API."""
+    """Data management via the Airtable REST API."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=20.0)
@@ -28,9 +28,9 @@ class AirtableTools:
         return bool(self._token)
 
     async def list_bases(self) -> dict[str, Any]:
-        """Lista todas las bases de Airtable disponibles."""
+        """Lists all available Airtable bases."""
         if not self._configured():
-            return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}
+            return {"success": False, "error": "AIRTABLE_TOKEN not configured"}
         try:
             res = await self._http.get(
                 "https://api.airtable.com/v0/meta/bases", headers=self._headers
@@ -48,9 +48,9 @@ class AirtableTools:
     async def create_record(
         self, base_id: str, table: str, fields: dict[str, Any]
     ) -> dict[str, Any]:
-        """Crea un registro en una tabla de Airtable."""
+        """Creates a record in an Airtable table."""
         if not self._configured():
-            return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}
+            return {"success": False, "error": "AIRTABLE_TOKEN not configured"}
         try:
             res = await self._http.post(
                 f"{AIRTABLE_API}/{base_id}/{table}",
@@ -68,9 +68,9 @@ class AirtableTools:
     async def list_records(
         self, base_id: str, table: str, max_records: int = 20, filter_formula: str = ""
     ) -> dict[str, Any]:
-        """Lista registros de una tabla."""
+        """Lists records from a table."""
         if not self._configured():
-            return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}
+            return {"success": False, "error": "AIRTABLE_TOKEN not configured"}
         try:
             params: dict[str, Any] = {"maxRecords": max_records}
             if filter_formula:
@@ -90,9 +90,9 @@ class AirtableTools:
     async def update_record(
         self, base_id: str, table: str, record_id: str, fields: dict[str, Any]
     ) -> dict[str, Any]:
-        """Actualiza un registro existente."""
+        """Updates an existing record."""
         if not self._configured():
-            return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}
+            return {"success": False, "error": "AIRTABLE_TOKEN not configured"}
         try:
             res = await self._http.patch(
                 f"{AIRTABLE_API}/{base_id}/{table}/{record_id}",

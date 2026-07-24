@@ -1,23 +1,24 @@
 """
-browser_sandbox.py — Navegador web completo para ARIA AI.
+browser_sandbox.py — Full web browser for ARIA AI.
 
-ARIA puede interactuar con cualquier sitio web como un humano:
-  - Navegar a URLs (incluyendo páginas con JavaScript)
-  - Hacer clic en elementos, llenar formularios, presionar botones
-  - Ejecutar JavaScript arbitrario en la página
-  - Tomar screenshots de páginas completas
-  - Mantener sesión/cookies entre requests
-  - Rellenar y enviar formularios automáticamente
-  - Descargar archivos
-  - Extraer datos de páginas con JS dinámico
+ARIA can interact with any website like a human:
+  - Navigate to URLs (including pages with JavaScript)
+  - Click on elements, fill in forms, press buttons
+  - Execute arbitrary JavaScript on the page
+  - Take screenshots of full pages
+  - Maintain session/cookies between requests
+  - Fill in and submit forms automatically
+  - Download files
+  - Extract data from pages with dynamic JS
 
-Motor: Playwright (headless Chromium) con fallback a httpx para páginas estáticas.
+Engine: Playwright (headless Chromium) with httpx fallback for static pages.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import re
 from typing import Any
 
@@ -28,8 +29,8 @@ logger = logging.getLogger("aria.browser_sandbox")
 
 class BrowserSession:
     """
-    Sesión de navegador persistente con cookies y estado.
-    Usa Playwright si está disponible, httpx como fallback.
+    Persistent browser session with cookies and state.
+    Uses Playwright if available, httpx as a fallback.
     """
 
     def __init__(self) -> None:
@@ -51,7 +52,19 @@ class BrowserSession:
         self._playwright_available = None  # None = unchecked
 
     async def _ensure_browser(self) -> bool:
-        """Inicializa Playwright si está disponible."""
+        """Initializes Playwright if available.
+
+        Uses the same anti-detection measures as human_browser.py's stealth
+        engine (launch flags that hide automation signals + the init script
+        that patches navigator.webdriver, fake plugins, canvas/WebGL
+        fingerprint noise, etc.) — this is ARIA's general-purpose "browse any
+        page" tool (browse_page/interact_browser in aria_mind.py), reachable
+        for far more tasks than the platform-specific login flows
+        human_browser.py was written for. Before this, every browse_page/
+        interact_browser call used a vanilla Playwright session with none of
+        that — trivially flagged as a bot by navigator.webdriver alone,
+        which is checked by essentially all basic bot-detection (Cloudflare,
+        DataDome, PerimeterX, and plenty of sites' own JS)."""
         if self._playwright_available is False:
             return False
         if self._page is not None:
@@ -59,10 +72,20 @@ class BrowserSession:
         try:
             from playwright.async_api import async_playwright
 
+            from apps.core.tools.human_browser import _STEALTH_JS
+
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                    "--exclude-switches=enable-automation",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                ],
             )
             self._context = await self._browser.new_context(
                 viewport={"width": 1280, "height": 900},
@@ -71,14 +94,17 @@ class BrowserSession:
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/120.0.0.0 Safari/537.36"
                 ),
+                locale="en-US",
+                timezone_id="America/New_York",
                 java_script_enabled=True,
             )
+            await self._context.add_init_script(_STEALTH_JS)
             self._page = await self._context.new_page()
             self._playwright_available = True
-            logger.info("[BrowserSandbox] Playwright iniciado")
+            logger.info("[BrowserSandbox] Playwright started (stealth)")
             return True
         except Exception as exc:
-            logger.warning("[BrowserSandbox] Playwright no disponible: %s — usando httpx", exc)
+            logger.warning("[BrowserSandbox] Playwright unavailable: %s — using httpx", exc)
             self._playwright_available = False
             return False
 
@@ -90,15 +116,29 @@ class BrowserSession:
         await self._http.aclose()
 
     # ══════════════════════════════════════════════════════════════
-    # NAVEGACIÓN
+    # NAVIGATION
     # ══════════════════════════════════════════════════════════════
 
     async def navigate(self, url: str, wait_for: str = "load") -> dict[str, Any]:
-        """Navega a una URL y espera que cargue."""
+        """Navigates to a URL and waits for it to load.
+
+        SSRF guard: `url` is ultimately steerable by whatever the user asks
+        ARIA to browse/interact with. A real browser navigating to an
+        internal/metadata address is strictly worse than a plain fetch (it
+        executes JS, can submit forms, follows redirects) — same class of bug
+        fixed in WebTools.fetch_page, checked here too.
+        """
+        from apps.core.tools.web_tools import _assert_public_url
+
+        try:
+            await _assert_public_url(url)
+        except ValueError as exc:
+            return {"success": False, "url": url, "error": str(exc)}
+
         if await self._ensure_browser():
             try:
                 response = await self._page.goto(url, wait_until=wait_for, timeout=30000)
-                await asyncio.sleep(1)  # esperar renderizado JS
+                await asyncio.sleep(1)  # wait for JS rendering
                 title = await self._page.title()
                 return {
                     "success": True,
@@ -110,7 +150,7 @@ class BrowserSession:
             except Exception as exc:
                 return {"success": False, "url": url, "error": str(exc)}
         else:
-            # Fallback httpx
+            # httpx fallback
             try:
                 r = await self._http.get(url)
                 title_m = re.search(r"<title[^>]*>(.*?)</title>", r.text, re.I | re.S)
@@ -125,7 +165,7 @@ class BrowserSession:
                 return {"success": False, "url": url, "error": str(exc)}
 
     async def get_content(self, url: str | None = None, max_chars: int = 8000) -> dict[str, Any]:
-        """Extrae el texto limpio de la página actual (o navega a url primero)."""
+        """Extracts clean text from the current page (or navigates to url first)."""
         if url:
             nav = await self.navigate(url)
             if not nav["success"]:
@@ -137,7 +177,7 @@ class BrowserSession:
                 text = _extract_text(content)
                 title = await self._page.title()
                 current_url = self._page.url
-                # También intentar extraer datos estructurados
+                # Also try to extract structured data
                 try:
                     links = await self._page.eval_on_selector_all(
                         "a[href]",
@@ -160,7 +200,7 @@ class BrowserSession:
             if not url:
                 return {
                     "success": False,
-                    "error": "Se requiere URL cuando Playwright no está disponible",
+                    "error": "A URL is required when Playwright is not available",
                 }
             try:
                 r = await self._http.get(url)
@@ -177,34 +217,46 @@ class BrowserSession:
                 return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # INTERACCIÓN
+    # INTERACTION
     # ══════════════════════════════════════════════════════════════
 
     async def click(self, selector: str, timeout: int = 5000) -> dict[str, Any]:
-        """Hace clic en un elemento por CSS selector o texto."""
+        """Clicks an element by CSS selector or text."""
         if not await self._ensure_browser():
-            return {"success": False, "error": "Playwright requerido para clic"}
+            return {"success": False, "error": "Playwright required for click"}
         try:
+            # A human doesn't click the instant an element exists — brief
+            # randomized pauses before/after are cheap, low-risk timing
+            # cover against bot-detection that flags inhumanly-uniform
+            # click intervals.
+            await asyncio.sleep(random.uniform(0.15, 0.5))
             await self._page.click(selector, timeout=timeout)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(random.uniform(0.3, 0.8))
             return {"success": True, "selector": selector, "url": self._page.url}
         except Exception as exc:
             return {"success": False, "selector": selector, "error": str(exc)}
 
     async def fill_field(self, selector: str, value: str) -> dict[str, Any]:
-        """Rellena un campo de entrada."""
+        """Fills in an input field, key by key with human-like timing."""
         if not await self._ensure_browser():
-            return {"success": False, "error": "Playwright requerido para fill"}
+            return {"success": False, "error": "Playwright required for fill"}
         try:
-            await self._page.fill(selector, value)
+            await asyncio.sleep(random.uniform(0.1, 0.4))
+            try:
+                await self._page.click(selector, timeout=2000)
+                await self._page.type(selector, value, delay=random.uniform(40, 120))
+            except Exception:
+                # Element may not be clickable/typeable (hidden input, etc.)
+                # — fall back to the instant fill rather than failing.
+                await self._page.fill(selector, value)
             return {"success": True, "selector": selector}
         except Exception as exc:
             return {"success": False, "selector": selector, "error": str(exc)}
 
     async def press_key(self, key: str, selector: str | None = None) -> dict[str, Any]:
-        """Presiona una tecla (ej: 'Enter', 'Tab', 'Escape')."""
+        """Presses a key (e.g. 'Enter', 'Tab', 'Escape')."""
         if not await self._ensure_browser():
-            return {"success": False, "error": "Playwright requerido"}
+            return {"success": False, "error": "Playwright required"}
         try:
             if selector:
                 await self._page.press(selector, key)
@@ -221,7 +273,7 @@ class BrowserSession:
         submit_selector: str = "button[type=submit], input[type=submit], form",
     ) -> dict[str, Any]:
         """
-        Navega a una URL, rellena un formulario y lo envía.
+        Navigates to a URL, fills in a form, and submits it.
         fields: {"#email": "user@example.com", "#password": "secret"}
         """
         nav = await self.navigate(url)
@@ -229,7 +281,7 @@ class BrowserSession:
             return nav
 
         if not await self._ensure_browser():
-            # Fallback: POST con httpx
+            # Fallback: POST with httpx
             return await self._submit_form_httpx(url, fields)
 
         fill_errors = []
@@ -249,7 +301,7 @@ class BrowserSession:
                 "fill_errors": fill_errors,
             }
         except Exception as exc:
-            # Fallback: presionar Enter en último campo
+            # Fallback: press Enter in the last field
             try:
                 last_selector = list(fields.keys())[-1]
                 await self._page.press(last_selector, "Enter")
@@ -259,7 +311,7 @@ class BrowserSession:
                 return {"success": False, "error": str(exc), "fill_errors": fill_errors}
 
     async def _submit_form_httpx(self, url: str, fields: dict[str, str]) -> dict[str, Any]:
-        """Envía formulario vía POST httpx cuando Playwright no está disponible."""
+        """Submits a form via httpx POST when Playwright is not available."""
         try:
             r = await self._http.post(url, data=fields)
             return {
@@ -276,9 +328,9 @@ class BrowserSession:
     # ══════════════════════════════════════════════════════════════
 
     async def execute_js(self, script: str) -> dict[str, Any]:
-        """Ejecuta JavaScript en la página actual y retorna el resultado."""
+        """Executes JavaScript on the current page and returns the result."""
         if not await self._ensure_browser():
-            return {"success": False, "error": "Playwright requerido para ejecutar JS"}
+            return {"success": False, "error": "Playwright required to execute JS"}
         try:
             result = await self._page.evaluate(script)
             return {"success": True, "result": result}
@@ -286,11 +338,11 @@ class BrowserSession:
             return {"success": False, "error": str(exc), "script": script[:200]}
 
     async def extract_json_from_page(self, url: str | None = None) -> dict[str, Any]:
-        """Extrae todos los datos JSON de la página (scripts, data-attributes, etc.)."""
+        """Extracts all JSON data from the page (scripts, data-attributes, etc.)."""
         if url:
             await self.navigate(url)
         if not await self._ensure_browser():
-            return {"success": False, "error": "Playwright requerido"}
+            return {"success": False, "error": "Playwright required"}
         try:
             script = """
             () => {
@@ -328,8 +380,8 @@ class BrowserSession:
         selector: str | None = None,
     ) -> dict[str, Any]:
         """
-        Captura screenshot de la página actual o de una URL.
-        Retorna bytes de la imagen PNG.
+        Captures a screenshot of the current page or of a URL.
+        Returns PNG image bytes.
         """
         if url:
             nav = await self.navigate(url)
@@ -337,10 +389,10 @@ class BrowserSession:
                 return nav
 
         if not await self._ensure_browser():
-            return {"success": False, "error": "Playwright requerido para screenshots"}
+            return {"success": False, "error": "Playwright required for screenshots"}
 
         try:
-            await asyncio.sleep(1)  # esperar animaciones
+            await asyncio.sleep(1)  # wait for animations
             kwargs: dict[str, Any] = {"type": "png", "full_page": full_page}
             if selector:
                 element = await self._page.query_selector(selector)
@@ -349,7 +401,7 @@ class BrowserSession:
                         **{k: v for k, v in kwargs.items() if k != "full_page"}
                     )
                 else:
-                    return {"success": False, "error": f"Selector no encontrado: {selector}"}
+                    return {"success": False, "error": f"Selector not found: {selector}"}
             else:
                 img_bytes = await self._page.screenshot(**kwargs)
 
@@ -364,12 +416,15 @@ class BrowserSession:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # DESCARGAS
+    # DOWNLOADS
     # ══════════════════════════════════════════════════════════════
 
     async def download_file(self, url: str) -> dict[str, Any]:
-        """Descarga un archivo y retorna los bytes."""
+        """Downloads a file and returns its bytes."""
         try:
+            from apps.core.tools.web_tools import _assert_public_url
+
+            await _assert_public_url(url)
             r = await self._http.get(url)
             if r.status_code == 200:
                 filename = url.split("/")[-1].split("?")[0] or "download"
@@ -386,20 +441,20 @@ class BrowserSession:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # BÚSQUEDA AVANZADA
+    # ADVANCED SEARCH
     # ══════════════════════════════════════════════════════════════
 
     async def search_and_extract(self, query: str, extract_links: bool = True) -> dict[str, Any]:
         """
-        Busca en DuckDuckGo y extrae contenido de los primeros resultados.
-        Sin API key necesaria.
+        Searches DuckDuckGo and extracts content from the top results.
+        No API key required.
         """
         ddg_url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
         content = await self.get_content(ddg_url)
         if not content.get("success"):
             return content
 
-        # Extraer URLs de resultados reales
+        # Extract real result URLs
         if await self._ensure_browser():
             try:
                 results = await self._page.eval_on_selector_all(
@@ -424,12 +479,12 @@ class BrowserSession:
 
     async def interact_with_page(self, instructions: list[dict]) -> dict[str, Any]:
         """
-        Ejecuta una secuencia de instrucciones sobre la página actual.
+        Executes a sequence of instructions on the current page.
 
-        Cada instrucción es un dict con "action" y parámetros:
+        Each instruction is a dict with "action" and parameters:
           {"action": "navigate", "url": "https://..."}
           {"action": "click", "selector": "#button"}
-          {"action": "fill", "selector": "#input", "value": "texto"}
+          {"action": "fill", "selector": "#input", "value": "text"}
           {"action": "press", "key": "Enter"}
           {"action": "wait", "ms": 1000}
           {"action": "screenshot"}
@@ -461,7 +516,7 @@ class BrowserSession:
                 elif action == "js":
                     r = await self.execute_js(step["script"])
                 else:
-                    r = {"success": False, "error": f"Acción desconocida: {action}"}
+                    r = {"success": False, "error": f"Unknown action: {action}"}
                 results.append({"action": action, "result": r})
             except Exception as exc:
                 results.append({"action": action, "error": str(exc)})
@@ -476,12 +531,12 @@ class BrowserSession:
 
 
 # ══════════════════════════════════════════════════════════════
-# FUNCIONES DE UTILIDAD
+# UTILITY FUNCTIONS
 # ══════════════════════════════════════════════════════════════
 
 
 def _extract_text(html: str) -> str:
-    """Extrae texto limpio de HTML."""
+    """Extracts clean text from HTML."""
     for tag in ("script", "style", "nav", "footer", "header", "aside", "noscript", "iframe"):
         html = re.sub(rf"<{tag}[^>]*>.*?</{tag}>", " ", html, flags=re.DOTALL | re.I)
     html = re.sub(r"<br\s*/?>", "\n", html, flags=re.I)
@@ -497,14 +552,14 @@ def _extract_text(html: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════
-# SANDBOX MANAGER — Interfaz de alto nivel para ARIA
+# SANDBOX MANAGER — High-level interface for ARIA
 # ══════════════════════════════════════════════════════════════
 
 
 class SandboxManager:
     """
-    Entorno sandbox completo para ARIA.
-    Combina navegador + código + archivos en un entorno unificado.
+    Complete sandbox environment for ARIA.
+    Combines browser + code + files in a unified environment.
     """
 
     def __init__(self) -> None:
@@ -522,7 +577,7 @@ class SandboxManager:
         screenshot: bool = False,
         session_id: str = "default",
     ) -> dict[str, Any]:
-        """Navega a una URL y extrae contenido."""
+        """Navigates to a URL and extracts content."""
         session = self._get_session(session_id)
         result = await session.navigate(url)
         if not result.get("success"):
@@ -547,7 +602,7 @@ class SandboxManager:
         submit: str = "button[type=submit]",
         session_id: str = "default",
     ) -> dict[str, Any]:
-        """Rellena y envía un formulario web."""
+        """Fills in and submits a web form."""
         session = self._get_session(session_id)
         return await session.fill_and_submit_form(url, fields, submit)
 
@@ -558,23 +613,23 @@ class SandboxManager:
         session_id: str = "default",
     ) -> dict[str, Any]:
         """
-        ARIA describe una tarea en lenguaje natural y el sandbox la ejecuta.
-        Genera instrucciones step-by-step con IA y las ejecuta en el navegador.
+        ARIA describes a task in natural language and the sandbox executes it.
+        Generates step-by-step instructions with AI and runs them in the browser.
         """
         from apps.core.tools.ai_client import AIModel, get_ai_client
 
         client = get_ai_client()
-        context_url = f"\nURL inicial: {start_url}" if start_url else ""
+        context_url = f"\nStarting URL: {start_url}" if start_url else ""
 
         instructions = await client.complete_json(
             model=AIModel.FAST,
-            system="Eres un agente de automatización web. Convierte tareas en instrucciones JSON.",
+            system="You are a web automation agent. Convert tasks into JSON instructions.",
             user=(
-                f"Tarea: {task_description}{context_url}\n\n"
-                f"Genera una lista de instrucciones JSON para ejecutar esta tarea en un navegador.\n"
-                f"Acciones disponibles: navigate, click, fill, press, wait, screenshot, extract_text, js\n"
-                f"Responde SOLO con JSON array: [{{'action': '...', ...}}, ...]\n"
-                f"Máximo 10 pasos."
+                f"Task: {task_description}{context_url}\n\n"
+                f"Generate a list of JSON instructions to execute this task in a browser.\n"
+                f"Available actions: navigate, click, fill, press, wait, screenshot, extract_text, js\n"
+                f"Respond with ONLY a JSON array: [{{'action': '...', ...}}, ...]\n"
+                f"Maximum 10 steps."
             ),
             fallback=[],
         )

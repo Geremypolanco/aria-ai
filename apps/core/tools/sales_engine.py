@@ -1,7 +1,7 @@
 """
 ARIA Sales Engine v1.0
-Inspirado en SalesGPT y técnicas de automatización de ventas de alto rendimiento.
-Gestiona la prospección, calificación y el outreach inicial de forma autónoma.
+Inspired by SalesGPT and high-performance sales automation techniques.
+Manages prospecting, qualification, and initial outreach autonomously.
 """
 
 import logging
@@ -17,11 +17,11 @@ class SalesEngine:
 
     async def prospect_leads(self, niche: str, target_audience: str) -> list[dict]:
         """
-        Simula la búsqueda de leads basada en el nicho.
-        En producción, esto se conectaría con Google Maps API o LinkedIn Scrapers.
+        Simulates lead search based on the niche.
+        In production, this would connect to the Google Maps API or LinkedIn scrapers.
         """
-        logger.info(f"[SalesEngine] Prospectando leads para nicho: {niche}")
-        # Aquí se integraría la lógica de scraping o búsqueda de APIs
+        logger.info(f"[SalesEngine] Prospecting leads for niche: {niche}")
+        # This is where the scraping/API search logic would be integrated
         return [
             {"name": f"Lead_{niche}_1", "interest": 0.8, "contact": "example1@test.com"},
             {"name": f"Lead_{niche}_2", "interest": 0.6, "contact": "example2@test.com"},
@@ -29,7 +29,7 @@ class SalesEngine:
 
     async def generate_outreach_copy(self, lead: dict, product: dict) -> str:
         """
-        Genera un mensaje de venta altamente persuasivo usando la librería de inteligencia.
+        Generates a highly persuasive sales message using the intelligence library.
         """
         from apps.core.tools.ai_client import AIModel, get_ai_client
 
@@ -39,23 +39,23 @@ class SalesEngine:
         vocab = ", ".join(VOCABULARY_EXPANSION["persuasive_verbs"][:5])
 
         prompt = (
-            f"Actúa como un cerrador de ventas de élite.\n"
+            f"Act as an elite sales closer.\n"
             f"Lead: {lead['name']}\n"
-            f"Producto: {product['name']}\n"
-            f"Técnica: {technique}\n"
-            f"Vocabulario sugerido: {vocab}\n\n"
-            f"Escribe un mensaje de outreach directo y persuasivo para cerrar una venta o agendar una llamada."
+            f"Product: {product['name']}\n"
+            f"Technique: {technique}\n"
+            f"Suggested vocabulary: {vocab}\n\n"
+            f"Write a direct, persuasive outreach message to close a sale or book a call."
         )
 
         resp = await ai.complete(
-            system="Eres un experto en ventas directas y copywriting persuasivo.",
+            system="You are an expert in direct sales and persuasive copywriting.",
             user=prompt,
             model=AIModel.CREATIVE,
         )
         return resp.content if resp else ""
 
     async def run_sales_cycle(self, niche: str, product: dict) -> dict:
-        """Ejecuta un ciclo completo de ventas."""
+        """Runs a complete sales cycle."""
         leads = await self.prospect_leads(niche, "Business owners")
         results = []
         for lead in leads:

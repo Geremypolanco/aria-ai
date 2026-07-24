@@ -1,19 +1,19 @@
 """
-social_session.py — Acceso a redes sociales sin APIs oficiales.
+social_session.py — Social network access without official APIs.
 
-ARIA puede autenticarse en redes sociales usando sesiones de navegador
-(cookies) exportadas por el usuario. Sin necesidad de API keys ni apps
-registradas en cada plataforma.
+ARIA can authenticate to social networks using browser sessions
+(cookies) exported by the user. No need for API keys or apps
+registered on each platform.
 
-FLUJO DE USO:
-  1. Usuario abre Twitter/Instagram/etc en su navegador (ya logueado)
-  2. Instala "Cookie-Editor" (extensión Chrome/Firefox)
-  3. Exporta las cookies como JSON
-  4. Envía el JSON a ARIA por Telegram (/sesion twitter) o web form
-  5. ARIA almacena las cookies cifradas en Redis/Supabase
-  6. ARIA usa esas cookies para interactuar con las plataformas
+USAGE FLOW:
+  1. User opens Twitter/Instagram/etc in their browser (already logged in)
+  2. Installs "Cookie-Editor" (Chrome/Firefox extension)
+  3. Exports the cookies as JSON
+  4. Sends the JSON to ARIA via Telegram (/sesion twitter) or a web form
+  5. ARIA stores the encrypted cookies in Redis/Supabase
+  6. ARIA uses those cookies to interact with the platforms
 
-PLATAFORMAS SOPORTADAS:
+SUPPORTED PLATFORMS:
   - Twitter/X    (api.x.com — cookies: auth_token, ct0)
   - Instagram    (i.instagram.com — cookies: sessionid, csrftoken, ds_user_id)
   - TikTok       (www.tiktok.com — cookies: sessionid, ttwid)
@@ -33,7 +33,7 @@ import httpx
 
 logger = logging.getLogger("aria.social_session")
 
-# ── CONFIGURACION POR PLATAFORMA ─────────────────────────────────────────────
+# ── PER-PLATFORM CONFIGURATION ─────────────────────────────────────────────
 
 PLATFORM_CONFIG: dict[str, dict] = {
     "twitter": {
@@ -48,11 +48,11 @@ PLATFORM_CONFIG: dict[str, dict] = {
             "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I6xF8lbg38Q%3DUgnEfs4F8721iQMz14L1KDUdrXkwnOynZv45hi2aXSjskyd0WF",
         },
         "instructions": (
-            "1. Abre <b>twitter.com</b> en Chrome (ya logueado)\n"
-            "2. Instala la extensión <b>Cookie-Editor</b>\n"
-            "3. Click en Cookie-Editor → <b>Export → Export as JSON</b>\n"
-            "4. Copia todo el JSON y pégalo aquí\n\n"
-            "Las cookies clave que necesito son: <code>auth_token</code> y <code>ct0</code>"
+            "1. Open <b>twitter.com</b> in Chrome (already logged in)\n"
+            "2. Install the <b>Cookie-Editor</b> extension\n"
+            "3. Click Cookie-Editor → <b>Export → Export as JSON</b>\n"
+            "4. Copy the whole JSON and paste it here\n\n"
+            "The key cookies I need are: <code>auth_token</code> and <code>ct0</code>"
         ),
         "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
     },
@@ -69,11 +69,11 @@ PLATFORM_CONFIG: dict[str, dict] = {
             "X-IG-WWW-Claim": "0",
         },
         "instructions": (
-            "1. Abre <b>instagram.com</b> en Chrome (ya logueado)\n"
-            "2. Instala <b>Cookie-Editor</b> si no la tienes\n"
-            "3. Click en Cookie-Editor → <b>Export → Export as JSON</b>\n"
-            "4. Copia el JSON y pégalo aquí\n\n"
-            "Cookie clave: <code>sessionid</code>"
+            "1. Open <b>instagram.com</b> in Chrome (already logged in)\n"
+            "2. Install <b>Cookie-Editor</b> if you don't have it\n"
+            "3. Click Cookie-Editor → <b>Export → Export as JSON</b>\n"
+            "4. Copy the JSON and paste it here\n\n"
+            "Key cookie: <code>sessionid</code>"
         ),
         "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
     },
@@ -87,10 +87,10 @@ PLATFORM_CONFIG: dict[str, dict] = {
         "test_endpoint": "https://www.tiktok.com/api/user/detail/?uniqueId=me",
         "test_headers": {},
         "instructions": (
-            "1. Abre <b>tiktok.com</b> en Chrome (ya logueado)\n"
-            "2. Instala <b>Cookie-Editor</b>\n"
-            "3. Export → JSON y pega aquí\n\n"
-            "Cookie clave: <code>sessionid</code>"
+            "1. Open <b>tiktok.com</b> in Chrome (already logged in)\n"
+            "2. Install <b>Cookie-Editor</b>\n"
+            "3. Export → JSON and paste it here\n\n"
+            "Key cookie: <code>sessionid</code>"
         ),
         "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
     },
@@ -103,14 +103,14 @@ PLATFORM_CONFIG: dict[str, dict] = {
         "api_base": "https://www.linkedin.com/voyager/api",
         "test_endpoint": "https://www.linkedin.com/voyager/api/me",
         "test_headers": {
-            "Csrf-Token": "",  # Se llena desde cookie JSESSIONID
+            "Csrf-Token": "",  # Filled in from the JSESSIONID cookie
             "X-RestLi-Protocol-Version": "2.0.0",
         },
         "instructions": (
-            "1. Abre <b>linkedin.com</b> en Chrome (ya logueado)\n"
-            "2. Instala <b>Cookie-Editor</b>\n"
-            "3. Export → JSON y pega aquí\n\n"
-            "Cookie clave: <code>li_at</code>"
+            "1. Open <b>linkedin.com</b> in Chrome (already logged in)\n"
+            "2. Install <b>Cookie-Editor</b>\n"
+            "3. Export → JSON and paste it here\n\n"
+            "Key cookie: <code>li_at</code>"
         ),
         "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
     },
@@ -124,10 +124,10 @@ PLATFORM_CONFIG: dict[str, dict] = {
         "test_endpoint": "https://graph.facebook.com/me?fields=id,name",
         "test_headers": {},
         "instructions": (
-            "1. Abre <b>facebook.com</b> en Chrome (ya logueado)\n"
-            "2. Instala <b>Cookie-Editor</b>\n"
-            "3. Export → JSON y pega aquí\n\n"
-            "Cookies clave: <code>c_user</code> y <code>xs</code>"
+            "1. Open <b>facebook.com</b> in Chrome (already logged in)\n"
+            "2. Install <b>Cookie-Editor</b>\n"
+            "3. Export → JSON and paste it here\n\n"
+            "Key cookies: <code>c_user</code> and <code>xs</code>"
         ),
         "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
     },
@@ -141,10 +141,10 @@ PLATFORM_CONFIG: dict[str, dict] = {
         "test_endpoint": "https://www.youtube.com/feed/subscriptions",
         "test_headers": {},
         "instructions": (
-            "1. Abre <b>youtube.com</b> en Chrome (ya logueado con Google)\n"
-            "2. Instala <b>Cookie-Editor</b>\n"
-            "3. Export → JSON y pega aquí\n\n"
-            "Cookie clave: <code>SID</code>"
+            "1. Open <b>youtube.com</b> in Chrome (already logged in with Google)\n"
+            "2. Install <b>Cookie-Editor</b>\n"
+            "3. Export → JSON and paste it here\n\n"
+            "Key cookie: <code>SID</code>"
         ),
         "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
     },
@@ -158,10 +158,10 @@ PLATFORM_CONFIG: dict[str, dict] = {
         "test_endpoint": "https://{shop_name}.myshopify.com/admin/shop.json",
         "test_headers": {},
         "instructions": (
-            "1. Abre tu panel de <b>Shopify Admin</b> en Chrome\n"
-            "2. Instala <b>Cookie-Editor</b>\n"
-            "3. Export → JSON y pega aquí\n\n"
-            "Cookie clave: <code>_admin_session</code>"
+            "1. Open your <b>Shopify Admin</b> panel in Chrome\n"
+            "2. Install <b>Cookie-Editor</b>\n"
+            "3. Export → JSON and paste it here\n\n"
+            "Key cookie: <code>_admin_session</code>"
         ),
         "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
     },
@@ -175,10 +175,10 @@ PLATFORM_CONFIG: dict[str, dict] = {
         "test_endpoint": "https://seller-us.tiktok.com/api/v1/seller/info",
         "test_headers": {},
         "instructions": (
-            "1. Abre <b>TikTok Shop Seller Center</b> en Chrome\n"
-            "2. Instala <b>Cookie-Editor</b>\n"
-            "3. Export → JSON y pega aquí\n\n"
-            "Cookie clave: <code>sessionid</code>"
+            "1. Open <b>TikTok Shop Seller Center</b> in Chrome\n"
+            "2. Install <b>Cookie-Editor</b>\n"
+            "3. Export → JSON and paste it here\n\n"
+            "Key cookie: <code>sessionid</code>"
         ),
         "help_url": "https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm",
     },
@@ -189,28 +189,28 @@ SUPPORTED_PLATFORMS = list(PLATFORM_CONFIG.keys())
 
 class SocialSessionManager:
     """
-    Gestiona sesiones de redes sociales basadas en cookies de navegador.
-    Sin APIs oficiales — ARIA usa las mismas sesiones que un navegador real.
+    Manages social network sessions based on browser cookies.
+    No official APIs — ARIA uses the same sessions as a real browser.
     """
 
     SESSION_KEY = "aria:social:session:{platform}"
     PENDING_KEY = "aria:social:pending:{chat_id}"
-    PENDING_TTL = 600  # 10 minutos para pegar el JSON
+    PENDING_TTL = 600  # 10 minutes to paste the JSON
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
 
     # ══════════════════════════════════════════════════════════════
-    # 1. IMPORTAR SESION DESDE COOKIES
+    # 1. IMPORT SESSION FROM COOKIES
     # ══════════════════════════════════════════════════════════════
 
     def parse_cookies_json(self, raw: str) -> dict[str, str] | None:
         """
-        Convierte JSON de Cookie-Editor a un dict plano {nombre: valor}.
-        Soporta formatos: array de objetos {name, value} o dict plano.
+        Converts Cookie-Editor JSON into a flat dict {name: value}.
+        Supports formats: array of {name, value} objects or a flat dict.
         """
         raw = raw.strip()
-        # Limpiar markdown fences si el usuario los incluyó
+        # Strip markdown fences if the user included them
         for fence in ["```json\n", "```\n", "```"]:
             if raw.startswith(fence):
                 raw = raw[len(fence) :]
@@ -221,10 +221,10 @@ class SocialSessionManager:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as e:
-            logger.warning("[SocialSession] JSON inválido: %s", e)
+            logger.warning("[SocialSession] Invalid JSON: %s", e)
             return None
 
-        # Formato Cookie-Editor: lista de objetos con {name, value, ...}
+        # Cookie-Editor format: list of objects with {name, value, ...}
         if isinstance(data, list):
             result = {}
             for item in data:
@@ -232,9 +232,9 @@ class SocialSessionManager:
                     result[item["name"]] = item["value"]
             return result if result else None
 
-        # Formato dict plano: {"cookie_name": "cookie_value", ...}
+        # Flat dict format: {"cookie_name": "cookie_value", ...}
         if isinstance(data, dict):
-            # Verificar que los valores son strings (no objetos anidados)
+            # Verify the values are strings (not nested objects)
             flat = {k: str(v) for k, v in data.items() if not isinstance(v, (dict, list))}
             return flat if flat else None
 
@@ -243,10 +243,10 @@ class SocialSessionManager:
     def validate_cookies_for_platform(
         self, cookies: dict[str, str], platform: str
     ) -> dict[str, Any]:
-        """Verifica que las cookies tienen las clave requeridas para la plataforma."""
+        """Verifies the cookies have the keys required for the platform."""
         cfg = PLATFORM_CONFIG.get(platform)
         if not cfg:
-            return {"valid": False, "error": f"Plataforma desconocida: {platform}"}
+            return {"valid": False, "error": f"Unknown platform: {platform}"}
 
         required = cfg["required_cookies"]
         missing = [c for c in required if c not in cookies]
@@ -254,7 +254,7 @@ class SocialSessionManager:
         if missing:
             return {
                 "valid": False,
-                "error": f"Faltan cookies requeridas: {', '.join(missing)}",
+                "error": f"Missing required cookies: {', '.join(missing)}",
                 "required": required,
                 "found": list(cookies.keys()),
             }
@@ -269,24 +269,32 @@ class SocialSessionManager:
     async def save_session(
         self, platform: str, cookies: dict[str, str], user_info: dict | None = None
     ) -> dict[str, Any]:
-        """Guarda la sesión en Redis y Supabase para persistencia."""
+        """Saves the session to Redis and Supabase for persistence."""
         try:
+            from apps.core.connectors.token_crypto import encrypt
             from apps.core.memory.redis_client import get_cache
 
             cache = get_cache()
 
+            # These cookies are live session credentials for the user's real
+            # social accounts (auth_token, li_at, sessionid, ...) — encrypt at
+            # rest the same way connector OAuth tokens already are, instead
+            # of storing them in plaintext despite this module's own
+            # docstring claiming "ARIA stores the cookies encrypted."
+            encrypted_cookies = encrypt(json.dumps(cookies))
+
             session_data = {
                 "platform": platform,
-                "cookies": cookies,
+                "cookies": encrypted_cookies,
                 "user_info": user_info or {},
                 "saved_at": time.time(),
                 "active": True,
             }
 
             key = self.SESSION_KEY.format(platform=platform)
-            await cache.set(key, session_data, ttl_seconds=86400 * 30)  # 30 días
+            await cache.set(key, session_data, ttl_seconds=86400 * 30)  # 30 days
 
-            # También guardar en Supabase para persistencia larga
+            # Also save to Supabase for long-term persistence
             try:
                 from apps.core.memory.supabase_client import get_db
 
@@ -295,33 +303,48 @@ class SocialSessionManager:
                     "social_sessions",
                     {
                         "platform": platform,
-                        "cookies_json": json.dumps(cookies),
+                        "cookies_json": encrypted_cookies,
                         "user_info": json.dumps(user_info or {}),
                         "active": True,
                         "updated_at": "now()",
                     },
                 )
             except Exception as db_err:
-                logger.warning("[SocialSession] No pude guardar en Supabase (Redis OK): %s", db_err)
+                logger.warning("[SocialSession] Could not save to Supabase (Redis OK): %s", db_err)
 
-            logger.info("[SocialSession] Sesión guardada: %s (%d cookies)", platform, len(cookies))
+            logger.info("[SocialSession] Session saved: %s (%d cookies)", platform, len(cookies))
             return {"success": True, "platform": platform, "cookies_count": len(cookies)}
 
         except Exception as exc:
-            logger.error("[SocialSession] Error guardando sesión %s: %s", platform, exc)
+            logger.error("[SocialSession] Error saving session %s: %s", platform, exc)
             return {"success": False, "error": str(exc)}
 
     async def load_session(self, platform: str) -> dict[str, Any] | None:
-        """Carga la sesión guardada para una plataforma."""
+        """Loads the saved session for a platform."""
         try:
+            from apps.core.connectors.token_crypto import decrypt
             from apps.core.memory.redis_client import get_cache
 
             cache = get_cache()
             key = self.SESSION_KEY.format(platform=platform)
             session = await cache.get(key)
             if session and isinstance(session, dict):
+                raw_cookies = session.get("cookies")
+                if isinstance(raw_cookies, str):
+                    # New encrypted format (decrypt() transparently passes
+                    # through legacy plaintext JSON too, so this also covers
+                    # sessions saved before encryption shipped).
+                    try:
+                        session["cookies"] = json.loads(decrypt(raw_cookies))
+                    except Exception as dec_exc:
+                        logger.warning(
+                            "[SocialSession] Could not decrypt cookies for %s: %s",
+                            platform,
+                            dec_exc,
+                        )
+                        session["cookies"] = {}
                 return session
-            # Fallback: intentar Supabase
+            # Fallback: try Supabase
             try:
                 from apps.core.memory.supabase_client import get_db
 
@@ -329,24 +352,29 @@ class SocialSessionManager:
                 rows = await db.query("social_sessions", {"platform": platform, "active": True})
                 if rows:
                     row = rows[0]
+                    raw_cookies = row.get("cookies_json", "{}")
+                    try:
+                        cookies = json.loads(decrypt(raw_cookies))
+                    except Exception:
+                        cookies = {}
                     return {
                         "platform": platform,
-                        "cookies": json.loads(row.get("cookies_json", "{}")),
+                        "cookies": cookies,
                         "user_info": json.loads(row.get("user_info", "{}")),
                         "active": True,
                     }
             except Exception:
                 pass
         except Exception as exc:
-            logger.warning("[SocialSession] No pude cargar sesión %s: %s", platform, exc)
+            logger.warning("[SocialSession] Could not load session %s: %s", platform, exc)
         return None
 
     def build_cookie_header(self, cookies: dict[str, str]) -> str:
-        """Convierte el dict de cookies a header HTTP Cookie."""
+        """Converts the cookies dict into an HTTP Cookie header."""
         return "; ".join(f"{k}={v}" for k, v in cookies.items())
 
     async def get_session_headers(self, platform: str) -> dict[str, str] | None:
-        """Devuelve headers HTTP listos para usar con la sesión activa."""
+        """Returns HTTP headers ready to use with the active session."""
         session = await self.load_session(platform)
         if not session:
             return None
@@ -365,21 +393,21 @@ class SocialSessionManager:
             "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
         }
 
-        # Headers adicionales específicos por plataforma
+        # Platform-specific additional headers
         extra = dict(cfg.get("test_headers", {}))
 
-        # Twitter necesita el header x-csrf-token = ct0
+        # Twitter needs the x-csrf-token header = ct0
         if platform == "twitter" and "ct0" in cookies:
             extra["x-csrf-token"] = cookies["ct0"]
             extra["x-twitter-active-user"] = "yes"
             extra["x-twitter-auth-type"] = "OAuth2Session"
 
-        # LinkedIn necesita CSRF del JSESSIONID
+        # LinkedIn needs CSRF from JSESSIONID
         if platform == "linkedin" and "JSESSIONID" in cookies:
             csrf = cookies["JSESSIONID"].strip('"')
             extra["Csrf-Token"] = csrf
 
-        # Instagram necesita X-CSRFToken
+        # Instagram needs X-CSRFToken
         if platform == "instagram" and "csrftoken" in cookies:
             extra["X-CSRFToken"] = cookies["csrftoken"]
 
@@ -387,29 +415,57 @@ class SocialSessionManager:
         return headers
 
     # ══════════════════════════════════════════════════════════════
-    # 2. VERIFICAR QUE LA SESION FUNCIONA
+    # 2. VERIFY THE SESSION WORKS
     # ══════════════════════════════════════════════════════════════
 
+    def _resolve_shop_name(self, session: dict[str, Any]) -> str:
+        """Resolve the Shopify {shop_name} template placeholder — prefer a
+        value already recorded on the session, fall back to the configured
+        SHOPIFY_URL (normalized the same way commerce_tools.py does, since
+        the env var may include a scheme prefix)."""
+        stored = (session.get("user_info") or {}).get("shop_name")
+        if stored:
+            return stored
+        from apps.core.config import settings
+
+        shop_url = getattr(settings, "SHOPIFY_URL", None) or ""
+        base = shop_url.removeprefix("https://").removeprefix("http://").rstrip("/")
+        return base.split(".myshopify.com")[0] if base else ""
+
     async def test_session(self, platform: str) -> dict[str, Any]:
-        """Hace una petición de prueba para verificar que la sesión está activa."""
+        """Makes a test request to verify the session is active."""
         session = await self.load_session(platform)
         if not session:
-            return {"success": False, "error": "No hay sesión guardada para " + platform}
+            return {"success": False, "error": "No session saved for " + platform}
 
         cfg = PLATFORM_CONFIG.get(platform, {})
         test_url = cfg.get("test_endpoint")
         if not test_url:
-            return {"success": True, "message": "Sin endpoint de prueba configurado"}
+            return {"success": True, "message": "No test endpoint configured"}
+
+        if "{shop_name}" in test_url:
+            # Previously never substituted — every request went to the
+            # literal, invalid hostname "{shop_name}.myshopify.com".
+            shop_name = self._resolve_shop_name(session)
+            if not shop_name:
+                return {
+                    "success": False,
+                    "error": (
+                        "Could not determine the Shopify shop_name — "
+                        "configure SHOPIFY_URL or re-import the session"
+                    ),
+                }
+            test_url = test_url.format(shop_name=shop_name)
 
         headers = await self.get_session_headers(platform)
         if not headers:
-            return {"success": False, "error": "No se pudieron cargar los headers"}
+            return {"success": False, "error": "Could not load headers"}
 
         try:
             resp = await self._http.get(test_url, headers=headers, timeout=15.0)
 
             if resp.status_code in (200, 201):
-                # Intentar parsear info del usuario
+                # Try to parse user info
                 user_info = {}
                 try:
                     data = resp.json()
@@ -449,7 +505,7 @@ class SocialSessionManager:
             if resp.status_code in (401, 403):
                 return {
                     "success": False,
-                    "error": f"Sesión expirada (HTTP {resp.status_code}) — reimporta las cookies",
+                    "error": f"Session expired (HTTP {resp.status_code}) — re-import the cookies",
                 }
             return {"success": False, "error": f"HTTP {resp.status_code}", "body": resp.text[:200]}
 
@@ -458,21 +514,17 @@ class SocialSessionManager:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 3. ACCIONES EN CADA PLATAFORMA
+    # 3. ACTIONS ON EACH PLATFORM
     # ══════════════════════════════════════════════════════════════
 
     async def post_tweet(self, text: str) -> dict[str, Any]:
-        """Publica un tweet usando la sesión activa de Twitter/X."""
+        """Posts a tweet using the active Twitter/X session."""
         headers = await self.get_session_headers("twitter")
         if not headers:
             return {
                 "success": False,
-                "error": "No hay sesión de Twitter activa. Usa /sesion twitter",
+                "error": "No active Twitter session. Use /sesion twitter",
             }
-
-        session = await self.load_session("twitter")
-        cookies = session.get("cookies", {})
-        cookies.get("ct0", "")
 
         try:
             payload = {
@@ -517,36 +569,35 @@ class SocialSessionManager:
             return {"success": False, "error": str(exc)}
 
     async def post_instagram_story_text(self, text: str) -> dict[str, Any]:
-        """Crea un post en Instagram (texto/caption vía API interna)."""
+        """Creates an Instagram post (text/caption via internal API)."""
         headers = await self.get_session_headers("instagram")
         if not headers:
             return {
                 "success": False,
-                "error": "No hay sesión de Instagram activa. Usa /sesion instagram",
+                "error": "No active Instagram session. Use /sesion instagram",
             }
-        # Instagram requiere imagen para posts normales — devolvemos info útil
+        # Instagram requires an image for normal posts — return useful info
         return {
             "success": False,
-            "error": "Instagram requiere imagen para posts. Usa el agente de marketing para crear imágenes primero.",
-            "tip": "Llama a /marketing con el texto y ARIA creará la imagen y la publicará.",
+            "error": "Instagram requires an image for posts. Use the marketing agent to create images first.",
+            "tip": "Call /marketing with the text and ARIA will create the image and publish it.",
         }
 
     async def post_linkedin(self, text: str) -> dict[str, Any]:
-        """Publica en LinkedIn usando la sesión activa."""
+        """Posts to LinkedIn using the active session."""
         headers = await self.get_session_headers("linkedin")
         if not headers:
             return {
                 "success": False,
-                "error": "No hay sesión de LinkedIn activa. Usa /sesion linkedin",
+                "error": "No active LinkedIn session. Use /sesion linkedin",
             }
 
         session = await self.load_session("linkedin")
-        session.get("cookies", {})
         user_info = session.get("user_info", {})
         person_id = user_info.get("id") or user_info.get("person_id", "")
 
         if not person_id:
-            # Intentar obtener el ID del usuario
+            # Try to get the user's ID
             try:
                 me_resp = await self._http.get(
                     "https://www.linkedin.com/voyager/api/me", headers=headers, timeout=10.0
@@ -558,7 +609,7 @@ class SocialSessionManager:
                 pass
 
         if not person_id:
-            return {"success": False, "error": "No pude obtener tu LinkedIn person ID"}
+            return {"success": False, "error": "Could not get your LinkedIn person ID"}
 
         try:
             headers["Content-Type"] = "application/json"
@@ -589,21 +640,21 @@ class SocialSessionManager:
     async def post_to_platform(
         self, platform: str, text: str, media_url: str | None = None
     ) -> dict[str, Any]:
-        """Router: publica en la plataforma indicada."""
+        """Router: posts to the specified platform."""
         if platform == "twitter":
             return await self.post_tweet(text)
         if platform == "linkedin":
             return await self.post_linkedin(text)
         if platform == "instagram":
             return await self.post_instagram_story_text(text)
-        return {"success": False, "error": f"post_to_platform no implementado para: {platform}"}
+        return {"success": False, "error": f"post_to_platform not implemented for: {platform}"}
 
     # ══════════════════════════════════════════════════════════════
-    # 4. GESTIÓN DE ESTADO PENDIENTE (para flujo Telegram)
+    # 4. PENDING STATE MANAGEMENT (for the Telegram flow)
     # ══════════════════════════════════════════════════════════════
 
     async def set_pending_import(self, chat_id: str, platform: str) -> None:
-        """Marca que el usuario está en proceso de importar cookies para una plataforma."""
+        """Marks that the user is in the process of importing cookies for a platform."""
         try:
             from apps.core.memory.redis_client import get_cache
 
@@ -614,10 +665,10 @@ class SocialSessionManager:
                 ttl_seconds=self.PENDING_TTL,
             )
         except Exception as exc:
-            logger.warning("[SocialSession] No pude setear pending: %s", exc)
+            logger.warning("[SocialSession] Could not set pending: %s", exc)
 
     async def get_pending_import(self, chat_id: str) -> str | None:
-        """Retorna la plataforma pendiente de importar cookies, si existe."""
+        """Returns the platform pending cookie import, if any."""
         try:
             from apps.core.memory.redis_client import get_cache
 
@@ -630,7 +681,7 @@ class SocialSessionManager:
             return None
 
     async def clear_pending_import(self, chat_id: str) -> None:
-        """Limpia el estado de importación pendiente."""
+        """Clears the pending import state."""
         try:
             from apps.core.memory.redis_client import get_cache
 
@@ -640,11 +691,11 @@ class SocialSessionManager:
             pass
 
     # ══════════════════════════════════════════════════════════════
-    # 5. RESUMEN DE SESIONES
+    # 5. SESSION SUMMARY
     # ══════════════════════════════════════════════════════════════
 
     async def list_active_sessions(self) -> list[dict[str, Any]]:
-        """Lista todas las plataformas con sesión activa."""
+        """Lists all platforms with an active session."""
         results = []
         for platform in SUPPORTED_PLATFORMS:
             session = await self.load_session(platform)
@@ -665,14 +716,14 @@ class SocialSessionManager:
         return results
 
     async def delete_session(self, platform: str) -> dict[str, Any]:
-        """Elimina la sesión de una plataforma."""
+        """Deletes a platform's session."""
         try:
             from apps.core.memory.redis_client import get_cache
 
             cache = get_cache()
             key = self.SESSION_KEY.format(platform=platform)
             await cache.delete(key)
-            # También en Supabase
+            # Also in Supabase
             try:
                 from apps.core.memory.supabase_client import get_db
 

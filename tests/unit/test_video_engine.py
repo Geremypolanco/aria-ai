@@ -55,7 +55,7 @@ async def test_no_images_is_clean_error():
         VideoEngine, "_plan", new=AsyncMock(return_value=scenes)
     ), patch("apps.core.tools.content_tools.ContentTools", return_value=_ct_mock(image_ok=False)):
         out = await eng.generate("a dog")
-    assert out["success"] is False and "imagen" in out["error"]
+    assert out["success"] is False and "image" in out["error"]
 
 
 async def test_plan_fallback_when_ai_unavailable():

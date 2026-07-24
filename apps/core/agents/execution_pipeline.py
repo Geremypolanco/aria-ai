@@ -1,8 +1,8 @@
 """
-ExecutionPipeline — Pipeline de ejecución con auditoría integrada para ARIA AI.
+ExecutionPipeline — Execution pipeline with built-in auditing for ARIA AI.
 
-Arquitectura Plan → Audit → Execute → Audit → (Iterate | Complete).
-Garantiza calidad mínima antes de entregar resultados a producción.
+Plan → Audit → Execute → Audit → (Iterate | Complete) architecture.
+Guarantees minimum quality before delivering results to production.
 """
 
 from __future__ import annotations
@@ -66,14 +66,14 @@ class PipelineRun:
 
 class ExecutionPipeline:
     """
-    Pipeline de ejecución con auditoría integrada.
+    Execution pipeline with built-in auditing.
 
-    Flujo:
+    Flow:
         PLAN → AUDIT_PLAN → EXECUTE → AUDIT_OUTPUT → COMPLETE
                                             ↕ (retry up to MAX_ITERATIONS)
                                          ITERATE
 
-    Garantiza que el output tenga calidad >= MIN_QUALITY_SCORE antes de completar.
+    Guarantees the output has quality >= MIN_QUALITY_SCORE before completing.
     """
 
     MAX_ITERATIONS: int = 3
@@ -93,15 +93,15 @@ class ExecutionPipeline:
         context: dict[str, Any] | None = None,
     ) -> PipelineRun:
         """
-        Ejecuta el pipeline completo con auditoría Plan → Execute → Audit → (Iterate | Complete).
+        Runs the full pipeline with Plan → Execute → Audit → (Iterate | Complete) auditing.
 
         Args:
-            mission:    La misión a ejecutar.
-            agent_name: Nombre del agente a usar o "auto" para auto-routing.
-            context:    Contexto adicional (parámetros, datos de entrada, etc.).
+            mission:    The mission to execute.
+            agent_name: Name of the agent to use, or "auto" for auto-routing.
+            context:    Additional context (parameters, input data, etc.).
 
         Returns:
-            PipelineRun con el estado final y todos los resultados.
+            PipelineRun with the final state and all results.
         """
         run = PipelineRun(
             id=str(uuid.uuid4()),
@@ -125,7 +125,7 @@ class ExecutionPipeline:
 
             if plan_audit.score < 50:
                 logger.warning(
-                    "[Pipeline %s] Plan audit FAIL (score=%d) — intentando mejorar el plan",
+                    "[Pipeline %s] Plan audit FAIL (score=%d) — attempting to improve the plan",
                     run.id,
                     plan_audit.score,
                 )
@@ -139,11 +139,11 @@ class ExecutionPipeline:
                 if plan_audit2.score < 50:
                     run.stage = PipelineStage.FAILED
                     run.error = (
-                        f"Plan audit fallido tras mejora (score={plan_audit2.score}). "
-                        f"Razón: {plan_audit2.reasoning}"
+                        f"Plan audit failed after improvement (score={plan_audit2.score}). "
+                        f"Reason: {plan_audit2.reasoning}"
                     )
                     run.completed_at = datetime.utcnow()
-                    logger.error("[Pipeline %s] FAILED en audit_plan", run.id)
+                    logger.error("[Pipeline %s] FAILED in audit_plan", run.id)
                     return run
 
             # ── STAGE 3: EXECUTE ───────────────────────────
@@ -172,7 +172,7 @@ class ExecutionPipeline:
                 if run.iterations >= self.MAX_ITERATIONS:
                     # Max retries exhausted → complete with current result + audit note
                     logger.warning(
-                        "[Pipeline %s] MAX_ITERATIONS (%d) alcanzado. Completando con resultado actual.",
+                        "[Pipeline %s] MAX_ITERATIONS (%d) reached. Completing with current result.",
                         run.id,
                         self.MAX_ITERATIONS,
                     )
@@ -185,7 +185,7 @@ class ExecutionPipeline:
                 run.iterations += 1
                 self._transition(run, PipelineStage.ITERATE)
                 logger.info(
-                    "[Pipeline %s] Iteración %d — score=%d < %d, reintentando con feedback",
+                    "[Pipeline %s] Iteration %d — score=%d < %d, retrying with feedback",
                     run.id,
                     run.iterations,
                     output_audit.score,
@@ -209,7 +209,7 @@ class ExecutionPipeline:
         except Exception as exc:
             run.stage = PipelineStage.FAILED
             run.error = str(exc)
-            logger.error("[Pipeline %s] Excepcion inesperada: %s", run.id, exc, exc_info=True)
+            logger.error("[Pipeline %s] Unexpected exception: %s", run.id, exc, exc_info=True)
 
         finally:
             run.completed_at = datetime.utcnow()
@@ -222,11 +222,11 @@ class ExecutionPipeline:
         agent_name: str = "auto",
     ) -> dict[str, Any]:
         """
-        Ejecución rápida sin auditoría — para tareas simples.
-        No crea PipelineRun, no audita, solo despacha directamente.
+        Quick execution with no auditing — for simple tasks.
+        Does not create a PipelineRun, does not audit, just dispatches directly.
 
         Returns:
-            Resultado del dispatch del agente.
+            The agent's dispatch result.
         """
         logger.info("[Pipeline] run_quick: agent=%s mission=%s", agent_name, mission[:80])
         return await self._hub.dispatch(agent_name, mission, {"mission": mission})
@@ -252,21 +252,21 @@ class ExecutionPipeline:
 
     async def _generate_plan(self, mission: str) -> str:
         """
-        Genera un plan numerado para la misión usando la IA del auditor.
-        Produce pasos claros, accionables y ordenados.
+        Generates a numbered plan for the mission using the auditor's AI.
+        Produces clear, actionable, ordered steps.
         """
         system = (
-            "Eres un planificador estratégico experto. "
-            "Descompones misiones complejas en pasos claros, ordenados y ejecutables. "
-            "Cada paso debe ser concreto, verificable y asignable a un agente especialista."
+            "You are an expert strategic planner. "
+            "You break down complex missions into clear, ordered, executable steps. "
+            "Each step must be concrete, verifiable, and assignable to a specialist agent."
         )
         user = (
-            f"Descompón esta misión en un plan de ejecución numerado:\n\nMISIÓN: {mission}\n\n"
-            "Genera entre 3 y 8 pasos numerados. Cada paso debe:\n"
-            "- Ser una acción concreta (verbo + objeto)\n"
-            "- Indicar el resultado esperado\n"
-            "- Ser ejecutable de forma independiente\n\n"
-            "Formato: 1. [Paso]\n2. [Paso]\n..."
+            f"Break down this mission into a numbered execution plan:\n\nMISSION: {mission}\n\n"
+            "Generate between 3 and 8 numbered steps. Each step must:\n"
+            "- Be a concrete action (verb + object)\n"
+            "- State the expected result\n"
+            "- Be independently executable\n\n"
+            "Format: 1. [Step]\n2. [Step]\n..."
         )
         response = await self._auditor.think(
             system=system,
@@ -275,7 +275,7 @@ class ExecutionPipeline:
         )
         if not response:
             # Minimal fallback plan
-            return f"1. Analizar la misión: {mission}\n2. Ejecutar la tarea principal\n3. Verificar resultados"
+            return f"1. Analyze the mission: {mission}\n2. Execute the main task\n3. Verify results"
         return response.strip()
 
     async def _improve_plan(
@@ -285,18 +285,18 @@ class ExecutionPipeline:
         audit_feedback: str,
     ) -> str:
         """
-        Mejora un plan rechazado usando el feedback de la auditoría.
+        Improves a rejected plan using the audit feedback.
         """
         system = (
-            "Eres un planificador estratégico experto que mejora planes basándose en feedback crítico. "
-            "Eres directo y no repites los mismos errores."
+            "You are an expert strategic planner who improves plans based on critical feedback. "
+            "You are direct and don't repeat the same mistakes."
         )
         user = (
-            f"MISIÓN: {mission}\n\n"
-            f"PLAN ORIGINAL (RECHAZADO):\n{original_plan}\n\n"
-            f"FEEDBACK DEL AUDITOR:\n{audit_feedback}\n\n"
-            "Genera un plan mejorado que corrija todos los problemas identificados. "
-            "Sé específico y directo. Formato: 1. [Paso]\n2. [Paso]\n..."
+            f"MISSION: {mission}\n\n"
+            f"ORIGINAL PLAN (REJECTED):\n{original_plan}\n\n"
+            f"AUDITOR FEEDBACK:\n{audit_feedback}\n\n"
+            "Generate an improved plan that fixes all identified problems. "
+            "Be specific and direct. Format: 1. [Step]\n2. [Step]\n..."
         )
         response = await self._auditor.think(
             system=system,

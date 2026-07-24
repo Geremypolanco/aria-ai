@@ -82,6 +82,24 @@ class SelfImprovementEngine:
     _last_push_time: float = 0.0
     MIN_PUSH_INTERVAL_SECONDS: int = 1200
 
+    def _is_writable_path(self, file_path: str) -> bool:
+        """Guards push_file()/push_improvement() against writing to anything
+        outside the app's own tool/agent modules. PROTECTED_FILES alone is a
+        10-entry blacklist — it doesn't stop a write to e.g.
+        .github/workflows/deploy.yml, docs/*, tests/*, or .env*. This matters
+        because push_file() is called with an LLM-generated file_path
+        (EvolutionAgent._implement_feature_code's proposal["file_to_create"]),
+        so an untrusted/hallucinated path must never reach the GitHub write —
+        it would trigger a real CI/CD deploy per this module's own docstring.
+        """
+        if file_path in self.PROTECTED_FILES:
+            return False
+        if not file_path.endswith(".py"):
+            return False
+        if file_path in self.MODIFIABLE_FILES:
+            return True
+        return file_path.startswith(("apps/core/tools/", "apps/core/agents/"))
+
     def __init__(self) -> None:
         self._token = getattr(settings, "GITHUB_TOKEN", None)
         self._fly_token = getattr(settings, "FLY_API_TOKEN", None)
@@ -408,6 +426,58 @@ class SelfImprovementEngine:
             logger.error("[SelfImprovement] generate error %s: %s", file_path, exc)
             return {"success": False, "error": str(exc)}
 
+    async def push_file(self, file_path: str, content: str, commit_message: str) -> dict[str, Any]:
+        """Create or update a single file on GitHub (fetches the current sha
+        itself when updating) — for callers that generate content directly
+        and don't already have a sha from a prior read_file() call, e.g.
+        EvolutionAgent's feature-creation flow and DeveloperAgent's deploy step."""
+        if not self._can_push():
+            return {
+                "success": False,
+                "error": f"Rate limit o GITHUB_TOKEN no disponible. "
+                f"Proximo push disponible en {self.MIN_PUSH_INTERVAL_SECONDS}s",
+            }
+        if not self._is_writable_path(file_path):
+            return {
+                "success": False,
+                "error": f"{file_path} no esta permitido — solo .py bajo apps/core/tools/ o apps/core/agents/",
+            }
+        try:
+            existing = await self.read_file(file_path)
+            sha = existing.get("sha") if existing.get("success") else None
+            body: dict[str, Any] = {
+                "message": commit_message,
+                "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+                "branch": BRANCH,
+            }
+            if sha:
+                body["sha"] = sha
+            res = await self._http.put(
+                f"{GITHUB_API}/repos/{REPO}/contents/{file_path}",
+                headers=self._gh_headers,
+                json=body,
+            )
+            if res.status_code in (200, 201):
+                SelfImprovementEngine._last_push_time = time.time()
+                commit = res.json().get("commit", {})
+                logger.info(
+                    "[SelfImprovement] push_file exitoso: %s -> %s",
+                    file_path,
+                    commit.get("sha", "")[:8],
+                )
+                return {
+                    "success": True,
+                    "file": file_path,
+                    "commit_sha": commit.get("sha", "")[:8],
+                }
+            return {
+                "success": False,
+                "error": f"GitHub HTTP {res.status_code}: {res.text[:300]}",
+            }
+        except Exception as exc:
+            logger.error("[SelfImprovement] push_file %s: %s", file_path, exc)
+            return {"success": False, "error": str(exc)}
+
     def _validate_python(self, code: str) -> dict[str, Any]:
         """Valida sintaxis Python real con ast.parse."""
         try:
@@ -436,10 +506,10 @@ class SelfImprovementEngine:
                 "error": f"Rate limit o GITHUB_TOKEN no disponible. "
                 f"Proximo push disponible en {self.MIN_PUSH_INTERVAL_SECONDS}s",
             }
-        if file_path in self.PROTECTED_FILES:
+        if not self._is_writable_path(file_path):
             return {
                 "success": False,
-                "error": f"{file_path} es archivo protegido — no se puede modificar automaticamente",
+                "error": f"{file_path} no esta permitido — solo .py bajo apps/core/tools/ o apps/core/agents/",
             }
 
         try:

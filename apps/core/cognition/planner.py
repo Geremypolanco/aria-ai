@@ -398,7 +398,9 @@ class ARIAPlanner:
             if cache:
                 raw = await cache.get(f"aria:plan:{plan_id}")
                 if raw:
-                    return Plan.from_dict(json.loads(raw))
+                    # cache.get() already deserializes JSON — decoding again
+                    # raised TypeError on every call, silently swallowed below.
+                    return Plan.from_dict(raw)
         except Exception as exc:
             logger.debug("[Planner] Could not load plan %s: %s", plan_id, exc)
         return None

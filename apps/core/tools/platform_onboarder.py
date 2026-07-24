@@ -139,9 +139,16 @@ class PlatformOnboarder:
             return report
 
         platforms = [
-            ("huggingface", "HUGGINGFACE_API_KEY", self._onboard_huggingface),
+            # These must match the real Settings field names (see
+            # apps/core/config.py) — HUGGINGFACE_API_KEY and
+            # GUMROAD_ACCESS_TOKEN don't exist as settings fields (the real
+            # ones are HF_TOKEN and GUMROAD_TOKEN), so _has_token() always
+            # reported "no token" even when one was already configured via
+            # Fly secrets, and any acquired token was stored under a key
+            # name nothing else in the app reads.
+            ("huggingface", "HF_TOKEN", self._onboard_huggingface),
             ("devto", "DEVTO_API_KEY", self._onboard_devto),
-            ("gumroad", "GUMROAD_ACCESS_TOKEN", self._onboard_gumroad),
+            ("gumroad", "GUMROAD_TOKEN", self._onboard_gumroad),
             ("mailchimp", "MAILCHIMP_API_KEY", self._onboard_mailchimp),
         ]
 
@@ -442,7 +449,7 @@ class PlatformOnboarder:
                 success=True,
                 token_acquired=False,
                 token_key=token_key,
-                message="logged in successfully — token not extractable from UI (use GUMROAD_ACCESS_TOKEN secret)",
+                message="logged in successfully — token not extractable from UI (use GUMROAD_TOKEN secret)",
             )
 
         except Exception as exc:

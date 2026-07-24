@@ -1,15 +1,15 @@
 """
-workflow_ledger.py — Registro de ejecuciones de Flujos Dinámicos.
+workflow_ledger.py — Ledger of Dynamic Workflow executions.
 
-Cada Deep Workflow que termina se registra aquí (objetivo, nº de subagentes,
-verificados/reparados, tokens, duración). Da al usuario **observabilidad de su
-uso** — como los paneles de consumo de las IA frontera — y es el cimiento del
-modelo "cobra por resultado": los `deliverables` (flujos completados) son la
-unidad de valor, no los tokens.
+Every Deep Workflow that finishes is recorded here (goal, number of
+subagents, verified/repaired, tokens, duration). It gives the user
+**observability into their usage** — like the usage dashboards of frontier
+AIs — and is the foundation of the "pay per outcome" model: the
+`deliverables` (completed workflows) are the unit of value, not the tokens.
 
-Almacenamiento: en memoria (anillo acotado por usuario). Un proceso Fly = un
-registro; suficiente para el panel. Si en el futuro se necesita persistencia
-multi-instancia, este es el punto único donde enchufar Redis/DB.
+Storage: in memory (bounded ring per user). One Fly process = one ledger;
+sufficient for the dashboard. If multi-instance persistence is ever needed,
+this is the single point where Redis/DB would be plugged in.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-# Cuántas ejecuciones recientes se conservan por usuario.
+# How many recent runs are kept per user.
 MAX_RUNS_PER_USER = 100
 
 
@@ -49,7 +49,7 @@ class WorkflowRun:
 
 
 class WorkflowLedger:
-    """Registro thread-safe de ejecuciones de flujos, por usuario."""
+    """Thread-safe ledger of workflow executions, per user."""
 
     def __init__(self) -> None:
         self._runs: dict[str, deque[WorkflowRun]] = defaultdict(
@@ -69,8 +69,8 @@ class WorkflowLedger:
         duration_ms: int,
         ok: bool,
     ) -> None:
-        """Registra un flujo terminado. Nunca lanza — la contabilidad jamás debe
-        romper la petición que la invoca."""
+        """Records a finished workflow. Never raises — accounting must never
+        break the request that invokes it."""
         key = (email or "anon").strip().lower()
         run = WorkflowRun(
             goal=(goal or "").strip()[:160],
@@ -91,7 +91,7 @@ class WorkflowLedger:
         return [r.to_dict() for r in runs]
 
     def stats(self, email: str) -> dict[str, Any]:
-        """Agregados de por vida para el usuario (lo que ARIA ha entregado)."""
+        """Lifetime aggregates for the user (what ARIA has delivered)."""
         key = (email or "anon").strip().lower()
         with self._lock:
             runs = list(self._runs.get(key, ()))
@@ -102,7 +102,7 @@ class WorkflowLedger:
         completed = sum(1 for r in runs if r.ok)
         verify_rate = round(verified / subagents * 100) if subagents else 0
         return {
-            "deliverables": completed,  # flujos completados = unidad de "cobro por resultado"
+            "deliverables": completed,  # completed workflows = unit of "pay per outcome"
             "workflows": total,
             "subagents": subagents,
             "verified": verified,

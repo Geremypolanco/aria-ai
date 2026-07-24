@@ -9,18 +9,18 @@ logger = logging.getLogger("aria.memory")
 
 class EvolutionaryMemory:
     """
-    Sistema de Memoria Persistente Evolutiva (inspirado en Mem0).
+    Evolutionary Persistent Memory System (inspired by Mem0).
 
-    No es solo almacenamiento. Es un sistema que:
-    1. Aprende de cada interacción
-    2. Evoluciona sus estrategias
-    3. Recuerda qué funcionó y qué no
-    4. Mejora continuamente
+    It's not just storage. It's a system that:
+    1. Learns from every interaction
+    2. Evolves its strategies
+    3. Remembers what worked and what didn't
+    4. Continuously improves
     """
 
     def __init__(self):
         self.ai = get_ai_client()
-        self.memory_store = {}  # En producción: Qdrant vector DB
+        self.memory_store = {}  # In production: Qdrant vector DB
         self.learning_log = []
 
     async def record_interaction(
@@ -31,7 +31,7 @@ class EvolutionaryMemory:
         success: bool,
         roi: float = 0.0,
     ) -> dict[str, Any]:
-        """Registra una interacción y extrae aprendizajes."""
+        """Records an interaction and extracts learnings."""
 
         record = {
             "timestamp": datetime.now().isoformat(),
@@ -42,39 +42,39 @@ class EvolutionaryMemory:
             "roi": roi,
         }
 
-        # Extraer insights con IA
+        # Extract insights with AI
         if not success or roi > 0:
             insight = await self._extract_insight(record)
             record["insight"] = insight
             self.learning_log.append(insight)
 
-        # Guardar en memoria
+        # Save to memory
         key = f"{interaction_type}_{len(self.memory_store)}"
         self.memory_store[key] = record
 
-        logger.info(f"[Memory] Registrada interacción: {interaction_type} (ROI: ${roi})")
+        logger.info(f"[Memory] Recorded interaction: {interaction_type} (ROI: ${roi})")
         return record
 
     async def _extract_insight(self, record: dict[str, Any]) -> dict[str, Any]:
-        """Extrae aprendizajes de una interacción."""
+        """Extracts learnings from an interaction."""
         prompt = f"""
-        INTERACCIÓN REGISTRADA:
-        Tipo: {record['type']}
-        Éxito: {record['success']}
+        RECORDED INTERACTION:
+        Type: {record['type']}
+        Success: {record['success']}
         ROI: ${record['roi']}
-        Entrada: {record['input']}
-        Salida: {record['output']}
+        Input: {record['input']}
+        Output: {record['output']}
 
-        ¿Qué aprendimos?
-        1. ¿Qué funcionó?
-        2. ¿Qué no funcionó?
-        3. ¿Cómo mejorar la próxima vez?
+        What did we learn?
+        1. What worked?
+        2. What didn't work?
+        3. How can we improve next time?
 
-        Responde en JSON con: what_worked, what_failed, improvement_strategy
+        Respond in JSON with: what_worked, what_failed, improvement_strategy
         """
 
         insight = await self.ai.complete_json(
-            system="Eres un sistema de aprendizaje continuo. Extrae insights de cada interacción.",
+            system="You are a continuous learning system. Extract insights from every interaction.",
             user=prompt,
             model=AIModel.STRATEGY,
         )
@@ -82,8 +82,8 @@ class EvolutionaryMemory:
         return insight if insight else {}
 
     async def retrieve_similar_memories(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
-        """Recupera memorias similares (en producción: búsqueda vectorial con Qdrant)."""
-        # Implementación simplificada: búsqueda por tipo
+        """Retrieves similar memories (in production: vector search with Qdrant)."""
+        # Simplified implementation: search by type
         results = []
         for key, record in list(self.memory_store.items())[:top_k]:
             if record.get("success"):
@@ -91,12 +91,12 @@ class EvolutionaryMemory:
         return results
 
     async def get_learned_strategies(self) -> dict[str, Any]:
-        """Retorna las estrategias aprendidas hasta ahora."""
+        """Returns the strategies learned so far."""
         return {
             "total_interactions": len(self.memory_store),
             "successful_interactions": sum(
                 1 for r in self.memory_store.values() if r.get("success")
             ),
             "total_roi_generated": sum(r.get("roi", 0) for r in self.memory_store.values()),
-            "learnings": self.learning_log[-10:],  # Últimos 10 aprendizajes
+            "learnings": self.learning_log[-10:],  # Last 10 learnings
         }

@@ -1,6 +1,6 @@
 """
-db_setup.py — Verifica y crea las tablas de Supabase que ARIA necesita.
-Se ejecuta automáticamente al inicio de la aplicación.
+db_setup.py — Verifies and creates the Supabase tables ARIA needs.
+Runs automatically on application startup.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ logger = logging.getLogger("aria.db_setup")
 
 
 async def setup_database() -> dict:
-    """Verifica que las tablas existan en Supabase."""
+    """Verifies that the tables exist in Supabase."""
     if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
-        logger.warning("[DB Setup] Sin credenciales Supabase — saltando")
+        logger.warning("[DB Setup] No Supabase credentials — skipping")
         return {"status": "skipped", "reason": "no credentials"}
 
     tables = [
@@ -47,7 +47,7 @@ async def setup_database() -> dict:
                     results[table] = "ok"
                 elif resp.status_code in (404, 406) or "does not exist" in resp.text:
                     results[table] = "missing"
-                    logger.warning("[DB Setup] Tabla '%s' no existe", table)
+                    logger.warning("[DB Setup] Table '%s' does not exist", table)
                 else:
                     results[table] = f"status_{resp.status_code}"
             except Exception as exc:
@@ -55,15 +55,15 @@ async def setup_database() -> dict:
 
     missing = [t for t, v in results.items() if v != "ok"]
     if not missing:
-        logger.info("[DB Setup] Todas las tablas existen en Supabase")
+        logger.info("[DB Setup] All tables exist in Supabase")
     else:
-        logger.warning("[DB Setup] Tablas faltantes: %s", ", ".join(missing))
+        logger.warning("[DB Setup] Missing tables: %s", ", ".join(missing))
 
     return {"status": "ok" if not missing else "partial", "tables": results}
 
 
 async def log_to_supabase(table: str, data: dict) -> bool:
-    """Inserta un registro en Supabase. Falla silenciosamente."""
+    """Inserts a record into Supabase. Fails silently."""
     if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
         return False
     try:
@@ -80,12 +80,12 @@ async def log_to_supabase(table: str, data: dict) -> bool:
             )
             return resp.status_code in (200, 201)
     except Exception as exc:
-        logger.debug("[DB] Error en %s: %s", table, exc)
+        logger.debug("[DB] Error in %s: %s", table, exc)
         return False
 
 
 async def update_cycle_status(cycle_id: str, data: dict) -> bool:
-    """Actualiza el estado de un ciclo autónomo."""
+    """Updates the status of an autonomous cycle."""
     if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
         return False
     try:

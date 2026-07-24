@@ -1,5 +1,5 @@
 """
-Finance Agent — Tracking de revenue, costos, P&L y forecasting autónomo.
+Finance Agent — Autonomous revenue tracking, cost analysis, P&L, and forecasting.
 """
 
 from __future__ import annotations
@@ -14,15 +14,15 @@ logger = logging.getLogger("aria.business.finance")
 
 class FinanceAgent(BaseAgent):
     IDENTITY = (
-        "Eres el Finance Agent de ARIA AI. Rastreos revenue, costos y P&L en tiempo real. "
-        "Generas forecasts, detectas oportunidades de ahorro, y alertas cuando los números "
-        "no cuadran. Operas con datos reales de Stripe, PayPal y Shopify."
+        "You are ARIA AI's Finance Agent. You track revenue, costs, and P&L in real time. "
+        "You generate forecasts, detect savings opportunities, and raise alerts when the numbers "
+        "don't add up. You operate with real data from Stripe, PayPal, and Shopify."
     )
 
     def __init__(self) -> None:
         super().__init__(
             name="finance",
-            description="Revenue tracking, P&L, forecasting, análisis de costos y métricas financieras",
+            description="Revenue tracking, P&L, forecasting, cost analysis, and financial metrics",
             capabilities=[
                 "revenue_tracking",
                 "cost_analysis",
@@ -34,33 +34,33 @@ class FinanceAgent(BaseAgent):
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission = context.get("mission", "Generar reporte financiero")
+        mission = context.get("mission", "Generate financial report")
         period = context.get("period", "month")  # day|week|month|quarter
         context.get("include", ["revenue", "costs", "forecast"])
 
         results: dict[str, Any] = {"success": True, "agent": "finance", "period": period}
 
-        # Recopilar datos reales de plataformas de pago
+        # Gather real data from payment platforms
         revenue_data = await self._gather_revenue(period)
         results["revenue"] = revenue_data
 
-        # Análisis con IA
+        # AI analysis
         analysis = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Misión: {mission}\nPeriodo: {period}\n"
-                f"Datos de revenue: {revenue_data}\n\n"
-                f"Genera: P&L simplificado, métricas clave (MRR, ARR, LTV, CAC), "
-                f"tendencia vs período anterior, top 3 oportunidades de crecimiento, "
-                f"alertas si alguna métrica está en riesgo."
+                f"Mission: {mission}\nPeriod: {period}\n"
+                f"Revenue data: {revenue_data}\n\n"
+                f"Generate: simplified P&L, key metrics (MRR, ARR, LTV, CAC), "
+                f"trend vs previous period, top 3 growth opportunities, "
+                f"alerts if any metric is at risk."
             ),
         )
         results["analysis"] = analysis
-        results["summary"] = analysis[:300] if analysis else "Análisis financiero completado"
+        results["summary"] = analysis[:300] if analysis else "Financial analysis completed"
         return results
 
     async def _gather_revenue(self, period: str) -> dict:
-        """Recopila datos reales de Stripe, Shopify, Gumroad."""
+        """Gathers real data from Stripe, Shopify, Gumroad."""
         revenue: dict = {"sources": {}, "total_usd": 0}
         from apps.core.config import settings
 

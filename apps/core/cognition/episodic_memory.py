@@ -234,7 +234,10 @@ class EpisodicMemory:
 
             db = get_db()
             if db:
-                await db.table("aria_episodic_memory").insert(
+                # supabase-py's client is synchronous — .execute() is a plain call,
+                # not a coroutine; awaiting it raises TypeError, which the except
+                # below would otherwise swallow silently.
+                db.table("aria_episodic_memory").insert(
                     {
                         "episode_id": episode["id"],
                         "user_id": user_id,

@@ -7,23 +7,23 @@ logger = logging.getLogger("aria.attribution")
 
 class RevenueAttributionEngine:
     """
-    Motor de Atribución de Ingresos.
-    Traza el origen exacto de cada dólar generado.
+    Revenue Attribution Engine.
+    Traces the exact origin of every dollar generated.
 
-    Crea un grafo: Contenido → Lead → Venta → $$$
+    Builds a graph: Content → Lead → Sale → $$$
     """
 
     def __init__(self):
-        self.revenue_graph = {}  # Grafo de relaciones económicas
+        self.revenue_graph = {}  # Graph of economic relationships
 
     async def track_conversion_path(
         self, content_id: str, lead_id: str, sale_id: str, revenue: float
     ) -> dict[str, Any]:
         """
-        Registra la ruta completa de una venta.
+        Records the complete path of a sale.
 
-        Ejemplo:
-        Video #12 → Lead #5 → Venta #2 → $300
+        Example:
+        Video #12 → Lead #5 → Sale #2 → $300
         """
         path = {
             "content_id": content_id,
@@ -33,7 +33,7 @@ class RevenueAttributionEngine:
             "timestamp": datetime.now().isoformat(),
         }
 
-        # Guardar en grafo
+        # Save to graph
         if content_id not in self.revenue_graph:
             self.revenue_graph[content_id] = {"leads": [], "revenue": 0}
 
@@ -46,9 +46,9 @@ class RevenueAttributionEngine:
         return path
 
     async def get_content_roi(self, content_id: str) -> dict[str, Any]:
-        """Calcula el ROI de un contenido específico."""
+        """Calculates the ROI of a specific piece of content."""
         if content_id not in self.revenue_graph:
-            return {"error": "Contenido no encontrado"}
+            return {"error": "Content not found"}
 
         data = self.revenue_graph[content_id]
         return {
@@ -60,7 +60,7 @@ class RevenueAttributionEngine:
         }
 
     async def get_top_performing_content(self, top_n: int = 5) -> list[dict[str, Any]]:
-        """Retorna los N contenidos que más dinero generaron."""
+        """Returns the top N content pieces that generated the most revenue."""
         ranked = sorted(self.revenue_graph.items(), key=lambda x: x[1]["revenue"], reverse=True)
 
         return [
@@ -69,7 +69,7 @@ class RevenueAttributionEngine:
         ]
 
     async def get_revenue_graph_json(self) -> dict[str, Any]:
-        """Exporta el grafo completo de ingresos."""
+        """Exports the complete revenue graph."""
         return {
             "total_revenue": sum(d["revenue"] for d in self.revenue_graph.values()),
             "total_content_pieces": len(self.revenue_graph),

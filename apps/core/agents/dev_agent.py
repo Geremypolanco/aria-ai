@@ -1,6 +1,6 @@
 """
-dev_agent.py — Developer Agent con HuggingFace Code Generation + análisis de imágenes.
-Genera código, analiza repositorios, crea productos digitales completos.
+dev_agent.py — Developer Agent with HuggingFace Code Generation + image analysis.
+Generates code, analyzes repositories, creates complete digital products.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ class DevAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
             name="dev",
-            description="Desarrollo de software y productos digitales — código con HuggingFace Qwen2.5-Coder",
+            description="Software and digital product development — code with HuggingFace Qwen2.5-Coder",
             capabilities=[
                 "code_generation",
                 "product_development",
@@ -40,7 +40,7 @@ class DevAgent(BaseAgent):
 
         results: dict[str, Any] = {"success": True, "agent": "dev_agent"}
 
-        # Determinar qué construir
+        # Determine what to build (bilingual match against user task text — left untranslated)
         if product or "producto" in task.lower() or "product" in task.lower():
             artifact = await self._build_digital_product(product, task, language, build_type)
             results["artifact"] = artifact
@@ -48,18 +48,18 @@ class DevAgent(BaseAgent):
             code_result = await self._generate_code_solution(task, language)
             results["code"] = code_result
 
-        # Generar documentación si hay código
+        # Generate documentation if there is code
         if results.get("artifact") or results.get("code"):
             docs = await self._generate_documentation(task, results)
             results["documentation"] = docs
 
-        await self._log("dev_task_complete", f"Tarea: {task[:80]} | Lenguaje: {language}")
+        await self._log("dev_task_complete", f"Task: {task[:80]} | Language: {language}")
         return results
 
     async def _build_digital_product(
         self, product: dict, task: str, language: str, build_type: str
     ) -> dict[str, Any]:
-        """Construye un producto digital completo usando HuggingFace Qwen2.5-Coder."""
+        """Builds a complete digital product using HuggingFace Qwen2.5-Coder."""
         import asyncio
 
         from apps.core.tools.huggingface_suite import HuggingFaceSuite
@@ -69,7 +69,7 @@ class DevAgent(BaseAgent):
         product_name = product.get("name", "Digital Product")
         product_desc = product.get("description", task)
 
-        # Generación de código del backend
+        # Backend code generation
         backend_prompt = (
             f"Build a production-ready {build_type} for: {product_name}\n"
             f"Description: {product_desc}\n"
@@ -78,7 +78,7 @@ class DevAgent(BaseAgent):
             "Generate complete, working code."
         )
 
-        # Generación de frontend
+        # Frontend generation
         frontend_prompt = (
             f"Build a modern landing page / frontend for: {product_name}\n"
             f"Description: {product_desc}\n"
@@ -86,7 +86,7 @@ class DevAgent(BaseAgent):
             "Include: hero section, features, pricing, CTA, contact form"
         )
 
-        # Ejecutar en paralelo
+        # Run in parallel
         backend_task = hf.generate_code(backend_prompt, language)
         frontend_task = hf.generate_code(frontend_prompt, "html")
         readme_task = hf.generate_code(
@@ -117,14 +117,14 @@ class DevAgent(BaseAgent):
         }
 
     async def _generate_code_solution(self, task: str, language: str) -> dict[str, Any]:
-        """Genera solución de código para cualquier tarea."""
+        """Generates a code solution for any task."""
         from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
         hf = HuggingFaceSuite()
         result = await hf.generate_code(task, language)
 
         if not result.get("success"):
-            # Fallback a ai_client
+            # Fallback to ai_client
             from apps.core.tools.ai_client import get_ai_client
 
             ai = get_ai_client()
@@ -142,7 +142,7 @@ class DevAgent(BaseAgent):
         return result
 
     async def _generate_documentation(self, task: str, results: dict) -> str:
-        """Genera documentación técnica del código producido."""
+        """Generates technical documentation for the produced code."""
         code_preview = ""
         if results.get("artifact", {}).get("backend_code"):
             code_preview = results["artifact"]["backend_code"][:500]

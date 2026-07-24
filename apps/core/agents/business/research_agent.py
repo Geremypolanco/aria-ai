@@ -1,8 +1,8 @@
 """
-Research Agent — Investigación profunda de mercado, competidores y tendencias.
+Research Agent — In-depth research on market, competitors, and trends.
 
-Combina búsqueda web, análisis de noticias, HuggingFace models y síntesis con IA
-para producir reportes de inteligencia accionables.
+Combines web search, news analysis, HuggingFace models, and AI synthesis
+to produce actionable intelligence reports.
 """
 
 from __future__ import annotations
@@ -18,15 +18,15 @@ logger = logging.getLogger("aria.business.research")
 
 class ResearchAgent(BaseAgent):
     IDENTITY = (
-        "Eres el Research Agent de ARIA AI. Eres un analista de mercado de élite. "
-        "Combinas datos reales de internet con análisis profundo para producir insights "
-        "accionables. Nunca inventas datos — siempre citas fuentes reales."
+        "You are ARIA AI's Research Agent. You are an elite market analyst. "
+        "You combine real internet data with deep analysis to produce actionable "
+        "insights. You never make up data — you always cite real sources."
     )
 
     def __init__(self) -> None:
         super().__init__(
             name="research",
-            description="Investigación profunda: mercado, competidores, tendencias, datos reales de internet",
+            description="In-depth research: market, competitors, trends, real internet data",
             capabilities=[
                 "market_research",
                 "competitor_analysis",
@@ -38,7 +38,7 @@ class ResearchAgent(BaseAgent):
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission = context.get("mission", "Análisis de mercado general")
+        mission = context.get("mission", "General market analysis")
         topic = context.get("topic", mission)
         depth = context.get("depth", "deep")  # quick | deep | comprehensive
         output_type = context.get("output", "report")  # report | bullets | pdf
@@ -46,11 +46,11 @@ class ResearchAgent(BaseAgent):
         results: dict[str, Any] = {"success": True, "agent": "research", "topic": topic}
 
         if depth == "quick":
-            # Búsqueda rápida — 1 query
+            # Quick search — 1 query
             raw = await self._quick_research(topic)
             results["data"] = raw
         elif depth == "deep":
-            # Múltiples ángulos en paralelo
+            # Multiple angles in parallel
             research_data = await self._deep_research(topic)
             results["data"] = research_data
         else:
@@ -65,23 +65,23 @@ class ResearchAgent(BaseAgent):
             results["trends"] = trends if not isinstance(trends, Exception) else {}
             results["sentiment"] = sentiment if not isinstance(sentiment, Exception) else {}
 
-        # Síntesis con IA
+        # AI synthesis
         report = await self._synthesize_report(topic, results.get("data", {}), output_type)
         results["report"] = report
 
-        # Generar PDF si se solicita
+        # Generate PDF if requested
         if output_type == "pdf":
             from apps.core.tools.pdf_generator import generate_pdf
 
             pdf_result = await generate_pdf(
-                title=f"Reporte: {topic[:50]}",
+                title=f"Report: {topic[:50]}",
                 content=report,
             )
             if pdf_result.get("success"):
                 results["pdf_bytes"] = pdf_result["pdf_bytes"]
                 results["pdf_filename"] = pdf_result["filename"]
 
-        results["summary"] = report[:400] if report else "Investigación completada"
+        results["summary"] = report[:400] if report else "Research completed"
         return results
 
     async def _quick_research(self, topic: str) -> dict:
@@ -90,7 +90,7 @@ class ResearchAgent(BaseAgent):
         return await WebTools().search_web(topic, num_results=5)
 
     async def _deep_research(self, topic: str) -> dict:
-        """Búsqueda profunda: múltiples queries + fetch de páginas top."""
+        """Deep search: multiple queries + fetching top pages."""
         from apps.core.tools.web_tools import WebTools
 
         wt = WebTools()
@@ -159,23 +159,23 @@ class ResearchAgent(BaseAgent):
             return {}
 
     async def _synthesize_report(self, topic: str, data: dict, output_type: str) -> str:
-        """Sintetiza toda la data en un reporte ejecutivo con IA."""
+        """Synthesizes all the data into an executive report with AI."""
         results_summary = str(data.get("results", []))[:3000]
 
         resp = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Tema: {topic}\n"
-                f"Datos recopilados: {results_summary}\n\n"
-                f"Genera un reporte ejecutivo con:\n"
-                f"## Resumen Ejecutivo\n"
-                f"## Tamaño de Mercado y Oportunidad\n"
-                f"## Actores Principales y Competidores\n"
-                f"## Tendencias Clave\n"
-                f"## Análisis FODA\n"
-                f"## Recomendaciones Estratégicas\n"
-                f"## Próximos Pasos\n\n"
-                f"Cita fuentes reales cuando las tengas. Sé específico con números."
+                f"Topic: {topic}\n"
+                f"Data collected: {results_summary}\n\n"
+                f"Generate an executive report with:\n"
+                f"## Executive Summary\n"
+                f"## Market Size and Opportunity\n"
+                f"## Key Players and Competitors\n"
+                f"## Key Trends\n"
+                f"## SWOT Analysis\n"
+                f"## Strategic Recommendations\n"
+                f"## Next Steps\n\n"
+                f"Cite real sources when you have them. Be specific with numbers."
             ),
         )
         return resp

@@ -1,5 +1,5 @@
 """
-cognition/ — Runtime cognitivo persistente de ARIA AI.
+cognition/ — Persistent cognitive runtime for ARIA AI.
 AriaMind v2: complete_json reasoning, retry tools, persistent goals, auto-reflection.
 """
 

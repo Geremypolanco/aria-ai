@@ -43,9 +43,9 @@ class AriaGitHubClient:
         try:
             r = await self._http.get(f"{GITHUB_API}{path}", params=params or {})
             if r.status_code == 404:
-                return {"error": "No encontrado (404)", "status": 404}
+                return {"error": "Not found (404)", "status": 404}
             if r.status_code == 403:
-                return {"error": "Acceso denegado (403) — verifica GITHUB_TOKEN", "status": 403}
+                return {"error": "Access denied (403) — check GITHUB_TOKEN", "status": 403}
             if r.status_code not in (200, 201):
                 return {"error": f"HTTP {r.status_code}: {r.text[:200]}", "status": r.status_code}
             return r.json()
@@ -102,7 +102,7 @@ class AriaGitHubClient:
         if "error" in data:
             return data
         if data.get("type") != "file":
-            return {"error": f"'{path}' no es un archivo (es {data.get('type')})"}
+            return {"error": f"'{path}' is not a file (it's {data.get('type')})"}
         raw = data.get("content", "")
         try:
             content = base64.b64decode(raw).decode("utf-8", errors="replace")
@@ -155,7 +155,7 @@ class AriaGitHubClient:
             return ref_data
         sha = ref_data.get("object", {}).get("sha", "")
         if not sha:
-            return {"error": "No se pudo obtener SHA del branch origen"}
+            return {"error": "Could not get the SHA of the source branch"}
         return await self._post(
             f"/repos/{owner}/{repo}/git/refs", {"ref": f"refs/heads/{new_branch}", "sha": sha}
         )
@@ -204,10 +204,10 @@ class AriaGitHubClient:
         """Returns a tree view of ARIA's own repo at the given path."""
         data = await self.list_contents(SELF_OWNER, SELF_REPO, path, branch="main")
         if isinstance(data, dict) and "error" in data:
-            return f"Error leyendo estructura: {data['error']}"
+            return f"Error reading structure: {data['error']}"
         if not isinstance(data, list):
-            return "Respuesta inesperada"
-        lines = [f"📁 /{path or '(raíz)'}"]
+            return "Unexpected response"
+        lines = [f"📁 /{path or '(root)'}"]
         for item in data:
             icon = "📁" if item.get("type") == "dir" else "📄"
             lines.append(f"  {icon} {item.get('name')} ({item.get('type')})")
@@ -217,11 +217,11 @@ class AriaGitHubClient:
         """Read a file from ARIA's own source code."""
         result = await self.get_file(SELF_OWNER, SELF_REPO, path, branch="main")
         if "error" in result:
-            return f"No pude leer '{path}': {result['error']}"
+            return f"Could not read '{path}': {result['error']}"
         content = result["content"]
         lines = content.split("\n")
         preview = "\n".join(lines[:80])
-        suffix = f"\n... ({len(lines)} líneas en total)" if len(lines) > 80 else ""
+        suffix = f"\n... ({len(lines)} lines total)" if len(lines) > 80 else ""
         return f"```python\n# {path}\n{preview}{suffix}\n```"
 
     async def self_commit(
@@ -234,9 +234,9 @@ class AriaGitHubClient:
             SELF_OWNER, SELF_REPO, path, new_content, commit_message, branch=branch, sha=sha
         )
         if "error" in result:
-            return f"Commit fallido: {result['error']}"
+            return f"Commit failed: {result['error']}"
         return (
-            f"✅ Commiteé '{path}' en branch '{branch}'\n"
+            f"✅ Committed '{path}' on branch '{branch}'\n"
             f"SHA: {result.get('content', {}).get('sha', '?')[:10]}..."
         )
 
@@ -277,7 +277,7 @@ async def github_dispatch(action: str, args: dict) -> str:
             return (
                 await gh.self_read(path)
                 if owner == SELF_OWNER and repo == SELF_REPO
-                else (await gh.get_file(owner, repo, path)).get("content", "Sin contenido")[:3000]
+                else (await gh.get_file(owner, repo, path)).get("content", "No content")[:3000]
             )
 
         if sub == "info":
@@ -298,7 +298,7 @@ async def github_dispatch(action: str, args: dict) -> str:
         data = await gh.list_contents(owner, repo, path)
         if isinstance(data, dict) and "error" in data:
             return f"Error: {data['error']}"
-        lines = [f"📁 {owner}/{repo}/{path or '(raíz)'}"]
+        lines = [f"📁 {owner}/{repo}/{path or '(root)'}"]
         for item in data if isinstance(data, list) else []:
             icon = "📁" if item.get("type") == "dir" else "📄"
             size = f" ({item['size']}B)" if item.get("type") == "file" and item.get("size") else ""
@@ -313,7 +313,7 @@ async def github_dispatch(action: str, args: dict) -> str:
         if isinstance(data, dict) and "error" in data:
             return f"Error: {data['error']}"
         names = [b.get("name", "") for b in (data if isinstance(data, list) else [])]
-        return f"Branches en {owner}/{repo}:\n" + "\n".join(f"  • {n}" for n in names)
+        return f"Branches in {owner}/{repo}:\n" + "\n".join(f"  • {n}" for n in names)
 
     # -- commits --
     if action == "commits":
@@ -323,7 +323,7 @@ async def github_dispatch(action: str, args: dict) -> str:
         data = await gh.list_commits(owner, repo, branch)
         if isinstance(data, dict) and "error" in data:
             return f"Error: {data['error']}"
-        lines = [f"Últimos commits en {owner}/{repo}@{branch}:"]
+        lines = [f"Latest commits in {owner}/{repo}@{branch}:"]
         for c in (data if isinstance(data, list) else [])[:10]:
             sha = c.get("sha", "")[:7]
             msg = c.get("commit", {}).get("message", "").split("\n")[0][:80]
@@ -341,8 +341,8 @@ async def github_dispatch(action: str, args: dict) -> str:
             return f"Error: {data['error']}"
         prs = [i for i in (data if isinstance(data, list) else []) if "pull_request" in i]
         if not prs:
-            return f"No hay PRs {state}s en {owner}/{repo}"
-        lines = [f"PRs {state}s en {owner}/{repo}:"]
+            return f"There are no {state} PRs in {owner}/{repo}"
+        lines = [f"{state.capitalize()} PRs in {owner}/{repo}:"]
         for pr in prs[:8]:
             lines.append(f"  #{pr['number']} {pr['title']} — @{pr['user']['login']}")
         return "\n".join(lines)
@@ -357,8 +357,8 @@ async def github_dispatch(action: str, args: dict) -> str:
             return f"Error: {data['error']}"
         issues = [i for i in (data if isinstance(data, list) else []) if "pull_request" not in i]
         if not issues:
-            return f"No hay issues {state}s en {owner}/{repo}"
-        lines = [f"Issues {state}s en {owner}/{repo}:"]
+            return f"There are no {state} issues in {owner}/{repo}"
+        lines = [f"{state.capitalize()} issues in {owner}/{repo}:"]
         for i in issues[:8]:
             lines.append(f"  #{i['number']} {i['title']} — @{i['user']['login']}")
         return "\n".join(lines)
@@ -372,15 +372,15 @@ async def github_dispatch(action: str, args: dict) -> str:
         message = args.get("message", "feat: update via ARIA")
         branch = args.get("branch", "main")
         if not path or not content:
-            return "Necesito 'path' y 'content' para escribir en GitHub."
+            return "I need 'path' and 'content' to write to GitHub."
         # fetch existing sha if updating
         existing = await gh.get_file(owner, repo, path, branch=branch)
         sha = existing.get("sha") if "error" not in existing else None
         result = await gh.create_or_update_file(owner, repo, path, content, message, branch, sha)
         if "error" in result:
-            return f"No pude escribir '{path}': {result['error']}"
+            return f"Could not write '{path}': {result['error']}"
         return (
-            f"✅ Archivo '{path}' {'actualizado' if sha else 'creado'} en {owner}/{repo}@{branch}\n"
+            f"✅ File '{path}' {'updated' if sha else 'created'} in {owner}/{repo}@{branch}\n"
             f"Commit: {message}"
         )
 
@@ -391,11 +391,11 @@ async def github_dispatch(action: str, args: dict) -> str:
         new_branch = args.get("branch", "")
         from_b = args.get("from_branch", "main")
         if not new_branch:
-            return "Necesito el nombre del nuevo branch."
+            return "I need the name of the new branch."
         result = await gh.create_branch(owner, repo, new_branch, from_b)
         if "error" in result:
-            return f"No pude crear branch '{new_branch}': {result['error']}"
-        return f"✅ Branch '{new_branch}' creado desde '{from_b}' en {owner}/{repo}"
+            return f"Could not create branch '{new_branch}': {result['error']}"
+        return f"✅ Branch '{new_branch}' created from '{from_b}' in {owner}/{repo}"
 
     # -- create pr --
     if action == "create_pr":
@@ -406,11 +406,11 @@ async def github_dispatch(action: str, args: dict) -> str:
         head = args.get("head", "")
         base = args.get("base", "main")
         if not title or not head:
-            return "Necesito 'title' y 'head' para crear un PR."
+            return "I need 'title' and 'head' to create a PR."
         result = await gh.create_pr(owner, repo, title, body, head, base)
         if "error" in result:
-            return f"No pude crear PR: {result['error']}"
-        return f"✅ PR #{result.get('number')} creado: {result.get('html_url','')}"
+            return f"Could not create PR: {result['error']}"
+        return f"✅ PR #{result.get('number')} created: {result.get('html_url','')}"
 
     # -- create issue --
     if action == "create_issue":
@@ -420,46 +420,50 @@ async def github_dispatch(action: str, args: dict) -> str:
         body = args.get("body", "")
         labels = args.get("labels", [])
         if not title:
-            return "Necesito un 'title' para crear el issue."
+            return "I need a 'title' to create the issue."
         result = await gh.create_issue(owner, repo, title, body, labels)
         if "error" in result:
-            return f"No pude crear issue: {result['error']}"
-        return f"✅ Issue #{result.get('number')} creado: {result.get('html_url','')}"
+            return f"Could not create issue: {result['error']}"
+        return f"✅ Issue #{result.get('number')} created: {result.get('html_url','')}"
 
     # -- search --
     if action == "search":
         query = args.get("query", "")
         kind = args.get("type", "repos")  # repos | code | issues
         if not query:
-            return "Necesito una query para buscar en GitHub."
+            return "I need a query to search GitHub."
         if kind == "code":
             data = await gh.search_code(query)
+            if isinstance(data, dict) and "error" in data:
+                return f"Error: {data['error']}"
             items = data.get("items", [])
-            lines = [f"Resultados de código para '{query}':"]
+            lines = [f"Code results for '{query}':"]
             for item in items[:5]:
                 lines.append(
                     f"  📄 {item.get('repository',{}).get('full_name')}/{item.get('name')} — {item.get('html_url','')}"
                 )
-            return "\n".join(lines) if len(lines) > 1 else "Sin resultados."
+            return "\n".join(lines) if len(lines) > 1 else "No results."
         if kind == "issues":
             data = await gh.search_issues(query)
+            if isinstance(data, dict) and "error" in data:
+                return f"Error: {data['error']}"
             items = data.get("items", [])
-            lines = [f"Issues para '{query}':"]
+            lines = [f"Issues for '{query}':"]
             for item in items[:5]:
                 lines.append(
                     f"  #{item.get('number')} {item.get('title')} — {item.get('html_url','')}"
                 )
-            return "\n".join(lines) if len(lines) > 1 else "Sin resultados."
+            return "\n".join(lines) if len(lines) > 1 else "No results."
         data = await gh.search_repos(query)
         items = data.get("items", [])
         if isinstance(data, dict) and "error" in data:
             return f"Error: {data['error']}"
-        lines = [f"Repos para '{query}':"]
+        lines = [f"Repos for '{query}':"]
         for item in items[:5]:
             lines.append(
                 f"  ⭐{item.get('stargazers_count',0):,} {item.get('full_name')} — {item.get('description','')[:80]}"
             )
-        return "\n".join(lines) if len(lines) > 1 else "Sin resultados."
+        return "\n".join(lines) if len(lines) > 1 else "No results."
 
     # -- self awareness --
     if action == "self":
@@ -475,4 +479,4 @@ async def github_dispatch(action: str, args: dict) -> str:
             return await gh.self_commit(path, new_content, message, branch)
         return await gh.self_structure(path)
 
-    return "Acción GitHub desconocida. Usa: view, branches, commits, prs, issues, write, create_branch, create_pr, create_issue, search, self"
+    return "Unknown GitHub action. Use: view, branches, commits, prs, issues, write, create_branch, create_pr, create_issue, search, self"

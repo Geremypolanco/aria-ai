@@ -1,16 +1,19 @@
 """
-Cliente Redis sobre Upstash para colas y caché.
-Usa REST API de Upstash — no requiere conexión persistente.
+Redis client over Upstash for queues and caching.
+Uses the Upstash REST API — no persistent connection required.
 """
 
 import contextlib
 import json
+import logging
 import time
 from typing import Any
 
 import httpx
 
 from apps.core.config import settings
+
+logger = logging.getLogger("aria.cache")
 
 
 class AriaCache:
@@ -25,7 +28,7 @@ class AriaCache:
         }
 
     async def _cmd(self, *args) -> Any:
-        """Ejecuta un comando Redis via REST."""
+        """Executes a Redis command via REST."""
         try:
             response = await self._http.post(
                 self._base_url,
@@ -33,25 +36,41 @@ class AriaCache:
                 json=list(args),
             )
             data = response.json()
+            if "error" in data:
+                # Upstash returns 200 with an "error" field for a rejected
+                # command (bad auth, wrong arity, etc.) — that's not the same
+                # as "no result", and silently swallowing it here made every
+                # cache failure in the app invisible in production.
+                logger.warning("[cache] %s -> %s", args[0] if args else "?", data["error"])
+                return None
             return data.get("result")
-        except Exception:
+        except Exception as exc:
+            logger.warning("[cache] %s failed: %s", args[0] if args else "?", exc)
             return None
 
     async def ping(self) -> bool:
-        """Ping honesto: True sólo si Redis responde PONG en un ida-y-vuelta real.
+        """Honest ping: True only if Redis actually responds PONG on a real round trip.
 
-        Usado por /health para reflejar la verdad — el objeto de caché siempre
-        existe, así que su mera presencia no es señal de que el backend funcione.
+        Used by /health to reflect the truth — the cache object always
+        exists, so its mere presence is not a signal that the backend is working.
         """
         try:
             return (await self._cmd("PING")) == "PONG"
         except Exception:
             return False
 
-    # ── CACHÉ BÁSICO ──────────────────────────────────────
+    # ── BASIC CACHE ───────────────────────────────────────
     async def set(self, key: str, value: Any, ttl_seconds: int = 3600) -> bool:
         serialized = json.dumps(value) if not isinstance(value, str) else value
         result = await self._cmd("SET", key, serialized, "EX", ttl_seconds)
+        return result == "OK"
+
+    async def set_if_not_exists(self, key: str, value: Any, ttl_seconds: int = 3600) -> bool:
+        """Atomic create-only write (Redis SET NX). Returns True iff this call
+        created the key — False means it already existed and was left alone.
+        Use this instead of a separate exists()-then-set() pair, which races."""
+        serialized = json.dumps(value) if not isinstance(value, str) else value
+        result = await self._cmd("SET", key, serialized, "NX", "EX", ttl_seconds)
         return result == "OK"
 
     async def get(self, key: str) -> Any | None:
@@ -74,15 +93,15 @@ class AriaCache:
     async def increment(self, key: str) -> int:
         return await self._cmd("INCR", key) or 0
 
-    # ── COLAS DE TAREAS ───────────────────────────────────
+    # ── TASK QUEUES ────────────────────────────────────────
     async def enqueue(self, queue: str, task: dict) -> bool:
-        """Agrega una tarea al final de la cola."""
+        """Adds a task to the end of the queue."""
         serialized = json.dumps(task)
         result = await self._cmd("RPUSH", f"queue:{queue}", serialized)
         return result is not None and result > 0
 
     async def dequeue(self, queue: str) -> dict | None:
-        """Obtiene y elimina la primera tarea de la cola."""
+        """Gets and removes the first task from the queue."""
         result = await self._cmd("LPOP", f"queue:{queue}")
         if result is None:
             return None
@@ -96,7 +115,7 @@ class AriaCache:
         return result or 0
 
     async def peek_queue(self, queue: str, count: int = 5) -> list:
-        """Ve las próximas tareas sin eliminarlas."""
+        """Views the upcoming tasks without removing them."""
         result = await self._cmd("LRANGE", f"queue:{queue}", 0, count - 1)
         if not result:
             return []
@@ -141,7 +160,7 @@ class AriaCache:
         result = await self._cmd("EXPIRE", key, seconds)
         return result == 1
 
-    # ── ESTADO DE AGENTES ─────────────────────────────────
+    # ── AGENT STATUS ───────────────────────────────────────
     async def set_agent_status(self, agent_name: str, status: dict) -> bool:
         return await self.set(f"agent:{agent_name}:status", status, ttl_seconds=300)
 
@@ -159,23 +178,23 @@ class AriaCache:
 
     # ── RATE LIMITING ─────────────────────────────────────
     async def check_rate_limit(self, key: str, max_calls: int, window_seconds: int) -> bool:
-        """Retorna True si se puede hacer la llamada, False si excede el límite."""
+        """Returns True if the call can be made, False if it exceeds the limit."""
         rate_key = f"ratelimit:{key}"
         current = await self._cmd("INCR", rate_key)
         if current == 1:
             await self._cmd("EXPIRE", rate_key, window_seconds)
         return current is not None and int(current) <= max_calls
 
-    # ── LOCKS DISTRIBUIDOS ────────────────────────────────
+    # ── DISTRIBUTED LOCKS ──────────────────────────────────
     async def acquire_lock(self, resource: str, ttl_seconds: int = 60) -> bool:
-        """Adquiere un lock para evitar ejecuciones duplicadas."""
+        """Acquires a lock to prevent duplicate executions."""
         result = await self._cmd("SET", f"lock:{resource}", "1", "NX", "EX", ttl_seconds)
         return result == "OK"
 
     async def release_lock(self, resource: str) -> bool:
         return await self.delete(f"lock:{resource}")
 
-    # ── MÉTRICAS EN TIEMPO REAL ───────────────────────────
+    # ── REAL-TIME METRICS ──────────────────────────────────
     async def increment_metric(self, metric: str) -> int:
         return await self.increment(f"metric:{metric}") or 0
 

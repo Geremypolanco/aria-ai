@@ -1,13 +1,13 @@
 """
-presentation_builder.py — Genera presentaciones profesionales como Manus/slides.
+presentation_builder.py — Generates professional presentations like Manus/slides.
 
-ARIA puede crear:
-  - Presentaciones HTML interactivas (Reveal.js) desde bullet points o tema
-  - Slides exportables como PDF (vía Playwright screenshot)
-  - Decks de pitch para inversores
-  - Presentaciones de producto, training, marketing
+ARIA can create:
+  - Interactive HTML presentations (Reveal.js) from bullet points or a topic
+  - Slides exportable as PDF (via Playwright screenshot)
+  - Investor pitch decks
+  - Product, training, and marketing presentations
 
-Inspirado en: Manus `slides` tool + Google Slides API
+Inspired by: Manus `slides` tool + Google Slides API
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ REVEAL_CDN = "https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1"
 
 class PresentationBuilder:
     """
-    Genera presentaciones HTML con Reveal.js a partir de:
-    - Un tema y descripción (ARIA genera el contenido)
-    - Outline estructurado (lista de slides)
-    - Datos crudos (ARIA organiza en slides)
+    Generates HTML presentations with Reveal.js from:
+    - A topic and description (ARIA generates the content)
+    - A structured outline (list of slides)
+    - Raw data (ARIA organizes it into slides)
     """
 
     async def create_presentation(
@@ -41,16 +41,16 @@ class PresentationBuilder:
         include_speaker_notes: bool = False,
     ) -> dict[str, Any]:
         """
-        Genera una presentación completa desde un tema.
-        ARIA investiga y genera los slides automáticamente.
+        Generates a complete presentation from a topic.
+        ARIA researches and generates the slides automatically.
         """
-        # 1. Generar outline con IA
+        # 1. Generate outline with AI
         outline = await self._generate_outline(title, topic, slide_count)
 
-        # 2. Generar contenido para cada slide
+        # 2. Generate content for each slide
         slides = await self._generate_slides(title, topic, outline)
 
-        # 3. Renderizar HTML
+        # 3. Render HTML
         html = self._render_html(title, slides, template, include_speaker_notes)
 
         return {
@@ -69,7 +69,7 @@ class PresentationBuilder:
         template: str = "dark",
     ) -> dict[str, Any]:
         """
-        Crea presentación desde un outline manual.
+        Creates a presentation from a manual outline.
         outline: [{"title": "...", "bullets": ["...", "..."], "notes": "..."}]
         """
         slides = await self._enrich_slides(title, outline)
@@ -91,7 +91,7 @@ class PresentationBuilder:
         traction: str = "",
     ) -> dict[str, Any]:
         """
-        Genera un pitch deck para inversores (estilo YC).
+        Generates an investor pitch deck (YC style).
         10 slides: Problem, Solution, Market, Product, Traction,
                    Business Model, Team, Competition, Ask, Closing.
         """
@@ -101,22 +101,22 @@ class PresentationBuilder:
 
         content = await client.complete(
             model=AIModel.STRATEGY,
-            system="Eres un experto en pitch decks de startups. Creas presentaciones convincentes para inversores YC/a16z.",
+            system="You are an expert in startup pitch decks. You create compelling presentations for YC/a16z investors.",
             user=(
-                f"Empresa: {company}\n"
-                f"Problema: {problem}\n"
-                f"Solución: {solution}\n"
-                f"Mercado: {market or 'Por definir'}\n"
-                f"Tracción: {traction or 'Pre-launch'}\n\n"
-                f"Genera un pitch deck de 10 slides en JSON:\n"
+                f"Company: {company}\n"
+                f"Problem: {problem}\n"
+                f"Solution: {solution}\n"
+                f"Market: {market or 'To be defined'}\n"
+                f"Traction: {traction or 'Pre-launch'}\n\n"
+                f"Generate a 10-slide pitch deck in JSON:\n"
                 f'[{{"title": "...", "subtitle": "...", "bullets": ["..."], "visual_description": "...", "notes": "..."}}]\n'
                 f"Slides: Problem, Solution, Market Size, Product Demo, Business Model, "
                 f"Traction, Team, Competition, Investment Ask, Vision.\n"
-                f"Responde SOLO con el JSON array."
+                f"Respond ONLY with the JSON array."
             ),
         )
 
-        slides = self._parse_slides_json(content) or self._default_pitch_deck(
+        slides = self._parse_slides_json(content.content) or self._default_pitch_deck(
             company, problem, solution
         )
         html = self._render_html(f"{company} — Pitch Deck", slides, "corporate", True)
@@ -133,8 +133,8 @@ class PresentationBuilder:
         self, html_content: str, output_prefix: str = "slide"
     ) -> dict[str, Any]:
         """
-        Exporta cada slide como imagen PNG usando Playwright.
-        Retorna lista de bytes de imágenes.
+        Exports each slide as a PNG image using Playwright.
+        Returns a list of image bytes.
         """
         try:
             import os
@@ -179,14 +179,14 @@ class PresentationBuilder:
         client = get_ai_client()
         resp = await client.complete(
             model=AIModel.FAST,
-            system="Eres un experto en comunicación y presentaciones ejecutivas.",
+            system="You are an expert in communication and executive presentations.",
             user=(
-                f"Título: {title}\nTema: {topic}\n"
-                f"Genera exactamente {count} títulos de slides para esta presentación.\n"
-                f"Responde SOLO con una lista numerada: 1. Título\\n2. Título\\n..."
+                f"Title: {title}\nTopic: {topic}\n"
+                f"Generate exactly {count} slide titles for this presentation.\n"
+                f"Respond ONLY with a numbered list: 1. Title\\n2. Title\\n..."
             ),
         )
-        lines = [l.strip() for l in resp.split("\n") if l.strip()]
+        lines = [l.strip() for l in resp.content.split("\n") if l.strip()]
         titles = [re.sub(r"^\d+[\.\)]\s*", "", l) for l in lines if re.match(r"^\d", l)]
         return titles[:count] if titles else [f"Slide {i+1}" for i in range(count)]
 
@@ -198,17 +198,17 @@ class PresentationBuilder:
         async def gen_slide(slide_title: str, idx: int) -> dict:
             resp = await client.complete(
                 model=AIModel.FAST,
-                system="Eres experto en presentaciones ejecutivas. Responde SOLO JSON.",
+                system="You are an expert in executive presentations. Respond ONLY with JSON.",
                 user=(
-                    f"Presentación: '{title}' sobre '{topic}'\n"
+                    f"Presentation: '{title}' about '{topic}'\n"
                     f"Slide {idx+1}: '{slide_title}'\n\n"
-                    f"Genera el contenido en JSON:\n"
+                    f"Generate the content in JSON:\n"
                     f'{{"title": "...", "subtitle": "...", "bullets": ["...", "...", "..."], '
-                    f'"highlight": "dato o estadística clave", "visual_hint": "tipo de visual sugerido"}}\n'
-                    f"Máximo 5 bullets concisos. Responde SOLO JSON."
+                    f'"highlight": "key data point or statistic", "visual_hint": "suggested visual type"}}\n'
+                    f"Maximum 5 concise bullets. Respond ONLY with JSON."
                 ),
             )
-            slide = self._parse_single_slide(resp)
+            slide = self._parse_single_slide(resp.content)
             slide.setdefault("title", slide_title)
             return slide
 

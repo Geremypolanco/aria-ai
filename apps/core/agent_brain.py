@@ -22,6 +22,31 @@ def build_system_prompt(include_tools: bool = True) -> str:
     return base
 
 
+# think()/generate_code()/research()/analyze() return these exact strings on
+# failure instead of raising, so callers must check for them explicitly by
+# value (there is no other failure signal). Callers used to sniff a "⚠️"
+# prefix that these messages no longer have — is_failure_reply() is the one
+# place that contract lives now, so wording changes can't silently break it.
+NO_PROVIDER_REPLY = (
+    "ARIA isn't fully set up yet — no AI provider is configured for this deployment. "
+    "Please try again shortly."
+)
+ALL_PROVIDERS_FAILED_REPLY = (
+    "ARIA couldn't reach any AI provider right now. Please try again in a moment."
+)
+INTERNAL_ERROR_REPLY = (
+    "ARIA hit an internal error processing that. Please try again — "
+    "if it keeps happening, contact support."
+)
+_FAILURE_REPLIES = (NO_PROVIDER_REPLY, ALL_PROVIDERS_FAILED_REPLY, INTERNAL_ERROR_REPLY)
+
+
+def is_failure_reply(text: str) -> bool:
+    """True if `text` is one of think()'s fixed failure strings rather than a
+    real model response."""
+    return text in _FAILURE_REPLIES
+
+
 class AriaAgent:
     """ARIA's main agent - uses local AI models with full tool-use capability."""
 
@@ -40,7 +65,7 @@ class AriaAgent:
         """Process a message through ARIA's reasoning with multi-provider fallback."""
         if not self.client:
             logger.error("AriaAgent.think: no AI client configured (no provider API key set)")
-            return "ARIA isn't fully set up yet — no AI provider is configured for this deployment. Please try again shortly."
+            return NO_PROVIDER_REPLY
 
         full_system = system or build_system_prompt()
         try:
@@ -51,6 +76,7 @@ class AriaAgent:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 agent_name="aria",
+                prefer_quality=True,
             )
             if response and response.success:
                 return response.content
@@ -62,6 +88,7 @@ class AriaAgent:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 agent_name="aria-fallback",
+                prefer_quality=True,
             )
             if fb_response and fb_response.success:
                 return fb_response.content
@@ -69,10 +96,10 @@ class AriaAgent:
                 "AriaAgent.think: all AI providers failed — %s",
                 response.error if response else "no response",
             )
-            return "ARIA couldn't reach any AI provider right now. Please try again in a moment."
+            return ALL_PROVIDERS_FAILED_REPLY
         except Exception as e:
             logger.error(f"AriaAgent.think error: {e}")
-            return "ARIA hit an internal error processing that. Please try again — if it keeps happening, contact support."
+            return INTERNAL_ERROR_REPLY
 
     async def think_json(
         self,
@@ -100,16 +127,16 @@ class AriaAgent:
         language: str = "python",
     ) -> str:
         """Generate code using ARIA's code-optimized model."""
-        system = f"""Eres un ingeniero de software experto en {language.upper()}.
+        system = f"""You are a software engineer expert in {language.upper()}.
 
-DIRECTRICES:
-1. Genera código limpio, eficiente y bien documentado
-2. Sigue las mejores prácticas de {language}
-3. Incluye manejo de errores
-4. Agrega comentarios explicativos
-5. Si es aplicable, incluye ejemplos de uso
+GUIDELINES:
+1. Generate clean, efficient, well-documented code
+2. Follow {language} best practices
+3. Include error handling
+4. Add explanatory comments
+5. If applicable, include usage examples
 
-Lenguaje objetivo: {language}"""
+Target language: {language}"""
         return await self.think(
             message=prompt,
             system=system,
@@ -121,21 +148,21 @@ Lenguaje objetivo: {language}"""
     async def research(
         self,
         topic: str,
-        depth: str = "completa",
+        depth: str = "complete",
     ) -> str:
         """Deep research on any topic."""
-        system = f"""Eres un investigador académico experto realizando una investigación {depth} sobre: {topic}
+        system = f"""You are an expert academic researcher conducting {depth} research on: {topic}
 
-ESTRUCTURA DE RESPUESTA:
-1. **Resumen Ejecutivo** - Visión general en 2-3 oraciones
-2. **Contexto y Antecedentes** - Información fundamental necesaria
-3. **Análisis Principal** - Desglose detallado del tema
-4. **Hallazgos Clave** - Los descubrimientos más importantes
-5. **Implicaciones** - Qué significa esto en la práctica
-6. **Conclusiones** - Síntesis final
-7. **Referencias** - Fuentes y recursos adicionales"""
+RESPONSE STRUCTURE:
+1. **Executive Summary** - Overview in 2-3 sentences
+2. **Context and Background** - Necessary foundational information
+3. **Main Analysis** - Detailed breakdown of the topic
+4. **Key Findings** - The most important discoveries
+5. **Implications** - What this means in practice
+6. **Conclusions** - Final synthesis
+7. **References** - Sources and additional resources"""
         return await self.think(
-            message=f"Investiga a fondo: {topic}",
+            message=f"Research thoroughly: {topic}",
             system=system,
             model=AIModel.STRATEGY,
             temperature=0.3,
@@ -148,14 +175,14 @@ ESTRUCTURA DE RESPUESTA:
         analysis_type: str = "general",
     ) -> str:
         """Analyze data, code, text, or any content."""
-        system = f"""Eres un analista experto realizando un análisis de tipo: {analysis_type}
+        system = f"""You are an expert analyst performing a {analysis_type} analysis
 
-Proporciona:
-1. Resumen de lo que se está analizando
-2. Puntos clave y patrones identificados
-3. Problemas o áreas de mejora (si aplica)
-4. Recomendaciones accionables
-5. Puntuación o evaluación general"""
+Provide:
+1. Summary of what is being analyzed
+2. Key points and patterns identified
+3. Problems or areas for improvement (if applicable)
+4. Actionable recommendations
+5. Overall score or evaluation"""
         return await self.think(
             message=data,
             system=system,

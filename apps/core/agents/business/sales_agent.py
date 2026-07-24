@@ -1,8 +1,8 @@
 """
-Sales Agent — Revenue generation: productos, pagos, Shopify, Stripe, Gumroad.
+Sales Agent — Revenue generation: products, payments, Shopify, Stripe, Gumroad.
 
-Maneja: creación de productos, pricing, checkout, upsells, afiliados,
-        seguimiento de ventas y optimización de conversión.
+Handles: product creation, pricing, checkout, upsells, affiliates,
+        sales tracking, and conversion optimization.
 """
 
 from __future__ import annotations
@@ -17,16 +17,16 @@ logger = logging.getLogger("aria.business.sales")
 
 class SalesAgent(BaseAgent):
     IDENTITY = (
-        "Eres el Sales Agent de ARIA AI inspirado en Claude Code. Tu misión es generar revenue REAL. "
-        "REGLA DE ORO: Nunca vendas algo que no puedas entregar. "
-        "Si el usuario pide vender un producto físico que no posees, debes rechazarlo o proponer una versión digital (ebook, consultoría, diseño). "
-        "Antes de publicar, verificas: 1. ¿Es real? 2. ¿Tengo el entregable listo? 3. ¿La plataforma de pago está conectada?"
+        "You are ARIA AI's Sales Agent, inspired by Claude Code. Your mission is to generate REAL revenue. "
+        "GOLDEN RULE: Never sell something you cannot deliver. "
+        "If the user asks to sell a physical product you don't own, you must decline it or propose a digital version (ebook, consulting, design). "
+        "Before publishing, verify: 1. Is it real? 2. Do I have the deliverable ready? 3. Is the payment platform connected?"
     )
 
     def __init__(self) -> None:
         super().__init__(
             name="sales",
-            description="Revenue: crear productos, procesar pagos, optimizar ventas en Shopify/Stripe/Gumroad",
+            description="Revenue: create products, process payments, optimize sales on Shopify/Stripe/Gumroad",
             capabilities=[
                 "product_creation",
                 "pricing",
@@ -40,42 +40,44 @@ class SalesAgent(BaseAgent):
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission = context.get("mission", "Crear y publicar producto digital")
+        mission = context.get("mission", "Create and publish a digital product")
         product_name = context.get("product_name", "")
         product_type = context.get("product_type", "digital")
         price = context.get("price", 0)
         platform = context.get("platform", "auto")
         auto_publish = context.get("auto_publish", False)
 
-        # VERIFICACIÓN DE ENTREGABILIDAD (Protocolo Claude Code)
+        # DELIVERABILITY CHECK (Claude Code Protocol)
+        # NOTE: bilingual keyword list — matches mission text in Spanish or
+        # English, do not translate the keyword strings below.
         is_physical = any(
             k in mission.lower() for k in ["casa", "físico", "envío", "hardware", "gadget"]
         )
         if is_physical and "digital" not in mission.lower():
             return {
                 "success": False,
-                "error": "No puedo vender productos físicos (como casas o hardware) porque no tengo forma de entregarlos. Puedo crear una versión digital (planos, guías, consultoría) si lo deseas.",
+                "error": "I can't sell physical products (like houses or hardware) because I have no way to deliver them. I can create a digital version (blueprints, guides, consulting) if you'd like.",
                 "agent": "sales",
             }
 
         results: dict[str, Any] = {"success": True, "agent": "sales", "mission": mission}
 
-        # 1. Si no hay producto definido, crear uno basado en la misión
+        # 1. If no product is defined, create one based on the mission
         if not product_name:
             product_idea = await self._ideate_product(mission)
             results["product_idea"] = product_idea
             product_name = product_idea.get("name", mission[:50])
             price = price or float(product_idea.get("price", 29))
 
-        # 2. Generar copy de ventas
+        # 2. Generate sales copy
         sales_copy = await self._generate_sales_copy(product_name, product_type, mission)
         results["sales_copy"] = sales_copy
 
-        # 3. Definir estrategia de pricing
+        # 3. Define pricing strategy
         pricing_strategy = await self._define_pricing(product_name, product_type, price)
         results["pricing"] = pricing_strategy
 
-        # 4. Publicar en plataforma si se solicita
+        # 4. Publish to platform if requested
         if auto_publish:
             pub = await self._publish_product(
                 name=product_name,
@@ -85,13 +87,10 @@ class SalesAgent(BaseAgent):
             )
             results["published"] = pub
 
-        results["summary"] = (
-            f"Producto '{product_name}' configurado — precio sugerido ${price}. "
-            + (
-                "Publicado en " + results.get("published", {}).get("platform", "")
-                if auto_publish
-                else "Listo para publicar."
-            )
+        results["summary"] = f"Product '{product_name}' configured — suggested price ${price}. " + (
+            "Published on " + results.get("published", {}).get("platform", "")
+            if auto_publish
+            else "Ready to publish."
         )
         return results
 
@@ -99,11 +98,11 @@ class SalesAgent(BaseAgent):
         idea = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Misión: {mission}\n\n"
-                f"Genera un producto digital de alto margen. Responde JSON con: "
+                f"Mission: {mission}\n\n"
+                f"Generate a high-margin digital product. Respond with JSON containing: "
                 f"name, tagline, description (100 words), price (USD), target_audience, "
                 f"unique_value_prop, platform (shopify|gumroad|stripe). "
-                f"El producto debe ser vendible hoy."
+                f"The product must be sellable today."
             ),
         )
         try:
@@ -119,10 +118,11 @@ class SalesAgent(BaseAgent):
         copy = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Producto: {name} ({product_type})\nContexto: {mission}\n\n"
-                f"Escribe: headline (10 words), subheadline (20 words), "
+                f"Product: {name} ({product_type})\nContext: {mission}\n\n"
+                f"Write: headline (10 words), subheadline (20 words), "
                 f"description (150 words), 5 bullet benefits, CTA button text, "
-                f"FAQ (3 preguntas), y testimonio fabricado realista."
+                f"FAQ (3 questions). Do not include testimonials or customer figures — "
+                f"there is no real customer data yet; do not make it up."
             ),
         )
         return {"copy": copy, "product": name}
@@ -131,9 +131,9 @@ class SalesAgent(BaseAgent):
         strategy = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Producto: {name} ({product_type}), precio base: ${base_price}\n"
-                f"Define: tier de precios (basic/pro/enterprise), descuentos de lanzamiento, "
-                f"upsell/cross-sell, y precio psicológico óptimo. Formato JSON."
+                f"Product: {name} ({product_type}), base price: ${base_price}\n"
+                f"Define: pricing tiers (basic/pro/enterprise), launch discounts, "
+                f"upsell/cross-sell, and optimal psychological pricing. JSON format."
             ),
         )
         return {"strategy": strategy, "base_price": base_price}
@@ -141,8 +141,8 @@ class SalesAgent(BaseAgent):
     async def _publish_product(
         self, name: str, price: float, description: str, platform: str
     ) -> dict:
-        """Publica el producto en la plataforma correspondiente."""
-        # Selección automática de plataforma
+        """Publishes the product to the corresponding platform."""
+        # Automatic platform selection
         if platform == "auto":
             from apps.core.config import settings
 

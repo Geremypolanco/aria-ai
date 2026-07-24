@@ -10,6 +10,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.scheduling")
 
 CALENDLY_AUTH_URL = "https://auth.calendly.com/oauth/authorize"
@@ -21,7 +24,8 @@ CALENDLY_REDIRECT = "https://aria-ai.fly.dev/oauth/callback/calendly"
 CALCOM_API = "https://api.cal.com/v1"
 
 
-class CalendlyConnection:
+@register_connector("calendly", display_name="Calendly (agenda, reuniones)")
+class CalendlyConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings

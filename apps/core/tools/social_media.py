@@ -1,18 +1,18 @@
 """
-ARIA Social Media Manager — Conexion OAuth con Facebook, Instagram, TikTok, LinkedIn.
+ARIA Social Media Manager — OAuth connection with Facebook, Instagram, TikTok, LinkedIn.
 
-Funcionalidades:
-- Genera URLs de autorizacion OAuth para cada plataforma
-- Almacena tokens de acceso en Supabase (tabla social_accounts)
-- Publica contenido en cuentas conectadas
-- Lista y gestiona cuentas conectadas
-- Refresca tokens automaticamente
+Features:
+- Generates OAuth authorization URLs for each platform
+- Stores access tokens in Supabase (social_accounts table)
+- Publishes content to connected accounts
+- Lists and manages connected accounts
+- Automatically refreshes tokens
 
-Requiere en Fly.io secrets (segun plataforma):
+Requires in Fly.io secrets (depending on platform):
   Facebook/Instagram: FACEBOOK_APP_ID, FACEBOOK_APP_SECRET
   TikTok:            TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET
   LinkedIn:          LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET
-  URL base del servidor: ARIA_BASE_URL (ej: https://aria-ai.fly.dev)
+  Server base URL: ARIA_BASE_URL (e.g.: https://aria-ai.fly.dev)
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ import httpx
 logger = logging.getLogger("aria.social_media")
 
 
-# ── SCOPES POR PLATAFORMA ─────────────────────────────────
+# ── SCOPES PER PLATFORM ─────────────────────────────────
 
 PLATFORM_CONFIGS = {
     "facebook": {
@@ -42,7 +42,7 @@ PLATFORM_CONFIGS = {
         "api_base": "https://graph.facebook.com/v19.0",
     },
     "instagram": {
-        "app_id_env": "FACEBOOK_APP_ID",  # Instagram usa el mismo app de Meta
+        "app_id_env": "FACEBOOK_APP_ID",  # Instagram uses the same Meta app
         "app_secret_env": "FACEBOOK_APP_SECRET",
         "auth_url": "https://www.facebook.com/v19.0/dialog/oauth",
         "token_url": "https://graph.facebook.com/v19.0/oauth/access_token",
@@ -81,14 +81,14 @@ class SocialMediaManager:
         return app_id, app_secret
 
     def get_auth_url(self, platform: str) -> str | None:
-        """Genera la URL de autorizacion OAuth para la plataforma indicada."""
+        """Generates the OAuth authorization URL for the given platform."""
         cfg = PLATFORM_CONFIGS.get(platform)
         if not cfg:
             return None
 
         app_id, app_secret = self._get_creds(platform)
         if not app_id or not app_secret:
-            logger.warning("[SocialMedia] Credenciales no configuradas para %s", platform)
+            logger.warning("[SocialMedia] Credentials not configured for %s", platform)
             return None
 
         state = secrets.token_urlsafe(32)
@@ -124,7 +124,7 @@ class SocialMediaManager:
         return f"{cfg['auth_url']}?{urllib.parse.urlencode(params)}"
 
     async def exchange_code_for_token(self, platform: str, code: str) -> dict | None:
-        """Intercambia el codigo de autorizacion por un access token."""
+        """Exchanges the authorization code for an access token."""
         cfg = PLATFORM_CONFIGS.get(platform)
         if not cfg:
             return None
@@ -186,7 +186,7 @@ class SocialMediaManager:
             return None
 
     async def get_user_profile(self, platform: str, access_token: str) -> dict | None:
-        """Obtiene el perfil del usuario autenticado."""
+        """Gets the authenticated user's profile."""
         try:
             if platform in ("facebook", "instagram"):
                 res = await self._http.get(
@@ -237,8 +237,9 @@ class SocialMediaManager:
         expires_in: int | None,
         profile: dict,
     ) -> bool:
-        """Guarda la cuenta conectada en Supabase."""
+        """Saves the connected account to Supabase."""
         try:
+            from apps.core.connectors.token_crypto import encrypt
             from apps.core.memory.supabase_client import get_db
 
             db = get_db()
@@ -247,18 +248,22 @@ class SocialMediaManager:
                 expires_at = time.strftime(
                     "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + expires_in)
                 )
+            # These are live OAuth tokens for the user's real connected
+            # accounts — encrypt at rest (same AES-256-GCM used for
+            # apps/core/connections' connector tokens) instead of storing
+            # them in plaintext in Supabase.
             record = {
                 "platform": platform,
                 "account_id": str(profile.get("id", "")),
                 "username": profile.get("username", ""),
                 "email": profile.get("email", ""),
-                "access_token": access_token,
-                "refresh_token": refresh_token,
+                "access_token": encrypt(access_token),
+                "refresh_token": encrypt(refresh_token) if refresh_token else None,
                 "expires_at": expires_at,
                 "is_active": True,
                 "scopes": PLATFORM_CONFIGS.get(platform, {}).get("scopes", ""),
             }
-            # Upsert por plataforma
+            # Upsert per platform
             existing = (
                 db._client.table("social_accounts").select("id").eq("platform", platform).execute()
             )
@@ -268,14 +273,14 @@ class SocialMediaManager:
                 ).execute()
             else:
                 db._client.table("social_accounts").insert(record).execute()
-            logger.info("[SocialMedia] Cuenta %s guardada correctamente", platform)
+            logger.info("[SocialMedia] %s account saved successfully", platform)
             return True
         except Exception as exc:
             logger.error("[SocialMedia] save_account error: %s", exc)
             return False
 
     async def list_connected_accounts(self) -> list[dict]:
-        """Lista todas las cuentas sociales conectadas."""
+        """Lists all connected social accounts."""
         try:
             from apps.core.memory.supabase_client import get_db
 
@@ -291,8 +296,9 @@ class SocialMediaManager:
             return []
 
     async def get_account_token(self, platform: str) -> str | None:
-        """Obtiene el access token de una plataforma conectada."""
+        """Gets the access token for a connected platform."""
         try:
+            from apps.core.connectors.token_crypto import decrypt
             from apps.core.memory.supabase_client import get_db
 
             db = get_db()
@@ -307,13 +313,16 @@ class SocialMediaManager:
             if not result.data:
                 return None
             account = result.data[0]
-            return account.get("access_token")
+            token = account.get("access_token")
+            # decrypt() transparently passes through legacy plaintext tokens
+            # written before this encryption shipped.
+            return decrypt(token) if token else None
         except Exception as exc:
             logger.error("[SocialMedia] get_account_token error: %s", exc)
             return None
 
     async def disconnect_account(self, platform: str) -> bool:
-        """Desactiva una cuenta conectada."""
+        """Deactivates a connected account."""
         try:
             from apps.core.memory.supabase_client import get_db
 
@@ -333,17 +342,17 @@ class SocialMediaManager:
         self, platform: str, content: str, image_url: str | None = None, viral_dna: dict = None
     ) -> dict:
         """
-        Publica contenido en la plataforma indicada.
-        Si viral_dna está presente, aplica mimetismo viral antes de publicar.
+        Publishes content to the specified platform.
+        If viral_dna is present, applies viral mimicry before publishing.
         """
         token = await self.get_account_token(platform)
         if not token:
             return {
                 "success": False,
-                "error": f"No hay cuenta de {platform} conectada. Usa /conectar {platform}",
+                "error": f"No {platform} account connected. Use /conectar {platform}",
             }
 
-        # Aplicar ADN Viral si existe
+        # Apply Viral DNA if present
         if viral_dna:
             content = await self._apply_viral_dna(content, viral_dna)
 
@@ -358,49 +367,49 @@ class SocialMediaManager:
                 return await self._post_linkedin(token, content, image_url)
             if platform == "google":
                 return await self._post_google(token, content, image_url)
-            return {"success": False, "error": f"Plataforma {platform} no soportada"}
+            return {"success": False, "error": f"Platform {platform} not supported"}
         except Exception as exc:
             logger.error("[SocialMedia] post_content error for %s: %s", platform, exc)
             return {"success": False, "error": str(exc)}
 
     async def _apply_viral_dna(self, content: str, dna: dict) -> str:
-        """Reescribe el contenido usando IA para mimetizar formatos virales."""
+        """Rewrites the content using AI to mimic viral formats."""
         from apps.core.tools.ai_client import AIModel, get_ai_client
 
         prompt = (
-            f"Actúa como un experto en viralidad. Reescribe el siguiente contenido siguiendo este ADN viral:\n"
-            f"ADN: {json.dumps(dna)}\n\n"
-            f"CONTENIDO ORIGINAL: {content}\n\n"
-            f"Asegúrate de mantener el valor pero cambiar la estructura, ganchos y CTA para maximizar el engagement."
+            f"Act as a virality expert. Rewrite the following content following this viral DNA:\n"
+            f"DNA: {json.dumps(dna)}\n\n"
+            f"ORIGINAL CONTENT: {content}\n\n"
+            f"Make sure to keep the value but change the structure, hooks, and CTA to maximize engagement."
         )
         resp = await get_ai_client().complete(
-            system="Eres un experto en Growth Hacking y Viralidad.",
+            system="You are an expert in Growth Hacking and Virality.",
             user=prompt,
             model=AIModel.STRATEGY,
         )
         return resp.content if resp.success else content
 
     async def _post_google(self, token: str, content: str, image_url: str | None) -> dict:
-        """Simulación de publicación en Google Business Profile (Placeholder para API real)."""
-        # Aquí iría la lógica de Google My Business API
+        """Simulation of posting to Google Business Profile (placeholder for the real API)."""
+        # This is where the Google My Business API logic would go
         return {"success": True, "platform": "google", "status": "simulated_success"}
 
     async def _post_facebook(self, token: str, content: str, image_url: str | None) -> dict:
-        """Publica en Facebook Pages."""
-        # Primero obtenemos las pages del usuario
+        """Posts to Facebook Pages."""
+        # First get the user's pages
         pages_res = await self._http.get(
             "https://graph.facebook.com/v19.0/me/accounts",
             params={"access_token": token},
         )
         if pages_res.status_code != 200 or not pages_res.json().get("data"):
-            # Publicar en el perfil si no hay pages
+            # Post to the profile if there are no pages
             res = await self._http.post(
                 "https://graph.facebook.com/v19.0/me/feed",
                 params={"access_token": token},
                 json={"message": content},
             )
         else:
-            # Publicar en la primera page disponible
+            # Post to the first available page
             page = pages_res.json()["data"][0]
             page_token = page.get("access_token", token)
             page_id = page.get("id")
@@ -414,18 +423,18 @@ class SocialMediaManager:
 
         if res.status_code == 200:
             post_id = res.json().get("id", "")
-            return {"success": True, "post_id": post_id, "message": "Publicado en Facebook"}
+            return {"success": True, "post_id": post_id, "message": "Posted to Facebook"}
         return {"success": False, "error": res.text[:200]}
 
     async def _post_instagram(self, token: str, content: str, image_url: str | None) -> dict:
-        """Publica en Instagram (requiere imagen para posts normales, sin imagen usa Reels caption)."""
+        """Posts to Instagram (requires an image for normal posts, uses Reels caption without one)."""
         if not image_url:
             return {
                 "success": False,
-                "error": "Instagram requiere una imagen para publicar. Usa /publicar instagram [url_imagen] [caption]",
+                "error": "Instagram requires an image to post. Use /publicar instagram [image_url] [caption]",
             }
 
-        # Obtener Instagram Business Account ID
+        # Get Instagram Business Account ID
         me_res = await self._http.get(
             "https://graph.facebook.com/v19.0/me/accounts",
             params={"access_token": token, "fields": "instagram_business_account"},
@@ -441,10 +450,10 @@ class SocialMediaManager:
         if not ig_account_id:
             return {
                 "success": False,
-                "error": "No encontre cuenta de Instagram Business vinculada a tus Pages de Facebook",
+                "error": "I couldn't find an Instagram Business account linked to your Facebook Pages",
             }
 
-        # Crear container de media
+        # Create media container
         container_res = await self._http.post(
             f"https://graph.facebook.com/v19.0/{ig_account_id}/media",
             params={"access_token": token},
@@ -455,7 +464,7 @@ class SocialMediaManager:
 
         container_id = container_res.json().get("id")
 
-        # Publicar el container
+        # Publish the container
         publish_res = await self._http.post(
             f"https://graph.facebook.com/v19.0/{ig_account_id}/media_publish",
             params={"access_token": token},
@@ -465,27 +474,27 @@ class SocialMediaManager:
             return {
                 "success": True,
                 "post_id": publish_res.json().get("id"),
-                "message": "Publicado en Instagram",
+                "message": "Posted to Instagram",
             }
         return {"success": False, "error": publish_res.text[:200]}
 
     async def _post_tiktok(self, token: str, content: str) -> dict:
-        """Publica en TikTok (solo texto/descripcion — video requiere archivo)."""
-        # TikTok requiere video para publicar. Por ahora retornamos instrucciones.
+        """Posts to TikTok (text/description only — video requires a file)."""
+        # TikTok requires a video to post. For now we return instructions.
         return {
             "success": False,
-            "error": "TikTok requiere un archivo de video para publicar. Esta funcion estara disponible pronto.",
+            "error": "TikTok requires a video file to post. This feature will be available soon.",
         }
 
     async def _post_linkedin(self, token: str, content: str, image_url: str | None) -> dict:
-        """Publica en LinkedIn."""
-        # Obtener el ID del usuario
+        """Posts to LinkedIn."""
+        # Get the user's ID
         me_res = await self._http.get(
             "https://api.linkedin.com/v2/userinfo",
             headers={"Authorization": f"Bearer {token}"},
         )
         if me_res.status_code != 200:
-            return {"success": False, "error": "No pude obtener tu perfil de LinkedIn"}
+            return {"success": False, "error": "I couldn't get your LinkedIn profile"}
 
         person_id = me_res.json().get("sub", "")
         author = f"urn:li:person:{person_id}"
@@ -525,5 +534,5 @@ class SocialMediaManager:
 
         if res.status_code in (200, 201):
             post_id = res.headers.get("x-restli-id", "")
-            return {"success": True, "post_id": post_id, "message": "Publicado en LinkedIn"}
+            return {"success": True, "post_id": post_id, "message": "Posted to LinkedIn"}
         return {"success": False, "error": res.text[:200]}

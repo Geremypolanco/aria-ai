@@ -1,16 +1,16 @@
 """
-crawl_engine.py — Motor de Web Intelligence para ARIA AI.
+crawl_engine.py — Web Intelligence engine for ARIA AI.
 
-Integra Crawl4AI y Firecrawl para capacidades avanzadas de:
-  - Scraping asíncrono y estructurado (Crawl4AI)
-  - Conversión de webs a datos limpios (Firecrawl)
-  - Análisis de competidores con extracción de contenido
-  - Mapeo de sitios para auditorías SEO
-  - Extracción de datos para Revenue Attribution
+Integrates Crawl4AI and Firecrawl for advanced capabilities:
+  - Asynchronous, structured scraping (Crawl4AI)
+  - Converting websites into clean data (Firecrawl)
+  - Competitor analysis with content extraction
+  - Site mapping for SEO audits
+  - Data extraction for Revenue Attribution
 
-Complementa web_tools.py con capacidades de scraping de nivel profesional.
+Complements web_tools.py with professional-grade scraping capabilities.
 
-Referencia:
+Reference:
   - Crawl4AI: https://github.com/unclecode/crawl4ai
   - Firecrawl: https://github.com/firecrawl/firecrawl
 """
@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger("aria.crawl_engine")
 
-# ── Crawl4AI Import con fallback ─────────────────────────────────────────────
+# ── Crawl4AI import with fallback ────────────────────────────────────────────
 try:
     from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
     from crawl4ai.extraction_strategy import (  # noqa: F401
@@ -33,39 +33,39 @@ try:
     )
 
     CRAWL4AI_AVAILABLE = True
-    logger.info("[Crawl4AI] Librería cargada correctamente.")
+    logger.info("[Crawl4AI] Library loaded successfully.")
 except ImportError:
     CRAWL4AI_AVAILABLE = False
     logger.warning(
-        "[Crawl4AI] crawl4ai no instalado. "
-        "Usando httpx como fallback. "
-        "Instala con: pip install crawl4ai"
+        "[Crawl4AI] crawl4ai not installed. "
+        "Using httpx as a fallback. "
+        "Install with: pip install crawl4ai"
     )
     AsyncWebCrawler = None  # type: ignore[assignment,misc]
     BrowserConfig = None  # type: ignore[assignment,misc]
     CrawlerRunConfig = None  # type: ignore[assignment,misc]
 
-# ── Firecrawl Import con fallback ────────────────────────────────────────────
+# ── Firecrawl import with fallback ───────────────────────────────────────────
 try:
     from firecrawl import FirecrawlApp
 
     FIRECRAWL_AVAILABLE = True
-    logger.info("[Firecrawl] Librería cargada correctamente.")
+    logger.info("[Firecrawl] Library loaded successfully.")
 except ImportError:
     FIRECRAWL_AVAILABLE = False
     logger.warning(
-        "[Firecrawl] firecrawl-py no instalado. "
-        "Usando httpx como fallback. "
-        "Instala con: pip install firecrawl-py"
+        "[Firecrawl] firecrawl-py not installed. "
+        "Using httpx as a fallback. "
+        "Install with: pip install firecrawl-py"
     )
     FirecrawlApp = None  # type: ignore[assignment,misc]
 
 
-# ── Modelos de Datos ─────────────────────────────────────────────────────────
+# ── Data Models ───────────────────────────────────────────────────────────────
 
 
 class CrawlResult:
-    """Resultado estandarizado de un crawl."""
+    """Standardized result of a crawl."""
 
     def __init__(
         self,
@@ -102,18 +102,18 @@ class CrawlResult:
         }
 
 
-# ── Motor de Crawling con Crawl4AI ───────────────────────────────────────────
+# ── Crawling Engine with Crawl4AI ────────────────────────────────────────────
 
 
 class Crawl4AIEngine:
     """
-    Motor de scraping asíncrono con Crawl4AI.
+    Asynchronous scraping engine with Crawl4AI.
 
-    Ideal para:
-    - Análisis de competidores (extrae contenido limpio)
-    - Scraping estructurado con extracción LLM
-    - Extracción de datos de páginas dinámicas (JS)
-    - Procesamiento en batch de múltiples URLs
+    Ideal for:
+    - Competitor analysis (extracts clean content)
+    - Structured scraping with LLM extraction
+    - Data extraction from dynamic (JS) pages
+    - Batch processing of multiple URLs
     """
 
     async def crawl_url(
@@ -123,15 +123,15 @@ class Crawl4AIEngine:
         use_llm_extraction: bool = False,
     ) -> CrawlResult:
         """
-        Crawlea una URL y extrae contenido limpio.
+        Crawls a URL and extracts clean content.
 
         Args:
-            url: URL a crawlear
-            extract_schema: Schema CSS para extracción estructurada
-            use_llm_extraction: Si usar LLM para extracción inteligente
+            url: URL to crawl
+            extract_schema: CSS schema for structured extraction
+            use_llm_extraction: Whether to use an LLM for smart extraction
 
         Returns:
-            CrawlResult con markdown, texto y metadata
+            CrawlResult with markdown, text, and metadata
         """
         if not CRAWL4AI_AVAILABLE:
             return await self._httpx_fallback(url)
@@ -164,11 +164,11 @@ class Crawl4AIEngine:
                         success=True,
                         source="crawl4ai",
                     )
-                logger.warning("[Crawl4AI] Crawl fallido para %s: %s", url, result.error_message)
+                logger.warning("[Crawl4AI] Crawl failed for %s: %s", url, result.error_message)
                 return await self._httpx_fallback(url)
 
         except Exception as exc:
-            logger.error("[Crawl4AI] Error en crawl de %s: %s", url, exc)
+            logger.error("[Crawl4AI] Error crawling %s: %s", url, exc)
             return await self._httpx_fallback(url)
 
     async def crawl_competitor(
@@ -178,15 +178,15 @@ class Crawl4AIEngine:
         extract_features: bool = True,
     ) -> dict[str, Any]:
         """
-        Analiza un sitio de competidor extrayendo información clave.
+        Analyzes a competitor site, extracting key information.
 
         Args:
-            competitor_url: URL del competidor
-            extract_pricing: Si extraer información de precios
-            extract_features: Si extraer características del producto
+            competitor_url: Competitor URL
+            extract_pricing: Whether to extract pricing information
+            extract_features: Whether to extract product features
 
         Returns:
-            Análisis estructurado del competidor
+            Structured analysis of the competitor
         """
         result = await self.crawl_url(competitor_url)
 
@@ -199,10 +199,13 @@ class Crawl4AIEngine:
         }
 
         if result.success and result.markdown:
-            # Extraer información clave del contenido
+            # Extract key information from the content
             content_lower = result.markdown.lower()
 
-            # Detectar precios
+            # Detect prices
+            # NOTE: pattern intentionally matches both English and Spanish
+            # unit suffixes (mo/month/yr/year vs. mes/año) since scraped
+            # pages may be in either language — do not translate the pattern.
             if extract_pricing:
                 import re
 
@@ -211,7 +214,10 @@ class Crawl4AIEngine:
                 )
                 analysis["detected_prices"] = prices[:10]
 
-            # Detectar características
+            # Detect features
+            # NOTE: keyword list intentionally mixes English and Spanish
+            # terms since scraped pages may be in either language — do not
+            # translate the keyword values themselves.
             if extract_features:
                 features = []
                 for line in result.markdown.split("\n"):
@@ -223,7 +229,7 @@ class Crawl4AIEngine:
                             features.append(line.strip())
                 analysis["detected_features"] = features[:10]
 
-            # Detectar tecnologías
+            # Detect technologies
             tech_keywords = ["react", "vue", "angular", "shopify", "wordpress", "stripe", "paypal"]
             analysis["detected_tech"] = [tech for tech in tech_keywords if tech in content_lower]
 
@@ -235,14 +241,14 @@ class Crawl4AIEngine:
         max_concurrent: int = 5,
     ) -> list[CrawlResult]:
         """
-        Crawlea múltiples URLs en paralelo.
+        Crawls multiple URLs in parallel.
 
         Args:
-            urls: Lista de URLs a crawlear
-            max_concurrent: Máximo de crawls simultáneos
+            urls: List of URLs to crawl
+            max_concurrent: Maximum simultaneous crawls
 
         Returns:
-            Lista de CrawlResults
+            List of CrawlResults
         """
         semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -257,7 +263,7 @@ class Crawl4AIEngine:
         return list(results)
 
     async def _httpx_fallback(self, url: str) -> CrawlResult:
-        """Fallback usando httpx cuando Crawl4AI no está disponible."""
+        """Fallback using httpx when Crawl4AI is not available."""
         try:
             import httpx
             from bs4 import BeautifulSoup
@@ -270,7 +276,7 @@ class Crawl4AIEngine:
                 response.raise_for_status()
 
                 soup = BeautifulSoup(response.text, "html.parser")
-                # Eliminar scripts y estilos
+                # Remove scripts and styles
                 for tag in soup(["script", "style", "nav", "footer"]):
                     tag.decompose()
 
@@ -295,18 +301,18 @@ class Crawl4AIEngine:
             )
 
 
-# ── Motor de Conversión con Firecrawl ────────────────────────────────────────
+# ── Firecrawl Conversion Engine ──────────────────────────────────────────────
 
 
 class FirecrawlEngine:
     """
-    Motor de conversión web a datos con Firecrawl.
+    Web-to-data conversion engine with Firecrawl.
 
-    Ideal para:
-    - Convertir webs completas a datos estructurados
-    - Mapear sitios para auditorías SEO
-    - Analizar negocios automáticamente
-    - Extraer datos de sitios con autenticación
+    Ideal for:
+    - Converting entire websites into structured data
+    - Mapping sites for SEO audits
+    - Automatically analyzing businesses
+    - Extracting data from authenticated sites
     """
 
     def __init__(self, api_key: str = "") -> None:
@@ -316,9 +322,9 @@ class FirecrawlEngine:
         if FIRECRAWL_AVAILABLE and api_key:
             try:
                 self._app = FirecrawlApp(api_key=api_key)
-                logger.info("[Firecrawl] App inicializada correctamente")
+                logger.info("[Firecrawl] App initialized successfully")
             except Exception as exc:
-                logger.warning("[Firecrawl] Error inicializando: %s", exc)
+                logger.warning("[Firecrawl] Initialization error: %s", exc)
 
     def _is_available(self) -> bool:
         return self._app is not None
@@ -329,17 +335,17 @@ class FirecrawlEngine:
         formats: list[str] | None = None,
     ) -> CrawlResult:
         """
-        Convierte una URL a datos limpios con Firecrawl.
+        Converts a URL into clean data with Firecrawl.
 
         Args:
-            url: URL a scrapear
-            formats: Formatos de salida ['markdown', 'html', 'links', 'screenshot']
+            url: URL to scrape
+            formats: Output formats ['markdown', 'html', 'links', 'screenshot']
 
         Returns:
-            CrawlResult con el contenido estructurado
+            CrawlResult with the structured content
         """
         if not self._is_available():
-            logger.info("[Firecrawl] No disponible, usando Crawl4AI como fallback")
+            logger.info("[Firecrawl] Not available, using Crawl4AI as a fallback")
             crawl4ai = Crawl4AIEngine()
             return await crawl4ai.crawl_url(url)
 
@@ -357,12 +363,12 @@ class FirecrawlEngine:
                     success=True,
                     source="firecrawl",
                 )
-            logger.warning("[Firecrawl] Scrape fallido para %s", url)
+            logger.warning("[Firecrawl] Scrape failed for %s", url)
             crawl4ai = Crawl4AIEngine()
             return await crawl4ai.crawl_url(url)
 
         except Exception as exc:
-            logger.error("[Firecrawl] Error en scrape de %s: %s", url, exc)
+            logger.error("[Firecrawl] Error scraping %s: %s", url, exc)
             crawl4ai = Crawl4AIEngine()
             return await crawl4ai.crawl_url(url)
 
@@ -372,18 +378,18 @@ class FirecrawlEngine:
         limit: int = 50,
     ) -> dict[str, Any]:
         """
-        Mapea todas las URLs de un sitio web.
-        Útil para auditorías SEO y análisis de estructura de competidores.
+        Maps all URLs of a website.
+        Useful for SEO audits and competitor structure analysis.
 
         Args:
-            url: URL raíz del sitio
-            limit: Máximo de URLs a mapear
+            url: Site root URL
+            limit: Maximum URLs to map
 
         Returns:
-            Mapa del sitio con URLs y metadata
+            Site map with URLs and metadata
         """
         if not self._is_available():
-            # Fallback: crawlear la página principal y extraer links
+            # Fallback: crawl the main page and extract links
             crawl4ai = Crawl4AIEngine()
             result = await crawl4ai.crawl_url(url)
             return {
@@ -402,7 +408,7 @@ class FirecrawlEngine:
                 "source": "firecrawl",
             }
         except Exception as exc:
-            logger.error("[Firecrawl] Error mapeando %s: %s", url, exc)
+            logger.error("[Firecrawl] Error mapping %s: %s", url, exc)
             return {"url": url, "links": [], "error": str(exc), "source": "firecrawl"}
 
     async def crawl_site(
@@ -412,15 +418,15 @@ class FirecrawlEngine:
         include_paths: list[str] | None = None,
     ) -> list[CrawlResult]:
         """
-        Crawlea un sitio completo con Firecrawl.
+        Crawls a full site with Firecrawl.
 
         Args:
-            url: URL raíz
-            limit: Máximo de páginas
-            include_paths: Paths específicos a incluir (ej: ['/pricing', '/features'])
+            url: Root URL
+            limit: Maximum pages
+            include_paths: Specific paths to include (e.g. ['/pricing', '/features'])
 
         Returns:
-            Lista de CrawlResults para cada página
+            List of CrawlResults for each page
         """
         if not self._is_available():
             crawl4ai = Crawl4AIEngine()
@@ -446,7 +452,7 @@ class FirecrawlEngine:
             ]
 
         except Exception as exc:
-            logger.error("[Firecrawl] Error crawleando sitio %s: %s", url, exc)
+            logger.error("[Firecrawl] Error crawling site %s: %s", url, exc)
             return []
 
     async def analyze_business(
@@ -454,19 +460,19 @@ class FirecrawlEngine:
         business_url: str,
     ) -> dict[str, Any]:
         """
-        Analiza un negocio automáticamente extrayendo información clave.
-        Integra con el MarketingAgent y CFO Agent de Aria.
+        Automatically analyzes a business, extracting key information.
+        Integrates with Aria's MarketingAgent and CFO Agent.
 
         Args:
-            business_url: URL del negocio a analizar
+            business_url: URL of the business to analyze
 
         Returns:
-            Análisis completo del negocio
+            Complete business analysis
         """
-        # Scrape la página principal
+        # Scrape the main page
         main_page = await self.scrape_url(business_url)
 
-        # Intentar páginas clave
+        # Try key pages
         f"{urlparse(business_url).scheme}://{urlparse(business_url).netloc}"
 
         analysis = {
@@ -477,7 +483,7 @@ class FirecrawlEngine:
             "source": main_page.source,
         }
 
-        # Mapear sitio para estructura
+        # Map site for structure
         site_map = await self.map_site(business_url, limit=20)
         analysis["site_structure"] = {
             "total_pages": site_map.get("total_pages", 0),
@@ -487,21 +493,21 @@ class FirecrawlEngine:
         return analysis
 
 
-# ── Motor Unificado de Market Intelligence ───────────────────────────────────
+# ── Unified Market Intelligence Engine ───────────────────────────────────────
 
 
 class MarketIntelligenceEngine:
     """
-    Motor unificado de Market Intelligence para ARIA AI.
+    Unified Market Intelligence engine for ARIA AI.
 
-    Combina Crawl4AI (scraping asíncrono) y Firecrawl (conversión web a datos)
-    para proporcionar capacidades completas de análisis de mercado.
+    Combines Crawl4AI (asynchronous scraping) and Firecrawl (web-to-data conversion)
+    to provide complete market analysis capabilities.
 
-    Integra con:
-    - web_tools.py (búsqueda web existente)
-    - market_tools.py (análisis de mercado existente)
-    - MarketingAgent (análisis de tendencias)
-    - CFO Agent (análisis de competidores)
+    Integrates with:
+    - web_tools.py (existing web search)
+    - market_tools.py (existing market analysis)
+    - MarketingAgent (trend analysis)
+    - CFO Agent (competitor analysis)
     """
 
     def __init__(self, firecrawl_api_key: str = "") -> None:
@@ -514,18 +520,18 @@ class MarketIntelligenceEngine:
         niche: str = "",
     ) -> dict[str, Any]:
         """
-        Analiza múltiples competidores en paralelo.
+        Analyzes multiple competitors in parallel.
 
         Args:
-            competitor_urls: Lista de URLs de competidores
-            niche: Nicho de mercado para contexto
+            competitor_urls: List of competitor URLs
+            niche: Market niche for context
 
         Returns:
-            Análisis comparativo de competidores
+            Comparative competitor analysis
         """
-        logger.info("[MarketIntelligence] Analizando %d competidores", len(competitor_urls))
+        logger.info("[MarketIntelligence] Analyzing %d competitors", len(competitor_urls))
 
-        # Crawlear todos en paralelo con Crawl4AI
+        # Crawl all in parallel with Crawl4AI
         tasks = [self.crawl4ai.crawl_competitor(url) for url in competitor_urls]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -550,16 +556,16 @@ class MarketIntelligenceEngine:
         data_type: str = "general",
     ) -> dict[str, Any]:
         """
-        Extrae datos de mercado de una URL específica.
+        Extracts market data from a specific URL.
 
         Args:
-            url: URL a analizar
-            data_type: Tipo de datos ('pricing', 'features', 'reviews', 'general')
+            url: URL to analyze
+            data_type: Data type ('pricing', 'features', 'reviews', 'general')
 
         Returns:
-            Datos estructurados del mercado
+            Structured market data
         """
-        # Usar Firecrawl si está disponible (mejor calidad), sino Crawl4AI
+        # Use Firecrawl if available (better quality), otherwise Crawl4AI
         if self.firecrawl._is_available():
             result = await self.firecrawl.scrape_url(url)
         else:
@@ -578,18 +584,18 @@ class MarketIntelligenceEngine:
         url: str,
     ) -> dict[str, Any]:
         """
-        Auditoría SEO básica de un sitio web.
+        Basic SEO audit of a website.
 
         Args:
-            url: URL del sitio a auditar
+            url: URL of the site to audit
 
         Returns:
-            Reporte SEO con estructura, links y metadata
+            SEO report with structure, links, and metadata
         """
-        # Mapear sitio con Firecrawl
+        # Map site with Firecrawl
         site_map = await self.firecrawl.map_site(url, limit=100)
 
-        # Crawlear página principal para metadata
+        # Crawl main page for metadata
         main_page = await self.crawl4ai.crawl_url(url)
 
         return {
@@ -612,7 +618,7 @@ _engine_instance: MarketIntelligenceEngine | None = None
 
 
 def get_market_intelligence_engine() -> MarketIntelligenceEngine:
-    """Retorna el singleton del motor de Market Intelligence."""
+    """Returns the Market Intelligence engine singleton."""
     global _engine_instance
     if _engine_instance is None:
         import os

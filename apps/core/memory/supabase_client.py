@@ -1,6 +1,6 @@
 """
-Cliente Supabase tipado para Aria AI.
-Gestiona toda la persistencia de datos del sistema.
+Typed Supabase client for Aria AI.
+Manages all of the system's data persistence.
 """
 
 from __future__ import annotations
@@ -17,6 +17,16 @@ class AriaDatabase:
 
     def __init__(self):
         self._client: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+
+    def table(self, name: str):
+        """Passthrough to the underlying Supabase client's query builder.
+
+        Several callers (world_state.py, episodic_memory.py) do
+        `db.table(...).upsert(...)/.insert(...)` for tables this class has no
+        dedicated method for — without this, that's an AttributeError on
+        every call, silently swallowed by their own broad except blocks.
+        """
+        return self._client.table(name)
 
     # ── LOGS ──────────────────────────────────────────────
 
@@ -63,7 +73,7 @@ class AriaDatabase:
         except Exception:
             return []
 
-    # ── TAREAS ────────────────────────────────────────────
+    # ── TASKS ─────────────────────────────────────────────
 
     async def create_task(
         self,
@@ -90,7 +100,7 @@ class AriaDatabase:
             )
             return result.data[0] if result.data else None
         except Exception as e:
-            await self.log_error(f"Error creando tarea: {e}")
+            await self.log_error(f"Error creating task: {e}")
             return None
 
     async def update_task(self, task_id: str, updates: dict) -> bool:
@@ -98,7 +108,7 @@ class AriaDatabase:
             self._client.table("tasks").update(updates).eq("id", task_id).execute()
             return True
         except Exception as e:
-            await self.log_error(f"Error actualizando tarea {task_id}: {e}")
+            await self.log_error(f"Error updating task {task_id}: {e}")
             return False
 
     async def get_pending_tasks(self, limit: int = 20) -> list:
@@ -130,7 +140,7 @@ class AriaDatabase:
         except Exception:
             return []
 
-    # ── APROBACIONES ──────────────────────────────────────
+    # ── APPROVALS ─────────────────────────────────────────
 
     async def create_approval(
         self,
@@ -159,7 +169,7 @@ class AriaDatabase:
             )
             return result.data[0] if result.data else None
         except Exception as e:
-            await self.log_error(f"Error creando aprobación: {e}")
+            await self.log_error(f"Error creating approval: {e}")
             return None
 
     async def get_pending_approvals(self, limit: int = 10) -> list:
@@ -177,7 +187,7 @@ class AriaDatabase:
             return []
 
     async def resolve_approval(self, approval_id: str, decision: str) -> bool:
-        """Aprueba o rechaza una acción. decision: 'approved' | 'rejected'"""
+        """Approves or rejects an action. decision: 'approved' | 'rejected'"""
         try:
             from datetime import datetime
 
@@ -186,10 +196,10 @@ class AriaDatabase:
             ).eq("id", approval_id).execute()
             return True
         except Exception as e:
-            await self.log_error(f"Error resolviendo aprobación {approval_id}: {e}")
+            await self.log_error(f"Error resolving approval {approval_id}: {e}")
             return False
 
-    # ── INGRESOS ──────────────────────────────────────────
+    # ── REVENUE ────────────────────────────────────────────
 
     async def record_revenue(
         self,
@@ -220,7 +230,7 @@ class AriaDatabase:
             )
             return result.data[0] if result.data else None
         except Exception as e:
-            await self.log_error(f"Error registrando revenue: {e}")
+            await self.log_error(f"Error recording revenue: {e}")
             return None
 
     async def get_total_revenue(self) -> float:
@@ -254,7 +264,7 @@ class AriaDatabase:
         except Exception:
             return 0.0
 
-    # ── PRODUCTOS ─────────────────────────────────────────
+    # ── PRODUCTS ──────────────────────────────────────────
 
     async def create_product(
         self,
@@ -288,7 +298,7 @@ class AriaDatabase:
             )
             return result.data[0] if result.data else None
         except Exception as e:
-            await self.log_error(f"Error creando producto: {e}")
+            await self.log_error(f"Error creating product: {e}")
             return None
 
     async def get_active_products(self, limit: int = 20) -> list:
@@ -341,7 +351,7 @@ class AriaDatabase:
             )
             return result.data[0] if result.data else None
         except Exception as e:
-            await self.log_error(f"Error guardando market intelligence: {e}")
+            await self.log_error(f"Error saving market intelligence: {e}")
             return None
 
     async def get_top_niches(self, limit: int = 5) -> list:
@@ -357,7 +367,7 @@ class AriaDatabase:
         except Exception:
             return []
 
-    # ── CICLOS AUTÓNOMOS ──────────────────────────────────
+    # ── AUTONOMOUS CYCLES ──────────────────────────────────
 
     async def save_cycle(
         self, cycle_number: int, missions: dict, revenue_gen: float = 0.0, duration_ms: int = 0
@@ -381,7 +391,7 @@ class AriaDatabase:
             )
             return result.data[0] if result.data else None
         except Exception as e:
-            await self.log_error(f"Error guardando ciclo: {e}")
+            await self.log_error(f"Error saving cycle: {e}")
             return None
 
     async def get_cycle_stats(self) -> dict:
@@ -403,7 +413,7 @@ class AriaDatabase:
         except Exception:
             return {"total_cycles": 0, "avg_duration_ms": 0, "total_revenue": 0.0}
 
-    # ── CAMPAÑAS DE MARKETING ─────────────────────────────
+    # ── MARKETING CAMPAIGNS ────────────────────────────────
 
     async def save_marketing_campaign(
         self,
@@ -437,7 +447,7 @@ class AriaDatabase:
             )
             return result.data[0] if result.data else None
         except Exception as e:
-            await self.log_error(f"Error guardando campaña: {e}")
+            await self.log_error(f"Error saving campaign: {e}")
             return None
 
 
@@ -453,5 +463,5 @@ def get_db() -> AriaDatabase:
     return _db_instance
 
 
-# Alias para compatibilidad con código que busca get_supabase
+# Alias for compatibility with code that looks up get_supabase
 get_supabase = get_db

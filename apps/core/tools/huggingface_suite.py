@@ -1,7 +1,7 @@
 """
-huggingface_suite.py — Suite completa de HuggingFace Inference API para ARIA AI.
+huggingface_suite.py — Full HuggingFace Inference API suite for ARIA AI.
 
-Cubre TODOS los task groups de huggingface.co/tasks:
+Covers ALL task groups from huggingface.co/tasks:
 
 MULTIMODAL:
   - Visual Question Answering (ViLT, BLIP)
@@ -15,21 +15,21 @@ MULTIMODAL:
   - Image Feature Extraction (DINO, ViT)
 
 NLP:
-  - Traducción automática (Helsinki-NLP — 1000+ pares)
-  - Resumen automático (BART, Pegasus, mT5 multilingüe)
-  - Análisis de sentimiento (DistilBERT multilingual)
-  - Clasificación zero-shot (BART-MNLI)
-  - NER — Reconocimiento de entidades (BERT-NER)
+  - Machine translation (Helsinki-NLP — 1000+ pairs)
+  - Automatic summarization (BART, Pegasus, multilingual mT5)
+  - Sentiment analysis (DistilBERT multilingual)
+  - Zero-shot classification (BART-MNLI)
+  - NER — Named entity recognition (BERT-NER)
   - Question Answering (RoBERTa-SQuAD2)
-  - Embeddings de texto (sentence-transformers)
+  - Text embeddings (sentence-transformers)
   - Fill-Mask (BERT)
   - Text Ranking / Reranking (cross-encoder)
   - Table Question Answering (TAPAS)
   - Structured Output via response_format (Qwen 2.5)
-  - Detección de idioma (XLM-RoBERTa — 176 idiomas)
+  - Language detection (XLM-RoBERTa — 176 languages)
 
 COMPUTER VISION:
-  - Generación de imágenes (FLUX.1-schnell, SDXL, SD 3.5)
+  - Image generation (FLUX.1-schnell, SDXL, SD 3.5)
   - Image Captioning (BLIP-2, GIT)
   - Object Detection (DETR, YOLO)
   - Image Classification (ViT, EfficientNet)
@@ -37,13 +37,13 @@ COMPUTER VISION:
 
 AUDIO:
   - Speech-to-Text / ASR (Whisper large-v3)
-  - Text-to-Speech (Bark — voces realistas)
+  - Text-to-Speech (Bark — realistic voices)
   - Music Generation (MusicGen — text-to-music)
   - Audio Classification / Emotion (wav2vec2)
   - Audio Enhancement (speechbrain mtl-mimic-voicebank)
 
 AGENTS:
-  - Search Agent estilo smolagents (plan → search → reason → synthesize)
+  - smolagents-style Search Agent (plan → search → reason → synthesize)
   - Code Generation (Qwen2.5-Coder-32B)
 """
 
@@ -51,13 +51,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
+import re
 from typing import Any
 
 import httpx
 
 from apps.core.config import settings
+from apps.core.tools.web_tools import _assert_public_url
 
 logger = logging.getLogger("aria.huggingface_suite")
 HF_API = "https://api-inference.huggingface.co/models"
@@ -65,7 +68,7 @@ HF_ROUTER = "https://router.huggingface.co"
 
 
 class HuggingFaceSuite:
-    """Suite completa de capacidades de HuggingFace para ARIA AI."""
+    """Full suite of HuggingFace capabilities for ARIA AI."""
 
     def __init__(self) -> None:
         self._token = settings.hf_key  # HF_TOKEN | HF_API_KEY | HUGGING_FACE_TOKEN
@@ -89,7 +92,7 @@ class HuggingFaceSuite:
         provider: str = "",
         timeout: float = 120.0,
     ) -> Any:
-        """Llamada genérica a HF Inference API con retry en cold start."""
+        """Generic call to the HF Inference API with retry on cold start."""
         if not self._ok():
             return None
 
@@ -130,7 +133,7 @@ class HuggingFaceSuite:
         return None
 
     # ══════════════════════════════════════════════════════════════
-    # 1. GENERACIÓN DE IMÁGENES — FLUX.1, SDXL, SD 3.5
+    # 1. IMAGE GENERATION — FLUX.1, SDXL, SD 3.5
     # ══════════════════════════════════════════════════════════════
 
     async def generate_image(
@@ -145,15 +148,15 @@ class HuggingFaceSuite:
         seed: int = -1,
     ) -> dict[str, Any]:
         """
-        Genera imagen con IA. Modelos disponibles:
-        - black-forest-labs/FLUX.1-schnell (rápido, alta calidad)
-        - black-forest-labs/FLUX.1-dev (mayor calidad, más lento)
+        Generates an image with AI. Available models:
+        - black-forest-labs/FLUX.1-schnell (fast, high quality)
+        - black-forest-labs/FLUX.1-dev (higher quality, slower)
         - stabilityai/stable-diffusion-xl-base-1.0 (SDXL)
         - stabilityai/stable-diffusion-3.5-large (SD 3.5)
         - stabilityai/stable-diffusion-2-1 (SD 2.1)
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             payload: dict[str, Any] = {
                 "inputs": prompt,
@@ -179,7 +182,7 @@ class HuggingFaceSuite:
                     "prompt": prompt,
                     "size": f"{width}x{height}",
                 }
-            return {"success": False, "error": "No se pudo generar la imagen"}
+            return {"success": False, "error": "Could not generate the image"}
         except Exception as exc:
             logger.error("[HF] generate_image error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -187,7 +190,7 @@ class HuggingFaceSuite:
     async def generate_product_image(
         self, product_name: str, niche: str, style: str = "professional product photography"
     ) -> dict[str, Any]:
-        """Genera imagen de producto para marketing/ecommerce."""
+        """Generates a product image for marketing/ecommerce."""
         prompt = (
             f"{style}, {product_name} for {niche} market, "
             "high quality, clean background, commercial photography, "
@@ -198,7 +201,7 @@ class HuggingFaceSuite:
     async def generate_social_media_image(
         self, text: str, niche: str, platform: str = "instagram"
     ) -> dict[str, Any]:
-        """Genera imagen optimizada para redes sociales."""
+        """Generates an image optimized for social media."""
         size_map = {
             "instagram": (1024, 1024),
             "twitter": (1200, 628),
@@ -214,7 +217,7 @@ class HuggingFaceSuite:
         return await self.generate_image(prompt, width=w, height=h)
 
     async def generate_blog_thumbnail(self, title: str, niche: str) -> dict[str, Any]:
-        """Genera thumbnail para artículo de blog."""
+        """Generates a thumbnail for a blog post."""
         prompt = (
             f"Blog post thumbnail, {niche}, concept: '{title[:60]}', "
             "professional design, text-ready space, 16:9 ratio, "
@@ -223,17 +226,17 @@ class HuggingFaceSuite:
         return await self.generate_image(prompt, width=1200, height=628)
 
     # ══════════════════════════════════════════════════════════════
-    # 2. TRADUCCIÓN — Helsinki-NLP (1000+ pares de idiomas)
+    # 2. TRANSLATION — Helsinki-NLP (1000+ language pairs)
     # ══════════════════════════════════════════════════════════════
 
     async def translate(self, text: str, source: str, target: str) -> dict[str, Any]:
         """
-        Traduce texto usando modelos Helsinki-NLP.
-        Soporta pares: es-en, en-es, fr-en, de-en, ja-en, zh-en, ar-en, pt-en,
-        ru-en, it-en, ko-en, nl-en, sv-en, pl-en, y muchos más.
+        Translates text using Helsinki-NLP models.
+        Supports pairs: es-en, en-es, fr-en, de-en, ja-en, zh-en, ar-en, pt-en,
+        ru-en, it-en, ko-en, nl-en, sv-en, pl-en, and many more.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             model = f"Helsinki-NLP/opus-mt-{source}-{target}"
             result = await self._call(model, {"inputs": text})
@@ -245,21 +248,21 @@ class HuggingFaceSuite:
                     "target": target,
                     "model": model,
                 }
-            # Fallback: try multilingual model
-            result2 = await self._call("Helsinki-NLP/opus-mt-tc-big-en-es", {"inputs": text})
-            if result2:
-                return {
-                    "success": True,
-                    "translated": result2[0].get("translation_text", ""),
-                    "source": source,
-                    "target": target,
-                }
-            return {"success": False, "error": "Traducción no disponible para este par de idiomas"}
+            # NOTE: a prior "fallback" here unconditionally called the
+            # fixed en->es model Helsinki-NLP/opus-mt-tc-big-en-es for ANY
+            # unsupported pair (despite being labeled "multilingual model"
+            # in a comment — it isn't) and returned that mistranslated
+            # output tagged with the original source/target and
+            # "success": True, with no isinstance guard on the result
+            # shape. Removed: there's no safe universal fallback without
+            # knowing the actual target language, so report unavailability
+            # explicitly instead of returning silently-wrong text.
+            return {"success": False, "error": "Translation not available for this language pair"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     async def translate_to_many(self, text: str, source: str, targets: list[str]) -> dict[str, str]:
-        """Traduce texto a múltiples idiomas simultáneamente."""
+        """Translates text to multiple languages simultaneously."""
         tasks = [self.translate(text, source, t) for t in targets]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return {
@@ -270,21 +273,24 @@ class HuggingFaceSuite:
     async def translate_product_listing(
         self, listing: dict, source: str = "es", targets: list[str] | None = None
     ) -> dict[str, Any]:
-        """Traduce un listing de producto completo a múltiples idiomas."""
+        """Translates a full product listing into multiple languages."""
         if not targets:
             targets = ["en", "fr", "de", "pt", "it", "ja", "zh"]
         results: dict[str, dict] = {}
+        any_success = False
         for lang in targets:
             name = await self.translate(listing.get("name", ""), source, lang)
             desc = await self.translate(listing.get("description", ""), source, lang)
+            if name.get("success") or desc.get("success"):
+                any_success = True
             results[lang] = {
                 "name": name.get("translated", ""),
                 "description": desc.get("translated", ""),
             }
-        return {"success": True, "listings": results}
+        return {"success": any_success, "listings": results}
 
     # ══════════════════════════════════════════════════════════════
-    # 3. RESUMEN AUTOMÁTICO — BART, Pegasus, mT5
+    # 3. AUTOMATIC SUMMARIZATION — BART, Pegasus, mT5
     # ══════════════════════════════════════════════════════════════
 
     async def summarize(
@@ -296,14 +302,14 @@ class HuggingFaceSuite:
         language: str = "en",
     ) -> dict[str, Any]:
         """
-        Genera resumen de texto. Modelos disponibles:
-        - facebook/bart-large-cnn (inglés, excelente para noticias)
-        - google/pegasus-xsum (inglés, resúmenes muy cortos)
-        - csebuetnlp/mT5_multilingual_XLSum (multilingüe)
-        - philschmid/bart-large-cnn-samsum (conversaciones)
+        Generates a text summary. Available models:
+        - facebook/bart-large-cnn (English, excellent for news)
+        - google/pegasus-xsum (English, very short summaries)
+        - csebuetnlp/mT5_multilingual_XLSum (multilingual)
+        - philschmid/bart-large-cnn-samsum (conversations)
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             if language != "en":
                 model = "csebuetnlp/mT5_multilingual_XLSum"
@@ -325,12 +331,12 @@ class HuggingFaceSuite:
                     "original_length": len(text),
                     "model": model,
                 }
-            return {"success": False, "error": "Sin respuesta del modelo de resumen"}
+            return {"success": False, "error": "No response from the summarization model"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     async def summarize_articles(self, articles: list[str], language: str = "en") -> list[str]:
-        """Resume múltiples artículos en paralelo."""
+        """Summarizes multiple articles in parallel."""
         tasks = [self.summarize(a, language=language) for a in articles]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return [
@@ -339,7 +345,7 @@ class HuggingFaceSuite:
         ]
 
     # ══════════════════════════════════════════════════════════════
-    # 4. ANÁLISIS DE SENTIMIENTO
+    # 4. SENTIMENT ANALYSIS
     # ══════════════════════════════════════════════════════════════
 
     async def analyze_sentiment(
@@ -348,13 +354,13 @@ class HuggingFaceSuite:
         multilingual: bool = True,
     ) -> dict[str, Any]:
         """
-        Análisis de sentimiento. Modelos:
-        - cardiffnlp/twitter-roberta-base-sentiment (inglés, tweets)
-        - lxyuan/distilbert-base-multilingual-cased-sentiments-student (multilingüe)
-        - nlptown/bert-base-multilingual-uncased-sentiment (1-5 estrellas)
+        Sentiment analysis. Models:
+        - cardiffnlp/twitter-roberta-base-sentiment (English, tweets)
+        - lxyuan/distilbert-base-multilingual-cased-sentiments-student (multilingual)
+        - nlptown/bert-base-multilingual-uncased-sentiment (1-5 stars)
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             model = (
                 "lxyuan/distilbert-base-multilingual-cased-sentiments-student"
@@ -375,21 +381,21 @@ class HuggingFaceSuite:
                     "confidence": round(best.get("score", 0), 3),
                     "all_scores": {s.get("label", ""): round(s.get("score", 0), 3) for s in scores},
                 }
-            return {"success": False, "error": "Sin respuesta del modelo"}
+            return {"success": False, "error": "No response from the model"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     async def analyze_sentiment_batch(self, texts: list[str]) -> list[dict]:
-        """Analiza sentimiento de múltiples textos en paralelo."""
+        """Analyzes sentiment of multiple texts in parallel."""
         tasks = [self.analyze_sentiment(t) for t in texts[:20]]
         return await asyncio.gather(*tasks, return_exceptions=True)
 
     async def analyze_market_sentiment(self, niche: str, texts: list[str]) -> dict[str, Any]:
-        """Analiza el sentimiento del mercado sobre un nicho."""
+        """Analyzes market sentiment about a niche."""
         results = await self.analyze_sentiment_batch(texts)
         valid = [r for r in results if isinstance(r, dict) and r.get("success")]
         if not valid:
-            return {"success": False, "error": "Sin análisis disponible"}
+            return {"success": False, "error": "No analysis available"}
         pos = sum(1 for r in valid if r.get("sentiment") == "positivo")
         neg = sum(1 for r in valid if r.get("sentiment") == "negativo")
         neu = sum(1 for r in valid if r.get("sentiment") == "neutro")
@@ -405,7 +411,7 @@ class HuggingFaceSuite:
         }
 
     # ══════════════════════════════════════════════════════════════
-    # 5. CLASIFICACIÓN ZERO-SHOT — Sin entrenamiento previo
+    # 5. ZERO-SHOT CLASSIFICATION — No prior training needed
     # ══════════════════════════════════════════════════════════════
 
     async def classify_zero_shot(
@@ -416,11 +422,11 @@ class HuggingFaceSuite:
         model: str = "facebook/bart-large-mnli",
     ) -> dict[str, Any]:
         """
-        Clasifica texto en CUALQUIER categoría sin entrenamiento.
-        Modelos: facebook/bart-large-mnli, cross-encoder/nli-deberta-v3-large
+        Classifies text into ANY category with no training required.
+        Models: facebook/bart-large-mnli, cross-encoder/nli-deberta-v3-large
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(
                 model,
@@ -441,12 +447,12 @@ class HuggingFaceSuite:
                         zip(result["labels"], [round(s, 3) for s in result["scores"]], strict=False)
                     ),
                 }
-            return {"success": False, "error": "Sin resultado de clasificación"}
+            return {"success": False, "error": "No classification result"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     async def classify_product_niche(self, product_description: str) -> dict[str, Any]:
-        """Clasifica un producto en su nicho de mercado automáticamente."""
+        """Automatically classifies a product into its market niche."""
         niches = [
             "health and wellness",
             "personal finance",
@@ -464,7 +470,7 @@ class HuggingFaceSuite:
         return await self.classify_zero_shot(product_description, niches)
 
     async def classify_content_type(self, content: str) -> dict[str, Any]:
-        """Clasifica el tipo de contenido."""
+        """Classifies the content type."""
         types = [
             "educational",
             "promotional",
@@ -476,7 +482,7 @@ class HuggingFaceSuite:
         return await self.classify_zero_shot(content, types)
 
     # ══════════════════════════════════════════════════════════════
-    # 6. RECONOCIMIENTO DE ENTIDADES NOMBRADAS (NER)
+    # 6. NAMED ENTITY RECOGNITION (NER)
     # ══════════════════════════════════════════════════════════════
 
     async def extract_entities(
@@ -485,12 +491,12 @@ class HuggingFaceSuite:
         model: str = "dslim/bert-base-NER",
     ) -> dict[str, Any]:
         """
-        Extrae entidades: personas, organizaciones, lugares, fechas, productos.
-        Modelos: dslim/bert-base-NER, Jean-Baptiste/roberta-large-ner-english,
+        Extracts entities: people, organizations, places, dates, products.
+        Models: dslim/bert-base-NER, Jean-Baptiste/roberta-large-ner-english,
                  flair/ner-english-large (multilingual: Davlan/bert-base-multilingual-cased-ner-hrl)
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, {"inputs": text[:512]})
             if result and isinstance(result, list):
@@ -507,12 +513,12 @@ class HuggingFaceSuite:
                     if word and word not in entities[entity_type]:
                         entities[entity_type].append(word)
                 return {"success": True, "entities": entities, "raw": result[:20]}
-            return {"success": False, "error": "Sin entidades detectadas"}
+            return {"success": False, "error": "No entities detected"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 7. RESPUESTA A PREGUNTAS (Question Answering)
+    # 7. QUESTION ANSWERING
     # ══════════════════════════════════════════════════════════════
 
     async def answer_question(
@@ -522,11 +528,11 @@ class HuggingFaceSuite:
         model: str = "deepset/roberta-base-squad2",
     ) -> dict[str, Any]:
         """
-        Responde preguntas basándose en un contexto dado (QA extractivo).
-        Modelos: deepset/roberta-base-squad2, deepset/deberta-v3-base-squad2
+        Answers questions based on a given context (extractive QA).
+        Models: deepset/roberta-base-squad2, deepset/deberta-v3-base-squad2
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(
                 model, {"inputs": {"question": question, "context": context[:3000]}}
@@ -539,12 +545,12 @@ class HuggingFaceSuite:
                     "start": result.get("start", 0),
                     "end": result.get("end", 0),
                 }
-            return {"success": False, "error": "Sin respuesta"}
+            return {"success": False, "error": "No answer"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 8. EMBEDDINGS DE TEXTO — Búsqueda semántica y similaridad
+    # 8. TEXT EMBEDDINGS — Semantic search and similarity
     # ══════════════════════════════════════════════════════════════
 
     async def get_embeddings(
@@ -553,13 +559,13 @@ class HuggingFaceSuite:
         model: str = "sentence-transformers/all-MiniLM-L6-v2",
     ) -> dict[str, Any]:
         """
-        Genera embeddings vectoriales para búsqueda semántica y similaridad.
-        Modelos: sentence-transformers/all-MiniLM-L6-v2 (rápido, 384 dims)
-                 sentence-transformers/all-mpnet-base-v2 (preciso, 768 dims)
-                 intfloat/multilingual-e5-large (multilingüe, 1024 dims)
+        Generates vector embeddings for semantic search and similarity.
+        Models: sentence-transformers/all-MiniLM-L6-v2 (fast, 384 dims)
+                 sentence-transformers/all-mpnet-base-v2 (accurate, 768 dims)
+                 intfloat/multilingual-e5-large (multilingual, 1024 dims)
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, {"inputs": texts})
             if result and isinstance(result, list):
@@ -569,12 +575,12 @@ class HuggingFaceSuite:
                     "model": model,
                     "dimensions": len(result[0]) if result else 0,
                 }
-            return {"success": False, "error": "Sin embeddings"}
+            return {"success": False, "error": "No embeddings"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     async def compute_similarity(self, text1: str, text2: str) -> dict[str, Any]:
-        """Calcula la similaridad semántica entre dos textos (0-1)."""
+        """Computes the semantic similarity between two texts (0-1)."""
         result = await self.get_embeddings([text1, text2])
         if not result.get("success"):
             return result
@@ -594,7 +600,7 @@ class HuggingFaceSuite:
         }
 
     async def find_most_similar(self, query: str, candidates: list[str]) -> dict[str, Any]:
-        """Encuentra el texto más similar a un query entre una lista de candidatos."""
+        """Finds the text most similar to a query among a list of candidates."""
         all_texts = [query] + candidates
         result = await self.get_embeddings(all_texts)
         if not result.get("success"):
@@ -617,7 +623,7 @@ class HuggingFaceSuite:
         }
 
     # ══════════════════════════════════════════════════════════════
-    # 9. TEXT-TO-SPEECH — Bark (voces realistas)
+    # 9. TEXT-TO-SPEECH — Bark (realistic voices)
     # ══════════════════════════════════════════════════════════════
 
     async def text_to_speech_bark(
@@ -626,13 +632,13 @@ class HuggingFaceSuite:
         voice_preset: str = "v2/es_speaker_1",
     ) -> dict[str, Any]:
         """
-        Genera audio realista con Bark.
-        Voces españolas: v2/es_speaker_0 hasta v2/es_speaker_9
-        Voces inglesas: v2/en_speaker_0 hasta v2/en_speaker_9
-        Soporta risas [laughter], sighs [sighs], música, efectos de sonido.
+        Generates realistic audio with Bark.
+        Spanish voices: v2/es_speaker_0 through v2/es_speaker_9
+        English voices: v2/en_speaker_0 through v2/en_speaker_9
+        Supports laughter [laughter], sighs [sighs], music, sound effects.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(
                 "suno/bark",
@@ -647,7 +653,7 @@ class HuggingFaceSuite:
                     "audio_b64": base64.b64encode(result).decode(),
                     "voice": voice_preset,
                 }
-            return {"success": False, "error": "Sin audio generado"}
+            return {"success": False, "error": "No audio generated"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
@@ -662,11 +668,11 @@ class HuggingFaceSuite:
         model: str = "openai/whisper-large-v3",
     ) -> dict[str, Any]:
         """
-        Transcribe audio a texto con Whisper large-v3.
-        Soporta 99 idiomas automáticamente.
+        Transcribes audio to text with Whisper large-v3.
+        Automatically supports 99 languages.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(
                 model,
@@ -681,7 +687,7 @@ class HuggingFaceSuite:
                     "language": language,
                     "model": model,
                 }
-            return {"success": False, "error": "Sin transcripción"}
+            return {"success": False, "error": "No transcription"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
@@ -696,13 +702,14 @@ class HuggingFaceSuite:
         model: str = "Salesforce/blip-image-captioning-large",
     ) -> dict[str, Any]:
         """
-        Describe el contenido de una imagen con IA.
-        Modelos: Salesforce/blip-image-captioning-large, nlpconnect/vit-gpt2-image-captioning
+        Describes the content of an image with AI.
+        Models: Salesforce/blip-image-captioning-large, nlpconnect/vit-gpt2-image-captioning
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             if image_url and not image_bytes:
+                await _assert_public_url(image_url)
                 res = await self._http.get(image_url, timeout=30.0)
                 image_bytes = res.content
 
@@ -710,12 +717,12 @@ class HuggingFaceSuite:
             if result and isinstance(result, list):
                 description = result[0].get("generated_text", "")
                 return {"success": True, "description": description, "model": model}
-            return {"success": False, "error": "Sin descripción generada"}
+            return {"success": False, "error": "No description generated"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 12. DETECCIÓN DE OBJETOS — DETR, YOLO
+    # 12. OBJECT DETECTION — DETR, YOLO
     # ══════════════════════════════════════════════════════════════
 
     async def detect_objects(
@@ -725,11 +732,11 @@ class HuggingFaceSuite:
         threshold: float = 0.7,
     ) -> dict[str, Any]:
         """
-        Detecta y localiza objetos en imágenes.
-        Modelos: facebook/detr-resnet-50, hustvl/yolos-tiny, facebook/detr-resnet-101
+        Detects and localizes objects in images.
+        Models: facebook/detr-resnet-50, hustvl/yolos-tiny, facebook/detr-resnet-101
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, image_bytes, binary=False, timeout=60.0)
             if result and isinstance(result, list):
@@ -749,12 +756,12 @@ class HuggingFaceSuite:
                     "unique_labels": labels,
                     "count": len(detected),
                 }
-            return {"success": False, "error": "Sin objetos detectados"}
+            return {"success": False, "error": "No objects detected"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 13. CLASIFICACIÓN DE IMÁGENES — ViT, EfficientNet
+    # 13. IMAGE CLASSIFICATION — ViT, EfficientNet
     # ══════════════════════════════════════════════════════════════
 
     async def classify_image(
@@ -763,11 +770,11 @@ class HuggingFaceSuite:
         model: str = "google/vit-base-patch16-224",
     ) -> dict[str, Any]:
         """
-        Clasifica imágenes en 1000 categorías de ImageNet.
-        Modelos: google/vit-base-patch16-224, microsoft/resnet-50
+        Classifies images into 1000 ImageNet categories.
+        Models: google/vit-base-patch16-224, microsoft/resnet-50
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, image_bytes, binary=False, timeout=60.0)
             if result and isinstance(result, list):
@@ -780,21 +787,21 @@ class HuggingFaceSuite:
                         for r in result[:5]
                     ],
                 }
-            return {"success": False, "error": "Sin clasificación"}
+            return {"success": False, "error": "No classification"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 14. FILL-MASK — Completar texto
+    # 14. FILL-MASK — Complete text
     # ══════════════════════════════════════════════════════════════
 
     async def fill_mask(self, text: str, model: str = "bert-base-uncased") -> dict[str, Any]:
         """
-        Completa texto con [MASK]. Útil para generar variaciones de copy.
-        Ejemplo: "The best [MASK] for digital marketing is..."
+        Completes text with [MASK]. Useful for generating copy variations.
+        Example: "The best [MASK] for digital marketing is..."
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, {"inputs": text})
             if result and isinstance(result, list):
@@ -809,18 +816,18 @@ class HuggingFaceSuite:
                         for r in result[:5]
                     ],
                 }
-            return {"success": False, "error": "Sin predicciones"}
+            return {"success": False, "error": "No predictions"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 15. DETECCIÓN DE IDIOMA
+    # 15. LANGUAGE DETECTION
     # ══════════════════════════════════════════════════════════════
 
     async def detect_language(self, text: str) -> dict[str, Any]:
-        """Detecta el idioma de un texto (176 idiomas)."""
+        """Detects the language of a text (176 languages)."""
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(
                 "papluca/xlm-roberta-base-language-detection", {"inputs": text[:512]}
@@ -835,12 +842,12 @@ class HuggingFaceSuite:
                     "language": best.get("label", ""),
                     "confidence": round(best.get("score", 0), 3),
                 }
-            return {"success": False, "error": "Sin resultado"}
+            return {"success": False, "error": "No result"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 16. CLASIFICACIÓN DE AUDIO
+    # 16. AUDIO CLASSIFICATION
     # ══════════════════════════════════════════════════════════════
 
     async def classify_audio(
@@ -849,12 +856,12 @@ class HuggingFaceSuite:
         model: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition",
     ) -> dict[str, Any]:
         """
-        Clasifica audio por emoción o tipo.
-        Modelos: ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition (emociones)
-                 MIT/ast-finetuned-audioset-10-10-0.4593 (eventos de audio)
+        Classifies audio by emotion or type.
+        Models: ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition (emotions)
+                 MIT/ast-finetuned-audioset-10-10-0.4593 (audio events)
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, audio_bytes, binary=False, timeout=60.0)
             if result and isinstance(result, list):
@@ -865,20 +872,20 @@ class HuggingFaceSuite:
                         for r in result[:5]
                     ],
                 }
-            return {"success": False, "error": "Sin clasificación de audio"}
+            return {"success": False, "error": "No audio classification"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 17. ESTIMACIÓN DE PROFUNDIDAD
+    # 17. DEPTH ESTIMATION
     # ══════════════════════════════════════════════════════════════
 
     async def estimate_depth(
         self, image_bytes: bytes, model: str = "depth-anything/Depth-Anything-V2-Small-hf"
     ) -> dict[str, Any]:
-        """Estima profundidad de una imagen — útil para análisis de producto."""
+        """Estimates the depth of an image — useful for product analysis."""
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, image_bytes, binary=True, timeout=60.0)
             if result:
@@ -887,12 +894,12 @@ class HuggingFaceSuite:
                     "depth_image_bytes": result,
                     "depth_b64": base64.b64encode(result).decode(),
                 }
-            return {"success": False, "error": "Sin resultado"}
+            return {"success": False, "error": "No result"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 18. GENERACIÓN DE CÓDIGO — Qwen2.5-Coder
+    # 18. CODE GENERATION — Qwen2.5-Coder
     # ══════════════════════════════════════════════════════════════
 
     async def generate_code(
@@ -903,11 +910,11 @@ class HuggingFaceSuite:
         max_tokens: int = 2048,
     ) -> dict[str, Any]:
         """
-        Genera código en cualquier lenguaje de programación.
-        Usa el ai_client para mayor confiabilidad con circuit breaker.
+        Generates code in any programming language.
+        Uses the ai_client for greater reliability with a circuit breaker.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
 
@@ -924,7 +931,7 @@ class HuggingFaceSuite:
                     "language": language,
                     "model": response.model,
                 }
-            return {"success": False, "error": "Sin código generado"}
+            return {"success": False, "error": "No code generated"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
@@ -940,23 +947,23 @@ class HuggingFaceSuite:
         languages: list[str] | None = None,
     ) -> dict[str, Any]:
         """
-        Genera un pack completo de contenido para un producto usando múltiples capacidades HF:
-        - Imagen del producto (FLUX.1)
-        - Imagen para redes sociales
-        - Thumbnail de blog
-        - Resumen del producto
-        - Clasificación del nicho
-        - Sentimiento del mercado
-        - Traducción a múltiples idiomas
+        Generates a complete content pack for a product using multiple HF capabilities:
+        - Product image (FLUX.1)
+        - Social media image
+        - Blog thumbnail
+        - Product summary
+        - Niche classification
+        - Market sentiment
+        - Translation to multiple languages
         """
         if not languages:
             languages = ["en", "fr", "de", "pt"]
 
-        logger.info("[HF] Creando content pack para: %s", product_name)
+        logger.info("[HF] Creating content pack for: %s", product_name)
 
         img_task = self.generate_product_image(product_name, niche)
-        social_task = self.generate_social_media_image(f"Nuevo: {product_name}", niche, "instagram")
-        thumb_task = self.generate_blog_thumbnail(f"Cómo usar {product_name}", niche)
+        social_task = self.generate_social_media_image(f"New: {product_name}", niche, "instagram")
+        thumb_task = self.generate_blog_thumbnail(f"How to use {product_name}", niche)
         summary_task = self.summarize(product_description, max_length=100, language="es")
         niche_task = self.classify_product_niche(product_description)
         sentiment_task = self.analyze_sentiment(product_description)
@@ -983,25 +990,36 @@ class HuggingFaceSuite:
             "product_name": product_name,
             "niche": niche,
             "product_image": {
+                "bytes": (
+                    img.get("image_bytes") if isinstance(img, dict) and img.get("success") else None
+                ),
                 "b64": (
-                    img.get("image_b64", "")[:100] + "..."
-                    if isinstance(img, dict) and img.get("success")
-                    else None
-                )
+                    img.get("image_b64") if isinstance(img, dict) and img.get("success") else None
+                ),
             },
             "social_image": {
-                "b64": (
-                    social.get("image_b64", "")[:100] + "..."
+                "bytes": (
+                    social.get("image_bytes")
                     if isinstance(social, dict) and social.get("success")
                     else None
-                )
+                ),
+                "b64": (
+                    social.get("image_b64")
+                    if isinstance(social, dict) and social.get("success")
+                    else None
+                ),
             },
             "blog_thumbnail": {
-                "b64": (
-                    thumb.get("image_b64", "")[:100] + "..."
+                "bytes": (
+                    thumb.get("image_bytes")
                     if isinstance(thumb, dict) and thumb.get("success")
                     else None
-                )
+                ),
+                "b64": (
+                    thumb.get("image_b64")
+                    if isinstance(thumb, dict) and thumb.get("success")
+                    else None
+                ),
             },
             "summary": summary.get("summary", "") if isinstance(summary, dict) else "",
             "niche_classification": (
@@ -1016,7 +1034,7 @@ class HuggingFaceSuite:
         }
 
     # ══════════════════════════════════════════════════════════════
-    # 19. ANÁLISIS COMPLETO DE COMPETENCIA con HF
+    # 19. FULL COMPETITOR ANALYSIS with HF
     # ══════════════════════════════════════════════════════════════
 
     # ══════════════════════════════════════════════════════════════
@@ -1030,13 +1048,13 @@ class HuggingFaceSuite:
         model: str = "dandelin/vilt-b32-finetuned-vqa",
     ) -> dict[str, Any]:
         """
-        Responde preguntas sobre el contenido de una imagen.
-        El usuario envía una foto y hace cualquier pregunta sobre ella.
-        Modelos: dandelin/vilt-b32-finetuned-vqa, Salesforce/blip-vqa-base
-        Ejemplos: "¿Cuántas personas hay?", "¿Qué color es el auto?", "¿Es de noche o de día?"
+        Answers questions about the content of an image.
+        The user sends a photo and asks any question about it.
+        Models: dandelin/vilt-b32-finetuned-vqa, Salesforce/blip-vqa-base
+        Examples: "How many people are there?", "What color is the car?", "Is it day or night?"
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             img_b64 = base64.b64encode(image_bytes).decode()
             payload = {"inputs": {"image": img_b64, "question": question}}
@@ -1053,13 +1071,13 @@ class HuggingFaceSuite:
                     ],
                     "question": question,
                 }
-            return {"success": False, "error": "Sin respuesta del modelo VQA"}
+            return {"success": False, "error": "No response from the VQA model"}
         except Exception as exc:
             logger.error("[HF] visual_question_answering error: %s", exc)
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 21. GENERACIÓN DE MÚSICA — MusicGen (Audio Course)
+    # 21. MUSIC GENERATION — MusicGen (Audio Course)
     # ══════════════════════════════════════════════════════════════
 
     async def generate_music(
@@ -1069,13 +1087,13 @@ class HuggingFaceSuite:
         model: str = "facebook/musicgen-small",
     ) -> dict[str, Any]:
         """
-        Genera música de alta calidad con MusicGen.
-        Modelos: facebook/musicgen-small (rápido), facebook/musicgen-medium (mejor calidad)
-        Duración recomendada: 10-30 segundos (limitación de la API gratuita).
-        Ejemplos: "relaxing jazz piano", "energetic electronic beat", "cinematic orchestral"
+        Generates high-quality music with MusicGen.
+        Models: facebook/musicgen-small (fast), facebook/musicgen-medium (better quality)
+        Recommended duration: 10-30 seconds (free API limitation).
+        Examples: "relaxing jazz piano", "energetic electronic beat", "cinematic orchestral"
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(
                 model,
@@ -1095,7 +1113,7 @@ class HuggingFaceSuite:
                     "model": model,
                     "duration_requested": duration,
                 }
-            return {"success": False, "error": "MusicGen no generó audio válido"}
+            return {"success": False, "error": "MusicGen did not generate valid audio"}
         except Exception as exc:
             logger.error("[HF] generate_music error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1111,13 +1129,13 @@ class HuggingFaceSuite:
         model: str = "timbrooks/instruct-pix2pix",
     ) -> dict[str, Any]:
         """
-        Transforma una imagen con instrucciones en lenguaje natural (img2img).
-        Modelo: timbrooks/instruct-pix2pix
-        Ejemplos de prompt: "convierte a estilo anime", "añade nieve al fondo",
-                            "cambia el día a noche", "haz que sea un dibujo a lápiz"
+        Transforms an image using natural-language instructions (img2img).
+        Model: timbrooks/instruct-pix2pix
+        Example prompts: "convert to anime style", "add snow to the background",
+                            "change day to night", "make it a pencil sketch"
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             img_b64 = base64.b64encode(image_bytes).decode()
             payload = {
@@ -1137,7 +1155,7 @@ class HuggingFaceSuite:
                     "prompt": prompt,
                     "model": model,
                 }
-            return {"success": False, "error": "No se pudo transformar la imagen"}
+            return {"success": False, "error": "Could not transform the image"}
         except Exception as exc:
             logger.error("[HF] image_to_image error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1153,12 +1171,12 @@ class HuggingFaceSuite:
         model: str = "openai/clip-vit-base-patch32",
     ) -> dict[str, Any]:
         """
-        Clasifica una imagen en CUALQUIER categoría sin entrenamiento previo usando CLIP.
-        Modelos: openai/clip-vit-base-patch32, openai/clip-vit-large-patch14
-        Ejemplos: ["cat","dog"], ["indoors","outdoors"], ["happy","sad","neutral"]
+        Classifies an image into ANY category with no prior training using CLIP.
+        Models: openai/clip-vit-base-patch32, openai/clip-vit-large-patch14
+        Examples: ["cat","dog"], ["indoors","outdoors"], ["happy","sad","neutral"]
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             img_b64 = base64.b64encode(image_bytes).decode()
             payload = {"inputs": {"image": img_b64, "text": candidate_labels}}
@@ -1173,7 +1191,7 @@ class HuggingFaceSuite:
                         for r in result[:5]
                     ],
                 }
-            return {"success": False, "error": "Sin resultado de clasificación CLIP"}
+            return {"success": False, "error": "No CLIP classification result"}
         except Exception as exc:
             logger.error("[HF] zero_shot_classify_image error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1189,13 +1207,13 @@ class HuggingFaceSuite:
         model: str = "impira/layoutlm-document-qa",
     ) -> dict[str, Any]:
         """
-        Extrae información de documentos escaneados, facturas y formularios.
-        Modelo: impira/layoutlm-document-qa
-        Útil para: extraer datos de facturas, preguntas sobre contratos, formularios.
-        Ejemplo: "¿Cuál es el total?", "¿A nombre de quién está la factura?"
+        Extracts information from scanned documents, invoices, and forms.
+        Model: impira/layoutlm-document-qa
+        Useful for: extracting invoice data, questions about contracts, forms.
+        Example: "What is the total?", "Who is the invoice addressed to?"
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             img_b64 = base64.b64encode(image_bytes).decode()
             result = await self._call(
@@ -1218,7 +1236,7 @@ class HuggingFaceSuite:
                     "confidence": round(result.get("score", 0), 3),
                     "question": question,
                 }
-            return {"success": False, "error": "Sin respuesta del modelo de documento"}
+            return {"success": False, "error": "No response from the document model"}
         except Exception as exc:
             logger.error("[HF] document_qa error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1235,43 +1253,64 @@ class HuggingFaceSuite:
         system: str = "",
     ) -> dict[str, Any]:
         """
-        Genera JSON estructurado garantizado usando response_format de AsyncInferenceClient.
-        Schema debe ser JSON Schema: {"type":"object","properties":{...},"required":[...]}
-        Ideal para: extraer datos estructurados, generar fichas de producto, crear templates.
+        Generates guaranteed structured JSON using AsyncInferenceClient's response_format.
+        Schema must be a JSON Schema: {"type":"object","properties":{...},"required":[...]}
+        Ideal for: extracting structured data, generating product sheets, creating templates.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             from huggingface_hub import AsyncInferenceClient
 
             client = AsyncInferenceClient(provider="hf-inference", api_key=self._token)
-            sys_msg = (
-                system
-                or "You are a structured data extraction assistant. Always respond with valid JSON following the provided schema exactly."
-            )
-            messages = [
-                {"role": "system", "content": sys_msg},
-                {"role": "user", "content": prompt},
-            ]
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    max_tokens=1024,
-                    temperature=0.1,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {"name": "structured_output", "schema": schema},
-                    },
-                ),
-                timeout=60.0,
-            )
-            content = (response.choices[0].message.content or "").strip()
             try:
-                parsed = json.loads(content)
+                sys_msg = (
+                    system
+                    or "You are a structured data extraction assistant. Always respond with valid JSON following the provided schema exactly."
+                )
+                messages = [
+                    {"role": "system", "content": sys_msg},
+                    {"role": "user", "content": prompt},
+                ]
+                response = await asyncio.wait_for(
+                    client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        max_tokens=1024,
+                        temperature=0.1,
+                        response_format={
+                            "type": "json_schema",
+                            "json_schema": {"name": "structured_output", "schema": schema},
+                        },
+                    ),
+                    timeout=60.0,
+                )
+            finally:
+                with contextlib.suppress(Exception):
+                    await client.close()
+            content = (response.choices[0].message.content or "").strip()
+            # response_format is a best-effort request — not every
+            # provider/model routed via AsyncInferenceClient honors strict
+            # JSON-schema constrained decoding, so the content can still
+            # arrive markdown-fenced or with leading/trailing prose. Strip
+            # fences and slice to the outermost matching bracket before
+            # parsing (same recoverable-extraction approach as
+            # ai_client.py's _extract_json_safe) instead of hard-failing on
+            # a payload that's actually recoverable.
+            cleaned = content
+            cleaned = re.sub(r"```(?:json)?\n?", "", cleaned).strip().rstrip("`").strip()
+            candidates = [(cleaned.find(c), c) for c in ("{", "[") if cleaned.find(c) != -1]
+            if candidates:
+                idx, start_char = min(candidates, key=lambda pair: pair[0])
+                end_char = "}" if start_char == "{" else "]"
+                end_idx = cleaned.rfind(end_char)
+                if end_idx > idx:
+                    cleaned = cleaned[idx : end_idx + 1]
+            try:
+                parsed = json.loads(cleaned)
                 return {"success": True, "data": parsed, "raw": content, "model": model}
             except json.JSONDecodeError:
-                return {"success": False, "error": f"JSON inválido: {content[:200]}"}
+                return {"success": False, "error": f"Invalid JSON: {content[:200]}"}
         except Exception as exc:
             logger.error("[HF] generate_structured error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1282,12 +1321,12 @@ class HuggingFaceSuite:
 
     async def run_search_agent(self, task: str, max_steps: int = 5) -> dict[str, Any]:
         """
-        Agente autónomo de investigación estilo smolagents: plan → search → reason → synthesize.
-        Útil para: investigación profunda, síntesis de información, respuestas compuestas.
-        Implementa el patrón ReAct (Reason + Act) del Agents Course de HuggingFace.
+        Autonomous smolagents-style research agent: plan → search → reason → synthesize.
+        Useful for: in-depth research, information synthesis, composite answers.
+        Implements the ReAct (Reason + Act) pattern from HuggingFace's Agents Course.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
             from apps.core.tools.web_tools import WebTools
@@ -1340,7 +1379,7 @@ class HuggingFaceSuite:
             answer = (
                 synth_resp.content
                 if (synth_resp and synth_resp.success)
-                else "No se pudo sintetizar la respuesta."
+                else "Could not synthesize the response."
             )
             steps_log.append({"step": "synthesize", "answer_length": len(answer)})
 
@@ -1366,43 +1405,47 @@ class HuggingFaceSuite:
         model: str = "meta-llama/Llama-3.2-11B-Vision-Instruct",
     ) -> dict[str, Any]:
         """
-        Vision-Language Model: analiza imágenes con razonamiento avanzado.
-        Más potente que VQA básico — entiende contexto, razona y explica.
-        Modelos: meta-llama/Llama-3.2-11B-Vision-Instruct (potente),
-                 HuggingFaceTB/SmolVLM-Instruct (rápido),
-                 Qwen/Qwen2.5-VL-3B-Instruct (eficiente)
+        Vision-Language Model: analyzes images with advanced reasoning.
+        More powerful than basic VQA — understands context, reasons, and explains.
+        Models: meta-llama/Llama-3.2-11B-Vision-Instruct (powerful),
+                 HuggingFaceTB/SmolVLM-Instruct (fast),
+                 Qwen/Qwen2.5-VL-3B-Instruct (efficient)
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             from huggingface_hub import AsyncInferenceClient
 
             img_b64 = base64.b64encode(image_bytes).decode()
             client = AsyncInferenceClient(provider="hf-inference", api_key=self._token)
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
-                                },
-                                {"type": "text", "text": question},
-                            ],
-                        }
-                    ],
-                    max_tokens=512,
-                    temperature=0.4,
-                ),
-                timeout=90.0,
-            )
+            try:
+                response = await asyncio.wait_for(
+                    client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                                    },
+                                    {"type": "text", "text": question},
+                                ],
+                            }
+                        ],
+                        max_tokens=512,
+                        temperature=0.4,
+                    ),
+                    timeout=90.0,
+                )
+            finally:
+                with contextlib.suppress(Exception):
+                    await client.close()
             answer = (response.choices[0].message.content or "").strip()
             if answer:
                 return {"success": True, "answer": answer, "model": model, "question": question}
-            return {"success": False, "error": "Sin respuesta del modelo de visión"}
+            return {"success": False, "error": "No response from the vision model"}
         except Exception as exc:
             logger.error("[HF] vision_language error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1417,13 +1460,13 @@ class HuggingFaceSuite:
         model: str = "facebook/mask2former-swin-base-coco-panoptic",
     ) -> dict[str, Any]:
         """
-        Segmenta objetos en una imagen con máscaras.
-        Modelos: facebook/mask2former-swin-base-coco-panoptic (panoptic),
-                 briaai/RMBG-1.4 (remoción de fondo),
-                 facebook/mask2former-swin-large-cityscapes-semantic (semántico)
+        Segments objects in an image with masks.
+        Models: facebook/mask2former-swin-base-coco-panoptic (panoptic),
+                 briaai/RMBG-1.4 (background removal),
+                 facebook/mask2former-swin-large-cityscapes-semantic (semantic)
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, image_bytes, binary=False, timeout=90.0)
             if result and isinstance(result, list):
@@ -1443,7 +1486,7 @@ class HuggingFaceSuite:
                     "count": len(segments),
                     "model": model,
                 }
-            return {"success": False, "error": "Sin segmentación generada"}
+            return {"success": False, "error": "No segmentation generated"}
         except Exception as exc:
             logger.error("[HF] segment_image error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1460,12 +1503,12 @@ class HuggingFaceSuite:
         model: str = "google/owlvit-base-patch32",
     ) -> dict[str, Any]:
         """
-        Detecta objetos específicos por descripción textual sin entrenamiento (OWL-ViT).
-        Modelos: google/owlvit-base-patch32, google/owlvit-large-patch14
-        Ejemplo labels: ["a photo of a cat", "a photo of a car", "person running"]
+        Detects specific objects by text description with no training required (OWL-ViT).
+        Models: google/owlvit-base-patch32, google/owlvit-large-patch14
+        Example labels: ["a photo of a cat", "a photo of a car", "person running"]
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             img_b64 = base64.b64encode(image_bytes).decode()
             result = await self._call(
@@ -1496,7 +1539,7 @@ class HuggingFaceSuite:
                     "count": len(detected),
                     "labels_searched": candidate_labels,
                 }
-            return {"success": False, "error": "Sin detecciones"}
+            return {"success": False, "error": "No detections"}
         except Exception as exc:
             logger.error("[HF] zero_shot_detect_objects error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1511,12 +1554,12 @@ class HuggingFaceSuite:
         model: str = "speechbrain/mtl-mimic-voicebank",
     ) -> dict[str, Any]:
         """
-        Mejora calidad de audio: reduce ruido, enhances speech.
-        Modelos: speechbrain/mtl-mimic-voicebank (enhancement),
+        Improves audio quality: reduces noise, enhances speech.
+        Models: speechbrain/mtl-mimic-voicebank (enhancement),
                  speechbrain/sepformer-wham (source separation)
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, audio_bytes, binary=True, timeout=90.0)
             if result and isinstance(result, bytes) and len(result) > 100:
@@ -1526,7 +1569,7 @@ class HuggingFaceSuite:
                     "audio_b64": base64.b64encode(result).decode(),
                     "model": model,
                 }
-            return {"success": False, "error": "Sin audio mejorado"}
+            return {"success": False, "error": "No enhanced audio"}
         except Exception as exc:
             logger.error("[HF] enhance_audio error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1542,13 +1585,13 @@ class HuggingFaceSuite:
         model: str = "cross-encoder/ms-marco-MiniLM-L6-v2",
     ) -> dict[str, Any]:
         """
-        Ordena documentos/textos por relevancia a un query (reranking).
-        Modelo: cross-encoder/ms-marco-MiniLM-L6-v2 (eficiente),
-                Alibaba-NLP/gte-multilingual-reranker-base (multilingüe)
-        Ideal para: mejorar resultados de búsqueda, RAG reranking.
+        Ranks documents/texts by relevance to a query (reranking).
+        Model: cross-encoder/ms-marco-MiniLM-L6-v2 (efficient),
+                Alibaba-NLP/gte-multilingual-reranker-base (multilingual)
+        Ideal for: improving search results, RAG reranking.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             pairs = [[query, p] for p in passages]
             result = await self._call(model, {"inputs": pairs})
@@ -1567,7 +1610,7 @@ class HuggingFaceSuite:
                     "ranked": [{"text": t[:200], "score": round(s, 4)} for t, s in scored],
                     "top_passage": scored[0][0] if scored else "",
                 }
-            return {"success": False, "error": "Sin scores de ranking"}
+            return {"success": False, "error": "No ranking scores"}
         except Exception as exc:
             logger.error("[HF] rank_texts error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1582,12 +1625,12 @@ class HuggingFaceSuite:
         model: str = "facebook/dino-vitb16",
     ) -> dict[str, Any]:
         """
-        Extrae embeddings visuales de imágenes para búsqueda semántica visual.
-        Modelos: facebook/dino-vitb16 (robusto), google/vit-base-patch16-384 (preciso)
-        Útil para: similaridad visual, agrupamiento de imágenes, búsqueda por imagen.
+        Extracts visual embeddings from images for visual semantic search.
+        Models: facebook/dino-vitb16 (robust), google/vit-base-patch16-384 (accurate)
+        Useful for: visual similarity, image clustering, image-based search.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, image_bytes, binary=False, timeout=60.0)
             if result and isinstance(result, list):
@@ -1602,7 +1645,7 @@ class HuggingFaceSuite:
                     "dimensions": len(flat),
                     "model": model,
                 }
-            return {"success": False, "error": "Sin features de imagen"}
+            return {"success": False, "error": "No image features"}
         except Exception as exc:
             logger.error("[HF] extract_image_features error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1618,12 +1661,12 @@ class HuggingFaceSuite:
         model: str = "google/tapas-base-finetuned-wtq",
     ) -> dict[str, Any]:
         """
-        Responde preguntas sobre tablas de datos.
-        Modelos: google/tapas-base-finetuned-wtq, microsoft/tapex-base
-        Ejemplo: table={"Name":["Alice","Bob"],"Score":["90","85"]}, question="Who has the highest score?"
+        Answers questions about data tables.
+        Models: google/tapas-base-finetuned-wtq, microsoft/tapex-base
+        Example: table={"Name":["Alice","Bob"],"Score":["90","85"]}, question="Who has the highest score?"
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(
                 model,
@@ -1637,7 +1680,7 @@ class HuggingFaceSuite:
                     "aggregator": result.get("aggregator", ""),
                     "question": question,
                 }
-            return {"success": False, "error": "Sin respuesta de tabla"}
+            return {"success": False, "error": "No table answer"}
         except Exception as exc:
             logger.error("[HF] table_question_answering error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1652,12 +1695,12 @@ class HuggingFaceSuite:
         model: str = "Zigeng/SlimSAM-uniform-50",
     ) -> dict[str, Any]:
         """
-        Genera máscaras para TODOS los objetos en una imagen (SAM).
-        Modelos: Zigeng/SlimSAM-uniform-50 (rápido), facebook/sam2-hiera-large (preciso)
-        Útil para: separar objetos, remoción de fondo avanzada, edición de imagen.
+        Generates masks for ALL objects in an image (SAM).
+        Models: Zigeng/SlimSAM-uniform-50 (fast), facebook/sam2-hiera-large (accurate)
+        Useful for: separating objects, advanced background removal, image editing.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             result = await self._call(model, image_bytes, binary=False, timeout=90.0)
             if result and isinstance(result, list):
@@ -1671,7 +1714,7 @@ class HuggingFaceSuite:
                     "count": len(masks),
                     "model": model,
                 }
-            return {"success": False, "error": "Sin máscaras generadas"}
+            return {"success": False, "error": "No masks generated"}
         except Exception as exc:
             logger.error("[HF] generate_masks error: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1679,19 +1722,19 @@ class HuggingFaceSuite:
     async def analyze_competitor_content(
         self, content_list: list[str], niche: str
     ) -> dict[str, Any]:
-        """Analiza contenido de competidores para extraer insights."""
+        """Analyzes competitor content to extract insights."""
         if not content_list:
-            return {"success": False, "error": "Sin contenido para analizar"}
+            return {"success": False, "error": "No content to analyze"}
 
-        # Análisis en paralelo
+        # Parallel analysis
         sentiment_tasks = [self.analyze_sentiment(c[:512]) for c in content_list[:10]]
         sentiments = await asyncio.gather(*sentiment_tasks, return_exceptions=True)
 
-        # Clasificar tipo de contenido
+        # Classify content type
         types_tasks = [self.classify_content_type(c[:512]) for c in content_list[:5]]
         content_types = await asyncio.gather(*types_tasks, return_exceptions=True)
 
-        # Resumen de todos los contenidos juntos
+        # Summary of all content combined
         combined = " ".join(content_list[:3])[:3000]
         summary = await self.summarize(combined)
 
@@ -1784,11 +1827,27 @@ class HuggingFaceSuite:
                     )
         except Exception:
             pass
-        # Fallback: Gradio 3.x /api/predict
+        # Fallback: Gradio 3.x /api/predict — resolve the real fn_index for
+        # fn_name via /config instead of hardcoding 0, which silently routed
+        # every call to whatever function happens to sit at index 0 on the
+        # Space (wrong results or "No result" on any multi-function
+        # Space, since every caller here passes a different fn_name).
         try:
+            fn_index = 0
+            try:
+                cfg_r = await self._http.get(f"{base_url}/config", headers=headers, timeout=10.0)
+                if cfg_r.status_code == 200:
+                    deps = cfg_r.json().get("dependencies", [])
+                    for idx, dep in enumerate(deps):
+                        api_name = (dep.get("api_name") or "").lstrip("/")
+                        if api_name == fn_name:
+                            fn_index = idx
+                            break
+            except Exception:
+                pass
             r2 = await self._http.post(
                 f"{base_url}/api/predict",
-                json={"data": data, "fn_index": 0},
+                json={"data": data, "fn_index": fn_index},
                 headers=headers,
                 timeout=timeout,
             )
@@ -1858,7 +1917,7 @@ class HuggingFaceSuite:
         Returns PNG with transparent background.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             data = [self._gradio_image_data(image_bytes)]
             result = await self._gradio_call(
@@ -1869,7 +1928,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if resolved and isinstance(resolved, bytes):
                         return {"success": True, "image_bytes": resolved, "format": "png"}
-            return {"success": False, "error": "Sin resultado del Space"}
+            return {"success": False, "error": "No result from the Space"}
         except Exception as exc:
             logger.error("[HF Space] remove_background: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1883,7 +1942,7 @@ class HuggingFaceSuite:
         Voices: af_heart, af_bella, bf_emma, am_adam, bm_lewis, etc.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             data = [text[:500], voice, speed]
             result = await self._gradio_call(
@@ -1894,7 +1953,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if resolved and isinstance(resolved, bytes):
                         return {"success": True, "audio_bytes": resolved}
-            return {"success": False, "error": "Sin audio generado"}
+            return {"success": False, "error": "No audio generated"}
         except Exception as exc:
             logger.error("[HF Space] kokoro_tts: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1908,7 +1967,7 @@ class HuggingFaceSuite:
         Upload 3-10s of any speaker → generate that voice saying gen_text.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             audio_data = self._gradio_audio_data(ref_audio_bytes)
             data = [audio_data, ref_text, gen_text, True]  # True = remove silence
@@ -1918,7 +1977,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if resolved and isinstance(resolved, bytes):
                         return {"success": True, "audio_bytes": resolved}
-            return {"success": False, "error": "Sin audio generado"}
+            return {"success": False, "error": "No audio generated"}
         except Exception as exc:
             logger.error("[HF Space] clone_voice: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1929,7 +1988,7 @@ class HuggingFaceSuite:
         Space: finegrain/finegrain-image-enhancer — 2.1k likes.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             data = [self._gradio_image_data(image_bytes), scale]
             result = await self._gradio_call(
@@ -1940,7 +1999,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if resolved and isinstance(resolved, bytes):
                         return {"success": True, "image_bytes": resolved, "scale": scale}
-            return {"success": False, "error": "Sin imagen mejorada"}
+            return {"success": False, "error": "No enhanced image"}
         except Exception as exc:
             logger.error("[HF Space] upscale_image: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1952,7 +2011,7 @@ class HuggingFaceSuite:
         task: 'Text' | 'Formula' | 'Table'
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             data = [self._gradio_image_data(image_bytes), task, 512]
             result = await self._gradio_call(
@@ -1963,7 +2022,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if isinstance(resolved, str) and resolved.strip():
                         return {"success": True, "text": resolved, "task": task}
-            return {"success": False, "error": "Sin texto extraído"}
+            return {"success": False, "error": "No text extracted"}
         except Exception as exc:
             logger.error("[HF Space] ocr_document_space: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -1974,7 +2033,7 @@ class HuggingFaceSuite:
         Space: hysts/ViTPose-transformers — returns annotated image + JSON with keypoints.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             data = [self._gradio_image_data(image_bytes), 0.3, True, True]
             result = await self._gradio_call(
@@ -1990,7 +2049,7 @@ class HuggingFaceSuite:
                     "image_bytes": annotated if isinstance(annotated, bytes) else None,
                     "keypoints": keypoints,
                 }
-            return {"success": False, "error": "Sin pose detectada"}
+            return {"success": False, "error": "No pose detected"}
         except Exception as exc:
             logger.error("[HF Space] estimate_pose: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -2003,7 +2062,7 @@ class HuggingFaceSuite:
         Space: tencent/Hunyuan3D-2 — 3.3k likes, outputs GLB format.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             img_data = self._gradio_image_data(image_bytes) if image_bytes else None
             data = [img_data, prompt, 50, 7.5, 1234, True, True]
@@ -2020,7 +2079,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if resolved and isinstance(resolved, bytes):
                         return {"success": True, "model_bytes": resolved, "format": "glb"}
-            return {"success": False, "error": "Sin modelo generado"}
+            return {"success": False, "error": "No model generated"}
         except Exception as exc:
             logger.error("[HF Space] generate_3d_model: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -2034,7 +2093,7 @@ class HuggingFaceSuite:
         Examples: 'change to night', 'add snow', 'make painted', 'remove person'.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             data = [self._gradio_image_data(image_bytes), prompt, seed, 3.5]
             result = await self._gradio_call(
@@ -2045,7 +2104,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if resolved and isinstance(resolved, bytes):
                         return {"success": True, "image_bytes": resolved, "prompt": prompt}
-            return {"success": False, "error": "Sin imagen editada"}
+            return {"success": False, "error": "No edited image"}
         except Exception as exc:
             logger.error("[HF Space] edit_image_kontext: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -2062,7 +2121,7 @@ class HuggingFaceSuite:
         Space: fffiloni/diffusers-image-outpaint — 2.5k likes, SDXL + ControlNet.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             data = [
                 self._gradio_image_data(image_bytes),
@@ -2081,7 +2140,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if resolved and isinstance(resolved, bytes):
                         return {"success": True, "image_bytes": resolved}
-            return {"success": False, "error": "Sin imagen generada"}
+            return {"success": False, "error": "No image generated"}
         except Exception as exc:
             logger.error("[HF Space] outpaint_image: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -2093,7 +2152,7 @@ class HuggingFaceSuite:
         description: e.g. 'make the sky blue and the car red'
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             data = [self._gradio_image_data(image_bytes), description]
             result = await self._gradio_call(
@@ -2104,7 +2163,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if resolved and isinstance(resolved, bytes):
                         return {"success": True, "image_bytes": resolved}
-            return {"success": False, "error": "Sin imagen coloreada"}
+            return {"success": False, "error": "No colorized image"}
         except Exception as exc:
             logger.error("[HF Space] colorize_image: %s", exc)
             return {"success": False, "error": str(exc)}
@@ -2122,7 +2181,7 @@ class HuggingFaceSuite:
         Note: queue times vary; use for async jobs, not real-time.
         """
         if not self._ok():
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             img_data = self._gradio_image_data(image_bytes) if image_bytes else None
             data = [img_data, prompt, 83, 25, 5.0, height, width]
@@ -2139,7 +2198,7 @@ class HuggingFaceSuite:
                     resolved = await self._resolve_gradio_item(item)
                     if resolved and isinstance(resolved, bytes):
                         return {"success": True, "video_bytes": resolved}
-            return {"success": False, "error": "Sin video (ZeroGPU puede tener cola)"}
+            return {"success": False, "error": "No video (ZeroGPU may be queued)"}
         except Exception as exc:
             logger.error("[HF Space] generate_video_space: %s", exc)
             return {"success": False, "error": str(exc)}

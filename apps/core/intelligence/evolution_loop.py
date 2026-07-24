@@ -8,14 +8,14 @@ logger = logging.getLogger("aria.evolution_loop")
 
 
 class EvolutionaryLearningLoop:
-    """Mecanismo de aprendizaje evolutivo para el crecimiento intelectual continuo de Aria.
-    Permite a Aria aprender de sus experiencias, adaptar estrategias y mejorar su lógica interna.
+    """Evolutionary learning mechanism for Aria's continuous intellectual growth.
+    Allows Aria to learn from its experiences, adapt strategies, and improve its internal logic.
     """
 
     def __init__(self, performance_log_path: str = "./aria_performance_log.json"):
         self.performance_log_path = performance_log_path
         self.performance_data: list[dict[str, Any]] = self._load_performance_data()
-        logger.info("EvolutionaryLearningLoop inicializado.")
+        logger.info("EvolutionaryLearningLoop initialized.")
 
     def _load_performance_data(self) -> list[dict[str, Any]]:
         if os.path.exists(self.performance_log_path):
@@ -23,16 +23,16 @@ class EvolutionaryLearningLoop:
                 with open(self.performance_log_path, encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
-                logger.error(f"Error cargando datos de rendimiento: {e}")
+                logger.error(f"Error loading performance data: {e}")
         return []
 
     def _save_performance_data(self):
         with open(self.performance_log_path, "w", encoding="utf-8") as f:
             json.dump(self.performance_data, f, indent=4)
-        logger.info("Datos de rendimiento guardados.")
+        logger.info("Performance data saved.")
 
     def log_performance(self, event_type: str, details: dict[str, Any], outcome: dict[str, Any]):
-        """Registra un evento de rendimiento para análisis posterior."""
+        """Logs a performance event for later analysis."""
         log_entry = {
             "timestamp": datetime.now().isoformat(),
             "event_type": event_type,
@@ -41,14 +41,14 @@ class EvolutionaryLearningLoop:
         }
         self.performance_data.append(log_entry)
         self._save_performance_data()
-        logger.info(f"Rendimiento registrado: {event_type}")
+        logger.info(f"Performance logged: {event_type}")
 
     def analyze_and_propose_improvements(self) -> list[dict[str, Any]]:
-        """Analiza los datos de rendimiento y propone mejoras a la lógica de Aria."""
-        logger.info("Analizando datos de rendimiento para proponer mejoras...")
+        """Analyzes performance data and proposes improvements to Aria's logic."""
+        logger.info("Analyzing performance data to propose improvements...")
         improvements = []
 
-        # Ejemplo de análisis: Si muchas acciones son rechazadas éticamente, ajustar umbrales.
+        # Example analysis: If many actions are ethically rejected, adjust thresholds.
         rejected_ethical_actions = [
             entry
             for entry in self.performance_data
@@ -56,17 +56,17 @@ class EvolutionaryLearningLoop:
             and entry.get("outcome", {}).get("status") == "rejected"
         ]
 
-        if len(rejected_ethical_actions) > 5:  # Si hay más de 5 rechazos éticos
+        if len(rejected_ethical_actions) > 5:  # If there are more than 5 ethical rejections
             improvements.append(
                 {
                     "type": "ethics_threshold_adjustment",
-                    "description": "Ajustar el umbral ético para acciones destructivas, o refinar la lógica de impacto para evitar falsos positivos.",
-                    "proposed_change": "Disminuir umbral de rechazo de 0.4 a 0.35 para acciones de bajo impacto económico.",
+                    "description": "Adjust the ethical threshold for destructive actions, or refine the impact logic to avoid false positives.",
+                    "proposed_change": "Lower the rejection threshold from 0.4 to 0.35 for low economic-impact actions.",
                 }
             )
-            logger.warning("Se proponen mejoras en los umbrales éticos.")
+            logger.warning("Improvements to ethical thresholds are proposed.")
 
-        # Ejemplo de análisis: Si la confianza es baja, sugerir más investigación.
+        # Example analysis: If confidence is low, suggest more research.
         low_confidence_actions = [
             entry
             for entry in self.performance_data
@@ -78,34 +78,34 @@ class EvolutionaryLearningLoop:
             improvements.append(
                 {
                     "type": "research_prioritization",
-                    "description": "Priorizar la investigación en áreas donde Aria muestra baja confianza para mejorar la toma de decisiones.",
-                    "proposed_change": "Asignar ResearchAgent a investigar 'riesgos de eliminación de productos' por 2 horas.",
+                    "description": "Prioritize research in areas where Aria shows low confidence to improve decision-making.",
+                    "proposed_change": "Assign ResearchAgent to investigate 'product deletion risks' for 2 hours.",
                 }
             )
-            logger.warning("Se proponen mejoras en la priorización de investigación.")
+            logger.warning("Improvements to research prioritization are proposed.")
 
-        # En un sistema real, esto usaría el CodeReflector para generar cambios de código.
+        # In a real system, this would use the CodeReflector to generate code changes.
         return improvements
 
     def apply_improvements(self, improvements: list[dict[str, Any]]):
-        """Aplica las mejoras propuestas a la configuración o código de Aria.
-        (En un sistema real, esto interactuaría con el CodeReflector y el Orchestrator).
+        """Applies proposed improvements to Aria's configuration or code.
+        (In a real system, this would interact with the CodeReflector and the Orchestrator).
         """
-        logger.info("Aplicando mejoras propuestas...")
+        logger.info("Applying proposed improvements...")
         for imp in improvements:
             logger.info(
-                "Aplicando: %s. Cambio: %s", imp.get("description"), imp.get("proposed_change")
+                "Applying: %s. Change: %s", imp.get("description"), imp.get("proposed_change")
             )
-            # Aquí iría la lógica para modificar el código o la configuración de Aria
-            # Por ejemplo, actualizar un valor en settings.py o modificar una función.
-        logger.info("Mejoras aplicadas.")
+            # Logic to modify Aria's code or configuration would go here
+            # For example, updating a value in settings.py or modifying a function.
+        logger.info("Improvements applied.")
 
 
-# Integrar en el orquestador para un ciclo de auto-mejora periódico.
-# Ejemplo de uso:
+# Integrate into the orchestrator for a periodic self-improvement cycle.
+# Usage example:
 # evolution_loop = EvolutionaryLearningLoop()
-# # ... Aria ejecuta acciones y registra su rendimiento ...
-# evolution_loop.log_performance("action_evaluation", {"action": "eliminar_productos"}, {"status": "rejected", "reason": "violación ética"})
-# # ... más tarde, en un ciclo de auto-mejora ...
+# # ... Aria executes actions and logs its performance ...
+# evolution_loop.log_performance("action_evaluation", {"action": "delete_products"}, {"status": "rejected", "reason": "ethical violation"})
+# # ... later, in a self-improvement cycle ...
 # proposed_improvements = evolution_loop.analyze_and_propose_improvements()
 # evolution_loop.apply_improvements(proposed_improvements)

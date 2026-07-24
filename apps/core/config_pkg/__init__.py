@@ -1,8 +1,8 @@
-"""Compatibilidad para importaciones históricas de configuración.
+"""Compatibility shim for legacy configuration imports.
 
-Algunos módulos importan `settings` desde `apps.core.config_pkg`, mientras que
-la configuración real vive en `apps.core.config`. Reexportamos aquí para evitar
-fallos de arranque y mantener compatibilidad hacia atrás.
+Some modules import `settings` from `apps.core.config_pkg`, while the
+actual configuration lives in `apps.core.config`. We re-export it here to
+avoid startup failures and maintain backward compatibility.
 """
 
 from apps.core.config import Settings, settings

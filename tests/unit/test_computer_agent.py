@@ -100,7 +100,7 @@ async def test_execute_screenshot_only():
 async def test_execute_unknown_action():
     comp = _RecordingComputer()
     out = await comp.execute({"action": "teleport"})
-    assert "no soportada" in out["text"]
+    assert "unsupported" in out["text"]
 
 
 async def test_run_mock_executes_all_actions():

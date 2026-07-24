@@ -8,8 +8,8 @@ logger = logging.getLogger("aria.diagnostic")
 
 class DiagnosticEngine:
     """
-    Motor de Diagnóstico.
-    Analiza por qué algo no está funcionando (ventas, conversión, tráfico).
+    Diagnostic Engine.
+    Analyzes why something isn't working (sales, conversion, traffic).
     """
 
     def __init__(self):
@@ -17,60 +17,62 @@ class DiagnosticEngine:
 
     async def diagnose_sales_failure(self, context: dict[str, Any]) -> dict[str, Any]:
         """
-        Diagnostica por qué una campaña de ventas está fallando.
+        Diagnoses why a sales campaign is failing.
 
-        Recibe: producto, tráfico, conversión, precio, plataforma
-        Retorna: causa raíz probable + hipótesis alternativas
+        Receives: product, traffic, conversion, price, platform
+        Returns: most likely root cause + alternative hypotheses
         """
         prompt = f"""
-        CONTEXTO DE VENTA:
+        SALES CONTEXT:
         {context}
 
-        PREGUNTA: ¿Por qué no está vendiendo?
+        QUESTION: Why isn't it selling?
 
-        ANALIZA:
-        1. Precio (¿está fuera de mercado?)
-        2. Descripción (¿es poco convincente?)
-        3. Imágenes (¿son de baja calidad?)
-        4. Público (¿es el público correcto?)
-        5. Timing (¿es el momento correcto?)
-        6. Competencia (¿hay competidores más fuertes?)
+        ANALYZE:
+        1. Price (is it out of line with the market?)
+        2. Description (is it unconvincing?)
+        3. Images (are they low quality?)
+        4. Audience (is it the right audience?)
+        5. Timing (is it the right moment?)
+        6. Competition (are there stronger competitors?)
 
-        Responde en JSON con:
-        - root_cause: causa más probable
-        - hypothesis_a, hypothesis_b, hypothesis_c: hipótesis alternativas
+        Respond in JSON with:
+        - root_cause: most likely cause
+        - hypothesis_a, hypothesis_b, hypothesis_c: alternative hypotheses
         - confidence_score: 0-100
-        - recommended_tests: lista de experimentos para validar
+        - recommended_tests: list of experiments to validate
         """
 
         diagnosis = await self.ai.complete_json(
-            system="Eres un experto en diagnóstico de fallos en e-commerce.",
+            system="You are an expert in diagnosing e-commerce failures.",
             user=prompt,
             model=AIModel.STRATEGY,
         )
 
-        return diagnosis if diagnosis else {"error": "Diagnóstico fallido"}
+        return diagnosis if diagnosis else {"error": "Diagnosis failed"}
 
     async def diagnose_low_engagement(self, content_data: dict[str, Any]) -> dict[str, Any]:
-        """Diagnostica por qué el contenido tiene bajo engagement."""
+        """Diagnoses why content has low engagement."""
         prompt = f"""
-        DATOS DE CONTENIDO:
+        CONTENT DATA:
         {content_data}
 
-        ¿Por qué este contenido tiene bajo engagement?
+        Why does this content have low engagement?
 
-        Analiza:
-        1. Formato (¿es el formato correcto para la plataforma?)
-        2. Timing (¿se publicó en el horario correcto?)
-        3. Copywriting (¿el mensaje es débil?)
-        4. Visual (¿la imagen/video es atractiva?)
-        5. Audiencia (¿es el público correcto?)
+        Analyze:
+        1. Format (is it the right format for the platform?)
+        2. Timing (was it published at the right time?)
+        3. Copywriting (is the message weak?)
+        4. Visual (is the image/video appealing?)
+        5. Audience (is it the right audience?)
 
-        Responde en JSON con: root_cause, hypotheses, confidence, next_tests
+        Respond in JSON with: root_cause, hypotheses, confidence, next_tests
         """
 
         diagnosis = await self.ai.complete_json(
-            system="Eres un experto en Social Media Analytics.", user=prompt, model=AIModel.STRATEGY
+            system="You are an expert in Social Media Analytics.",
+            user=prompt,
+            model=AIModel.STRATEGY,
         )
 
-        return diagnosis if diagnosis else {"error": "Diagnóstico fallido"}
+        return diagnosis if diagnosis else {"error": "Diagnosis failed"}

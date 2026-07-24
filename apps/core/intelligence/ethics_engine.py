@@ -6,14 +6,14 @@ logger = logging.getLogger("aria.ethics_engine")
 
 
 class EthicalPrinciple(Enum):
-    BENEFICENCE = "Maximizar el bienestar y hacer el bien."
-    NON_MALEFICENCE = "No causar daño, evitar el mal."
-    AUTONOMY = "Respetar la capacidad de decisión de los individuos."
-    JUSTICE = "Actuar con equidad e imparcialidad."
-    TRANSPARENCY = "Ser abierto y comprensible en las acciones y decisiones."
-    ACCOUNTABILITY = "Ser responsable de las acciones y sus consecuencias."
-    PRIVACY = "Proteger la información personal y la intimidad."
-    SUSTAINABILITY = "Considerar el impacto a largo plazo en el planeta y la sociedad."
+    BENEFICENCE = "Maximize well-being and do good."
+    NON_MALEFICENCE = "Cause no harm, avoid evil."
+    AUTONOMY = "Respect individuals' capacity for decision-making."
+    JUSTICE = "Act with fairness and impartiality."
+    TRANSPARENCY = "Be open and understandable in actions and decisions."
+    ACCOUNTABILITY = "Be responsible for actions and their consequences."
+    PRIVACY = "Protect personal information and privacy."
+    SUSTAINABILITY = "Consider the long-term impact on the planet and society."
 
 
 class EthicalDecision:
@@ -22,81 +22,81 @@ class EthicalDecision:
     ):
         self.action = action
         self.principles_involved = principles_involved
-        self.score = score  # Puntuación de 0 a 1, donde 1 es altamente ético
+        self.score = score  # Score from 0 to 1, where 1 is highly ethical
         self.rationale = rationale
 
 
 class EthicsEngine:
-    """Motor de Conciencia y Ética de Aria.
-    Evalúa la moralidad de las acciones propuestas y guía la toma de decisiones.
+    """Aria's Ethics and Awareness Engine.
+    Evaluates the morality of proposed actions and guides decision-making.
     """
 
     def __init__(self):
         self.core_principles: list[EthicalPrinciple] = list(EthicalPrinciple)
         logger.info(
-            "EthicsEngine inicializado con principios: %s", [p.name for p in self.core_principles]
+            "EthicsEngine initialized with principles: %s", [p.name for p in self.core_principles]
         )
 
     def evaluate_action(self, proposed_action: dict[str, Any]) -> EthicalDecision:
-        """Evalúa una acción propuesta contra los principios éticos de Aria.
+        """Evaluates a proposed action against Aria's ethical principles.
 
         Args:
-            proposed_action: Un diccionario que describe la acción, e.g.,
-                             {"name": "eliminar_productos_shopify", "description": "Eliminar todos los productos de la tienda Shopify.", "impact": {"economic": -1000, "user_trust": -0.5}}
+            proposed_action: A dictionary describing the action, e.g.,
+                             {"name": "delete_shopify_products", "description": "Delete all products from the Shopify store.", "impact": {"economic": -1000, "user_trust": -0.5}}
 
         Returns:
-            Un objeto EthicalDecision con la puntuación y el razonamiento.
+            An EthicalDecision object with the score and reasoning.
         """
-        action_name = proposed_action.get("name", "acción desconocida")
+        action_name = proposed_action.get("name", "unknown action")
         proposed_action.get("description", "")
         impact = proposed_action.get("impact", {})
 
-        score = 0.5  # Puntuación base
+        score = 0.5  # Base score
         rationale_points = []
         involved_principles = []
 
-        # Ejemplo de lógica de evaluación (simplificada)
+        # Example evaluation logic (simplified)
+        # Note: "eliminar"/"borrar" are intentionally left untranslated — they are
+        # data matched against incoming action names, not prose.
         if "eliminar" in action_name or "borrar" in action_name:
             score -= 0.3
             rationale_points.append(
-                "Potencial de daño (Non-Maleficence) y pérdida de autonomía del usuario."
+                "Potential for harm (Non-Maleficence) and loss of user autonomy."
             )
             involved_principles.extend(
                 [EthicalPrinciple.NON_MALEFICENCE, EthicalPrinciple.AUTONOMY]
             )
 
         if impact.get("economic", 0) < 0:
-            score -= 0.2 * abs(impact["economic"]) / 1000  # Escala el impacto económico
-            rationale_points.append("Impacto económico negativo (Beneficence).")
+            score -= 0.2 * abs(impact["economic"]) / 1000  # Scale the economic impact
+            rationale_points.append("Negative economic impact (Beneficence).")
             involved_principles.append(EthicalPrinciple.BENEFICENCE)
 
         if impact.get("user_trust", 0) < 0:
             score -= 0.4 * abs(impact["user_trust"])
-            rationale_points.append(
-                "Riesgo de pérdida de confianza del usuario (Transparency, Accountability)."
-            )
+            rationale_points.append("Risk of losing user trust (Transparency, Accountability).")
             involved_principles.extend(
                 [EthicalPrinciple.TRANSPARENCY, EthicalPrinciple.ACCOUNTABILITY]
             )
 
-        # Asegurar que la puntuación esté entre 0 y 1
+        # Ensure the score is between 0 and 1
         score = max(0.0, min(1.0, score))
 
-        rationale = f"Evaluación ética para '{action_name}': {'; '.join(rationale_points) or 'Sin preocupaciones éticas obvias.'}"
+        rationale = f"Ethical evaluation for '{action_name}': {'; '.join(rationale_points) or 'No obvious ethical concerns.'}"
         logger.info(rationale)
 
         return EthicalDecision(action_name, list(set(involved_principles)), score, rationale)
 
     def get_ethical_guidance(self, context: str) -> str:
-        """Proporciona guía ética basada en un contexto dado."""
-        guidance = f"Como IA ética, Aria siempre busca maximizar el bienestar (Beneficence), evitar el daño (Non-Maleficence), respetar la autonomía, actuar con justicia, ser transparente y responsable. En el contexto de '{context}', se recomienda considerar..."
+        """Provides ethical guidance based on a given context."""
+        guidance = f"As an ethical AI, Aria always seeks to maximize well-being (Beneficence), avoid harm (Non-Maleficence), respect autonomy, act with justice, and be transparent and accountable. In the context of '{context}', it is recommended to consider..."
         return guidance
 
 
-# Integrar en el orquestador o agentes específicos
-# Ejemplo de uso:
+# Integrate into the orchestrator or specific agents
+# Usage example:
 # ethics_engine = EthicsEngine()
-# action = {"name": "eliminar_productos_shopify", "description": "Eliminar todos los productos de la tienda Shopify.", "impact": {"economic": -1000, "user_trust": -0.5}}
+# action = {"name": "delete_shopify_products", "description": "Delete all products from the Shopify store.", "impact": {"economic": -1000, "user_trust": -0.5}}
 # decision = ethics_engine.evaluate_action(action)
 # if decision.score < 0.4:
-#     print(f"⚠️ Acción potencialmente no ética: {decision.rationale}")
+#     print(f"⚠️ Potentially unethical action: {decision.rationale}")

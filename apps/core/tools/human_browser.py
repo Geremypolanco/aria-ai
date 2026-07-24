@@ -54,7 +54,15 @@ _STEALTH_JS = """
       arr.refresh = () => {};
       arr.item = (i) => arr[i];
       arr.namedItem = (n) => arr.find(p => p.name === n);
-      Object.defineProperty(arr, 'length', { get: () => fakePlugins.length });
+      // NOTE: arr.length is already correct here (it's the real Array.length
+      // from fakePlugins.map() above). A prior version tried to also
+      // Object.defineProperty(arr, 'length', ...) here, but Array.length is
+      // non-configurable per spec (ECMA-262) on every engine — that call
+      // always threw "TypeError: Cannot redefine property: length" the
+      // moment anything (including real bot-detection scripts) touched
+      // navigator.plugins.length, which is far more detectable than a
+      // plain headless browser: a real Chrome never throws just from
+      // reading a property.
       return arr;
     }
   });
@@ -240,15 +248,22 @@ def _load_session(name: str) -> SessionData | None:
     if not path.exists():
         return None
     try:
-        return SessionData.from_dict(json.loads(path.read_text()))
+        from apps.core.connectors.token_crypto import decrypt, is_encrypted
+
+        raw = path.read_text()
+        if is_encrypted(raw):
+            raw = decrypt(raw)
+        return SessionData.from_dict(json.loads(raw))
     except Exception:
         return None
 
 
 def _save_session(name: str, data: SessionData) -> None:
+    from apps.core.connectors.token_crypto import encrypt
+
     data.last_used = time.time()
     path = _SESSION_DIR / f"{name}.json"
-    path.write_text(json.dumps(data.to_dict(), indent=2))
+    path.write_text(encrypt(json.dumps(data.to_dict(), indent=2)))
 
 
 # ── Core classes ──────────────────────────────────────────────────────────────
@@ -397,6 +412,23 @@ class HumanPage:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if pattern in self._page.url:
+                return True
+            await self.idle_behavior()
+            await asyncio.sleep(0.5)
+        return False
+
+    async def wait_for_url_leaving(
+        self, must_contain: str, must_leave: str, timeout: float = 15.0
+    ) -> bool:
+        """Wait until the URL contains `must_contain` and no longer contains
+        `must_leave` — e.g. confirming navigation actually left a login page,
+        not just that we're still on the same domain (which a substring
+        match on the domain alone would report as true instantly, before
+        the post-login navigation has even had a chance to happen)."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            url = self._page.url
+            if must_contain in url and must_leave not in url:
                 return True
             await self.idle_behavior()
             await asyncio.sleep(0.5)
@@ -611,7 +643,10 @@ class PlatformLogin:
         if await page.load_session():
             await page.goto("https://gumroad.com/dashboard")
             await asyncio.sleep(2)
-            if "dashboard" in page.url or "gumroad.com" in page.url:
+            # "gumroad.com" alone is always true here (we just navigated
+            # there) — an expired session redirects to /login, which
+            # wouldn't contain "dashboard".
+            if "dashboard" in page.url:
                 logger.info("[HumanBrowser] Gumroad: session restored, skipping login")
                 return page
 
@@ -649,9 +684,13 @@ class PlatformLogin:
         await page.click("input[type='submit'][value='Log in']")
         await page._random_pause("navigate")
 
-        if await page.wait_for_url("dev.to", timeout=15.0):
+        # "dev.to" alone would already be true on the /enter page we just
+        # came from — confirm we actually left the login page.
+        if await page.wait_for_url_leaving("dev.to", "/enter", timeout=15.0):
             logger.info("[HumanBrowser] Dev.to: login successful")
             await page.save_session()
+        else:
+            logger.warning("[HumanBrowser] Dev.to: login may have failed — url: %s", page.url)
         return page
 
     async def medium(self, email: str, password: str) -> HumanPage:
@@ -691,9 +730,13 @@ class PlatformLogin:
         await page.click("button[type='submit']")
         await page._random_pause("navigate")
 
-        if await page.wait_for_url("hashnode.com", timeout=15.0):
+        # "hashnode.com" alone would already be true on the /login page we
+        # just came from — confirm we actually left the login page.
+        if await page.wait_for_url_leaving("hashnode.com", "/login", timeout=15.0):
             logger.info("[HumanBrowser] Hashnode: login successful")
             await page.save_session()
+        else:
+            logger.warning("[HumanBrowser] Hashnode: login may have failed — url: %s", page.url)
         return page
 
     async def linkedin(self, email: str, password: str) -> HumanPage:
@@ -707,7 +750,10 @@ class PlatformLogin:
         if await page.load_session():
             await page.goto("https://www.linkedin.com/feed/")
             await asyncio.sleep(2)
-            if "feed" in page.url or "linkedin.com" in page.url:
+            # "linkedin.com" alone is always true here (we just navigated
+            # there) — a failed/expired session redirects to a login or
+            # checkpoint page, which wouldn't contain "feed".
+            if "feed" in page.url:
                 logger.info("[HumanBrowser] LinkedIn: session restored")
                 return page
 
@@ -754,7 +800,7 @@ class PlatformLogin:
         # Step 2: Twitter may ask for username if it detects unusual login
         try:
             username_input = await page.wait_for_selector(
-                "input[data-testid='ocfEnterTextTextInput']", timeout=4_000
+                "input[data-testid='ocfEnterTextTextInput']", timeout=4.0
             )
             if username_input and username:
                 await page.type_human("input[data-testid='ocfEnterTextTextInput']", username)
@@ -801,7 +847,10 @@ class PlatformLogin:
         except Exception as exc:
             logger.warning("[HumanBrowser] Reddit login step: %s", exc)
 
-        if await page.wait_for_url("reddit.com", timeout=20.0):
+        # "reddit.com" alone would already be true on the /login page we
+        # just came from — confirm we actually left it (matches the
+        # restore-check above, which already applies this same guard).
+        if await page.wait_for_url_leaving("reddit.com", "login", timeout=20.0):
             logger.info("[HumanBrowser] Reddit: login successful")
             await page.save_session()
         else:
@@ -821,7 +870,11 @@ class PlatformLogin:
             if await page.load_session():
                 await page.goto("https://news.ycombinator.com")
                 await asyncio.sleep(2)
-                if "news.ycombinator.com" in page.url:
+                # The URL is always news.ycombinator.com regardless of auth
+                # state (HN doesn't redirect logged-out visitors elsewhere),
+                # so the only real signal is the "logout" link HN renders in
+                # the top nav for an authenticated session.
+                if await page.get_text("#logout"):
                     logger.info("[HumanBrowser] HN: session restored")
                     # Skip re-login
                 else:
@@ -976,8 +1029,10 @@ class PlatformLogin:
                 try:
                     await page.click(selector)
                 except Exception:
-                    # fallback selector for the active text area
-                    await page.click("div[data-testid^='tweetTextarea']")
+                    # fallback selector for the active text area — use it for
+                    # typing too, not the selector that just failed to click.
+                    selector = "div[data-testid^='tweetTextarea']"
+                    await page.click(selector)
                 await page._random_pause("action")
                 await page.type_human(selector, tweet_text)
                 await page._random_pause("think")
@@ -993,12 +1048,18 @@ class PlatformLogin:
                     await page._random_pause("action")
 
             # Post the full thread
+            post_clicked = False
             for post_sel in ["[data-testid='tweetButton']", "button[aria-label='Tweet all']"]:
                 try:
                     await page.click(post_sel)
+                    post_clicked = True
                     break
                 except Exception:
                     continue
+
+            if not post_clicked:
+                logger.warning("[HumanBrowser] Twitter: post button not found")
+                return ""
 
             await page._random_pause("navigate")
             await asyncio.sleep(4)
@@ -1056,6 +1117,7 @@ class PlatformLogin:
             await page._random_pause("think")
 
             # Click the Post button
+            post_clicked = False
             for post_sel in [
                 "button.share-actions__primary-action",
                 "button[aria-label='Post']",
@@ -1063,9 +1125,14 @@ class PlatformLogin:
             ]:
                 try:
                     await page.click(post_sel)
+                    post_clicked = True
                     break
                 except Exception:
                     continue
+
+            if not post_clicked:
+                logger.warning("[HumanBrowser] LinkedIn: post button not found")
+                return ""
 
             await page._random_pause("navigate")
             await asyncio.sleep(4)
@@ -1136,6 +1203,23 @@ class PlatformLogin:
                     continue
 
             await page._random_pause("think")
+
+            # Fill tags (accepted as a parameter but previously never used —
+            # articles always published untagged regardless of what the
+            # caller passed in).
+            if tags:
+                for tag_sel in [
+                    "input[placeholder*='tag' i]",
+                    "div[data-testid='tags-input'] input",
+                ]:
+                    try:
+                        for tag in tags[:5]:
+                            await page.type_human(tag_sel, tag)
+                            await page._page.keyboard.press("Enter")
+                        break
+                    except Exception:
+                        continue
+                await page._random_pause("action")
 
             # Publish
             for pub_sel in [
@@ -1235,7 +1319,14 @@ class PlatformLogin:
 
             await asyncio.sleep(4)
             url = page.url
-            if "dev.to" in url and "new" not in url and "/" in url.replace("https://dev.to/", ""):
+            # Check the actual path left the /new compose page — a plain
+            # substring test for "new" anywhere in the URL false-negatives
+            # on any published article whose permalink/username happens to
+            # contain "new" (e.g. dev.to/newbie123/...).
+            from urllib.parse import urlparse as _urlparse
+
+            path = _urlparse(url).path.strip("/")
+            if "dev.to" in url and path not in ("", "new") and "/" in path:
                 logger.info("[HumanBrowser] Dev.to: article published → %s", url)
                 await page.save_session()
                 return url
@@ -1625,10 +1716,16 @@ class PlatformLogin:
             await asyncio.sleep(4)
 
             url = page.url
-            if "substack.com/p/" in url or "/publish/post/" not in url:
+            # The "/publish/post/" not in url disjunct was true for almost
+            # any URL that isn't literally the editor — including an error
+            # page or a session-expired redirect — reporting success for a
+            # post that never actually published. Require the real
+            # published-post URL pattern instead.
+            if "substack.com/p/" in url:
                 logger.info("[HumanBrowser] Substack: post published → %s", url)
                 await page.save_session()
                 return url
+            logger.warning("[HumanBrowser] Substack: publish may have failed — url: %s", url)
             return ""
         except Exception as exc:
             logger.warning("[HumanBrowser] Substack publish failed: %s", exc)

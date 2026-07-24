@@ -31,31 +31,58 @@ def test_ledger_accumulates_per_user_month():
     assert led.month_cost("nobody@x.com") == 0.0
 
 
-def test_throttle_at_70_percent_for_paid():
+async def test_throttle_at_70_percent_for_paid():
     led = CostLedger()
     # Pro budget = $8 → 70% = $5.60. Burn $6 of opus output.
     led.record("pro@x.com", "claude-opus-4-8", 0, 240_000)  # 0.24M * $25 = $6.00
     assert led.month_cost("pro@x.com") == pytest.approx(6.0)
     assert led.over_threshold("pro@x.com", "pro") is True
     # evaluate() freezes a paid user over threshold
-    assert led.evaluate("pro@x.com", "pro") is True
-    assert led.is_frozen("pro@x.com") is True
+    assert await led.evaluate("pro@x.com", "pro") is True
+    assert await led.is_frozen("pro@x.com") is True
     assert "pro@x.com" in led.frozen_users()
 
 
-def test_under_threshold_not_frozen():
+async def test_under_threshold_not_frozen():
     led = CostLedger()
     led.record("pro@x.com", "claude-opus-4-8", 0, 40_000)  # $1.00 of $8 budget
     assert led.over_threshold("pro@x.com", "pro") is False
-    assert led.evaluate("pro@x.com", "pro") is False
-    assert led.is_frozen("pro@x.com") is False
+    assert await led.evaluate("pro@x.com", "pro") is False
+    assert await led.is_frozen("pro@x.com") is False
 
 
-def test_free_plan_not_frozen_by_burn_cap():
+async def test_free_plan_not_frozen_by_burn_cap():
     led = CostLedger()
     led.record("free@x.com", "claude-opus-4-8", 0, 1_000_000)  # way over
     # evaluate only freezes pro/business
-    assert led.evaluate("free@x.com", "free") is False
+    assert await led.evaluate("free@x.com", "free") is False
+
+
+async def test_frozen_state_survives_a_new_process_via_cache(monkeypatch):
+    """The whole point of persisting the freeze flag: a fresh CostLedger
+    (simulating a restart, or a different worker instance) must still see a
+    user as frozen if the shared cache has the flag set."""
+    store: dict[str, str] = {}
+
+    class FakeCache:
+        async def set(self, key, value, ttl_seconds=0):
+            store[key] = value
+
+        async def get(self, key):
+            return store.get(key)
+
+        async def delete(self, key):
+            store.pop(key, None)
+
+    monkeypatch.setattr(
+        "apps.core.memory.redis_client.get_cache", lambda: FakeCache(), raising=False
+    )
+
+    led1 = CostLedger()
+    await led1.freeze("pro@x.com")
+
+    led2 = CostLedger()  # fresh instance — nothing in its local _frozen set
+    assert await led2.is_frozen("pro@x.com") is True
 
 
 # ── self_healing (auto-retry) ─────────────────────────────────────

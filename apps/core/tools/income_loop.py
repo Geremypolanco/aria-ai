@@ -169,7 +169,7 @@ STRATEGIES = [
     (
         "data_product_seller",
         3,
-    ),  # boostado: compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
+    ),  # boosted: compile + sell curated dataset/report (industry data, AI tool lists) → $19-$97
     (
         "b2b_saas_pitch",
         1,
@@ -282,7 +282,7 @@ _SELF_DISTRIBUTING_STRATEGIES: frozenset[str] = frozenset(
         "crowdfunding_kit",
         "premium_offer",
         "product_factory",
-        "github_blog",
+        "github_publish",
         "content_pipeline",
         "catalog_repromoter",
         "stripe_subscription",
@@ -761,9 +761,8 @@ JSON:
                     from apps.core.tools.human_browser import get_platform_login
 
                     _plat2 = await get_platform_login()
-                    _hn_pg = await _plat2.hashnode(_dt_ae, _dt_ap)
                     _hn_url = await _plat2.hashnode_publish_article(
-                        _dt_ae, _dt_ap, title=title, content=body, tags=tags[:5]
+                        _dt_ae, _dt_ap, title=title, content_markdown=body, tags=tags[:5]
                     )
                     if _hn_url:
                         logger.info("[IncomeLoop] Product announcement on Hashnode: %s", _hn_url)
@@ -1244,7 +1243,7 @@ JSON:
                             if _cr_cp.status_code in (200, 201, 409):
                                 import base64 as _hf_b64_cp
 
-                                await _hfc.put(
+                                _put_cp = await _hfc.put(
                                     f"https://huggingface.co/api/datasets/{_hf_un}/{_rn_cp}/raw/main/README.md",
                                     headers={
                                         "Authorization": f"Bearer {_hf_token_cp}",
@@ -1257,9 +1256,10 @@ JSON:
                                         "message": f"Publish: {_t_cp}",
                                     },
                                 )
-                                _hf_urls_cp.append(
-                                    f"https://huggingface.co/datasets/{_hf_un}/{_rn_cp}"
-                                )
+                                if _put_cp.status_code in (200, 201):
+                                    _hf_urls_cp.append(
+                                        f"https://huggingface.co/datasets/{_hf_un}/{_rn_cp}"
+                                    )
                     if _hf_urls_cp:
                         return {
                             "success": True,
@@ -2137,7 +2137,7 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                             },
                         )
                         if _cr_nr.status_code in (200, 201, 409):
-                            await _hnr.put(
+                            _put_nr = await _hnr.put(
                                 f"https://huggingface.co/api/spaces/{_hf_un_nr}/{_nr_rn}/raw/main/README.md",
                                 headers={
                                     "Authorization": f"Bearer {_hf_tok_nr}",
@@ -2148,13 +2148,14 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                                     "message": f"Publish niche: {_nr_name[:50]}",
                                 },
                             )
-                            _nr_hf_url = f"https://huggingface.co/spaces/{_hf_un_nr}/{_nr_rn}"
-                            return {
-                                "success": True,
-                                "summary": f"Niche '{target}': service page published on HuggingFace Spaces",
-                                "revenue_potential": float(_nr_price),
-                                "urls": [_nr_hf_url],
-                            }
+                            if _put_nr.status_code in (200, 201):
+                                _nr_hf_url = f"https://huggingface.co/spaces/{_hf_un_nr}/{_nr_rn}"
+                                return {
+                                    "success": True,
+                                    "summary": f"Niche '{target}': service page published on HuggingFace Spaces",
+                                    "revenue_potential": float(_nr_price),
+                                    "urls": [_nr_hf_url],
+                                }
                 except Exception as _nr_hf_exc:
                     logger.debug("[IncomeLoop] niche_rotator HF fallback: %s", _nr_hf_exc)
 
@@ -2529,7 +2530,7 @@ Output JSON:
                             },
                         )
                         if _cr_pf.status_code in (200, 201, 409):
-                            await _hpf.put(
+                            _put_pf = await _hpf.put(
                                 f"https://huggingface.co/api/spaces/{_hf_un_pf}/{_pf_rn}/raw/main/README.md",
                                 headers={
                                     "Authorization": f"Bearer {_hf_tok_pf}",
@@ -2540,13 +2541,14 @@ Output JSON:
                                     "message": f"Publish product: {_pf_name[:50]}",
                                 },
                             )
-                            _pf_hf_url = f"https://huggingface.co/spaces/{_hf_un_pf}/{_pf_rn}"
-                            return {
-                                "success": True,
-                                "summary": f"Product '{_pf_name[:50]}' at ${_pf_price:.2f} published on HuggingFace Spaces",
-                                "revenue_potential": _pf_price,
-                                "urls": [_pf_hf_url],
-                            }
+                            if _put_pf.status_code in (200, 201):
+                                _pf_hf_url = f"https://huggingface.co/spaces/{_hf_un_pf}/{_pf_rn}"
+                                return {
+                                    "success": True,
+                                    "summary": f"Product '{_pf_name[:50]}' at ${_pf_price:.2f} published on HuggingFace Spaces",
+                                    "revenue_potential": _pf_price,
+                                    "urls": [_pf_hf_url],
+                                }
                 except Exception as _pf_hf_exc:
                     logger.warning("[IncomeLoop] product_factory HF fallback: %s", _pf_hf_exc)
 
@@ -2683,7 +2685,10 @@ Output JSON:
             _ae = getattr(settings, "ARIA_EMAIL", None)
             _ap = getattr(settings, "ARIA_PASSWORD", None)
             for ls in live[:3]:
-                product_url = ls.listing_urls[0] if ls.listing_urls else ""
+                # listing_urls is a dict keyed by platform name (e.g. "gumroad"),
+                # not a list — indexing with [0] raised KeyError whenever it was
+                # non-empty (exactly the condition that put `ls` into `live`).
+                product_url = next(iter(ls.listing_urls.values()), "")
                 if ai:
                     try:
                         tweet_text = await ai.complete(
@@ -3334,7 +3339,7 @@ JSON:
                             import base64 as _hf_b64
 
                             _readme_b64 = _hf_b64.b64encode(_readme.encode()).decode()
-                            await _hc.put(
+                            _put_sl = await _hc.put(
                                 f"https://huggingface.co/api/spaces/{_hf_username}/{_repo_name}/raw/main/README.md",
                                 headers={
                                     "Authorization": f"Bearer {hf_token}",
@@ -3345,13 +3350,16 @@ JSON:
                                     "message": f"Add product landing page: {prod_title[:50]}",
                                 },
                             )
-                            _hf_url = f"https://huggingface.co/spaces/{_hf_username}/{_repo_name}"
-                            return {
-                                "success": True,
-                                "summary": f"Product '{prod_title[:50]}' published as HuggingFace Space at ${price:.2f}",
-                                "revenue_potential": price,
-                                "urls": [_hf_url],
-                            }
+                            if _put_sl.status_code in (200, 201):
+                                _hf_url = (
+                                    f"https://huggingface.co/spaces/{_hf_username}/{_repo_name}"
+                                )
+                                return {
+                                    "success": True,
+                                    "summary": f"Product '{prod_title[:50]}' published as HuggingFace Space at ${price:.2f}",
+                                    "revenue_potential": price,
+                                    "urls": [_hf_url],
+                                }
                 except Exception as _hf_exc:
                     logger.warning("[IncomeLoop] shopify_listing HF fallback: %s", _hf_exc)
 
@@ -3666,11 +3674,11 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
                             doc_bytes=pdf_r["pdf_bytes"],
                             filename=fname,
                             caption=(
-                                f"📚 <b>Ebook generado (pendiente publicación)</b>\n"
-                                f"Título: {ebook.get('title','')[:60]}\n"
-                                f"Precio sugerido: ${ebook.get('price_cents',1700)/100:.0f}\n"
-                                f"Sube este PDF a Gumroad para empezar a vender.\n"
-                                f"Falta: <code>GUMROAD_TOKEN</code> en Fly.io secrets"
+                                f"📚 <b>Ebook generated (pending publication)</b>\n"
+                                f"Title: {ebook.get('title','')[:60]}\n"
+                                f"Suggested price: ${ebook.get('price_cents',1700)/100:.0f}\n"
+                                f"Upload this PDF to Gumroad to start selling.\n"
+                                f"Missing: <code>GUMROAD_TOKEN</code> in Fly.io secrets"
                             ),
                         )
                     except Exception as tg_exc:
@@ -3860,7 +3868,7 @@ JSON:
             aff_link = (
                 f"https://amazon.com/s?k=ai+tools+productivity&tag={assoc}"
                 if assoc
-                else "https://github.com/{owner}/aria-insights"
+                else f"https://github.com/{owner}/aria-insights"
             )
 
             newsletter_md = (
@@ -7590,7 +7598,7 @@ We're actively seeking collaborators in the {niche} space.
 
                     _po_plat2 = await get_platform_login()
                     _po_li_pg = await _po_plat2.linkedin(_po_ae, _po_ap)
-                    await _po_plat2.linkedin_post(_po_li_pg, _po_li)
+                    await _po_plat2.linkedin_create_post(_po_li_pg, _po_li)
                 except Exception:
                     pass
 
@@ -7787,12 +7795,18 @@ JSON:
                     from apps.core.tools.mailchimp_tools import MailchimpTools
 
                     mc = MailchimpTools()
-                    mc_r = await mc.create_campaign(
-                        subject=f"ARIA Weekly #{issue_num}: {subject}",
-                        body=full_issue,
-                    )
-                    if mc_r and mc_r.get("id"):
-                        mailchimp_ok = True
+                    mc_lists = await mc.get_lists()
+                    if mc_lists.get("lists"):
+                        mc_r = await mc.create_campaign(
+                            list_id=mc_lists["lists"][0]["id"],
+                            subject=f"ARIA Weekly #{issue_num}: {subject}",
+                            from_name=getattr(settings, "MAILCHIMP_FROM_NAME", None) or "ARIA AI",
+                            reply_to=getattr(settings, "MAILCHIMP_REPLY_TO", None)
+                            or "noreply@aria.ai",
+                            body_html=full_issue,
+                        )
+                        if mc_r.get("success"):
+                            mailchimp_ok = True
                 except Exception:
                     pass
 
@@ -8185,7 +8199,7 @@ Or contact via [portfolio]({portfolio_url}).
                         f"**Tweet {i+1}:**\n\n{t}" for i, t in enumerate(tweet_texts)
                     )
                     + f"\n\n---\n\n*Generated by [ARIA AI](https://github.com/{owner}/aria-portfolio)*\n"
-                    + "\n*To post: add TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET to Fly.io secrets*"
+                    + "\n*To post: add TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET to Fly.io secrets*"
                 )
                 encoded = _b64.b64encode(content.encode()).decode()
                 file_r = await gh._put(
@@ -8521,9 +8535,6 @@ JSON:
                 today = datetime.now(UTC).strftime("%Y-%m-%d")
 
                 for i, post in enumerate(posts):
-                    post["title"][:35].lower().replace(" ", "-").replace("'", "").replace(
-                        "[", ""
-                    ).replace("]", "")
                     md = (
                         f"# r/{post['subreddit']}: {post['title']}\n\n"
                         f"*Subreddit: r/{post['subreddit']} | Flair: {post.get('flair', '')}*\n\n"
@@ -8927,7 +8938,6 @@ JSON:
                 for i, script in enumerate(scripts[:3]):
                     niche = script.niche
                     hook = script.hook[:60] if script.hook else f"script-{i}"
-                    hook.lower().replace(" ", "-").replace("'", "")[:35]
                     md = (
                         f"# TikTok Script: {hook}\n\n"
                         f"*Niche: {niche} | Platform: {script.platform} | Duration: {script.duration_seconds}s*\n"
@@ -9291,7 +9301,7 @@ JSON:
                         getattr(settings, "TWITTER_API_KEY", None)
                         and getattr(settings, "TWITTER_API_SECRET", None)
                         and getattr(settings, "TWITTER_ACCESS_TOKEN", None)
-                        and getattr(settings, "TWITTER_ACCESS_SECRET", None)
+                        and getattr(settings, "TWITTER_ACCESS_TOKEN_SECRET", None)
                     )
                     or (
                         getattr(settings, "ARIA_EMAIL", None)
@@ -9499,33 +9509,33 @@ JSON:
 
             kw = 12  # key column width for <pre> block
             data_rows = [
-                f"{'Módulo':<{kw}} Income Loop",
-                f"{'Estrategias':<{kw}} {len(STRATEGIES)} · c/{INTERVAL_SECONDS//60} min",
-                f"{'Canales':<{kw}} {', '.join(active) if active else 'ninguno'}",
+                f"{'Module':<{kw}} Income Loop",
+                f"{'Strategies':<{kw}} {len(STRATEGIES)} · c/{INTERVAL_SECONDS//60} min",
+                f"{'Channels':<{kw}} {', '.join(active) if active else 'none'}",
             ]
 
             pending_lines = []
             if inactive:
                 top = inactive[:4]
                 if "gumroad" in top:
-                    pending_lines.append("  GUMROAD_TOKEN  →  ventas digitales")
+                    pending_lines.append("  GUMROAD_TOKEN  →  digital sales")
                 if "devto" in top:
-                    pending_lines.append("  DEVTO_API_KEY  →  artículos técnicos")
+                    pending_lines.append("  DEVTO_API_KEY  →  technical articles")
                 if "twitter" in top:
-                    pending_lines.append("  TWITTER_*      →  distribución social")
+                    pending_lines.append("  TWITTER_*      →  social distribution")
                 if "shopify" in top:
                     pending_lines.append("  SHOPIFY_TOKEN  →  e-commerce")
 
             sections = [
-                "🤖 <b>ARIA · SISTEMA EN LÍNEA</b>",
+                "🤖 <b>ARIA · SYSTEM ONLINE</b>",
                 "<pre>" + "\n".join(data_rows) + "</pre>",
             ]
             if pending_lines:
                 sections += [
-                    "💡 <i>Canales pendientes:</i>",
+                    "💡 <i>Pending channels:</i>",
                     "<pre>" + "\n".join(pending_lines) + "</pre>",
                 ]
-            sections.append("<i>Aria trabaja en segundo plano. Te notificaré cada ingreso.</i>")
+            sections.append("<i>Aria works in the background. I'll notify you on every payout.</i>")
 
             await get_bot().notify_owner("\n".join(sections), already_html=True)
         except Exception as exc:
@@ -9615,21 +9625,21 @@ JSON:
             )
 
             if high_value:
-                icon, label = "💰", "INGRESO  ·  ALTO VALOR"
+                icon, label = "💰", "INCOME  ·  HIGH VALUE"
             elif is_product:
-                icon, label = "📦", "PRODUCTO  ·  PUBLICADO"
+                icon, label = "📦", "PRODUCT  ·  PUBLISHED"
             elif is_content:
-                icon, label = "✍️", "CONTENIDO  ·  PUBLICADO"
+                icon, label = "✍️", "CONTENT  ·  PUBLISHED"
             else:
-                icon, label = "✅", "ACCIÓN  ·  COMPLETADA"
+                icon, label = "✅", "ACTION  ·  COMPLETED"
 
             kw = 11
             safe_strategy = _html.escape(result.strategy)
             rev_str = f"${result.revenue_potential:.2f}" + (" ✦" if high_value else "")
             data_rows = [
-                f"{'Estrategia':<{kw}} {safe_strategy}",
-                f"{'Potencial':<{kw}} {rev_str}",
-                f"{'Ciclo':<{kw}} #{result.cycle_id}  ·  {result.elapsed_seconds}s",
+                f"{'Strategy':<{kw}} {safe_strategy}",
+                f"{'Potential':<{kw}} {rev_str}",
+                f"{'Cycle':<{kw}} #{result.cycle_id}  ·  {result.elapsed_seconds}s",
             ]
 
             # Escape AI-generated summary before embedding in HTML context
@@ -9657,9 +9667,9 @@ JSON:
             if is_product or is_content or high_value:
                 footer = []
                 if is_product or is_content:
-                    footer.append("📦 /catalogo")
+                    footer.append("📦 /catalog")
                 if high_value:
-                    footer.append("📊 /reporte")
+                    footer.append("📊 /report")
                 sections.append("  ·  ".join(footer))
 
             await get_bot().notify_owner("\n\n".join(sections), already_html=True)
@@ -9910,14 +9920,14 @@ JSON:
 
             cache = get_cache()
             if not cache:
-                return "⚠️ Redis no disponible — sin catálogo de productos."
+                return "⚠️ Redis unavailable — no product catalog."
 
             raw_items = await cache.lrange("aria:products:catalog", -limit, -1)
             if not raw_items:
                 return (
-                    "📦 <b>Catálogo de Productos ARIA</b>\n\n"
-                    "⏳ Aún no hay productos registrados.\n"
-                    "El income loop irá llenando el catálogo con cada ciclo exitoso."
+                    "📦 <b>ARIA Product Catalog</b>\n\n"
+                    "⏳ No products registered yet.\n"
+                    "The income loop will fill the catalog with each successful cycle."
                 )
 
             items = []
@@ -9926,8 +9936,8 @@ JSON:
                     items.append(json.loads(raw) if isinstance(raw, str) else raw)
 
             lines = [
-                "📦 <b>Catálogo de Productos ARIA</b>",
-                f"<i>{len(items)} productos/publicaciones</i>",
+                "📦 <b>ARIA Product Catalog</b>",
+                f"<i>{len(items)} products/publications</i>",
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             ]
             for i, item in enumerate(items[:limit], 1):
@@ -9937,7 +9947,7 @@ JSON:
                 urls = item.get("urls", [])
                 date = item.get("created_at", "")[:10]
                 lines.append(f"\n<b>{i}. {title}</b>")
-                lines.append(f"   📅 {date}  |  📊 {strat}  |  💰 ${revenue:.0f} potencial")
+                lines.append(f"   📅 {date}  |  📊 {strat}  |  💰 ${revenue:.0f} potential")
                 for url in urls[:2]:
                     if url:
                         lines.append(f"   🔗 {url}")
@@ -9945,8 +9955,8 @@ JSON:
             total_rev = sum(i.get("revenue", 0) for i in items)
             lines += [
                 "",
-                f"<b>Revenue potencial acumulado: ${total_rev:.2f}</b>",
-                "<i>Actualizado automáticamente en cada ciclo exitoso</i>",
+                f"<b>Accumulated revenue potential: ${total_rev:.2f}</b>",
+                "<i>Automatically updated on every successful cycle</i>",
             ]
             return "\n".join(lines)
 
@@ -9961,7 +9971,7 @@ JSON:
 
             cache = get_cache()
             if not cache:
-                return "⚠️ Redis no disponible — sin datos de analíticas."
+                return "⚠️ Redis unavailable — no analytics data."
 
             total_cycles = int(await cache.get("aria:income:total_cycles") or 0)
             success_cycles = int(await cache.get("aria:income:successful_cycles") or 0)
@@ -9982,12 +9992,12 @@ JSON:
             rows.sort(key=lambda r: (-r[3], -r[1]))
 
             lines = [
-                "📊 <b>ARIA — Reporte de Analíticas por Estrategia</b>",
+                "📊 <b>ARIA — Per-Strategy Analytics Report</b>",
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                f"Ciclos totales: <b>{total_cycles}</b>  |  Éxitos: <b>{success_cycles}</b>  ({success_rate:.1f}%)",
-                f"URLs publicadas: <b>{total_urls}</b>  |  Revenue acumulado: <b>${total_tracked_rev:.2f}</b>",
+                f"Total cycles: <b>{total_cycles}</b>  |  Successes: <b>{success_cycles}</b>  ({success_rate:.1f}%)",
+                f"URLs published: <b>{total_urls}</b>  |  Accumulated revenue: <b>${total_tracked_rev:.2f}</b>",
                 "",
-                "<b>Estrategia              Runs  Win%  Revenue  Peso</b>",
+                "<b>Strategy               Runs  Win%  Revenue  Weight</b>",
             ]
             for name, runs, wins, rev, weight in rows:
                 win_pct = (wins / runs * 100) if runs else 0
@@ -9997,11 +10007,11 @@ JSON:
                 )
 
             if total_cycles == 0:
-                lines += ["", "⏳ Sin datos aún — el loop inicia en unos minutos."]
+                lines += ["", "⏳ No data yet — the loop starts in a few minutes."]
             else:
                 best = rows[0] if rows else None
                 if best and best[1] > 0:
-                    lines += ["", f"🏆 Mejor estrategia: <b>{best[0]}</b> (${best[3]:.2f} revenue)"]
+                    lines += ["", f"🏆 Best strategy: <b>{best[0]}</b> (${best[3]:.2f} revenue)"]
 
             # Revenue projection
             if total_cycles > 0 and total_tracked_rev > 0:
@@ -10011,21 +10021,21 @@ JSON:
                 proj_30d = rev_per_cycle * cycles_per_day * 30
                 lines += [
                     "",
-                    "📈 <b>Proyección de ingresos (potencial):</b>",
-                    f"  7 días:  <b>${proj_7d:.2f}</b>",
-                    f"  30 días: <b>${proj_30d:.2f}</b>",
-                    f"  <i>(basado en {total_cycles} ciclos @ ${rev_per_cycle:.3f}/ciclo)</i>",
+                    "📈 <b>Income projection (potential):</b>",
+                    f"  7 days:  <b>${proj_7d:.2f}</b>",
+                    f"  30 days: <b>${proj_30d:.2f}</b>",
+                    f"  <i>(based on {total_cycles} cycles @ ${rev_per_cycle:.3f}/cycle)</i>",
                 ]
 
             lines += [
                 "",
-                f"<i>Datos en tiempo real desde Redis. Ciclo cada {INTERVAL_SECONDS//60} min.</i>",
+                f"<i>Real-time data from Redis. Cycle every {INTERVAL_SECONDS//60} min.</i>",
             ]
             return "\n".join(lines)
 
         except Exception as exc:
             logger.error("[IncomeLoop] analytics_report: %s", exc)
-            return f"⚠️ Error al generar reporte: {exc}"
+            return f"⚠️ Error generating report: {exc}"
 
     async def _exec_landing_page_deploy(self) -> dict:
         """
@@ -10400,7 +10410,8 @@ Return JSON array:
             }
             if sha:
                 body_put["sha"] = sha
-            await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            archived = "error" not in file_r
 
             archive_url = f"https://github.com/{owner}/aria-insights/blob/main/{path}"
 
@@ -10414,10 +10425,10 @@ Return JSON array:
                 summary = f"Pinterest: {len(pins_data)} pin concepts ready — add PINTEREST_ACCESS_TOKEN + PINTEREST_BOARD_ID to post them"
 
             return {
-                "success": True,
+                "success": pins_created > 0 or archived,
                 "summary": summary,
                 "revenue_potential": float(pins_created * 15 + len(pins_data) * 2),
-                "urls": [archive_url],
+                "urls": [archive_url] if archived else [],
             }
 
         except Exception as exc:
@@ -10579,7 +10590,8 @@ Return JSON:
             }
             if sha:
                 body_put["sha"] = sha
-            await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            file_r = await gh._put(f"/repos/{owner}/aria-insights/contents/{path}", body_put)
+            archived = "error" not in file_r
 
             archive_url = f"https://github.com/{owner}/aria-insights/blob/main/{path}"
 
@@ -10589,10 +10601,10 @@ Return JSON:
                 summary = f"Cold email: {emails_archived} prospects + emails ready — add SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM to send"
 
             return {
-                "success": True,
+                "success": emails_sent > 0 or archived,
                 "summary": summary,
                 "revenue_potential": float(emails_sent * 50 + emails_archived * 5),
-                "urls": [archive_url],
+                "urls": [archive_url] if archived else [],
             }
 
         except Exception as exc:
@@ -10699,7 +10711,7 @@ Return JSON:
                     tw_key = getattr(settings, "TWITTER_API_KEY", None)
                     tw_secret = getattr(settings, "TWITTER_API_SECRET", None)
                     tw_tok = getattr(settings, "TWITTER_ACCESS_TOKEN", None)
-                    tw_sec = getattr(settings, "TWITTER_ACCESS_SECRET", None)
+                    tw_sec = getattr(settings, "TWITTER_ACCESS_TOKEN_SECRET", None)
                     if all([tw_key, tw_secret, tw_tok, tw_sec]):
                         ok = await pub.publish_thread_to_twitter(tweets)
                         if ok:
@@ -11139,9 +11151,9 @@ Return JSON:
                 }
 
             return {
-                "success": True,
+                "success": False,
                 "summary": f"YouTube strategy generated: {title[:60]} (archive failed, data in memory)",
-                "revenue_potential": 10.0,
+                "revenue_potential": 0.0,
                 "urls": [],
             }
 
@@ -11390,9 +11402,9 @@ Return JSON:
                 [archive_url] if "content" in result or "commit" in result else []
             ) + extra_urls
             return {
-                "success": True,
+                "success": bool(all_urls),
                 "summary": f"PH launch kit: '{tagline}' — {len(extra_urls)} live posts (HN/Twitter) + kit archived",
-                "revenue_potential": 200.0,
+                "revenue_potential": 200.0 if all_urls else 0.0,
                 "urls": all_urls[:5],
             }
 
@@ -12435,9 +12447,9 @@ JSON:
                 avg_lift,
             )
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"Smart pricing: {len(matrix)} products optimized — avg revenue lift +{avg_lift}% | {strategy_note[:60]}",
-                "revenue_potential": 35.0,  # pricing optimization is a pure revenue multiplier
+                "revenue_potential": 35.0 if urls_created else 0.0,
                 "urls": urls_created[:2],
             }
 
@@ -12899,13 +12911,15 @@ JSON:
                 mrr,
             )
             return {
-                "success": True,
+                "success": bool(urls_created or distributed_to),
                 "summary": (
                     f"Community: '{community_name}' — ${mrr:,}/mo MRR at 100 members | "
-                    f"announced on: {', '.join(distributed_to) or 'GitHub'}"
+                    f"announced on: {', '.join(distributed_to) or 'nowhere (all channels failed)'}"
                 ),
                 "revenue_potential": (
-                    float(tiers[0].get("price_monthly", 19) * 50) if tiers else 950.0
+                    (float(tiers[0].get("price_monthly", 19) * 50) if tiers else 950.0)
+                    if (urls_created or distributed_to)
+                    else 0.0
                 ),
                 "urls": urls_created[:2],
             }
@@ -15098,7 +15112,7 @@ Return JSON: {{"reply": "text under 200 chars"}}""",
                 await cache.increment("aria:engagement:total_replies")
 
             return {
-                "success": True,
+                "success": replies_sent > 0,
                 "summary": f"auto_responder: {replies_sent} replies sent across {len({a.split(':')[0] for a in actions})} platforms",
                 "revenue_potential": float(replies_sent) * 2.0,
             }
@@ -15548,7 +15562,7 @@ Return JSON:
 
             # ── Send via SendGrid → SMTP fallback ───────────────────────────────
             sendgrid_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
-            from_email = getattr(settings, "SENDGRID_FROM_EMAIL", "") or "aria@geremypolanco.com"
+            from_email = getattr(settings, "EMAIL_FROM", "") or "aria@geremypolanco.com"
             smtp_host = getattr(settings, "SMTP_HOST", None)
             smtp_user = getattr(settings, "SMTP_USER", None)
             smtp_pass = getattr(settings, "SMTP_PASSWORD", None)
@@ -16164,7 +16178,7 @@ Return JSON (keep content fields under 80 words each):
 
                         plat = await get_platform_login()
                         pg = await plat.linkedin(_vc_ae, _vc_ap)
-                        await plat.linkedin_post(pg, li_vc)
+                        await plat.linkedin_create_post(pg, li_vc)
                 except Exception:
                     pass
 
@@ -17044,7 +17058,6 @@ Return JSON:
                 )
 
             # Twitter launch
-            sum(t.get("price_usd_per_month", 0) for t in pricing[1:])  # non-free tiers
             tweet = f"🚀 Launching {api_name} on RapidAPI!\n\n{tagline}\n\n✅ {endpoints[0].get('path', '') if endpoints else ''}\n✅ {endpoints[1].get('path', '') if len(endpoints) > 1 else ''}\n\nPlans from ${pricing[1].get('price_usd_per_month', 9) if len(pricing) > 1 else 9}/mo\n\n{urls_created[0] if urls_created else ''}"
             _tw_ok = False
             try:
@@ -17656,7 +17669,7 @@ Return JSON:
 
             # Send via SendGrid if configured
             sendgrid_key = getattr(settings, "SENDGRID_API_KEY", "") or ""
-            from_email = getattr(settings, "SENDGRID_FROM_EMAIL", "") or "aria@geremypolanco.com"
+            from_email = getattr(settings, "EMAIL_FROM", "") or "aria@geremypolanco.com"
             if sendgrid_key and email_subject and email_body:
                 # Get prospects from CRM
                 crm_prospects: list[dict] = []
@@ -17784,7 +17797,7 @@ Return JSON:
 
                     _b2b_plat = await get_platform_login()
                     _b2b_li_pg = await _b2b_plat.linkedin(_b2b_ae, _b2b_ap)
-                    await _b2b_plat.linkedin_post(_b2b_li_pg, li_b2b)
+                    await _b2b_plat.linkedin_create_post(_b2b_li_pg, li_b2b)
                 except Exception:
                     pass
 
@@ -18045,7 +18058,7 @@ Create compelling brand story assets that position ARIA as the most advanced aut
 
                     _bs_plat = await get_platform_login()
                     _li_bs_pg = await _bs_plat.linkedin(_ae, _ap)
-                    await _bs_plat.linkedin_post(_li_bs_pg, li_brand)
+                    await _bs_plat.linkedin_create_post(_li_bs_pg, li_brand)
                 except Exception:
                     pass
 
@@ -19959,7 +19972,7 @@ Generate a backlink building plan:
 
                     _jv_plat = await get_platform_login()
                     _jv_li_pg = await _jv_plat.linkedin(_jv_ae, _jv_ap)
-                    await _jv_plat.linkedin_post(_jv_li_pg, _jv_li)
+                    await _jv_plat.linkedin_create_post(_jv_li_pg, _jv_li)
                 except Exception:
                     pass
 
@@ -20234,9 +20247,9 @@ Generate a backlink building plan:
                         pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"seo_content_cluster: '{pillar_title[:40]}' | 1 pillar + {posts_published} supporting posts | est. {monthly_traffic} monthly visits | {len(urls_created)} URLs",
-                "revenue_potential": float(monthly_traffic) * 0.05,
+                "revenue_potential": float(monthly_traffic) * 0.05 if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20322,9 +20335,13 @@ Generate a backlink building plan:
 
             revenue_delta = (main_price - current_price) * 10
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"price_anchoring: '{product_name[:40]}' | ${current_price} → ${main_price} | anchor: ${anchor_price} | expected AOV +{aov_increase:.0f}% | pricing page deployed",
-                "revenue_potential": max(revenue_delta, aov_increase * current_price / 100 * 10),
+                "revenue_potential": (
+                    max(revenue_delta, aov_increase * current_price / 100 * 10)
+                    if urls_created
+                    else 0.0
+                ),
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20438,9 +20455,13 @@ Generate a backlink building plan:
                         pass
 
             return {
-                "success": True,
+                "success": bool(urls_created) or testimonials_stored > 0,
                 "summary": f"social_proof_automation: {trust_badge} | {testimonials_stored} testimonials archived | wall-of-love deployed | proof tweet posted",
-                "revenue_potential": float(len(buyers) + 1) * 5.0,
+                "revenue_potential": (
+                    float(len(buyers) + 1) * 5.0
+                    if (urls_created or testimonials_stored > 0)
+                    else 0.0
+                ),
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20542,9 +20563,9 @@ Generate a backlink building plan:
 
             revenue_potential = float(expected_conversions) * 29.0
             return {
-                "success": True,
+                "success": bool(urls_created) or dms_queued > 0,
                 "summary": f"influencer_collab: {len(influencers)} influencers targeted | {collab_type} deal | reach: {expected_reach:,} | {dms_queued} DMs queued | {expected_conversions} expected conversions",
-                "revenue_potential": revenue_potential,
+                "revenue_potential": revenue_potential if (urls_created or dms_queued > 0) else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20676,9 +20697,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"content_licensing: '{pkg_name[:40]}' | ${monthly_fee}/mo | {expected_clients} expected clients | ${revenue_potential:,.0f}/mo MRR potential | Twitter announced",
-                "revenue_potential": revenue_potential,
+                "revenue_potential": revenue_potential if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20799,7 +20820,7 @@ Generate a backlink building plan:
 
                         _mc_plat = await get_platform_login()
                         _li_pg = await _mc_plat.linkedin(_mc_ae, _mc_ap)
-                        await _mc_plat.linkedin_post(_li_pg, li_post)
+                        await _mc_plat.linkedin_create_post(_li_pg, li_post)
                     except Exception:
                         pass
 
@@ -20826,9 +20847,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"micro_consulting: '{session_title[:40]}' | ${price}/session | {sessions_available} slots | ${revenue_potential:,.0f} potential this week | promoted on LinkedIn+Twitter",
-                "revenue_potential": revenue_potential,
+                "revenue_potential": revenue_potential if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -20936,9 +20957,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"saas_upsell_sequence: '{seq_name[:40]}' | {len(emails)} emails | {upgrade_rate:.1f}% upgrade rate | ${mrr_per_100}/100 users MRR | sequence archived + announced",
-                "revenue_potential": mrr_per_100,
+                "revenue_potential": mrr_per_100 if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21082,14 +21103,14 @@ Generate a backlink building plan:
 
                     _cm_plat2 = await get_platform_login()
                     _cm_li_pg = await _cm_plat2.linkedin(_cm_ae, _cm_ap)
-                    await _cm_plat2.linkedin_post(_cm_li_pg, li_cm)
+                    await _cm_plat2.linkedin_create_post(_cm_li_pg, li_cm)
                 except Exception:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"community_monetize: '{community_name[:40]}' on {community.get('platform','Discord')} | {len(tiers)} tiers | {members_m1} members month-1 | ${expected_mrr:,.0f} MRR month-3 | launched + promoted",
-                "revenue_potential": expected_mrr,
+                "revenue_potential": expected_mrr if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21250,13 +21271,13 @@ Generate a backlink building plan:
 
             estimated_shares = int(piece.get("estimated_shares", 50))
             return {
-                "success": True,
+                "success": bool(published_channels),
                 "summary": (
                     f"thought_leadership: '{title[:50]}' | "
-                    f"published to: {', '.join(published_channels) or 'GitHub'} | "
+                    f"published to: {', '.join(published_channels) or 'nowhere (all channels failed)'} | "
                     f"est. {estimated_shares} shares"
                 ),
-                "revenue_potential": float(estimated_shares) * 2.0,
+                "revenue_potential": float(estimated_shares) * 2.0 if published_channels else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21372,9 +21393,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"token_economy: '{token_name}' ({token_symbol}) | {earn_count} earn actions | {redeem_count} rewards | whitepaper published + announced | virality: {economy.get('virality_mechanic','')[:50]}",
-                "revenue_potential": 500.0,
+                "revenue_potential": 500.0 if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21493,9 +21514,9 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"api_product_launch: '{api_name[:40]}' | {len(api_product.get('endpoints',[]))} endpoints | {len(tiers)} pricing tiers | top tier: ${highest_price}/mo | README + Postman published + announced",
-                "revenue_potential": highest_price * 3,
+                "revenue_potential": highest_price * 3 if urls_created else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21617,9 +21638,11 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"growth_experiment: '{exp_name[:40]}' | {experiment.get('experiment_type','')} | {experiment.get('confidence_level','medium')} confidence | +{experiment.get('expected_lift_pct',0):.1f}% expected lift | experiment doc published + shared",
-                "revenue_potential": experiment.get("expected_lift_pct", 5.0) * 10.0,
+                "revenue_potential": (
+                    experiment.get("expected_lift_pct", 5.0) * 10.0 if urls_created else 0.0
+                ),
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21723,9 +21746,11 @@ Generate a backlink building plan:
                     pass
 
             return {
-                "success": True,
+                "success": bool(urls_created),
                 "summary": f"app_store_listing: '{app_name[:40]}' → {marketplace} | ASO score: {aso_score}/100 | {listing.get('pricing','Free')} | listing published + announced",
-                "revenue_potential": 300.0 if listing.get("pricing") != "Free" else 50.0,
+                "revenue_potential": (
+                    (300.0 if listing.get("pricing") != "Free" else 50.0) if urls_created else 0.0
+                ),
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -21889,14 +21914,13 @@ Generate a backlink building plan:
                 except Exception:
                     pass
 
-            case_study.get("distribution_plan", [])
             return {
-                "success": True,
+                "success": bool(urls_created or distributed_to),
                 "summary": (
                     f"case_study_publisher: '{title[:45]}' | hero: {hero_stat} | "
-                    f"published to: {', '.join(distributed_to) or 'GitHub'}"
+                    f"published to: {', '.join(distributed_to) or 'nowhere (all channels failed)'}"
                 ),
-                "revenue_potential": 150.0,
+                "revenue_potential": 150.0 if (urls_created or distributed_to) else 0.0,
                 "urls": urls_created[:3],
             }
         except Exception as exc:
@@ -22170,7 +22194,7 @@ JSON:
             product_name = sub_data.get("name", "ARIA Pro Subscription")
             tagline = sub_data.get("tagline", "")
             monthly_cents = int(sub_data.get("monthly_price_cents", 1900))
-            int(sub_data.get("annual_price_cents", 18000))
+            annual_cents = int(sub_data.get("annual_price_cents", 18000))
             description = sub_data.get("description", "")
             deliverables = sub_data.get("monthly_deliverables", [])
             tier = sub_data.get("tier_name", "Pro")
@@ -22178,6 +22202,7 @@ JSON:
 
             urls_created: list[str] = []
             platform_used = ""
+            annual_checkout_url = ""
 
             # Try Stripe subscription billing
             stripe_key = getattr(settings, "STRIPE_SECRET_KEY", None)
@@ -22227,6 +22252,39 @@ JSON:
                                     if checkout_url:
                                         urls_created.append(checkout_url)
                                         platform_used = "Stripe Subscriptions"
+
+                            # Mirror the monthly flow for the annual plan the AI
+                            # was asked to design (annual_price_cents) — it used
+                            # to be computed and silently discarded.
+                            annual_price_r = await _client.post(
+                                "https://api.stripe.com/v1/prices",
+                                data={
+                                    "product": stripe_pid,
+                                    "unit_amount": str(annual_cents),
+                                    "currency": "usd",
+                                    "recurring[interval]": "year",
+                                    "nickname": f"{tier} Annual",
+                                },
+                                auth=(stripe_key, ""),
+                            )
+                            annual_checkout_url = ""
+                            if annual_price_r.status_code == 200:
+                                annual_price_id = annual_price_r.json().get("id", "")
+                                annual_link_data: dict = {
+                                    "line_items[0][price]": annual_price_id,
+                                    "line_items[0][quantity]": "1",
+                                }
+                                if trial_days > 0:
+                                    annual_link_data["subscription_data[trial_period_days]"] = str(
+                                        trial_days
+                                    )
+                                annual_link_r = await _client.post(
+                                    "https://api.stripe.com/v1/payment_links",
+                                    data=annual_link_data,
+                                    auth=(stripe_key, ""),
+                                )
+                                if annual_link_r.status_code == 200:
+                                    annual_checkout_url = annual_link_r.json().get("url", "")
                 except Exception as _se:
                     logger.debug("[IncomeLoop] stripe_subscription: %s", _se)
 
@@ -22287,10 +22345,15 @@ JSON:
                     slug = product_name[:35].lower().replace(" ", "-").replace("'", "")
                     buy_url = urls_created[0] if urls_created else "#"
                     deliverables_md = "\n".join(f"- ✅ {d}" for d in deliverables[:6])
+                    annual_md = (
+                        f" | **${annual_cents/100:.0f}/year** [Save with annual billing →]({annual_checkout_url})"
+                        if annual_checkout_url
+                        else ""
+                    )
                     md = (
                         f"# {product_name} — {tier} Membership\n\n"
                         f"*{tagline}*\n\n"
-                        f"**${monthly_cents/100:.0f}/month** | [Subscribe Now →]({buy_url})\n\n"
+                        f"**${monthly_cents/100:.0f}/month** | [Subscribe Now →]({buy_url}){annual_md}\n\n"
                         f"*{trial_days}-day free trial included*\n\n"
                         f"{description}\n\n"
                         f"## What You Get Every Month\n\n{deliverables_md}\n\n"

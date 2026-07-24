@@ -1,17 +1,17 @@
 """
 AriaTelegramBot v8 — Conversational Intelligence Edition.
 
-ARIA no es un menú. Es una IA que razona, actúa y sigue el hilo.
+ARIA is not a menu. She's an AI that reasons, acts, and follows the thread.
 
-Principios:
-  ✦ Sin teclados de botones — ARIA entiende lenguaje natural
-  ✦ Sin traducciones de slash commands — AriaMind maneja todo
-  ✦ Bienvenida proactiva: ARIA reporta qué ha estado haciendo
-  ✦ Contexto de conversación real — recordatorio de acciones previas
-  ✦ Typing indicator + placeholder para sensación de respuesta en vivo
-  ✦ Markdown → HTML seguro para Telegram
+Principles:
+  ✦ No button keyboards — ARIA understands natural language
+  ✦ No slash-command translations — AriaMind handles everything
+  ✦ Proactive welcome: ARIA reports what she's been doing
+  ✦ Real conversation context — reminder of previous actions
+  ✦ Typing indicator + placeholder for a live-response feel
+  ✦ Markdown → safe HTML for Telegram
 
-Todo input pasa por AriaMind. El bot solo maneja I/O.
+All input goes through AriaMind. The bot only handles I/O.
 """
 
 from __future__ import annotations
@@ -36,15 +36,15 @@ TELEGRAM_API = "https://api.telegram.org/bot"
 # ── Bot commands (minimal — ARIA understands natural language) ─────────────
 
 BOT_COMMANDS = [
-    {"command": "start", "description": "Activar ARIA y ver qué ha estado haciendo"},
-    {"command": "limpiar", "description": "Borrar el historial de conversación"},
+    {"command": "start", "description": "Activate ARIA and see what she's been doing"},
+    {"command": "limpiar", "description": "Clear the conversation history"},
 ]
 
 # ── Welcome handled dynamically by _send_welcome (proactive status report) ─
 
 
 class AriaTelegramBot:
-    """Interfaz Telegram de ARIA — I/O de clase mundial."""
+    """ARIA's Telegram interface — world-class I/O."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=60.0)
@@ -93,11 +93,11 @@ class AriaTelegramBot:
 
     async def start_polling(self) -> None:
         if not settings.telegram_token:
-            logger.error("[Bot] TELEGRAM_TOKEN no configurado — bot inactivo")
+            logger.error("[Bot] TELEGRAM_TOKEN not configured — bot inactive")
             return
         await self._register_commands()
         self._running = True
-        logger.info("[Bot] Polling iniciado")
+        logger.info("[Bot] Polling started")
         while self._running:
             try:
                 await self._poll()
@@ -185,7 +185,7 @@ class AriaTelegramBot:
         if text.startswith("/conectar"):
             parts = text.split()
             if len(parts) < 2:
-                await self._send(chat_id, "Uso: /conectar [linkedin|facebook|instagram|tiktok]")
+                await self._send(chat_id, "Usage: /conectar [linkedin|facebook|instagram|tiktok]")
                 return
             platform = parts[1].lower()
             from apps.core.tools.social_media import SocialMediaManager
@@ -195,12 +195,12 @@ class AriaTelegramBot:
             if url:
                 await self._send(
                     chat_id,
-                    f"🔗 Haz clic aquí para conectar tu cuenta de {platform.capitalize()}:\n\n{url}",
+                    f"🔗 Click here to connect your {platform.capitalize()} account:\n\n{url}",
                 )
             else:
                 await self._send(
                     chat_id,
-                    f"❌ No se pudo generar la URL de conexión para {platform}. Revisa las credenciales en el servidor.",
+                    f"❌ Could not generate the connection URL for {platform}. Check the credentials on the server.",
                 )
             return
 
@@ -216,11 +216,11 @@ class AriaTelegramBot:
                 from apps.core.cognition.aria_mind import get_aria_mind
 
                 mind = get_aria_mind()
-                await mind._clear_history(chat_id)
+                await mind._clear_conversation(chat_id)
             except Exception:
                 pass
             await self._edit_or_send(
-                chat_id, placeholder_id, "🗑 Historial borrado. ¿En qué trabajamos ahora?"
+                chat_id, placeholder_id, "🗑 History cleared. What shall we work on now?"
             )
             return
 
@@ -233,7 +233,7 @@ class AriaTelegramBot:
         except Exception as exc:
             logger.error("[Bot] AriaMind error: %s", exc)
             await self._edit_or_send(
-                chat_id, placeholder_id, "⚠️ Algo falló internamente. Inténtalo de nuevo."
+                chat_id, placeholder_id, "⚠️ Something failed internally. Please try again."
             )
             return
 
@@ -269,7 +269,7 @@ class AriaTelegramBot:
             if not ok and response.caption:
                 await self._send(
                     chat_id,
-                    f"🎬 Video generado — demasiado grande para Telegram.\n{response.caption}",
+                    f"🎬 Video generated — too large for Telegram.\n{response.caption}",
                 )
             return
 
@@ -280,7 +280,7 @@ class AriaTelegramBot:
             return
 
         if response.document_bytes:
-            fname = response.document_filename or "documento.pdf"
+            fname = response.document_filename or "document.pdf"
             ok = await self._send_document_bytes(
                 chat_id, response.document_bytes, fname, response.caption
             )
@@ -308,15 +308,8 @@ class AriaTelegramBot:
 
             img_bytes = await self._download_file(file_id)
             if not img_bytes:
-                await self._send(chat_id, "⚠️ No pude descargar la imagen.")
+                await self._send(chat_id, "⚠️ I couldn't download the image.")
                 return ""
-
-            # Store image in AriaMind context — enables VQA, img2img, document_qa
-            import base64 as _b64
-
-            from apps.core.cognition.aria_mind import set_image_context
-
-            set_image_context(chat_id, _b64.b64encode(img_bytes).decode())
 
             # If caption looks like a question → route directly to VQA
             _is_question = caption and (
@@ -360,9 +353,9 @@ class AriaTelegramBot:
                     vqa_ans = vqa_r.get("answer", "")
                     conf = vqa_r.get("confidence", 0)
                     return (
-                        f"[El usuario envió una imagen y preguntó: '{caption}'. "
-                        f"Respuesta VQA: {vqa_ans} (confianza: {conf:.0%}). "
-                        f"Hay imagen disponible en el contexto para más análisis.]"
+                        f"[The user sent an image and asked: '{caption}'. "
+                        f"VQA answer: {vqa_ans} (confidence: {conf:.0%}). "
+                        f"The image is available in context for further analysis.]"
                     )
 
             # Default: describe the image
@@ -372,9 +365,9 @@ class AriaTelegramBot:
             description = r.get("description", "") if r.get("success") else ""
 
             base = (
-                f"[El usuario envió una foto. Descripción: {description}. Imagen disponible en contexto para VQA, transformación o análisis de documento.]"
+                f"[The user sent a photo. Description: {description}. Image available in context for VQA, transformation, or document analysis.]"
                 if description
-                else "[El usuario envió una foto. Imagen disponible en contexto para VQA, img2img o document_qa.]"
+                else "[The user sent a photo. Image available in context for VQA, img2img, or document_qa.]"
             )
             return f"{base} {caption}".strip() if caption else base
         except Exception as exc:
@@ -390,7 +383,7 @@ class AriaTelegramBot:
 
             audio_bytes = await self._download_file(file_id)
             if not audio_bytes:
-                await self._send(chat_id, "⚠️ No pude descargar el audio.")
+                await self._send(chat_id, "⚠️ I couldn't download the audio.")
                 return ""
 
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
@@ -399,8 +392,8 @@ class AriaTelegramBot:
             transcript = r.get("transcript", "").strip() if r.get("success") else ""
 
             if transcript:
-                return f"[Mensaje de voz transcrito]: {transcript}"
-            await self._send(chat_id, "⚠️ No pude transcribir el audio.")
+                return f"[Transcribed voice message]: {transcript}"
+            await self._send(chat_id, "⚠️ I couldn't transcribe the audio.")
             return ""
         except Exception as exc:
             logger.error("[Bot] _transcribe_user_audio: %s", exc)
@@ -478,16 +471,16 @@ class AriaTelegramBot:
 
             mind = get_aria_mind()
             response = await mind.handle(
-                "Hola, acabo de conectarme. Dame un reporte rápido de qué has estado haciendo "
-                "mientras estaba desconectado: ciclos de ingresos ejecutados, productos creados, "
-                "URLs publicadas, y qué planeas hacer ahora.",
+                "Hi, I've just come online. Give me a quick report of what you've been doing "
+                "while I was offline: revenue cycles run, products created, "
+                "URLs published, and what you plan to do now.",
                 chat_id,
             )
-            text = response.text or "ARIA en línea. ¿Qué hacemos?"
+            text = response.text or "ARIA online. What shall we do?"
             await self._send(chat_id, self._md_to_html(text), already_html=True)
         except Exception as exc:
             logger.error("[Bot] _send_welcome: %s", exc)
-            await self._send(chat_id, "ARIA en línea. Habla conmigo en lenguaje natural.")
+            await self._send(chat_id, "ARIA online. Talk to me in natural language.")
 
     async def _send_action(self, chat_id: str, action: str = "typing") -> None:
         if not settings.telegram_token:
@@ -603,7 +596,47 @@ class AriaTelegramBot:
                 logger.error("[Bot] _send: %s", exc)
         return True
 
+    async def _send_message(self, chat_id: str, text: str, already_html: bool = False) -> bool:
+        """Alias expected by aria_commands.py, deep_think.py, and
+        task_manager.py — those callers referenced a method that never
+        existed on this class (only _send did), so every notification they
+        tried to send silently failed via their own except-and-pass."""
+        return await self._send(chat_id, text, already_html=already_html)
+
     # ── Media sending ──────────────────────────────────────────────────────
+
+    async def _send_photo(self, chat_id: str, image: bytes | str, caption: str = None) -> bool:
+        """Alias expected by orchestrator.py, which referenced a method that
+        never existed on this class. Accepts raw bytes, an http(s) URL
+        (Telegram fetches it server-side), or a local file path."""
+        if isinstance(image, bytes):
+            return await self._send_photo_bytes(chat_id, image, caption=caption)
+        if isinstance(image, str) and image.startswith(("http://", "https://")):
+            if not settings.telegram_token:
+                return False
+            try:
+                d: dict = {"chat_id": chat_id, "photo": image}
+                if caption:
+                    d["caption"] = self._md_to_html(caption)[:1024]
+                    d["parse_mode"] = "HTML"
+                r = await self._http.post(
+                    f"{TELEGRAM_API}{settings.telegram_token}/sendPhoto", json=d
+                )
+                if r.status_code != 200:
+                    logger.error("[Bot] sendPhoto(url) %d: %s", r.status_code, r.text[:150])
+                return r.status_code == 200
+            except Exception as exc:
+                logger.error("[Bot] _send_photo(url): %s", exc)
+                return False
+        if isinstance(image, str):
+            try:
+                with open(image, "rb") as f:
+                    data = f.read()
+            except Exception as exc:
+                logger.error("[Bot] _send_photo(path) could not read %s: %s", image, exc)
+                return False
+            return await self._send_photo_bytes(chat_id, data, caption=caption)
+        return False
 
     async def _send_photo_bytes(
         self, chat_id: str, image_bytes: bytes, caption: str = None, filename: str = "aria.png"

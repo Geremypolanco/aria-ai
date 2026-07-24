@@ -1,13 +1,13 @@
 """
-ARIA Content Pipeline — Motor de monetización por contenido.
+ARIA Content Pipeline — Content monetization engine.
 
-Flujo completo:
-1. Detecta tendencias reales (HN + Reddit + Product Hunt + Hacker News)
-2. Genera artículos SEO con Groq (ultra rápido)
-3. Inyecta links de afiliado (Amazon + ClickBank + Hotmart)
-4. Publica en Medium + Dev.to + Hashnode simultáneamente
-5. Distribuye en redes sociales
-6. Registra todo en Supabase para tracking
+Full flow:
+1. Detects real trends (HN + Reddit + Product Hunt + Hacker News)
+2. Generates SEO articles with Groq (ultra fast)
+3. Injects affiliate links (Amazon + ClickBank + Hotmart)
+4. Publishes to Medium + Dev.to + Hashnode simultaneously
+5. Distributes on social media
+6. Logs everything in Supabase for tracking
 """
 
 from __future__ import annotations
@@ -27,79 +27,79 @@ from apps.core.intelligence.quality_checker import get_quality_checker
 logger = logging.getLogger("aria.content_pipeline")
 
 
-# ── CATEGORÍAS DE AFILIADO POR TEMA ──────────────────────
+# ── AFFILIATE CATEGORIES BY TOPIC ─────────────────────────
 
 AFFILIATE_CATALOG: dict[str, list[dict]] = {
     "tech": [
-        {"keyword": "laptop", "asin": "B09N9HZT5P", "title": "Laptop recomendada"},
-        {"keyword": "headphones", "asin": "B0CH2NZJ1Z", "title": "Auriculares top"},
-        {"keyword": "mouse", "asin": "B09HMKFDXC", "title": "Mouse ergonómico"},
-        {"keyword": "keyboard", "asin": "B07WGNHL7Q", "title": "Teclado mecánico"},
-        {"keyword": "monitor", "asin": "B08B48BQ7T", "title": "Monitor 4K"},
-        {"keyword": "webcam", "asin": "B08CS18WVP", "title": "Webcam HD"},
-        {"keyword": "microphone", "asin": "B07WYYLYVK", "title": "Micrófono USB"},
-        {"keyword": "ssd", "asin": "B08GTYFC37", "title": "SSD rápido"},
+        {"keyword": "laptop", "asin": "B09N9HZT5P", "title": "Recommended laptop"},
+        {"keyword": "headphones", "asin": "B0CH2NZJ1Z", "title": "Top headphones"},
+        {"keyword": "mouse", "asin": "B09HMKFDXC", "title": "Ergonomic mouse"},
+        {"keyword": "keyboard", "asin": "B07WGNHL7Q", "title": "Mechanical keyboard"},
+        {"keyword": "monitor", "asin": "B08B48BQ7T", "title": "4K monitor"},
+        {"keyword": "webcam", "asin": "B08CS18WVP", "title": "HD webcam"},
+        {"keyword": "microphone", "asin": "B07WYYLYVK", "title": "USB microphone"},
+        {"keyword": "ssd", "asin": "B08GTYFC37", "title": "Fast SSD"},
         {"keyword": "usb hub", "asin": "B07NSGFRMW", "title": "USB-C Hub"},
         {"keyword": "cable management", "asin": "B07TPKN6PX", "title": "Cable management"},
     ],
     "ai": [
-        {"keyword": "gpu", "asin": "B092PX4K4B", "title": "GPU para ML"},
-        {"keyword": "book ai", "asin": "B0BX7BWJMR", "title": "Libro de IA"},
+        {"keyword": "gpu", "asin": "B092PX4K4B", "title": "GPU for ML"},
+        {"keyword": "book ai", "asin": "B0BX7BWJMR", "title": "AI book"},
         {"keyword": "raspberry pi", "asin": "B09TTNF8BT", "title": "Raspberry Pi"},
-        {"keyword": "ai headset", "asin": "B0CM5DXNX3", "title": "Headset para productividad AI"},
-        {"keyword": "ai notebook", "asin": "B09V3KXJPB", "title": "Notebook IA recomendado"},
+        {"keyword": "ai headset", "asin": "B0CM5DXNX3", "title": "Headset for AI productivity"},
+        {"keyword": "ai notebook", "asin": "B09V3KXJPB", "title": "Recommended AI notebook"},
     ],
     "business": [
-        {"keyword": "business book", "asin": "B079JN6B2Y", "title": "Libro de negocios"},
+        {"keyword": "business book", "asin": "B079JN6B2Y", "title": "Business book"},
         {"keyword": "kindle", "asin": "B09SWS2R84", "title": "Kindle Paperwhite"},
-        {"keyword": "desk", "asin": "B08CHRM5CC", "title": "Escritorio standing"},
-        {"keyword": "chair", "asin": "B09HCPHTX1", "title": "Silla ergonómica"},
-        {"keyword": "planner", "asin": "B07VQ6KRVY", "title": "Planificador ejecutivo"},
-        {"keyword": "whiteboard", "asin": "B07MB4PZXB", "title": "Pizarrón portátil"},
+        {"keyword": "desk", "asin": "B08CHRM5CC", "title": "Standing desk"},
+        {"keyword": "chair", "asin": "B09HCPHTX1", "title": "Ergonomic chair"},
+        {"keyword": "planner", "asin": "B07VQ6KRVY", "title": "Executive planner"},
+        {"keyword": "whiteboard", "asin": "B07MB4PZXB", "title": "Portable whiteboard"},
     ],
     "finance": [
-        {"keyword": "book finance", "asin": "B076NCZRNL", "title": "Libro finanzas"},
-        {"keyword": "calculator", "asin": "B00000J1ER", "title": "Calculadora financiera"},
+        {"keyword": "book finance", "asin": "B076NCZRNL", "title": "Finance book"},
+        {"keyword": "calculator", "asin": "B00000J1ER", "title": "Financial calculator"},
         {"keyword": "rich dad poor dad", "asin": "B07HPG8KJX", "title": "Rich Dad Poor Dad"},
         {"keyword": "investing book", "asin": "B00JGB01W2", "title": "The Intelligent Investor"},
     ],
     "fitness": [
         {"keyword": "fitness tracker", "asin": "B09B4P7LLN", "title": "Fitness tracker"},
-        {"keyword": "protein", "asin": "B07QMSL3Z5", "title": "Proteína"},
-        {"keyword": "yoga mat", "asin": "B07DQHV8NK", "title": "Esterilla yoga"},
-        {"keyword": "resistance bands", "asin": "B01AVDVHTI", "title": "Bandas de resistencia"},
-        {"keyword": "foam roller", "asin": "B00O6XNJZ4", "title": "Rodillo de espuma"},
+        {"keyword": "protein", "asin": "B07QMSL3Z5", "title": "Protein"},
+        {"keyword": "yoga mat", "asin": "B07DQHV8NK", "title": "Yoga mat"},
+        {"keyword": "resistance bands", "asin": "B01AVDVHTI", "title": "Resistance bands"},
+        {"keyword": "foam roller", "asin": "B00O6XNJZ4", "title": "Foam roller"},
     ],
     "marketing": [
-        {"keyword": "marketing book", "asin": "B07H1ZYSL6", "title": "Libro de marketing"},
-        {"keyword": "seo book", "asin": "B09N9WG1DT", "title": "Libro SEO"},
+        {"keyword": "marketing book", "asin": "B07H1ZYSL6", "title": "Marketing book"},
+        {"keyword": "seo book", "asin": "B09N9WG1DT", "title": "SEO book"},
         {"keyword": "copywriting", "asin": "B01N7V61GO", "title": "Breakthrough Advertising"},
         {"keyword": "influence book", "asin": "B002BD2UUC", "title": "Influence - Cialdini"},
     ],
     "crypto": [
         {"keyword": "hardware wallet", "asin": "B08Z51WMRB", "title": "Hardware wallet"},
-        {"keyword": "crypto book", "asin": "B07T2XHX6G", "title": "Libro de crypto"},
+        {"keyword": "crypto book", "asin": "B07T2XHX6G", "title": "Crypto book"},
         {"keyword": "bitcoin book", "asin": "B07C7KDBWZ", "title": "Bitcoin Standard"},
     ],
     "productivity": [
         {"keyword": "time management book", "asin": "B004DEPHOY", "title": "Getting Things Done"},
         {"keyword": "deep work book", "asin": "B00X47ZVXM", "title": "Deep Work - Cal Newport"},
-        {"keyword": "pomodoro timer", "asin": "B01N6TBSML", "title": "Timer Pomodoro"},
-        {"keyword": "notebook", "asin": "B01EB3OSLW", "title": "Cuaderno Leuchtturm1917"},
-        {"keyword": "standing mat", "asin": "B07P3DJBY7", "title": "Alfombrilla standing desk"},
+        {"keyword": "pomodoro timer", "asin": "B01N6TBSML", "title": "Pomodoro Timer"},
+        {"keyword": "notebook", "asin": "B01EB3OSLW", "title": "Leuchtturm1917 notebook"},
+        {"keyword": "standing mat", "asin": "B07P3DJBY7", "title": "Standing desk mat"},
     ],
     "ecommerce": [
         {"keyword": "dropshipping book", "asin": "B099TTDYXT", "title": "Dropshipping guide"},
-        {"keyword": "label printer", "asin": "B08VRTJ9XR", "title": "Impresora de etiquetas"},
-        {"keyword": "scale", "asin": "B0012BTXKC", "title": "Báscula postal"},
-        {"keyword": "packaging", "asin": "B01N1MGFEC", "title": "Materiales de packaging"},
+        {"keyword": "label printer", "asin": "B08VRTJ9XR", "title": "Label printer"},
+        {"keyword": "scale", "asin": "B0012BTXKC", "title": "Postal scale"},
+        {"keyword": "packaging", "asin": "B01N1MGFEC", "title": "Packaging materials"},
     ],
     "content_creator": [
-        {"keyword": "ring light", "asin": "B07DLGNLZG", "title": "Ring light para streaming"},
-        {"keyword": "green screen", "asin": "B07XSCMNKD", "title": "Chroma key portátil"},
-        {"keyword": "tripod", "asin": "B08FQZRBBR", "title": "Trípode flexible"},
-        {"keyword": "sd card", "asin": "B07H9DVLBB", "title": "Tarjeta SD rápida"},
-        {"keyword": "capture card", "asin": "B07Z7KL9B2", "title": "Tarjeta de captura 4K"},
+        {"keyword": "ring light", "asin": "B07DLGNLZG", "title": "Ring light for streaming"},
+        {"keyword": "green screen", "asin": "B07XSCMNKD", "title": "Portable chroma key"},
+        {"keyword": "tripod", "asin": "B08FQZRBBR", "title": "Flexible tripod"},
+        {"keyword": "sd card", "asin": "B07H9DVLBB", "title": "Fast SD card"},
+        {"keyword": "capture card", "asin": "B07Z7KL9B2", "title": "4K capture card"},
     ],
 }
 
@@ -108,29 +108,29 @@ CLICKBANK_PRODUCTS = [
         "id": "cb_prod_1",
         "vendor": "clickbank",
         "hoplink_base": "https://vendor.clickbank.net/?affiliate=AFFILIATE&vendor=VENDOR",
-        "title": "Curso IA para negocios",
+        "title": "AI for Business Course",
         "commission": "75%",
     },
     {
         "id": "cb_prod_2",
         "vendor": "clickbank",
         "hoplink_base": "https://vendor.clickbank.net/?affiliate=AFFILIATE&vendor=VENDOR2",
-        "title": "Curso Marketing Digital",
+        "title": "Digital Marketing Course",
         "commission": "60%",
     },
 ]
 
 
 class ContentPipeline:
-    """Motor central de generación y monetización de contenido."""
+    """Central content generation and monetization engine."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
 
-    # ── DETECCIÓN DE TENDENCIAS ───────────────────────────
+    # ── TREND DETECTION ────────────────────────────────────
 
     async def get_trending_topics(self, limit: int = 10) -> list[dict]:
-        """Obtiene trending topics de múltiples fuentes gratuitas."""
+        """Gets trending topics from multiple free sources."""
         topics = []
         sources = await asyncio.gather(
             self._get_hackernews_trends(),
@@ -142,7 +142,7 @@ class ContentPipeline:
             if isinstance(source, list):
                 topics.extend(source)
 
-        # Deduplicar y priorizar por score
+        # Deduplicate and prioritize by score
         seen = set()
         unique = []
         for t in topics:
@@ -151,13 +151,13 @@ class ContentPipeline:
                 seen.add(key)
                 unique.append(t)
 
-        # Ordenar por score descendente
+        # Sort by descending score
         unique.sort(key=lambda x: x.get("score", 0), reverse=True)
-        logger.info("[ContentPipeline] %d trending topics encontrados", len(unique))
+        logger.info("[ContentPipeline] %d trending topics found", len(unique))
         return unique[:limit]
 
     async def _get_hackernews_trends(self) -> list[dict]:
-        """Top stories de Hacker News (API pública, sin auth)."""
+        """Top stories from Hacker News (public API, no auth)."""
         try:
             res = await self._http.get("https://hacker-news.firebaseio.com/v0/topstories.json")
             ids = res.json()[:15]
@@ -183,7 +183,7 @@ class ContentPipeline:
             return []
 
     async def _get_reddit_trends(self) -> list[dict]:
-        """Hot posts de subreddits relevantes (API pública)."""
+        """Hot posts from relevant subreddits (public API)."""
         subreddits = ["artificial", "entrepreneur", "marketing", "technology", "passive_income"]
         topics = []
         for sub in subreddits[:3]:
@@ -215,7 +215,7 @@ class ContentPipeline:
         return topics
 
     async def _get_product_hunt_trends(self) -> list[dict]:
-        """Productos del día en Product Hunt (API GraphQL pública)."""
+        """Products of the day on Product Hunt (public GraphQL API)."""
         try:
             query = """
             {
@@ -302,41 +302,41 @@ class ContentPipeline:
             return "finance"
         return "tech"
 
-    # ── GENERACIÓN DE CONTENIDO ───────────────────────────
+    # ── CONTENT GENERATION ─────────────────────────────────
 
     async def generate_article(self, topic: dict, language: str = "es") -> dict | None:
-        """Genera un artículo SEO completo con IA."""
+        """Generates a complete SEO article with AI."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
             category = topic.get("category", "tech")
 
-            lang_instruction = "en español" if language == "es" else "in English"
+            lang_instruction = "in Spanish" if language == "es" else "in English"
 
-            prompt = f"""Escribe un artículo SEO completo {lang_instruction} sobre:
+            prompt = f"""Write a complete SEO article {lang_instruction} about:
 
-Título sugerido: {topic['title']}
-Categoría: {category}
+Suggested title: {topic['title']}
+Category: {category}
 
-Estructura OBLIGATORIA:
-1. Título SEO atractivo (H1)
-2. Meta descripción (160 chars)
-3. Introducción poderosa (2 párrafos)
-4. 4-5 secciones con subtítulos H2
-5. Lista de puntos clave
-6. Call-to-action al final
-7. 3 tags/palabras clave SEO
+REQUIRED structure:
+1. Compelling SEO title (H1)
+2. Meta description (160 chars)
+3. Powerful introduction (2 paragraphs)
+4. 4-5 sections with H2 subtitles
+5. List of key points
+6. Call-to-action at the end
+7. 3 SEO tags/keywords
 
-Formato: usa **H1:**, **H2:**, **META:**, **TAGS:** como marcadores.
-Longitud: 1200-1500 palabras.
-Tono: experto pero accesible, como un blogger senior."""
+Format: use **H1:**, **H2:**, **META:**, **TAGS:** as markers.
+Length: 1200-1500 words.
+Tone: expert but accessible, like a senior blogger."""
 
             response = await ai.complete(
                 system=(
-                    "Eres un redactor SEO senior especializado en contenido viral. "
-                    "Generas artículos que rankean en Google y generan clics y conversiones. "
-                    "Tu contenido es original, valioso y bien estructurado."
+                    "You are a senior SEO writer specialized in viral content. "
+                    "You generate articles that rank on Google and drive clicks and conversions. "
+                    "Your content is original, valuable, and well structured."
                 ),
                 user=prompt,
                 model=AIModel.STRATEGY,
@@ -356,20 +356,20 @@ Tono: experto pero accesible, como un blogger senior."""
             parsed["word_count"] = len(article_text.split())
 
             logger.info(
-                "[ContentPipeline] Artículo generado: %s (%d palabras)",
+                "[ContentPipeline] Article generated: %s (%d words)",
                 parsed.get("title", "")[:50],
                 parsed["word_count"],
             )
             return parsed
 
         except Exception as exc:
-            logger.error("[ContentPipeline] Error generando artículo: %s", exc)
+            logger.error("[ContentPipeline] Error generating article: %s", exc)
             return None
 
     def _parse_article(self, text: str, topic: dict) -> dict:
-        """Extrae metadatos del artículo generado."""
+        """Extracts metadata from the generated article."""
         lines = text.split("\n")
-        title = topic.get("title", "Artículo")
+        title = topic.get("title", "Article")
         meta = ""
         tags = []
 
@@ -383,10 +383,10 @@ Tono: experto pero accesible, como un blogger senior."""
                 tags = [t.strip() for t in tags_str.split(",")]
 
         if not meta:
-            meta = f"{title[:120]}. Lee el artículo completo para más información."
+            meta = f"{title[:120]}. Read the full article for more information."
 
         if not tags:
-            tags = [topic.get("category", "tech"), "aria ai", "tecnología"]
+            tags = [topic.get("category", "tech"), "aria ai", "technology"]
 
         return {
             "title": title,
@@ -397,7 +397,7 @@ Tono: experto pero accesible, como un blogger senior."""
         }
 
     def _markdown_to_html(self, text: str) -> str:
-        """Convierte markdown básico a HTML."""
+        """Converts basic markdown to HTML."""
         html = text
         html = re.sub(r"\*\*H1:\s*(.*?)\*\*", r"<h1>\1</h1>", html)
         html = re.sub(r"\*\*H2:\s*(.*?)\*\*", r"<h2>\1</h2>", html)
@@ -416,10 +416,10 @@ Tono: experto pero accesible, como un blogger senior."""
         )
         return html
 
-    # ── INYECCIÓN DE AFILIADOS ────────────────────────────
+    # ── AFFILIATE LINK INJECTION ───────────────────────────
 
     def inject_affiliate_links(self, article: dict) -> dict:
-        """Inyecta links de afiliado Amazon relevantes en el artículo."""
+        """Injects relevant Amazon affiliate links into the article."""
         category = article.get("category", "tech")
         tag = settings.AMAZON_ASSOCIATE_TAG or "aria-ai-20"
         products = AFFILIATE_CATALOG.get(category, AFFILIATE_CATALOG["tech"])
@@ -432,16 +432,16 @@ Tono: experto pero accesible, como un blogger senior."""
             if keyword in body.lower() and injected_count < 2:
                 affiliate_url = f"https://www.amazon.com/dp/{product['asin']}?tag={tag}"
                 anchor = f'<a href="{affiliate_url}" target="_blank" rel="noopener">{product["title"]}</a>'
-                # Reemplazar primera ocurrencia del keyword con link
+                # Replace the first occurrence of the keyword with the link
                 pattern = re.compile(re.escape(keyword), re.IGNORECASE)
                 new_body, n = pattern.subn(anchor, body, count=1)
                 if n > 0:
                     body = new_body
                     injected_count += 1
 
-        # Si no se inyectó nada, añadir sección de recursos al final
+        # If nothing was injected, add a resources section at the end
         if injected_count == 0 and products:
-            affiliate_section = "\n\n## Recursos recomendados\n\n"
+            affiliate_section = "\n\n## Recommended resources\n\n"
             for p in products[:3]:
                 url = f"https://www.amazon.com/dp/{p['asin']}?tag={tag}"
                 affiliate_section += f"- [{p['title']}]({url})\n"
@@ -451,21 +451,21 @@ Tono: experto pero accesible, como un blogger senior."""
         article["affiliate_links_injected"] = injected_count
         article["amazon_tag"] = tag
 
-        # Agregar link de ClickBank si aplica
+        # Add a ClickBank link if applicable
         if category in ("business", "marketing", "ai"):
             cb_tag = settings.CLICKBANK_AFFILIATE_ID or ""
             if cb_tag and CLICKBANK_PRODUCTS:
                 cb = CLICKBANK_PRODUCTS[0]
                 hoplink = f"https://hop.clickbank.net/?affiliate={cb_tag}&vendor={cb['vendor']}"
-                body += f'\n\n<p>👉 <strong><a href="{hoplink}">Curso recomendado: {cb["title"]} — {cb["commission"]} de comisión</a></strong></p>'
+                body += f'\n\n<p>👉 <strong><a href="{hoplink}">Recommended course: {cb["title"]} — {cb["commission"]} commission</a></strong></p>'
                 article["body"] = body
 
         return article
 
-    # ── PUBLICACIÓN MULTI-PLATAFORMA ──────────────────────
+    # ── MULTI-PLATFORM PUBLISHING ──────────────────────────
 
     async def publish_everywhere(self, article: dict) -> dict:
-        """Publica el artículo en todas las plataformas configuradas."""
+        """Publishes the article to all configured platforms."""
         from apps.core.tools.publishing_tools import PublishingTools
 
         publisher = PublishingTools()
@@ -482,16 +482,16 @@ Tono: experto pero accesible, como un blogger senior."""
             platforms = ["medium", "devto", "hashnode"]
             if isinstance(r, dict) and r.get("success"):
                 published_urls.append({"platform": platforms[i], "url": r.get("url", "")})
-                logger.info("[ContentPipeline] Publicado en %s: %s", platforms[i], r.get("url", ""))
+                logger.info("[ContentPipeline] Published on %s: %s", platforms[i], r.get("url", ""))
             elif isinstance(r, Exception):
-                logger.warning("[ContentPipeline] Error en %s: %s", platforms[i], r)
+                logger.warning("[ContentPipeline] Error on %s: %s", platforms[i], r)
 
         article["published_to"] = published_urls
         article["published_count"] = len(published_urls)
         return article
 
     async def distribute_social(self, article: dict) -> dict:
-        """Distribuye el artículo en redes sociales."""
+        """Distributes the article on social media."""
         from apps.core.tools.social_content_tools import SocialContentTools
 
         social = SocialContentTools()
@@ -508,20 +508,20 @@ Tono: experto pero accesible, como un blogger senior."""
         article["social_distribution"] = results
         return article
 
-    # ── PIPELINE COMPLETO ─────────────────────────────────
+    # ── FULL PIPELINE ──────────────────────────────────────
 
     async def run_pipeline(self, num_articles: int = 3, language: str = "es") -> dict:
         """
-        Ejecuta el pipeline completo de monetización.
-        Genera N artículos sobre trending topics y los publica.
+        Runs the full monetization pipeline.
+        Generates N articles about trending topics and publishes them.
         """
         start = time.time()
-        logger.info("[ContentPipeline] Iniciando pipeline — %d artículos", num_articles)
+        logger.info("[ContentPipeline] Starting pipeline — %d articles", num_articles)
 
-        # 1. Obtener trending topics
+        # 1. Get trending topics
         topics = await self.get_trending_topics(limit=num_articles * 2)
         if not topics:
-            logger.warning("[ContentPipeline] Sin trending topics — abortando")
+            logger.warning("[ContentPipeline] No trending topics — aborting")
             return {"success": False, "error": "No trending topics found"}
 
         published = []
@@ -529,18 +529,18 @@ Tono: experto pero accesible, como un blogger senior."""
 
         for topic in topics[:num_articles]:
             try:
-                # 2. Generar artículo
+                # 2. Generate article
                 article = await self.generate_article(topic, language=language)
                 if not article:
                     continue
 
-                # 2b. Control de calidad — regenerar una vez si no pasa
+                # 2b. Quality control — regenerate once if it doesn't pass
                 _qc = get_quality_checker()
                 _keywords = topic.get("keywords", [])
                 _report = _qc.check(article, keywords=_keywords)
                 if not _report.passed:
                     logger.warning(
-                        "[ContentPipeline] Artículo no pasó QC (score %d), regenerando: %s",
+                        "[ContentPipeline] Article failed QC (score %d), regenerating: %s",
                         _report.score,
                         "; ".join(_report.issues),
                     )
@@ -550,21 +550,21 @@ Tono: experto pero accesible, como un blogger senior."""
                         _report2 = _qc.check(article, keywords=_keywords)
                         if not _report2.passed:
                             logger.warning(
-                                "[ContentPipeline] Regeneración tampoco pasó QC (score %d) — publicando igual",
+                                "[ContentPipeline] Regeneration also failed QC (score %d) — publishing anyway",
                                 _report2.score,
                             )
 
-                # 3. Inyectar afiliados
+                # 3. Inject affiliates
                 article = self.inject_affiliate_links(article)
 
-                # 4. Publicar en plataformas
+                # 4. Publish to platforms
                 article = await self.publish_everywhere(article)
 
-                # 5. Distribuir en redes sociales (si hay plataformas conectadas)
+                # 5. Distribute on social media (if platforms are connected)
                 if article.get("published_count", 0) > 0:
                     article = await self.distribute_social(article)
 
-                # 6. Guardar en Supabase
+                # 6. Save to Supabase
                 await self._save_article(article, topic)
 
                 published.append(
@@ -579,7 +579,7 @@ Tono: experto pero accesible, como un blogger senior."""
 
             except Exception as exc:
                 logger.error(
-                    "[ContentPipeline] Error en artículo %s: %s", topic.get("title", "")[:40], exc
+                    "[ContentPipeline] Error in article %s: %s", topic.get("title", "")[:40], exc
                 )
                 errors.append(str(exc))
 
@@ -594,14 +594,14 @@ Tono: experto pero accesible, como un blogger senior."""
         }
 
         logger.info(
-            "[ContentPipeline] Pipeline completado — %d artículos en %ds",
+            "[ContentPipeline] Pipeline completed — %d articles in %ds",
             len(published),
             elapsed,
         )
         return result
 
     async def _save_article(self, article: dict, topic: dict) -> None:
-        """Guarda el artículo publicado en Supabase."""
+        """Saves the published article to Supabase."""
         try:
             from apps.core.memory.supabase_client import get_db
 
@@ -628,4 +628,4 @@ Tono: experto pero accesible, como un blogger senior."""
                 }
             ).execute()
         except Exception as exc:
-            logger.warning("[ContentPipeline] No pude guardar artículo en DB: %s", exc)
+            logger.warning("[ContentPipeline] Could not save article to DB: %s", exc)

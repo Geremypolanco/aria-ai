@@ -18,7 +18,7 @@ logger = logging.getLogger("aria.gmail_engine")
 
 
 class GmailEngine:
-    """Motor de ejecución real para Gmail API."""
+    """Real execution engine for Gmail API."""
 
     def __init__(self, credentials_path: str = "token.json"):
         self.creds = None
@@ -33,9 +33,9 @@ class GmailEngine:
         self.service = build("gmail", "v1", credentials=self.creds) if self.creds else None
 
     def search_and_cleanup(self, queries: list[str]) -> int:
-        """Busca y elimina correos basados en una lista de queries."""
+        """Searches and deletes emails based on a list of queries."""
         if not self.service:
-            logger.error("GmailEngine no autenticado. Por favor, configura tus credenciales.")
+            logger.error("GmailEngine not authenticated. Please configure your credentials.")
             return 0
 
         total_deleted = 0
@@ -50,14 +50,14 @@ class GmailEngine:
                 for msg in messages:
                     self.service.users().messages().delete(userId="me", id=msg["id"]).execute()
                     total_deleted += 1
-                logger.info(f"Query '{query}': {len(messages)} correos eliminados.")
+                logger.info(f"Query '{query}': {len(messages)} emails deleted.")
             except HttpError as error:
-                logger.error(f"Error en query '{query}': {error}")
+                logger.error(f"Error in query '{query}': {error}")
 
         return total_deleted
 
     def send_notification(self, to: str, subject: str, body: str):
-        """Envía un correo de notificación real."""
+        """Sends a real notification email."""
         if not self.service:
             return
 
@@ -68,6 +68,6 @@ class GmailEngine:
         }
         try:
             self.service.users().messages().send(userId="me", body=message).execute()
-            logger.info(f"Notificación enviada a {to}")
+            logger.info(f"Notification sent to {to}")
         except HttpError as error:
-            logger.error(f"Error enviando correo: {error}")
+            logger.error(f"Error sending email: {error}")

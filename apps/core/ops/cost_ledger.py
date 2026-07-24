@@ -8,9 +8,15 @@ their plan margin, their missions are frozen until they upgrade or the month
 resets.
 
 Design notes:
-- The ledger is process-local (a dict) so it's deterministic and unit-testable,
-  with **best-effort** async persistence to the shared cache (Redis/Upstash) so
-  it survives restarts and can be aggregated across instances.
+- Monthly cost accumulation (`record`/`month_cost`) is process-local (a dict),
+  deterministic and unit-testable. It does NOT persist across restarts or
+  aggregate across instances (fly.toml runs separate web/worker processes) —
+  that needs an atomic distributed counter, a bigger design decision than a
+  freeze flag, and is intentionally left as a known limitation for now.
+- The freeze decision (`freeze`/`unfreeze`/`is_frozen`/`evaluate`) — the part
+  that actually enforces the cap — IS persisted to the shared cache
+  (Redis/Upstash), best-effort, so a throttled user stays throttled across a
+  restart or a request landing on a different instance.
 - Pricing is a static table of USD per 1M tokens. Providers without per-token
   billing to us (HuggingFace free tier, Groq) are treated as ~$0.
 - NOTHING here fabricates figures: if no usage was recorded, cost is $0.00.
@@ -100,28 +106,62 @@ class CostLedger:
         """True when the user has burned >= THROTTLE_FRACTION of their budget."""
         return self.usage_fraction(email, plan, now=now) >= THROTTLE_FRACTION
 
-    # ── freeze state ─────────────────────────────────────────────
-    def freeze(self, email: str) -> None:
-        if email:
-            self._frozen.add(email.strip().lower())
+    # ── freeze state (persisted — this is the actual enforcement) ──
+    @staticmethod
+    def _frozen_key(email: str, now: datetime | None = None) -> str:
+        return f"aria:frozen:{_month_key(now)}:{email}"
 
-    def unfreeze(self, email: str) -> None:
-        self._frozen.discard((email or "").strip().lower())
+    async def freeze(self, email: str, *, now: datetime | None = None) -> None:
+        if not email:
+            return
+        email = email.strip().lower()
+        self._frozen.add(email)
+        try:
+            from apps.core.memory.redis_client import get_cache
 
-    def is_frozen(self, email: str) -> bool:
-        return (email or "").strip().lower() in self._frozen
+            await get_cache().set(self._frozen_key(email, now), "1", ttl_seconds=32 * 24 * 3600)
+        except Exception as exc:  # noqa: BLE001 — enforcement still holds locally
+            logger.debug("[cost] freeze persist failed for %s: %s", email, exc)
+
+    async def unfreeze(self, email: str, *, now: datetime | None = None) -> None:
+        email = (email or "").strip().lower()
+        self._frozen.discard(email)
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            await get_cache().delete(self._frozen_key(email, now))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[cost] unfreeze persist failed for %s: %s", email, exc)
+
+    async def is_frozen(self, email: str, *, now: datetime | None = None) -> bool:
+        email = (email or "").strip().lower()
+        if email in self._frozen:
+            return True
+        # Not seen by this process — check the shared store (covers a restart
+        # or a request landing on a different instance/worker).
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            if await get_cache().get(self._frozen_key(email, now)):
+                self._frozen.add(email)  # warm the local cache
+                return True
+        except Exception as exc:  # noqa: BLE001 — fail open on cache errors
+            logger.debug("[cost] is_frozen cache check failed for %s: %s", email, exc)
+        return False
 
     def frozen_users(self) -> list[str]:
+        """Users frozen *on this process* — informational (admin console),
+        not authoritative across instances the way is_frozen() is."""
         return sorted(self._frozen)
 
-    def evaluate(self, email: str, plan: str, *, now: datetime | None = None) -> bool:
+    async def evaluate(self, email: str, plan: str, *, now: datetime | None = None) -> bool:
         """Freeze the user if they're a paid plan over the threshold. Returns
         True if the user is (now) frozen."""
         if (plan or "").lower() in ("pro", "business") and self.over_threshold(
             email, plan, now=now
         ):
-            self.freeze(email)
-        return self.is_frozen(email)
+            await self.freeze(email, now=now)
+        return await self.is_frozen(email, now=now)
 
 
 # ── singleton ─────────────────────────────────────────────────────

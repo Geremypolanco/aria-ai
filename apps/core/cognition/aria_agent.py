@@ -10,49 +10,72 @@ logger = logging.getLogger("aria.agent")
 
 class AriaAgent:
     """
-    Agente de Propósito General inspirado en Claude Code.
-    Implementa un bucle ReAct (Reasoning + Acting) para ejecución autónoma.
+    General-Purpose Agent inspired by Claude Code.
+    Implements a ReAct (Reasoning + Acting) loop for autonomous execution.
     """
 
-    def __init__(self, name: str = "Aria", identity: str = ""):
+    # Tool-registry entries that shell out (docker/vercel CLI) or write to a
+    # real external system of record (GitHub) on the owner's behalf. Not
+    # currently exploitable in production (no GITHUB_TOKEN wired into
+    # ToolRegistry's GitHubTool, and the Fly.io container has neither the
+    # docker nor vercel CLI installed) — but that's incidental, not a real
+    # guard, so gate it properly rather than relying on "it happens to be
+    # broken today". Mirrors aria_mind.py's _OWNER_ONLY_TOOLS.
+    #
+    # "infra" (InfraTools) runs arbitrary shell commands (execute_system_command,
+    # shell=True, guarded only by a trivially-bypassable substring blocklist)
+    # and arbitrary file read/write/delete (manage_files) — at least as
+    # dangerous as github/docker/deployment. It's currently unreachable only
+    # because _execute_tool()'s dispatch has no case for it (InfraTools has no
+    # run() method) — the exact same "broken by accident, not by design"
+    # situation the comment above already warns about. Gated here (plus the
+    # two names the LLM is actually told to call, per _get_tools_desc()) so a
+    # future dispatch fix doesn't silently turn this into an unauthenticated
+    # RCE / arbitrary-file primitive.
+    _OWNER_ONLY_TOOLS = frozenset(
+        {"github", "docker", "deployment", "infra", "execute_system_command", "manage_files"}
+    )
+
+    def __init__(self, name: str = "Aria", identity: str = "", is_owner: bool = False):
         self.name = name
         self.identity = (
             identity
-            or "Eres un Agente Autónomo de Ejecución Pura. Tu misión es resolver tareas complejas usando herramientas."
+            or "You are a Pure Execution Autonomous Agent. Your mission is to solve complex tasks using tools."
         )
         self.ai = get_ai_client()
         self.max_steps = 15
         self.history = []
+        self.is_owner = is_owner
 
     async def run(self, task: str) -> dict[str, Any]:
-        """Ejecuta una tarea de forma autónoma hasta completarla o fallar."""
-        logger.info(f"[AriaAgent] Iniciando tarea: {task}")
+        """Executes a task autonomously until it completes or fails."""
+        logger.info(f"[AriaAgent] Starting task: {task}")
         self.history = [{"role": "user", "content": task}]
 
         for step in range(self.max_steps):
-            # 1. RAZONAR Y DECIDIR ACCIÓN
+            # 1. REASON AND DECIDE ACTION
             response = await self._think()
             if not response:
-                return {"success": False, "error": "Fallo en el razonamiento de la IA"}
+                return {"success": False, "error": "AI reasoning failure"}
 
             thought = response.get("thought", "")
             tool_name = response.get("tool")
             tool_args = response.get("tool_args", {})
             reply = response.get("reply", "")
 
-            logger.info(f"[Step {step+1}] Pensamiento: {thought}")
+            logger.info(f"[Step {step+1}] Thought: {thought}")
 
-            # 2. SI HAY RESPUESTA FINAL, TERMINAR
+            # 2. IF THERE'S A FINAL REPLY, FINISH
             if not tool_name and reply:
-                logger.info(f"[AriaAgent] Tarea completada: {reply}")
+                logger.info(f"[AriaAgent] Task completed: {reply}")
                 return {"success": True, "output": reply, "steps": step + 1}
 
-            # 3. EJECUTAR HERRAMIENTA
+            # 3. EXECUTE TOOL
             if tool_name:
-                logger.info(f"[Step {step+1}] Ejecutando: {tool_name}({tool_args})")
+                logger.info(f"[Step {step+1}] Executing: {tool_name}({tool_args})")
                 observation = await self._execute_tool(tool_name, tool_args)
 
-                # 4. AÑADIR OBSERVACIÓN AL HISTORIAL
+                # 4. ADD OBSERVATION TO HISTORY
                 self.history.append(
                     {
                         "role": "assistant",
@@ -64,32 +87,32 @@ class AriaAgent:
                 self.history.append(
                     {
                         "role": "user",
-                        "content": f"OBSERVACIÓN de {tool_name}: {json.dumps(observation)}",
+                        "content": f"OBSERVATION from {tool_name}: {json.dumps(observation)}",
                     }
                 )
             else:
-                # Si no hay herramienta ni respuesta, algo salió mal
+                # If there's neither a tool nor a reply, something went wrong
                 return {
                     "success": False,
-                    "error": "Bucle de razonamiento roto",
+                    "error": "Reasoning loop broken",
                     "last_thought": thought,
                 }
 
-        return {"success": False, "error": "Límite de pasos alcanzado"}
+        return {"success": False, "error": "Step limit reached"}
 
     async def _think(self) -> dict[str, Any] | None:
-        """Llama al LLM para obtener el siguiente paso."""
+        """Calls the LLM to get the next step."""
         system_prompt = f"""{self.identity}
 
-        HERRAMIENTAS DISPONIBLES:
+        AVAILABLE TOOLS:
         {self._get_tools_desc()}
 
-        REGLAS:
-        1. Responde SIEMPRE en JSON válido.
-        2. Formato: {{"thought": "...", "tool": "nombre|null", "tool_args": {{...}}|null, "reply": "..."}}
-        3. Si la tarea está terminada, pon "tool": null y escribe la respuesta final en "reply".
-        4. Si necesitas información, usa una herramienta. No adivines.
-        5. Si una herramienta falla, analiza el error en 'thought' y prueba un enfoque diferente.
+        RULES:
+        1. ALWAYS respond in valid JSON.
+        2. Format: {{"thought": "...", "tool": "name|null", "tool_args": {{...}}|null, "reply": "..."}}
+        3. If the task is finished, set "tool": null and write the final answer in "reply".
+        4. If you need information, use a tool. Don't guess.
+        5. If a tool fails, analyze the error in 'thought' and try a different approach.
         """
 
         try:
@@ -100,35 +123,38 @@ class AriaAgent:
                 agent_name=self.name,
             )
         except Exception as e:
-            logger.error(f"Error en _think: {e}")
+            logger.error(f"Error in _think: {e}")
             return None
 
     async def _execute_tool(self, name: str, args: dict[str, Any]) -> Any:
-        """Busca y ejecuta la herramienta en el registro global."""
-        # 1. Buscar en tool_registry
+        """Looks up and executes the tool in the global registry."""
+        if name in self._OWNER_ONLY_TOOLS and not self.is_owner:
+            return {"error": f"'{name}' is reserved for ARIA's owner."}
+
+        # 1. Look up in tool_registry
         tool_obj = tool_registry.get_tool(name)
         if tool_obj:
-            # Intentar llamar al método dinámicamente
-            # Asumimos que la herramienta tiene un método principal o mapeamos
+            # Try to call the method dynamically
+            # We assume the tool has a main method or we map it
             try:
-                # Implementación simplificada: buscar método que coincida o usar un dispatcher
+                # Simplified implementation: look for a matching method or use a dispatcher
                 if hasattr(tool_obj, "run"):
                     return await tool_obj.run(**args)
                 if name == "web_search":
                     from apps.core.tools.web_tools import WebTools
 
                     return await WebTools().search_web(**args)
-                # ... más mapeos manuales si es necesario ...
-                return {"error": f"Herramienta {name} encontrada pero no ejecutable directamente"}
+                # ... more manual mappings if needed ...
+                return {"error": f"Tool {name} found but not directly executable"}
             except Exception as e:
                 return {"error": str(e)}
 
-        return {"error": f"Herramienta '{name}' no encontrada"}
+        return {"error": f"Tool '{name}' not found"}
 
     def _get_tools_desc(self) -> str:
-        """Genera descripción de herramientas para el prompt."""
+        """Generates a description of tools for the prompt."""
         tools = tool_registry.list_tools()
-        # Añadir herramientas core e infraestructura
+        # Add core and infrastructure tools
         tools.extend(
             [
                 "web_search",

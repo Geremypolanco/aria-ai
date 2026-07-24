@@ -1,15 +1,15 @@
 """
-world_state.py — Motor de estado del mundo para ARIA AI.
+world_state.py — World state engine for ARIA AI.
 
-ARIA mantiene un modelo interno persistente de su entorno:
-  - Usuarios y sus preferencias
-  - Proyectos activos con estado real
-  - Tareas en progreso con timestamps
-  - Estado del sistema (APIs, errores, métricas)
-  - Línea temporal de eventos
+ARIA maintains a persistent internal model of its environment:
+  - Users and their preferences
+  - Active projects with real status
+  - Tasks in progress with timestamps
+  - System status (APIs, errors, metrics)
+  - Event timeline
 
-TODO ES REAL. Sin mocks. Sin placeholders.
-Persiste en Supabase + Redis. Actualiza por eventos.
+EVERYTHING IS REAL. No mocks. No placeholders.
+Persists in Supabase + Redis. Updates on events.
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ logger = logging.getLogger("aria.world_state")
 
 class WorldState:
     """
-    Estado del mundo de ARIA. Se actualiza continuamente.
-    Punto de verdad único para todos los agentes.
+    ARIA's world state. Continuously updated.
+    Single source of truth for all agents.
     """
 
     def __init__(self) -> None:
@@ -45,7 +45,7 @@ class WorldState:
         self._dirty = False
         self._last_persist = 0.0
 
-    # ── USUARIOS ──────────────────────────────────────────────────
+    # ── USERS ────────────────────────────────────────────────────
 
     def update_user(self, user_id: str, data: dict) -> None:
         if user_id not in self._state["users"]:
@@ -57,7 +57,7 @@ class WorldState:
     def get_user(self, user_id: str) -> dict:
         return self._state["users"].get(user_id, {})
 
-    # ── PROYECTOS ─────────────────────────────────────────────────
+    # ── PROJECTS ─────────────────────────────────────────────────
 
     def set_project(self, project_id: str, status: str, data: dict = None) -> None:
         self._state["projects"][project_id] = {
@@ -78,7 +78,7 @@ class WorldState:
             if v.get("status") not in ("done", "cancelled")
         ]
 
-    # ── TAREAS ────────────────────────────────────────────────────
+    # ── TASKS ────────────────────────────────────────────────────
 
     def add_task(self, task_id: str, task_type: str, payload: dict) -> None:
         self._state["tasks"][task_id] = {
@@ -116,7 +116,7 @@ class WorldState:
             {"id": k, **v} for k, v in self._state["tasks"].items() if v.get("status") == "failed"
         ]
 
-    # ── SISTEMA ───────────────────────────────────────────────────
+    # ── SYSTEM ───────────────────────────────────────────────────
 
     def update_api_health(self, api_name: str, healthy: bool, latency_ms: float = None) -> None:
         self._state["system"]["api_health"][api_name] = {
@@ -137,7 +137,7 @@ class WorldState:
         }
         self._dirty = True
 
-    # ── LÍNEA TEMPORAL ────────────────────────────────────────────
+    # ── TIMELINE ─────────────────────────────────────────────────
 
     def _record_event(self, event_type: str, data: dict) -> None:
         event = {"type": event_type, "ts": datetime.now(UTC).isoformat(), **data}
@@ -148,7 +148,7 @@ class WorldState:
     def get_recent_timeline(self, n: int = 20) -> list[dict]:
         return self._state["timeline"][-n:]
 
-    # ── SNAPSHOT ──────────────────────────────────────────────────
+    # ── SNAPSHOT ─────────────────────────────────────────────────
 
     def snapshot(self) -> dict:
         return {
@@ -162,7 +162,7 @@ class WorldState:
             "recent_events": self.get_recent_timeline(10),
         }
 
-    # ── PERSISTENCIA ──────────────────────────────────────────────
+    # ── PERSISTENCE ──────────────────────────────────────────────
 
     async def persist(self) -> None:
         if not self._dirty:
@@ -172,8 +172,11 @@ class WorldState:
 
             cache = get_cache()
             if cache:
+                # ttl_seconds belongs on cache.set(), not json.dumps() — the
+                # old call raised TypeError on every invocation, so Redis
+                # persistence never actually happened (swallowed below).
                 await cache.set(
-                    "aria:world_state", json.dumps(self._state, default=str, ttl_seconds=3600)
+                    "aria:world_state", json.dumps(self._state, default=str), ttl_seconds=3600
                 )
         except Exception as exc:
             logger.warning("[WorldState] Redis persist failed: %s", exc)
@@ -183,7 +186,10 @@ class WorldState:
 
             db = get_db()
             if db:
-                await db.table("aria_world_state").upsert(
+                # create_client() returns a SYNC supabase client — its
+                # .execute() is a regular method, not a coroutine. Awaiting
+                # it raised TypeError on every call, silently swallowed.
+                db.table("aria_world_state").upsert(
                     {
                         "key": "current",
                         "state": self._state,
@@ -195,7 +201,7 @@ class WorldState:
 
         self._dirty = False
         self._last_persist = time.time()
-        logger.debug("[WorldState] Estado persistido")
+        logger.debug("[WorldState] State persisted")
 
     async def load(self) -> bool:
         try:
@@ -205,9 +211,10 @@ class WorldState:
             if cache:
                 raw = await cache.get("aria:world_state")
                 if raw:
-                    self._state = json.loads(raw)
+                    # cache.get() already deserializes JSON.
+                    self._state = raw
                     logger.info(
-                        "[WorldState] Estado cargado desde Redis (%d proyectos, %d tareas)",
+                        "[WorldState] State loaded from Redis (%d projects, %d tasks)",
                         len(self._state.get("projects", {})),
                         len(self._state.get("tasks", {})),
                     )

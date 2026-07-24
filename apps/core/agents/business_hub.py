@@ -1,17 +1,17 @@
 """
-BusinessHub — Enrutador central de agentes de negocio ARIA AI.
+BusinessHub — Central router for ARIA AI business agents.
 
-Arquitectura tipo Sintra AI: cada agente es un especialista autónomo.
-El Hub recibe una misión, la analiza, activa el agente correcto,
-y puede encadenar múltiples agentes para misiones complejas.
+Sintra AI-style architecture: each agent is an autonomous specialist.
+The Hub receives a mission, analyzes it, activates the right agent,
+and can chain multiple agents for complex missions.
 
-Agentes disponibles:
-  ceo        — Estrategia, decisiones ejecutivas, delegación
-  marketing  — SEO, contenido, campañas, redes sociales
-  sales      — Revenue, productos, Shopify/Stripe/Gumroad
-  developer  — Código, deploy, debugging autónomo (Claude Code-level)
-  research   — Investigación profunda de mercado e internet
-  content    — Artículos, newsletters, publicación multi-plataforma
+Available agents:
+  ceo        — Strategy, executive decisions, delegation
+  marketing  — SEO, content, campaigns, social media
+  sales      — Revenue, products, Shopify/Stripe/Gumroad
+  developer  — Code, deploy, autonomous debugging (Claude Code-level)
+  research   — Deep market and internet research
+  content    — Articles, newsletters, multi-platform publishing
   finance    — Revenue tracking, P&L, forecasting
 """
 
@@ -23,7 +23,7 @@ from typing import Any
 
 logger = logging.getLogger("aria.business_hub")
 
-# Mapeo de nombre → clase
+# Name → class mapping
 _AGENT_REGISTRY: dict[str, str] = {
     "ceo": "apps.core.agents.business.ceo_agent.CEOAgent",
     "marketing": "apps.core.agents.business.marketing_agent.MarketingAgent",
@@ -38,7 +38,7 @@ _AGENT_REGISTRY: dict[str, str] = {
     "cto": "apps.core.agents.business.developer_agent.DeveloperAgent",
 }
 
-# Keywords para auto-routing
+# Keywords for auto-routing (bilingual — matched against user input, left untranslated)
 _ROUTING_KEYWORDS: dict[str, list[str]] = {
     "developer": [
         "código",
@@ -135,8 +135,8 @@ _ROUTING_KEYWORDS: dict[str, list[str]] = {
 
 class BusinessHub:
     """
-    Enrutador inteligente de agentes de negocio.
-    Puede activar un agente específico o auto-detectar el mejor agente.
+    Intelligent router for business agents.
+    Can activate a specific agent or auto-detect the best agent.
     """
 
     async def dispatch(
@@ -146,8 +146,8 @@ class BusinessHub:
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        Activa un agente específico con la misión dada.
-        Si agent_name es "auto", detecta automáticamente el mejor agente.
+        Activates a specific agent with the given mission.
+        If agent_name is "auto", automatically detects the best agent.
         """
         if not context:
             context = {}
@@ -163,13 +163,19 @@ class BusinessHub:
         if not agent_class_path:
             return {
                 "success": False,
-                "error": f"Agente '{agent_name}' no encontrado. Disponibles: {list(_AGENT_REGISTRY.keys())}",
+                "error": f"Agent '{agent_name}' not found. Available: {list(_AGENT_REGISTRY.keys())}",
             }
 
         try:
             agent = self._load_agent(agent_class_path)
             logger.info("[BusinessHub] Dispatching to %s: %s", agent_key, mission[:80])
-            result = await agent.execute(context)
+            # BaseAgent's public entry point is run() (circuit breaker +
+            # metrics wrapper around _execute()) — there is no execute()
+            # method on any agent class. Calling it unconditionally raised
+            # AttributeError for every single dispatch, meaning
+            # run_business_agent / launch_niche's agent hooks / anything
+            # routed through this method has never actually worked.
+            result = await agent.run(context)
             return result
         except Exception as exc:
             logger.error("[BusinessHub] dispatch error agent=%s: %s", agent_key, exc, exc_info=True)
@@ -179,8 +185,8 @@ class BusinessHub:
         self, mission: str, agents: list[str] | None = None
     ) -> dict[str, Any]:
         """
-        Ejecuta múltiples agentes en paralelo para una misión de negocio completa.
-        Por defecto activa CEO + Research + Marketing + Sales.
+        Runs multiple agents in parallel for a complete business mission.
+        By default activates CEO + Research + Marketing + Sales.
         """
         if not agents:
             agents = ["ceo", "research", "marketing"]
@@ -203,7 +209,7 @@ class BusinessHub:
         return results
 
     def _route(self, mission: str) -> str:
-        """Auto-detecta el agente más apropiado para una misión."""
+        """Auto-detects the most appropriate agent for a mission."""
         mission_lower = mission.lower()
         scores: dict[str, int] = dict.fromkeys(_ROUTING_KEYWORDS, 0)
 
@@ -214,14 +220,14 @@ class BusinessHub:
 
         best = max(scores, key=lambda k: scores[k])
         if scores[best] == 0:
-            return "ceo"  # default al CEO si no hay match
+            return "ceo"  # default to CEO if no match
         logger.info(
             "[BusinessHub] Auto-routed '%s' → %s (score=%d)", mission[:50], best, scores[best]
         )
         return best
 
     def _load_agent(self, class_path: str) -> Any:
-        """Importa y crea el agente dinámicamente."""
+        """Imports and instantiates the agent dynamically."""
         module_path, class_name = class_path.rsplit(".", 1)
         import importlib
 
@@ -230,15 +236,15 @@ class BusinessHub:
         return cls()
 
     def list_agents(self) -> dict[str, str]:
-        """Retorna lista de agentes disponibles con descripción."""
+        """Returns the list of available agents with a description."""
         descriptions = {
-            "ceo": "Estrategia ejecutiva, decisiones y delegación",
-            "marketing": "SEO, redes sociales, campañas y crecimiento",
-            "sales": "Revenue: productos, pagos, conversión",
-            "developer": "Código, deploy, debugging autónomo",
-            "research": "Investigación profunda de mercado e internet",
-            "content": "Artículos, newsletters, publicación multi-plataforma",
-            "finance": "Revenue tracking, P&L y forecasting",
+            "ceo": "Executive strategy, decisions, and delegation",
+            "marketing": "SEO, social media, campaigns, and growth",
+            "sales": "Revenue: products, payments, conversion",
+            "developer": "Code, deploy, autonomous debugging",
+            "research": "Deep market and internet research",
+            "content": "Articles, newsletters, multi-platform publishing",
+            "finance": "Revenue tracking, P&L, and forecasting",
         }
         return descriptions
 

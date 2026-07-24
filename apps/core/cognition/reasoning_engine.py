@@ -406,7 +406,9 @@ class ReasoningEngine:
             if cache:
                 raw = await cache.get(f"aria:reasoning:{reason_id}")
                 if raw:
-                    d = json.loads(raw)
+                    # cache.get() already deserializes JSON — re-decoding it
+                    # raised TypeError on every call, silently swallowed below.
+                    d = raw
                     steps = [ReasoningStep(**s) for s in d.get("steps", [])]
                     critiques = [Critique(**c) for c in d.get("critiques", [])]
                     return ReasoningResult(

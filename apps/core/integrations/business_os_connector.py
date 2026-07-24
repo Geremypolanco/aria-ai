@@ -1,12 +1,12 @@
 """
-business_os_connector.py — Conector de Sistemas Empresariales para ARIA AI.
+business_os_connector.py — Business Systems Connector for ARIA AI.
 
-Permite que ARIA opere software de gestión real:
-  - ERPNext / Odoo: Gestión de inventario, facturación y finanzas.
-  - Twenty CRM / Salesforce: Gestión de relaciones con clientes.
-  - Plane: Gestión de proyectos y tareas.
+Allows ARIA to operate real management software:
+  - ERPNext / Odoo: Inventory, invoicing, and finance management.
+  - Twenty CRM / Salesforce: Customer relationship management.
+  - Plane: Project and task management.
 
-ARIA deja de recomendar y empieza a operar el negocio.
+ARIA stops recommending and starts operating the business.
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ logger = logging.getLogger("aria.business_os")
 
 class AriaBusinessOSConnector:
     """
-    Conector de Sistemas Operativos de Negocio.
-    Abstrae las APIs de ERPs y CRMs para ARIA.
+    Business Operating Systems Connector.
+    Abstracts ERP and CRM APIs for ARIA.
     """
 
     def __init__(self, erp_url: str = "", api_key: str = "") -> None:
@@ -31,16 +31,19 @@ class AriaBusinessOSConnector:
         self.client = httpx.AsyncClient(headers={"Authorization": f"token {api_key}"})
 
     async def create_invoice(self, customer_id: str, items: list[dict[str, Any]]):
-        """Crea una factura en el ERP (ERPNext/Odoo)."""
-        logger.info("[BusinessOS] Creando factura para cliente %s...", customer_id)
-        # url = f"{self.erp_url}/api/resource/Sales Invoice"
-        # await self.client.post(url, json={"customer": customer_id, "items": items})
-        return f"Factura creada para {customer_id} (Simulado)."
+        """Creates an invoice in the ERP (ERPNext/Odoo). Not implemented — the real
+        ERP is never called, so reporting success would fabricate an
+        invoice that doesn't exist in any system."""
+        raise NotImplementedError(
+            "create_invoice: real integration with ERPNext/Odoo not yet implemented"
+        )
 
     async def update_crm_lead(self, lead_id: str, status: str):
-        """Actualiza el estado de un lead en el CRM."""
-        logger.info("[BusinessOS] Actualizando lead %s a estado %s...", lead_id, status)
-        return f"Lead {lead_id} actualizado a {status}."
+        """Updates a lead's status in the CRM. Not implemented — see
+        create_invoice."""
+        raise NotImplementedError(
+            "update_crm_lead: real integration with the CRM not yet implemented"
+        )
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
@@ -48,7 +51,7 @@ _business_os_instance: AriaBusinessOSConnector | None = None
 
 
 def get_business_os_connector() -> AriaBusinessOSConnector:
-    """Retorna el singleton del conector de Business OS."""
+    """Returns the singleton of the Business OS connector."""
     global _business_os_instance
     if _business_os_instance is None:
         import os

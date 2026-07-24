@@ -1,13 +1,13 @@
 """
-Developer Agent — Escribe, ejecuta, depura y despliega código como Claude Code.
+Developer Agent — Writes, runs, debugs, and deploys code like Claude Code.
 
-Capacidades:
-  - Escribe código completo en cualquier lenguaje
-  - Lo ejecuta en sandbox y ve el output real
-  - Auto-depura hasta que funciona
-  - Genera proyectos completos multi-archivo
-  - Push a GitHub y despliega a Fly.io
-  - Itera con loop: diseño → código → test → fix → deploy
+Capabilities:
+  - Writes complete code in any language
+  - Runs it in a sandbox and sees the real output
+  - Self-debugs until it works
+  - Generates complete multi-file projects
+  - Pushes to GitHub and deploys to Fly.io
+  - Iterates with a loop: design → code → test → fix → deploy
 """
 
 from __future__ import annotations
@@ -23,15 +23,15 @@ logger = logging.getLogger("aria.business.developer")
 
 class DeveloperAgent(BaseAgent):
     IDENTITY = (
-        "Eres el Developer Agent de ARIA AI. Operas como Claude Code: escribes código de producción, "
-        "lo ejecutas, ves el output real, corriges errores, y iteras hasta que funciona. "
-        "Nunca generas código que no puedas ejecutar. Siempre validas con tests reales."
+        "You are ARIA AI's Developer Agent. You operate like Claude Code: you write production code, "
+        "run it, see the real output, fix errors, and iterate until it works. "
+        "You never generate code you can't run. You always validate with real tests."
     )
 
     def __init__(self) -> None:
         super().__init__(
             name="developer",
-            description="Escribe, ejecuta, depura y despliega código autónomamente",
+            description="Writes, runs, debugs, and deploys code autonomously",
             capabilities=[
                 "code_generation",
                 "code_execution",
@@ -52,19 +52,31 @@ class DeveloperAgent(BaseAgent):
         deploy = context.get("deploy", False)
 
         if not task:
-            return {"success": False, "error": "No se especificó tarea de desarrollo"}
+            return {"success": False, "error": "No development task was specified"}
 
         results: dict[str, Any] = {"success": False, "agent": "developer", "task": task}
 
-        # 1. Analizar la tarea y diseñar la solución
+        # 1. Analyze the task and design the solution
         design = await self._design_solution(task, language)
         results["design"] = design
 
-        # 2. Generar el código
+        # 2. Generate the code
         code = await self._generate_code(task, language, design)
         results["code"] = code
 
-        # 3. Ejecutar y auto-depurar si se solicita
+        # 3. Run and auto-debug if requested
+        # CodeRunner has no real sandbox isolation (same host, same OS user) —
+        # code GENERATION is safe for anyone, but actually RUNNING it is not a
+        # free-tier capability. context["is_owner"] is threaded through from
+        # aria_mind.py's tool dispatch (both the direct execute_code tool and
+        # this run_business_agent -> developer path reach the same
+        # CodeRunner, so both must be gated the same way).
+        if auto_run and not context.get("is_owner"):
+            auto_run = False
+            results["execution_skipped"] = (
+                "Code execution is owner-only; code was generated but not run."
+            )
+
         if auto_run and code:
             from apps.core.tools.code_runner import CodeRunner
 
@@ -85,41 +97,48 @@ class DeveloperAgent(BaseAgent):
             if run_result.get("fixed_code"):
                 results["code"] = run_result["fixed_code"]
 
-        # 4. Generar tests básicos
+        # 4. Generate basic tests
         tests = await self._generate_tests(task, results["code"], language)
         results["tests"] = tests
 
-        # 5. Opcional: push a GitHub
-        if deploy and context.get("github_path"):
+        # 5. Optional: push to GitHub
+        # Same rationale as the auto_run gate above: pushing to the live repo
+        # (and triggering an automatic Fly.io deploy) must be owner-only,
+        # not something any signed-up user can trigger via run_business_agent.
+        if deploy and context.get("github_path") and not context.get("is_owner"):
+            results["deploy_skipped"] = (
+                "GitHub push is owner-only; code was generated but not pushed."
+            )
+        elif deploy and context.get("github_path"):
             push_result = await self._push_to_github(context["github_path"], results["code"], task)
             results["github"] = push_result
 
         results["success"] = True
         results["summary"] = (
-            f"Código generado ({language}). "
+            f"Code generated ({language}). "
             + (
-                f"Ejecutado OK en {results.get('execution', {}).get('runtime_ms', 0)}ms."
+                f"Ran OK in {results.get('execution', {}).get('runtime_ms', 0)}ms."
                 if auto_run
                 else ""
             )
-            + (" Auto-corregido." if results.get("execution", {}).get("auto_fixed") else "")
+            + (" Auto-fixed." if results.get("execution", {}).get("auto_fixed") else "")
         )
         return results
 
     async def _design_solution(self, task: str, language: str) -> str:
-        """Diseña la arquitectura antes de escribir código."""
+        """Designs the architecture before writing code."""
         resp = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Tarea: {task}\nLenguaje: {language}\n\n"
-                f"Diseña la solución: clases/funciones necesarias, inputs/outputs, "
-                f"algoritmo, edge cases. Sé conciso (máx 200 palabras)."
+                f"Task: {task}\nLanguage: {language}\n\n"
+                f"Design the solution: required classes/functions, inputs/outputs, "
+                f"algorithm, edge cases. Be concise (max 200 words)."
             ),
         )
         return resp
 
     async def _generate_code(self, task: str, language: str, design: str) -> str:
-        """Genera código completo basado en el diseño."""
+        """Generates complete code based on the design."""
         from apps.core.tools.ai_client import get_ai_client
 
         ai = get_ai_client()
@@ -144,7 +163,7 @@ class DeveloperAgent(BaseAgent):
         return code
 
     async def _generate_tests(self, task: str, code: str, language: str) -> str:
-        """Genera tests unitarios para el código generado."""
+        """Generates unit tests for the generated code."""
         from apps.core.tools.ai_client import get_ai_client
 
         ai = get_ai_client()
@@ -161,13 +180,13 @@ class DeveloperAgent(BaseAgent):
         return resp.content.strip() if (resp and resp.success) else ""
 
     async def _push_to_github(self, path: str, content: str, message: str) -> dict:
-        """Push código generado a GitHub."""
+        """Pushes the generated code to GitHub."""
         try:
             from apps.core.tools.self_improvement import SelfImprovementEngine
 
             engine = SelfImprovementEngine()
             return await engine.push_file(
-                path=path, content=content, message=f"feat: {message[:70]}"
+                file_path=path, content=content, commit_message=f"feat: {message[:70]}"
             )
         except Exception as exc:
             return {"success": False, "error": str(exc)}

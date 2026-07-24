@@ -1,11 +1,11 @@
 """
-aria_tools.py — Sistema de Herramientas Extensible para ARIA.
+aria_tools.py — Extensible Tools System for ARIA.
 
-Proporciona acceso a:
-- Integraciones de desarrollo (GitHub, Docker, despliegue)
-- Herramientas de datos y APIs
-- Generación de medios
-- Utilidades del sistema
+Provides access to:
+- Development integrations (GitHub, Docker, deployment)
+- Data and API tools
+- Media generation
+- System utilities
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ logger = logging.getLogger("aria.tools")
 
 
 class GitHubTool:
-    """Herramienta para interactuar con GitHub."""
+    """Tool for interacting with GitHub."""
 
     def __init__(self, token: str = None):
         self.token = token
@@ -34,7 +34,7 @@ class GitHubTool:
         }
 
     async def clone_repo(self, repo_url: str, destination: str) -> dict[str, Any]:
-        """Clona un repositorio de GitHub."""
+        """Clones a GitHub repository."""
         try:
             result = subprocess.run(
                 ["git", "clone", repo_url, destination],
@@ -59,7 +59,7 @@ class GitHubTool:
         head: str,
         base: str = "main",
     ) -> dict[str, Any]:
-        """Crea un pull request en GitHub."""
+        """Creates a pull request on GitHub."""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -81,7 +81,7 @@ class GitHubTool:
             return {"success": False, "error": str(exc)}
 
     async def list_issues(self, owner: str, repo: str, state: str = "open") -> dict[str, Any]:
-        """Lista issues de un repositorio."""
+        """Lists issues for a repository."""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -98,12 +98,12 @@ class GitHubTool:
 
 
 class DockerTool:
-    """Herramienta para interactuar con Docker."""
+    """Tool for interacting with Docker."""
 
     async def build_image(
         self, dockerfile_path: str, tag: str, context: str = "."
     ) -> dict[str, Any]:
-        """Construye una imagen Docker."""
+        """Builds a Docker image."""
         try:
             result = subprocess.run(
                 ["docker", "build", "-t", tag, "-f", dockerfile_path, context],
@@ -126,7 +126,7 @@ class DockerTool:
         ports: dict[str, int] = None,
         volumes: dict[str, str] = None,
     ) -> dict[str, Any]:
-        """Ejecuta un contenedor Docker."""
+        """Runs a Docker container."""
         try:
             cmd = ["docker", "run"]
 
@@ -160,10 +160,10 @@ class DockerTool:
 
 
 class DeploymentTool:
-    """Herramienta para desplegar aplicaciones."""
+    """Tool for deploying applications."""
 
     async def deploy_to_vercel(self, project_path: str, token: str) -> dict[str, Any]:
-        """Despliega a Vercel."""
+        """Deploys to Vercel."""
         try:
             result = subprocess.run(
                 ["vercel", "--token", token, "--prod"],
@@ -181,7 +181,7 @@ class DeploymentTool:
             return {"success": False, "error": str(exc)}
 
     async def deploy_to_fly(self, project_path: str, app_name: str) -> dict[str, Any]:
-        """Despliega a Fly.io."""
+        """Deploys to Fly.io."""
         try:
             result = subprocess.run(
                 ["flyctl", "deploy", "--app", app_name],
@@ -200,16 +200,16 @@ class DeploymentTool:
 
 
 class WebScrapingTool:
-    """Herramienta avanzada para web scraping."""
+    """Advanced tool for web scraping."""
 
     async def scrape_page(self, url: str, selectors: dict[str, str] = None) -> dict[str, Any]:
-        """Extrae datos de una página web."""
+        """Extracts data from a web page."""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, timeout=30)
 
                 if response.status_code == 200:
-                    # Usar BeautifulSoup para parsing
+                    # Use BeautifulSoup for parsing
                     from bs4 import BeautifulSoup
 
                     soup = BeautifulSoup(response.text, "html.parser")
@@ -220,7 +220,7 @@ class WebScrapingTool:
                             elements = soup.select(selector)
                             data[key] = [elem.get_text(strip=True) for elem in elements]
                     else:
-                        # Extracción automática de contenido principal
+                        # Automatic extraction of main content
                         main_content = soup.find("main") or soup.find("article") or soup.body
                         data["content"] = main_content.get_text(strip=True) if main_content else ""
 
@@ -237,7 +237,7 @@ class WebScrapingTool:
             return {"success": False, "error": str(exc)}
 
     async def scrape_with_browser(self, url: str, script: str = None) -> dict[str, Any]:
-        """Extrae datos usando navegador headless (Chromium)."""
+        """Extracts data using a headless browser (Chromium)."""
         try:
             from playwright.async_api import async_playwright
 
@@ -263,15 +263,15 @@ class WebScrapingTool:
 
 
 class ZapierTool:
-    """Herramienta para interactuar con Zapier a través de su servidor MCP."""
+    """Tool for interacting with Zapier through its MCP server."""
 
     async def call_zapier_action(
         self, action_name: str, arguments: dict[str, Any]
     ) -> dict[str, Any]:
-        """Llama a una acción de Zapier usando el servidor MCP."""
-        logger.info(f"[ZapierTool] Llamando acción Zapier: {action_name} con {arguments}")
+        """Calls a Zapier action using the MCP server."""
+        logger.info(f"[ZapierTool] Calling Zapier action: {action_name} with {arguments}")
         result = await mcp_manager.call_tool_on_server(
-            "zapier_mcp",  # Nombre del servidor MCP de Zapier
+            "zapier_mcp",  # Name of the Zapier MCP server
             action_name,
             arguments,
         )
@@ -279,17 +279,17 @@ class ZapierTool:
             return {"success": not result.get("isError", False), "output": result}
         return {
             "success": False,
-            "error": "No se pudo conectar con el servidor MCP de Zapier o la acción falló.",
+            "error": "Could not connect to the Zapier MCP server or the action failed.",
         }
 
 
 class APIDiscoveryTool:
-    """Herramienta para descubrir e integrar APIs."""
+    """Tool for discovering and integrating APIs."""
 
     async def discover_api(self, service_name: str) -> dict[str, Any]:
-        """Descubre información sobre una API."""
+        """Discovers information about an API."""
         try:
-            # Consultar OpenAPI Hub o similar
+            # Query OpenAPI Hub or similar
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     "https://api.apis.guru/v1/list.json",
@@ -305,16 +305,16 @@ class APIDiscoveryTool:
                         "success": True,
                         "apis": matching_apis[:5],
                     }
-                return {"success": False, "error": "No se pudo acceder al API Hub"}
+                return {"success": False, "error": "Could not access the API Hub"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     async def generate_client(
         self, openapi_spec: dict[str, Any], language: str = "python"
     ) -> dict[str, Any]:
-        """Genera un cliente para una API basado en OpenAPI spec."""
+        """Generates a client for an API based on an OpenAPI spec."""
         try:
-            # Usar OpenAPI Generator
+            # Use OpenAPI Generator
             spec_json = json.dumps(openapi_spec)
 
             result = subprocess.run(
@@ -344,7 +344,7 @@ class APIDiscoveryTool:
 
 
 class ToolRegistry:
-    """Registro central de herramientas disponibles."""
+    """Central registry of available tools."""
 
     def __init__(self):
         from apps.core.tools.infra_tools import InfraTools
@@ -362,18 +362,18 @@ class ToolRegistry:
         }
 
     def get_tool(self, tool_name: str) -> Any | None:
-        """Obtiene una herramienta por nombre."""
+        """Gets a tool by name."""
         return self.tools.get(tool_name)
 
     def list_tools(self) -> list[str]:
-        """Lista todas las herramientas disponibles."""
+        """Lists all available tools."""
         return list(self.tools.keys())
 
     def register_tool(self, name: str, tool: Any) -> None:
-        """Registra una nueva herramienta."""
+        """Registers a new tool."""
         self.tools[name] = tool
-        logger.info(f"[Tools] Herramienta registrada: {name}")
+        logger.info(f"[Tools] Tool registered: {name}")
 
 
-# Instancia global del registro
+# Global registry instance
 tool_registry = ToolRegistry()

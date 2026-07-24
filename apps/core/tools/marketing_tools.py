@@ -1,5 +1,5 @@
 """
-marketing_tools.py — Gestión de Meta Ads y analítica avanzada para ARIA AI.
+marketing_tools.py — Meta Ads management and advanced analytics for ARIA AI.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ logger = logging.getLogger("aria.marketing_tools")
 
 
 class MetaMarketingTools:
-    """Gestión de Meta Ads (Facebook/Instagram Ads)."""
+    """Meta Ads management (Facebook/Instagram Ads)."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
@@ -28,10 +28,10 @@ class MetaMarketingTools:
         if not self._ok():
             return {
                 "success": False,
-                "error": "FACEBOOK_MARKETING_TOKEN o AD_ACCOUNT_ID no configurados",
+                "error": "FACEBOOK_MARKETING_TOKEN or AD_ACCOUNT_ID not configured",
             }
         try:
-            url = f"https://graph.facebook.com/v19.0/{self._ad_account}/campaigns"
+            url = f"https://graph.facebook.com/v25.0/{self._ad_account}/campaigns"
             params = {
                 "access_token": self._token,
                 "fields": "name,status,objective,insights{spend,impressions,clicks,cpc,ctr}",
@@ -48,9 +48,9 @@ class MetaMarketingTools:
         self, name: str, objective: str, status: str = "PAUSED"
     ) -> dict[str, Any]:
         if not self._ok():
-            return {"success": False, "error": "No configurado"}
+            return {"success": False, "error": "Not configured"}
         try:
-            url = f"https://graph.facebook.com/v19.0/{self._ad_account}/campaigns"
+            url = f"https://graph.facebook.com/v25.0/{self._ad_account}/campaigns"
             data = {
                 "access_token": self._token,
                 "name": name,

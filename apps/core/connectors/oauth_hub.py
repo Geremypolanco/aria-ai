@@ -341,6 +341,9 @@ async def save_token(email: str, pid: str, token: dict) -> None:
         "scope": token.get("scope", ""),
         "obtained_at": int(time.time()),
         "expires_in": token.get("expires_in"),
+        # Provider-specific passthrough some connectors need (e.g. Salesforce's
+        # per-org instance_url, used to template its base_url).
+        "instance_url": token.get("instance_url"),
     }
     try:
         from apps.core.connectors import token_crypto

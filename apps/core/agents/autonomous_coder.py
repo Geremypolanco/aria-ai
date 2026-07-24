@@ -1,16 +1,16 @@
 """
-autonomous_coder.py — Codificación Autónoma para ARIA AI.
+autonomous_coder.py — Autonomous Coding for ARIA AI.
 
-Integra Aider y SWE-agent para que ARIA pueda:
-  - Modificar su propio código de forma autónoma (Aider)
-  - Crear Pull Requests con cambios documentados
-  - Resolver issues de GitHub automáticamente (SWE-agent)
-  - Hacer refactors y mejoras de código
-  - Añadir nuevas capacidades sin intervención humana
+Integrates Aider and SWE-agent so ARIA can:
+  - Modify its own code autonomously (Aider)
+  - Create Pull Requests with documented changes
+  - Resolve GitHub issues automatically (SWE-agent)
+  - Perform refactors and code improvements
+  - Add new capabilities without human intervention
 
-Extiende el EvolutionAgent existente con herramientas de codificación real.
+Extends the existing EvolutionAgent with real coding tools.
 
-Referencia:
+Reference:
   - Aider: https://github.com/Aider-AI/aider
   - SWE-agent: https://github.com/SWE-agent/SWE-agent
 """
@@ -25,64 +25,64 @@ from typing import Any
 
 logger = logging.getLogger("aria.autonomous_coder")
 
-# ── Aider Import con fallback ────────────────────────────────────────────────
+# ── Aider Import with fallback ───────────────────────────────────────────────
 try:
     from aider.coders import Coder
     from aider.io import InputOutput
     from aider.models import Model
 
     AIDER_AVAILABLE = True
-    logger.info("[Aider] Librería cargada correctamente.")
+    logger.info("[Aider] Library loaded successfully.")
 except ImportError:
     AIDER_AVAILABLE = False
     logger.warning(
-        "[Aider] aider-chat no instalado. "
-        "Usando subprocess como fallback. "
-        "Instala con: pip install aider-chat"
+        "[Aider] aider-chat not installed. "
+        "Using subprocess as fallback. "
+        "Install with: pip install aider-chat"
     )
     Coder = None  # type: ignore[assignment,misc]
     Model = None  # type: ignore[assignment,misc]
     InputOutput = None  # type: ignore[assignment,misc]
 
-# ── SWE-agent Import con fallback ────────────────────────────────────────────
+# ── SWE-agent Import with fallback ───────────────────────────────────────────
 try:
     import sweagent  # noqa: F401
 
     SWEAGENT_AVAILABLE = True
-    logger.info("[SWE-agent] Librería cargada correctamente.")
+    logger.info("[SWE-agent] Library loaded successfully.")
 except ImportError:
     SWEAGENT_AVAILABLE = False
     logger.warning(
-        "[SWE-agent] sweagent no instalado. "
-        "Usando GitHub API como fallback. "
-        "Instala con: pip install sweagent"
+        "[SWE-agent] sweagent not installed. "
+        "Using the GitHub API as fallback. "
+        "Install with: pip install sweagent"
     )
 
 
-# ── Motor de Aider ───────────────────────────────────────────────────────────
+# ── Aider Engine ──────────────────────────────────────────────────────────────
 
 
 class AriaAiderEngine:
     """
-    Motor de codificación autónoma con Aider para ARIA AI.
+    Autonomous coding engine using Aider for ARIA AI.
 
-    Permite a ARIA modificar su propio código, crear features,
-    corregir bugs y hacer refactors de forma autónoma.
+    Lets ARIA modify its own code, create features,
+    fix bugs, and perform refactors autonomously.
 
-    Integra con el EvolutionAgent existente para el ciclo de auto-mejora.
+    Integrates with the existing EvolutionAgent for the self-improvement cycle.
 
-    Uso:
+    Usage:
         engine = AriaAiderEngine()
 
-        # Modificar un archivo específico
+        # Modify a specific file
         result = await engine.modify_file(
             file_path="apps/core/agents/marketing_agent.py",
-            instruction="Añade soporte para PostHog analytics en el método _execute",
+            instruction="Add PostHog analytics support in the _execute method",
         )
 
-        # Crear una nueva feature
+        # Create a new feature
         result = await engine.create_feature(
-            description="Añadir integración con Stripe webhooks",
+            description="Add Stripe webhooks integration",
             target_files=["apps/core/tools/sales_engine.py"],
         )
     """
@@ -106,23 +106,23 @@ class AriaAiderEngine:
         commit_message: str = "",
     ) -> dict[str, Any]:
         """
-        Modifica un archivo específico según una instrucción en lenguaje natural.
+        Modifies a specific file according to a natural-language instruction.
 
         Args:
-            file_path: Ruta relativa al archivo a modificar
-            instruction: Instrucción en lenguaje natural
-            auto_commit: Si hacer commit automático
-            commit_message: Mensaje del commit (auto-generado si vacío)
+            file_path: Relative path to the file to modify
+            instruction: Natural-language instruction
+            auto_commit: Whether to auto-commit
+            commit_message: Commit message (auto-generated if empty)
 
         Returns:
-            Dict con el resultado de la modificación
+            Dict with the result of the modification
         """
         full_path = self._repo_path / file_path
 
         if not full_path.exists():
             return {
                 "success": False,
-                "error": f"Archivo no encontrado: {file_path}",
+                "error": f"File not found: {file_path}",
                 "file": file_path,
             }
 
@@ -147,10 +147,10 @@ class AriaAiderEngine:
         auto_commit: bool,
         commit_message: str,
     ) -> dict[str, Any]:
-        """Modifica un archivo usando la API de Aider."""
+        """Modifies a file using the Aider API."""
         try:
             io = InputOutput(
-                yes=True,  # Auto-confirmar cambios
+                yes=True,  # Auto-confirm changes
                 chat_history_file=None,
             )
 
@@ -163,7 +163,7 @@ class AriaAiderEngine:
                 git=auto_commit,
             )
 
-            # Ejecutar en thread para no bloquear el event loop
+            # Run in a thread so we don't block the event loop
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None,
@@ -179,11 +179,11 @@ class AriaAiderEngine:
             }
 
             self._history.append(result)
-            logger.info("[Aider] Archivo modificado: %s", file_path)
+            logger.info("[Aider] File modified: %s", file_path)
             return result
 
         except Exception as exc:
-            logger.error("[Aider] Error modificando %s: %s", file_path, exc)
+            logger.error("[Aider] Error modifying %s: %s", file_path, exc)
             return {
                 "success": False,
                 "error": str(exc),
@@ -198,11 +198,11 @@ class AriaAiderEngine:
         auto_commit: bool,
         commit_message: str,
     ) -> dict[str, Any]:
-        """Fallback: usa aider como subprocess."""
+        """Fallback: uses aider as a subprocess."""
         if not self._openai_api_key:
             return {
                 "success": False,
-                "error": "OPENAI_API_KEY no configurado para Aider",
+                "error": "OPENAI_API_KEY not configured for Aider",
                 "file": file_path,
                 "source": "subprocess_fallback",
             }
@@ -248,9 +248,9 @@ class AriaAiderEngine:
             }
 
             if success:
-                logger.info("[Aider] Modificación exitosa vía subprocess: %s", file_path)
+                logger.info("[Aider] Successful modification via subprocess: %s", file_path)
             else:
-                logger.warning("[Aider] Error en subprocess: %s", result["stderr"])
+                logger.warning("[Aider] Subprocess error: %s", result["stderr"])
 
             self._history.append(result)
             return result
@@ -258,14 +258,14 @@ class AriaAiderEngine:
         except TimeoutError:
             return {
                 "success": False,
-                "error": "Timeout en Aider (120s)",
+                "error": "Aider timeout (120s)",
                 "file": file_path,
                 "source": "aider_subprocess",
             }
         except FileNotFoundError:
             return {
                 "success": False,
-                "error": "Aider no encontrado. Instala con: pip install aider-chat",
+                "error": "Aider not found. Install with: pip install aider-chat",
                 "file": file_path,
                 "source": "aider_subprocess",
             }
@@ -284,19 +284,19 @@ class AriaAiderEngine:
         create_tests: bool = True,
     ) -> dict[str, Any]:
         """
-        Crea una nueva feature en los archivos especificados.
+        Creates a new feature in the specified files.
 
         Args:
-            description: Descripción de la feature a crear
-            target_files: Archivos a modificar
-            create_tests: Si crear tests automáticamente
+            description: Description of the feature to create
+            target_files: Files to modify
+            create_tests: Whether to auto-create tests
 
         Returns:
-            Dict con el resultado de la creación
+            Dict with the result of the creation
         """
         instruction = description
         if create_tests:
-            instruction += "\n\nTambién añade tests unitarios para la nueva funcionalidad."
+            instruction += "\n\nAlso add unit tests for the new functionality."
 
         results = []
         for file_path in target_files:
@@ -324,24 +324,24 @@ class AriaAiderEngine:
         instruction: str = "",
     ) -> dict[str, Any]:
         """
-        Crea un Pull Request con cambios de código.
+        Creates a Pull Request with code changes.
 
         Args:
-            title: Título del PR
-            description: Descripción del PR
-            branch_name: Nombre de la rama (auto-generado si vacío)
-            files_to_modify: Archivos a modificar antes del PR
-            instruction: Instrucción para Aider
+            title: PR title
+            description: PR description
+            branch_name: Branch name (auto-generated if empty)
+            files_to_modify: Files to modify before the PR
+            instruction: Instruction for Aider
 
         Returns:
-            Dict con la URL del PR creado
+            Dict with the URL of the created PR
         """
         import re
 
         branch = branch_name or f"aria/auto-{re.sub(r'[^a-z0-9-]', '-', title.lower())[:40]}"
 
         try:
-            # Crear rama
+            # Create branch
             await asyncio.create_subprocess_exec(
                 "git",
                 "checkout",
@@ -350,12 +350,12 @@ class AriaAiderEngine:
                 cwd=str(self._repo_path),
             )
 
-            # Modificar archivos si se especificaron
+            # Modify files if specified
             if files_to_modify and instruction:
                 for file_path in files_to_modify:
                     await self.modify_file(file_path, instruction)
 
-            # Crear PR con GitHub CLI
+            # Create PR with GitHub CLI
             process = await asyncio.create_subprocess_exec(
                 "gh",
                 "pr",
@@ -374,7 +374,7 @@ class AriaAiderEngine:
 
             if process.returncode == 0:
                 pr_url = stdout.decode().strip()
-                logger.info("[Aider] PR creado: %s", pr_url)
+                logger.info("[Aider] PR created: %s", pr_url)
                 return {
                     "success": True,
                     "pr_url": pr_url,
@@ -388,30 +388,30 @@ class AriaAiderEngine:
             }
 
         except Exception as exc:
-            logger.error("[Aider] Error creando PR: %s", exc)
+            logger.error("[Aider] Error creating PR: %s", exc)
             return {"success": False, "error": str(exc)}
 
     def get_history(self) -> list[dict[str, Any]]:
-        """Retorna el historial de modificaciones."""
+        """Returns the modification history."""
         return self._history.copy()
 
 
-# ── Motor de SWE-agent ───────────────────────────────────────────────────────
+# ── SWE-agent Engine ──────────────────────────────────────────────────────────
 
 
 class AriaSWEAgentEngine:
     """
-    Motor de resolución de issues con SWE-agent para ARIA AI.
+    Issue-resolution engine using SWE-agent for ARIA AI.
 
-    SWE-agent puede resolver issues de GitHub automáticamente,
-    generando patches y PRs con soluciones completas.
+    SWE-agent can resolve GitHub issues automatically,
+    generating patches and PRs with complete solutions.
 
-    Integra con el EvolutionAgent para el ciclo de auto-mejora.
+    Integrates with the EvolutionAgent for the self-improvement cycle.
 
-    Uso:
+    Usage:
         engine = AriaSWEAgentEngine()
 
-        # Resolver un issue de GitHub
+        # Resolve a GitHub issue
         result = await engine.resolve_github_issue(
             repo="Geremypolanco/aria-ai",
             issue_number=42,
@@ -434,15 +434,15 @@ class AriaSWEAgentEngine:
         create_pr: bool = True,
     ) -> dict[str, Any]:
         """
-        Resuelve un issue de GitHub automáticamente.
+        Resolves a GitHub issue automatically.
 
         Args:
-            repo: Repositorio en formato "owner/repo"
-            issue_number: Número del issue
-            create_pr: Si crear un PR con la solución
+            repo: Repository in "owner/repo" format
+            issue_number: Issue number
+            create_pr: Whether to create a PR with the solution
 
         Returns:
-            Dict con el resultado y URL del PR si se creó
+            Dict with the result and PR URL if one was created
         """
         if SWEAGENT_AVAILABLE:
             return await self._resolve_with_sweagent(repo, issue_number, create_pr)
@@ -454,7 +454,7 @@ class AriaSWEAgentEngine:
         issue_number: int,
         create_pr: bool,
     ) -> dict[str, Any]:
-        """Resuelve issue usando SWE-agent nativo."""
+        """Resolves the issue using native SWE-agent."""
         try:
             cmd = [
                 "python",
@@ -484,7 +484,7 @@ class AriaSWEAgentEngine:
 
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(),
-                timeout=300.0,  # 5 minutos para issues complejos
+                timeout=300.0,  # 5 minutes for complex issues
             )
 
             success = process.returncode == 0
@@ -502,7 +502,7 @@ class AriaSWEAgentEngine:
         except TimeoutError:
             return {
                 "success": False,
-                "error": "Timeout en SWE-agent (300s)",
+                "error": "SWE-agent timeout (300s)",
                 "repo": repo,
                 "issue_number": issue_number,
             }
@@ -517,8 +517,8 @@ class AriaSWEAgentEngine:
         create_pr: bool,
     ) -> dict[str, Any]:
         """
-        Fallback: analiza el issue con IA y propone solución.
-        Usa la API de GitHub para obtener el issue y el ai_client de Aria.
+        Fallback: analyzes the issue with AI and proposes a solution.
+        Uses the GitHub API to fetch the issue and ARIA's ai_client.
         """
         try:
             import httpx
@@ -536,21 +536,21 @@ class AriaSWEAgentEngine:
             issue_title = issue_data.get("title", "")
             issue_body = issue_data.get("body", "")
 
-            # Analizar con IA
+            # Analyze with AI
             try:
                 from apps.core.tools.ai_client import AIModel, get_ai_client
 
                 ai = get_ai_client()
                 analysis = await ai.think(
                     system=(
-                        "Eres un experto en ingeniería de software. "
-                        "Analiza el issue de GitHub y propone una solución detallada."
+                        "You are a software engineering expert. "
+                        "Analyze the GitHub issue and propose a detailed solution."
                     ),
                     user=f"Issue #{issue_number}: {issue_title}\n\n{issue_body}",
                     model=AIModel.STRATEGY,
                 )
             except Exception:
-                analysis = f"Issue analizado: {issue_title}"
+                analysis = f"Issue analyzed: {issue_title}"
 
             result = {
                 "success": True,
@@ -559,7 +559,7 @@ class AriaSWEAgentEngine:
                 "issue_title": issue_title,
                 "proposed_solution": analysis,
                 "source": "github_api_fallback",
-                "note": "SWE-agent no disponible. Instala con: pip install sweagent",
+                "note": "SWE-agent not available. Install with: pip install sweagent",
             }
 
             self._history.append(result)
@@ -580,18 +580,18 @@ class AriaSWEAgentEngine:
         focus: str = "performance and bugs",
     ) -> dict[str, Any]:
         """
-        Analiza el codebase completo en busca de mejoras.
-        Integra con el EvolutionAgent de Aria.
+        Analyzes the full codebase looking for improvements.
+        Integrates with ARIA's EvolutionAgent.
 
         Args:
-            repo_path: Ruta al repositorio
-            focus: Área de enfoque del análisis
+            repo_path: Path to the repository
+            focus: Focus area of the analysis
 
         Returns:
-            Reporte de análisis con mejoras sugeridas
+            Analysis report with suggested improvements
         """
         try:
-            # Obtener lista de archivos Python
+            # Get list of Python files
             python_files = list(Path(repo_path).rglob("*.py"))
             python_files = [f for f in python_files if "__pycache__" not in str(f)][:20]
 
@@ -603,19 +603,19 @@ class AriaSWEAgentEngine:
                 ai = get_ai_client()
                 analysis = await ai.think(
                     system=(
-                        "Eres un experto en arquitectura de software y Python. "
-                        "Analiza la estructura del proyecto y sugiere mejoras concretas."
+                        "You are a software architecture and Python expert. "
+                        "Analyze the project structure and suggest concrete improvements."
                     ),
                     user=(
-                        f"Proyecto: ARIA AI (sistema autónomo de ingresos digitales)\n"
-                        f"Foco: {focus}\n\n"
-                        f"Archivos principales:\n{file_list}\n\n"
-                        "Sugiere las 5 mejoras más impactantes."
+                        f"Project: ARIA AI (autonomous digital income system)\n"
+                        f"Focus: {focus}\n\n"
+                        f"Main files:\n{file_list}\n\n"
+                        "Suggest the 5 most impactful improvements."
                     ),
                     model=AIModel.STRATEGY,
                 )
             except Exception:
-                analysis = "Análisis no disponible (ai_client no configurado)"
+                analysis = "Analysis not available (ai_client not configured)"
 
             return {
                 "success": True,
@@ -630,25 +630,25 @@ class AriaSWEAgentEngine:
             return {"success": False, "error": str(exc)}
 
     def get_history(self) -> list[dict[str, Any]]:
-        """Retorna el historial de resoluciones."""
+        """Returns the resolution history."""
         return self._history.copy()
 
 
-# ── Motor Unificado de Codificación Autónoma ────────────────────────────────
+# ── Unified Autonomous Coding Engine ─────────────────────────────────────────
 
 
 class AriaAutonomousCoderEngine:
     """
-    Motor unificado de Codificación Autónoma para ARIA AI.
+    Unified Autonomous Coding engine for ARIA AI.
 
-    Combina Aider (modificación de archivos) y SWE-agent (resolución de issues)
-    para dar a ARIA capacidades completas de auto-evolución de código.
+    Combines Aider (file modification) and SWE-agent (issue resolution)
+    to give ARIA full code self-evolution capabilities.
 
-    Integra con:
-    - EvolutionAgent (ciclo de auto-mejora)
-    - DevAgent (desarrollo de features)
-    - GitHub (PRs y issues)
-    - ExecutionPipeline (auditoría de cambios)
+    Integrates with:
+    - EvolutionAgent (self-improvement cycle)
+    - DevAgent (feature development)
+    - GitHub (PRs and issues)
+    - ExecutionPipeline (change auditing)
     """
 
     def __init__(
@@ -670,15 +670,15 @@ class AriaAutonomousCoderEngine:
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        Mejora automática del código de ARIA.
+        Automatic improvement of ARIA's code.
 
         Args:
-            target: Archivo o descripción del target
+            target: File or description of the target
             improvement_type: 'feature', 'bug_fix', 'refactor', 'test', 'issue'
-            context: Contexto adicional
+            context: Additional context
 
         Returns:
-            Resultado de la mejora
+            Result of the improvement
         """
         ctx = context or {}
 
@@ -706,11 +706,11 @@ class AriaAutonomousCoderEngine:
 
         return {
             "success": False,
-            "error": f"Tipo de mejora no reconocido: {improvement_type}",
+            "error": f"Unrecognized improvement type: {improvement_type}",
         }
 
     def get_capabilities(self) -> dict[str, Any]:
-        """Retorna las capacidades disponibles."""
+        """Returns the available capabilities."""
         return {
             "aider": {
                 "available": AIDER_AVAILABLE,
@@ -723,12 +723,12 @@ class AriaAutonomousCoderEngine:
         }
 
 
-# ── Singleton ────────────────────────────────────────────────────────────────
+# ── Singleton ──────────────────────────────────────────────────────────────
 _coder_instance: AriaAutonomousCoderEngine | None = None
 
 
 def get_autonomous_coder() -> AriaAutonomousCoderEngine:
-    """Retorna el singleton del motor de Codificación Autónoma."""
+    """Returns the singleton of the Autonomous Coding engine."""
     global _coder_instance
     if _coder_instance is None:
         _coder_instance = AriaAutonomousCoderEngine(

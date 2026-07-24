@@ -1,8 +1,8 @@
 """
-CEO Agent — Estrategia, decisiones de alto nivel y delegación a agentes especializados.
+CEO Agent — Strategy, high-level decisions, and delegation to specialized agents.
 
-El CEO Agent orquesta los demás agentes, prioriza iniciativas de negocio,
-analiza métricas globales, y toma decisiones ejecutivas autónomas.
+The CEO Agent orchestrates the other agents, prioritizes business initiatives,
+analyzes global metrics, and makes autonomous executive decisions.
 """
 
 from __future__ import annotations
@@ -17,41 +17,41 @@ logger = logging.getLogger("aria.business.ceo")
 
 class CEOAgent(BaseAgent):
     IDENTITY = (
-        "Eres el CEO Agent de ARIA AI. Piensas estratégicamente como un CEO de Silicon Valley. "
-        "Tu objetivo: maximizar revenue, crecer la marca, y mantener operaciones autónomas. "
-        "Delega tareas a agentes especializados. Toma decisiones basadas en datos reales."
+        "You are ARIA AI's CEO Agent. You think strategically like a Silicon Valley CEO. "
+        "Your goal: maximize revenue, grow the brand, and keep operations autonomous. "
+        "Delegate tasks to specialized agents. Make decisions based on real data."
     )
 
     def __init__(self) -> None:
         super().__init__(
             name="ceo",
-            description="Estrategia ejecutiva, decisiones de alto nivel, delegación y coordinación de negocio",
+            description="Executive strategy, high-level decisions, delegation, and business coordination",
             capabilities=["strategy", "planning", "delegation", "metrics", "decisions", "growth"],
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission = context.get("mission", "Analizar estado del negocio y proponer plan de acción")
+        mission = context.get("mission", "Analyze business status and propose an action plan")
         data = context.get("data", {})
-        timeframe = context.get("timeframe", "próximas 2 semanas")
+        timeframe = context.get("timeframe", "next 2 weeks")
 
-        # Recopilar métricas actuales
+        # Gather current metrics
         metrics = await self._gather_business_metrics()
 
-        # Análisis estratégico con IA
+        # Strategic analysis with AI
         plan = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Misión: {mission}\n"
-                f"Datos adicionales: {data}\n"
+                f"Mission: {mission}\n"
+                f"Additional data: {data}\n"
                 f"Timeframe: {timeframe}\n"
-                f"Métricas actuales: {metrics}\n\n"
-                f"Genera un plan ejecutivo con: "
-                f"1) Situación actual 2) 3 prioridades inmediatas 3) KPIs a trackear "
-                f"4) Delegación a agentes específicos 5) Próximos pasos concretos."
+                f"Current metrics: {metrics}\n\n"
+                f"Generate an executive plan with: "
+                f"1) Current situation 2) 3 immediate priorities 3) KPIs to track "
+                f"4) Delegation to specific agents 5) Concrete next steps."
             ),
         )
 
-        # Identificar qué agentes activar
+        # Identify which agents to activate
         agents_to_activate = self._identify_required_agents(plan, mission)
 
         return {
@@ -61,11 +61,11 @@ class CEOAgent(BaseAgent):
             "strategic_plan": plan,
             "agents_to_activate": agents_to_activate,
             "metrics_snapshot": metrics,
-            "summary": plan[:400] if plan else "Plan generado",
+            "summary": plan[:400] if plan else "Plan generated",
         }
 
     async def _gather_business_metrics(self) -> dict:
-        """Reúne métricas reales del negocio desde múltiples fuentes."""
+        """Gathers real business metrics from multiple sources."""
         metrics: dict = {}
         try:
             from apps.core.training.continuous_trainer import get_trainer
@@ -77,9 +77,11 @@ class CEOAgent(BaseAgent):
             pass
         return metrics
 
-    def _identify_required_agents(self, plan: str, mission: str) -> list[str]:
-        """Identifica qué agentes especializados se necesitan activar."""
-        plan_lower = (plan + mission).lower()
+    def _identify_required_agents(self, plan: str | None, mission: str) -> list[str]:
+        """Identifies which specialized agents need to be activated."""
+        # think() returns None when the AI client is unavailable/errors —
+        # `plan + mission` would raise TypeError in exactly that case.
+        plan_lower = ((plan or "") + mission).lower()
         agents = []
         if any(w in plan_lower for w in ["market", "seo", "content", "blog", "social"]):
             agents.append("marketing")

@@ -1,13 +1,13 @@
 """
-ARIA Social Content Tools — Distribución de contenido en redes sociales.
+ARIA Social Content Tools — Content distribution on social networks.
 
-Plataformas:
-- Twitter/X (API v2 — tier gratuito)
-- Reddit (API — tier gratuito)
-- Pinterest (API — gratuito)
-- Discord (webhooks — gratuito)
-- LinkedIn (ya en social_media.py para OAuth)
-- Todas las redes conectadas via social_media.py OAuth
+Platforms:
+- Twitter/X (API v2 — free tier)
+- Reddit (API — free tier)
+- Pinterest (API — free)
+- Discord (webhooks — free)
+- LinkedIn (already in social_media.py for OAuth)
+- All networks connected via social_media.py OAuth
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ class SocialContentTools:
         self._http = httpx.AsyncClient(timeout=30.0)
 
     async def post_to_all(self, text: str, article_url: str = "", title: str = "") -> dict:
-        """Publica en todas las redes disponibles en paralelo."""
+        """Publishes to all available networks in parallel."""
         import asyncio
 
         results = await asyncio.gather(
@@ -53,10 +53,10 @@ class SocialContentTools:
 
     async def post_twitter(self, text: str) -> dict:
         """
-        Publica tweet via Twitter API v2.
-        Requiere: TWITTER_BEARER_TOKEN, TWITTER_API_KEY, TWITTER_API_SECRET,
+        Posts a tweet via Twitter API v2.
+        Requires: TWITTER_BEARER_TOKEN, TWITTER_API_KEY, TWITTER_API_SECRET,
                   TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET
-        Tier gratuito: 1,500 tweets/mes.
+        Free tier: 1,500 tweets/month.
         """
         if not all(
             [
@@ -69,7 +69,7 @@ class SocialContentTools:
             return {
                 "success": False,
                 "skipped": True,
-                "reason": "Twitter credentials no configuradas",
+                "reason": "Twitter credentials not configured",
             }
         try:
             import hashlib
@@ -129,10 +129,10 @@ class SocialContentTools:
 
     async def post_reddit(self, title: str, text: str, url: str = "") -> dict:
         """
-        Publica en Reddit via API oficial.
-        Requiere: REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD
-        Tier gratuito: generoso.
-        Subreddits target: r/artificial, r/entrepreneur, etc.
+        Posts to Reddit via the official API.
+        Requires: REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD
+        Free tier: generous.
+        Target subreddits: r/artificial, r/entrepreneur, etc.
         """
         if not all(
             [
@@ -145,11 +145,11 @@ class SocialContentTools:
             return {
                 "success": False,
                 "skipped": True,
-                "reason": "Reddit credentials no configuradas",
+                "reason": "Reddit credentials not configured",
             }
 
         try:
-            # Obtener access token
+            # Get access token
             token_res = await self._http.post(
                 "https://www.reddit.com/api/v1/access_token",
                 auth=(settings.REDDIT_CLIENT_ID, settings.REDDIT_CLIENT_SECRET),
@@ -166,7 +166,7 @@ class SocialContentTools:
             access_token = token_res.json().get("access_token")
             headers = {"Authorization": f"bearer {access_token}", "User-Agent": "ARIA/1.0"}
 
-            # Determinar subreddit basado en el contenido
+            # Determine subreddit based on content
             subreddit = settings.REDDIT_TARGET_SUBREDDIT or "test"
 
             payload = {
@@ -214,21 +214,21 @@ class SocialContentTools:
 
     async def post_pinterest(self, title: str, description: str, link: str = "") -> dict:
         """
-        Crea pin en Pinterest via API v5.
-        Requiere: PINTEREST_ACCESS_TOKEN (OAuth 2.0)
-        Tier gratuito: generoso.
+        Creates a pin on Pinterest via API v5.
+        Requires: PINTEREST_ACCESS_TOKEN (OAuth 2.0)
+        Free tier: generous.
         """
         if not settings.PINTEREST_ACCESS_TOKEN:
             return {
                 "success": False,
                 "skipped": True,
-                "reason": "PINTEREST_ACCESS_TOKEN no configurado",
+                "reason": "PINTEREST_ACCESS_TOKEN not configured",
             }
 
         try:
             board_id = settings.PINTEREST_BOARD_ID or ""
             if not board_id:
-                # Obtener primer board disponible
+                # Get the first available board
                 boards_res = await self._http.get(
                     "https://api.pinterest.com/v5/boards",
                     headers={"Authorization": f"Bearer {settings.PINTEREST_ACCESS_TOKEN}"},
@@ -238,7 +238,7 @@ class SocialContentTools:
                     board_id = boards[0]["id"] if boards else ""
 
             if not board_id:
-                return {"success": False, "error": "No Pinterest board encontrado"}
+                return {"success": False, "error": "No Pinterest board found"}
 
             pin_payload: dict[str, Any] = {
                 "board_id": board_id,
@@ -276,15 +276,15 @@ class SocialContentTools:
 
     async def post_discord_webhook(self, title: str, content: str, url: str = "") -> dict:
         """
-        Publica en Discord via Webhook.
-        Requiere: DISCORD_WEBHOOK_URL (crear en Server Settings → Integrations)
-        Completamente gratuito.
+        Posts to Discord via Webhook.
+        Requires: DISCORD_WEBHOOK_URL (create in Server Settings → Integrations)
+        Completely free.
         """
         if not settings.DISCORD_WEBHOOK_URL:
             return {
                 "success": False,
                 "skipped": True,
-                "reason": "DISCORD_WEBHOOK_URL no configurado",
+                "reason": "DISCORD_WEBHOOK_URL not configured",
             }
 
         try:
@@ -292,14 +292,14 @@ class SocialContentTools:
             embed = {
                 "title": title[:256],
                 "description": summary,
-                "color": 5814783,  # Azul ARIA
+                "color": 5814783,  # ARIA Blue
             }
             if url:
                 embed["url"] = url
                 embed["fields"] = [
                     {
-                        "name": "Leer artículo completo",
-                        "value": f"[Click aquí]({url})",
+                        "name": "Read the full article",
+                        "value": f"[Click here]({url})",
                         "inline": False,
                     }
                 ]
@@ -319,17 +319,17 @@ class SocialContentTools:
             logger.error("[Social] Discord webhook error: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    # ── CUENTAS OAUTH CONECTADAS ──────────────────────────
+    # ── CONNECTED OAUTH ACCOUNTS ──────────────────────────
 
     async def post_via_oauth_accounts(self, text: str, url: str = "") -> dict:
-        """Publica en todas las cuentas conectadas via OAuth (Facebook, Instagram, LinkedIn, TikTok)."""
+        """Posts to all accounts connected via OAuth (Facebook, Instagram, LinkedIn, TikTok)."""
         try:
             from apps.core.tools.social_media import SocialMediaManager
 
             sm = SocialMediaManager()
             accounts = await sm.list_connected_accounts()
             if not accounts:
-                return {"success": False, "skipped": True, "reason": "Sin cuentas OAuth conectadas"}
+                return {"success": False, "skipped": True, "reason": "No OAuth accounts connected"}
 
             results = {}
             content = f"{text}\n{url}" if url else text

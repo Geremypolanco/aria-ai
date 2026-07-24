@@ -10,14 +10,14 @@ logger = logging.getLogger("aria.executive")
 
 class ExecutiveDecisionEngine:
     """
-    Motor de Decisión Ejecutiva (CEO Layer).
+    Executive Decision Engine (CEO Layer).
 
-    Orquesta TODAS las acciones de Aria basándose en:
-    1. Oportunidades de mercado (Market Scanner)
-    2. Desempeño actual (Revenue Attribution)
-    3. ROI esperado de cada acción
+    Orchestrates ALL of Aria's actions based on:
+    1. Market opportunities (Market Scanner)
+    2. Current performance (Revenue Attribution)
+    3. Expected ROI of each action
 
-    Responde: "¿Qué debemos hacer HOY para maximizar ingresos?"
+    Answers: "What should we do TODAY to maximize revenue?"
     """
 
     def __init__(self):
@@ -27,66 +27,66 @@ class ExecutiveDecisionEngine:
 
     async def make_daily_decision(self) -> dict[str, Any]:
         """
-        Toma la decisión ejecutiva diaria.
+        Makes the daily executive decision.
 
-        Responde: ¿Qué hacer hoy? ¿Crear contenido? ¿Optimizar Shopify? ¿Hacer experimentos?
+        Answers: What to do today? Create content? Optimize Shopify? Run experiments?
         """
 
-        # 1. Obtener oportunidades de mercado
+        # 1. Get market opportunities
         opportunities = await self.market_scanner.scan_opportunities()
 
-        # 2. Obtener desempeño actual
+        # 2. Get current performance
         top_content = await self.attribution.get_top_performing_content(5)
         revenue_graph = await self.attribution.get_revenue_graph_json()
 
-        # 3. Usar IA para decidir
+        # 3. Use AI to decide
         prompt = f"""
-        ESTADO ACTUAL DE ARIA:
-        - Ingresos totales: ${revenue_graph.get('total_revenue', 0)}
-        - Contenido creado: {revenue_graph.get('total_content_pieces', 0)}
+        ARIA'S CURRENT STATE:
+        - Total revenue: ${revenue_graph.get('total_revenue', 0)}
+        - Content created: {revenue_graph.get('total_content_pieces', 0)}
         - Top performers: {top_content}
 
-        OPORTUNIDADES DISPONIBLES:
+        AVAILABLE OPPORTUNITIES:
         {opportunities}
 
-        PREGUNTA EJECUTIVA:
-        ¿Qué debería hacer Aria HOY para maximizar ingresos?
+        EXECUTIVE QUESTION:
+        What should Aria do TODAY to maximize revenue?
 
-        Opciones:
-        A) Crear más contenido en el nicho de mejor desempeño
-        B) Optimizar el precio/descripción de Shopify
-        C) Hacer experimentos A/B en las campañas actuales
-        D) Pivotar a una oportunidad completamente nueva
-        E) Escalar lo que ya funciona
+        Options:
+        A) Create more content in the best-performing niche
+        B) Optimize the Shopify price/description
+        C) Run A/B experiments on current campaigns
+        D) Pivot to a completely new opportunity
+        E) Scale what's already working
 
-        Responde en JSON con:
-        - decision: A, B, C, D o E
-        - reasoning: por qué
-        - expected_roi: ROI esperado si ejecutamos
-        - action_plan: pasos específicos
+        Respond in JSON with:
+        - decision: A, B, C, D, or E
+        - reasoning: why
+        - expected_roi: expected ROI if we execute
+        - action_plan: specific steps
         """
 
         decision = await self.ai.complete_json(
-            system="Eres el CEO de ARIA. Tu único objetivo es maximizar ingresos.",
+            system="You are the CEO of ARIA. Your only goal is to maximize revenue.",
             user=prompt,
             model=AIModel.STRATEGY,
         )
 
-        return decision if decision else {"error": "Decisión fallida"}
+        return decision if decision else {"error": "Decision failed"}
 
     async def evaluate_action_roi(self, action: str, context: dict[str, Any]) -> float:
-        """Evalúa el ROI esperado de una acción."""
+        """Evaluates the expected ROI of an action."""
         prompt = f"""
-        ACCIÓN PROPUESTA: {action}
-        CONTEXTO: {context}
+        PROPOSED ACTION: {action}
+        CONTEXT: {context}
 
-        Estima el ROI esperado (0-10 escala).
-        Responde SOLO con un número entre 0 y 10.
+        Estimate the expected ROI (0-10 scale).
+        Respond ONLY with a number between 0 and 10.
         """
 
         try:
             response = await self.ai.complete(
-                system="Eres un experto en evaluación de ROI.", user=prompt, model=AIModel.FAST
+                system="You are an expert in ROI evaluation.", user=prompt, model=AIModel.FAST
             )
             roi = float(response.content.strip())
             return min(10, max(0, roi))
@@ -94,7 +94,7 @@ class ExecutiveDecisionEngine:
             return 0.0
 
     async def prioritize_actions(self, actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Ordena acciones por ROI esperado."""
+        """Sorts actions by expected ROI."""
         for action in actions:
             action["expected_roi"] = await self.evaluate_action_roi(action.get("name", ""), action)
 

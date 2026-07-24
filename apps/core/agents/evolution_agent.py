@@ -1,17 +1,17 @@
 """
 evolution_agent.py — ARIA AI Self-Evolution Engine v4.
 
-ARIA puede autonomamente:
-  1. Leer y analizar su propio codigo completo via GitHub API
-  2. Generar versiones mejoradas con Qwen2.5-Coder y pushear a GitHub
-  3. Leer logs de produccion de Fly.io para detectar y corregir errores reales
-  4. Descubrir e integrar nuevas APIs que amplian sus capacidades
-  5. Mantener un score de calidad del sistema en tiempo real
-  6. Aprender de sus propios errores y optimizar su ciclo autonomo
-  7. Proponer mejoras a archivos protegidos (requiere aprobacion humana)
+ARIA can autonomously:
+  1. Read and analyze its own complete codebase via the GitHub API
+  2. Generate improved versions with Qwen2.5-Coder and push them to GitHub
+  3. Read Fly.io production logs to detect and fix real errors
+  4. Discover and integrate new APIs that expand its capabilities
+  5. Maintain a real-time system quality score
+  6. Learn from its own mistakes and optimize its autonomous cycle
+  7. Propose improvements to protected files (requires human approval)
 
-Principio: NINGUNA funcion retorna datos simulados.
-Si no puede realizar una accion, lo dice explicitamente.
+Principle: NO function returns simulated data.
+If it can't perform an action, it says so explicitly.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ class EvolutionAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
             name="evolution",
-            description="Auto-evolucion: analiza codigo propio, corrige errores de produccion, integra APIs — ciclo infinito de mejora real",
+            description="Self-evolution: analyzes its own code, fixes production errors, integrates APIs — an infinite cycle of real improvement",
             capabilities=[
                 "code_analysis",
                 "code_improvement",
@@ -55,7 +55,7 @@ class EvolutionAgent(BaseAgent):
         mission = context.get("mission", "maximize autonomous digital revenue")
         notify = context.get("notify_telegram", True)
 
-        # Modo creacion de features — genera nuevas capacidades proactivamente
+        # Feature-creation mode — proactively generates new capabilities
         if mode == "create_feature":
             return await self._create_new_feature(mission=mission, context=context, notify=notify)
 
@@ -73,18 +73,18 @@ class EvolutionAgent(BaseAgent):
 
         engine = SelfImprovementEngine()
 
-        # Verificar disponibilidad real antes de ejecutar
+        # Verify real availability before running
         availability = engine.is_available()
         if not availability["github_read"]:
             return {
                 "success": False,
-                "error": "GITHUB_TOKEN no configurado — no puedo leer ni modificar mi propio codigo. "
-                "Configura GITHUB_TOKEN en los secrets de Fly.io.",
+                "error": "GITHUB_TOKEN not configured — I can't read or modify my own code. "
+                "Set GITHUB_TOKEN in Fly.io secrets.",
                 "availability": availability,
             }
 
         try:
-            # 1. Score del sistema (usa logs reales de Fly.io si FLY_API_TOKEN disponible)
+            # 1. System score (uses real Fly.io logs if FLY_API_TOKEN is available)
             score_result = await engine.calculate_system_score()
             results["system_score"] = score_result.get("score", 0)
             results["system_grade"] = score_result.get("grade", "?")
@@ -94,60 +94,58 @@ class EvolutionAgent(BaseAgent):
                 results["system_grade"],
             )
 
-            # 2. Aprender de logs de produccion
+            # 2. Learn from production logs
             lessons = await self._learn_from_production_logs(engine)
             results["lessons_learned"] = lessons
 
-            # 3. Auto-mejora de codigo (mode: full o improve_only)
+            # 3. Self-improve code (mode: full or improve_only)
             if mode in ("full", "improve_only"):
-                logger.info("[EvolutionAgent] Iniciando auto-mejora de codigo...")
+                logger.info("[EvolutionAgent] Starting code self-improvement...")
                 improvements = await self._run_code_improvement(engine, max_files, lessons)
                 results["improvements"] = improvements
                 results["files_improved"] = sum(
                     1 for r in improvements if r.get("success") and not r.get("skipped")
                 )
 
-            # 4. Descubrimiento de APIs (mode: full o discover_only)
+            # 4. API discovery (mode: full or discover_only)
             if mode in ("full", "discover_only"):
-                logger.info("[EvolutionAgent] Descubriendo nuevas APIs...")
+                logger.info("[EvolutionAgent] Discovering new APIs...")
                 api_results = await self._run_api_discovery(mission, max_apis)
                 results["new_apis"] = api_results
 
-            # 5. Analisis de arquitectura y propuesta de mejoras
+            # 5. Architecture analysis and improvement proposals
             arch_analysis = await self._analyze_architecture()
 
-            # 5b. Descubrimiento de herramientas HuggingFace para gaps
-            logger.info("[EvolutionAgent] Buscando herramientas HF para capacidades faltantes...")
+            # 5b. Discover HuggingFace tools for gaps
+            logger.info("[EvolutionAgent] Looking for HF tools for missing capabilities...")
             hf_discoveries = await self._discover_hf_tools_for_gaps()
             results["hf_discoveries"] = hf_discoveries
             if hf_discoveries.get("discoveries"):
                 n_found = sum(1 for d in hf_discoveries["discoveries"] if d.get("can_use_now"))
-                logger.info(
-                    "[EvolutionAgent] HF: %d herramientas disponibles para gaps detectados", n_found
-                )
+                logger.info("[EvolutionAgent] HF: %d tools available for detected gaps", n_found)
             results["architecture_analysis"] = arch_analysis
 
-            # 6. Notificacion Telegram con resumen completo
+            # 6. Telegram notification with the full summary
             if notify:
                 await self._report_evolution_results(results)
 
             results["success"] = True
 
         except Exception as exc:
-            logger.error("[EvolutionAgent] Error en ciclo de evolucion: %s", exc, exc_info=True)
+            logger.error("[EvolutionAgent] Error in evolution cycle: %s", exc, exc_info=True)
             results["success"] = False
             results["error"] = str(exc)
 
         return results
 
     # ══════════════════════════════════════════════════════════════
-    # CREACION PROACTIVA DE NUEVAS FUNCIONALIDADES
+    # PROACTIVE CREATION OF NEW FEATURES
     # ══════════════════════════════════════════════════════════════
 
     async def _create_new_feature(self, mission: str, context: dict, notify: bool = True) -> dict:
         """
-        Genera y pushea nuevas funcionalidades basadas en analisis de brechas y mercado.
-        Activar con mode='create_feature' desde el scheduler o el orchestrator.
+        Generates and pushes new features based on gap and market analysis.
+        Trigger with mode='create_feature' from the scheduler or the orchestrator.
         """
         from apps.core.tools.self_improvement import SelfImprovementEngine
 
@@ -161,14 +159,14 @@ class EvolutionAgent(BaseAgent):
         }
         caps = await self.check_capabilities()
         gaps = [k for k, v in caps.items() if not v]
-        logger.info("[EvolutionAgent] Gaps para feature creation: %s", gaps)
+        logger.info("[EvolutionAgent] Gaps for feature creation: %s", gaps)
         proposals = await self._propose_features_with_ai(gaps=gaps, mission=mission)
         results["features_proposed"] = proposals
         if not proposals:
-            results["error"] = "No se generaron propuestas de features"
+            results["error"] = "No feature proposals were generated"
             return results
         top = proposals[0]
-        logger.info("[EvolutionAgent] Implementando feature: %s", top.get("name"))
+        logger.info("[EvolutionAgent] Implementing feature: %s", top.get("name"))
         impl = await self._implement_feature_code(engine, top)
         results["features_created"].append(impl)
         results["success"] = impl.get("success", False)
@@ -177,21 +175,21 @@ class EvolutionAgent(BaseAgent):
         return results
 
     async def _propose_features_with_ai(self, gaps: list, mission: str) -> list:
-        """Propone features de alto impacto economico usando IA estrategica."""
+        """Proposes high economic-impact features using strategic AI."""
         try:
-            gaps_text = ", ".join(gaps[:8]) or "ninguna brecha critica"
+            gaps_text = ", ".join(gaps[:8]) or "no critical gaps"
             analysis = await self.think(
                 system=(
-                    "Arquitecto de IA autonoma de monetizacion. "
-                    "Propones features Python reales e implementables. "
-                    "Responde SOLO con JSON array valido."
+                    "Architect of an autonomous monetization AI. "
+                    "You propose real, implementable Python features. "
+                    "Respond ONLY with a valid JSON array."
                 ),
                 user=(
-                    f"Mision: {mission}\nBrechas: {gaps_text}\n\n"
-                    "Propone 3 features Python para ARIA AI.\n"
+                    f"Mission: {mission}\nGaps: {gaps_text}\n\n"
+                    "Propose 3 Python features for ARIA AI.\n"
                     'JSON: [{"name": str, "description": str, "file_to_create": "apps/core/tools/xxx.py",'
                     '"impact_usd_monthly": int, "implementation_hint": str, "priority": int}]\n'
-                    "Criterios: real, no duplica existentes, impacto economico medible."
+                    "Criteria: real, does not duplicate existing ones, measurable economic impact."
                 ),
                 model=AIModel.STRATEGY,
                 json_mode=True,
@@ -211,7 +209,7 @@ class EvolutionAgent(BaseAgent):
         return []
 
     async def _implement_feature_code(self, engine, proposal: dict) -> dict:
-        """Genera codigo con IA, valida sintaxis y pushea a GitHub."""
+        """Generates code with AI, validates syntax, and pushes to GitHub."""
         import ast
         import re
 
@@ -227,20 +225,20 @@ class EvolutionAgent(BaseAgent):
 
             ai = get_ai_client()
             if not ai:
-                return {"success": False, "error": "IA no disponible", "feature": name}
+                return {"success": False, "error": "AI not available", "feature": name}
             resp = await ai.complete(
-                system="Senior Python developer. Genera modulos completos. Solo codigo Python sin fences.",
+                system="Senior Python developer. Generate complete modules. Python code only, no fences.",
                 user=(
-                    f"Feature: {name}\nDescripcion: {description}\nHint: {hint}\n\n"
-                    "Requisitos: clase principal con async execute(**kwargs)->dict, "
+                    f"Feature: {name}\nDescription: {description}\nHint: {hint}\n\n"
+                    "Requirements: main class with async execute(**kwargs)->dict, "
                     "is_available()->bool, from apps.core.config import settings, "
-                    "errores explicitos (nunca simula), minimo 40 lineas, docstring."
+                    "explicit errors (never simulate), minimum 40 lines, docstring."
                 ),
                 model=AIModel.CODE,
                 max_tokens=3000,
             )
             if not resp or not resp.success:
-                return {"success": False, "error": "IA no genero codigo", "feature": name}
+                return {"success": False, "error": "AI did not generate code", "feature": name}
             code = resp.content.strip()
             # Strip markdown fences
             lines = code.split("\n")
@@ -250,13 +248,13 @@ class EvolutionAgent(BaseAgent):
             try:
                 ast.parse(code)
             except SyntaxError as se:
-                return {"success": False, "error": f"Sintaxis invalida: {se}", "feature": name}
+                return {"success": False, "error": f"Invalid syntax: {se}", "feature": name}
             if len(code.splitlines()) < 20:
-                return {"success": False, "error": "Codigo corto", "feature": name}
-            push = await engine._push_file(
+                return {"success": False, "error": "Code too short", "feature": name}
+            push = await engine.push_file(
                 file_path=file_path,
                 content=code,
-                commit_message=f"feat: {name}\n\n{description[:200]}\n\nGenerado por ARIA EvolutionAgent.",
+                commit_message=f"feat: {name}\n\n{description[:200]}\n\nGenerated by ARIA EvolutionAgent.",
             )
             return {
                 "success": push.get("success", False),
@@ -271,27 +269,27 @@ class EvolutionAgent(BaseAgent):
             return {"success": False, "error": str(exc), "feature": name}
 
     async def _notify_feature_result(self, results: dict, top: dict) -> None:
-        """Notifica por Telegram el feature creado y el impacto estimado."""
+        """Notifies via Telegram of the created feature and its estimated impact."""
         created = [f for f in results.get("features_created", []) if f.get("success")]
         proposed = results.get("features_proposed", [])
         name = top.get("name", "?")
         impact = top.get("impact_usd_monthly", 0)
-        lines = [f"Feature Creation: {name}", f"Impacto estimado: {impact} USD/mes"]
+        lines = [f"Feature Creation: {name}", f"Estimated impact: {impact} USD/month"]
         if created:
-            lines.append("Implementado: " + ", ".join(f["feature"] for f in created))
+            lines.append("Implemented: " + ", ".join(f["feature"] for f in created))
         if len(proposed) > 1:
-            lines.append("Siguiente: " + proposed[1].get("name", "?"))
+            lines.append("Next: " + proposed[1].get("name", "?"))
         await self._send_telegram("\n".join(lines))
 
     # ══════════════════════════════════════════════════════════════
-    # LECTURA DE LOGS DE PRODUCCION
+    # READING PRODUCTION LOGS
     # ══════════════════════════════════════════════════════════════
 
     async def _learn_from_production_logs(self, engine) -> dict[str, Any]:
-        """Lee logs reales de Fly.io y extrae lecciones para la auto-mejora."""
+        """Reads real Fly.io logs and extracts lessons for self-improvement."""
         logs_result = await engine.read_production_logs(lines=150)
         if not logs_result["success"]:
-            logger.warning("[EvolutionAgent] Logs no disponibles: %s", logs_result["error"])
+            logger.warning("[EvolutionAgent] Logs not available: %s", logs_result["error"])
             return {
                 "available": False,
                 "reason": logs_result["error"],
@@ -305,9 +303,9 @@ class EvolutionAgent(BaseAgent):
         data = analysis["analysis"]
         critical = data.get("critical_errors", [])
         if critical:
-            logger.error("[EvolutionAgent] Errores criticos en produccion: %s", critical)
+            logger.error("[EvolutionAgent] Critical errors in production: %s", critical)
             await self._send_telegram(
-                "🚨 <b>Errores criticos detectados en produccion</b>\n\n"
+                "🚨 <b>Critical errors detected in production</b>\n\n"
                 + "\n".join(f"• {e}" for e in critical[:5])
             )
 
@@ -320,7 +318,7 @@ class EvolutionAgent(BaseAgent):
         }
 
     # ══════════════════════════════════════════════════════════════
-    # AUTO-MEJORA DE CODIGO
+    # CODE SELF-IMPROVEMENT
     # ══════════════════════════════════════════════════════════════
 
     async def _run_code_improvement(
@@ -330,15 +328,15 @@ class EvolutionAgent(BaseAgent):
         lessons: dict,
     ) -> list[dict[str, Any]]:
         """
-        Selecciona los archivos mas criticos y los mejora autonomamente.
-        Prioriza archivos con errores reportados en los logs de produccion.
+        Selects the most critical files and improves them autonomously.
+        Prioritizes files with errors reported in the production logs.
         """
-        # Obtener lista real de archivos modificables de GitHub
+        # Get the real list of modifiable files from GitHub
         all_files = await engine.list_all_python_files("apps/core")
         if not all_files:
-            return [{"success": False, "error": "No se pudieron listar archivos de GitHub"}]
+            return [{"success": False, "error": "Could not list files from GitHub"}]
 
-        # Priorizar archivos mencionados en errores de logs
+        # Prioritize files mentioned in log errors
         critical_files: list[str] = []
         error_text = json.dumps(
             lessons.get("critical_errors", []) + lessons.get("performance_issues", [])
@@ -348,16 +346,16 @@ class EvolutionAgent(BaseAgent):
             if filename in error_text.lower():
                 critical_files.append(f)
 
-        # Completar hasta max_files con el resto de MODIFIABLE_FILES
+        # Fill up to max_files with the rest of MODIFIABLE_FILES
         candidates = critical_files.copy()
         for f in engine.MODIFIABLE_FILES:
             if f not in candidates and len(candidates) < max_files:
                 candidates.append(f)
 
         candidates = candidates[:max_files]
-        logger.info("[EvolutionAgent] Archivos candidatos a mejora: %s", candidates)
+        logger.info("[EvolutionAgent] Candidate files for improvement: %s", candidates)
 
-        # Mejorar secuencialmente (respeta rate limit del CI/CD)
+        # Improve sequentially (respects CI/CD rate limit)
         results = []
         for file_path in candidates:
             result = await engine.improve_file(
@@ -367,32 +365,32 @@ class EvolutionAgent(BaseAgent):
             results.append(result)
             if result.get("success") and not result.get("skipped"):
                 logger.info(
-                    "[EvolutionAgent] Mejorado: %s (commit: %s, +%d lineas)",
+                    "[EvolutionAgent] Improved: %s (commit: %s, +%d lines)",
                     file_path,
                     result.get("commit_sha", "?"),
                     result.get("lines_delta", 0),
                 )
             elif result.get("skipped"):
                 logger.info(
-                    "[EvolutionAgent] Saltado: %s — %s", file_path, result.get("reason", "")
+                    "[EvolutionAgent] Skipped: %s — %s", file_path, result.get("reason", "")
                 )
             else:
                 logger.warning(
-                    "[EvolutionAgent] Fallo: %s — %s", file_path, result.get("error", "")
+                    "[EvolutionAgent] Failed: %s — %s", file_path, result.get("error", "")
                 )
-            # Pausa entre pushes para no saturar CI/CD
+            # Pause between pushes to avoid overloading CI/CD
             await asyncio.sleep(2)
 
         return results
 
     # ══════════════════════════════════════════════════════════════
-    # DESCUBRIMIENTO E INTEGRACION DE APIs
+    # API DISCOVERY AND INTEGRATION
     # ══════════════════════════════════════════════════════════════
 
     async def _run_api_discovery(self, mission: str, max_apis: int) -> list[dict[str, Any]]:
         """
-        Descubre APIs nuevas y genera codigo de integracion real.
-        Solo descubre APIs gratuitas — no gasta dinero sin aprobacion.
+        Discovers new APIs and generates real integration code.
+        Only discovers free APIs — never spends money without approval.
         """
         try:
             from apps.core.tools.api_discovery import APIDiscovery
@@ -400,13 +398,13 @@ class EvolutionAgent(BaseAgent):
             discovery = APIDiscovery()
             candidates = await discovery.find_relevant_apis(mission, limit=max_apis * 3)
             if not candidates:
-                return [{"success": False, "error": "No se encontraron APIs candidatas"}]
+                return [{"success": False, "error": "No candidate APIs found"}]
 
             results = []
             for api in candidates[:max_apis]:
                 integration_result = await discovery.generate_integration_code(api)
                 if integration_result.get("success"):
-                    # Solo pushear si hay codigo valido generado
+                    # Only push if valid code was generated
                     push_result = await discovery.add_integration_to_codebase(
                         api, integration_result["code"]
                     )
@@ -426,7 +424,7 @@ class EvolutionAgent(BaseAgent):
                             "success": False,
                             "api": api.get("name"),
                             "error": integration_result.get(
-                                "error", "No se pudo generar codigo de integracion"
+                                "error", "Could not generate integration code"
                             ),
                         }
                     )
@@ -436,18 +434,18 @@ class EvolutionAgent(BaseAgent):
             return [{"success": False, "error": str(exc)}]
 
     # ══════════════════════════════════════════════════════════════
-    # ANALISIS DE ARQUITECTURA
+    # ARCHITECTURE ANALYSIS
     # ══════════════════════════════════════════════════════════════
 
     async def _discover_hf_tools_for_gaps(self) -> dict:
         """
-        ARIA identifica capacidades que le faltan y busca en HuggingFace Hub
-        los mejores modelos para cubrirlas. Integra lo que encuentra.
+        ARIA identifies capabilities it's missing and searches HuggingFace Hub
+        for the best models to cover them. Integrates what it finds.
 
-        Flujo:
-          1. Revisa qué APIs no están configuradas (check_capabilities)
-          2. Para cada gap, busca modelos HF que puedan suplirla
-          3. Reporta hallazgos y actualiza el uso de HF en el codebase
+        Flow:
+          1. Checks which APIs are not configured (check_capabilities)
+          2. For each gap, searches for HF models that could fill it
+          3. Reports findings and updates HF usage in the codebase
         """
         from apps.core.tools.hf_discovery import get_hf
 
@@ -456,14 +454,14 @@ class EvolutionAgent(BaseAgent):
         if not hf_report.get("available"):
             return {
                 "success": False,
-                "error": hf_report.get("error", "HF_TOKEN no configurado"),
+                "error": hf_report.get("error", "HF_TOKEN not configured"),
             }
 
         caps = await self.check_capabilities()
         gaps = [k for k, v in caps.items() if not v]
-        logger.info("[EvolutionAgent] Gaps detectados: %s", gaps)
+        logger.info("[EvolutionAgent] Detected gaps: %s", gaps)
 
-        # Mapeo de capacidades ARIA -> tareas HF
+        # ARIA capability -> HF task mapping
         gap_to_hf_task = {
             "image_generation": "image-generation",
             "canva": "image-generation",
@@ -478,14 +476,14 @@ class EvolutionAgent(BaseAgent):
         }
 
         discoveries = []
-        for gap in gaps[:5]:  # máximo 5 búsquedas por ciclo
+        for gap in gaps[:5]:  # max 5 searches per cycle
             gap_lower = gap.lower()
             matched_task = next(
                 (task for key, task in gap_to_hf_task.items() if key in gap_lower),
                 None,
             )
             if not matched_task:
-                # Búsqueda libre por keyword
+                # Free-form keyword search
                 result = await hf.find_tool_for_capability(gap_lower)
             else:
                 result = await hf.search_models_for_task(matched_task, limit=3)
@@ -500,22 +498,22 @@ class EvolutionAgent(BaseAgent):
                         "how_to_use": f"from apps.core.tools.hf_discovery import get_hf; hf = get_hf(); await hf.discover_and_run('{matched_task or 'text-generation'}',...)",
                     }
                 )
-                logger.info("[EvolutionAgent] HF tool para '%s': %s", gap, matched_task)
+                logger.info("[EvolutionAgent] HF tool for '%s': %s", gap, matched_task)
             else:
-                discoveries.append({"gap": gap, "error": result.get("error", "no encontrado")})
+                discoveries.append({"gap": gap, "error": result.get("error", "not found")})
 
         return {
             "success": True,
             "gaps_analyzed": len(gaps),
             "discoveries": discoveries,
             "hf_tasks_available": hf_report.get("tasks_count", 0),
-            "note": "ARIA puede usar hf_discovery.discover_and_run() para cualquier tarea de ML sin API key adicional",
+            "note": "ARIA can use hf_discovery.discover_and_run() for any ML task without an additional API key",
         }
 
     async def _analyze_architecture(self) -> dict[str, Any]:
         """
-        Analiza la arquitectura completa del sistema con IA.
-        Lee la lista real de archivos de GitHub para el analisis.
+        Analyzes the system's complete architecture with AI.
+        Reads the real file list from GitHub for the analysis.
         """
         from apps.core.tools.self_improvement import SelfImprovementEngine
 
@@ -523,24 +521,24 @@ class EvolutionAgent(BaseAgent):
 
         all_files = await engine.list_all_python_files("apps/core")
         if not all_files:
-            return {"success": False, "error": "No se pudo leer estructura de archivos"}
+            return {"success": False, "error": "Could not read file structure"}
 
         file_summary = "\n".join(all_files)
         analysis = await self.think(
-            system="Arquitecto de sistemas IA. Responde SOLO con JSON valido.",
+            system="AI systems architect. Respond ONLY with valid JSON.",
             user=(
-                f"Analiza esta estructura de archivos de ARIA AI y devuelve JSON con:\n"
+                f"Analyze this ARIA AI file structure and return JSON with:\n"
                 '{"missing_modules": [str], "architectural_risks": [str], '
                 '"scalability_recommendations": [str], "next_features_to_add": [str], '
                 '"critical_path": [str]}\n\n'
-                f"ARCHIVOS ACTUALES:\n{file_summary}"
+                f"CURRENT FILES:\n{file_summary}"
             ),
             model=AIModel.STRATEGY,
             json_mode=True,
         )
 
         if not analysis:
-            return {"success": False, "error": "IA no disponible para analisis de arquitectura"}
+            return {"success": False, "error": "AI not available for architecture analysis"}
 
         try:
             if isinstance(analysis, str):
@@ -550,14 +548,14 @@ class EvolutionAgent(BaseAgent):
                 data = analysis
             return {"success": True, "analysis": data, "total_files": len(all_files)}
         except Exception:
-            return {"success": False, "error": "No se pudo parsear analisis de arquitectura"}
+            return {"success": False, "error": "Could not parse architecture analysis"}
 
     # ══════════════════════════════════════════════════════════════
-    # REPORTE TELEGRAM
+    # TELEGRAM REPORT
     # ══════════════════════════════════════════════════════════════
 
     async def _report_evolution_results(self, results: dict[str, Any]) -> None:
-        """Envia resumen del ciclo de evolucion via Telegram."""
+        """Sends a summary of the evolution cycle via Telegram."""
         improvements = results.get("improvements", [])
         successful = [r for r in improvements if r.get("success") and not r.get("skipped")]
         failed = [r for r in improvements if not r.get("success")]
@@ -568,37 +566,35 @@ class EvolutionAgent(BaseAgent):
         grade = results.get("system_grade", "?")
         lessons = results.get("lessons_learned", {})
 
-        lines = ["🧬 <b>Ciclo de Auto-Evolucion</b>"]
-        lines.append(f"📊 Score del sistema: <b>{score}/100</b> (Grado {grade})")
+        lines = ["🧬 <b>Self-Evolution Cycle</b>"]
+        lines.append(f"📊 System score: <b>{score}/100</b> (Grade {grade})")
 
         if lessons.get("critical_errors"):
-            lines.append(
-                f"\n🚨 <b>Errores criticos encontrados:</b> {len(lessons['critical_errors'])}"
-            )
+            lines.append(f"\n🚨 <b>Critical errors found:</b> {len(lessons['critical_errors'])}")
 
         if successful:
-            lines.append(f"\n✅ <b>Archivos mejorados ({len(successful)}):</b>")
+            lines.append(f"\n✅ <b>Files improved ({len(successful)}):</b>")
             for r in successful[:3]:
                 lines.append(
                     f"  • {r['file'].split('/')[-1]} "
                     f"[commit: {r.get('commit_sha', '?')}] "
-                    f"(+{r.get('lines_delta', 0)} lineas)"
+                    f"(+{r.get('lines_delta', 0)} lines)"
                 )
 
         if new_apis:
-            lines.append(f"\n🔌 <b>Nuevas APIs integradas ({len(new_apis)}):</b>")
+            lines.append(f"\n🔌 <b>New APIs integrated ({len(new_apis)}):</b>")
             for a in new_apis[:2]:
                 lines.append(f"  • {a.get('api', '?')} — {a.get('benefit', '')[:50]}")
 
         if skipped:
-            lines.append(f"\n⏭️ Archivos ya optimos: {len(skipped)}")
+            lines.append(f"\n⏭️ Already-optimal files: {len(skipped)}")
         if failed:
-            lines.append(f"\n❌ Fallos: {len(failed)}")
+            lines.append(f"\n❌ Failures: {len(failed)}")
 
         arch = results.get("architecture_analysis", {})
         if arch.get("success") and arch.get("analysis", {}).get("next_features_to_add"):
             next_f = arch["analysis"]["next_features_to_add"][:2]
-            lines.append("\n💡 <b>Proximas mejoras sugeridas:</b>")
+            lines.append("\n💡 <b>Suggested next improvements:</b>")
             for f in next_f:
                 lines.append(f"  • {f}")
 

@@ -29,8 +29,17 @@ class FakeCache:
     async def set(self, key, value, ttl_seconds=None):
         self.kv[key] = value
 
+    async def set_if_not_exists(self, key, value, ttl_seconds=None):
+        if key in self.kv:
+            return False
+        self.kv[key] = value
+        return True
+
     async def rpush(self, key, value):
         self.lists.setdefault(key, []).append(value)
+
+    async def ltrim(self, key, start, stop):
+        return True
 
 
 @pytest.fixture(autouse=True)

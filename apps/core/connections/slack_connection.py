@@ -1,12 +1,12 @@
 """
-Slack connection para ARIA AI.
+Slack connection for ARIA AI.
 
-Dos modos:
-1. Webhook (simple): solo SLACK_WEBHOOK_URL en secrets — enviar mensajes inmediatamente
-2. OAuth completo: SLACK_CLIENT_ID + SLACK_CLIENT_SECRET — leer + escribir en cualquier canal
+Two modes:
+1. Webhook (simple): only SLACK_WEBHOOK_URL in secrets — send messages immediately
+2. Full OAuth: SLACK_CLIENT_ID + SLACK_CLIENT_SECRET — read + write in any channel
 
-Para el modo webhook: ve a api.slack.com/apps → Incoming Webhooks → Add New Webhook
-Para OAuth: ve a api.slack.com/apps → Create App → OAuth & Permissions
+For webhook mode: go to api.slack.com/apps → Incoming Webhooks → Add New Webhook
+For OAuth: go to api.slack.com/apps → Create App → OAuth & Permissions
 """
 
 from __future__ import annotations
@@ -16,6 +16,9 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.slack")
 
 REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/slack"
@@ -24,7 +27,8 @@ TOKEN_URL = "https://slack.com/api/oauth.v2.access"
 SCOPES = "channels:read,channels:history,chat:write,files:read,users:read"
 
 
-class SlackConnection:
+@register_connector("slack", display_name="Slack (messages, channels)")
+class SlackConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings
@@ -57,7 +61,7 @@ class SlackConnection:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
-            raise ValueError("SLACK_CLIENT_ID / SLACK_CLIENT_SECRET no configurados")
+            raise ValueError("SLACK_CLIENT_ID / SLACK_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 TOKEN_URL,
@@ -81,13 +85,13 @@ class SlackConnection:
                 "service_user": authed.get("id", "bot"),
             }
 
-    # ── Modo webhook (simple) ──────────────────────────────────────────────
+    # ── Webhook mode (simple) ───────────────────────────────────────────────
 
     async def send_webhook(self, text: str, blocks: list | None = None) -> dict:
-        """Envía mensaje via Incoming Webhook (modo simple sin OAuth)."""
+        """Sends a message via Incoming Webhook (simple mode, no OAuth)."""
         url = self._webhook_url()
         if not url:
-            return {"success": False, "error": "SLACK_WEBHOOK_URL no configurado"}
+            return {"success": False, "error": "SLACK_WEBHOOK_URL not configured"}
         payload: dict = {"text": text}
         if blocks:
             payload["blocks"] = blocks
@@ -95,13 +99,13 @@ class SlackConnection:
             r = await http.post(url, json=payload)
             return {"success": r.status_code == 200, "status": r.status_code}
 
-    # ── Modo OAuth (completo) ──────────────────────────────────────────────
+    # ── OAuth mode (full) ───────────────────────────────────────────────────
 
     def _h(self, tokens: dict) -> dict:
         return {"Authorization": f"Bearer {tokens.get('bot_token') or tokens.get('access_token')}"}
 
     async def list_channels(self, tokens: dict) -> list[dict]:
-        """Lista canales del workspace."""
+        """Lists workspace channels."""
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 "https://slack.com/api/conversations.list",
@@ -122,7 +126,7 @@ class SlackConnection:
             ]
 
     async def send_message(self, tokens: dict, channel: str, text: str) -> dict:
-        """Envía mensaje a un canal (requiere OAuth)."""
+        """Sends a message to a channel (requires OAuth)."""
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 "https://slack.com/api/chat.postMessage",
@@ -133,7 +137,7 @@ class SlackConnection:
             return {"success": data.get("ok"), "ts": data.get("ts"), "error": data.get("error")}
 
     async def read_channel(self, tokens: dict, channel: str, limit: int = 20) -> list[dict]:
-        """Lee mensajes recientes de un canal."""
+        """Reads recent messages from a channel."""
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 "https://slack.com/api/conversations.history",

@@ -1,13 +1,13 @@
 """
-Aria AI — Cliente de IA con HuggingFace como Motor Principal.
-Orden: HuggingFace AsyncInferenceClient (rotación de providers + modelos) → Groq → Gemini → OpenAI
+Aria AI — AI client with HuggingFace as the primary engine.
+Order: HuggingFace AsyncInferenceClient (provider + model rotation) → Groq → Gemini → OpenAI
 
 HuggingFace Inference Providers:
-  - "hf-inference": tier gratuito con cold start
-  - "together": Together AI via HF token (rápido, muchos modelos)
+  - "hf-inference": free tier with cold start
+  - "together": Together AI via HF token (fast, many models)
   - "nebius": Nebius AI Studio via HF token
-  - "featherless-ai": especializado en 7B-70B
-  Todos accesibles con un solo HF_TOKEN — maximiza el crédito mensual gratuito.
+  - "featherless-ai": specialized in 7B-70B
+  All accessible with a single HF_TOKEN — maximizes the free monthly credit.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ class AIModel(StrEnum):
     FAST = "fast"
     CREATIVE = "creative"
     VISION = "vision"
-    REASONING = "reasoning"  # cadena de pensamiento profunda (Opus / o-series / Deep Think)
+    REASONING = "reasoning"  # deep chain-of-thought (Opus / o-series / Deep Think)
 
 
 # Provider rotation per task — only free tier; paid providers require separate subscriptions
@@ -97,11 +97,11 @@ HF_MODEL_ROTATION: dict[AIModel, list[str]] = {
     ],
 }
 
-# Modelo primario por proveedor.
-# Los IDs de proveedores premium se actualizaron a la generación 2026
-# (Claude Opus 4.8 / Sonnet 5 / Haiku 4.5, Gemini 2.5). HF sigue siendo el
-# motor primario gratuito; estos disparan solo cuando HF/Groq no responden y
-# la key correspondiente está configurada.
+# Primary model per provider.
+# Premium provider IDs were updated to the 2026 generation
+# (Claude Opus 4.8 / Sonnet 5 / Haiku 4.5, Gemini 2.5). HF remains the
+# primary free engine; these only fire when HF/Groq don't respond and
+# the corresponding key is configured.
 _ANTHROPIC_FRONTIER = "claude-opus-4-8"
 _ANTHROPIC_BALANCED = "claude-sonnet-5"
 _ANTHROPIC_FAST = "claude-haiku-4-5-20251001"
@@ -142,10 +142,10 @@ MODEL_REGISTRY: dict[AIModel, dict[AIProvider, str]] = {
         AIProvider.OPENAI: "gpt-4o-mini",
         AIProvider.ANTHROPIC: _ANTHROPIC_BALANCED,
     },
-    # Cadena de pensamiento profunda: se enruta al modelo más capaz de cada casa.
-    # Groq/HF apuntan a modelos PROBADOS en prod (llama-3.3-70b-versatile es el
-    # workhorse que responde); el R1 completo y su id de Groq fallaban y tumbaban
-    # las subtareas "reason".
+    # Deep chain-of-thought: routes to the most capable model from each provider.
+    # Groq/HF point to models PROVEN in prod (llama-3.3-70b-versatile is the
+    # workhorse that responds); the full R1 and its Groq id used to fail and
+    # take down the "reason" subtasks.
     AIModel.REASONING: {
         AIProvider.HUGGINGFACE: "Qwen/Qwen2.5-72B-Instruct",
         AIProvider.GROQ: "llama-3.3-70b-versatile",
@@ -184,7 +184,7 @@ class CircuitState(StrEnum):
 
 @dataclass
 class ProviderHealth:
-    """Circuit breaker robusto con estado Half-Open y decaimiento."""
+    """Robust circuit breaker with Half-Open state and decay."""
 
     provider: AIProvider
     consecutive_failures: int = 0
@@ -193,7 +193,7 @@ class ProviderHealth:
     last_failure_ts: float = 0.0
     state: CircuitState = CircuitState.CLOSED
     _break_after: int = 3
-    _cooldown: float = 60.0  # segundos
+    _cooldown: float = 60.0  # seconds
 
     @property
     def success_rate(self) -> float:
@@ -210,7 +210,7 @@ class ProviderHealth:
             if elapsed >= self._cooldown:
                 self.state = CircuitState.HALF_OPEN
                 logger.info(
-                    "[%s] Circuit breaker en estado HALF-OPEN (probando recuperación)",
+                    "[%s] Circuit breaker in HALF-OPEN state (testing recovery)",
                     self.provider,
                 )
                 return True
@@ -222,7 +222,7 @@ class ProviderHealth:
         self.total_calls += 1
         self.consecutive_failures = 0
         if self.state != CircuitState.CLOSED:
-            logger.info("[%s] Circuit breaker CERRADO — proveedor recuperado", self.provider)
+            logger.info("[%s] Circuit breaker CLOSED — provider recovered", self.provider)
         self.state = CircuitState.CLOSED
 
     def record_failure(self) -> None:
@@ -233,19 +233,19 @@ class ProviderHealth:
 
         if self.state == CircuitState.HALF_OPEN or self.consecutive_failures >= self._break_after:
             self.state = CircuitState.OPEN
-            # Backoff exponencial para el cooldown
+            # Exponential backoff for the cooldown
             current_cooldown = self._cooldown * (
                 2 ** (self.consecutive_failures // self._break_after - 1)
             )
-            current_cooldown = min(current_cooldown, 3600)  # Max 1 hora
+            current_cooldown = min(current_cooldown, 3600)  # Max 1 hour
             logger.warning(
-                "[%s] Circuit breaker ABIERTO — cooldown %.0fs", self.provider, current_cooldown
+                "[%s] Circuit breaker OPEN — cooldown %.0fs", self.provider, current_cooldown
             )
 
 
 class AriaAIClient:
     """
-    Motor de IA de ARIA — Resiliente y multi-proveedor.
+    ARIA's AI engine — Resilient and multi-provider.
     """
 
     _HF_ENDPOINT = "https://api-inference.huggingface.co/v1/chat/completions"
@@ -262,7 +262,7 @@ class AriaAIClient:
         )
         self._total_tokens = 0
         self._total_fallbacks = 0
-        logger.info("AriaAIClient inicializado — Motor principal: HuggingFace")
+        logger.info("AriaAIClient initialized — Primary engine: HuggingFace")
 
     async def complete_json(
         self,
@@ -272,6 +272,7 @@ class AriaAIClient:
         max_tokens: int = 2000,
         temperature: float = 0.7,
         agent_name: str = "aria",
+        prefer_quality: bool = False,
     ) -> dict:
         """Helper to get parsed JSON directly."""
         resp = await self.complete(
@@ -282,6 +283,7 @@ class AriaAIClient:
             temperature=temperature,
             json_mode=True,
             agent_name=agent_name,
+            prefer_quality=prefer_quality,
         )
         if not resp.success:
             return {}
@@ -299,16 +301,17 @@ class AriaAIClient:
         temperature: float = 0.7,
         json_mode: bool = False,
         agent_name: str = "aria",
+        prefer_quality: bool = False,
     ) -> AIResponse:
         if json_mode:
             user = (
                 f"{user}\n\n"
-                "Responde UNICAMENTE con JSON valido y bien formado. "
-                "Sin markdown, sin bloques de codigo, sin explicaciones. "
-                "Solo el objeto JSON."
+                "Respond ONLY with valid, well-formed JSON. "
+                "No markdown, no code blocks, no explanations. "
+                "Just the JSON object."
             )
 
-        providers = self._get_available_providers()
+        providers = self._get_available_providers(prefer_quality=prefer_quality)
         last_error: str | None = None
         attempts = 0
 
@@ -324,11 +327,11 @@ class AriaAIClient:
                         if json_mode:
                             response.content = self._extract_json_safe(response.content)
                         return response
-                    last_error = response.error if response else "HF sin respuesta"
+                    last_error = response.error if response else "HF no response"
                     self._total_fallbacks += 1
                     continue
 
-                # Otros proveedores (Groq, Gemini, OpenAI, Anthropic)
+                # Other providers (Groq, Gemini, OpenAI, Anthropic)
                 response = await asyncio.wait_for(
                     self._dispatch(provider, model, system, user, max_tokens, temperature),
                     timeout=PROVIDER_TIMEOUTS[provider] + 5.0,
@@ -351,19 +354,19 @@ class AriaAIClient:
                 self._health[provider].record_failure()
                 last_error = f"{provider.value}: timeout"
                 self._total_fallbacks += 1
-                logger.warning("[%s] Timeout en %s", agent_name, provider.value)
+                logger.warning("[%s] Timeout on %s", agent_name, provider.value)
             except Exception as exc:
                 self._health[provider].record_failure()
                 last_error = f"{provider.value}: {str(exc)[:100]}"
                 self._total_fallbacks += 1
-                logger.warning("[%s] Error en %s: %s", agent_name, provider.value, last_error)
+                logger.warning("[%s] Error on %s: %s", agent_name, provider.value, last_error)
 
         return AIResponse(
             content="",
             provider=AIProvider.HUGGINGFACE,
             model="none",
             success=False,
-            error=last_error or "Todos los proveedores fallaron",
+            error=last_error or "All providers failed",
             attempts=attempts,
         )
 
@@ -385,7 +388,7 @@ class AriaAIClient:
             for hf_provider in HF_PROVIDER_ROTATION:
                 try:
                     t0 = time.time()
-                    # Implementar reintento interno para 503 (Cold Start)
+                    # Implement internal retry for 503 (Cold Start)
                     for retry in range(2):
                         try:
                             content, tokens = await asyncio.wait_for(
@@ -410,7 +413,7 @@ class AriaAIClient:
                             if "503" in err_str or "loading" in err_str:
                                 if retry == 0:
                                     logger.info(
-                                        "[%s] HF cold start %s@%s — reintentando en 2s",
+                                        "[%s] HF cold start %s@%s — retrying in 2s",
                                         agent_name,
                                         short_name,
                                         hf_provider,
@@ -423,14 +426,18 @@ class AriaAIClient:
                     err_str = str(exc).lower()
                     if "404" in err_str or "not supported" in err_str:
                         logger.debug(
-                            "[%s] HF %s no soportado en %s", agent_name, short_name, hf_provider
+                            "[%s] HF %s not supported on %s", agent_name, short_name, hf_provider
                         )
-                        break  # Probar siguiente modelo
+                        break  # Try next model
 
                     logger.warning(
-                        "[%s] HF fallo %s@%s: %s", agent_name, short_name, hf_provider, err_str[:60]
+                        "[%s] HF failed %s@%s: %s",
+                        agent_name,
+                        short_name,
+                        hf_provider,
+                        err_str[:60],
                     )
-                    continue  # Probar siguiente provider/modelo
+                    continue  # Try next provider/model
 
         self._health[AIProvider.HUGGINGFACE].record_failure()
         return AIResponse(
@@ -488,16 +495,18 @@ class AriaAIClient:
         temperature: float,
         provider: str,
     ) -> tuple[str, int]:
-        # Use the HF router (OpenAI-compatible) which auto-routes to a working
-        # inference provider. Verified live against Qwen2.5-72B and DeepSeek-R1.
-        # The previous AsyncInferenceClient(provider=...) path 403'd on providers
-        # that don't serve the requested model, which tripped HF's circuit breaker
-        # and left only Groq/Gemini (both currently 403) → total AI failure on
-        # every tool. Routing through the router endpoint restores HF as primary.
+        # Use the HF router (OpenAI-compatible) which dispatches to a specific
+        # inference provider via the "model:provider" suffix syntax (e.g.
+        # "Qwen/Qwen2.5-72B-Instruct:together"). Without the suffix, every
+        # entry in HF_PROVIDER_ROTATION produced the exact same unrouted
+        # request — the rotation loop was silently retrying the identical
+        # call up to 4x per model instead of actually trying different
+        # providers, and the "HF fallo %s@%s" log lines were misleading
+        # about which provider had actually failed.
         resp = await self._http.post(
             "https://router.huggingface.co/v1/chat/completions",
             json={
-                "model": model_id,
+                "model": f"{model_id}:{provider}",
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
@@ -517,7 +526,7 @@ class AriaAIClient:
         self, model_id: str, system: str, user: str, max_tokens: int, temperature: float
     ) -> tuple[str, int]:
         if not settings.GOOGLE_API_KEY:
-            raise ValueError("GOOGLE_API_KEY no configurado para Gemini")
+            raise ValueError("GOOGLE_API_KEY not configured for Gemini")
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={settings.GOOGLE_API_KEY}"
         payload = {
@@ -527,7 +536,8 @@ class AriaAIClient:
         resp = await self._http.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
-        content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        parts = data["candidates"][0].get("content", {}).get("parts", [{}])
+        content = (parts[0].get("text") or "").strip()
         return content, len(content.split()) * 2
 
     async def _call_groq(
@@ -539,7 +549,8 @@ class AriaAIClient:
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        return resp.choices[0].message.content.strip(), resp.usage.total_tokens
+        content = (resp.choices[0].message.content or "").strip()
+        return content, resp.usage.total_tokens
 
     async def _call_openai(
         self, model_id: str, system: str, user: str, max_tokens: int, temperature: float
@@ -559,9 +570,8 @@ class AriaAIClient:
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"].strip(), data.get("usage", {}).get(
-            "total_tokens", 0
-        )
+        content = (data["choices"][0]["message"].get("content") or "").strip()
+        return content, data.get("usage", {}).get("total_tokens", 0)
 
     async def _call_anthropic(
         self, model_id: str, system: str, user: str, max_tokens: int, temperature: float
@@ -584,16 +594,16 @@ class AriaAIClient:
         resp.raise_for_status()
         data = resp.json()
         usage = data.get("usage", {})
-        return data["content"][0]["text"].strip(), usage.get("input_tokens", 0) + usage.get(
-            "output_tokens", 0
-        )
+        blocks = [b for b in data.get("content", []) if b.get("type") == "text"]
+        content = (blocks[0].get("text") if blocks else "") or ""
+        return content.strip(), usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
 
     def configured_providers(self) -> list[str]:
-        """Nombres de los proveedores LLM que tienen una API key configurada.
+        """Names of the LLM providers that have an API key configured.
 
-        Sin llamadas de red. Permite que /health diga la verdad: el cliente
-        siempre existe, pero sin ninguna key toda completación falla — una lista
-        vacía significa que la IA está efectivamente caída.
+        No network calls. Lets /health tell the truth: the client
+        always exists, but without any key every completion fails — an empty
+        list means the AI is effectively down.
         """
         keyed = {
             "huggingface": bool(settings.hf_key),
@@ -604,14 +614,30 @@ class AriaAIClient:
         }
         return [name for name, present in keyed.items() if present]
 
-    def _get_available_providers(self) -> list[AIProvider]:
-        base_order = [
-            AIProvider.HUGGINGFACE,
-            AIProvider.GROQ,
-            AIProvider.GEMINI,
-            AIProvider.ANTHROPIC,
-            AIProvider.OPENAI,
-        ]
+    def _get_available_providers(self, prefer_quality: bool = False) -> list[AIProvider]:
+        # Default order is cost-first (free HF rotation before paid providers) —
+        # right for high-volume background/content work. `prefer_quality` flips
+        # that for ARIA's own user-facing replies: a paying account has usually
+        # configured a frontier key (Anthropic/Gemini/OpenAI), and a free
+        # distilled 70B model answering the actual conversation is exactly what
+        # reads as noticeably less capable than it should be.
+        base_order = (
+            [
+                AIProvider.ANTHROPIC,
+                AIProvider.GEMINI,
+                AIProvider.OPENAI,
+                AIProvider.GROQ,
+                AIProvider.HUGGINGFACE,
+            ]
+            if prefer_quality
+            else [
+                AIProvider.HUGGINGFACE,
+                AIProvider.GROQ,
+                AIProvider.GEMINI,
+                AIProvider.ANTHROPIC,
+                AIProvider.OPENAI,
+            ]
+        )
 
         has_key = {
             AIProvider.HUGGINGFACE: bool(settings.hf_key),
@@ -623,9 +649,13 @@ class AriaAIClient:
 
         available = [p for p in base_order if has_key.get(p) and self._health[p].is_available()]
 
-        # Si HF ha fallado recientemente, priorizar Groq
+        # If HF has failed recently, prioritize Groq — only meaningful in the
+        # cost-first order where HF normally leads; in quality-first order
+        # Groq already sits behind the frontier providers and has no business
+        # jumping ahead of them just because HF (unrelated) is unhealthy.
         if (
-            self._health[AIProvider.HUGGINGFACE].consecutive_failures >= 1
+            not prefer_quality
+            and self._health[AIProvider.HUGGINGFACE].consecutive_failures >= 1
             and AIProvider.GROQ in available
         ):
             available.remove(AIProvider.GROQ)
@@ -635,13 +665,20 @@ class AriaAIClient:
 
     def _extract_json_safe(self, text: str) -> str:
         text = text.strip()
-        text = re.sub(r"```(?:json)?\n?", "", text).strip().rstrip("```").strip()
-        for start_char, end_char in [("{", "}"), ("[", "]")]:
-            idx = text.find(start_char)
-            if idx != -1:
-                end_idx = text.rfind(end_char)
-                if end_idx > idx:
-                    return text[idx : end_idx + 1]
+        text = re.sub(r"```(?:json)?\n?", "", text).strip().rstrip("`").strip()
+        # Pick whichever bracket actually opens first — a hardcoded "{" before
+        # "[" preference mis-extracts top-level JSON arrays of objects (e.g.
+        # `[{"a":1},{"b":2}]`): it would find the "{" nested inside the array
+        # before the "[", then greedily grab up to the last "}", landing
+        # before the array's closing "]" and producing invalid JSON.
+        candidates = [(text.find(c), c) for c in ("{", "[") if text.find(c) != -1]
+        if not candidates:
+            return text
+        idx, start_char = min(candidates, key=lambda pair: pair[0])
+        end_char = "}" if start_char == "{" else "]"
+        end_idx = text.rfind(end_char)
+        if end_idx > idx:
+            return text[idx : end_idx + 1]
         return text
 
     def get_health_summary(self) -> dict:
@@ -668,7 +705,7 @@ class AriaAIClient:
         max_tokens: int = 1500,
         temperature: float = 0.7,
     ) -> AsyncIterator[str]:
-        # Implementación simplificada de streaming vía Groq
+        # Simplified streaming implementation via Groq
         if settings.GROQ_API_KEY and self._health[AIProvider.GROQ].is_available():
             try:
                 stream = await self._groq.chat.completions.create(
@@ -688,12 +725,12 @@ class AriaAIClient:
             except Exception:
                 pass
 
-        # Fallback a no-streaming
+        # Fallback to non-streaming
         res = await self.complete(system, user, model, max_tokens, temperature)
         yield res.content
 
     async def analyze_image(self, image_base64: str, question: str) -> str:
-        # Implementación simplificada para visión vía Gemini (mejor en visión gratuita)
+        # Simplified implementation for vision via Gemini (best free vision option)
         if settings.GOOGLE_API_KEY and self._health[AIProvider.GEMINI].is_available():
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={settings.GOOGLE_API_KEY}"
@@ -710,14 +747,15 @@ class AriaAIClient:
                 resp = await self._http.post(url, json=payload)
                 if resp.status_code == 200:
                     data = resp.json()
-                    return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    parts = data["candidates"][0].get("content", {}).get("parts", [{}])
+                    text = (parts[0].get("text") or "").strip()
+                    if text:
+                        return text
             except Exception:
                 pass
 
-        # Fallback a HF Vision si Gemini falla
-        res = await self.complete(
-            system="Analiza esta imagen.", user=question, model=AIModel.VISION
-        )
+        # Fallback to HF Vision if Gemini fails
+        res = await self.complete(system="Analyze this image.", user=question, model=AIModel.VISION)
         return res.content
 
 
@@ -739,6 +777,6 @@ async def get_ai_client_async() -> AriaAIClient:
 def get_ai_client() -> AriaAIClient | None:
     global _client_instance
     if _client_instance is None:
-        # Nota: En entornos async esto debería ser evitado, pero se mantiene por compatibilidad
+        # Note: This should be avoided in async environments, but is kept for compatibility
         _client_instance = AriaAIClient()
     return _client_instance

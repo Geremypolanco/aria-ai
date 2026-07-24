@@ -15,13 +15,17 @@ from urllib.parse import urlencode
 
 import httpx
 
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
+
 logger = logging.getLogger("aria.connections.finance")
 
 
 # ── QUICKBOOKS ────────────────────────────────────────────────────────────────
 
 
-class QuickBooksConnection:
+@register_connector("quickbooks", display_name="QuickBooks (facturas, contabilidad)")
+class QuickBooksConnection(BaseConnector):
 
     REDIRECT_URI = "https://aria-ai.fly.dev/oauth/callback/quickbooks"
     AUTH_URL = "https://appcenter.intuit.com/connect/oauth2"

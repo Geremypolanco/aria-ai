@@ -1,6 +1,6 @@
 """
-mailchimp_tools.py — Email marketing automatizado via Mailchimp.
-Crea campañas, gestiona listas y envía emails de forma autónoma.
+mailchimp_tools.py — Automated email marketing via Mailchimp.
+Creates campaigns, manages lists, and sends emails autonomously.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ logger = logging.getLogger("aria.mailchimp_tools")
 
 
 class MailchimpTools:
-    """Email marketing automatizado via Mailchimp API v3."""
+    """Automated email marketing via Mailchimp API v3."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=20.0)
@@ -34,9 +34,9 @@ class MailchimpTools:
         return bool(self._api_key and self._dc)
 
     async def get_lists(self) -> dict[str, Any]:
-        """Obtiene todas las listas/audiencias de Mailchimp."""
+        """Gets all lists/audiences from Mailchimp."""
         if not self._configured():
-            return {"success": False, "error": "MAILCHIMP no configurado"}
+            return {"success": False, "error": "MAILCHIMP not configured"}
         try:
             res = await self._http.get(
                 f"{self._base}/lists", headers=self._headers, params={"count": 20}
@@ -62,11 +62,11 @@ class MailchimpTools:
         body_html: str,
         preview_text: str = "",
     ) -> dict[str, Any]:
-        """Crea y envía una campaña de email."""
+        """Creates and sends an email campaign."""
         if not self._configured():
-            return {"success": False, "error": "MAILCHIMP no configurado"}
+            return {"success": False, "error": "MAILCHIMP not configured"}
         try:
-            # 1. Crear campaña
+            # 1. Create campaign
             campaign_payload = {
                 "type": "regular",
                 "recipients": {"list_id": list_id},
@@ -87,7 +87,7 @@ class MailchimpTools:
                 }
             campaign_id = res.json()["id"]
 
-            # 2. Agregar contenido HTML
+            # 2. Add HTML content
             content_res = await self._http.put(
                 f"{self._base}/campaigns/{campaign_id}/content",
                 headers=self._headers,
@@ -96,7 +96,7 @@ class MailchimpTools:
             if content_res.status_code not in (200, 201):
                 return {"success": False, "error": f"Content HTTP {content_res.status_code}"}
 
-            # 3. Enviar campaña
+            # 3. Send campaign
             send_res = await self._http.post(
                 f"{self._base}/campaigns/{campaign_id}/actions/send",
                 headers=self._headers,
@@ -118,9 +118,9 @@ class MailchimpTools:
     async def add_subscriber(
         self, list_id: str, email: str, first_name: str = "", last_name: str = ""
     ) -> dict[str, Any]:
-        """Añade un suscriptor a una lista."""
+        """Adds a subscriber to a list."""
         if not self._configured():
-            return {"success": False, "error": "MAILCHIMP no configurado"}
+            return {"success": False, "error": "MAILCHIMP not configured"}
         try:
             payload = {
                 "email_address": email,
@@ -137,9 +137,9 @@ class MailchimpTools:
             return {"success": False, "error": str(exc)}
 
     async def get_campaign_stats(self, campaign_id: str) -> dict[str, Any]:
-        """Obtiene las estadísticas de una campaña enviada."""
+        """Gets stats for a sent campaign."""
         if not self._configured():
-            return {"success": False, "error": "MAILCHIMP no configurado"}
+            return {"success": False, "error": "MAILCHIMP not configured"}
         try:
             res = await self._http.get(f"{self._base}/reports/{campaign_id}", headers=self._headers)
             if res.status_code == 200:

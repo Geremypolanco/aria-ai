@@ -1,0 +1,41 @@
+{
+  "id": "hubspot",
+  "name": "HubSpot",
+  "category": "crm",
+  "base_url": "https://api.hubapi.com",
+  "auth": {
+    "type": "oauth2",
+    "service_id": "hubspot"
+  },
+  "default_headers": {
+    "Content-Type": "application/json"
+  },
+  "retry": {
+    "max_attempts": 4,
+    "base_delay_seconds": 0.5,
+    "max_delay_seconds": 8,
+    "retry_on_status": [429, 500, 502, 503, 504]
+  },
+  "endpoints": {
+    "list_contacts": {
+      "method": "GET",
+      "path": "/crm/v3/objects/contacts",
+      "query_params": ["limit", "after"],
+      "response_path": "results"
+    },
+    "create_contact": {
+      "method": "POST",
+      "path": "/crm/v3/objects/contacts",
+      "body_params": ["properties"]
+    },
+    "get_deal": {
+      "method": "GET",
+      "path": "/crm/v3/objects/deals/{deal_id}"
+    },
+    "create_deal": {
+      "method": "POST",
+      "path": "/crm/v3/objects/deals",
+      "body_params": ["properties"]
+    }
+  }
+}

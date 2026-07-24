@@ -31,7 +31,7 @@ class ResearchProject:
             "timestamp": timestamp or datetime.now().isoformat(),
         }
         self.findings.append(finding)
-        logger.info(f"Hallazgo añadido al proyecto '{self.name}': {title}")
+        logger.info(f"Finding added to project '{self.name}': {title}")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -53,15 +53,15 @@ class ResearchProject:
 
 
 class RDWing:
-    """Ala de Investigación y Desarrollo de Aria.
-    Gestiona proyectos de investigación, organiza hallazgos y colabora con el ResearchAgent.
+    """Aria's Research and Development Wing.
+    Manages research projects, organizes findings, and collaborates with the ResearchAgent.
     """
 
     def __init__(self, storage_path: str = "./aria_rd_projects"):
         self.storage_path = storage_path
         os.makedirs(self.storage_path, exist_ok=True)
         self.projects: dict[str, ResearchProject] = self._load_projects()
-        logger.info(f"RDWing inicializado. {len(self.projects)} proyectos cargados.")
+        logger.info(f"RDWing initialized. {len(self.projects)} projects loaded.")
 
     def _project_file_path(self, project_name: str) -> str:
         return os.path.join(self.storage_path, f"{project_name.replace(' ', '_').lower()}.json")
@@ -77,23 +77,23 @@ class RDWing:
                         project = ResearchProject.from_dict(data)
                         loaded_projects[project.name] = project
                 except Exception as e:
-                    logger.error(f"Error cargando proyecto {filename}: {e}")
+                    logger.error(f"Error loading project {filename}: {e}")
         return loaded_projects
 
     def _save_project(self, project: ResearchProject):
         filepath = self._project_file_path(project.name)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(project.to_dict(), f, indent=4)
-        logger.info(f"Proyecto '{project.name}' guardado.")
+        logger.info(f"Project '{project.name}' saved.")
 
     def create_project(self, name: str, goal: str, category: str) -> ResearchProject:
         if name in self.projects:
-            logger.warning(f"El proyecto '{name}' ya existe.")
+            logger.warning(f"Project '{name}' already exists.")
             return self.projects[name]
         project = ResearchProject(name, goal, category)
         self.projects[name] = project
         self._save_project(project)
-        logger.info(f"Nuevo proyecto de I+D creado: '{name}' en categoría '{category}'.")
+        logger.info(f"New R&D project created: '{name}' in category '{category}'.")
         return project
 
     def get_project(self, name: str) -> ResearchProject | None:
@@ -105,32 +105,35 @@ class RDWing:
             project.add_finding(title, content, source)
             self._save_project(project)
         else:
-            logger.error(f"Proyecto '{project_name}' no encontrado para añadir hallazgo.")
+            logger.error(f"Project '{project_name}' not found to add finding.")
 
     def list_projects(self) -> list[dict[str, Any]]:
         return [p.to_dict() for p in self.projects.values()]
 
     def categorize_finding(self, finding_content: str) -> str:
-        """Simula la categorización de un hallazgo (en un sistema real, usaría LLM)."""
+        """Simulates categorization of a finding (in a real system, this would use an LLM).
+        Note: the matched keywords below are intentionally left as-is (Spanish/English mix)
+        since they are data used to match incoming finding content, not prose.
+        """
         if "cáncer" in finding_content.lower() or "tumor" in finding_content.lower():
-            return "Medicina/Oncología"
+            return "Medicine/Oncology"
         if (
             "chip" in finding_content.lower()
             or "neural" in finding_content.lower()
             or "interfaz" in finding_content.lower()
         ):
-            return "Biotecnología/Neurotecnología"
+            return "Biotechnology/Neurotechnology"
         if (
             "solar" in finding_content.lower()
             or "fotovoltaica" in finding_content.lower()
             or "energía" in finding_content.lower()
         ):
-            return "Energía/Sostenibilidad"
-        return "General/Innovación"
+            return "Energy/Sustainability"
+        return "General/Innovation"
 
 
-# Integrar en el orquestador y el ResearchAgent
-# Ejemplo de uso:
+# Integrate into the orchestrator and the ResearchAgent
+# Usage example:
 # rd_wing = RDWing()
-# project = rd_wing.create_project("Cura Cáncer Hígado", "Desarrollar una cura definitiva para el cáncer de hígado.", "Medicina")
-# rd_wing.add_finding_to_project(project.name, "Nuevo compuesto X muestra promesa", "Nature Medicine", "Estudio de fase II.")
+# project = rd_wing.create_project("Liver Cancer Cure", "Develop a definitive cure for liver cancer.", "Medicine")
+# rd_wing.add_finding_to_project(project.name, "New compound X shows promise", "Nature Medicine", "Phase II study.")

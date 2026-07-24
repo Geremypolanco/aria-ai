@@ -8,13 +8,13 @@ logger = logging.getLogger("aria.trace")
 
 class TraceEngine:
     """
-    Motor de Trazabilidad (inspirado en Langfuse).
+    Traceability Engine (inspired by Langfuse).
 
-    Registra CADA acción de Aria para:
+    Records EVERY action Aria takes for:
     - Debugging
-    - Auditoría
-    - Optimización
-    - Aprendizaje
+    - Auditing
+    - Optimization
+    - Learning
     """
 
     def __init__(self):
@@ -30,7 +30,7 @@ class TraceEngine:
         success: bool,
         roi: float = 0.0,
     ) -> dict[str, Any]:
-        """Registra una acción de Aria."""
+        """Records an action taken by Aria."""
 
         trace = {
             "timestamp": datetime.now().isoformat(),
@@ -44,7 +44,7 @@ class TraceEngine:
 
         self.traces.append(trace)
 
-        # Actualizar métricas
+        # Update metrics
         if action_type not in self.metrics:
             self.metrics[action_type] = {
                 "count": 0,
@@ -64,7 +64,7 @@ class TraceEngine:
         return trace
 
     async def get_action_metrics(self, action_type: str = None) -> dict[str, Any]:
-        """Obtiene métricas de acciones."""
+        """Retrieves action metrics."""
         if action_type:
             return self.metrics.get(action_type, {})
 
@@ -82,7 +82,7 @@ class TraceEngine:
         }
 
     async def get_failure_analysis(self) -> list[dict[str, Any]]:
-        """Analiza fallos para identificar patrones."""
+        """Analyzes failures to identify patterns."""
         failures = [t for t in self.traces if not t.get("success")]
 
         failure_analysis = {}
@@ -106,7 +106,7 @@ class TraceEngine:
         ]
 
     async def export_trace_log(self) -> str:
-        """Exporta el log completo de trazas."""
+        """Exports the complete trace log."""
         return json.dumps(
             {
                 "total_traces": len(self.traces),

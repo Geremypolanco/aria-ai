@@ -225,9 +225,19 @@ async def instagram_comments(request: Request):
 # ── YouTube (Google) ──────────────────────────────────────────────
 @router.get("/youtube/comments")
 async def youtube_verify(request: Request):
-    """WebSub verification challenge."""
-    challenge = request.query_params.get("hub.challenge")
-    if challenge:
+    """WebSub verification challenge.
+
+    Unlike Instagram's setup challenge, WebSub has no shared secret to check
+    at this step — but a bare "echo whatever hub.challenge is sent" answers
+    any GET, not just a real hub confirming a subscription we actually asked
+    for. Requiring hub.mode=subscribe is the minimum the spec expects; actual
+    data still can't reach the pipeline without a valid signature on the POST
+    (see youtube_comments below), so this only tightens an overly-permissive
+    echo, not a real data-access hole.
+    """
+    params = request.query_params
+    challenge = params.get("hub.challenge")
+    if challenge and params.get("hub.mode") == "subscribe":
         return PlainTextResponse(challenge)
     return JSONResponse({"error": "verification failed"}, status_code=403)
 

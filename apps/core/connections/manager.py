@@ -1,95 +1,99 @@
 """
-ConnectionManager — gestión central de conexiones OAuth para ARIA AI.
+ConnectionManager — central management of OAuth connections for ARIA AI.
 
-Equivalente al sistema MCP de Claude: cada servicio es una conexión que
-expone herramientas. Los tokens se guardan en Redis por chat_id.
+Equivalent to Claude's MCP system: each service is a connection that
+exposes tools. Tokens are stored in Redis per chat_id.
 """
 
 from __future__ import annotations
 
 import logging
 
+from apps.core.connections.registry import ConnectorFactory
+
 logger = logging.getLogger("aria.connections")
 
 
 class ConnectionManager:
     """
-    Gestiona conexiones OAuth a servicios externos.
-    Cada conexión: {access_token, refresh_token, expires_at, scope, service_user}
+    Manages OAuth connections to external services.
+    Each connection: {access_token, refresh_token, expires_at, scope, service_user}
     """
 
-    K_CONN = "aria:conn:{chat_id}:{service}"  # Redis key por usuario y servicio
-    TTL = 86400 * 90  # 90 días
+    K_CONN = "aria:conn:{chat_id}:{service}"  # Redis key per user and service
+    TTL = 86400 * 90  # 90 days
 
     AVAILABLE: dict[str, str] = {
-        # Productividad / comunicación
+        # Productivity / communication
         "google": "Google (Gmail, Calendar, Drive)",
-        "slack": "Slack (mensajes, canales)",
+        "slack": "Slack (messages, channels)",
         "microsoft": "Microsoft (Outlook, Teams, OneDrive)",
-        "zoom": "Zoom (meetings, grabaciones)",
+        "zoom": "Zoom (meetings, recordings)",
         "discord": "Discord (webhooks)",
-        "notion": "Notion (páginas, bases de datos)",
-        "airtable": "Airtable (bases, registros)",
-        # Búsqueda / empleo
-        "indeed": "Indeed (búsqueda de empleo)",
-        # CRM / ventas
-        "hubspot": "HubSpot (contactos, deals, pipelines)",
+        "notion": "Notion (pages, databases)",
+        "airtable": "Airtable (bases, records)",
+        # Search / jobs
+        "indeed": "Indeed (job search)",
+        # CRM / sales
+        "hubspot": "HubSpot (contacts, deals, pipelines)",
         "salesforce": "Salesforce (CRM enterprise)",
-        # Almacenamiento
-        "dropbox": "Dropbox (archivos, carpetas)",
-        "box": "Box (almacenamiento empresarial)",
-        # Finanzas
-        "quickbooks": "QuickBooks (facturas, contabilidad)",
-        # Agenda / scheduling
-        "calendly": "Calendly (agenda, reuniones)",
-        "calcom": "Cal.com (scheduling open-source)",
-        # Diseño
-        "figma": "Figma (diseño UI/UX, prototipos)",
-        "canva": "Canva (diseño gráfico)",
+        # Storage
+        "dropbox": "Dropbox (files, folders)",
+        "box": "Box (enterprise storage)",
+        # Finance
+        "quickbooks": "QuickBooks (invoices, accounting)",
+        # Scheduling
+        "calendly": "Calendly (scheduling, meetings)",
+        "calcom": "Cal.com (open-source scheduling)",
+        # Design
+        "figma": "Figma (UI/UX design, prototypes)",
+        "canva": "Canva (graphic design)",
         # E-commerce
-        "etsy": "Etsy (tienda artesanal)",
-        "woocommerce": "WooCommerce (tienda WordPress)",
+        "etsy": "Etsy (artisan shop)",
+        "woocommerce": "WooCommerce (WordPress store)",
         "amazon": "Amazon (Product Advertising)",
         # Analytics
         "google_analytics": "Google Analytics 4",
         "mixpanel": "Mixpanel (product analytics)",
         "amplitude": "Amplitude (analytics)",
-        "datadog": "DataDog (infraestructura, logs)",
+        "datadog": "DataDog (infrastructure, logs)",
         # Email marketing
         "klaviyo": "Klaviyo (email, SMS marketing)",
         "activecampaign": "ActiveCampaign (email automation)",
         "convertkit": "ConvertKit/Kit (newsletter)",
-        "brevo": "Brevo / Sendinblue (email transaccional)",
-        "postmark": "Postmark (email transaccional)",
+        "brevo": "Brevo / Sendinblue (transactional email)",
+        "postmark": "Postmark (transactional email)",
         # DevOps
         "netlify": "Netlify (deploy, sites)",
         "cloudflare": "Cloudflare (DNS, CDN, analytics)",
         "firebase": "Firebase / Firestore",
-        "aws_s3": "AWS S3 (almacenamiento)",
+        "aws_s3": "AWS S3 (storage)",
         # CMS
-        "wordpress": "WordPress (posts, páginas)",
+        "wordpress": "WordPress (posts, pages)",
         "webflow": "Webflow (sites, collections)",
         "contentful": "Contentful (headless CMS)",
         "sanity": "Sanity (structured content)",
         # Media
-        "spotify": "Spotify (música, playlists)",
-        "youtube": "YouTube (videos, canal)",
-        "tiktok": "TikTok (videos, cuenta)",
-        "twitch": "Twitch (streams, canal)",
-        # Gestión de proyectos
-        "asana": "Asana (tareas, proyectos)",
-        "trello": "Trello (tableros, tarjetas)",
+        "spotify": "Spotify (music, playlists)",
+        "youtube": "YouTube (videos, channel)",
+        "tiktok": "TikTok (videos, account)",
+        "twitch": "Twitch (streams, channel)",
+        # Project management
+        "asana": "Asana (tasks, projects)",
+        "trello": "Trello (boards, cards)",
         "linear": "Linear (issues, sprints)",
         "jira": "Jira (tickets, sprints)",
-        "monday": "Monday.com (proyectos)",
+        "monday": "Monday.com (projects)",
     }
 
-    # Servicios que no requieren OAuth (usan API key/webhook directamente)
+    # Services that don't require OAuth (use API key/webhook directly)
+    # "quickbooks" removed: QuickBooksConnection implements real OAuth2
+    # (get_auth_url/exchange_code), registered in ConnectorFactory.
     NO_OAUTH = {
         "indeed",
         "discord",
         "airtable",
-        "quickbooks",
+        "trello",
         "calcom",
         "mixpanel",
         "amplitude",
@@ -120,16 +124,31 @@ class ConnectionManager:
     async def store(self, chat_id: str, service: str, tokens: dict) -> None:
         cache = self._cache()
         if cache:
+            import json
+
+            from apps.core.connectors import token_crypto
+
             key = self.K_CONN.format(chat_id=chat_id, service=service)
-            await cache.set(key, tokens, ttl_seconds=self.TTL)
-            logger.info("[Connections] %s conectado para chat %s", service, chat_id)
+            blob = token_crypto.encrypt(json.dumps(tokens))
+            await cache.set(key, blob, ttl_seconds=self.TTL)
+            logger.info("[Connections] %s connected for chat %s", service, chat_id)
 
     async def get(self, chat_id: str, service: str) -> dict | None:
         cache = self._cache()
         if not cache:
             return None
+        import json
+
+        from apps.core.connectors import token_crypto
+
         key = self.K_CONN.format(chat_id=chat_id, service=service)
-        data = await cache.get(key)
+        raw = await cache.get(key)
+        if not raw:
+            return None
+        # decrypt() transparently passes through any legacy plaintext record,
+        # matching the same forward-compatible pattern oauth_hub.get_token uses.
+        decoded = token_crypto.decrypt(raw) if isinstance(raw, str) else raw
+        data = json.loads(decoded) if isinstance(decoded, str) else decoded
         return data if isinstance(data, dict) else None
 
     async def remove(self, chat_id: str, service: str) -> None:
@@ -137,7 +156,7 @@ class ConnectionManager:
         if cache:
             key = self.K_CONN.format(chat_id=chat_id, service=service)
             await cache.delete(key)
-            logger.info("[Connections] %s desconectado para chat %s", service, chat_id)
+            logger.info("[Connections] %s disconnected for chat %s", service, chat_id)
 
     async def is_connected(self, chat_id: str, service: str) -> bool:
         if service in self.NO_OAUTH:
@@ -155,7 +174,7 @@ class ConnectionManager:
             "discord": "DISCORD_WEBHOOK_URL",
             "airtable": "AIRTABLE_TOKEN",
             "notion": "NOTION_TOKEN",
-            "quickbooks": "QUICKBOOKS_CLIENT_ID",
+            "trello": "TRELLO_API_KEY",
             "calcom": "CALCOM_API_KEY",
             "mixpanel": "MIXPANEL_API_SECRET",
             "amplitude": "AMPLITUDE_API_KEY",
@@ -189,153 +208,23 @@ class ConnectionManager:
         return connected
 
     def get_auth_url(self, service: str, chat_id: str) -> str | None:
-        """Genera URL de autenticación OAuth para el servicio."""
-        if service == "google":
-            from apps.core.connections.google_connection import GoogleConnection
+        """Generates the OAuth authentication URL for the service.
 
-            return GoogleConnection().get_auth_url(chat_id)
-        if service == "slack":
-            from apps.core.connections.slack_connection import SlackConnection
-
-            return SlackConnection().get_auth_url(chat_id)
-        if service == "microsoft":
-            from apps.core.connections.microsoft_connection import MicrosoftConnection
-
-            return MicrosoftConnection().get_auth_url(chat_id)
-        if service == "zoom":
-            from apps.core.connections.zoom_connection import ZoomConnection
-
-            return ZoomConnection().get_auth_url(chat_id)
-        if service == "hubspot":
-            from apps.core.connections.crm_connection import HubSpotConnection
-
-            return HubSpotConnection().get_auth_url(chat_id)
-        if service == "salesforce":
-            from apps.core.connections.crm_connection import SalesforceConnection
-
-            return SalesforceConnection().get_auth_url(chat_id)
-        if service == "dropbox":
-            from apps.core.connections.storage_connection import DropboxConnection
-
-            return DropboxConnection().get_auth_url(chat_id)
-        if service == "box":
-            from apps.core.connections.storage_connection import BoxConnection
-
-            return BoxConnection().get_auth_url(chat_id)
-        if service == "calendly":
-            from apps.core.connections.scheduling_connection import CalendlyConnection
-
-            return CalendlyConnection().get_auth_url(chat_id)
-        if service == "figma":
-            from apps.core.connections.design_connection import FigmaConnection
-
-            return FigmaConnection().get_auth_url(chat_id)
-        if service == "canva":
-            from apps.core.connections.design_connection import CanvaConnection
-
-            return CanvaConnection().get_auth_url(chat_id)
-        if service == "etsy":
-            from apps.core.connections.ecommerce_connection import EtsyConnection
-
-            return EtsyConnection().get_auth_url(chat_id)
-        if service == "google_analytics":
-            from apps.core.connections.analytics_connection import GoogleAnalyticsConnection
-
-            return GoogleAnalyticsConnection().get_auth_url(chat_id)
-        if service == "spotify":
-            from apps.core.connections.media_connection import SpotifyConnection
-
-            return SpotifyConnection().get_auth_url(chat_id)
-        if service == "youtube":
-            from apps.core.connections.media_connection import YouTubeConnection
-
-            return YouTubeConnection().get_auth_url(chat_id)
-        if service == "tiktok":
-            from apps.core.connections.media_connection import TikTokConnection
-
-            return TikTokConnection().get_auth_url(chat_id)
-        if service == "twitch":
-            from apps.core.connections.media_connection import TwitchConnection
-
-            return TwitchConnection().get_auth_url(chat_id)
-        return None
+        Dispatched entirely through ConnectorFactory — adding connector #23
+        (or #300) never touches this method. See apps/core/connections/base.py
+        and registry.py for the interface + Factory Manager.
+        """
+        connector = ConnectorFactory.create(service)
+        return connector.get_auth_url(chat_id) if connector else None
 
     async def handle_callback(self, service: str, code: str, chat_id: str) -> bool:
         """Exchange authorization code for tokens and store them."""
+        connector = ConnectorFactory.create(service)
+        if not connector:
+            logger.warning("[Connections] Unknown service: %s", service)
+            return False
         try:
-            tokens = None
-            if service == "google":
-                from apps.core.connections.google_connection import GoogleConnection
-
-                tokens = await GoogleConnection().exchange_code(code, chat_id)
-            elif service == "slack":
-                from apps.core.connections.slack_connection import SlackConnection
-
-                tokens = await SlackConnection().exchange_code(code, chat_id)
-            elif service == "microsoft":
-                from apps.core.connections.microsoft_connection import MicrosoftConnection
-
-                tokens = await MicrosoftConnection().exchange_code(code, chat_id)
-            elif service == "zoom":
-                from apps.core.connections.zoom_connection import ZoomConnection
-
-                tokens = await ZoomConnection().exchange_code(code, chat_id)
-            elif service == "hubspot":
-                from apps.core.connections.crm_connection import HubSpotConnection
-
-                tokens = await HubSpotConnection().exchange_code(code, chat_id)
-            elif service == "salesforce":
-                from apps.core.connections.crm_connection import SalesforceConnection
-
-                tokens = await SalesforceConnection().exchange_code(code, chat_id)
-            elif service == "dropbox":
-                from apps.core.connections.storage_connection import DropboxConnection
-
-                tokens = await DropboxConnection().exchange_code(code, chat_id)
-            elif service == "box":
-                from apps.core.connections.storage_connection import BoxConnection
-
-                tokens = await BoxConnection().exchange_code(code, chat_id)
-            elif service == "calendly":
-                from apps.core.connections.scheduling_connection import CalendlyConnection
-
-                tokens = await CalendlyConnection().exchange_code(code, chat_id)
-            elif service == "figma":
-                from apps.core.connections.design_connection import FigmaConnection
-
-                tokens = await FigmaConnection().exchange_code(code, chat_id)
-            elif service == "canva":
-                from apps.core.connections.design_connection import CanvaConnection
-
-                tokens = await CanvaConnection().exchange_code(code, chat_id)
-            elif service == "etsy":
-                from apps.core.connections.ecommerce_connection import EtsyConnection
-
-                tokens = await EtsyConnection().exchange_code(code, chat_id)
-            elif service == "google_analytics":
-                from apps.core.connections.analytics_connection import GoogleAnalyticsConnection
-
-                tokens = await GoogleAnalyticsConnection().exchange_code(code, chat_id)
-            elif service == "spotify":
-                from apps.core.connections.media_connection import SpotifyConnection
-
-                tokens = await SpotifyConnection().exchange_code(code, chat_id)
-            elif service == "youtube":
-                from apps.core.connections.media_connection import YouTubeConnection
-
-                tokens = await YouTubeConnection().exchange_code(code, chat_id)
-            elif service == "tiktok":
-                from apps.core.connections.media_connection import TikTokConnection
-
-                tokens = await TikTokConnection().exchange_code(code, chat_id)
-            elif service == "twitch":
-                from apps.core.connections.media_connection import TwitchConnection
-
-                tokens = await TwitchConnection().exchange_code(code, chat_id)
-            else:
-                logger.warning("[Connections] Servicio desconocido: %s", service)
-                return False
-
+            tokens = await connector.exchange_code(code, chat_id)
             if tokens:
                 await self.store(chat_id, service, tokens)
                 return True

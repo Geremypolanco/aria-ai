@@ -1,13 +1,13 @@
 """
-graph_db_client.py — Cliente de Base de Datos de Grafos (Neo4j) para ARIA AI.
+graph_db_client.py — Graph Database Client (Neo4j) for ARIA AI.
 
-Permite gestionar el conocimiento relacional de ARIA:
-  Clientes → Productos → Campañas → Ingresos → Canales
+Manages ARIA's relational knowledge:
+  Customers → Products → Campaigns → Revenue → Channels
 
-A diferencia de Graphiti (temporal), Neo4j se usa para la estructura
-organizacional y el mapeo de relaciones de negocio de largo plazo.
+Unlike Graphiti (temporal), Neo4j is used for organizational
+structure and long-term business relationship mapping.
 
-Referencia: https://neo4j.com/docs/python-manual/current/
+Reference: https://neo4j.com/docs/python-manual/current/
 """
 
 from __future__ import annotations
@@ -18,21 +18,21 @@ from typing import Any
 
 logger = logging.getLogger("aria.graph_db")
 
-# ── Neo4j Import con fallback ────────────────────────────────────────────────
+# ── Neo4j import with fallback ───────────────────────────────────────────────
 try:
     from neo4j import GraphDatabase
 
     NEO4J_AVAILABLE = True
-    logger.info("[Neo4j] Librería cargada correctamente.")
+    logger.info("[Neo4j] Library loaded successfully.")
 except ImportError:
     NEO4J_AVAILABLE = False
-    logger.warning("[Neo4j] neo4j no instalado. Usando fallback en memoria.")
+    logger.warning("[Neo4j] neo4j not installed. Using in-memory fallback.")
 
 
 class AriaGraphDBClient:
     """
-    Cliente para Neo4j / Apache AGE.
-    Maneja el conocimiento relacional de la organización Aria.
+    Client for Neo4j / Apache AGE.
+    Manages the Aria organization's relational knowledge.
     """
 
     def __init__(
@@ -46,21 +46,21 @@ class AriaGraphDBClient:
         if NEO4J_AVAILABLE:
             try:
                 self._driver = GraphDatabase.driver(uri, auth=(user, password))
-                logger.info("[Neo4j] Driver inicializado.")
+                logger.info("[Neo4j] Driver initialized.")
             except Exception as exc:
-                logger.error("[Neo4j] Error inicializando driver: %s", exc)
+                logger.error("[Neo4j] Error initializing driver: %s", exc)
 
     def close(self) -> None:
-        """Cierra la conexión con el driver."""
+        """Closes the driver connection."""
         if self._driver:
             self._driver.close()
 
     async def execute_query(
         self, query: str, parameters: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        """Ejecuta una consulta Cypher en Neo4j."""
+        """Executes a Cypher query on Neo4j."""
         if not self._driver:
-            logger.warning("[Neo4j] Driver no disponible. Query ignorada.")
+            logger.warning("[Neo4j] Driver not available. Query ignored.")
             return []
 
         with self._driver.session() as session:
@@ -70,7 +70,7 @@ class AriaGraphDBClient:
     async def map_revenue_chain(
         self, customer_id: str, product_id: str, campaign_id: str, amount: float
     ):
-        """Mapea una cadena de ingresos en el grafo."""
+        """Maps a revenue chain in the graph."""
         query = (
             "MERGE (c:Customer {id: $customer_id}) "
             "MERGE (p:Product {id: $product_id}) "
@@ -87,7 +87,7 @@ class AriaGraphDBClient:
                 "amount": amount,
             },
         )
-        logger.info("[Neo4j] Cadena de ingresos mapeada para cliente %s", customer_id)
+        logger.info("[Neo4j] Revenue chain mapped for customer %s", customer_id)
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ _graph_db_instance: AriaGraphDBClient | None = None
 
 
 def get_graph_db_client() -> AriaGraphDBClient:
-    """Retorna el singleton del cliente de base de datos de grafos."""
+    """Returns the graph database client singleton."""
     global _graph_db_instance
     if _graph_db_instance is None:
         _graph_db_instance = AriaGraphDBClient(

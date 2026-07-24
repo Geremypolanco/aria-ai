@@ -398,7 +398,7 @@ class ContentOperator:
             step(
                 f"publish:{r['channel']}",
                 r.get("success", False),
-                tool=r.get("tool"),
+                tool=r.get("action"),
                 error=r.get("error"),
             )
         record["success"] = any(r.get("success") for r in results)

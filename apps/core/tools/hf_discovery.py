@@ -1,41 +1,41 @@
 """
-hf_discovery.py — Motor de descubrimiento y uso de herramientas HuggingFace.
+hf_discovery.py — HuggingFace tool discovery and usage engine.
 
-ARIA usa este módulo cuando necesita una capacidad que no tiene.
-En lugar de simular o fallar, ARIA busca en HF Hub el mejor modelo
-disponible para esa tarea y lo usa inmediatamente via Inference API.
+ARIA uses this module when it needs a capability it doesn't have.
+Instead of simulating or failing, ARIA searches HF Hub for the best
+model available for that task and uses it immediately via the Inference API.
 
-Flujo:
-  1. ARIA necesita hacer algo (transcribir audio, detectar idioma, etc.)
-  2. Llama a discover_and_run(task="automatic-speech-recognition", input=...)
-  3. Este módulo busca el mejor modelo en HF Hub
-  4. Lo llama via Inference API
-  5. Cachea el modelo ganador para la próxima vez
-  6. Retorna el resultado real
+Flow:
+  1. ARIA needs to do something (transcribe audio, detect language, etc.)
+  2. Calls discover_and_run(task="automatic-speech-recognition", input=...)
+  3. This module searches for the best model on HF Hub
+  4. Calls it via the Inference API
+  5. Caches the winning model for next time
+  6. Returns the real result
 
-Tareas soportadas (y más que se descubren automáticamente):
-  - text-generation          → generar texto, código, ideas
-  - text2text-generation     → reescribir, resumir, traducir
-  - translation              → traducción entre idiomas
-  - summarization            → resúmenes de artículos
-  - sentiment-analysis       → análisis de sentimiento
-  - zero-shot-classification → clasificar sin entrenamiento
-  - named-entity-recognition → extraer personas, lugares, empresas
-  - question-answering       → responder preguntas con contexto
-  - automatic-speech-recognition → transcribir audio (Whisper)
-  - text-to-speech           → voz sintetizada
-  - image-generation         → crear imágenes (FLUX, SDXL)
-  - image-to-text            → describir imágenes (BLIP-2)
-  - object-detection         → detectar objetos en imágenes
-  - image-classification     → clasificar imágenes
-  - feature-extraction       → embeddings de texto o imagen
-  - token-classification     → tagging de tokens
-  - fill-mask                → completar texto con [MASK]
-  - table-question-answering → preguntas sobre tablas
-  - document-question-answering → preguntas sobre PDFs/documentos
-  - depth-estimation         → profundidad de imagen
-  - audio-classification     → clasificar audio
-  - visual-question-answering → preguntas sobre imágenes
+Supported tasks (plus more discovered automatically):
+  - text-generation          → generate text, code, ideas
+  - text2text-generation     → rewrite, summarize, translate
+  - translation              → translation between languages
+  - summarization            → article summaries
+  - sentiment-analysis       → sentiment analysis
+  - zero-shot-classification → classify without training
+  - named-entity-recognition → extract people, places, companies
+  - question-answering       → answer questions given context
+  - automatic-speech-recognition → transcribe audio (Whisper)
+  - text-to-speech           → synthesized voice
+  - image-generation         → create images (FLUX, SDXL)
+  - image-to-text            → describe images (BLIP-2)
+  - object-detection         → detect objects in images
+  - image-classification     → classify images
+  - feature-extraction       → text or image embeddings
+  - token-classification     → token tagging
+  - fill-mask                → complete text with [MASK]
+  - table-question-answering → questions about tables
+  - document-question-answering → questions about PDFs/documents
+  - depth-estimation         → image depth
+  - audio-classification     → classify audio
+  - visual-question-answering → questions about images
 """
 
 from __future__ import annotations
@@ -54,8 +54,8 @@ logger = logging.getLogger("aria.hf_discovery")
 HF_API = "https://api-inference.huggingface.co/models"
 HF_HUB = "https://huggingface.co/api"
 
-# Modelos preferidos por tarea (probados, confiables, gratuitos con HF_TOKEN)
-# ARIA usa estos primero. Si fallan, busca alternativas en HF Hub.
+# Preferred models per task (tested, reliable, free with HF_TOKEN)
+# ARIA uses these first. If they fail, it looks for alternatives on HF Hub.
 PREFERRED_MODELS: dict[str, list[str]] = {
     "text-generation": [
         "Qwen/Qwen2.5-Coder-32B-Instruct",
@@ -178,19 +178,19 @@ PREFERRED_MODELS: dict[str, list[str]] = {
 
 class HFDiscovery:
     """
-    Motor de descubrimiento y uso de herramientas HuggingFace.
-    ARIA llama a este módulo cuando necesita una capacidad que no tiene.
+    HuggingFace tool discovery and usage engine.
+    ARIA calls this module when it needs a capability it doesn't have.
     """
 
     def __init__(self) -> None:
         self._token = settings.hf_key
         self._http = httpx.AsyncClient(timeout=120.0)
-        self._model_cache: dict[str, str] = {}  # task -> mejor modelo probado
-        self._failure_cache: dict[str, set] = {}  # task -> modelos fallidos
+        self._model_cache: dict[str, str] = {}  # task -> best proven model
+        self._failure_cache: dict[str, set] = {}  # task -> failed models
 
     def _available(self) -> bool:
         if not self._token:
-            logger.warning("[HFDiscovery] HF_TOKEN no configurado")
+            logger.warning("[HFDiscovery] HF_TOKEN not configured")
             return False
         return True
 
@@ -202,7 +202,7 @@ class HFDiscovery:
         return h
 
     # ══════════════════════════════════════════════════════════════
-    # PUNTO DE ENTRADA PRINCIPAL
+    # MAIN ENTRY POINT
     # ══════════════════════════════════════════════════════════════
 
     async def discover_and_run(
@@ -214,41 +214,41 @@ class HFDiscovery:
         force_rediscover: bool = False,
     ) -> dict[str, Any]:
         """
-        Punto de entrada universal. ARIA llama esto cuando necesita
-        cualquier capacidad de ML.
+        Universal entry point. ARIA calls this when it needs
+        any ML capability.
 
         Args:
-            task: Tipo de tarea HF (ej: "summarization", "translation")
-            payload: Datos de entrada para el modelo
-            binary_output: True si el resultado es binario (imagen, audio)
-            binary_input: True si el input es binario (imagen, audio)
-            force_rediscover: Ignora caché y busca modelo nuevamente
+            task: HF task type (e.g. "summarization", "translation")
+            payload: Input data for the model
+            binary_output: True if the result is binary (image, audio)
+            binary_input: True if the input is binary (image, audio)
+            force_rediscover: Ignores the cache and searches for a model again
 
         Returns:
-            dict con success, result, model_used, task
+            dict with success, result, model_used, task
         """
         if not self._available():
             return {
                 "success": False,
-                "error": "HF_TOKEN no configurado. Obtén uno gratis en huggingface.co",
+                "error": "HF_TOKEN not configured. Get one for free at huggingface.co",
                 "task": task,
             }
 
-        # 1. Usar modelo cacheado si hay uno
+        # 1. Use a cached model if there is one
         if not force_rediscover and task in self._model_cache:
             model = self._model_cache[task]
             result = await self._run_model(model, payload, binary_output, binary_input)
             if result["success"]:
                 return result
 
-        # 2. Intentar modelos preferidos en orden
+        # 2. Try preferred models in order
         preferred = PREFERRED_MODELS.get(task, [])
         failed = self._failure_cache.get(task, set())
 
         for model in preferred:
             if model in failed:
                 continue
-            logger.info("[HFDiscovery] Probando modelo preferido: %s para '%s'", model, task)
+            logger.info("[HFDiscovery] Trying preferred model: %s for '%s'", model, task)
             result = await self._run_model(model, payload, binary_output, binary_input)
             if result["success"]:
                 self._model_cache[task] = model
@@ -257,14 +257,14 @@ class HFDiscovery:
             self._failure_cache[task] = failed
             await asyncio.sleep(1)
 
-        # 3. Buscar en HF Hub si todos los preferidos fallaron
-        logger.info("[HFDiscovery] Buscando modelos alternativos en HF Hub para '%s'", task)
+        # 3. Search HF Hub if all preferred models failed
+        logger.info("[HFDiscovery] Searching for alternative models on HF Hub for '%s'", task)
         hub_models = await self._search_hub(task, exclude=failed)
 
         for model in hub_models[:5]:
             if model in failed:
                 continue
-            logger.info("[HFDiscovery] Probando modelo del Hub: %s", model)
+            logger.info("[HFDiscovery] Trying model from the Hub: %s", model)
             result = await self._run_model(model, payload, binary_output, binary_input)
             if result["success"]:
                 self._model_cache[task] = model
@@ -275,19 +275,19 @@ class HFDiscovery:
 
         return {
             "success": False,
-            "error": f"Ningún modelo disponible funcionó para '{task}'. Todos fallaron: {list(failed)[:5]}",
+            "error": f"No available model worked for '{task}'. All failed: {list(failed)[:5]}",
             "task": task,
             "models_tried": list(failed),
         }
 
     # ══════════════════════════════════════════════════════════════
-    # BÚSQUEDA EN HF HUB
+    # HF HUB SEARCH
     # ══════════════════════════════════════════════════════════════
 
     async def _search_hub(self, task: str, exclude: set = None, limit: int = 10) -> list[str]:
         """
-        Busca los modelos más descargados en HF Hub para una tarea.
-        Retorna lista de IDs de modelo ordenados por popularidad.
+        Searches for the most downloaded models on HF Hub for a task.
+        Returns a list of model IDs sorted by popularity.
         """
         try:
             params = {
@@ -303,11 +303,11 @@ class HFDiscovery:
                 ids = [m["modelId"] for m in models if isinstance(m, dict)]
                 if exclude:
                     ids = [m for m in ids if m not in exclude]
-                logger.info("[HFDiscovery] Hub encontró %d modelos para '%s'", len(ids), task)
+                logger.info("[HFDiscovery] Hub found %d models for '%s'", len(ids), task)
                 return ids
-            logger.warning("[HFDiscovery] HF Hub HTTP %d para tarea '%s'", res.status_code, task)
+            logger.warning("[HFDiscovery] HF Hub HTTP %d for task '%s'", res.status_code, task)
         except Exception as exc:
-            logger.error("[HFDiscovery] Error buscando en Hub: %s", exc)
+            logger.error("[HFDiscovery] Error searching the Hub: %s", exc)
         return []
 
     async def search_models_for_task(
@@ -316,8 +316,8 @@ class HFDiscovery:
         limit: int = 10,
     ) -> dict[str, Any]:
         """
-        API pública: busca modelos en HF Hub para una tarea dada.
-        ARIA usa esto para explorar qué herramientas existen.
+        Public API: searches HF Hub for models for a given task.
+        ARIA uses this to explore what tools exist.
         """
         try:
             res = await self._http.get(
@@ -353,7 +353,7 @@ class HFDiscovery:
             return {"success": False, "error": str(exc)}
 
     async def search_models_by_keyword(self, keyword: str, limit: int = 10) -> dict[str, Any]:
-        """Busca modelos por keyword en HF Hub."""
+        """Searches for models by keyword on HF Hub."""
         try:
             res = await self._http.get(
                 f"{HF_HUB}/models",
@@ -381,7 +381,7 @@ class HFDiscovery:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # EJECUCIÓN DE MODELOS
+    # MODEL EXECUTION
     # ══════════════════════════════════════════════════════════════
 
     async def _run_model(
@@ -391,7 +391,7 @@ class HFDiscovery:
         binary_output: bool = False,
         binary_input: bool = False,
     ) -> dict[str, Any]:
-        """Ejecuta un modelo específico via HF Inference API."""
+        """Runs a specific model via the HF Inference API."""
         url = f"{HF_API}/{model}"
         headers = self._headers(is_binary=binary_input)
 
@@ -441,51 +441,52 @@ class HFDiscovery:
                         "result": out,
                         "binary": binary_output,
                     }
+                res = res2
 
             logger.warning("[HFDiscovery] %s HTTP %d: %s", model, res.status_code, res.text[:150])
             return {"success": False, "model_used": model, "error": f"HTTP {res.status_code}"}
 
         except Exception as exc:
-            logger.error("[HFDiscovery] Error con %s: %s", model, exc)
+            logger.error("[HFDiscovery] Error with %s: %s", model, exc)
             return {"success": False, "model_used": model, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # MÉTODOS DE ALTO NIVEL (ARIA los usa directamente)
+    # HIGH-LEVEL METHODS (ARIA uses these directly)
     # ══════════════════════════════════════════════════════════════
 
     async def summarize(self, text: str, max_length: int = 200) -> dict[str, Any]:
-        """Resume texto largo. Ideal para artículos, informes."""
+        """Summarizes long text. Ideal for articles, reports."""
         result = await self.discover_and_run(
             "summarization",
             {"inputs": text[:2000], "parameters": {"max_length": max_length, "min_length": 40}},
         )
-        if result["success"] and isinstance(result["result"], list):
+        if result["success"] and isinstance(result["result"], list) and result["result"]:
             result["summary"] = result["result"][0].get("summary_text", "")
         return result
 
     async def translate(
         self, text: str, source_lang: str = "en", target_lang: str = "es"
     ) -> dict[str, Any]:
-        """Traduce texto. Soporta 100+ pares de idiomas via Helsinki-NLP."""
+        """Translates text. Supports 100+ language pairs via Helsinki-NLP."""
         model_key = f"Helsinki-NLP/opus-mt-{source_lang}-{target_lang}"
         result = await self._run_model(model_key, {"inputs": text})
         if not result["success"]:
-            # Fallback: buscar modelo de traducción alternativo
+            # Fallback: look up an alternative translation model
             result = await self.discover_and_run(
                 "translation",
                 {"inputs": text},
             )
-        if result["success"] and isinstance(result["result"], list):
+        if result["success"] and isinstance(result["result"], list) and result["result"]:
             result["translation"] = result["result"][0].get("translation_text", "")
         return result
 
     async def analyze_sentiment(self, text: str) -> dict[str, Any]:
-        """Analiza el sentimiento de un texto. Útil para monitorear menciones."""
+        """Analyzes the sentiment of a text. Useful for monitoring mentions."""
         result = await self.discover_and_run(
             "sentiment-analysis",
             {"inputs": text[:512]},
         )
-        if result["success"] and isinstance(result["result"], list):
+        if result["success"] and isinstance(result["result"], list) and result["result"]:
             r = (
                 result["result"][0]
                 if isinstance(result["result"][0], dict)
@@ -497,8 +498,8 @@ class HFDiscovery:
 
     async def classify_text(self, text: str, labels: list[str]) -> dict[str, Any]:
         """
-        Clasifica texto en categorías personalizadas sin entrenamiento previo.
-        Útil para categorizar contenido, leads, oportunidades.
+        Classifies text into custom categories with no prior training.
+        Useful for categorizing content, leads, opportunities.
         """
         result = await self.discover_and_run(
             "zero-shot-classification",
@@ -517,8 +518,8 @@ class HFDiscovery:
 
     async def extract_entities(self, text: str) -> dict[str, Any]:
         """
-        Extrae personas, organizaciones, lugares de un texto.
-        Útil para análisis de mercado, leads, competidores.
+        Extracts people, organizations, and places from a text.
+        Useful for market analysis, leads, competitors.
         """
         result = await self.discover_and_run(
             "named-entity-recognition",
@@ -538,7 +539,7 @@ class HFDiscovery:
         return result
 
     async def transcribe_audio(self, audio_bytes: bytes) -> dict[str, Any]:
-        """Transcribe audio a texto usando Whisper."""
+        """Transcribes audio to text using Whisper."""
         result = await self.discover_and_run(
             "automatic-speech-recognition",
             audio_bytes,
@@ -549,7 +550,7 @@ class HFDiscovery:
         return result
 
     async def generate_image(self, prompt: str) -> dict[str, Any]:
-        """Genera imagen a partir de texto usando FLUX o SDXL."""
+        """Generates an image from text using FLUX or SDXL."""
         result = await self.discover_and_run(
             "image-generation",
             {"inputs": prompt},
@@ -561,18 +562,18 @@ class HFDiscovery:
         return result
 
     async def describe_image(self, image_bytes: bytes) -> dict[str, Any]:
-        """Genera descripción textual de una imagen (BLIP-2)."""
+        """Generates a text description of an image (BLIP-2)."""
         result = await self.discover_and_run(
             "image-to-text",
             image_bytes,
             binary_input=True,
         )
-        if result["success"] and isinstance(result["result"], list):
+        if result["success"] and isinstance(result["result"], list) and result["result"]:
             result["caption"] = result["result"][0].get("generated_text", "")
         return result
 
     async def detect_language(self, text: str) -> dict[str, Any]:
-        """Detecta el idioma de un texto."""
+        """Detects the language of a text."""
         result = await self.discover_and_run(
             "language-detection",
             {"inputs": text[:200]},
@@ -590,8 +591,8 @@ class HFDiscovery:
 
     async def get_embeddings(self, texts: list[str]) -> dict[str, Any]:
         """
-        Genera embeddings de texto para búsqueda semántica, similitud.
-        Útil para comparar contenido, detectar duplicados, recomendar.
+        Generates text embeddings for semantic search, similarity.
+        Useful for comparing content, detecting duplicates, recommending.
         """
         result = await self.discover_and_run(
             "feature-extraction",
@@ -600,7 +601,7 @@ class HFDiscovery:
         return result
 
     async def answer_question(self, question: str, context: str) -> dict[str, Any]:
-        """Responde una pregunta dado un contexto de texto."""
+        """Answers a question given a text context."""
         result = await self.discover_and_run(
             "question-answering",
             {"inputs": {"question": question[:200], "context": context[:1000]}},
@@ -611,7 +612,7 @@ class HFDiscovery:
         return result
 
     async def generate_speech(self, text: str) -> dict[str, Any]:
-        """Convierte texto a voz (Bark/MMS)."""
+        """Converts text to speech (Bark/MMS)."""
         result = await self.discover_and_run(
             "text-to-speech",
             {"inputs": text[:500]},
@@ -622,7 +623,7 @@ class HFDiscovery:
         return result
 
     async def detect_objects(self, image_bytes: bytes) -> dict[str, Any]:
-        """Detecta objetos en una imagen (DETR, YOLO)."""
+        """Detects objects in an image (DETR, YOLO)."""
         result = await self.discover_and_run(
             "object-detection",
             image_bytes,
@@ -640,20 +641,20 @@ class HFDiscovery:
         return result
 
     # ══════════════════════════════════════════════════════════════
-    # DISCOVERY INTELIGENTE — ARIA busca herramientas nuevas
+    # SMART DISCOVERY — ARIA looks up new tools
     # ══════════════════════════════════════════════════════════════
 
     async def find_tool_for_capability(self, capability_description: str) -> dict[str, Any]:
         """
-        ARIA describe qué necesita hacer en lenguaje natural.
-        Este método encuentra el modelo más apropiado en HF Hub.
+        ARIA describes what it needs to do in natural language.
+        This method finds the most appropriate model on the HF Hub.
 
-        Ejemplo:
-            "quiero detectar spam en emails"
-            "necesito traducir chino a inglés"
-            "quiero analizar si una imagen tiene texto"
+        Example:
+            "I want to detect spam in emails"
+            "I need to translate Chinese to English"
+            "I want to check whether an image contains text"
         """
-        # Mapeo de keywords a tareas HF
+        # Keyword-to-HF-task mapping (bilingual — matches user input in Spanish or English, do not translate the keyword strings below)
         keyword_task_map = [
             (["traduc", "translat"], "translation"),
             (["resume", "summar", "resumen"], "summarization"),
@@ -685,14 +686,14 @@ class HFDiscovery:
                 break
 
         if not matched_task:
-            # Búsqueda genérica en Hub por keyword
+            # Generic Hub search by keyword
             search_result = await self.search_models_by_keyword(capability_description, limit=5)
             return {
                 "success": search_result.get("success", False),
                 "capability": capability_description,
                 "recommended_task": "unknown",
                 "models_found": search_result.get("models", []),
-                "note": "No encontré tarea exacta. Busqué por keyword en HF Hub.",
+                "note": "Couldn't find an exact task match. Searched by keyword on the HF Hub instead.",
             }
 
         models_result = await self.search_models_for_task(matched_task, limit=5)
@@ -707,14 +708,14 @@ class HFDiscovery:
 
     async def capability_report(self) -> dict[str, Any]:
         """
-        Reporta qué puede hacer ARIA con HuggingFace ahora mismo.
-        ARIA usa esto para saber qué herramientas tiene disponibles.
+        Reports what ARIA can do with HuggingFace right now.
+        ARIA uses this to know which tools it has available.
         """
         if not self._available():
             return {
                 "available": False,
-                "error": "HF_TOKEN no configurado",
-                "how_to_fix": "Obtén token gratis en huggingface.co → Settings → Access Tokens",
+                "error": "HF_TOKEN not configured",
+                "how_to_fix": "Get a free token at huggingface.co → Settings → Access Tokens",
             }
 
         all_tasks = list(PREFERRED_MODELS.keys())
@@ -728,7 +729,7 @@ class HFDiscovery:
             "cached_models": dict(self._model_cache.items()),
             "cached_count": len(cached),
             "categories": {
-                "texto": [
+                "text": [
                     "summarization",
                     "translation",
                     "sentiment-analysis",
@@ -738,7 +739,7 @@ class HFDiscovery:
                     "fill-mask",
                     "language-detection",
                 ],
-                "imagen": [
+                "image": [
                     "image-generation",
                     "image-to-text",
                     "object-detection",
@@ -748,14 +749,14 @@ class HFDiscovery:
                 ],
                 "audio": ["automatic-speech-recognition", "text-to-speech", "audio-classification"],
                 "embeddings": ["feature-extraction"],
-                "codigo": ["text-generation"],
-                "sectores_economia_circular": [
-                    "finanzas",
+                "code": ["text-generation"],
+                "specialized_sectors": [
+                    "finance",
                     "legal",
-                    "logística",
-                    "manufactura",
-                    "agricultura",
-                    "bioquímica",
+                    "logistics",
+                    "manufacturing",
+                    "agriculture",
+                    "biochemistry",
                 ],
             },
         }

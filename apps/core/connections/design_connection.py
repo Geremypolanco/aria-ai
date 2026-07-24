@@ -1,6 +1,6 @@
 """
-Design connection para ARIA AI.
-Soporta Figma (OAuth + API) y Canva (OAuth).
+Design connection for ARIA AI.
+Supports Figma (OAuth + API) and Canva (OAuth).
 """
 
 from __future__ import annotations
@@ -9,6 +9,9 @@ import logging
 from urllib.parse import urlencode
 
 import httpx
+
+from apps.core.connections.base import BaseConnector
+from apps.core.connections.registry import register_connector
 
 logger = logging.getLogger("aria.connections.design")
 
@@ -25,7 +28,8 @@ CANVA_REDIRECT = "https://aria-ai.fly.dev/oauth/callback/canva"
 CANVA_SCOPES = "design:content:read design:meta:read asset:read"
 
 
-class FigmaConnection:
+@register_connector("figma", display_name="Figma (UI/UX design, prototypes)")
+class FigmaConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings
@@ -59,7 +63,7 @@ class FigmaConnection:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
-            raise ValueError("FIGMA_CLIENT_ID / FIGMA_CLIENT_SECRET no configurados")
+            raise ValueError("FIGMA_CLIENT_ID / FIGMA_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 FIGMA_TOKEN_URL,
@@ -140,7 +144,8 @@ class FigmaConnection:
             ]
 
 
-class CanvaConnection:
+@register_connector("canva", display_name="Canva (graphic design)")
+class CanvaConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
         from apps.core.config import settings
@@ -169,7 +174,7 @@ class CanvaConnection:
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
-            raise ValueError("CANVA_CLIENT_ID / CANVA_CLIENT_SECRET no configurados")
+            raise ValueError("CANVA_CLIENT_ID / CANVA_CLIENT_SECRET not configured")
         import base64
 
         credentials = base64.b64encode(f"{cid}:{sec}".encode()).decode()

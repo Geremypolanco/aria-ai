@@ -1,13 +1,13 @@
 """
-event_router.py — Enrutamiento de Eventos con RudderStack para ARIA AI.
+event_router.py — Event routing with RudderStack for ARIA AI.
 
-Permite que ARIA envíe eventos de tracking a múltiples destinos:
-  - PostHog (Analítica)
+Allows ARIA to send tracking events to multiple destinations:
+  - PostHog (Analytics)
   - Google Analytics
   - Data Warehouses
   - CRMs
 
-Referencia: https://www.rudderstack.com/docs/sources/event-streams/sdks/rudderstack-python-sdk/
+Reference: https://www.rudderstack.com/docs/sources/event-streams/sdks/rudderstack-python-sdk/
 """
 
 from __future__ import annotations
@@ -17,21 +17,21 @@ from typing import Any
 
 logger = logging.getLogger("aria.event_router")
 
-# ── RudderStack Import con fallback ──────────────────────────────────────────
+# ── RudderStack import with fallback ─────────────────────────────────────────
 try:
     import rudderanalytics
 
     RUDDER_AVAILABLE = True
-    logger.info("[RudderStack] SDK cargado correctamente.")
+    logger.info("[RudderStack] SDK loaded successfully.")
 except ImportError:
     RUDDER_AVAILABLE = False
-    logger.warning("[RudderStack] rudder-sdk-python no instalado.")
+    logger.warning("[RudderStack] rudder-sdk-python not installed.")
 
 
 class AriaEventRouter:
     """
-    Enrutador de eventos de ARIA.
-    Centraliza el tracking para distribuirlo a múltiples plataformas.
+    ARIA's event router.
+    Centralizes tracking to distribute it to multiple platforms.
     """
 
     def __init__(self, write_key: str = "", data_plane_url: str = "") -> None:
@@ -41,19 +41,19 @@ class AriaEventRouter:
         if RUDDER_AVAILABLE and write_key:
             rudderanalytics.write_key = write_key
             rudderanalytics.data_plane_url = data_plane_url
-            logger.info("[EventRouter] RudderStack inicializado.")
+            logger.info("[EventRouter] RudderStack initialized.")
 
     def track_event(self, user_id: str, event: str, properties: dict[str, Any] | None = None):
-        """Envía un evento de tracking."""
+        """Sends a tracking event."""
         if not RUDDER_AVAILABLE or not self.write_key:
-            logger.debug("[EventRouter] Tracking simulado: %s para %s", event, user_id)
+            logger.debug("[EventRouter] Simulated tracking: %s for %s", event, user_id)
             return
 
         try:
             rudderanalytics.track(user_id, event, properties or {})
-            logger.info("[EventRouter] Evento '%s' enviado a RudderStack.", event)
+            logger.info("[EventRouter] Event '%s' sent to RudderStack.", event)
         except Exception as exc:
-            logger.error("[EventRouter] Error enviando evento: %s", exc)
+            logger.error("[EventRouter] Error sending event: %s", exc)
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ _event_router_instance: AriaEventRouter | None = None
 
 
 def get_event_router() -> AriaEventRouter:
-    """Retorna el singleton del enrutador de eventos."""
+    """Returns the event router singleton."""
     global _event_router_instance
     if _event_router_instance is None:
         import os

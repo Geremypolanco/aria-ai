@@ -15,9 +15,9 @@ logger = logging.getLogger("aria.hf_connector")
 
 class HFConnector:
     """
-    Conector para Hugging Face en Aria.
-    Permite a Aria interactuar con el Hugging Face Hub para buscar modelos, datasets
-    y potencialmente ejecutar inferencia.
+    Connector for Hugging Face in Aria.
+    Allows Aria to interact with the Hugging Face Hub to search for models, datasets,
+    and potentially run inference.
     Degrades gracefully when huggingface_hub is not installed.
     """
 
@@ -25,13 +25,11 @@ class HFConnector:
         self.hf_api = HfApi() if _HF_AVAILABLE else None
         self.token = self._get_hf_token()
         if self.token:
-            logger.info("Hugging Face token cargado.")
+            logger.info("Hugging Face token loaded.")
         elif not _HF_AVAILABLE:
-            logger.warning("huggingface_hub no instalado — HFConnector deshabilitado.")
+            logger.warning("huggingface_hub not installed — HFConnector disabled.")
         else:
-            logger.warning(
-                "No se encontró token de Hugging Face. Algunas operaciones pueden estar limitadas."
-            )
+            logger.warning("No Hugging Face token found. Some operations may be limited.")
 
     def _get_hf_token(self) -> str | None:
         if not _HF_AVAILABLE:
@@ -61,7 +59,7 @@ class HFConnector:
                 )
             return results
         except Exception as e:
-            logger.error(f"Error al buscar modelos en Hugging Face: {e}")
+            logger.error(f"Error searching for models on Hugging Face: {e}")
             return []
 
     async def search_datasets(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
@@ -83,7 +81,7 @@ class HFConnector:
                 )
             return results
         except Exception as e:
-            logger.error(f"Error al buscar datasets en Hugging Face: {e}")
+            logger.error(f"Error searching for datasets on Hugging Face: {e}")
             return []
 
     async def download_model(self, model_id: str, local_path: str) -> str | None:
@@ -95,10 +93,10 @@ class HFConnector:
             downloaded_path = snapshot_download(
                 repo_id=model_id, local_dir=local_path, token=self.token
             )
-            logger.info(f"Modelo {model_id} descargado en: {downloaded_path}")
+            logger.info(f"Model {model_id} downloaded to: {downloaded_path}")
             return downloaded_path
         except Exception as e:
-            logger.error(f"Error al descargar modelo {model_id}: {e}")
+            logger.error(f"Error downloading model {model_id}: {e}")
             return None
 
     async def download_dataset(self, dataset_id: str, local_path: str) -> str | None:
@@ -108,10 +106,10 @@ class HFConnector:
             from datasets import load_dataset
 
             load_dataset(dataset_id, cache_dir=local_path)
-            logger.info(f"Dataset {dataset_id} descargado en: {local_path}")
+            logger.info(f"Dataset {dataset_id} downloaded to: {local_path}")
             return local_path
         except Exception as e:
-            logger.error(f"Error al descargar dataset {dataset_id}: {e}")
+            logger.error(f"Error downloading dataset {dataset_id}: {e}")
             return None
 
 

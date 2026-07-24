@@ -1,10 +1,10 @@
 """
-knowledge_base.py — RAG (Retrieval Augmented Generation) para ARIA AI.
+knowledge_base.py — RAG (Retrieval Augmented Generation) for ARIA AI.
 
-Inspirado en Dify: ingesta documentos/URLs, los fragmenta, embebe con sentence-transformers
-y permite búsqueda semántica para enriquecer el contexto de ARIA.
+Inspired by Dify: ingests documents/URLs, chunks them, embeds them with sentence-transformers,
+and enables semantic search to enrich ARIA's context.
 
-ARIA puede "aprender" de cualquier documento, web o texto y usarlo en futuras respuestas.
+ARIA can "learn" from any document, webpage, or text and use it in future responses.
 """
 
 from __future__ import annotations
@@ -40,6 +40,14 @@ class KnowledgeChunk:
     def cosine_similarity(self, other: list[float]) -> float:
         if not self.embedding or not other:
             return 0.0
+        if len(self.embedding) != len(other):
+            # Mixed embedding sources (e.g. the 384-dim HF model vs. the
+            # 128-dim offline _hash_embed fallback) produce vectors that
+            # aren't comparable — zip(strict=False) would silently truncate
+            # the dot product to the shorter length while the norms below
+            # still use each vector's full length, yielding a meaningless,
+            # systematically deflated score instead of an explicit "no match".
+            return 0.0
         dot = sum(a * b for a, b in zip(self.embedding, other, strict=False))
         norm1 = sum(a**2 for a in self.embedding) ** 0.5
         norm2 = sum(b**2 for b in other) ** 0.5
@@ -48,8 +56,8 @@ class KnowledgeChunk:
 
 class KnowledgeBase:
     """
-    Base de conocimiento semántica para ARIA.
-    Persiste en Redis; fallback en memoria si Redis no disponible.
+    Semantic knowledge base for ARIA.
+    Persists to Redis; falls back to in-memory storage if Redis is unavailable.
     """
 
     def __init__(self) -> None:
@@ -57,12 +65,12 @@ class KnowledgeBase:
         self._http = httpx.AsyncClient(timeout=30.0)
         self._loaded = False
 
-    # ── INGESTA ───────────────────────────────────────────────────────────────
+    # ── INGESTION ─────────────────────────────────────────────────────────────
 
     async def ingest_text(
         self, text: str, source: str = "manual", category: str = "general"
     ) -> dict[str, Any]:
-        """Ingesta texto plano fragmentado en la base de conocimiento."""
+        """Ingests plain text, chunked, into the knowledge base."""
         await self._ensure_loaded()
         chunks = self._split_text(text)
         added = 0
@@ -85,20 +93,36 @@ class KnowledgeBase:
         }
 
     async def ingest_url(self, url: str, category: str = "web") -> dict[str, Any]:
-        """Descarga y procesa una URL."""
+        """Downloads and processes a URL."""
         await self._ensure_loaded()
         try:
-            resp = await self._http.get(url, timeout=20, follow_redirects=True)
+            from apps.core.tools.web_tools import _assert_public_url
+
+            # Re-validated on every hop (redirects disabled here on purpose) —
+            # a URL that resolves to something public can still redirect to an
+            # internal address, which would silently bypass a check that only
+            # ran once against the original URL.
+            next_url = url
+            resp = None
+            for _hop in range(5):
+                await _assert_public_url(next_url)
+                resp = await self._http.get(next_url, timeout=20, follow_redirects=False)
+                if resp.is_redirect:
+                    next_url = str(resp.next_request.url)
+                    continue
+                break
+            else:
+                return {"success": False, "error": "too many redirects"}
             resp.raise_for_status()
             text = self._html_to_text(resp.text)
             return await self.ingest_text(text, source=url, category=category)
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    # ── BÚSQUEDA ──────────────────────────────────────────────────────────────
+    # ── SEARCH ────────────────────────────────────────────────────────────────
 
     async def search(self, query: str, top_k: int = 5, category: str = "") -> list[dict]:
-        """Búsqueda semántica. Retorna los top_k chunks más relevantes."""
+        """Semantic search. Returns the top_k most relevant chunks."""
         await self._ensure_loaded()
         if not self._chunks:
             return []
@@ -126,13 +150,13 @@ class KnowledgeBase:
         results = await self.search(query, top_k=top_k)
         if not results:
             return ""
-        lines = [f"[BASE DE CONOCIMIENTO — {len(results)} fragmentos relevantes]"]
+        lines = [f"[KNOWLEDGE BASE — {len(results)} relevant fragments]"]
         for i, r in enumerate(results, 1):
-            lines.append(f"\n{i}. Fuente: {r['source']} (score={r['score']})")
+            lines.append(f"\n{i}. Source: {r['source']} (score={r['score']})")
             lines.append(r["text"][:500])
         return "\n".join(lines)
 
-    # ── GESTIÓN ───────────────────────────────────────────────────────────────
+    # ── MANAGEMENT ────────────────────────────────────────────────────────────
 
     def list_sources(self) -> list[dict]:
         seen: dict[str, dict] = {}
@@ -159,7 +183,7 @@ class KnowledgeBase:
             cats[c.category] = cats.get(c.category, 0) + 1
         return {"total_chunks": len(self._chunks), "by_category": cats}
 
-    # ── PRIVADO ───────────────────────────────────────────────────────────────
+    # ── PRIVATE ───────────────────────────────────────────────────────────────
 
     def _split_text(self, text: str) -> list[str]:
         words = text.split()

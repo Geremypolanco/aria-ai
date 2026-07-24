@@ -31,24 +31,25 @@ from apps.core.config import settings
 # ── ADMIN AUTH (server-side gate for the owner-only control panel) ─────────
 _ADMIN_COOKIE = "aria_admin"
 
-# The owner is admin automatically when signed in via OAuth with one of these
-# emails (no separate password needed). Extra emails can be added via OWNER_EMAIL.
-OWNER_EMAILS = {"geremypolancod@gmail.com"}
 
-
+# Owner identity is centralized in apps.core.auth (single source of truth —
+# see its docstring for why this must not have a second, driftable copy).
 def _owner_emails() -> set[str]:
-    emails = {e.lower() for e in OWNER_EMAILS}
-    extra = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
-    if extra:
-        emails.add(extra)
-    return emails
+    from apps.core import auth
+
+    return auth.owner_emails()
 
 
 def _admin_token() -> str:
     """Deterministic session token derived from the admin password. An attacker who
-    doesn't know ADMIN_PASSWORD cannot forge it."""
+    doesn't know ADMIN_PASSWORD cannot forge it.
+
+    Only called once ADMIN_PASSWORD is already confirmed set (see _is_admin /
+    admin_login, which both refuse to reach here otherwise) — the `or ""` below
+    is purely a type guard for `.encode()`, not a security fallback.
+    """
     pw = (getattr(settings, "ADMIN_PASSWORD", None) or "").encode()
-    return hmac.new(pw or b"unset", b"aria-admin-session-v1", hashlib.sha256).hexdigest()
+    return hmac.new(pw, b"aria-admin-session-v1", hashlib.sha256).hexdigest()
 
 
 def _is_owner_user(request: Request) -> bool:
@@ -197,8 +198,8 @@ async def _record_ai_cost(email: str, plan: str, prompt: str, reply: str) -> Non
         in_tokens = max(1, len(prompt) // 4)
         out_tokens = max(1, len(reply) // 4)
         led.record(email, _BILLING_MODEL, in_tokens, out_tokens)
-        was_frozen = led.is_frozen(email)
-        if led.evaluate(email, plan) and not was_frozen:
+        was_frozen = await led.is_frozen(email)
+        if await led.evaluate(email, plan) and not was_frozen:
             frac = led.usage_fraction(email, plan)
             await notify_burn_cap(email, plan, frac)
             logger.info("[cost] burn-cap freeze for %s at %.0f%%", email, frac * 100)
@@ -327,9 +328,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# credentials=True forbids a literal "*" (Starlette would reflect any request
+# Origin instead, which defeats the purpose) — so the allowlist must be explicit.
+_cors_origins = {"http://localhost:8000", "http://127.0.0.1:8000"}
+_base_url = getattr(settings, "ARIA_BASE_URL", None)
+if _base_url:
+    _cors_origins.add(_base_url.rstrip("/"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=sorted(_cors_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -393,12 +401,6 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
     persona: str | None = None  # team-member id → ARIA answers as that professional
-
-
-class ChatResponse(BaseModel):
-    reply: str
-    model_used: str = ""
-    processing_time_ms: int = 0
 
 
 class SupportRequest(BaseModel):
@@ -631,7 +633,14 @@ async def admin_login_page():
 
 
 @app.post("/admin/login")
-async def admin_login(password: str = Form(...)):
+async def admin_login(request: Request, password: str = Form(...)):
+    if not _rate_ok(request, "admin_login", 10, 900):
+        return HTMLResponse(
+            _LOGIN_HTML.format(
+                error='<div class="err">Too many attempts. Try again later.</div>', notice=""
+            ),
+            status_code=429,
+        )
     real = getattr(settings, "ADMIN_PASSWORD", None)
     if not real:
         return HTMLResponse(
@@ -700,7 +709,11 @@ async def _list_users() -> list[dict]:
     try:
         from apps.core.memory.redis_client import get_cache
 
-        raw = await get_cache().lrange("aria:users", 0, 500)
+        # remember_user() appends one entry per login (not per unique user),
+        # so "aria:users" keeps growing — read from the tail (most recent),
+        # not the head, or a returning user's repeat logins permanently push
+        # genuinely new signups outside this window once the list exceeds 500.
+        raw = await get_cache().lrange("aria:users", -500, -1)
         seen = set()
         for item in raw or []:
             try:
@@ -807,6 +820,9 @@ async def admin_impersonate(request: Request, email: str = Form(...)):
     target = _safe_name(email).strip().lower()
     if not target or "@" not in target:
         return JSONResponse({"error": "invalid email"}, status_code=400)
+    users = await _list_users()
+    if not any(u["email"] == target for u in users):
+        return JSONResponse({"error": "no such user"}, status_code=404)
     owner = auth.verify_user(request.cookies.get(auth.USER_COOKIE)) or {}
     resp = RedirectResponse("/app", status_code=303)
     # Remember who we really are (signed) so /admin/stop-impersonate can restore.
@@ -1182,8 +1198,11 @@ async def auth_github_cb(request: Request):
 async def user_logout():
     from apps.core import auth
 
-    resp = RedirectResponse("/", status_code=303)
+    # Land on the sign-in page so it's obvious you're signed out and can sign back
+    # in or switch accounts. Clear the session and any OAuth-state cookies.
+    resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(auth.USER_COOKIE)
+    resp.delete_cookie(auth.OAUTH_STATE_COOKIE)
     return resp
 
 
@@ -1469,7 +1488,16 @@ async def billing_checkout(request: Request, tier: str = "pro", agreed: str = ""
 
 @app.get("/billing/success")
 async def billing_success(request: Request, session_id: str = ""):
-    """Verify the completed Checkout session server-side, then mark the user Pro."""
+    """Verify the completed Checkout session server-side, then mark the user Pro.
+
+    A session_id is authorization-bearing (Stripe treats it as a bearer of the
+    checkout result) but it can leak — browser history, a shared screenshot, a
+    support ticket, a Referer header. Without binding the grant to the account
+    that actually paid, anyone who obtains a valid session_id could redeem it
+    from a different logged-in account. We therefore require the requester's
+    email to match the session's paying email, and consume the session_id once
+    so a single payment can't be redeemed repeatedly.
+    """
     from apps.core import auth
 
     user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
@@ -1478,18 +1506,78 @@ async def billing_success(request: Request, session_id: str = ""):
         try:
             import stripe
 
+            from apps.core.memory.redis_client import get_cache
+
             stripe.api_key = key
             s = stripe.checkout.Session.retrieve(session_id)
             paid = s.get("payment_status") == "paid" or s.get("status") == "complete"
-            email = (user.get("email") or "").strip().lower()
+            requester_email = (user.get("email") or "").strip().lower()
+            paying_email = ((s.get("metadata") or {}).get("email") or "").strip().lower()
             tier = (s.get("metadata") or {}).get("tier", "pro")
             if tier not in BILLING_PLANS:
                 tier = "pro"
-            if paid and email:
-                await _set_user_plan(email, tier)
+            if paid and requester_email and requester_email == paying_email:
+                cache = get_cache()
+                consumed_key = f"aria:billing:consumed:{session_id}"
+                if not await cache.get(consumed_key):
+                    await _set_user_plan(requester_email, tier)
+                    await cache.set(consumed_key, "1", ttl_seconds=90 * 24 * 3600)
         except Exception as e:
             logger.error(f"Stripe verify error: {e}")
     return RedirectResponse("/app?billing=success", status_code=303)
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request):
+    """Stripe webhook: keeps plan state in sync with the subscription lifecycle
+    (renewals, cancellations, failed payments) instead of relying solely on the
+    success-redirect, which never fires for later billing-cycle events."""
+    secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", None)
+    if not secret:
+        return JSONResponse({"error": "webhook not configured"}, status_code=503)
+
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    try:
+        import stripe
+
+        event = stripe.Webhook.construct_event(payload, sig, secret)
+    except Exception as e:
+        logger.warning(f"Stripe webhook signature rejected: {e}")
+        return JSONResponse({"error": "invalid signature"}, status_code=400)
+
+    try:
+        etype = event.get("type", "")
+        obj = (event.get("data") or {}).get("object") or {}
+
+        if etype in ("customer.subscription.deleted", "invoice.payment_failed"):
+            email = (
+                ((obj.get("metadata") or {}).get("email") or obj.get("customer_email") or "")
+                .strip()
+                .lower()
+            )
+            if email:
+                await _set_user_plan(email, "free")
+
+        elif etype == "customer.subscription.updated":
+            email = ((obj.get("metadata") or {}).get("email") or "").strip().lower()
+            status = obj.get("status")
+            if email and status in ("canceled", "unpaid", "incomplete_expired"):
+                await _set_user_plan(email, "free")
+
+        elif etype == "checkout.session.completed":
+            meta = obj.get("metadata") or {}
+            email = (meta.get("email") or "").strip().lower()
+            tier = meta.get("tier", "pro")
+            if tier not in BILLING_PLANS:
+                tier = "pro"
+            paid = obj.get("payment_status") == "paid"
+            if email and paid:
+                await _set_user_plan(email, tier)
+    except Exception as e:
+        logger.error(f"Stripe webhook handling error: {e}")
+
+    return JSONResponse({"received": True})
 
 
 @app.post("/api/v1/profile")
@@ -1645,8 +1733,10 @@ async def connector_disconnect(pid: str, request: Request):
 
 @app.post("/api/v1/account/delete")
 async def delete_account(request: Request):
-    """Delete the signed-in user's stored data (profile + plan) and sign out."""
+    """Delete the signed-in user's stored data (profile, plan, connected
+    connector tokens) and sign out."""
     from apps.core import auth
+    from apps.core.connectors import oauth_hub as hub
 
     user = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
     if not user:
@@ -1656,7 +1746,10 @@ async def delete_account(request: Request):
         from apps.core.memory.redis_client import get_cache
 
         cache = get_cache()
-        for key in (f"aria:profile:{email}", _PLAN_KEY.format(email=email)):
+        keys = [f"aria:profile:{email}", _PLAN_KEY.format(email=email)]
+        # Live OAuth credentials must not outlive the account they belong to.
+        keys += [hub._TOKEN_KEY.format(email=email, pid=pid) for pid in hub.PROVIDERS]
+        for key in keys:
             with suppress(Exception):
                 await cache.delete(key)
     except Exception as e:
@@ -1784,7 +1877,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
     if email and plan in ("pro", "business"):
         from apps.core.ops.cost_ledger import get_ledger
 
-        if get_ledger().is_frozen(email):
+        if await get_ledger().is_frozen(email):
             return {
                 "reply": (
                     "You've reached this month's AI usage cap for your plan, so new "
@@ -1828,10 +1921,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
         # Isolate history per signed-in user — never key on the client value alone.
         convo_id = _conversation_id(_current_user(request), req.session_id)
         resp = await get_aria_mind().handle(
-            req.message,
-            convo_id,
-            user_context=user_context or None,
-            is_owner=_is_owner_user(request),
+            req.message, convo_id, user_context=user_context or None, email=email
         )
         elapsed = int((time.time() - start) * 1000)
         media_type = None
@@ -1856,10 +1946,22 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             from apps.core.agent_brain import get_agent
 
             reply = await get_agent().think(req.message)
-            return {"reply": reply, "model_used": "fallback", "processing_time_ms": 0}
+            return {
+                "reply": reply,
+                "model_used": "fallback",
+                "processing_time_ms": 0,
+                "media_type": None,
+                "media_base64": None,
+            }
         except Exception as e2:
             logger.error(f"Chat fallback error: {e2}")
-            return {"reply": f"Error: {e}", "model_used": "none", "processing_time_ms": 0}
+            return {
+                "reply": "Something went wrong on our end. Please try again in a moment.",
+                "model_used": "none",
+                "processing_time_ms": 0,
+                "media_type": None,
+                "media_base64": None,
+            }
 
 
 @app.post("/api/v1/support/chat")
@@ -1924,7 +2026,8 @@ async def generate_code(req: ChatRequest, request: Request):
         elapsed = int((time.time() - start) * 1000)
         return {"reply": reply, "processing_time_ms": elapsed}
     except Exception as e:
-        return {"reply": f"Error: {e}"}
+        logger.error(f"Code generation error: {e}")
+        return {"reply": "Something went wrong generating that. Please try again."}
 
 
 @app.post("/api/v1/research")
@@ -1945,7 +2048,8 @@ async def research(req: ChatRequest, request: Request):
         elapsed = int((time.time() - start) * 1000)
         return {"reply": reply, "processing_time_ms": elapsed}
     except Exception as e:
-        return {"reply": f"Error: {e}"}
+        logger.error(f"Research error: {e}")
+        return {"reply": "Something went wrong researching that. Please try again."}
 
 
 class WorkflowRequest(BaseModel):
@@ -1971,7 +2075,7 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
             {"ok": False, "error": "auth", "synthesis": "Please sign in to use ARIA."},
             status_code=401,
         )
-    # Los flujos abren varios subagentes por llamada → límite deliberadamente bajo.
+    # Workflows open several subagents per call → deliberately low limit.
     if not _rate_ok(request, "workflow", 6, 300):
         return JSONResponse(
             {
@@ -2009,7 +2113,7 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
     if email and plan in ("pro", "business"):
         from apps.core.ops.cost_ledger import get_ledger
 
-        if get_ledger().is_frozen(email):
+        if await get_ledger().is_frozen(email):
             return JSONResponse(
                 {
                     "ok": False,
@@ -2038,7 +2142,9 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
         return payload
     except Exception as e:
         logger.error(f"Workflow error: {e}")
-        return JSONResponse({"ok": False, "error": str(e), "synthesis": ""}, status_code=500)
+        return JSONResponse(
+            {"ok": False, "error": "workflow_failed", "synthesis": ""}, status_code=500
+        )
 
 
 @app.post("/api/v1/workflow/stream")
@@ -2074,7 +2180,7 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
     if email and plan in ("pro", "business"):
         from apps.core.ops.cost_ledger import get_ledger
 
-        if get_ledger().is_frozen(email):
+        if await get_ledger().is_frozen(email):
             return JSONResponse({"ok": False, "error": "burn_cap"}, status_code=402)
 
     async def _sse():
@@ -2097,7 +2203,7 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         except Exception as e:  # noqa: BLE001 — the stream must always close cleanly.
             logger.error(f"Workflow stream error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)[:200]})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': 'workflow_failed'})}\n\n"
         finally:
             with suppress(Exception):
                 await _record_ai_cost(email, plan, req.goal, synthesis)
@@ -2219,9 +2325,18 @@ class ContentOperateRequest(BaseModel):
 
 
 @app.post("/api/v1/content/operate")
-async def content_operate(req: ContentOperateRequest):
+async def content_operate(req: ContentOperateRequest, request: Request):
     """Run one autonomous content cycle: generate copy + image, optionally publish
-    via Zapier MCP, and record a full observability trail. dry_run skips publishing."""
+    via Zapier MCP, and record a full observability trail. dry_run skips publishing.
+
+    Owner-only: this spends real AI generation cost and, unless dry_run=True,
+    publishes to real external channels — it must never be reachable
+    unauthenticated.
+    """
+    if not _is_owner_user(request):
+        return JSONResponse({"success": False, "error": "forbidden"}, status_code=403)
+    if not _rate_ok(request, "content_operate", 10, 300):
+        return JSONResponse({"success": False, "error": "rate_limited"}, status_code=429)
     try:
         from apps.core.tools.content_operator import get_content_operator
 
@@ -2237,12 +2352,14 @@ async def content_operate(req: ContentOperateRequest):
         )
     except Exception as e:
         logger.error(f"Content operate error: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "content_operate_failed"}
 
 
 @app.get("/api/v1/content/runs")
-async def content_runs(limit: int = 20):
-    """Return recent content-operator runs (the observability trail)."""
+async def content_runs(request: Request, limit: int = 20):
+    """Return recent content-operator runs (the observability trail). Owner-only."""
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
     try:
         from apps.core.tools.content_operator import get_content_operator
 
@@ -2250,19 +2367,22 @@ async def content_runs(limit: int = 20):
         return {"count": len(runs), "runs": runs}
     except Exception as e:
         logger.error(f"Content runs error: {e}")
-        return {"error": str(e)}
+        return {"error": "content_runs_failed"}
 
 
 @app.get("/api/v1/content/selftest")
-async def content_selftest():
-    """Check that the Zapier MCP bridge is reachable and list available tools."""
+async def content_selftest(request: Request):
+    """Check that the Zapier MCP bridge is reachable and list available tools.
+    Owner-only: reveals internal infrastructure/integration state."""
+    if not _is_owner_user(request):
+        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     try:
         from apps.core.tools.zapier_mcp import get_zapier_mcp
 
         return await get_zapier_mcp().self_test()
     except Exception as e:
         logger.error(f"Content selftest error: {e}")
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": "selftest_failed"}
 
 
 @app.get("/api/v1/activepieces/selftest")
@@ -2308,34 +2428,62 @@ async def code_execute(req: CodeExecRequest, request: Request):
 # ── WEBSOCKET ─────────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
-    await ws.accept()
-    # Require a valid signed-in session — the socket must not be an anonymous,
-    # shared chat. Derive the conversation key from the user's identity so one
-    # user's history is never visible to another.
+    """WebSocket twin of /api/v1/chat — must carry the same guards (sign-in,
+    per-message rate limit, free-tier quota, panic freeze, burn cap), or it's
+    a free unlimited/unauthenticated bypass of all of them. Require a valid
+    signed-in session — the socket must not be an anonymous, shared chat —
+    and derive the conversation key from the user's identity so one user's
+    history is never visible to another."""
     from apps.core import auth
 
     user = auth.verify_user(ws.cookies.get(auth.USER_COOKIE))
     if not user:
-        with suppress(Exception):
-            await ws.send_json({"error": "auth", "reply": "Please sign in to use ARIA."})
-        await ws.close(code=1008)
+        await ws.close(code=1008)  # policy violation: unauthenticated
         return
+
+    email = (user.get("email") or "").strip().lower()
+    plan = "business" if email in _owner_emails() else await _get_user_plan(email)
+
+    await ws.accept()
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
 
         mind = get_aria_mind()
         while True:
             data = await ws.receive_text()
+
+            if not _rate_ok(ws, "ws_chat", 30, 60):
+                await ws.send_json({"error": "You're sending messages too fast."})
+                continue
+            if _PANIC["on"]:
+                await ws.send_json({"error": "ARIA is temporarily paused by an operator."})
+                continue
+            if plan == "free":
+                allowed, _remaining = await _consume_free_quota(email)
+                if not allowed:
+                    await ws.send_json(
+                        {"error": f"Daily free limit of {FREE_DAILY_LIMIT} messages reached."}
+                    )
+                    continue
+            if plan in ("pro", "business"):
+                from apps.core.ops.cost_ledger import get_ledger
+
+                if await get_ledger().is_frozen(email):
+                    await ws.send_json({"error": "Monthly AI usage cap reached for your plan."})
+                    continue
+
             msg = json.loads(data)
             convo_id = _conversation_id(user, msg.get("session_id"))
-            resp = await mind.handle(msg.get("message", ""), convo_id)
-            await ws.send_json({"reply": resp.text or resp.caption or "", "tool": resp.tool_used})
+            resp = await mind.handle(msg.get("message", ""), convo_id, email=email)
+            reply_text = resp.text or resp.caption or ""
+            await _record_ai_cost(email, plan, msg.get("message", ""), reply_text)
+            await ws.send_json({"reply": reply_text, "tool": resp.tool_used})
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         with suppress(Exception):
-            await ws.send_json({"error": str(e)})
+            await ws.send_json({"error": "Something went wrong. Please try again."})
 
 
 # ── MAIN ──────────────────────────────────────────────────

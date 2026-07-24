@@ -1,5 +1,5 @@
 """
-apps/core/agents — Agentes autónomos de ARIA AI.
+apps/core/agents — Autonomous agents for ARIA AI.
 """
 
 from apps.core.agents.base_agent import BaseAgent

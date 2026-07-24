@@ -35,6 +35,27 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 30
 # OAuth state is short-lived (10 minutes) to bound the CSRF window.
 STATE_MAX_AGE = 600
 
+# The owner is treated as owner automatically when signed in via OAuth with
+# one of these emails (no separate password needed). Extra emails can be
+# added via the OWNER_EMAIL setting. Single source of truth for "is this the
+# owner" — anything gating an owner-only capability (the /admin panel,
+# powerful tools like writing to ARIA's own GitHub repo) must check this,
+# not maintain its own separate copy that can drift out of sync.
+OWNER_EMAILS = {"geremypolancod@gmail.com"}
+
+
+def owner_emails() -> set[str]:
+    emails = {e.lower() for e in OWNER_EMAILS}
+    extra = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
+    if extra:
+        emails.add(extra)
+    return emails
+
+
+def is_owner_email(email: str | None) -> bool:
+    return bool(email) and (email or "").strip().lower() in owner_emails()
+
+
 # Ephemeral per-process signing key used ONLY when no real secret is configured.
 # This replaces the previous hardcoded public constant, which allowed anyone to
 # forge session cookies. An ephemeral key means sessions don't survive a restart
@@ -289,10 +310,17 @@ async def github_exchange(code: str) -> dict | None:
 
 
 async def remember_user(profile: dict) -> None:
-    """Best-effort persistence of the user (email) for later plan/billing work."""
+    """Best-effort persistence of the user (email) for later plan/billing work.
+
+    Called on every login, not just signup — the underlying list is an
+    unbounded append log (repeat logins add duplicate entries), so it's
+    trimmed here to keep it from growing forever.
+    """
     try:
         from apps.core.memory.redis_client import get_cache
 
-        await get_cache().rpush("aria:users", json.dumps(profile, ensure_ascii=False))
+        cache = get_cache()
+        await cache.rpush("aria:users", json.dumps(profile, ensure_ascii=False))
+        await cache.ltrim("aria:users", -5000, -1)
     except Exception:
         pass

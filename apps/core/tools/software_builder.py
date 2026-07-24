@@ -1,6 +1,6 @@
 """
-software_builder.py — Generación de proyectos de software completos y production-ready.
-Genera múltiples archivos estructurados, empaquetados en ZIP.
+software_builder.py — Generation of complete, production-ready software projects.
+Generates multiple structured files, packaged into a ZIP.
 """
 
 from __future__ import annotations

@@ -1,14 +1,14 @@
 """
-pocketflow_engine.py — Motor de Decisiones con PocketFlow para ARIA AI.
+pocketflow_engine.py — Decision Engine with PocketFlow for ARIA AI.
 
-PocketFlow reemplaza y potencia el StateGraph con un grafo de decisiones
-declarativo y composable. Permite:
-  - Flujos de decisión complejos para el Executive AI
-  - Strategy Engine con nodos de análisis → decisión → ejecución
-  - Decision Trees para routing inteligente de tareas
-  - Workflows auditables con historial de estados
+PocketFlow replaces and enhances the StateGraph with a declarative,
+composable decision graph. It enables:
+  - Complex decision flows for the Executive AI
+  - Strategy Engine with analysis → decision → execution nodes
+  - Decision Trees for intelligent task routing
+  - Auditable workflows with state history
 
-Arquitectura:
+Architecture:
     Input → AnalyzeNode → DecideNode → ExecuteNode → OutputNode
                 ↑                                        ↓
                 └──────────── FeedbackNode ──────────────┘
@@ -23,27 +23,27 @@ from typing import Any
 logger = logging.getLogger("aria.pocketflow_engine")
 
 # ── PocketFlow Core Abstraction ──────────────────────────────────────────────
-# PocketFlow es un framework de 100 líneas. Su abstracción central:
-# - BaseNode: unidad de trabajo (prep → exec → post)
-# - Flow: conecta nodos mediante Actions (aristas etiquetadas)
-# - SharedStore: comunicación entre nodos dentro de un flow
+# PocketFlow is a 100-line framework. Its core abstraction:
+# - BaseNode: unit of work (prep → exec → post)
+# - Flow: connects nodes via Actions (labeled edges)
+# - SharedStore: communication between nodes within a flow
 
 try:
     from pocketflow import AsyncFlow, AsyncNode, Flow, Node
 
     POCKETFLOW_AVAILABLE = True
-    logger.info("[PocketFlow] Librería cargada correctamente.")
+    logger.info("[PocketFlow] Library loaded successfully.")
 except ImportError:
     POCKETFLOW_AVAILABLE = False
     logger.warning(
-        "[PocketFlow] pocketflow no instalado. "
-        "Usando implementación fallback basada en StateGraph. "
-        "Instala con: pip install pocketflow"
+        "[PocketFlow] pocketflow not installed. "
+        "Using fallback implementation based on StateGraph. "
+        "Install with: pip install pocketflow"
     )
 
-    # ── Fallback mínimo para mantener compatibilidad ──────────────────────────
+    # ── Minimal fallback to maintain compatibility ─────────────────────────
     class Node:  # type: ignore[no-redef]
-        """Nodo base de PocketFlow (fallback)."""
+        """Base PocketFlow node (fallback)."""
 
         def prep(self, shared: dict) -> Any:
             return None
@@ -61,7 +61,7 @@ except ImportError:
             return action or "default"
 
     class AsyncNode(Node):  # type: ignore[no-redef]
-        """Nodo asíncrono de PocketFlow (fallback)."""
+        """Asynchronous PocketFlow node (fallback)."""
 
         async def prep_async(self, shared: dict) -> Any:
             return self.prep(shared)
@@ -79,7 +79,7 @@ except ImportError:
             return action or "default"
 
     class Flow:  # type: ignore[no-redef]
-        """Flow de PocketFlow (fallback)."""
+        """PocketFlow flow (fallback)."""
 
         def __init__(self, start: Node):
             self.start = start
@@ -100,7 +100,7 @@ except ImportError:
             return shared
 
     class AsyncFlow(Flow):  # type: ignore[no-redef]
-        """AsyncFlow de PocketFlow (fallback)."""
+        """PocketFlow AsyncFlow (fallback)."""
 
         async def run_async(self, shared: dict) -> dict:
             current = self.start
@@ -116,13 +116,13 @@ except ImportError:
             return shared
 
 
-# ── Nodos de Decisión para ARIA AI ──────────────────────────────────────────
+# ── Decision Nodes for ARIA AI ───────────────────────────────────────────────
 
 
 class AnalyzeContextNode(AsyncNode):
     """
-    Nodo 1: Analiza el contexto de la misión entrante.
-    Determina tipo de tarea, urgencia y agente óptimo.
+    Node 1: Analyzes the context of the incoming mission.
+    Determines task type, urgency, and optimal agent.
     """
 
     async def prep_async(self, shared: dict) -> dict:
@@ -134,7 +134,8 @@ class AnalyzeContextNode(AsyncNode):
 
     async def exec_async(self, prep_res: dict) -> dict:
         mission = prep_res["mission"].lower()
-        # Clasificación de misión por palabras clave
+        # Mission classification by keyword (bilingual list — matches user input in
+        # either English or Spanish; do not translate the literal keywords below)
         task_type = "general"
         if any(kw in mission for kw in ["revenue", "ventas", "monetizar", "income"]):
             task_type = "revenue"
@@ -160,15 +161,15 @@ class AnalyzeContextNode(AsyncNode):
     async def post_async(self, shared: dict, prep_res: dict, exec_res: dict) -> str:
         shared["analysis"] = exec_res
         logger.info(
-            "[PocketFlow] Análisis: tipo=%s urgencia=%s", exec_res["task_type"], exec_res["urgency"]
+            "[PocketFlow] Analysis: type=%s urgency=%s", exec_res["task_type"], exec_res["urgency"]
         )
-        return exec_res["task_type"]  # Action = tipo de tarea para routing
+        return exec_res["task_type"]  # Action = task type for routing
 
 
 class StrategyDecisionNode(AsyncNode):
     """
-    Nodo 2: Toma decisiones estratégicas de alto nivel.
-    Determina el plan de acción óptimo para misiones de estrategia.
+    Node 2: Makes high-level strategic decisions.
+    Determines the optimal action plan for strategy missions.
     """
 
     async def prep_async(self, shared: dict) -> dict:
@@ -179,7 +180,7 @@ class StrategyDecisionNode(AsyncNode):
             "decision": "execute_strategy",
             "agent": "orchestrator",
             "priority": 1,
-            "plan": f"Ejecutar estrategia para: {prep_res.get('mission', '')}",
+            "plan": f"Execute strategy for: {prep_res.get('mission', '')}",
         }
 
     async def post_async(self, shared: dict, prep_res: dict, exec_res: dict) -> str:
@@ -189,8 +190,8 @@ class StrategyDecisionNode(AsyncNode):
 
 class RevenueDecisionNode(AsyncNode):
     """
-    Nodo 2b: Decisiones de revenue y monetización.
-    Selecciona el canal de ingresos más prometedor.
+    Node 2b: Revenue and monetization decisions.
+    Selects the most promising revenue channel.
     """
 
     async def prep_async(self, shared: dict) -> dict:
@@ -211,8 +212,8 @@ class RevenueDecisionNode(AsyncNode):
 
 class CodingDecisionNode(AsyncNode):
     """
-    Nodo 2c: Decisiones de desarrollo autónomo.
-    Determina si usar Aider, SWE-agent o dev_agent nativo.
+    Node 2c: Autonomous development decisions.
+    Determines whether to use Aider, SWE-agent, or the native dev_agent.
     """
 
     async def prep_async(self, shared: dict) -> dict:
@@ -233,8 +234,8 @@ class CodingDecisionNode(AsyncNode):
 
 class ResearchDecisionNode(AsyncNode):
     """
-    Nodo 2d: Decisiones de investigación de mercado.
-    Selecciona entre Crawl4AI, Firecrawl o web_tools.
+    Node 2d: Market research decisions.
+    Selects between Crawl4AI, Firecrawl, or web_tools.
     """
 
     async def prep_async(self, shared: dict) -> dict:
@@ -254,7 +255,7 @@ class ResearchDecisionNode(AsyncNode):
 
 
 class GeneralDecisionNode(AsyncNode):
-    """Nodo de decisión general para tareas no clasificadas."""
+    """General decision node for unclassified tasks."""
 
     async def prep_async(self, shared: dict) -> dict:
         return shared.get("analysis", {})
@@ -273,8 +274,8 @@ class GeneralDecisionNode(AsyncNode):
 
 class ExecuteNode(AsyncNode):
     """
-    Nodo 3: Ejecuta la decisión tomada.
-    Delega al agente apropiado de Aria.
+    Node 3: Executes the decision made.
+    Delegates to the appropriate ARIA agent.
     """
 
     async def prep_async(self, shared: dict) -> dict:
@@ -287,12 +288,12 @@ class ExecuteNode(AsyncNode):
     async def exec_async(self, prep_res: dict) -> dict:
         decision = prep_res["decision"]
         agent_name = decision.get("agent", "orchestrator")
-        logger.info("[PocketFlow] Ejecutando con agente: %s", agent_name)
+        logger.info("[PocketFlow] Executing with agent: %s", agent_name)
         return {
             "executed": True,
             "agent": agent_name,
             "mission": prep_res["mission"],
-            "result": f"Delegado a {agent_name}",
+            "result": f"Delegated to {agent_name}",
         }
 
     async def post_async(self, shared: dict, prep_res: dict, exec_res: dict) -> str:
@@ -302,8 +303,8 @@ class ExecuteNode(AsyncNode):
 
 class AuditNode(AsyncNode):
     """
-    Nodo 4: Audita el resultado de la ejecución.
-    Integra con el ExecutionPipeline existente de Aria.
+    Node 4: Audits the execution result.
+    Integrates with ARIA's existing ExecutionPipeline.
     """
 
     async def prep_async(self, shared: dict) -> dict:
@@ -319,7 +320,7 @@ class AuditNode(AsyncNode):
             "quality_score": quality_score,
             "passed": quality_score >= 75,
             "notes": (
-                "Ejecución completada correctamente" if quality_score >= 75 else "Requiere revisión"
+                "Execution completed successfully" if quality_score >= 75 else "Requires review"
             ),
         }
 
@@ -331,7 +332,7 @@ class AuditNode(AsyncNode):
 
 
 class CompleteNode(AsyncNode):
-    """Nodo final: consolida el resultado del flow."""
+    """Final node: consolidates the flow's result."""
 
     async def prep_async(self, shared: dict) -> dict:
         return shared
@@ -350,14 +351,14 @@ class CompleteNode(AsyncNode):
         return "done"
 
 
-# ── Factory del Flow de Decisión de ARIA ────────────────────────────────────
+# ── ARIA Decision Flow Factory ───────────────────────────────────────────────
 
 
 def build_aria_decision_flow() -> AsyncFlow:
     """
-    Construye el flow de decisión principal de ARIA AI usando PocketFlow.
+    Builds ARIA AI's main decision flow using PocketFlow.
 
-    Topología:
+    Topology:
         AnalyzeContext
             ├─ strategy  → StrategyDecision → Execute → Audit → Complete
             ├─ revenue   → RevenueDecision  → Execute → Audit → Complete
@@ -365,7 +366,7 @@ def build_aria_decision_flow() -> AsyncFlow:
             ├─ research  → ResearchDecision → Execute → Audit → Complete
             └─ general   → GeneralDecision  → Execute → Audit → Complete
     """
-    # Instanciar nodos
+    # Instantiate nodes
     analyze = AnalyzeContextNode()
     strategy_decide = StrategyDecisionNode()
     revenue_decide = RevenueDecisionNode()
@@ -376,10 +377,10 @@ def build_aria_decision_flow() -> AsyncFlow:
     audit = AuditNode()
     complete = CompleteNode()
 
-    # Construir flow con routing por tipo de tarea
+    # Build flow with routing by task type
     flow = AsyncFlow(start=analyze)
 
-    # Routing desde AnalyzeContext
+    # Routing from AnalyzeContext
     flow.add_edge(analyze, "strategy", strategy_decide)
     flow.add_edge(analyze, "revenue", revenue_decide)
     flow.add_edge(analyze, "coding", coding_decide)
@@ -387,7 +388,7 @@ def build_aria_decision_flow() -> AsyncFlow:
     flow.add_edge(analyze, "marketing", general_decide)
     flow.add_edge(analyze, "general", general_decide)
 
-    # Todos los nodos de decisión van a Execute
+    # All decision nodes go to Execute
     for decide_node in [
         strategy_decide,
         revenue_decide,
@@ -405,18 +406,18 @@ def build_aria_decision_flow() -> AsyncFlow:
     return flow
 
 
-# ── Interfaz pública ─────────────────────────────────────────────────────────
+# ── Public Interface ─────────────────────────────────────────────────────────
 
 
 class AriaDecisionEngine:
     """
-    Motor de decisiones de ARIA AI basado en PocketFlow.
-    Reemplaza y potencia el StateGraph existente con flujos declarativos.
+    ARIA AI's decision engine based on PocketFlow.
+    Replaces and enhances the existing StateGraph with declarative flows.
 
-    Uso:
+    Usage:
         engine = AriaDecisionEngine()
         result = await engine.decide(
-            mission="Analizar competidores del nicho fitness",
+            mission="Analyze competitors in the fitness niche",
             context={"niche": "fitness", "budget": 100}
         )
     """
@@ -424,20 +425,20 @@ class AriaDecisionEngine:
     def __init__(self) -> None:
         self._flow = build_aria_decision_flow()
         logger.info(
-            "[AriaDecisionEngine] Inicializado con PocketFlow (disponible=%s)",
+            "[AriaDecisionEngine] Initialized with PocketFlow (available=%s)",
             POCKETFLOW_AVAILABLE,
         )
 
     async def decide(self, mission: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """
-        Ejecuta el flow de decisión completo para una misión dada.
+        Runs the complete decision flow for a given mission.
 
         Args:
-            mission: Descripción de la tarea o misión a ejecutar.
-            context: Contexto adicional (niche, budget, agente preferido, etc.)
+            mission: Description of the task or mission to execute.
+            context: Additional context (niche, budget, preferred agent, etc.)
 
         Returns:
-            dict con analysis, decision, execution y audit del flow.
+            dict with analysis, decision, execution, and audit from the flow.
         """
         shared: dict[str, Any] = {
             "mission": mission,
@@ -448,7 +449,7 @@ class AriaDecisionEngine:
             result = await self._flow.run_async(shared)
             return result.get("result", result)
         except Exception as exc:
-            logger.error("[AriaDecisionEngine] Error en flow: %s", exc)
+            logger.error("[AriaDecisionEngine] Flow error: %s", exc)
             return {
                 "success": False,
                 "error": str(exc),
@@ -457,13 +458,13 @@ class AriaDecisionEngine:
 
     async def batch_decide(self, missions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
-        Ejecuta múltiples decisiones en paralelo (BatchFlow de PocketFlow).
+        Runs multiple decisions in parallel (PocketFlow BatchFlow).
 
         Args:
-            missions: Lista de dicts con 'mission' y opcionalmente 'context'.
+            missions: List of dicts with 'mission' and optionally 'context'.
 
         Returns:
-            Lista de resultados de cada decisión.
+            List of results for each decision.
         """
         tasks = [self.decide(m.get("mission", ""), m.get("context")) for m in missions]
         return await asyncio.gather(*tasks, return_exceptions=False)
@@ -474,7 +475,7 @@ _engine_instance: AriaDecisionEngine | None = None
 
 
 def get_decision_engine() -> AriaDecisionEngine:
-    """Retorna el singleton del motor de decisiones de ARIA."""
+    """Returns the singleton of ARIA's decision engine."""
     global _engine_instance
     if _engine_instance is None:
         _engine_instance = AriaDecisionEngine()

@@ -20,7 +20,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
 
 logger = logging.getLogger("aria.task_manager")
 
@@ -72,13 +72,13 @@ class TaskManager:
 
     Usage:
         mgr = get_task_manager()
-        task_id = await mgr.submit("Research AI trends", coro, session_id="telegram:123")
+        task_id = await mgr.submit("Research AI trends", make_coro, session_id="telegram:123")
         status = mgr.get_task(task_id)
     """
 
     def __init__(self) -> None:
         self._tasks: dict[str, TaskRecord] = {}
-        self._queue: asyncio.Queue = asyncio.Queue()
+        self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         self._workers: list[asyncio.Task] = []
         self._started = False
 
@@ -94,12 +94,18 @@ class TaskManager:
     async def submit(
         self,
         name: str,
-        coro: Coroutine,
+        coro_factory: Callable[[], Coroutine],
         description: str = "",
         session_id: str | None = None,
         priority: int = 5,
     ) -> str:
-        """Submit a coroutine as a background task. Returns task_id."""
+        """Submit a task as a zero-arg coroutine factory. Returns task_id.
+
+        Takes a factory (not a bare coroutine) because a coroutine object can
+        only be awaited once — retrying a failed task requires creating a
+        fresh coroutine per attempt, not re-awaiting the same exhausted one
+        (which raises "cannot reuse already awaited coroutine" instead of
+        the real error)."""
         if not self._started:
             self.start()
 
@@ -113,11 +119,11 @@ class TaskManager:
         )
         self._tasks[task_id] = record
 
-        # (priority, timestamp, id, coro) — lower priority number = runs first
-        await self._queue.put((priority, time.monotonic(), task_id, coro))
+        # (priority, timestamp, id, coro_factory) — lower priority number = runs first
+        await self._queue.put((priority, time.monotonic(), task_id, coro_factory))
         logger.info("[TaskManager] Queued task %s: %s", task_id, name)
 
-        await self._notify_progress(record, "queued", f"Tarea '{name}' en cola (ID: {task_id})")
+        await self._notify_progress(record, "queued", f"Task '{name}' queued (ID: {task_id})")
         return task_id
 
     def get_task(self, task_id: str) -> TaskRecord | None:
@@ -148,7 +154,7 @@ class TaskManager:
     async def _worker(self) -> None:
         while True:
             try:
-                priority, ts, task_id, coro = await self._queue.get()
+                priority, ts, task_id, coro_factory = await self._queue.get()
                 record = self._tasks.get(task_id)
 
                 if not record or record.status == TaskStatus.CANCELLED:
@@ -157,12 +163,12 @@ class TaskManager:
 
                 record.status = TaskStatus.RUNNING
                 record.started_at = datetime.now(UTC).isoformat()
-                await self._notify_progress(record, "running", f"▶️ Ejecutando: {record.name}")
+                await self._notify_progress(record, "running", f"▶️ Running: {record.name}")
 
                 try:
-                    result = await coro
+                    result = await coro_factory()
                     record.status = TaskStatus.DONE
-                    record.result = str(result)[:2000] if result else "Completado"
+                    record.result = str(result)[:2000] if result else "Completed"
                     record.completed_at = datetime.now(UTC).isoformat()
                     await self._notify_completion(record)
 
@@ -177,7 +183,7 @@ class TaskManager:
                         )
                         record.status = TaskStatus.QUEUED
                         await asyncio.sleep(2**record.retries)
-                        await self._queue.put((priority, time.monotonic(), task_id, coro))
+                        await self._queue.put((priority, time.monotonic(), task_id, coro_factory))
                     else:
                         record.status = TaskStatus.FAILED
                         record.error = str(exc)
@@ -202,11 +208,11 @@ class TaskManager:
             pass
 
     async def _notify_completion(self, record: TaskRecord) -> None:
-        msg = f"✅ **{record.name}** completada\n{record.result or ''}"
+        msg = f"✅ **{record.name}** completed\n{record.result or ''}"
         await self._deliver(record, msg)
 
     async def _notify_failure(self, record: TaskRecord) -> None:
-        msg = f"❌ **{record.name}** falló: {record.error}"
+        msg = f"❌ **{record.name}** failed: {record.error}"
         await self._deliver(record, msg)
 
     async def _deliver(self, record: TaskRecord, message: str) -> None:
