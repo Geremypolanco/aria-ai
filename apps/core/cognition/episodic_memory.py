@@ -24,7 +24,6 @@ here that's actually cross-process.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from datetime import UTC, datetime
