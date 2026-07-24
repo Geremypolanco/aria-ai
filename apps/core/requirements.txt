@@ -1,5 +1,5 @@
 # ── Framework principal ──────────────────────────────────
-fastapi==0.115.0
+fastapi==0.135.0  # security: 0.115.0 pinned starlette 0.38.6, which had several CVEs; 0.135.0 pulls in a patched starlette
 uvicorn[standard]==0.30.6
 
 # ── Configuración ─────────────────────────────────────────

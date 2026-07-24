@@ -49,7 +49,7 @@ Follow-ups:
 | CORS restricted to an explicit origin allowlist (not `*` — `allow_credentials=True` forbids that anyway) | In place | `main.py` CORS middleware |
 | Rate limiting: shared distributed counter (Upstash) with in-process fallback, applied to every costed/abusable endpoint | In place | `main.py` `_rate_ok` |
 | Centralized audit logging of security events | In progress | `execution_audit`, expand coverage |
-| Dependency/vulnerability scanning in CI | In progress | CI "Security Audit" job; bandit + pip-audit run but are advisory-only (`continue-on-error`), not a merge gate |
+| Dependency/vulnerability scanning in CI | In progress | CI "Security Audit" job: `pip-audit` is now a blocking merge gate (with a documented, minimal ignore list — see `ci.yml`); `bandit` is still advisory-only pending triage |
 | Raw shell execution tools (`InfraTools.execute_system_command`, `CodeExecutor.execute_shell_command`) disabled by default, opt-in via `ALLOW_SYSTEM_COMMANDS` | In place | `infra_tools.py`, `code_executor.py` |
 | Documented access control & least privilege | Roadmap | — |
 
