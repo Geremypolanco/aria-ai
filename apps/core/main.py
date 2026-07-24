@@ -410,7 +410,10 @@ async def api_team():
     """ARIA's team of AI professionals — a roster you can put to work."""
     from apps.core import team
 
-    return {"team": team.public_team()}
+    return {
+        "team": team.public_team(),
+        "departments": team.public_team_grouped(),
+    }
 
 
 @app.get("/api/v1/team/{member_id}")
