@@ -197,6 +197,13 @@ Respond ONLY with valid JSON. No markdown. No extra text. The schema is exactly:
   "goal_action": null or {{"action": "add", "text": "...", "priority": 3}} or {{"action": "update", "index": 0, "progress": "..."}}
 }}"""
 
+# Append ARIA's operating boundaries (single source of truth in governance.py) so
+# the limits shape behaviour on every call. The text contains no ``{}`` so it is
+# safe to carry through str.format().
+from apps.core.governance import OPERATING_BOUNDARIES_PROMPT as _OPERATING_BOUNDARIES  # noqa: E402
+
+SYSTEM_TEMPLATE = SYSTEM_TEMPLATE + "\n\n" + _OPERATING_BOUNDARIES
+
 SYNTHESIS_SYSTEM = """\
 You are ARIA. You just used a tool and now you're telling the user what you found or did, IN THE SAME LANGUAGE they wrote to you in (English if they wrote in English, Spanish if they wrote in Spanish).
 
