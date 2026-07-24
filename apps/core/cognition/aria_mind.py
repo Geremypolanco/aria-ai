@@ -172,6 +172,13 @@ AVAILABLE TOOLS (you execute them, not the user):
 - predict_customer_churn → churn risk + reasons + prevention actions for a user already analyzed via analyze_user_behavior. Args: {{"user_id": "..."}}
 - generate_audience_personas → creates detailed buyer personas (pain, desire, buying triggers, objections, platforms) for a niche. Args: {{"niche": "...", "count": 3}}
 - match_content_to_persona → scores how well a piece of content resonates with a specific persona from generate_audience_personas, with suggested tweaks. Args: {{"content": "...", "persona_id": "..."}}
+- create_ad_audience → defines a paid-ads targeting audience (interest/demo criteria) with an estimated CPM for the platform. Args: {{"name": "...", "criteria": {{"age_range": "25-34", "estimated_size": 50000}}, "platforms": ["meta"|"google"|"tiktok"]}}
+- estimate_ad_cac  → quick CAC/CPC/break-even math for a given CPM, product price, and expected conversion rate — sanity-check profitability before spending anything. Args: {{"estimated_cpm": 10.0, "product_price": 49.0, "expected_cvr": 0.02, "platform": "meta|google|tiktok"}}
+- suggest_ad_targeting → generates Facebook/Instagram interest-targeting keywords for a product+niche, plus standard exclusion audiences (recent purchasers, employees, etc.). Args: {{"product": "...", "niche": "..."}}
+- create_retargeting_campaign → builds a retargeting audience + a ready-to-review ad (headline, copy, budget) in one step. Args: {{"product_name": "...", "audience_type": "cart_abandoners|product_viewers|purchasers|email_subscribers|lookalike", "user_ids": ["..."], "budget_daily_usd": 20.0, "platform": "meta|google|tiktok"}}
+- cart_abandonment_sequence → a 3-touch retargeting ad sequence (immediate/24h/72h, escalating urgency+discount) for a specific abandoned cart. Args: {{"cart_items": [{{"name": "..."}}], "user_id": "..."}}
+- record_retargeting_metrics → logs real performance (impressions/clicks/conversions/spend/revenue) against a retargeting campaign created via create_retargeting_campaign. Args: {{"campaign_id": "...", "impressions": 0, "clicks": 0, "conversions": 0, "spend": 0.0, "revenue": 0.0}}
+- retargeting_performance → aggregate spend/revenue/ROAS/CAC across all retargeting campaigns, plus the top performers by ROAS. Args: {{"limit": 5}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -199,22 +206,23 @@ REASONING RULES:
 12. When writing or reviewing sales/marketing copy, landing pages, ads, or CTAs → use recommend_persuasion_tactics before drafting, and score_copy_persuasion or optimize_cta to strengthen a draft. Never fabricate specific numbers (e.g. "10,000+ customers") in generated copy — those examples are templates, not real claims to reuse verbatim.
 13. For revenue projections over time, or to see the effect of fixing one specific growth lever before committing to it → use forecast_revenue or simulate_growth_lever. When the user asks "what's holding growth back" → find_growth_bottleneck, then growth_removal_plan for the concrete steps.
 14. When the user gives you real customer/user behavior data (page views, cart adds, purchases, refunds, etc.) → use analyze_user_behavior to get intent/churn/LTV signals and a next-best-action, not a generic guess. For persona-level audience work (who to target and how) → generate_audience_personas, then match_content_to_persona before finalizing copy meant for a specific persona.
-15. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-16. For recurring automations → use create_workflow + run_workflow.
-17. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-18. If you're unsure what the user wants → interpret the most useful intent and execute it.
-19. Never make up data, prices, statistics, or facts. Search if you don't know.
-20. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-21. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-22. If the user asks to search for repos or projects on GitHub → use github_search.
-23. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-24. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-25. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-26. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-27. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-28. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-29. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
-30. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
+15. Before recommending real ad spend → create_ad_audience + estimate_ad_cac to check the math is profitable (CAC well under product price) before proposing a campaign. For retargeting specifically, use create_retargeting_campaign (or cart_abandonment_sequence for cart abandoners), log real results with record_retargeting_metrics as they come in, and check retargeting_performance before recommending scaling a campaign up.
+16. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+17. For recurring automations → use create_workflow + run_workflow.
+18. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+19. If you're unsure what the user wants → interpret the most useful intent and execute it.
+20. Never make up data, prices, statistics, or facts. Search if you don't know.
+21. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+22. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+23. If the user asks to search for repos or projects on GitHub → use github_search.
+24. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+25. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+26. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+27. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+28. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+29. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+30. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+31. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -311,6 +319,14 @@ _HELP_TEXT = """\
 - `will this user churn?` — risk + prevention steps
 - `generate personas for [niche]` — detailed buyer personas
 - `does this match my [persona]?` — content-to-persona fit score
+
+**Paid ads & retargeting**
+- `create an ad audience for [product]` — targeting criteria + estimated CPM
+- `is this ad spend profitable?` — CAC/CPC/break-even sanity check before you spend
+- `suggest ad targeting for [product] in [niche]` — interest keywords + exclusions
+- `set up a retargeting campaign for [cart abandoners/product viewers/...]` — audience + ready-to-review ad
+- `cart abandonment sequence for [user]` — 3-touch escalating ad sequence
+- `how are my retargeting campaigns doing?` — spend, ROAS, CAC, top performers
 
 **Management**
 - `/goals` — list active goals
@@ -2070,6 +2086,149 @@ class AriaMind:
                         + "\n".join(f"  • {t}" for t in result["suggested_tweaks"])
                     )
                 return "\n".join(lines), {}
+
+            # ── PAID ADS: AUDIENCES & CAC ─────────────────────────────────────
+            elif tool == "create_ad_audience":
+                name = args.get("name", "")
+                criteria = args.get("criteria", {}) or {}
+                platforms = args.get("platforms") or ["meta"]
+                if not name:
+                    return "I need a name for this ad audience.", {}
+                from apps.ads.audiences.audience_segmenter import get_audience_segmenter
+
+                segment = await get_audience_segmenter().create_segment(name, criteria, platforms)
+                return (
+                    f"**Audience '{segment.name}'** (id: `{segment.segment_id}`)\n"
+                    f"Platforms: {', '.join(segment.platforms)} · "
+                    f"Estimated CPM: ${segment.estimated_cpm:.2f} · "
+                    f"Est. size: {segment.user_count:,}"
+                ), {}
+
+            elif tool == "estimate_ad_cac":
+                estimated_cpm = float(args.get("estimated_cpm", 10.0))
+                product_price = float(args.get("product_price", 0))
+                expected_cvr = float(args.get("expected_cvr", 0.02))
+                platform = args.get("platform", "meta")
+                if product_price <= 0:
+                    return "I need the product price to estimate CAC against.", {}
+                from apps.ads.audiences.audience_segmenter import (
+                    AudienceSegment,
+                    get_audience_segmenter,
+                )
+
+                segment = AudienceSegment(estimated_cpm=estimated_cpm, platforms=[platform])
+                result = get_audience_segmenter().cac_estimate(
+                    segment, product_price, expected_cvr
+                )
+                verdict = "profitable" if result["profitable"] else "NOT profitable"
+                return (
+                    f"**CAC estimate ({platform}): {verdict}**\n"
+                    f"CPM ${result['cpm']:.2f} → CPC ${result['cpc']:.2f} → CAC ${result['cac']:.2f}\n"
+                    f"Break-even price: ${result['break_even_price']:.2f} (product price: ${product_price:.2f})"
+                ), {}
+
+            elif tool == "suggest_ad_targeting":
+                product = args.get("product", "")
+                niche = args.get("niche", "")
+                if not product or not niche:
+                    return "I need both a product and a niche to suggest ad targeting.", {}
+                from apps.ads.audiences.audience_segmenter import get_audience_segmenter
+
+                segmenter = get_audience_segmenter()
+                interests = await segmenter.generate_interest_targeting(product, niche)
+                exclusions = segmenter.generate_exclusion_audiences()
+                lines = [
+                    "**Interest targeting:**\n" + "\n".join(f"  • {i}" for i in interests),
+                    "**Exclusion audiences:**\n" + "\n".join(f"  • {e}" for e in exclusions),
+                ]
+                return "\n\n".join(lines), {}
+
+            # ── RETARGETING ──────────────────────────────────────────────────
+            elif tool == "create_retargeting_campaign":
+                product_name = args.get("product_name", "")
+                audience_type = args.get("audience_type", "product_viewers")
+                user_ids = args.get("user_ids", []) or []
+                budget_daily_usd = float(args.get("budget_daily_usd", 20.0))
+                platform = args.get("platform", "meta")
+                if not product_name:
+                    return "I need a product name to build a retargeting campaign around.", {}
+                from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+
+                engine = get_retargeting_engine()
+                audience = await engine.create_audience(
+                    f"{audience_type.replace('_', ' ').title()} — {product_name}",
+                    audience_type,
+                    user_ids,
+                    [platform],
+                )
+                campaign = await engine.create_campaign(
+                    audience, product_name, budget_daily_usd, platform
+                )
+                return (
+                    f"**Retargeting campaign '{campaign.name}'** (id: `{campaign.campaign_id}`)\n"
+                    f"Audience: {audience.size} users, est. ROAS {audience.estimated_roas:.1f}x\n"
+                    f"Headline: {campaign.headline}\n"
+                    f"Copy: {campaign.ad_copy}\n"
+                    f"Budget: ${budget_daily_usd:.0f}/day on {platform} · status: {campaign.status}"
+                ), {}
+
+            elif tool == "cart_abandonment_sequence":
+                cart_items = args.get("cart_items", []) or []
+                user_id = args.get("user_id", "")
+                if not cart_items or not user_id:
+                    return "I need the cart items and a user_id to build this sequence.", {}
+                from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+
+                sequence = await get_retargeting_engine().cart_abandonment_sequence(
+                    cart_items, user_id
+                )
+                lines = [f"**Cart abandonment sequence for {user_id}:**"]
+                for step in sequence:
+                    lines.append(
+                        f"  {step['sequence']}. +{step['delay_hours']}h — {step['headline']}\n"
+                        f"     {step['ad_copy']}"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "record_retargeting_metrics":
+                campaign_id = args.get("campaign_id", "")
+                if not campaign_id:
+                    return "I need the campaign_id to record metrics against.", {}
+                from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+
+                ok = await get_retargeting_engine().record_metrics(
+                    campaign_id,
+                    impressions=int(args.get("impressions", 0)),
+                    clicks=int(args.get("clicks", 0)),
+                    conversions=int(args.get("conversions", 0)),
+                    spend=float(args.get("spend", 0.0)),
+                    revenue=float(args.get("revenue", 0.0)),
+                )
+                if not ok:
+                    return f"No retargeting campaign found with id `{campaign_id}`.", {}
+                return f"Metrics recorded for campaign `{campaign_id}`.", {}
+
+            elif tool == "retargeting_performance":
+                limit = int(args.get("limit", 5))
+                from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+
+                engine = get_retargeting_engine()
+                await engine._load()
+                analytics = engine.campaign_analytics()
+                top = engine.top_performing_campaigns(limit)
+                if analytics["total_campaigns"] == 0:
+                    return "No retargeting campaigns yet. Use create_retargeting_campaign first.", {}
+                lines = [
+                    f"**Retargeting performance** ({analytics['active_campaigns']}/{analytics['total_campaigns']} active)\n"
+                    f"Spend ${analytics['total_spend']:,.0f} → Revenue ${analytics['total_revenue']:,.0f} "
+                    f"(ROAS {analytics['avg_roas']:.2f}x) · CAC ${analytics['total_cac']:.2f}",
+                    "Top performers:\n"
+                    + "\n".join(
+                        f"  • {c.get('name', c.get('campaign_id'))} — ROAS {c.get('roas', 0):.2f}x"
+                        for c in top
+                    ),
+                ]
+                return "\n\n".join(lines), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
             elif tool == "run_crew":
