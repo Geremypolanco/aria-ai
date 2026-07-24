@@ -31,7 +31,9 @@ NO_PROVIDER_REPLY = (
     "ARIA isn't fully set up yet — no AI provider is configured for this deployment. "
     "Please try again shortly."
 )
-ALL_PROVIDERS_FAILED_REPLY = "ARIA couldn't reach any AI provider right now. Please try again in a moment."
+ALL_PROVIDERS_FAILED_REPLY = (
+    "ARIA couldn't reach any AI provider right now. Please try again in a moment."
+)
 INTERNAL_ERROR_REPLY = (
     "ARIA hit an internal error processing that. Please try again — "
     "if it keeps happening, contact support."

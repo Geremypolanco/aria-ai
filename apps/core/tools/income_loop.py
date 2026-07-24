@@ -2149,9 +2149,7 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                                 },
                             )
                             if _put_nr.status_code in (200, 201):
-                                _nr_hf_url = (
-                                    f"https://huggingface.co/spaces/{_hf_un_nr}/{_nr_rn}"
-                                )
+                                _nr_hf_url = f"https://huggingface.co/spaces/{_hf_un_nr}/{_nr_rn}"
                                 return {
                                     "success": True,
                                     "summary": f"Niche '{target}': service page published on HuggingFace Spaces",
@@ -2544,9 +2542,7 @@ Output JSON:
                                 },
                             )
                             if _put_pf.status_code in (200, 201):
-                                _pf_hf_url = (
-                                    f"https://huggingface.co/spaces/{_hf_un_pf}/{_pf_rn}"
-                                )
+                                _pf_hf_url = f"https://huggingface.co/spaces/{_hf_un_pf}/{_pf_rn}"
                                 return {
                                     "success": True,
                                     "summary": f"Product '{_pf_name[:50]}' at ${_pf_price:.2f} published on HuggingFace Spaces",
@@ -22279,8 +22275,8 @@ JSON:
                                     "line_items[0][quantity]": "1",
                                 }
                                 if trial_days > 0:
-                                    annual_link_data["subscription_data[trial_period_days]"] = (
-                                        str(trial_days)
+                                    annual_link_data["subscription_data[trial_period_days]"] = str(
+                                        trial_days
                                     )
                                 annual_link_r = await _client.post(
                                     "https://api.stripe.com/v1/payment_links",

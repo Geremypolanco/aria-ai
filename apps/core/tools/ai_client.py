@@ -431,7 +431,11 @@ class AriaAIClient:
                         break  # Try next model
 
                     logger.warning(
-                        "[%s] HF failed %s@%s: %s", agent_name, short_name, hf_provider, err_str[:60]
+                        "[%s] HF failed %s@%s: %s",
+                        agent_name,
+                        short_name,
+                        hf_provider,
+                        err_str[:60],
                     )
                     continue  # Try next provider/model
 
@@ -751,9 +755,7 @@ class AriaAIClient:
                 pass
 
         # Fallback to HF Vision if Gemini fails
-        res = await self.complete(
-            system="Analyze this image.", user=question, model=AIModel.VISION
-        )
+        res = await self.complete(system="Analyze this image.", user=question, model=AIModel.VISION)
         return res.content
 
 

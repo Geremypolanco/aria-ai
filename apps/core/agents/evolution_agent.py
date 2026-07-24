@@ -122,9 +122,7 @@ class EvolutionAgent(BaseAgent):
             results["hf_discoveries"] = hf_discoveries
             if hf_discoveries.get("discoveries"):
                 n_found = sum(1 for d in hf_discoveries["discoveries"] if d.get("can_use_now"))
-                logger.info(
-                    "[EvolutionAgent] HF: %d tools available for detected gaps", n_found
-                )
+                logger.info("[EvolutionAgent] HF: %d tools available for detected gaps", n_found)
             results["architecture_analysis"] = arch_analysis
 
             # 6. Telegram notification with the full summary
@@ -572,9 +570,7 @@ class EvolutionAgent(BaseAgent):
         lines.append(f"📊 System score: <b>{score}/100</b> (Grade {grade})")
 
         if lessons.get("critical_errors"):
-            lines.append(
-                f"\n🚨 <b>Critical errors found:</b> {len(lessons['critical_errors'])}"
-            )
+            lines.append(f"\n🚨 <b>Critical errors found:</b> {len(lessons['critical_errors'])}")
 
         if successful:
             lines.append(f"\n✅ <b>Files improved ({len(successful)}):</b>")

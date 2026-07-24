@@ -70,9 +70,7 @@ class InvestorAgent(BaseAgent):
             else:
                 results["outreach_results"] = approval
 
-        results["summary"] = (
-            f"Found {len(investors)} potential investors. Outreach campaign ready."
-        )
+        results["summary"] = f"Found {len(investors)} potential investors. Outreach campaign ready."
         return results
 
     async def _research_investors(self, niche: str) -> list[dict]:

@@ -612,11 +612,11 @@ class ModelRouter:
             cache = self._get_cache()
             serialized = {k: v.to_dict() for k, v in self._routing_table.items()}
             await cache.set(
-                ROUTING_TABLE_KEY, json.dumps(serialized, ensure_ascii=False), ttl_seconds=ROUTING_TTL
+                ROUTING_TABLE_KEY,
+                json.dumps(serialized, ensure_ascii=False),
+                ttl_seconds=ROUTING_TTL,
             )
-            logger.info(
-                "[ModelRouter] Routing table saved (%d entries)", len(serialized)
-            )
+            logger.info("[ModelRouter] Routing table saved (%d entries)", len(serialized))
         except Exception as exc:
             logger.error("[ModelRouter] Error saving table: %s", exc)
 

@@ -417,7 +417,9 @@ class HumanPage:
             await asyncio.sleep(0.5)
         return False
 
-    async def wait_for_url_leaving(self, must_contain: str, must_leave: str, timeout: float = 15.0) -> bool:
+    async def wait_for_url_leaving(
+        self, must_contain: str, must_leave: str, timeout: float = 15.0
+    ) -> bool:
         """Wait until the URL contains `must_contain` and no longer contains
         `must_leave` — e.g. confirming navigation actually left a login page,
         not just that we're still on the same domain (which a substring

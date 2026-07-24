@@ -31,6 +31,7 @@ from apps.core.config import settings
 # ── ADMIN AUTH (server-side gate for the owner-only control panel) ─────────
 _ADMIN_COOKIE = "aria_admin"
 
+
 # Owner identity is centralized in apps.core.auth (single source of truth —
 # see its docstring for why this must not have a second, driftable copy).
 def _owner_emails() -> set[str]:
@@ -635,7 +636,9 @@ async def admin_login_page():
 async def admin_login(request: Request, password: str = Form(...)):
     if not _rate_ok(request, "admin_login", 10, 900):
         return HTMLResponse(
-            _LOGIN_HTML.format(error='<div class="err">Too many attempts. Try again later.</div>', notice=""),
+            _LOGIN_HTML.format(
+                error='<div class="err">Too many attempts. Try again later.</div>', notice=""
+            ),
             status_code=429,
         )
     real = getattr(settings, "ADMIN_PASSWORD", None)
@@ -1549,10 +1552,10 @@ async def billing_webhook(request: Request):
 
         if etype in ("customer.subscription.deleted", "invoice.payment_failed"):
             email = (
-                (obj.get("metadata") or {}).get("email")
-                or obj.get("customer_email")
-                or ""
-            ).strip().lower()
+                ((obj.get("metadata") or {}).get("email") or obj.get("customer_email") or "")
+                .strip()
+                .lower()
+            )
             if email:
                 await _set_user_plan(email, "free")
 
@@ -2058,11 +2061,10 @@ class WorkflowRequest(BaseModel):
 async def dynamic_workflow(req: WorkflowRequest, request: Request):
     """ARIA Dynamic Workflows — the flagship pattern of 2026 frontier AI.
 
-    Breaks a goal down into subtasks, runs subagents in parallel routing
-    each one to the optimal model, adversarially verifies each result, and
-    synthesizes the final deliverable. Requires a session; it's expensive, so
-    it comes with a stricter rate limit and respects the global freeze and
-    the spend cap.
+    Decomposes a goal into subtasks, runs subagents in parallel routing each
+    to the optimal model, adversarially verifies each result, and synthesizes
+    the final deliverable. Requires a session; it's expensive, so it carries a
+    stricter rate limit and respects the global freeze and spend cap.
     """
     import time
 
@@ -2147,11 +2149,11 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
 
 @app.post("/api/v1/workflow/stream")
 async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
-    """Streaming (SSE) of /api/v1/workflow — emits each subagent as soon as it
-    finishes so the dashboard can render the workflow live. Same guards as
-    the non-streaming route (shares the rate-limit bucket so switching
-    endpoints doesn't dodge the cap). The client falls back to the regular
-    POST if the stream fails.
+    """Streaming (SSE) version of /api/v1/workflow — emits each subagent as
+    soon as it finishes so the dashboard can render the flow live. Same guards
+    as the non-streaming route (shares its rate-limit bucket so switching
+    endpoints doesn't dodge the cap). The client falls back to the plain POST
+    if the stream fails.
     """
     if not _current_user(request):
         return JSONResponse({"ok": False, "error": "auth"}, status_code=401)
@@ -2219,10 +2221,10 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
 
 @app.get("/api/v1/workflow/runs")
 async def workflow_runs(request: Request):
-    """User usage panel: lifetime aggregates + latest workflows.
+    """User usage panel: lifetime aggregates + recent workflow runs.
 
-    This is the basis of the 'charge per outcome' model — `deliverables` counts
-    completed workflows, not tokens. Each user sees only their own data.
+    This is the basis of the "charge for outcomes" model — `deliverables`
+    counts completed workflows, not tokens. Each user sees only their own.
     """
     if not _current_user(request):
         return JSONResponse({"ok": False, "error": "auth"}, status_code=401)

@@ -1048,7 +1048,9 @@ class AriaMind:
                 r = await HuggingFaceSuite().text_to_speech_bark(text_input, voice_preset=voice)
                 if r.get("success") and r.get("audio_bytes"):
                     ab = r["audio_bytes"]
-                    return f"Audio generated ({len(ab)//1024}KB, voice: {voice})", {"audio_bytes": ab}
+                    return f"Audio generated ({len(ab)//1024}KB, voice: {voice})", {
+                        "audio_bytes": ab
+                    }
                 return r.get("error", "TTS not available"), {}
 
             # ── TRANSLATION ──────────────────────────────────────────────
@@ -1416,7 +1418,10 @@ class AriaMind:
                     return f"I couldn't download the document: {exc}", {}
                 r = await HuggingFaceSuite().document_qa(img_bytes, question)
                 if r.get("success"):
-                    return f"[DOCUMENT] {r['answer']} (confidence: {r['confidence'] * 100:.0f}%)", {}
+                    return (
+                        f"[DOCUMENT] {r['answer']} (confidence: {r['confidence'] * 100:.0f}%)",
+                        {},
+                    )
                 return r.get("error", "I couldn't read the document"), {}
 
             elif tool == "create_product_pack":
@@ -1820,8 +1825,8 @@ class AriaMind:
             system=(
                 "You are ARIA. Talk like a real person — warm, direct, genuinely curious — "
                 "not like a corporate assistant. First person, contractions, human rhythm. "
-                "No \"As an AI...\", no hedge-everything caveats, no restating the question "
-                "before answering, no closing with \"I hope this helps!\" or similar filler. "
+                'No "As an AI...", no hedge-everything caveats, no restating the question '
+                'before answering, no closing with "I hope this helps!" or similar filler. '
                 "Have an actual opinion when asked for one instead of listing both sides and "
                 "declining to pick. Reply in the SAME language as the user, directly and "
                 "completely. Use markdown when it helps. If you'd need live internet data you "

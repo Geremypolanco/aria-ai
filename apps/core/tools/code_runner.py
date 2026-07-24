@@ -26,7 +26,6 @@ This enables the loop: write → execute → debug → iterate.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 import re
@@ -355,7 +354,16 @@ class CodeRunner:
         os.makedirs(site_dir, exist_ok=True)
         try:
             result = await self._exec(
-                [sys.executable, "-m", "pip", "install", "--quiet", "--target", site_dir, *packages],
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--quiet",
+                    "--target",
+                    site_dir,
+                    *packages,
+                ],
                 timeout=60,
                 cwd=workdir,
                 network=True,

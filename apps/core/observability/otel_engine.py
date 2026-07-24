@@ -70,7 +70,8 @@ try:
 except ImportError:
     PROMETHEUS_AVAILABLE = False
     logger.warning(
-        "[Prometheus] prometheus-client not installed. " "Install with: pip install prometheus-client"
+        "[Prometheus] prometheus-client not installed. "
+        "Install with: pip install prometheus-client"
     )
     Counter = None  # type: ignore[assignment,misc]
     Gauge = None  # type: ignore[assignment,misc]

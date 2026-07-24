@@ -185,9 +185,7 @@ class Orchestrator(BaseAgent):
                 focus="digital products passive income AI tools saas affiliate marketing"
             )
             all_titles = intel.get("trending_titles", [])
-            intel["top_opportunity"] = (
-                all_titles[0] if all_titles else "expanding digital market"
-            )
+            intel["top_opportunity"] = all_titles[0] if all_titles else "expanding digital market"
             intel["sources_used"] = intel.get("sources_available", [])
             logger.info(
                 "[Orchestrator] Intelligence: %d sources, %d trends",
