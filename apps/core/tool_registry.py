@@ -12,112 +12,112 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     # ── AI & MODELS ──
     "chat": {
         "name": "chat",
-        "description": "Chatea con ARIA usando raciocinio profundo",
+        "description": "Chat with ARIA using deep reasoning",
         "category": "ai",
     },
     "generate_code": {
         "name": "generate_code",
-        "description": "Genera código en cualquier lenguaje de programación",
+        "description": "Generates code in any programming language",
         "category": "ai",
     },
     "research": {
         "name": "research",
-        "description": "Investiga un tema a profundidad usando modelos de IA",
+        "description": "Researches a topic in depth using AI models",
         "category": "ai",
     },
     "analyze_image": {
         "name": "analyze_image",
-        "description": "Analiza imágenes usando visión computacional",
+        "description": "Analyzes images using computer vision",
         "category": "ai",
     },
     "analyze_video": {
         "name": "analyze_video",
-        "description": "Analiza video y extrae información visual",
+        "description": "Analyzes video and extracts visual information",
         "category": "ai",
     },
     # ── WEB & INTERNET ──
     "web_search": {
         "name": "web_search",
-        "description": "Busca información actualizada en internet",
+        "description": "Searches the internet for current information",
         "category": "web",
     },
     "web_scrape": {
         "name": "web_scrape",
-        "description": "Extrae contenido de una página web",
+        "description": "Extracts content from a web page",
         "category": "web",
     },
     "browse_web": {
         "name": "browse_web",
-        "description": "Navega por sitios web interactivamente",
+        "description": "Navigates websites interactively",
         "category": "web",
     },
     # ── CODE & DEVELOPMENT ──
     "github_clone": {
         "name": "github_clone",
-        "description": "Clona un repositorio de GitHub",
+        "description": "Clones a GitHub repository",
         "category": "dev",
     },
     "github_create_issue": {
         "name": "github_create_issue",
-        "description": "Crea un issue en GitHub",
+        "description": "Creates an issue on GitHub",
         "category": "dev",
     },
     "github_create_file": {
         "name": "github_create_file",
-        "description": "Crea o actualiza un archivo en GitHub",
+        "description": "Creates or updates a file on GitHub",
         "category": "dev",
     },
     "run_code": {
         "name": "run_code",
-        "description": "Ejecuta código Python en un sandbox seguro",
+        "description": "Executes Python code in a secure sandbox",
         "category": "dev",
     },
     "run_terminal": {
         "name": "run_terminal",
-        "description": "Ejecuta comandos en la terminal",
+        "description": "Executes terminal commands",
         "category": "dev",
     },
     # ── CONTENT & MEDIA ──
     "generate_image": {
         "name": "generate_image",
-        "description": "Genera imágenes usando IA",
+        "description": "Generates images using AI",
         "category": "media",
     },
     "generate_video": {
         "name": "generate_video",
-        "description": "Genera videos cortos usando IA",
+        "description": "Generates short videos using AI",
         "category": "media",
     },
     "text_to_speech": {
         "name": "text_to_speech",
-        "description": "Convierte texto a voz",
+        "description": "Converts text to speech",
         "category": "media",
     },
     # ── DATA & ANALYTICS ──
     "database_query": {
         "name": "database_query",
-        "description": "Ejecuta consultas en la base de datos",
+        "description": "Runs queries against the database",
         "category": "data",
     },
     "data_analysis": {
         "name": "data_analysis",
-        "description": "Analiza datos y genera reportes",
+        "description": "Analyzes data and generates reports",
         "category": "data",
     },
     # ── INTEGRATIONS ──
     "shopify_get_products": {
         "name": "shopify_get_products",
-        "description": "Obtiene productos de Shopify",
+        "description": "Fetches products from Shopify",
         "category": "integrations",
     },
     "shopify_create_product": {
         "name": "shopify_create_product",
-        "description": "Crea un producto en Shopify",
+        "description": "Creates a product on Shopify",
         "category": "integrations",
     },
     "telegram_send": {
         "name": "telegram_send",
-        "description": "Envía un mensaje a Telegram",
+        "description": "Sends a message to Telegram",
         "category": "integrations",
     },
 }

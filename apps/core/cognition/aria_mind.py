@@ -1627,8 +1627,8 @@ class AriaMind:
                     top5 = get_niche_revenue_engine().get_top_niches_by_potential(n=3)
                     names = [n["key"] for n in top5]
                     return (
-                        f"Especifica un nicho. Top 3 recomendados ahora mismo: {', '.join(names)}\n"
-                        f"Usa list_niches para ver todos los 45 disponibles."
+                        f"Specify a niche. Top 3 recommended right now: {', '.join(names)}\n"
+                        f"Use list_niches to see all 45 available."
                     ), {}
                 from apps.core.tools.niche_revenue_engine import (
                     NICHE_CATALOG,
@@ -1638,29 +1638,29 @@ class AriaMind:
                 if niche not in NICHE_CATALOG:
                     close = [k for k in NICHE_CATALOG if niche.lower() in k.lower()]
                     return (
-                        f"Nicho '{niche}' no encontrado."
-                        + (f" ¿Quisiste decir: {', '.join(close[:3])}?" if close else "")
+                        f"Niche '{niche}' not found."
+                        + (f" Did you mean: {', '.join(close[:3])}?" if close else "")
                     ), {}
                 result = await get_niche_revenue_engine().launch_niche(niche, context=context)
                 lines = [
                     f"[LAUNCH: {result.niche_name}]",
-                    f"Checklist: {result.checklist.score}/100 {'OK' if result.checklist and result.checklist.passed else 'revisar'}",
-                    f"Tiempo: {result.elapsed_seconds}s",
+                    f"Checklist: {result.checklist.score}/100 {'OK' if result.checklist and result.checklist.passed else 'needs review'}",
+                    f"Time: {result.elapsed_seconds}s",
                 ]
                 if result.published_urls:
-                    lines.append("**Publicado en:**")
+                    lines.append("**Published to:**")
                     for u in result.published_urls:
                         lines.append(f"  • {u['platform']}: {u['url']}")
                 if result.seo_article_urls:
-                    lines.append("**Artículos SEO:**")
+                    lines.append("**SEO articles:**")
                     for u in result.seo_article_urls:
                         lines.append(f"  • {u['platform']}: {u['url']}")
                 if result.errors:
-                    lines.append(f"Advertencias: {'; '.join(result.errors[:3])}")
+                    lines.append(f"Warnings: {'; '.join(result.errors[:3])}")
                 if result.listing:
                     lines.append(f"\n**Listing:** {result.listing.title}")
                     lines.append(
-                        f"Precio: ${result.listing.pricing_tiers['basic']['price']} – ${result.listing.pricing_tiers['premium']['price']}"
+                        f"Price: ${result.listing.pricing_tiers['basic']['price']} – ${result.listing.pricing_tiers['premium']['price']}"
                     )
                 return "\n".join(lines), {}
 
@@ -1685,24 +1685,24 @@ class AriaMind:
                 )
                 lines = [
                     "[AUTO INCOME CYCLE]",
-                    f"Nichos intentados: {result['niches_attempted']}",
-                    f"Nichos exitosos: {result['niches_succeeded']}",
-                    f"Listings en vivo: {result['total_listings_live']}",
-                    f"Artículos publicados: {result['total_content_published']}",
-                    f"Tiempo: {result['elapsed_seconds']}s",
+                    f"Niches attempted: {result['niches_attempted']}",
+                    f"Niches succeeded: {result['niches_succeeded']}",
+                    f"Live listings: {result['total_listings_live']}",
+                    f"Articles published: {result['total_content_published']}",
+                    f"Time: {result['elapsed_seconds']}s",
                 ]
                 if result.get("all_live_urls"):
-                    lines.append("\n**URLs activas:**")
+                    lines.append("\n**Active URLs:**")
                     for u in result["all_live_urls"][:8]:
                         lines.append(f"  • {u.get('platform')}: {u.get('url')}")
                 if result.get("successful_niches"):
-                    lines.append("\n**Nichos lanzados:**")
+                    lines.append("\n**Niches launched:**")
                     for n in result["successful_niches"]:
                         lines.append(
-                            f"  - {n['niche']} — potencial ${n.get('revenue_potential',0)}/sale"
+                            f"  - {n['niche']} — potential ${n.get('revenue_potential',0)}/sale"
                         )
                 if result.get("failed_niches"):
-                    lines.append("\n**Nichos con errores:**")
+                    lines.append("\n**Niches with errors:**")
                     for n in result["failed_niches"]:
                         lines.append(f"  - {n['niche']}: {', '.join(n.get('errors',[])[:2])}")
                 return "\n".join(lines), {}
@@ -1719,12 +1719,12 @@ class AriaMind:
                 loop = get_income_loop()
                 if loop.is_running:
                     return (
-                        "El income loop 24/7 ya está corriendo. Usa income_loop_status para ver su estado.",
+                        "The 24/7 income loop is already running. Use income_loop_status to check its state.",
                         {},
                     )
                 await loop.start()
                 return (
-                    "Income loop 24/7 iniciado. Ejecutará estrategias de ingresos cada 30 minutos de forma autónoma.",
+                    "24/7 income loop started. It will run revenue strategies every 30 minutes autonomously.",
                     {},
                 )
 
@@ -1735,7 +1735,7 @@ class AriaMind:
                 strategy = args.get("strategy", "")
                 valid = [s[0] for s in STRATEGIES]
                 if strategy and strategy not in valid:
-                    return f"Estrategia inválida. Opciones: {', '.join(valid)}", {}
+                    return f"Invalid strategy. Options: {', '.join(valid)}", {}
                 import random as _rnd
 
                 if not strategy:
@@ -1745,7 +1745,7 @@ class AriaMind:
                 obs = await loop._execute(strategy)
                 lines = [
                     f"[INCOME CYCLE — {strategy}]",
-                    f"Success: {'sí' if obs.get('success') else 'no'}",
+                    f"Success: {'yes' if obs.get('success') else 'no'}",
                     f"Summary: {obs.get('summary', '')}",
                     f"Revenue potential: ${obs.get('revenue_potential', 0):.0f}",
                 ]
@@ -1784,7 +1784,7 @@ class AriaMind:
 
         return "Unknown tool", {}
 
-    # ── SÍNTESIS ───────────────────────────────────────────────────────────
+    # ── SYNTHESIS ────────────────────────────────────────────────────────────
 
     async def _synthesize(self, user_input: str, tool: str, observation: str) -> str:
         """Turns a tool's raw observation into a natural reply via the LLM."""
@@ -1841,7 +1841,7 @@ class AriaMind:
         )
         return resp.content.strip() if (resp and resp.success) else "Got it — one moment."
 
-    # ── GESTIÓN DE ESTADO COGNITIVO ────────────────────────────────────────
+    # ── COGNITIVE STATE MANAGEMENT ───────────────────────────────────────────
 
     async def _load_state(self, chat_id: str) -> dict:
         cache = self._cache_client()
@@ -1854,18 +1854,18 @@ class AriaMind:
     async def _evolve_state(
         self, chat_id: str, current: dict, text: str, goals: list[dict]
     ) -> None:
-        """Actualiza el estado cognitivo después de cada interacción."""
+        """Updates the cognitive state after each interaction."""
         cache = self._cache_client()
         if not cache:
             return
 
-        # Actualizar contador
+        # Update the counter
         current["interaction_count"] = current.get("interaction_count", 0) + 1
 
-        # Actualizar foco (los primeros 60 chars del texto actual)
+        # Update focus (first 60 chars of the current text)
         current["focus"] = text[:60]
 
-        # Confidence sube lentamente hasta 1.0 con cada éxito
+        # Confidence climbs slowly toward 1.0 with each success
         current["confidence"] = min(1.0, current.get("confidence", 0.7) + 0.01)
 
         await cache.set(self.K_STATE.format(cid=chat_id), current, ttl_seconds=86400 * 30)
@@ -1954,7 +1954,7 @@ class AriaMind:
         await cache.set(key, history, ttl_seconds=86400 * 7)
 
     async def _record_exec(self, tool: str, args: dict, obs: str, success: bool) -> None:
-        """Guarda registro de ejecución para auto-reflexión futura."""
+        """Stores an execution record for future self-reflection."""
         cache = self._cache_client()
         if not cache:
             return
@@ -1973,24 +1973,24 @@ class AriaMind:
         execs = execs[-self.MAX_EXECS :]
         await cache.set(self.K_EXECS, execs, ttl_seconds=86400 * 30)
 
-    # ── AUTO-REFLEXIÓN ─────────────────────────────────────────────────────
+    # ── SELF-REFLECTION ───────────────────────────────────────────────────────
 
     async def _maybe_reflect(self, chat_id: str) -> None:
         """
-        Analiza ejecuciones recientes, genera reglas concretas de mejora,
-        las guarda en Redis. Afectan comportamiento inmediatamente.
+        Analyzes recent executions, generates concrete improvement rules,
+        and saves them to Redis. They affect behavior immediately.
         """
         state = await self._load_state(chat_id)
         count = state.get("interaction_count", 0)
         if count == 0 or count % self.REFLECT_EVERY != 0:
             return
 
-        logger.info("[AriaMind] Auto-reflexión en interacción #%d", count)
+        logger.info("[AriaMind] Self-reflection at interaction #%d", count)
         cache = self._cache_client()
         if not cache:
             return
 
-        # Lock para no ejecutar en paralelo
+        # Lock so this doesn't run in parallel
         locked = await cache.acquire_lock("aria:mind:reflect", ttl_seconds=60)
         if not locked:
             return
@@ -2000,7 +2000,7 @@ class AriaMind:
             if len(execs) < 5:
                 return
 
-            # Construir muestra de ejecuciones para el LLM
+            # Build a sample of executions for the LLM
             sample = "\n".join(
                 f"[{'✓' if e.get('success') else '✗'}] {e.get('tool','?')}: "
                 f"in={e.get('in','')[:60]} → out={e.get('out','')[:80]}"
@@ -2013,17 +2013,22 @@ class AriaMind:
 
             from apps.core.tools.ai_client import AIModel
 
+            # This prompt's output is injected verbatim into SYSTEM_TEMPLATE's
+            # {learned} placeholder in every future conversation, so it must
+            # produce English rules to match the rest of that system prompt —
+            # not because English is inherently better, but because a
+            # mid-prompt language switch reads as confused, not intelligent.
             resp = await ai.complete(
                 system=(
-                    "Eres el módulo de auto-mejora de ARIA. "
-                    "Analiza las ejecuciones y genera reglas operativas concretas. "
-                    "Cada regla debe ser una instrucción directa que mejore futuras decisiones. "
-                    "Formato: verbos de acción. Sin explicaciones. Solo las reglas."
+                    "You are ARIA's self-improvement module. "
+                    "Analyze the executions and generate concrete operating rules. "
+                    "Each rule must be a direct instruction that improves future decisions. "
+                    "Format: action verbs. No explanations. Just the rules."
                 ),
                 user=(
-                    f"Mis últimas {len(execs[-20:])} ejecuciones:\n{sample}\n\n"
-                    "Genera exactamente 3 reglas de mejora. Una por línea. "
-                    "Ejemplo: 'Usar SDXL directamente cuando FLUX falla en el primer intento.'"
+                    f"My last {len(execs[-20:])} executions:\n{sample}\n\n"
+                    "Generate exactly 3 improvement rules. One per line. "
+                    "Example: 'Use SDXL directly when FLUX fails on the first attempt.'"
                 ),
                 model=AIModel.STRATEGY,
                 max_tokens=200,
@@ -2039,11 +2044,11 @@ class AriaMind:
                 ][:3]
 
                 existing = await self._load_learned()
-                updated = (existing + new_rules)[-20:]  # máximo 20 reglas
+                updated = (existing + new_rules)[-20:]  # cap at 20 rules
                 await cache.set(self.K_LEARNED, updated, ttl_seconds=86400 * 365)
-                logger.info("[AriaMind] Nuevas reglas aprendidas: %s", new_rules)
+                logger.info("[AriaMind] New rules learned: %s", new_rules)
         except Exception as exc:
-            logger.warning("[AriaMind] Reflexión falló: %s", exc)
+            logger.warning("[AriaMind] Reflection failed: %s", exc)
         finally:
             await cache.release_lock("aria:mind:reflect")
 
@@ -2056,7 +2061,7 @@ class AriaMind:
 
                 self._ai = get_ai_client()
             except Exception as e:
-                logger.error("[AriaMind] No se pudo cargar ai_client: %s", e)
+                logger.error("[AriaMind] Could not load ai_client: %s", e)
         return self._ai
 
     def _cache_client(self):
@@ -2066,13 +2071,13 @@ class AriaMind:
 
                 self._cache = get_cache()
             except Exception as e:
-                logger.warning("[AriaMind] No se pudo cargar cache: %s", e)
+                logger.warning("[AriaMind] Could not load cache: %s", e)
         return self._cache
 
-    # ── NOTIFICACIÓN PROACTIVA ────────────────────────────────────────────
+    # ── PROACTIVE NOTIFICATIONS ──────────────────────────────────────────────
 
     async def proactive_notify(self, message: str) -> None:
-        """ARIA decide proactivamente notificar — solo para cosas críticas."""
+        """ARIA proactively decides to notify — critical things only."""
         try:
             from apps.core.config import settings
             from apps.core.tools.telegram_bot import get_bot
