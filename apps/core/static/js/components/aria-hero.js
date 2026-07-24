@@ -51,8 +51,8 @@ class AriaHero extends HTMLElement {
         </div>
 
         <div id="watch" class="relative mx-auto mt-16 max-w-3xl text-left">
-          <div class="rounded-3xl border border-stone-200 bg-white shadow-2xl shadow-stone-900/10">
-            <aria-run-log></aria-run-log>
+          <div class="relative overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl shadow-stone-900/10">
+            <aria-agent-dashboard></aria-agent-dashboard>
           </div>
         </div>
       </div>

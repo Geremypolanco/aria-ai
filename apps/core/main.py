@@ -24,6 +24,7 @@ from fastapi.responses import (
     RedirectResponse,
     StreamingResponse,
 )
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from apps.core.config import settings
@@ -427,6 +428,12 @@ class ConnectorRequest(BaseModel):
 
 # ── FRONTEND ROUTES ───────────────────────────────────────
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+# Serves /static/js/*, /static/css/*, /static/team/*, etc. Every Web Component
+# on the landing/app pages (<aria-hero>, <aria-pricing>, <aria-agent-dashboard>,
+# aria-app.js, aria.css) is loaded from here — without this mount those
+# <script>/<link> tags 404 and every JS-driven section renders empty.
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
