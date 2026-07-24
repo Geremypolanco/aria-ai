@@ -1634,7 +1634,9 @@ class AriaMind:
                     return "No R&D projects yet. Use create_research_project to start one.", {}
                 lines = ["**R&D projects:**"]
                 for p in projects:
-                    lines.append(f"  • {p['name']} ({p['category']}, {p['status']}) — {len(p['findings'])} findings")
+                    lines.append(
+                        f"  • {p['name']} ({p['category']}, {p['status']}) — {len(p['findings'])} findings"
+                    )
                 return "\n".join(lines), {}
 
             # ── BRAND IDENTITY ───────────────────────────────────────────────
@@ -1670,9 +1672,13 @@ class AriaMind:
                 result = engine.consistency_check(brand_id, content)
                 lines = [f"**Brand consistency: {result['score']}/100**"]
                 if result["violations"]:
-                    lines.append("Violations:\n" + "\n".join(f"  • {v}" for v in result["violations"]))
+                    lines.append(
+                        "Violations:\n" + "\n".join(f"  • {v}" for v in result["violations"])
+                    )
                 if result["suggestions"]:
-                    lines.append("Suggestions:\n" + "\n".join(f"  • {s}" for s in result["suggestions"]))
+                    lines.append(
+                        "Suggestions:\n" + "\n".join(f"  • {s}" for s in result["suggestions"])
+                    )
                 return "\n".join(lines), {}
 
             elif tool == "list_brands":
@@ -1683,7 +1689,9 @@ class AriaMind:
                     return "No brands defined yet. Use create_brand to start one.", {}
                 lines = ["**Brands:**"]
                 for b in brands:
-                    lines.append(f"  • {b.name} (id: `{b.brand_id}`) — {b.niche}, {b.voice.tone.value}")
+                    lines.append(
+                        f"  • {b.name} (id: `{b.brand_id}`) — {b.niche}, {b.voice.tone.value}"
+                    )
                 return "\n".join(lines), {}
 
             # ── STRATEGIC PRIORITIZATION (persistent action backlog) ────────
@@ -1718,10 +1726,15 @@ class AriaMind:
 
                 top = await get_priority_engine().top_priorities(limit=limit)
                 if not top:
-                    return "No actions in the priority backlog yet. Use add_priority_action first.", {}
+                    return (
+                        "No actions in the priority backlog yet. Use add_priority_action first.",
+                        {},
+                    )
                 lines = ["**Top priorities:**"]
                 for i, a in enumerate(top, 1):
-                    lines.append(f"  {i}. {a.title} — score {a.priority_score:.1f}/100 ({a.category})")
+                    lines.append(
+                        f"  {i}. {a.title} — score {a.priority_score:.1f}/100 ({a.category})"
+                    )
                 return "\n".join(lines), {}
 
             elif tool == "allocate_resources":
@@ -1729,7 +1742,9 @@ class AriaMind:
                 total_budget_usd = float(args.get("total_budget_usd", 0))
                 from apps.strategy.prioritization.priority_engine import get_priority_engine
 
-                result = await get_priority_engine().allocate_resources(total_hours, total_budget_usd)
+                result = await get_priority_engine().allocate_resources(
+                    total_hours, total_budget_usd
+                )
                 if not result["allocations"]:
                     return "No actions to allocate against yet. Use add_priority_action first.", {}
                 lines = [f"**Resource allocation** ({total_hours}h, ${total_budget_usd:.0f}):"]
@@ -1830,13 +1845,18 @@ class AriaMind:
                     f"Estimated revenue lift: {result['estimated_revenue_lift_pct']}%",
                 ]
                 if result["fix_priority"]:
-                    lines.append("Fix priority:\n" + "\n".join(f"  • {a}" for a in result["fix_priority"]))
+                    lines.append(
+                        "Fix priority:\n" + "\n".join(f"  • {a}" for a in result["fix_priority"])
+                    )
                 return "\n".join(lines), {}
 
             elif tool == "growth_removal_plan":
                 bottleneck = args.get("bottleneck", "")
                 if not bottleneck:
-                    return "I need the bottleneck name (from find_growth_bottleneck) to plan around.", {}
+                    return (
+                        "I need the bottleneck name (from find_growth_bottleneck) to plan around.",
+                        {},
+                    )
                 from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
 
                 plan = await get_leverage_analyzer().constraint_removal_plan(bottleneck)
@@ -1853,10 +1873,15 @@ class AriaMind:
                 lever = args.get("lever", "")
                 improvement_pct = float(args.get("improvement_pct", 10))
                 if not lever:
-                    return "I need which lever to simulate (conversion, traffic, order_value, or retention).", {}
+                    return (
+                        "I need which lever to simulate (conversion, traffic, order_value, or retention).",
+                        {},
+                    )
                 from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
 
-                result = await get_leverage_analyzer().simulate_improvement(metrics, lever, improvement_pct)
+                result = await get_leverage_analyzer().simulate_improvement(
+                    metrics, lever, improvement_pct
+                )
                 return (
                     f"**Simulated {improvement_pct:.0f}% improvement in {lever}:**\n"
                     f"Monthly revenue: ${result['base_monthly_revenue_usd']:,.0f} → "
@@ -1870,7 +1895,10 @@ class AriaMind:
                 user_id = args.get("user_id", "")
                 actions = args.get("actions", []) or []
                 if not user_id or not actions:
-                    return "I need a user_id and their recent actions (e.g. view, add_to_cart, purchase) to analyze.", {}
+                    return (
+                        "I need a user_id and their recent actions (e.g. view, add_to_cart, purchase) to analyze.",
+                        {},
+                    )
                 from apps.psychology.behavior.behavior_analyzer import get_behavior_analyzer
 
                 profile = await get_behavior_analyzer().analyze_user(user_id, actions)
@@ -1886,14 +1914,18 @@ class AriaMind:
             elif tool == "predict_customer_churn":
                 user_id = args.get("user_id", "")
                 if not user_id:
-                    return "I need a user_id (analyzed previously via analyze_user_behavior) to predict churn for.", {}
+                    return (
+                        "I need a user_id (analyzed previously via analyze_user_behavior) to predict churn for.",
+                        {},
+                    )
                 from apps.psychology.behavior.behavior_analyzer import get_behavior_analyzer
 
                 result = await get_behavior_analyzer().predict_churn(user_id)
                 lines = [f"**Churn risk for {user_id}: {result['churn_probability']:.0%}**"]
                 lines.append("Reasons:\n" + "\n".join(f"  • {r}" for r in result["reasons"]))
                 lines.append(
-                    "Prevention actions:\n" + "\n".join(f"  • {p}" for p in result["prevention_actions"])
+                    "Prevention actions:\n"
+                    + "\n".join(f"  • {p}" for p in result["prevention_actions"])
                 )
                 return "\n".join(lines), {}
 
@@ -1917,15 +1949,23 @@ class AriaMind:
                 content = args.get("content", "")
                 persona_id = args.get("persona_id", "")
                 if not content or not persona_id:
-                    return "I need the content and a persona_id (from generate_audience_personas) to check.", {}
+                    return (
+                        "I need the content and a persona_id (from generate_audience_personas) to check.",
+                        {},
+                    )
                 from apps.psychology.personas.persona_engine import get_persona_engine
 
                 result = await get_persona_engine().match_content_to_persona(content, persona_id)
                 lines = [f"**Persona match: {result['match_score']:.0%}**"]
                 if result["alignment_reasons"]:
-                    lines.append("Aligned:\n" + "\n".join(f"  • {a}" for a in result["alignment_reasons"]))
+                    lines.append(
+                        "Aligned:\n" + "\n".join(f"  • {a}" for a in result["alignment_reasons"])
+                    )
                 if result["suggested_tweaks"]:
-                    lines.append("Suggested tweaks:\n" + "\n".join(f"  • {t}" for t in result["suggested_tweaks"]))
+                    lines.append(
+                        "Suggested tweaks:\n"
+                        + "\n".join(f"  • {t}" for t in result["suggested_tweaks"])
+                    )
                 return "\n".join(lines), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
