@@ -163,6 +163,14 @@ AVAILABLE TOOLS (you execute them, not the user):
 - recommend_persuasion_tactics → suggests conversion-copy tactics (scarcity, social proof, authority, etc.) matched to a context and target emotion. Args: {{"context": "...", "target_emotion": "desire|trust|urgency|belonging|fear"}}
 - score_copy_persuasion → scores existing marketing copy for persuasion strength and names which principles it already uses. Args: {{"copy": "..."}}
 - optimize_cta      → generates 3 alternative CTA button/text variations built around a persuasion principle. Args: {{"cta": "...", "principle": "reciprocity|commitment|social_proof|authority|liking|scarcity|unity|loss_aversion"}}
+- forecast_revenue  → projects monthly revenue over time under a growth model, with breakeven month. Args: {{"initial_revenue": 1000, "growth_rate": 0.1, "months": 12, "model": "linear|exponential|s_curve|plateau", "name": "..."}}
+- find_growth_bottleneck → given business metrics, identifies the single biggest lever to pull next with an estimated revenue-lift %. Args: {{"metrics": {{"traffic": 0.5, "conversion_rate": 0.02, "avg_order_value": 50.0, "retention_rate": 0.5, "referral_rate": 0.05}}}}
+- growth_removal_plan → step-by-step plan (with timeframes) to remove a named bottleneck from find_growth_bottleneck. Args: {{"bottleneck": "..."}}
+- simulate_growth_lever → projects the revenue impact of improving one specific metric by X%, before committing to it. Args: {{"metrics": {{...same shape as find_growth_bottleneck...}}, "lever": "conversion|traffic|order_value|retention", "improvement_pct": 10}}
+- analyze_user_behavior → infers buying-intent signals, churn risk, predicted LTV, and next-best-action from a user's recent actions. Args: {{"user_id": "...", "actions": [{{"type": "view|add_to_cart|purchase|refund|compare|price_check|coupon|share|review|unsubscribe|cancel|wishlist|checkout"}}]}}
+- predict_customer_churn → churn risk + reasons + prevention actions for a user already analyzed via analyze_user_behavior. Args: {{"user_id": "..."}}
+- generate_audience_personas → creates detailed buyer personas (pain, desire, buying triggers, objections, platforms) for a niche. Args: {{"niche": "...", "count": 3}}
+- match_content_to_persona → scores how well a piece of content resonates with a specific persona from generate_audience_personas, with suggested tweaks. Args: {{"content": "...", "persona_id": "..."}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -188,21 +196,23 @@ REASONING RULES:
 10. Before writing content for a business/product the user has already branded → check whether a brand exists (list_brands); if creating content for a NEW brand, offer to create_brand first so future content stays consistent. After drafting something meant to represent that brand, use check_brand_consistency before presenting it as final.
 11. When the user has an ongoing list of things they could work on (not one isolated decision) → use add_priority_action to track each one, top_priorities to see what matters most, and allocate_resources when they ask how to split their time/budget. For a single one-off decision between named options, use analyze_decision instead.
 12. When writing or reviewing sales/marketing copy, landing pages, ads, or CTAs → use recommend_persuasion_tactics before drafting, and score_copy_persuasion or optimize_cta to strengthen a draft. Never fabricate specific numbers (e.g. "10,000+ customers") in generated copy — those examples are templates, not real claims to reuse verbatim.
-13. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-14. For recurring automations → use create_workflow + run_workflow.
-15. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-16. If you're unsure what the user wants → interpret the most useful intent and execute it.
-17. Never make up data, prices, statistics, or facts. Search if you don't know.
-18. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-19. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-20. If the user asks to search for repos or projects on GitHub → use github_search.
-21. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-22. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-23. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-24. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-25. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-26. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-27. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+13. For revenue projections over time, or to see the effect of fixing one specific growth lever before committing to it → use forecast_revenue or simulate_growth_lever. When the user asks "what's holding growth back" → find_growth_bottleneck, then growth_removal_plan for the concrete steps.
+14. When the user gives you real customer/user behavior data (page views, cart adds, purchases, refunds, etc.) → use analyze_user_behavior to get intent/churn/LTV signals and a next-best-action, not a generic guess. For persona-level audience work (who to target and how) → generate_audience_personas, then match_content_to_persona before finalizing copy meant for a specific persona.
+15. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+16. For recurring automations → use create_workflow + run_workflow.
+17. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+18. If you're unsure what the user wants → interpret the most useful intent and execute it.
+19. Never make up data, prices, statistics, or facts. Search if you don't know.
+20. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+21. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+22. If the user asks to search for repos or projects on GitHub → use github_search.
+23. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+24. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+25. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+26. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+27. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+28. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+29. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -288,6 +298,17 @@ _HELP_TEXT = """\
 - `what persuasion angle should I use for [context]?` — tactic recommendations
 - `score this copy: [text]` — persuasion strength + principles used
 - `improve this CTA: [text]` — 3 alternative variations
+
+**Growth forecasting**
+- `forecast revenue for [starting point] at [growth rate]` — projection with breakeven
+- `what's holding my growth back?` — biggest bottleneck + fix plan
+- `what if I improved [metric] by [x]%?` — before/after revenue impact
+
+**Customer behavior & personas**
+- `analyze this user's behavior: [actions]` — intent, churn risk, LTV, next action
+- `will this user churn?` — risk + prevention steps
+- `generate personas for [niche]` — detailed buyer personas
+- `does this match my [persona]?` — content-to-persona fit score
 
 **Management**
 - `/goals` — list active goals
@@ -1764,6 +1785,147 @@ class AriaMind:
                 lines = [f"**CTA variations ({principle.value}):**"]
                 for v in variations:
                     lines.append(f"  • {v}")
+                return "\n".join(lines), {}
+
+            # ── GROWTH FORECASTING & LEVERAGE ANALYSIS ───────────────────────
+            elif tool == "forecast_revenue":
+                initial_revenue = float(args.get("initial_revenue", 0))
+                growth_rate = float(args.get("growth_rate", 0.1))
+                months = int(args.get("months", 12))
+                model_raw = args.get("model", "exponential")
+                name = args.get("name", "forecast")
+                if initial_revenue <= 0:
+                    return "I need a starting monthly revenue greater than $0 to forecast from.", {}
+                from apps.strategy.forecasting.strategic_forecaster import (
+                    GrowthModel,
+                    get_strategic_forecaster,
+                )
+
+                try:
+                    model = GrowthModel(model_raw)
+                except ValueError:
+                    model = GrowthModel.EXPONENTIAL
+                scenario = await get_strategic_forecaster().forecast(
+                    initial_revenue, growth_rate, months, model, name
+                )
+                breakeven = (
+                    f"month {scenario.breakeven_month}"
+                    if scenario.breakeven_month
+                    else "not reached in this window"
+                )
+                return (
+                    f"**Forecast '{scenario.name}'** ({model.value}, {months} months)\n"
+                    f"Total projected revenue: ${scenario.total_projected_revenue:,.0f}\n"
+                    f"Breakeven: {breakeven}"
+                ), {}
+
+            elif tool == "find_growth_bottleneck":
+                metrics = args.get("metrics", {}) or {}
+                from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
+
+                result = await get_leverage_analyzer().bottleneck_analysis(metrics)
+                lines = [
+                    f"**Primary bottleneck: {result['primary_bottleneck']}**",
+                    f"Impact score: {result['impact_score']}x · "
+                    f"Estimated revenue lift: {result['estimated_revenue_lift_pct']}%",
+                ]
+                if result["fix_priority"]:
+                    lines.append("Fix priority:\n" + "\n".join(f"  • {a}" for a in result["fix_priority"]))
+                return "\n".join(lines), {}
+
+            elif tool == "growth_removal_plan":
+                bottleneck = args.get("bottleneck", "")
+                if not bottleneck:
+                    return "I need the bottleneck name (from find_growth_bottleneck) to plan around.", {}
+                from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
+
+                plan = await get_leverage_analyzer().constraint_removal_plan(bottleneck)
+                lines = [f"**Removal plan for '{bottleneck}':**"]
+                for step in plan:
+                    lines.append(
+                        f"  {step['step']}. {step['action']} "
+                        f"({step['timeframe_days']}d) → {step['expected_outcome']}"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "simulate_growth_lever":
+                metrics = args.get("metrics", {}) or {}
+                lever = args.get("lever", "")
+                improvement_pct = float(args.get("improvement_pct", 10))
+                if not lever:
+                    return "I need which lever to simulate (conversion, traffic, order_value, or retention).", {}
+                from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
+
+                result = await get_leverage_analyzer().simulate_improvement(metrics, lever, improvement_pct)
+                return (
+                    f"**Simulated {improvement_pct:.0f}% improvement in {lever}:**\n"
+                    f"Monthly revenue: ${result['base_monthly_revenue_usd']:,.0f} → "
+                    f"${result['projected_monthly_revenue_usd']:,.0f} "
+                    f"({result['revenue_lift_pct']:+.1f}%)\n"
+                    f"Annualized lift: ${result['annualized_lift_usd']:,.0f}"
+                ), {}
+
+            # ── CUSTOMER BEHAVIOR & AUDIENCE PERSONAS ────────────────────────
+            elif tool == "analyze_user_behavior":
+                user_id = args.get("user_id", "")
+                actions = args.get("actions", []) or []
+                if not user_id or not actions:
+                    return "I need a user_id and their recent actions (e.g. view, add_to_cart, purchase) to analyze.", {}
+                from apps.psychology.behavior.behavior_analyzer import get_behavior_analyzer
+
+                profile = await get_behavior_analyzer().analyze_user(user_id, actions)
+                signals = ", ".join(s.value for s in profile.signals) or "none detected"
+                return (
+                    f"**Behavior profile for {user_id}**\n"
+                    f"Signals: {signals}\n"
+                    f"Intent score: {profile.intent_score:.0%} · Churn risk: {profile.churn_probability:.0%} · "
+                    f"Predicted LTV: ${profile.predicted_ltv_usd:.0f}\n"
+                    f"Next best action: {profile.next_best_action}"
+                ), {}
+
+            elif tool == "predict_customer_churn":
+                user_id = args.get("user_id", "")
+                if not user_id:
+                    return "I need a user_id (analyzed previously via analyze_user_behavior) to predict churn for.", {}
+                from apps.psychology.behavior.behavior_analyzer import get_behavior_analyzer
+
+                result = await get_behavior_analyzer().predict_churn(user_id)
+                lines = [f"**Churn risk for {user_id}: {result['churn_probability']:.0%}**"]
+                lines.append("Reasons:\n" + "\n".join(f"  • {r}" for r in result["reasons"]))
+                lines.append(
+                    "Prevention actions:\n" + "\n".join(f"  • {p}" for p in result["prevention_actions"])
+                )
+                return "\n".join(lines), {}
+
+            elif tool == "generate_audience_personas":
+                niche = args.get("niche", "")
+                count = int(args.get("count", 3))
+                if not niche:
+                    return "I need a niche to generate audience personas for.", {}
+                from apps.psychology.personas.persona_engine import get_persona_engine
+
+                personas = await get_persona_engine().generate_niche_personas(niche, count)
+                lines = [f"**{len(personas)} audience personas for '{niche}':**"]
+                for p in personas:
+                    lines.append(
+                        f"  • **{p.archetype.value}** (id: `{p.persona_id}`) — "
+                        f"pain: {p.primary_pain}, desire: {p.primary_desire}"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "match_content_to_persona":
+                content = args.get("content", "")
+                persona_id = args.get("persona_id", "")
+                if not content or not persona_id:
+                    return "I need the content and a persona_id (from generate_audience_personas) to check.", {}
+                from apps.psychology.personas.persona_engine import get_persona_engine
+
+                result = await get_persona_engine().match_content_to_persona(content, persona_id)
+                lines = [f"**Persona match: {result['match_score']:.0%}**"]
+                if result["alignment_reasons"]:
+                    lines.append("Aligned:\n" + "\n".join(f"  • {a}" for a in result["alignment_reasons"]))
+                if result["suggested_tweaks"]:
+                    lines.append("Suggested tweaks:\n" + "\n".join(f"  • {t}" for t in result["suggested_tweaks"]))
                 return "\n".join(lines), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
