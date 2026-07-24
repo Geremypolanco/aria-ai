@@ -526,7 +526,7 @@ class AriaSWEAgentEngine:
             github_token = os.getenv("GITHUB_TOKEN", "")
             headers = {"Authorization": f"token {github_token}"} if github_token else {}
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     f"https://api.github.com/repos/{repo}/issues/{issue_number}",
                     headers=headers,

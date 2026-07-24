@@ -83,7 +83,7 @@ class ExecTask:
     def signature(self) -> str:
         """Deterministic content hash for deduplication."""
         raw = f"{self.task}:{sorted(self.context.items())}"
-        return hashlib.md5(raw.encode()).hexdigest()[:12]
+        return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:12]
 
     def to_dict(self) -> dict:
         return {

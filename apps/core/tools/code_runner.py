@@ -115,7 +115,7 @@ def _build_sandboxed_cmd(cmd: list[str], workdir: str, network: bool) -> list[st
         *binds,
         "--proc", "/proc",
         "--dev", "/dev",
-        "--tmpfs", "/tmp",
+        "--tmpfs", "/tmp",  # nosec B108 - fresh isolated tmpfs inside the bwrap sandbox, not a shared host path
         "--bind", workdir, workdir,
         "--chdir", workdir,
         "--unshare-all",
@@ -265,7 +265,8 @@ class CodeRunner:
         start = time.monotonic()
         safe_env = {
             "PATH": os.environ.get("PATH", ""),
-            "HOME": cwd or os.environ.get("HOME", "/tmp"),
+            "HOME": cwd
+            or os.environ.get("HOME", "/tmp"),  # nosec B108 - benign fallback, not a write target
             "LANG": os.environ.get("LANG", "C.UTF-8"),
             "PYTHONDONTWRITEBYTECODE": "1",
         }

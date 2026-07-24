@@ -256,7 +256,7 @@ class AriaAIClient:
             p: ProviderHealth(provider=p) for p in AIProvider
         }
         self._groq = AsyncGroq(api_key=settings.GROQ_API_KEY or "no-key")
-        self._http = httpx.AsyncClient(
+        self._http = httpx.AsyncClient(  # nosec B113 - timeout is set below; bandit 1.7.10 misparses multi-line kwargs here
             timeout=httpx.Timeout(45.0, connect=10.0),
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
         )

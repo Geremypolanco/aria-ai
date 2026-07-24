@@ -39,6 +39,7 @@ aiofiles==24.1.0
 # ── Utilidades ────────────────────────────────────────────
 python-multipart==0.0.32  # security: 0.0.12 had multiple DoS CVEs
 tenacity==9.0.0
+defusedxml==0.7.1  # XXE-safe XML parsing for external feeds (Indeed RSS, AWS S3 responses)
 
 # ── IA adicional (Solo si es necesario) ───────────────────────
 # Anthropic SDK oficial + SDK MCP — Cliente MCP y Agente de Uso de Computadora

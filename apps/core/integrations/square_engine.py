@@ -63,7 +63,7 @@ class SquareEngine:
             },
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             res = await client.post(url, headers=self.headers, json=payload)
             if res.status_code in (200, 201):
                 return {"success": True, "data": res.json()}
@@ -90,7 +90,7 @@ class SquareEngine:
             },
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             res = await client.post(url, headers=self.headers, json=payload)
             if res.status_code in (200, 201):
                 return {

@@ -33,7 +33,7 @@ class ShopifyEngine:
     def get_all_products(self) -> list[dict[str, Any]]:
         """Gets all products from the store for analysis."""
         url = f"{self.base_url}/products.json?limit=250"
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.headers, timeout=30)
         if response.status_code == 200:
             return response.json().get("products", [])
         logger.error(f"Error getting products: {response.text}")
@@ -42,7 +42,7 @@ class ShopifyEngine:
     def get_orders_report(self, limit: int = 100) -> dict[str, Any]:
         """Generates a sales report for performance analysis."""
         url = f"{self.base_url}/orders.json?limit={limit}&status=any"
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.headers, timeout=30)
         if response.status_code == 200:
             orders = response.json().get("orders", [])
             total_revenue = sum(float(o.get("total_price", 0)) for o in orders)
@@ -112,7 +112,7 @@ class ShopifyEngine:
             }
         }
 
-        response = requests.post(url, json=payload, headers=self.headers)
+        response = requests.post(url, json=payload, headers=self.headers, timeout=30)
         if response.status_code == 201:
             product = response.json().get("product", {})
             product_id = product.get("id")
@@ -142,7 +142,7 @@ class ShopifyEngine:
                 "metafields_global_description_tag": seo_description,
             }
         }
-        response = requests.put(url, json=payload, headers=self.headers)
+        response = requests.put(url, json=payload, headers=self.headers, timeout=30)
         if response.status_code == 200:
             logger.info(f"[ShopifyEngine] SEO updated for product {product_id}")
         else:
@@ -154,7 +154,7 @@ class ShopifyEngine:
         for img_url in image_urls:
             url = f"{self.base_url}/products/{product_id}/images.json"
             payload = {"image": {"src": img_url}}
-            response = requests.post(url, json=payload, headers=self.headers)
+            response = requests.post(url, json=payload, headers=self.headers, timeout=30)
             if response.status_code == 200:
                 img_id = response.json().get("image", {}).get("id")
                 added_ids.append(str(img_id))
@@ -177,7 +177,7 @@ class ShopifyEngine:
                 "type": "url",
             }
         }
-        response = requests.post(url, json=payload, headers=self.headers)
+        response = requests.post(url, json=payload, headers=self.headers, timeout=30)
         if response.status_code == 200:
             logger.info(f"[ShopifyEngine] Video URL saved for product {product_id}")
             return True
@@ -194,7 +194,7 @@ class ShopifyEngine:
             "inventory_item_id": inventory_item_id,
             "available": quantity,
         }
-        response = requests.post(url, json=payload, headers=self.headers)
+        response = requests.post(url, json=payload, headers=self.headers, timeout=30)
         if response.status_code == 200:
             logger.info(f"[ShopifyEngine] Inventory updated: {quantity} units")
             return True
@@ -204,7 +204,7 @@ class ShopifyEngine:
     def get_inventory_levels(self) -> list[dict[str, Any]]:
         """Gets the current inventory levels for all products."""
         url = f"{self.base_url}/inventory_levels.json"
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.headers, timeout=30)
         if response.status_code == 200:
             return response.json().get("inventory_levels", [])
         return []
@@ -212,7 +212,7 @@ class ShopifyEngine:
     def get_locations(self) -> list[dict[str, Any]]:
         """Gets the store's inventory locations."""
         url = f"{self.base_url}/locations.json"
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.headers, timeout=30)
         if response.status_code == 200:
             return response.json().get("locations", [])
         return []
@@ -232,7 +232,7 @@ class ShopifyEngine:
         if image_url:
             payload["custom_collection"]["image"] = {"src": image_url}
 
-        response = requests.post(url, json=payload, headers=self.headers)
+        response = requests.post(url, json=payload, headers=self.headers, timeout=30)
         if response.status_code == 201:
             collection_id = response.json().get("custom_collection", {}).get("id")
             logger.info(f"[ShopifyEngine] Collection created: {title} (ID: {collection_id})")
@@ -244,7 +244,7 @@ class ShopifyEngine:
         """Adds a product to a collection."""
         url = f"{self.base_url}/collects.json"
         payload = {"collect": {"collection_id": collection_id, "product_id": product_id}}
-        response = requests.post(url, json=payload, headers=self.headers)
+        response = requests.post(url, json=payload, headers=self.headers, timeout=30)
         return response.status_code == 201
 
     # ── PROMOTIONS AND DISCOUNTS ──────────────────────────────────
@@ -267,13 +267,15 @@ class ShopifyEngine:
                 "usage_limit": usage_limit,
             }
         }
-        response = requests.post(url, json=payload, headers=self.headers)
+        response = requests.post(url, json=payload, headers=self.headers, timeout=30)
         if response.status_code == 201:
             rule_id = response.json().get("price_rule", {}).get("id")
             # Create the code associated with the rule
             code_url = f"{self.base_url}/price_rules/{rule_id}/discount_codes.json"
             code_payload = {"discount_code": {"code": code}}
-            code_response = requests.post(code_url, json=code_payload, headers=self.headers)
+            code_response = requests.post(
+                code_url, json=code_payload, headers=self.headers, timeout=30
+            )
             if code_response.status_code == 201:
                 logger.info(f"[ShopifyEngine] Discount code created: {code} ({percentage}%)")
                 return str(rule_id)
@@ -287,7 +289,7 @@ class ShopifyEngine:
         for asset_key, content in assets.items():
             url = f"{self.base_url}/themes/{theme_id}/assets.json"
             payload = {"asset": {"key": asset_key, "value": content}}
-            requests.put(url, json=payload, headers=self.headers)
+            requests.put(url, json=payload, headers=self.headers, timeout=30)
             logger.info(f"[ShopifyEngine] Asset updated: {asset_key}")
 
     # ── DESTRUCTIVE OPERATIONS (USE WITH CAUTION) ─────────────────
@@ -300,6 +302,6 @@ class ShopifyEngine:
         products = self.get_all_products()
         for product in products:
             delete_url = f"{self.base_url}/products/{product['id']}.json"
-            requests.delete(delete_url, headers=self.headers)
+            requests.delete(delete_url, headers=self.headers, timeout=30)
             logger.info(f"[ShopifyEngine] Product deleted: {product['title']}")
         return len(products)

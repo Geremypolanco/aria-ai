@@ -80,8 +80,8 @@ class McpClient:
             from apps.core.tools.web_tools import _assert_public_url
 
             await _assert_public_url(self.server_url)
-            async with httpx.AsyncClient() as client:
-                response = await client.post(self.server_url, json=request_payload, timeout=30)
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(self.server_url, json=request_payload)
                 response.raise_for_status()
                 response_json = response.json()
 

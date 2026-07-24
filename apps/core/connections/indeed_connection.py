@@ -94,9 +94,9 @@ class IndeedConnection:
                 r = await http.get(self.RSS_URL, params=params)
                 if r.status_code != 200:
                     return []
-                import xml.etree.ElementTree as ET
+                from defusedxml.ElementTree import fromstring
 
-                root = ET.fromstring(r.text)
+                root = fromstring(r.text)
                 items = root.findall(".//item")
                 results = []
                 for item in items[:max_results]:
