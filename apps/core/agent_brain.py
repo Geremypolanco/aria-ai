@@ -22,6 +22,29 @@ def build_system_prompt(include_tools: bool = True) -> str:
     return base
 
 
+# think()/generate_code()/research()/analyze() return these exact strings on
+# failure instead of raising, so callers must check for them explicitly by
+# value (there is no other failure signal). Callers used to sniff a "⚠️"
+# prefix that these messages no longer have — is_failure_reply() is the one
+# place that contract lives now, so wording changes can't silently break it.
+NO_PROVIDER_REPLY = (
+    "ARIA isn't fully set up yet — no AI provider is configured for this deployment. "
+    "Please try again shortly."
+)
+ALL_PROVIDERS_FAILED_REPLY = "ARIA couldn't reach any AI provider right now. Please try again in a moment."
+INTERNAL_ERROR_REPLY = (
+    "ARIA hit an internal error processing that. Please try again — "
+    "if it keeps happening, contact support."
+)
+_FAILURE_REPLIES = (NO_PROVIDER_REPLY, ALL_PROVIDERS_FAILED_REPLY, INTERNAL_ERROR_REPLY)
+
+
+def is_failure_reply(text: str) -> bool:
+    """True if `text` is one of think()'s fixed failure strings rather than a
+    real model response."""
+    return text in _FAILURE_REPLIES
+
+
 class AriaAgent:
     """ARIA's main agent - uses local AI models with full tool-use capability."""
 
@@ -40,7 +63,7 @@ class AriaAgent:
         """Process a message through ARIA's reasoning with multi-provider fallback."""
         if not self.client:
             logger.error("AriaAgent.think: no AI client configured (no provider API key set)")
-            return "ARIA isn't fully set up yet — no AI provider is configured for this deployment. Please try again shortly."
+            return NO_PROVIDER_REPLY
 
         full_system = system or build_system_prompt()
         try:
@@ -51,6 +74,7 @@ class AriaAgent:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 agent_name="aria",
+                prefer_quality=True,
             )
             if response and response.success:
                 return response.content
@@ -62,6 +86,7 @@ class AriaAgent:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 agent_name="aria-fallback",
+                prefer_quality=True,
             )
             if fb_response and fb_response.success:
                 return fb_response.content
@@ -69,10 +94,10 @@ class AriaAgent:
                 "AriaAgent.think: all AI providers failed — %s",
                 response.error if response else "no response",
             )
-            return "ARIA couldn't reach any AI provider right now. Please try again in a moment."
+            return ALL_PROVIDERS_FAILED_REPLY
         except Exception as e:
             logger.error(f"AriaAgent.think error: {e}")
-            return "ARIA hit an internal error processing that. Please try again — if it keeps happening, contact support."
+            return INTERNAL_ERROR_REPLY
 
     async def think_json(
         self,

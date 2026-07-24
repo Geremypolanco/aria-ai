@@ -70,6 +70,14 @@ class ExecRecord:
 SYSTEM_TEMPLATE = """\
 You are ARIA. You talk like a real person — warm, direct, with genuine curiosity — not like a corporate robot. Natural, conversational tone: first person, contractions, sentences with human rhythm. No "As an AI…", no empty jargon ("enterprise-grade solution", "synergy", "leverage"), no filler. Say things the way you'd say them to a smart colleague you respect. Be brief when the answer is simple; expand only when it adds value.
 
+SOUND SHARP, NOT GENERIC — these habits read as low-intelligence and you must avoid them:
+- Don't restate or summarize the question before answering it. Just answer.
+- Don't hedge everything into mush ("it depends", "there are many factors") without still committing to a concrete, specific answer given what you know. Take a position; note the one assumption that would change it.
+- When asked for an opinion or a recommendation, give ONE — don't list five options and decline to choose.
+- Don't pad with throat-clearing ("Great question!", "I'd be happy to help with that") or close with filler ("I hope this helps!", "Let me know if you have any other questions!").
+- Don't over-qualify with disclaimers no one asked for. Say the thing plainly.
+- Be specific: real numbers, real names, real steps — not "various factors" or "several approaches."
+
 WHO YOU ARE (mention naturally if asked): you were created by Geremy Polanco, founder of SARAPH, with a simple idea: an AI that actually researches, creates, and publishes to generate value — not just another chatbot. When you execute, you really execute. But you think first.
 
 THINK AND ASK BEFORE ACTING — this is the most important part:
@@ -699,8 +707,9 @@ class AriaMind:
             system=system,
             user=user_input,
             model=AIModel.STRATEGY,
-            max_tokens=1000,
+            max_tokens=1800,
             agent_name="aria_mind",
+            prefer_quality=True,
         )
 
         if result and isinstance(result, dict):
@@ -709,12 +718,16 @@ class AriaMind:
         # Fallback: direct text response
         logger.warning("[AriaMind] complete_json returned None — using FAST fallback")
         resp = await ai.complete(
-            system="You are ARIA. Reply directly in the SAME language as the user, max 2 sentences.",
+            system=(
+                "You are ARIA. Talk like a real person, not a corporate bot — warm, "
+                "direct, no filler. Reply in the SAME language as the user, max 2 sentences."
+            ),
             user=text + self._lang_directive(self._detect_lang(text)),
             model=AIModel.FAST,
-            max_tokens=150,
+            max_tokens=300,
             temperature=0.5,
             agent_name="aria_mind_fallback",
+            prefer_quality=True,
         )
         if resp and resp.success:
             return {"tool": None, "reply": resp.content}
@@ -1769,9 +1782,9 @@ class AriaMind:
     # ── SÍNTESIS ───────────────────────────────────────────────────────────
 
     async def _synthesize(self, user_input: str, tool: str, observation: str) -> str:
-        """LLM convierte la observación de la herramienta en respuesta natural."""
+        """Turns a tool's raw observation into a natural reply via the LLM."""
         if not observation or len(observation) < 10:
-            return "Ejecutado."
+            return "Done."
 
         ai = self._ai_client()
         if not ai:
@@ -1782,39 +1795,46 @@ class AriaMind:
         resp = await ai.complete(
             system=SYNTHESIS_SYSTEM,
             user=(
-                f"El usuario pidió: {user_input[:400]}\n"
-                f"Usé la herramienta '{tool}' y obtuve:\n{observation[:2000]}"
+                f"The user asked: {user_input[:400]}\n"
+                f"I used the '{tool}' tool and got:\n{observation[:2000]}"
                 f"{self._lang_directive(self._detect_lang(user_input))}"
             ),
             model=AIModel.STRATEGY,
             max_tokens=800,
             temperature=0.35,
             agent_name="aria_synthesis",
+            prefer_quality=True,
         )
         if resp and resp.success and resp.content:
             return resp.content.strip()
         return observation[:600]
 
     async def _fallback_reply(self, text: str) -> str:
-        """Si el plan no tiene reply, genera respuesta directa y útil."""
+        """Generates a direct, useful reply when the plan didn't include one."""
         ai = self._ai_client()
         if not ai:
-            return "Entendido."
+            return "Got it."
         from apps.core.tools.ai_client import AIModel
 
         resp = await ai.complete(
             system=(
-                "Eres ARIA, asistente inteligente. Responde en el MISMO idioma del usuario, "
-                "de forma directa y completa. "
-                "Usa markdown cuando sea útil. Si necesitas datos de internet, dilo y sugiere qué buscar."
+                "You are ARIA. Talk like a real person — warm, direct, genuinely curious — "
+                "not like a corporate assistant. First person, contractions, human rhythm. "
+                "No \"As an AI...\", no hedge-everything caveats, no restating the question "
+                "before answering, no closing with \"I hope this helps!\" or similar filler. "
+                "Have an actual opinion when asked for one instead of listing both sides and "
+                "declining to pick. Reply in the SAME language as the user, directly and "
+                "completely. Use markdown when it helps. If you'd need live internet data you "
+                "don't have here, say so plainly and suggest what to search for."
             ),
             user=text + self._lang_directive(self._detect_lang(text)),
             model=AIModel.STRATEGY,
-            max_tokens=600,
+            max_tokens=800,
             temperature=0.4,
             agent_name="aria_fallback",
+            prefer_quality=True,
         )
-        return resp.content.strip() if (resp and resp.success) else "Entendido."
+        return resp.content.strip() if (resp and resp.success) else "Got it — one moment."
 
     # ── GESTIÓN DE ESTADO COGNITIVO ────────────────────────────────────────
 

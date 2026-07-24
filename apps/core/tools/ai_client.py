@@ -272,6 +272,7 @@ class AriaAIClient:
         max_tokens: int = 2000,
         temperature: float = 0.7,
         agent_name: str = "aria",
+        prefer_quality: bool = False,
     ) -> dict:
         """Helper to get parsed JSON directly."""
         resp = await self.complete(
@@ -282,6 +283,7 @@ class AriaAIClient:
             temperature=temperature,
             json_mode=True,
             agent_name=agent_name,
+            prefer_quality=prefer_quality,
         )
         if not resp.success:
             return {}
@@ -299,6 +301,7 @@ class AriaAIClient:
         temperature: float = 0.7,
         json_mode: bool = False,
         agent_name: str = "aria",
+        prefer_quality: bool = False,
     ) -> AIResponse:
         if json_mode:
             user = (
@@ -308,7 +311,7 @@ class AriaAIClient:
                 "Just the JSON object."
             )
 
-        providers = self._get_available_providers()
+        providers = self._get_available_providers(prefer_quality=prefer_quality)
         last_error: str | None = None
         attempts = 0
 
@@ -607,14 +610,30 @@ class AriaAIClient:
         }
         return [name for name, present in keyed.items() if present]
 
-    def _get_available_providers(self) -> list[AIProvider]:
-        base_order = [
-            AIProvider.HUGGINGFACE,
-            AIProvider.GROQ,
-            AIProvider.GEMINI,
-            AIProvider.ANTHROPIC,
-            AIProvider.OPENAI,
-        ]
+    def _get_available_providers(self, prefer_quality: bool = False) -> list[AIProvider]:
+        # Default order is cost-first (free HF rotation before paid providers) —
+        # right for high-volume background/content work. `prefer_quality` flips
+        # that for ARIA's own user-facing replies: a paying account has usually
+        # configured a frontier key (Anthropic/Gemini/OpenAI), and a free
+        # distilled 70B model answering the actual conversation is exactly what
+        # reads as noticeably less capable than it should be.
+        base_order = (
+            [
+                AIProvider.ANTHROPIC,
+                AIProvider.GEMINI,
+                AIProvider.OPENAI,
+                AIProvider.GROQ,
+                AIProvider.HUGGINGFACE,
+            ]
+            if prefer_quality
+            else [
+                AIProvider.HUGGINGFACE,
+                AIProvider.GROQ,
+                AIProvider.GEMINI,
+                AIProvider.ANTHROPIC,
+                AIProvider.OPENAI,
+            ]
+        )
 
         has_key = {
             AIProvider.HUGGINGFACE: bool(settings.hf_key),
@@ -626,9 +645,13 @@ class AriaAIClient:
 
         available = [p for p in base_order if has_key.get(p) and self._health[p].is_available()]
 
-        # If HF has failed recently, prioritize Groq
+        # If HF has failed recently, prioritize Groq — only meaningful in the
+        # cost-first order where HF normally leads; in quality-first order
+        # Groq already sits behind the frontier providers and has no business
+        # jumping ahead of them just because HF (unrelated) is unhealthy.
         if (
-            self._health[AIProvider.HUGGINGFACE].consecutive_failures >= 1
+            not prefer_quality
+            and self._health[AIProvider.HUGGINGFACE].consecutive_failures >= 1
             and AIProvider.GROQ in available
         ):
             available.remove(AIProvider.GROQ)
