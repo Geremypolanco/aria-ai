@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -168,6 +169,8 @@ AVAILABLE TOOLS (you execute them, not the user):
 - recommend_persuasion_tactics → suggests conversion-copy tactics (scarcity, social proof, authority, etc.) matched to a context and target emotion. Args: {{"context": "...", "target_emotion": "desire|trust|urgency|belonging|fear"}}
 - score_copy_persuasion → scores existing marketing copy for persuasion strength and names which principles it already uses. Args: {{"copy": "..."}}
 - optimize_cta      → generates 3 alternative CTA button/text variations built around a persuasion principle. Args: {{"cta": "...", "principle": "reciprocity|commitment|social_proof|authority|liking|scarcity|unity|loss_aversion"}}
+- evaluate_ai_response → scores any piece of text (not just marketing copy — reports, analysis, generated content) across relevance, coherence, specificity, toxicity, hallucination risk, and actionability, with flags and fix recommendations. Args: {{"content": "...", "prompt": "the original request this responds to, if any"}}
+- ai_performance_report → OWNER ONLY. Aggregate stats on ARIA's own recent conversation turns (latency, failure rate, avg quality/hallucination scores, breakdown by tool). Internal diagnostic, not a business metric. Args: {{}}
 - forecast_revenue  → projects monthly revenue over time under a growth model, with breakeven month. Args: {{"initial_revenue": 1000, "growth_rate": 0.1, "months": 12, "model": "linear|exponential|s_curve|plateau", "name": "..."}}
 - find_growth_bottleneck → given business metrics, identifies the single biggest lever to pull next with an estimated revenue-lift %. Args: {{"metrics": {{"traffic": 0.5, "conversion_rate": 0.02, "avg_order_value": 50.0, "retention_rate": 0.5, "referral_rate": 0.05}}}}
 - growth_removal_plan → step-by-step plan (with timeframes) to remove a named bottleneck from find_growth_bottleneck. Args: {{"bottleneck": "..."}}
@@ -209,25 +212,26 @@ REASONING RULES:
 11. create_brand is about voice/identity (tone, palette, typography as brand rules); create_style_profile is about creative execution style for a niche (mood, pacing, imagery) and can evolve over a campaign — don't conflate them. Before finalizing content built on a style profile, use check_content_novelty to catch clichés, and audit_style_consistency when publishing multiple pieces from the same profile so they don't drift apart.
 12. When the user has an ongoing list of things they could work on (not one isolated decision) → use add_priority_action to track each one, top_priorities to see what matters most, and allocate_resources when they ask how to split their time/budget. For a single one-off decision between named options, use analyze_decision instead.
 13. When writing or reviewing sales/marketing copy, landing pages, ads, or CTAs → use recommend_persuasion_tactics before drafting, and score_copy_persuasion or optimize_cta to strengthen a draft. Never fabricate specific numbers (e.g. "10,000+ customers") in generated copy — those examples are templates, not real claims to reuse verbatim.
-14. For revenue projections over time, or to see the effect of fixing one specific growth lever before committing to it → use forecast_revenue or simulate_growth_lever. When the user asks "what's holding growth back" → find_growth_bottleneck, then growth_removal_plan for the concrete steps.
-15. When the user gives you real customer/user behavior data (page views, cart adds, purchases, refunds, etc.) → use analyze_user_behavior to get intent/churn/LTV signals and a next-best-action, not a generic guess. For persona-level audience work (who to target and how) → generate_audience_personas, then match_content_to_persona before finalizing copy meant for a specific persona.
-16. Before recommending real ad spend → create_ad_audience + estimate_ad_cac to check the math is profitable (CAC well under product price) before proposing a campaign. For retargeting specifically, use create_retargeting_campaign (or cart_abandonment_sequence for cart abandoners), log real results with record_retargeting_metrics as they come in, and check retargeting_performance before recommending scaling a campaign up.
-17. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-18. For recurring automations → use create_workflow + run_workflow.
-19. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-20. If you're unsure what the user wants → interpret the most useful intent and execute it.
-21. Never make up data, prices, statistics, or facts. Search if you don't know.
-22. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-23. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-24. If the user asks to search for repos or projects on GitHub → use github_search.
-25. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-26. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-27. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-28. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-29. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-30. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-31. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
-32. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
+14. evaluate_ai_response is the general-purpose quality check — use it for any non-marketing content (a report, an analysis, a generated document) where score_copy_persuasion's persuasion-specific lens doesn't fit. If the user asks how ARIA itself has been performing (not a business metric — its own reliability/quality) → ai_performance_report; that tool is owner-only, decline politely for anyone else.
+15. For revenue projections over time, or to see the effect of fixing one specific growth lever before committing to it → use forecast_revenue or simulate_growth_lever. When the user asks "what's holding growth back" → find_growth_bottleneck, then growth_removal_plan for the concrete steps.
+16. When the user gives you real customer/user behavior data (page views, cart adds, purchases, refunds, etc.) → use analyze_user_behavior to get intent/churn/LTV signals and a next-best-action, not a generic guess. For persona-level audience work (who to target and how) → generate_audience_personas, then match_content_to_persona before finalizing copy meant for a specific persona.
+17. Before recommending real ad spend → create_ad_audience + estimate_ad_cac to check the math is profitable (CAC well under product price) before proposing a campaign. For retargeting specifically, use create_retargeting_campaign (or cart_abandonment_sequence for cart abandoners), log real results with record_retargeting_metrics as they come in, and check retargeting_performance before recommending scaling a campaign up.
+18. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+19. For recurring automations → use create_workflow + run_workflow.
+20. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+21. If you're unsure what the user wants → interpret the most useful intent and execute it.
+22. Never make up data, prices, statistics, or facts. Search if you don't know.
+23. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+24. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+25. If the user asks to search for repos or projects on GitHub → use github_search.
+26. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+27. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+28. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+29. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+30. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+31. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+32. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+33. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -319,6 +323,7 @@ _HELP_TEXT = """\
 - `what persuasion angle should I use for [context]?` — tactic recommendations
 - `score this copy: [text]` — persuasion strength + principles used
 - `improve this CTA: [text]` — 3 alternative variations
+- `evaluate this: [content]` — relevance/coherence/specificity/toxicity/hallucination scores + fixes
 
 **Growth forecasting**
 - `forecast revenue for [starting point] at [growth rate]` — projection with breakeven
@@ -574,6 +579,7 @@ class AriaMind:
     async def handle(
         self, text: str, chat_id: str, user_context: str | None = None, email: str = ""
     ) -> MindResponse:
+        turn_started = time.monotonic()
         try:
             # Fast-path for built-in commands
             stripped = text.strip().lower()
@@ -636,6 +642,9 @@ class AriaMind:
                         "generate_image", {"prompt": img_prompt}, obs, bool(media)
                     )
                     await self._store_interaction(chat_id, text, caption, "generate_image")
+                await self._trace_turn(
+                    "generate_image", text, caption, turn_started, bool(media)
+                )
                 return MindResponse(
                     text=(None if media else caption),
                     caption=caption,
@@ -709,10 +718,12 @@ class AriaMind:
                 # media presence override that either: computer_use always returns a
                 # final screenshot even when the run failed, so `media` alone isn't a
                 # reliable success signal — judge success from the observation text.
-                await self._record_exec(tool, tool_args, obs, not self._looks_like_failure(obs))
+                turn_success = not self._looks_like_failure(obs)
+                await self._record_exec(tool, tool_args, obs, turn_success)
                 await self._store_interaction(chat_id, text, final_text, tool)
                 await self._evolve_state(chat_id, state, text, goals)
                 asyncio.create_task(self._maybe_reflect(chat_id))
+                await self._trace_turn(tool, text, final_text, turn_started, turn_success)
                 # For documents, send text + doc; for A/V media, send caption only
                 is_doc = "document_bytes" in media
                 return MindResponse(
@@ -729,6 +740,9 @@ class AriaMind:
             await self._store_interaction(chat_id, text, reply, None)
             await self._evolve_state(chat_id, state, text, goals)
             asyncio.create_task(self._maybe_reflect(chat_id))
+            await self._trace_turn(
+                "conversation", text, reply, turn_started, not self._looks_like_failure(reply)
+            )
             return MindResponse(text=reply)
 
         except Exception as exc:
@@ -1999,6 +2013,49 @@ class AriaMind:
                     lines.append(f"  • {v}")
                 return "\n".join(lines), {}
 
+            # ── AI RESPONSE QUALITY (evaluation/phoenix) ──────────────────────
+            elif tool == "evaluate_ai_response":
+                content = args.get("content", "")
+                prompt = args.get("prompt", "")
+                if not content:
+                    return "I need the content to evaluate.", {}
+                from apps.evaluation.phoenix.evaluator import get_ai_evaluator
+
+                result = get_ai_evaluator().evaluate(content, prompt)
+                lines = [f"**Overall quality: {result.overall_score:.0%}**"]
+                lines.append(
+                    "Scores:\n"
+                    + "\n".join(f"  • {k}: {v:.0%}" for k, v in result.scores.items())
+                )
+                if result.flags:
+                    lines.append("Flags:\n" + "\n".join(f"  • {f}" for f in result.flags))
+                if result.recommendations:
+                    lines.append(
+                        "Recommendations:\n"
+                        + "\n".join(f"  • {r}" for r in result.recommendations)
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "ai_performance_report":
+                from apps.core import auth
+
+                if not auth.is_owner_email(email):
+                    return "This action is reserved for ARIA's owner.", {}
+                from apps.evaluation.phoenix.tracer import get_cognition_tracer
+
+                stats = await get_cognition_tracer().analytics()
+                if stats.get("total_traces", 0) == 0:
+                    return "No traced conversation turns yet.", {}
+                by_tool = ", ".join(f"{k}: {v}" for k, v in stats.get("by_task", {}).items())
+                return (
+                    f"**AI performance ({stats['total_traces']} traces)**\n"
+                    f"Avg latency: {stats['avg_latency_ms']:.0f}ms · "
+                    f"Failure rate: {stats['failure_rate']:.0%}\n"
+                    f"Avg quality: {stats['avg_quality_score']:.0%} · "
+                    f"Avg hallucination risk: {stats['avg_hallucination_risk']:.0%}\n"
+                    f"By tool: {by_tool}"
+                ), {}
+
             # ── GROWTH FORECASTING & LEVERAGE ANALYSIS ───────────────────────
             elif tool == "forecast_revenue":
                 initial_revenue = float(args.get("initial_revenue", 0))
@@ -2742,6 +2799,29 @@ class AriaMind:
         )
         execs = execs[-self.MAX_EXECS :]
         await cache.set(self.K_EXECS, execs, ttl_seconds=86400 * 30)
+
+    async def _trace_turn(
+        self,
+        task_type: str,
+        prompt: str,
+        response: str,
+        started_at: float,
+        success: bool,
+    ) -> None:
+        """Records this turn with CognitionTracer for the ai_performance_report
+        tool. Best-effort only — a tracing failure must never affect the
+        actual reply the user already received, so every error is swallowed."""
+        with suppress(Exception):
+            from apps.evaluation.phoenix.tracer import get_cognition_tracer
+
+            await get_cognition_tracer().record(
+                agent_name="aria_mind",
+                task_type=task_type,
+                prompt=prompt,
+                response=response,
+                latency_ms=(time.monotonic() - started_at) * 1000,
+                success=success,
+            )
 
     # ── SELF-REFLECTION ───────────────────────────────────────────────────────
 
