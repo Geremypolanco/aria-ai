@@ -46,7 +46,7 @@ async def test_remove_background_returns_image_bytes_as_media():
     )
     suite.remove_background.assert_awaited_once_with(b"fakeimgbytes")
     assert media == {"image_bytes": b"png-bytes"}
-    assert "Fondo eliminado" in obs
+    assert "Background removed" in obs
 
 
 async def test_remove_background_reports_error_without_media():
@@ -106,7 +106,7 @@ async def test_document_qa_requires_url_and_question():
     mind = AriaMind()
     obs, media = await mind._execute_tool("document_qa", {"url": "https://example.com/x.png"})
     assert media == {}
-    assert "pregunta" in obs
+    assert "question" in obs
 
 
 async def test_create_product_pack_wires_main_image_into_media():

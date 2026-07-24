@@ -1,12 +1,12 @@
 """
-autonomous_research_division.py — División de Investigación Autónoma para ARIA AI.
+autonomous_research_division.py — Autonomous Research Division for ARIA AI.
 
-Agentes que operan de forma proactiva (sin solicitud humana):
-  - Generan reportes de mercado semanales.
-  - Realizan estudios competitivos profundos.
-  - Detectan nuevas oportunidades de ingresos.
+Agents that operate proactively (without human request):
+  - Generate weekly market reports.
+  - Perform deep competitive studies.
+  - Detect new revenue opportunities.
 
-ARIA no espera órdenes, Aria investiga y propone.
+ARIA doesn't wait for orders, Aria researches and proposes.
 """
 
 from __future__ import annotations
@@ -19,28 +19,28 @@ logger = logging.getLogger("aria.research_division")
 
 class AriaResearchDivision:
     """
-    División de Investigación Autónoma de ARIA.
-    Gestiona la producción proactiva de inteligencia de negocio.
+    ARIA's Autonomous Research Division.
+    Manages the proactive production of business intelligence.
     """
 
     def __init__(self) -> None:
         pass
 
     async def generate_proactive_report(self, focus_area: str):
-        """Genera un reporte proactivo sobre un área de interés."""
-        logger.info("[ResearchDivision] Generando reporte proactivo para: %s", focus_area)
+        """Generates a proactive report about an area of interest."""
+        logger.info("[ResearchDivision] Generating proactive report for: %s", focus_area)
 
-        # 1. Escanear Radar de Mercado
-        # 2. Consultar Memoria Organizacional
-        # 3. Ejecutar Deep Research
-        # 4. Sintetizar con World Model
+        # 1. Scan Market Radar
+        # 2. Query Organizational Memory
+        # 3. Run Deep Research
+        # 4. Synthesize with World Model
 
         report_id = f"REP-{datetime.now().strftime('%Y%m%d-%H%M')}"
         return {
             "report_id": report_id,
-            "title": f"Oportunidades Estratégicas en {focus_area}",
+            "title": f"Strategic Opportunities in {focus_area}",
             "status": "Completed",
-            "findings": ["Tendencia emergente en X", "Competidor Y bajando precios"],
+            "findings": ["Emerging trend in X", "Competitor Y lowering prices"],
         }
 
 
@@ -49,7 +49,7 @@ _research_division_instance: AriaResearchDivision | None = None
 
 
 def get_research_division() -> AriaResearchDivision:
-    """Retorna el singleton de la división de investigación."""
+    """Returns the research division singleton."""
     global _research_division_instance
     if _research_division_instance is None:
         _research_division_instance = AriaResearchDivision()

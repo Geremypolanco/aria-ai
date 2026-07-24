@@ -1,13 +1,13 @@
 """
-graph_rag_engine.py — Recuperación Basada en Grafos (GraphRAG) para ARIA AI.
+graph_rag_engine.py — Graph-Based Retrieval (GraphRAG) for ARIA AI.
 
-Implementa la metodología GraphRAG de Microsoft para:
-  - Mejorar el razonamiento sobre documentos complejos
-  - Descubrir relaciones no evidentes entre entidades
-  - Proporcionar respuestas más holísticas y contextuales
-  - Combinar la potencia de los grafos con la búsqueda semántica
+Implements Microsoft's GraphRAG methodology to:
+  - Improve reasoning over complex documents
+  - Discover non-obvious relationships between entities
+  - Provide more holistic and contextual answers
+  - Combine the power of graphs with semantic search
 
-Referencia: https://github.com/microsoft/graphrag
+Reference: https://github.com/microsoft/graphrag
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ logger = logging.getLogger("aria.graph_rag")
 
 class AriaGraphRAGEngine:
     """
-    Motor de GraphRAG para ARIA.
-    Utiliza estructuras de grafos para potenciar la recuperación de información.
+    ARIA's GraphRAG engine.
+    Uses graph structures to power information retrieval.
     """
 
     def __init__(self, workspace_dir: str = "./graphrag_workspace") -> None:
@@ -30,21 +30,21 @@ class AriaGraphRAGEngine:
             os.makedirs(workspace_dir)
 
     async def index_content(self, content_path: str):
-        """Indexa contenido utilizando el pipeline de GraphRAG."""
-        logger.info("[GraphRAG] Iniciando indexación de: %s", content_path)
-        # Nota: En producción esto invoca el CLI de graphrag o su API interna
+        """Indexes content using the GraphRAG pipeline."""
+        logger.info("[GraphRAG] Starting indexing of: %s", content_path)
+        # Note: In production this invokes the graphrag CLI or its internal API
         # subprocess.run(["python", "-m", "graphrag.index", "--root", self.workspace_dir])
-        return "Contenido indexado en el grafo de conocimiento."
+        return "Content indexed in the knowledge graph."
 
     async def global_search(self, query: str) -> str:
-        """Realiza una búsqueda global en el grafo para respuestas resumidas."""
-        logger.info("[GraphRAG] Realizando búsqueda global: %s", query)
-        return f"Respuesta global simulada para: {query}"
+        """Performs a global search over the graph for summarized answers."""
+        logger.info("[GraphRAG] Performing global search: %s", query)
+        return f"Simulated global answer for: {query}"
 
     async def local_search(self, query: str) -> str:
-        """Realiza una búsqueda local para detalles específicos de entidades."""
-        logger.info("[GraphRAG] Realizando búsqueda local: %s", query)
-        return f"Respuesta local simulada para: {query}"
+        """Performs a local search for entity-specific details."""
+        logger.info("[GraphRAG] Performing local search: %s", query)
+        return f"Simulated local answer for: {query}"
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ _graph_rag_instance: AriaGraphRAGEngine | None = None
 
 
 def get_graph_rag_engine() -> AriaGraphRAGEngine:
-    """Retorna el singleton del motor GraphRAG."""
+    """Returns the GraphRAG engine singleton."""
     global _graph_rag_instance
     if _graph_rag_instance is None:
         _graph_rag_instance = AriaGraphRAGEngine()

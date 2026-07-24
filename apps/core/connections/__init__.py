@@ -1,9 +1,9 @@
 """
-Connections — sistema MCP equivalente para ARIA AI.
+Connections — MCP-equivalent system for ARIA AI.
 
-Permite conectar servicios externos (Google, Indeed, Slack, y más)
-con un simple comando /connect <servicio> desde Telegram.
-Los tokens OAuth se guardan en Redis por usuario.
+Allows connecting external services (Google, Indeed, Slack, and more)
+with a simple /connect <service> command from Telegram.
+OAuth tokens are stored in Redis per user.
 """
 
 from apps.core.connections.manager import ConnectionManager, get_connection_manager

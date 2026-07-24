@@ -1,13 +1,13 @@
 """
-vector_store.py — Motores de Búsqueda Vectorial para ARIA AI.
+vector_store.py — Vector Search Engines for ARIA AI.
 
-Integra Qdrant y Weaviate para RAG de alto rendimiento.
-Permite almacenar y recuperar embeddings de forma masiva para:
-  - Bases de conocimiento extensas
-  - Memoria de agentes
-  - Búsqueda semántica en documentos
+Integrates Qdrant and Weaviate for high-performance RAG.
+Enables storing and retrieving embeddings at scale for:
+  - Large knowledge bases
+  - Agent memory
+  - Semantic search over documents
 
-Referencia:
+Reference:
   - Qdrant: https://qdrant.tech/
   - Weaviate: https://weaviate.io/
 """
@@ -19,7 +19,7 @@ import os
 
 logger = logging.getLogger("aria.vector_store")
 
-# ── Qdrant Import con fallback ───────────────────────────────────────────────
+# ── Qdrant import with fallback ──────────────────────────────────────────────
 try:
     from qdrant_client import QdrantClient
 
@@ -27,7 +27,7 @@ try:
 except ImportError:
     QDRANT_AVAILABLE = False
 
-# ── Weaviate Import con fallback ─────────────────────────────────────────────
+# ── Weaviate import with fallback ────────────────────────────────────────────
 try:
     import weaviate
 
@@ -38,8 +38,8 @@ except ImportError:
 
 class AriaVectorStore:
     """
-    Gestor de bases de datos vectoriales de ARIA.
-    Abstrae el uso de Qdrant o Weaviate según configuración.
+    ARIA's vector database manager.
+    Abstracts the use of Qdrant or Weaviate based on configuration.
     """
 
     def __init__(self, provider: str = "qdrant", host: str = "localhost", port: int = 6333) -> None:
@@ -49,20 +49,20 @@ class AriaVectorStore:
         if provider == "qdrant" and QDRANT_AVAILABLE:
             try:
                 self.client = QdrantClient(host=host, port=port)
-                logger.info("[VectorStore] Qdrant conectado en %s:%d", host, port)
+                logger.info("[VectorStore] Qdrant connected at %s:%d", host, port)
             except Exception as exc:
-                logger.error("[VectorStore] Error conectando a Qdrant: %s", exc)
+                logger.error("[VectorStore] Error connecting to Qdrant: %s", exc)
 
         elif provider == "weaviate" and WEAVIATE_AVAILABLE:
             try:
-                # Conexión simplificada para Weaviate v4
+                # Simplified connection for Weaviate v4
                 self.client = weaviate.connect_to_local(host=host, port=port)
-                logger.info("[VectorStore] Weaviate conectado en %s:%d", host, port)
+                logger.info("[VectorStore] Weaviate connected at %s:%d", host, port)
             except Exception as exc:
-                logger.error("[VectorStore] Error conectando a Weaviate: %s", exc)
+                logger.error("[VectorStore] Error connecting to Weaviate: %s", exc)
 
     async def search(self, collection: str, query_vector: list[float], limit: int = 5):
-        """Realiza una búsqueda por similitud vectorial."""
+        """Performs a vector similarity search."""
         if not self.client:
             return []
 
@@ -79,7 +79,7 @@ _vector_store_instance: AriaVectorStore | None = None
 
 
 def get_vector_store() -> AriaVectorStore:
-    """Retorna el singleton del almacén vectorial."""
+    """Returns the vector store singleton."""
     global _vector_store_instance
     if _vector_store_instance is None:
         provider = os.getenv("VECTOR_STORE_PROVIDER", "qdrant")

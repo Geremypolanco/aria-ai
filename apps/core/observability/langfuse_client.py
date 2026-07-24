@@ -1,13 +1,13 @@
 """
-langfuse_client.py — Observabilidad y Rastreo de LLMs para ARIA AI.
+langfuse_client.py — LLM Observability and Tracing for ARIA AI.
 
-Integra Langfuse para:
-  - Rastreo detallado de cada llamada a LLM (traces)
-  - Monitoreo de costos y uso de tokens
-  - Evaluación de latencia y rendimiento de agentes
-  - Depuración de flujos complejos de multi-paso
+Integrates Langfuse for:
+  - Detailed tracing of every LLM call (traces)
+  - Monitoring of costs and token usage
+  - Evaluation of agent latency and performance
+  - Debugging of complex multi-step flows
 
-Referencia: https://langfuse.com/docs/sdk/python
+Reference: https://langfuse.com/docs/sdk/python
 """
 
 from __future__ import annotations
@@ -17,21 +17,21 @@ from typing import Any
 
 logger = logging.getLogger("aria.langfuse")
 
-# ── Langfuse Import con fallback ─────────────────────────────────────────────
+# ── Langfuse Import with fallback ────────────────────────────────────────────
 try:
     from langfuse import Langfuse
 
     LANGFUSE_AVAILABLE = True
-    logger.info("[Langfuse] SDK cargado correctamente.")
+    logger.info("[Langfuse] SDK loaded successfully.")
 except ImportError:
     LANGFUSE_AVAILABLE = False
-    logger.warning("[Langfuse] langfuse no instalado.")
+    logger.warning("[Langfuse] langfuse not installed.")
 
 
 class AriaLangfuseClient:
     """
-    Cliente de Observabilidad Langfuse para ARIA.
-    Centraliza el monitoreo de todas las interacciones con modelos de lenguaje.
+    Langfuse observability client for ARIA.
+    Centralizes monitoring of all interactions with language models.
     """
 
     def __init__(
@@ -45,9 +45,9 @@ class AriaLangfuseClient:
         if LANGFUSE_AVAILABLE and public_key and secret_key:
             try:
                 self._client = Langfuse(public_key=public_key, secret_key=secret_key, host=host)
-                logger.info("[Langfuse] Inicializado en %s", host)
+                logger.info("[Langfuse] Initialized at %s", host)
             except Exception as exc:
-                logger.error("[Langfuse] Error inicializando: %s", exc)
+                logger.error("[Langfuse] Error initializing: %s", exc)
 
     def trace_interaction(
         self,
@@ -57,9 +57,9 @@ class AriaLangfuseClient:
         output_data: Any,
         metadata: dict[str, Any] | None = None,
     ):
-        """Registra un rastro de interacción completo."""
+        """Records a complete interaction trace."""
         if not self._client:
-            logger.debug("[Langfuse] Rastreo simulado para: %s", name)
+            logger.debug("[Langfuse] Simulated trace for: %s", name)
             return
 
         try:
@@ -70,9 +70,9 @@ class AriaLangfuseClient:
                 output=output_data,
                 metadata=metadata or {},
             )
-            logger.info("[Langfuse] Traza registrada: %s", name)
+            logger.info("[Langfuse] Trace recorded: %s", name)
         except Exception as exc:
-            logger.error("[Langfuse] Error registrando traza: %s", exc)
+            logger.error("[Langfuse] Error recording trace: %s", exc)
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ _langfuse_instance: AriaLangfuseClient | None = None
 
 
 def get_langfuse_client() -> AriaLangfuseClient:
-    """Retorna el singleton del cliente Langfuse."""
+    """Returns the singleton Langfuse client."""
     global _langfuse_instance
     if _langfuse_instance is None:
         import os

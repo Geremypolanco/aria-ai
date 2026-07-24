@@ -1,18 +1,18 @@
 """
-continuous_learning.py — Motor de Auto-Aprendizaje Continuo de ARIA.
+continuous_learning.py — ARIA's Continuous Self-Learning Engine.
 
-ARIA aprende de cada interacción, extrae patrones con modelos HuggingFace
-y enriquece sus respuestas futuras con conocimiento acumulado.
+ARIA learns from every interaction, extracts patterns with HuggingFace
+models, and enriches its future responses with accumulated knowledge.
 
-Ciclo de aprendizaje:
-  1. Cada interacción se graba: quién preguntó, qué preguntó, cómo respondió ARIA
-  2. Cada N horas, el motor procesa el lote acumulado con modelos HF:
-     - Clasificación de temas (zero-shot-classification)
-     - Resumen de conversaciones (summarization)
-     - Extracción de entidades clave (named-entity-recognition)
-     - Embeddings para búsqueda semántica futura (feature-extraction)
-  3. Los aprendizajes se guardan en Redis (cache rápido) y Supabase (persistencia)
-  4. Al responder, ARIA consulta el contexto aprendido relevante al tema
+Learning cycle:
+  1. Every interaction is recorded: who asked, what they asked, how ARIA responded
+  2. Every N hours, the engine processes the accumulated batch with HF models:
+     - Topic classification (zero-shot-classification)
+     - Conversation summarization (summarization)
+     - Key entity extraction (named-entity-recognition)
+     - Embeddings for future semantic search (feature-extraction)
+  3. Learnings are saved to Redis (fast cache) and Supabase (persistence)
+  4. When responding, ARIA queries the learned context relevant to the topic
 """
 
 from __future__ import annotations
@@ -27,23 +27,23 @@ from typing import Any
 
 logger = logging.getLogger("aria.continuous_learning")
 
-# ── CLAVES REDIS ─────────────────────────────────────────────
+# ── REDIS KEYS ───────────────────────────────────────────────
 INTERACTIONS_KEY = "aria:learning:interactions:v2"
 KNOWLEDGE_KEY = "aria:learning:knowledge:{topic}"
 LAST_CYCLE_KEY = "aria:learning:last_cycle"
 TOPIC_FREQ_KEY = "aria:learning:topic_freq"
 MODEL_PERF_KEY = "aria:learning:model_perf:{model}"
-LEARNING_TTL = 60 * 60 * 24 * 30  # 30 días
-CYCLE_INTERVAL_H = 4  # cada 4 horas
+LEARNING_TTL = 60 * 60 * 24 * 30  # 30 days
+CYCLE_INTERVAL_H = 4  # every 4 hours
 
 
 @dataclass
 class Interaction:
-    """Una interacción registrada de Aria con el mundo."""
+    """A recorded interaction between Aria and the world."""
 
     ts: str
     source: str  # "telegram", "scheduler", "webhook", etc.
-    agent: str  # agente que respondió
+    agent: str  # agent that responded
     user_text: str
     aria_text: str
     model_used: str
@@ -58,13 +58,13 @@ class Interaction:
 
 @dataclass
 class KnowledgeCrystal:
-    """Unidad de conocimiento aprendida y comprimida."""
+    """A learned and compressed unit of knowledge."""
 
     topic: str
     summary: str
     key_entities: list[str]
     interaction_count: int
-    avg_satisfaction: float  # 0-1 estimado por señales implícitas
+    avg_satisfaction: float  # 0-1 estimated from implicit signals
     hf_model_used: str
     created_at: str
     updated_at: str
@@ -75,20 +75,20 @@ class KnowledgeCrystal:
 
 class ContinuousLearningEngine:
     """
-    Motor de auto-aprendizaje continuo de ARIA.
+    ARIA's continuous self-learning engine.
 
-    Uso:
+    Usage:
         engine = get_learning_engine()
 
-        # Grabar interacción
+        # Record an interaction
         await engine.record(source="telegram", agent="telegram_conversation",
                             user_text="...", aria_text="...",
                             model_used="groq/llama", latency_ms=600)
 
-        # Obtener contexto aprendido para enriquecer una respuesta
-        ctx = await engine.get_learned_context("marketing digital")
+        # Get learned context to enrich a response
+        ctx = await engine.get_learned_context("digital marketing")
 
-        # Correr ciclo de aprendizaje completo (llamado por scheduler)
+        # Run the full learning cycle (called by the scheduler)
         report = await engine.run_learning_cycle()
     """
 
@@ -121,7 +121,7 @@ class ContinuousLearningEngine:
             self._hf = HFDiscovery()
         return self._hf
 
-    # ── GRABACIÓN DE INTERACCIONES ───────────────────────────
+    # ── INTERACTION RECORDING ────────────────────────────────
 
     async def record(
         self,
@@ -135,7 +135,7 @@ class ContinuousLearningEngine:
         tokens: int = 0,
         metadata: dict | None = None,
     ) -> None:
-        """Graba una interacción para aprendizaje posterior."""
+        """Records an interaction for later learning."""
         interaction = Interaction(
             ts=datetime.now(UTC).isoformat(),
             source=source,
@@ -149,23 +149,23 @@ class ContinuousLearningEngine:
             metadata=metadata or {},
         )
 
-        # Buffer local para batch
+        # Local buffer for batching
         async with self._lock:
             self._pending_interactions.append(interaction)
 
-        # Flush a Redis si tenemos suficientes
+        # Flush to Redis if we have enough
         if len(self._pending_interactions) >= self._batch_size:
             await self._flush_to_redis()
 
-        # Siempre flush al menos el último
+        # Always flush at least the last one
         else:
             try:
                 cache = self._get_cache()
                 await cache.lpush(INTERACTIONS_KEY, interaction.to_json())
                 await cache.expire(INTERACTIONS_KEY, LEARNING_TTL)
-                logger.debug("[Learning] Interacción grabada: %s/%s", source, agent)
+                logger.debug("[Learning] Interaction recorded: %s/%s", source, agent)
             except Exception as exc:
-                logger.warning("[Learning] No se pudo grabar interacción: %s", exc)
+                logger.warning("[Learning] Could not record interaction: %s", exc)
 
     async def _flush_to_redis(self) -> None:
         async with self._lock:
@@ -176,16 +176,16 @@ class ContinuousLearningEngine:
             for interaction in batch:
                 await cache.lpush(INTERACTIONS_KEY, interaction.to_json())
             await cache.expire(INTERACTIONS_KEY, LEARNING_TTL)
-            logger.info("[Learning] Batch de %d interacciones grabado", len(batch))
+            logger.info("[Learning] Batch of %d interactions recorded", len(batch))
         except Exception as exc:
             logger.error("[Learning] Error flushing batch: %s", exc)
 
-    # ── CONTEXTO APRENDIDO ───────────────────────────────────
+    # ── LEARNED CONTEXT ───────────────────────────────────────
 
     async def get_learned_context(self, topic: str, max_chars: int = 300) -> str:
         """
-        Recupera conocimiento aprendido relevante a un tema.
-        Úsalo para enriquecer el contexto de las respuestas de ARIA.
+        Retrieves learned knowledge relevant to a topic.
+        Use this to enrich the context of ARIA's responses.
         """
         try:
             cache = self._get_cache()
@@ -198,17 +198,17 @@ class ContinuousLearningEngine:
                 count = crystal_data.get("interaction_count", 0)
                 if summary:
                     entity_str = ", ".join(entities[:5]) if entities else ""
-                    ctx = f"[Aprendido de {count} interacciones sobre '{topic}': {summary}"
+                    ctx = f"[Learned from {count} interactions about '{topic}': {summary}"
                     if entity_str:
-                        ctx += f" | Entidades clave: {entity_str}"
+                        ctx += f" | Key entities: {entity_str}"
                     ctx += "]"
                     return ctx[:max_chars]
         except Exception as exc:
-            logger.debug("[Learning] Error recuperando contexto: %s", exc)
+            logger.debug("[Learning] Error retrieving context: %s", exc)
         return ""
 
     async def get_top_topics(self, n: int = 10) -> list[dict]:
-        """Retorna los temas más frecuentes aprendidos por ARIA."""
+        """Returns the most frequent topics learned by ARIA."""
         try:
             cache = self._get_cache()
             raw = await cache.get(TOPIC_FREQ_KEY)
@@ -220,37 +220,37 @@ class ContinuousLearningEngine:
             pass
         return []
 
-    # ── CICLO DE APRENDIZAJE ─────────────────────────────────
+    # ── LEARNING CYCLE ────────────────────────────────────────
 
     async def run_learning_cycle(self) -> dict:
         """
-        Ciclo principal de aprendizaje. Llamado por el scheduler cada 4h.
-        Procesa interacciones acumuladas con modelos HF y cristaliza conocimiento.
+        Main learning cycle. Called by the scheduler every 4h.
+        Processes accumulated interactions with HF models and crystallizes knowledge.
         """
         t0 = time.time()
-        logger.info("[Learning] ═══ Iniciando ciclo de aprendizaje ═══")
+        logger.info("[Learning] ═══ Starting learning cycle ═══")
 
-        # 1. Verificar si es momento de correr
+        # 1. Check whether it's time to run
         cache = self._get_cache()
         last_cycle_raw = await cache.get(LAST_CYCLE_KEY)
         if last_cycle_raw:
             last_ts = float(last_cycle_raw)
             elapsed_h = (time.time() - last_ts) / 3600
             if elapsed_h < CYCLE_INTERVAL_H:
-                logger.info("[Learning] Próximo ciclo en %.1fh", CYCLE_INTERVAL_H - elapsed_h)
+                logger.info("[Learning] Next cycle in %.1fh", CYCLE_INTERVAL_H - elapsed_h)
                 return {
                     "skipped": True,
-                    "reason": f"Próximo ciclo en {CYCLE_INTERVAL_H - elapsed_h:.1f}h",
+                    "reason": f"Next cycle in {CYCLE_INTERVAL_H - elapsed_h:.1f}h",
                 }
 
-        # 2. Obtener interacciones acumuladas
+        # 2. Get accumulated interactions
         interactions = await self._load_interactions_from_redis(max_count=200)
         if not interactions:
-            logger.info("[Learning] Sin interacciones para procesar")
+            logger.info("[Learning] No interactions to process")
             await cache.set(LAST_CYCLE_KEY, str(time.time()), ttl_seconds=LEARNING_TTL)
-            return {"processed": 0, "message": "Sin interacciones nuevas"}
+            return {"processed": 0, "message": "No new interactions"}
 
-        logger.info("[Learning] Procesando %d interacciones con HF models", len(interactions))
+        logger.info("[Learning] Processing %d interactions with HF models", len(interactions))
 
         results = {
             "interactions_processed": len(interactions),
@@ -261,11 +261,11 @@ class ContinuousLearningEngine:
             "duration_s": 0,
         }
 
-        # 3. Clasificar interacciones por tema (zero-shot)
+        # 3. Classify interactions by topic (zero-shot)
         topics_map = await self._classify_topics(interactions)
         results["topics_discovered"] = len(topics_map)
 
-        # 4. Para cada tema, cristalizar conocimiento
+        # 4. Crystallize knowledge for each topic
         for topic, topic_interactions in topics_map.items():
             try:
                 crystal = await self._crystallize_topic(topic, topic_interactions)
@@ -273,22 +273,22 @@ class ContinuousLearningEngine:
                     await self._save_crystal(crystal)
                     results["crystals_created"] += 1
             except Exception as exc:
-                logger.error("[Learning] Error cristalizando '%s': %s", topic, exc)
+                logger.error("[Learning] Error crystallizing '%s': %s", topic, exc)
                 results["errors"].append(str(exc))
 
-        # 5. Actualizar frecuencia de temas en Redis
+        # 5. Update topic frequency in Redis
         await self._update_topic_frequency(topics_map)
 
-        # 6. Analizar rendimiento de modelos
+        # 6. Analyze model performance
         model_insights = await self._analyze_model_performance(interactions)
         results["model_performance"] = model_insights
 
-        # 7. Marcar ciclo como completado
+        # 7. Mark cycle as completed
         await cache.set(LAST_CYCLE_KEY, str(time.time()), ttl_seconds=LEARNING_TTL)
         results["duration_s"] = round(time.time() - t0, 1)
 
         logger.info(
-            "[Learning] ═══ Ciclo completado: %d interacciones, %d temas, %d cristales en %.1fs ═══",
+            "[Learning] ═══ Cycle completed: %d interactions, %d topics, %d crystals in %.1fs ═══",
             results["interactions_processed"],
             results["topics_discovered"],
             results["crystals_created"],
@@ -297,7 +297,7 @@ class ContinuousLearningEngine:
         return results
 
     async def _load_interactions_from_redis(self, max_count: int = 200) -> list[Interaction]:
-        """Carga y limpia interacciones de Redis."""
+        """Loads and clears interactions from Redis."""
         try:
             cache = self._get_cache()
             raw_list = await cache.lrange(INTERACTIONS_KEY, 0, max_count - 1)
@@ -308,22 +308,26 @@ class ContinuousLearningEngine:
                     interactions.append(Interaction(**data))
                 except Exception:
                     continue
-            # Limpiar los procesados
+            # Clear the processed ones
             if interactions:
                 await cache.ltrim(INTERACTIONS_KEY, len(interactions), -1)
             return interactions
         except Exception as exc:
-            logger.error("[Learning] Error cargando interacciones: %s", exc)
+            logger.error("[Learning] Error loading interactions: %s", exc)
             return []
 
     async def _classify_topics(
         self, interactions: list[Interaction]
     ) -> dict[str, list[Interaction]]:
         """
-        Usa zero-shot-classification de HF para agrupar interacciones por tema.
+        Uses HF zero-shot-classification to group interactions by topic.
         """
         hf = self._get_hf()
         topics_map: dict[str, list[Interaction]] = {}
+        # NOTE: these candidate labels are intentionally left in Spanish — they are
+        # data fed to the zero-shot classifier and matched against interaction text
+        # that may itself be in Spanish or English; translating them would change
+        # classification behavior, not just prose.
         candidate_labels = [
             "ventas y marketing",
             "desarrollo de software",
@@ -339,7 +343,7 @@ class ContinuousLearningEngine:
             "soporte técnico",
         ]
 
-        # Procesar en lotes de 5 para no saturar HF
+        # Process in batches of 5 to avoid overloading HF
         batch_size = 5
         for i in range(0, len(interactions), batch_size):
             batch = interactions[i : i + batch_size]
@@ -378,20 +382,20 @@ class ContinuousLearningEngine:
         self, topic: str, interactions: list[Interaction]
     ) -> KnowledgeCrystal | None:
         """
-        Usa summarization de HF para cristalizar lo aprendido sobre un tema.
+        Uses HF summarization to crystallize what was learned about a topic.
         """
         if not interactions:
             return None
 
         hf = self._get_hf()
 
-        # Construir texto a resumir
+        # Build text to summarize
         texts = []
-        for ix in interactions[:10]:  # max 10 por cristal
-            texts.append(f"Usuario: {ix.user_text[:150]}\nARIA: {ix.aria_text[:200]}")
+        for ix in interactions[:10]:  # max 10 per crystal
+            texts.append(f"User: {ix.user_text[:150]}\nARIA: {ix.aria_text[:200]}")
         full_text = "\n\n".join(texts)
 
-        # Resumir con HF
+        # Summarize with HF
         summary = ""
         model_used = "none"
         try:
@@ -411,11 +415,11 @@ class ContinuousLearningEngine:
                 )[:400]
                 model_used = result.get("model_used", "hf/summarization")
         except Exception as exc:
-            logger.warning("[Learning] Summarization falló para '%s': %s", topic, exc)
-            # Fallback: concatenar primeras interacciones
+            logger.warning("[Learning] Summarization failed for '%s': %s", topic, exc)
+            # Fallback: concatenate first interactions
             summary = " | ".join(t[:80] for t in [ix.user_text for ix in interactions[:3]])[:300]
 
-        # Extraer entidades con NER
+        # Extract entities with NER
         key_entities: list[str] = []
         try:
             ner_result = await asyncio.wait_for(
@@ -439,7 +443,7 @@ class ContinuousLearningEngine:
         except Exception:
             pass
 
-        # Calcular satisfacción implícita: respuestas largas + sin errores = mejor score
+        # Compute implicit satisfaction: long responses + no errors = better score
         avg_lat = sum(ix.latency_ms for ix in interactions) / len(interactions)
         success_rate = sum(1 for ix in interactions if ix.success) / len(interactions)
         avg_satisfaction = round(
@@ -459,7 +463,7 @@ class ContinuousLearningEngine:
         )
 
     async def _save_crystal(self, crystal: KnowledgeCrystal) -> None:
-        """Guarda un cristal de conocimiento en Redis (y opcionalmente Supabase)."""
+        """Saves a knowledge crystal to Redis (and optionally Supabase)."""
         topic_key = KNOWLEDGE_KEY.format(topic=crystal.topic[:40].replace(" ", "_").lower())
         try:
             cache = self._get_cache()
@@ -467,15 +471,15 @@ class ContinuousLearningEngine:
                 topic_key, json.dumps(crystal.to_dict(), ensure_ascii=False), ttl_seconds=LEARNING_TTL
             )
             logger.info(
-                "[Learning] Cristal guardado: '%s' (%d interacciones)",
+                "[Learning] Crystal saved: '%s' (%d interactions)",
                 crystal.topic,
                 crystal.interaction_count,
             )
         except Exception as exc:
-            logger.error("[Learning] Error guardando cristal '%s': %s", crystal.topic, exc)
+            logger.error("[Learning] Error saving crystal '%s': %s", crystal.topic, exc)
 
     async def _update_topic_frequency(self, topics_map: dict[str, list]) -> None:
-        """Actualiza el contador de frecuencia de temas en Redis."""
+        """Updates the topic frequency counter in Redis."""
         try:
             cache = self._get_cache()
             raw = await cache.get(TOPIC_FREQ_KEY)
@@ -486,10 +490,10 @@ class ContinuousLearningEngine:
                 freq[topic] = freq.get(topic, 0) + len(interactions)
             await cache.set(TOPIC_FREQ_KEY, json.dumps(freq), ttl_seconds=LEARNING_TTL)
         except Exception as exc:
-            logger.warning("[Learning] Error actualizando frecuencia de temas: %s", exc)
+            logger.warning("[Learning] Error updating topic frequency: %s", exc)
 
     async def _analyze_model_performance(self, interactions: list[Interaction]) -> dict[str, Any]:
-        """Analiza qué modelos dan mejores resultados basándose en las interacciones."""
+        """Analyzes which models give the best results based on the interactions."""
         perf: dict[str, dict] = {}
         for ix in interactions:
             m = ix.model_used or "unknown"
@@ -511,16 +515,16 @@ class ContinuousLearningEngine:
                 }
         return summary
 
-    # ── REPORTE ──────────────────────────────────────────────
+    # ── REPORT ───────────────────────────────────────────────
 
     async def get_learning_report(self) -> dict:
-        """Genera un reporte del estado del aprendizaje continuo."""
+        """Generates a report of the continuous learning state."""
         try:
             cache = self._get_cache()
             pending_count = await cache.llen(INTERACTIONS_KEY)
             top_topics = await self.get_top_topics(10)
             last_cycle_raw = await cache.get(LAST_CYCLE_KEY)
-            last_cycle = "Nunca"
+            last_cycle = "Never"
             if last_cycle_raw:
                 dt = datetime.fromtimestamp(float(last_cycle_raw), tz=UTC)
                 last_cycle = dt.strftime("%Y-%m-%d %H:%M UTC")
@@ -534,7 +538,7 @@ class ContinuousLearningEngine:
             return {"error": str(exc)}
 
 
-# ── SINGLETON ────────────────────────────────────────────────
+# ── SINGLETON ──────────────────────────────────────────────────
 _learning_engine: ContinuousLearningEngine | None = None
 
 

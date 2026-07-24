@@ -8,9 +8,9 @@ logger = logging.getLogger("aria.optimizer")
 
 class PromptOptimizer:
     """
-    Motor de Optimización de Prompts (inspirado en DSPy).
+    Prompt Optimization Engine (inspired by DSPy).
 
-    Mejora automáticamente los prompts y estrategias basándose en resultados.
+    Automatically improves prompts and strategies based on results.
     """
 
     def __init__(self):
@@ -21,77 +21,77 @@ class PromptOptimizer:
     async def optimize_prompt(
         self, original_prompt: str, task_type: str, performance_data: dict[str, Any]
     ) -> str:
-        """Optimiza un prompt basándose en su desempeño."""
+        """Optimizes a prompt based on its performance."""
 
         prompt_key = hash(original_prompt)
 
-        # Registrar desempeño anterior
+        # Record previous performance
         if prompt_key in self.performance_metrics:
             self.performance_metrics[prompt_key].get("score", 0)
         else:
             pass
 
-        # Usar IA para mejorar el prompt
+        # Use AI to improve the prompt
         optimization_prompt = f"""
-        PROMPT ORIGINAL:
+        ORIGINAL PROMPT:
         {original_prompt}
 
-        TIPO DE TAREA: {task_type}
-        DESEMPEÑO ACTUAL:
+        TASK TYPE: {task_type}
+        CURRENT PERFORMANCE:
         - Score: {performance_data.get('score', 0)}/100
-        - Tasa de éxito: {performance_data.get('success_rate', 0)}%
-        - Tiempo promedio: {performance_data.get('avg_time', 0)}s
+        - Success rate: {performance_data.get('success_rate', 0)}%
+        - Average time: {performance_data.get('avg_time', 0)}s
 
-        MEJORA:
-        Reescribe el prompt para mejorar su efectividad.
-        Enfócate en:
-        1. Claridad de instrucciones
-        2. Especificidad del contexto
-        3. Formato de salida esperada
+        IMPROVEMENT:
+        Rewrite the prompt to improve its effectiveness.
+        Focus on:
+        1. Clarity of instructions
+        2. Specificity of context
+        3. Expected output format
 
-        Responde SOLO con el prompt mejorado, sin explicaciones.
+        Respond ONLY with the improved prompt, no explanations.
         """
 
         improved = await self.ai.complete(
-            system="Eres un experto en ingeniería de prompts. Mejora prompts para máxima efectividad.",
+            system="You are an expert in prompt engineering. Improve prompts for maximum effectiveness.",
             user=optimization_prompt,
             model=AIModel.STRATEGY,
         )
 
         optimized_prompt = improved.content if improved.success else original_prompt
 
-        # Guardar versión optimizada
+        # Save optimized version
         self.prompt_history[prompt_key] = {
             "original": original_prompt,
             "optimized": optimized_prompt,
             "performance": performance_data,
         }
 
-        logger.info(f"[PromptOptimizer] Prompt optimizado para {task_type}")
+        logger.info(f"[PromptOptimizer] Optimized prompt for {task_type}")
         return optimized_prompt
 
     async def optimize_strategy(
         self, strategy: dict[str, Any], results: dict[str, Any]
     ) -> dict[str, Any]:
-        """Optimiza una estrategia completa basándose en resultados."""
+        """Optimizes a complete strategy based on results."""
 
         prompt = f"""
-        ESTRATEGIA ACTUAL:
+        CURRENT STRATEGY:
         {strategy}
 
-        RESULTADOS:
+        RESULTS:
         - ROI: {results.get('roi', 0)}
-        - Conversión: {results.get('conversion_rate', 0)}%
+        - Conversion: {results.get('conversion_rate', 0)}%
         - Engagement: {results.get('engagement', 0)}%
 
-        MEJORA:
-        ¿Cómo podemos mejorar esta estrategia para aumentar ROI?
+        IMPROVEMENT:
+        How can we improve this strategy to increase ROI?
 
-        Responde en JSON con: improved_strategy, expected_roi_increase, key_changes
+        Respond in JSON with: improved_strategy, expected_roi_increase, key_changes
         """
 
         optimized = await self.ai.complete_json(
-            system="Eres un estratega de crecimiento. Optimiza estrategias para máximo ROI.",
+            system="You are a growth strategist. Optimize strategies for maximum ROI.",
             user=prompt,
             model=AIModel.STRATEGY,
         )
@@ -99,8 +99,8 @@ class PromptOptimizer:
         return optimized if optimized else strategy
 
     def get_optimization_history(self) -> dict[str, Any]:
-        """Retorna el historial de optimizaciones."""
+        """Returns the optimization history."""
         return {
             "total_prompts_optimized": len(self.prompt_history),
-            "history": list(self.prompt_history.values())[-10:],  # Últimas 10
+            "history": list(self.prompt_history.values())[-10:],  # Last 10
         }

@@ -1,14 +1,14 @@
 """
-episodic_memory.py — Memoria episódica persistente de ARIA AI.
+episodic_memory.py — ARIA AI's persistent episodic memory.
 
-ARIA recuerda eventos reales entre sesiones:
-  - Conversaciones anteriores (comprimidas y recuperables)
-  - Acciones ejecutadas y sus resultados
-  - Errores que cometió y cómo los resolvió
-  - Preferencias que aprendió del usuario
+ARIA remembers real events across sessions:
+  - Previous conversations (compressed and retrievable)
+  - Actions executed and their results
+  - Mistakes it made and how it resolved them
+  - Preferences it learned from the user
 
-Cross-session: persiste en Supabase. Cache en Redis.
-Recuperación semántica via embeddings (HF sentence-transformers).
+Cross-session: persists in Supabase. Cached in Redis.
+Semantic retrieval via embeddings (HF sentence-transformers).
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ HF_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 class EpisodicMemory:
     """
-    Memoria episódica real de ARIA.
-    Almacena, recupera y relaciona eventos a través del tiempo.
+    ARIA's real episodic memory.
+    Stores, retrieves, and relates events across time.
     """
 
     def __init__(self) -> None:
@@ -41,10 +41,10 @@ class EpisodicMemory:
         self._http = httpx.AsyncClient(timeout=15.0)
         self._loaded = False
 
-    # ── ALMACENAR EPISODIOS ───────────────────────────────────────
+    # ── STORE EPISODES ──────────────────────────────────────────
 
     async def store(self, episode_type: str, content: str, metadata: dict = None) -> str:
-        """Almacena un nuevo episodio en memoria."""
+        """Stores a new episode in memory."""
         episode_id = f"{int(time.time() * 1000)}"
         episode = {
             "id": episode_id,
@@ -55,7 +55,7 @@ class EpisodicMemory:
             "session": getattr(settings, "APP_VERSION", "unknown"),
         }
 
-        # Generar embedding para recuperación semántica
+        # Generate embedding for semantic retrieval
         try:
             embedding = await self._embed(content[:512])
             if embedding:
@@ -67,40 +67,40 @@ class EpisodicMemory:
         if len(self._episodes) > 300:
             self._episodes = self._episodes[-200:]
 
-        # Persistir en Supabase
+        # Persist to Supabase
         await self._persist_episode(episode)
         return episode_id
 
     async def store_conversation(self, user_id: str, user_msg: str, aria_response: str) -> None:
-        """Almacena un intercambio de conversación."""
+        """Stores a conversation exchange."""
         await self.store(
             "conversation",
-            f"Usuario: {user_msg[:500]}\nARIA: {aria_response[:500]}",
+            f"User: {user_msg[:500]}\nARIA: {aria_response[:500]}",
             {"user_id": user_id, "turns": 1},
         )
 
     async def store_action(self, action: str, result: str, success: bool) -> None:
-        """Almacena una acción ejecutada y su resultado."""
+        """Stores an executed action and its result."""
         await self.store(
             "action",
-            f"Acción: {action[:300]}\nResultado: {result[:300]}",
+            f"Action: {action[:300]}\nResult: {result[:300]}",
             {"success": success},
         )
 
     async def store_error(self, error: str, context: str, resolution: str = None) -> None:
-        """Almacena un error y cómo se resolvió."""
+        """Stores an error and how it was resolved."""
         await self.store(
             "error",
-            f"Error: {error[:300]}\nContexto: {context[:200]}\nResolución: {resolution or 'pendiente'}",
+            f"Error: {error[:300]}\nContext: {context[:200]}\nResolution: {resolution or 'pending'}",
             {"resolved": resolution is not None},
         )
 
-    # ── RECUPERAR EPISODIOS ───────────────────────────────────────
+    # ── RETRIEVE EPISODES ───────────────────────────────────────
 
     async def recall(self, query: str, n: int = 5, episode_type: str = None) -> list[dict]:
         """
-        Recupera los episodios más relevantes para una query.
-        Usa similitud de embedding si está disponible, sino keyword search.
+        Retrieves the most relevant episodes for a query.
+        Uses embedding similarity if available, otherwise keyword search.
         """
         if not self._loaded:
             await self.load()
@@ -138,7 +138,7 @@ class EpisodicMemory:
         return [ep for _, ep in scored[:n] if scored[0][0] > 0]
 
     async def get_recent(self, n: int = 10, episode_type: str = None) -> list[dict]:
-        """Obtiene los episodios más recientes."""
+        """Gets the most recent episodes."""
         if not self._loaded:
             await self.load()
         eps = self._episodes
@@ -147,10 +147,10 @@ class EpisodicMemory:
         return eps[-n:]
 
     async def summarize_session(self) -> str:
-        """Genera un resumen de la sesión actual para incluir en el contexto."""
+        """Generates a summary of the current session to include in context."""
         recent = await self.get_recent(20)
         if not recent:
-            return "Sin episodios recientes."
+            return "No recent episodes."
 
         lines = []
         for ep in recent[-10:]:
@@ -161,7 +161,7 @@ class EpisodicMemory:
         summary = "\n".join(lines)
         return summary
 
-    # ── EMBEDDINGS ────────────────────────────────────────────────
+    # ── EMBEDDINGS ───────────────────────────────────────────────
 
     async def _embed(self, text: str) -> list[float] | None:
         if not self._hf_token:
@@ -192,7 +192,7 @@ class EpisodicMemory:
             return 0.0
         return dot / (na * nb)
 
-    # ── PERSISTENCIA ──────────────────────────────────────────────
+    # ── PERSISTENCE ──────────────────────────────────────────────
 
     async def _persist_episode(self, episode: dict) -> None:
         try:
@@ -233,7 +233,7 @@ class EpisodicMemory:
             pass
 
     async def load(self) -> None:
-        """Carga episodios recientes desde Supabase al iniciar."""
+        """Loads recent episodes from Supabase on startup."""
         try:
             from apps.core.memory.supabase_client import get_db
 
@@ -260,7 +260,7 @@ class EpisodicMemory:
                         for r in reversed(result.data)
                     ]
                     logger.info(
-                        "[EpisodicMemory] %d episodios cargados desde Supabase", len(self._episodes)
+                        "[EpisodicMemory] %d episodes loaded from Supabase", len(self._episodes)
                     )
         except Exception as exc:
             logger.warning("[EpisodicMemory] Load failed: %s", exc)

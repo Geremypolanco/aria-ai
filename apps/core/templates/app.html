@@ -582,7 +582,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
         <a href="#" id="upgradeLink" onclick="openUpgrade();return false" class="menulink up">Upgrade &amp; plans</a>
         <a href="/" class="menulink">Home</a>
         <div class="menu-sep"></div>
-        <a href="/logout" class="menulink danger">Sign out</a>
+        <a href="/logout" class="menulink danger" onclick="signOutCleanup()">Sign out</a>
       </div>
       <button onclick="toggleMenu()" class="userbtn" aria-label="Account menu">
         <span class="ava">__AVATAR__</span>
@@ -678,7 +678,43 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 <script>
 const USER = { name: "__NAME__", email: "__EMAIL__", plan: "__PLAN__", onboarded: __ONBOARDED__, owner: __IS_OWNER__ };
 const PROFILE = __PROFILE_JSON__;
-const MKEY = "aria_missions_v1";
+// Chat/mission history is keyed per-account, not a single shared key — a
+// browser previously used by a different signed-in user must never surface
+// that person's history to whoever is signed in now.
+const MKEY = "aria_missions_v1:" + (USER.email || "anon");
+(function wipeOtherAccountsData(){
+  // Defense in depth beyond per-user key scoping: if this browser last
+  // rendered the app for a different account (e.g. logout didn't run, the
+  // tab was left open, or data predates this fix), remove every ARIA
+  // localStorage entry — onboarding flags and legacy unscoped keys included —
+  // before anything from the previous session can be read or displayed.
+  const LAST_USER_KEY = "aria_last_user";
+  try {
+    const lastUser = localStorage.getItem(LAST_USER_KEY);
+    const currentUser = USER.email || "anon";
+    if (lastUser !== null && lastUser !== currentUser) {
+      const stale = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("aria_")) stale.push(k);
+      }
+      stale.forEach(k => localStorage.removeItem(k));
+    }
+    localStorage.setItem(LAST_USER_KEY, currentUser);
+  } catch (e) {}
+})();
+function signOutCleanup(){
+  // Clear this account's local data immediately on sign-out, rather than
+  // waiting for the next sign-in's wipeOtherAccountsData() check to catch it —
+  // so nothing from this session lingers if the browser is shared right away.
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("aria_")) localStorage.removeItem(k);
+    }
+  } catch (e) {}
+  return true; // let the <a href="/logout"> navigation proceed
+}
 let missions = [];
 let activePersona = null;   // {id,name,title,avatar} of the selected team pro
 let busy = false;

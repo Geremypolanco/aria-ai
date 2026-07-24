@@ -7,7 +7,7 @@ logger = logging.getLogger("aria.state_graph")
 
 
 class AgentState(Enum):
-    """Estados posibles de un agente autónomo."""
+    """Possible states of an autonomous agent."""
 
     IDLE = "idle"
     SCANNING = "scanning"
@@ -20,58 +20,58 @@ class AgentState(Enum):
 
 class StateGraph:
     """
-    Grafo de Estado inspirado en LangGraph.
+    State Graph inspired by LangGraph.
 
-    Define transiciones entre estados y permite ciclos autónomos:
+    Defines transitions between states and enables autonomous cycles:
     SCANNING → ANALYZING → DECIDING → EXECUTING → LEARNING → SCANNING
     """
 
     def __init__(self, name: str = "AriaStateGraph"):
         self.name = name
-        self.nodes = {}  # Estado → función
-        self.edges = {}  # Estado → [Estados siguientes]
+        self.nodes = {}  # State → function
+        self.edges = {}  # State → [Next states]
         self.current_state = AgentState.IDLE
         self.state_history = []
 
     def add_node(self, state: AgentState, handler: Callable) -> None:
-        """Añade un nodo (estado) con su manejador."""
+        """Adds a node (state) with its handler."""
         self.nodes[state] = handler
-        logger.info(f"[StateGraph] Nodo añadido: {state.value}")
+        logger.info(f"[StateGraph] Node added: {state.value}")
 
     def add_edge(self, from_state: AgentState, to_state: AgentState) -> None:
-        """Añade una transición entre estados."""
+        """Adds a transition between states."""
         if from_state not in self.edges:
             self.edges[from_state] = []
         self.edges[from_state].append(to_state)
-        logger.info(f"[StateGraph] Arista: {from_state.value} → {to_state.value}")
+        logger.info(f"[StateGraph] Edge: {from_state.value} → {to_state.value}")
 
     def add_cycle(self, states: list[AgentState]) -> None:
-        """Añade un ciclo de estados (para autonomía)."""
+        """Adds a cycle of states (for autonomy)."""
         for i in range(len(states)):
             next_state = states[(i + 1) % len(states)]
             self.add_edge(states[i], next_state)
 
     async def execute_cycle(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Ejecuta un ciclo completo del grafo."""
-        logger.info(f"[StateGraph] Iniciando ciclo desde {self.current_state.value}")
+        """Executes a full cycle of the graph."""
+        logger.info(f"[StateGraph] Starting cycle from {self.current_state.value}")
 
         while True:
-            # Ejecutar el nodo actual
+            # Execute the current node
             if self.current_state in self.nodes:
                 handler = self.nodes[self.current_state]
                 result = await handler(context)
 
-                # Registrar en historial
+                # Log to history
                 self.state_history.append({"state": self.current_state.value, "result": result})
 
-                # Actualizar contexto
+                # Update context
                 context.update(result)
 
-            # Transicionar al siguiente estado
+            # Transition to the next state
             next_states = self.edges.get(self.current_state, [])
             if not next_states:
                 logger.info(
-                    f"[StateGraph] Ciclo completado. Estado final: {self.current_state.value}"
+                    f"[StateGraph] Cycle completed. Final state: {self.current_state.value}"
                 )
                 break
 
@@ -80,5 +80,5 @@ class StateGraph:
         return context
 
     def get_state_history(self) -> list[dict[str, Any]]:
-        """Retorna el historial de estados ejecutados."""
+        """Returns the history of executed states."""
         return self.state_history

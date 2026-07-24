@@ -21,7 +21,7 @@ async def test_clear_actually_deletes_history_and_state():
         mind = AriaMind()
         resp = await mind.handle("/clear", "chat-42")
 
-    assert "reiniciada" in resp.text.lower()
+    assert "reset" in resp.text.lower()
     deleted_keys = {call.args[0] for call in cache.delete.await_args_list}
     assert "aria:mind:history:chat-42" in deleted_keys
     assert "aria:mind:state:chat-42" in deleted_keys

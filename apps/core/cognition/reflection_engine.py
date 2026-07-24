@@ -1,15 +1,15 @@
 """
-reflection_engine.py — Motor de reflexión real de ARIA AI.
+reflection_engine.py — ARIA AI's real reflection engine.
 
-ARIA analiza sus propios fallos, adapta su comportamiento y mejora sus decisiones futuras.
-Sin simulación. Usa logs reales de Fly.io + historial de tareas + skill scores.
+ARIA analyzes its own failures, adapts its behavior, and improves its future decisions.
+No simulation. Uses real Fly.io logs + task history + skill scores.
 
-Ciclo:
-  1. Recopila evidencia: logs de error, tareas fallidas, skills débiles
-  2. Analiza con HuggingFace (Qwen2.5-72B) qué salió mal y por qué
-  3. Genera decisiones concretas de mejora
-  4. Persiste las decisiones en Redis/Supabase
-  5. Los agentes consultan estas decisiones antes de ejecutar
+Cycle:
+  1. Gather evidence: error logs, failed tasks, weak skills
+  2. Analyze with HuggingFace (Qwen2.5-72B) what went wrong and why
+  3. Generate concrete improvement decisions
+  4. Persist the decisions in Redis/Supabase
+  5. Agents consult these decisions before executing
 """
 
 from __future__ import annotations
@@ -25,11 +25,11 @@ logger = logging.getLogger("aria.reflection")
 
 class ReflectionEngine:
     """
-    Motor de reflexión y adaptación de ARIA.
-    Detecta patrones de fallo y genera estrategias de mejora concretas.
+    ARIA's reflection and adaptation engine.
+    Detects failure patterns and generates concrete improvement strategies.
     """
 
-    # Intervalo mínimo entre reflexiones (seg)
+    # Minimum interval between reflections (sec)
     MIN_REFLECTION_INTERVAL = 900  # 15 min
 
     def __init__(self) -> None:
@@ -37,23 +37,23 @@ class ReflectionEngine:
         self._decisions: list[dict] = []
         self._reflection_history: list[dict] = []
 
-    # ── REFLEXIÓN PRINCIPAL ───────────────────────────────────────
+    # ── MAIN REFLECTION ─────────────────────────────────────────
 
     async def reflect(self, context: dict = None) -> dict[str, Any]:
         """
-        Ciclo completo de reflexión. Analiza el estado actual y genera mejoras.
+        Full reflection cycle. Analyzes the current state and generates improvements.
         """
         now = time.time()
         if now - self._last_reflection < self.MIN_REFLECTION_INTERVAL:
             remaining = int(self.MIN_REFLECTION_INTERVAL - (now - self._last_reflection))
             return {
                 "skipped": True,
-                "reason": f"Próxima reflexión en {remaining}s",
+                "reason": f"Next reflection in {remaining}s",
                 "decisions": self._decisions,
             }
 
         self._last_reflection = now
-        logger.info("[Reflection] Iniciando ciclo de reflexión...")
+        logger.info("[Reflection] Starting reflection cycle...")
 
         evidence = await self._gather_evidence(context or {})
         if not evidence.get("has_issues"):
@@ -61,7 +61,7 @@ class ReflectionEngine:
                 "reflected": True,
                 "issues": 0,
                 "decisions": [],
-                "message": "Sistema saludable — sin cambios necesarios",
+                "message": "System healthy — no changes needed",
             }
 
         decisions = await self._analyze_and_decide(evidence)
@@ -84,15 +84,15 @@ class ReflectionEngine:
         if len(self._reflection_history) > 50:
             self._reflection_history = self._reflection_history[-50:]
 
-        logger.info("[Reflection] Ciclo completo: %d decisiones generadas", len(decisions))
+        logger.info("[Reflection] Cycle complete: %d decisions generated", len(decisions))
         return reflection
 
-    # ── RECOPILACIÓN DE EVIDENCIA ──────────────────────────────────
+    # ── EVIDENCE GATHERING ──────────────────────────────────────
 
     async def _gather_evidence(self, context: dict) -> dict[str, Any]:
         evidence = {"issues": [], "has_issues": False}
 
-        # 1. Skill scores del trainer
+        # 1. Trainer skill scores
         try:
             from apps.core.training.continuous_trainer import get_trainer
 
@@ -101,11 +101,11 @@ class ReflectionEngine:
             weak_skills = [k for k, v in status.get("skill_scores", {}).items() if v < 50]
             if weak_skills:
                 evidence["weak_skills"] = weak_skills
-                evidence["issues"].append(f"Skills débiles: {', '.join(weak_skills)}")
+                evidence["issues"].append(f"Weak skills: {', '.join(weak_skills)}")
         except Exception as exc:
-            logger.debug("[Reflection] No se pudo obtener skill scores: %s", exc)
+            logger.debug("[Reflection] Could not get skill scores: %s", exc)
 
-        # 2. Tareas fallidas del WorldState
+        # 2. Failed tasks from WorldState
         try:
             from apps.core.cognition.world_state import get_world_state
 
@@ -113,11 +113,11 @@ class ReflectionEngine:
             failed = ws.get_failed_tasks()
             if failed:
                 evidence["failed_tasks"] = failed[-10:]
-                evidence["issues"].append(f"{len(failed)} tareas fallidas en world state")
+                evidence["issues"].append(f"{len(failed)} failed tasks in world state")
         except Exception:
             evidence["failed_tasks"] = []
 
-        # 3. Experiencias negativas del trainer
+        # 3. Negative experiences from the trainer
         try:
             from apps.core.training.continuous_trainer import get_trainer
 
@@ -128,11 +128,11 @@ class ReflectionEngine:
             if errors:
                 patterns = list({e.get("error", "")[:50] for e in errors[-20:] if e.get("error")})
                 evidence["error_patterns"] = patterns[:5]
-                evidence["issues"].append(f"{len(errors)} errores de entrenamiento recientes")
+                evidence["issues"].append(f"{len(errors)} recent training errors")
         except Exception:
             pass
 
-        # 4. Logs de Fly.io
+        # 4. Fly.io logs
         try:
             from apps.core.training.environment_monitor import get_env_monitor
 
@@ -148,10 +148,10 @@ class ReflectionEngine:
         evidence["has_issues"] = len(evidence["issues"]) > 0
         return evidence
 
-    # ── ANÁLISIS Y DECISIONES ─────────────────────────────────────
+    # ── ANALYSIS AND DECISIONS ──────────────────────────────────
 
     async def _analyze_and_decide(self, evidence: dict) -> list[dict]:
-        """Usa HuggingFace para analizar los problemas y generar decisiones concretas."""
+        """Uses HuggingFace to analyze the issues and generate concrete decisions."""
         issues_text = "\n".join(f"- {i}" for i in evidence.get("issues", []))
         weak = evidence.get("weak_skills", [])
         errors = evidence.get("error_patterns", [])
@@ -225,7 +225,7 @@ REASON: [why this matters]
 
         return decisions
 
-    # ── PERSISTENCIA ──────────────────────────────────────────────
+    # ── PERSISTENCE ──────────────────────────────────────────────
 
     async def _persist_decisions(self, decisions: list[dict]) -> None:
         try:
@@ -243,7 +243,7 @@ REASON: [why this matters]
             logger.warning("[Reflection] Redis persist failed: %s", exc)
 
     async def load_decisions(self) -> list[dict]:
-        """Carga las decisiones de reflexión desde Redis (para que agentes las consulten)."""
+        """Loads reflection decisions from Redis (so agents can consult them)."""
         try:
             from apps.core.memory.redis_client import get_cache
 

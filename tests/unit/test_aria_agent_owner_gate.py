@@ -18,7 +18,7 @@ async def test_dangerous_tools_rejected_for_non_owner(tool):
     agent = AriaAgent(is_owner=False)
     result = await agent._execute_tool(tool, {})
     assert "error" in result
-    assert "reservada al dueño" in result["error"]
+    assert "reserved for ARIA's owner" in result["error"]
 
 
 async def test_web_search_remains_open_for_non_owner():
@@ -26,4 +26,4 @@ async def test_web_search_remains_open_for_non_owner():
     # Not asserting success (no network in tests) — just that it isn't
     # rejected by the owner gate before even trying.
     result = await agent._execute_tool("web_search", {"query": "test"})
-    assert "reservada al dueño" not in str(result.get("error", ""))
+    assert "reserved for ARIA's owner" not in str(result.get("error", ""))

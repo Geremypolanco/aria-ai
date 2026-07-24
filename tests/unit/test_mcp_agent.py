@@ -191,4 +191,4 @@ async def test_dispatch_unknown_tool_is_error():
     agent._routing = {}
     out, is_error = await agent._dispatch_tool("nope", {})
     assert is_error is True
-    assert "desconocida" in out.lower()
+    assert "unknown" in out.lower()

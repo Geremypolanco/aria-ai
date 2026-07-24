@@ -20,7 +20,7 @@ async def test_github_write_tools_reject_non_owner(tool, monkeypatch):
     monkeypatch.setattr("apps.core.config.settings.OWNER_EMAIL", "owner@example.com")
     mind = AriaMind()
     obs, media = await mind._execute_tool(tool, {}, email="random-user@example.com")
-    assert "reservada al dueño" in obs
+    assert "reserved for ARIA's owner" in obs
     assert media == {}
 
 
@@ -74,4 +74,4 @@ async def test_handle_threads_email_through_to_the_gate(monkeypatch):
     ):
         resp = await mind.handle("mejora tu propio código", "chat-1", email="random-user@example.com")
 
-    assert resp.caption is not None and "reservada al dueño" in resp.caption
+    assert resp.caption is not None and "reserved for ARIA's owner" in resp.caption

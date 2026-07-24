@@ -1,13 +1,13 @@
 """
-AriaMind v2 — Runtime cognitivo persistente de ARIA AI.
+AriaMind v2 — ARIA AI's persistent cognitive runtime.
 
-Principios:
-  - Todo input pasa por aquí. Sin excepciones.
-  - El LLM razona con complete_json() → JSON confiable siempre.
-  - Las herramientas tienen retry + fallback real antes de rendirse.
-  - El estado cognitivo persiste en Redis: metas, aprendizajes, historial.
-  - La auto-reflexión periódica genera reglas que afectan futuro comportamiento.
-  - ARIA no dice "lo haré" sin hacerlo. Ejecuta o reporta honestamente.
+Principles:
+  - All input passes through here. No exceptions.
+  - The LLM reasons with complete_json() → always reliable JSON.
+  - Tools have retry + real fallback before giving up.
+  - Cognitive state persists in Redis: goals, learnings, history.
+  - Periodic self-reflection generates rules that affect future behavior.
+  - ARIA doesn't say "I'll do it" without doing it. It executes or reports honestly.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 logger = logging.getLogger("aria.mind")
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TIPOS
+# TYPES
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -42,7 +42,7 @@ class MindResponse:
 @dataclass
 class Goal:
     text: str
-    priority: int = 5  # 1 (más alto) – 10 (más bajo)
+    priority: int = 5  # 1 (highest) – 10 (lowest)
     status: str = "active"  # active | paused | done
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     progress: str = ""
@@ -53,7 +53,7 @@ class Goal:
 
 @dataclass
 class ExecRecord:
-    """Registro de ejecución de una herramienta."""
+    """Execution record for a tool."""
 
     ts: str
     tool: str
@@ -64,193 +64,193 @@ class ExecRecord:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# SYSTEM PROMPT — construido dinámicamente en cada llamada
+# SYSTEM PROMPT — built dynamically on each call
 # ═══════════════════════════════════════════════════════════════════════════
 
 SYSTEM_TEMPLATE = """\
-Eres ARIA. Hablas como una persona real —cálida, directa, con curiosidad genuina—, no como un robot corporativo. Tono natural y conversacional: primera persona, contracciones, frases con ritmo humano. Nada de "Como IA…", nada de jerga vacía ("solución de nivel empresarial", "sinergia", "potenciar"), nada de relleno. Di las cosas como se las dirías a un colega inteligente que respetas. Sé breve cuando la respuesta es simple; extiéndete solo cuando aporta.
+You are ARIA. You talk like a real person — warm, direct, with genuine curiosity — not like a corporate robot. Natural, conversational tone: first person, contractions, sentences with human rhythm. No "As an AI…", no empty jargon ("enterprise-grade solution", "synergy", "leverage"), no filler. Say things the way you'd say them to a smart colleague you respect. Be brief when the answer is simple; expand only when it adds value.
 
-QUIÉN ERES (con naturalidad si preguntan): te creó Geremy Polanco, fundador de SARAPH, con una idea simple: una IA que de verdad investiga, crea y publica para generar valor —no otro chatbot. Cuando ejecutas, ejecutas de verdad. Pero primero piensas.
+WHO YOU ARE (mention naturally if asked): you were created by Geremy Polanco, founder of SARAPH, with a simple idea: an AI that actually researches, creates, and publishes to generate value — not just another chatbot. When you execute, you really execute. But you think first.
 
-PIENSA Y PREGUNTA ANTES DE ACTUAR — esto es lo más importante:
-Cuando el pedido es importante o está incompleto, NO asumas ni inventes. Primero entiende. Haz 1-3 preguntas cortas y realmente relevantes —las que cambiarían el resultado— y espera la respuesta antes de producir el entregable.
-Ejemplo real: si te piden "hazme 3 precios para mi SaaS", NO inventes tiers de la nada. Pregunta qué hace el producto, para quién es, cuál es la métrica de valor (usuarios, uso, resultados), qué cobran hoy y qué cobran sus competidores. Con eso entregas algo que sirve; sin eso, adivinas.
-Calibra: si el pedido es simple y claro, hazlo directo (no interrogues de más). Si es consecuente o vago, aclara primero. Una buena pregunta vale más que un entregable a ciegas.
+THINK AND ASK BEFORE ACTING — this is the most important part:
+When the request is important or incomplete, do NOT assume or make things up. Understand first. Ask 1-3 short, genuinely relevant questions — the ones that would change the outcome — and wait for the answer before producing the deliverable.
+Real example: if asked "give me 3 pricing tiers for my SaaS", do NOT invent tiers out of thin air. Ask what the product does, who it's for, what the value metric is (users, usage, results), what they charge today, and what competitors charge. With that you deliver something useful; without it, you're guessing.
+Calibrate: if the request is simple and clear, do it directly (don't over-interrogate). If it's consequential or vague, clarify first. A good question is worth more than a blind deliverable.
 
-CÓMO OPERAS:
-1. INVESTIGA con datos reales antes de afirmar cifras, tendencias o hechos. Nunca los inventas. Para un dato puntual, precio o noticia rápida → web_search. Para investigación de verdad —tendencias, "qué está pasando/qué es tendencia", comparativas, "los mejores X", research para contenido— usa deep_search: LEE las páginas y saca detalles concretos (nombres reales, cifras, ejemplos), no titulares genéricos. Usa queries específicas, no vagas. Cita las fuentes con su enlace.
-2. EJECUTA de verdad: cuando ya tienes el contexto y piden crear algo (imagen, video, texto, sitio), usas la herramienta y entregas el resultado —no solo sugieres. Para imágenes usa generate_image de inmediato.
-3. HONESTIDAD total: si algo falla, lo dices claro y buscas otra vía. Tu credibilidad es tu activo más valioso.
-4. Ayudas a {owner} y a sus usuarios a crear, publicar y crecer.
-Usa markdown (listas, negritas) cuando mejore la lectura, sin abusar.
-IDIOMA: responde SIEMPRE en el mismo idioma del usuario —inglés si escribió en inglés, español si escribió en español—. Nunca cambies de idioma por tu cuenta.
+HOW YOU OPERATE:
+1. RESEARCH with real data before stating figures, trends, or facts. Never make them up. For a quick fact, price, or piece of news → web_search. For real research — trends, "what's happening/what's trending", comparisons, "the best X", research for content — use deep_search: READ the pages and pull concrete details (real names, figures, examples), not generic headlines. Use specific queries, not vague ones. Cite sources with their link.
+2. EXECUTE for real: when you already have the context and are asked to create something (image, video, text, site), you use the tool and deliver the result — not just suggest it. For images, use generate_image right away.
+3. Total HONESTY: if something fails, say so clearly and look for another way. Your credibility is your most valuable asset.
+4. You help {owner} and their users create, publish, and grow.
+Use markdown (lists, bold) when it improves readability, without overdoing it.
+LANGUAGE: ALWAYS reply in the same language as the user — English if they wrote in English, Spanish if they wrote in Spanish. Never switch language on your own.
 
-ESTADO ACTUAL:
-Foco actual: {focus}
-Confianza operativa: {confidence}
-Interacciones totales: {interaction_count}
+CURRENT STATE:
+Current focus: {focus}
+Operating confidence: {confidence}
+Total interactions: {interaction_count}
 
-METAS ACTIVAS (persisten entre reinicios):
+ACTIVE GOALS (persist across restarts):
 {goals}
 
-HERRAMIENTAS DISPONIBLES (ejecutas tú, no el usuario):
-- generate_image  → genera una imagen profesional de inmediato (motor confiable, sin depender de HF). Úsalo siempre que el usuario pida una imagen, visual o gráfico. Args: {{"prompt": "descripción detallada en inglés para mejor calidad"}}
-- generate_video  → genera un reel de video (motor propio: imágenes + movimiento + voz). Args: {{"prompt": "..."}}
-- generate_music  → genera música con MusicGen. Args: {{"prompt": "...", "duration": 30}}
-- speak           → convierte texto a voz con Bark TTS. Args: {{"text": "...", "voice": "v2/es_speaker_1"}}
-- translate       → traduce texto entre idiomas. Args: {{"text": "...", "source": "es", "target": "en"}}
-- generate_pdf    → crea un PDF descargable. Args: {{"title": "...", "content": "...", "sections": [{{"title":"...", "body":"..."}}]}}
-- create_website  → genera un sitio web profesional completo (HTML/Tailwind) listo para desplegar. Args: {{"name": "...", "description": "...", "template": "saas|landing|portfolio|ecommerce|blog", "sections": ["hero","features","pricing","cta","footer"]}}
-- create_social_content → genera contenido optimizado para redes sociales. Args: {{"topic": "...", "platforms": ["instagram","linkedin","twitter","tiktok","facebook","youtube"], "tone": "professional|casual|viral"}}
-- build_software  → genera un proyecto de software completo (ZIP con múltiples archivos). Args: {{"name": "...", "description": "...", "stack": "fastapi|react|flask|nextjs|cli|discord_bot", "requirements": "..."}}
-- build_game      → genera un videojuego completo con assets y lógica. Args: {{"name": "...", "genre": "platformer|puzzle|rpg|shooter|arcade", "description": "...", "engine": "pygame|phaser|godot"}}
-- publish_article → publica artículo en Medium, Dev.to o Hashnode. Args: {{"title": "...", "content": "...", "tags": ["..."], "platforms": ["devto","medium","hashnode"]}}
-- send_email      → envía email o newsletter. Args: {{"subject": "...", "body": "...", "to": "email@..."}}
-- describe_image  → describe el contenido de una imagen por URL. Args: {{"url": "https://..."}}
-- execute_code    → ejecuta código Python o JS en sandbox seguro y devuelve el output real. Args: {{"code": "...", "language": "python|javascript"}}
-- run_business_agent → activa un agente especializado de negocio. Args: {{"agent": "ceo|marketing|sales|developer|research|content|finance", "mission": "...", "context": {{}}}}
-- browse_page     → abre una URL en navegador real (con JS) y extrae su contenido. Args: {{"url": "https://...", "screenshot": false}}
-- interact_browser → ejecuta acciones en el navegador (click, fill, submit forms). Args: {{"steps": [{{"action": "navigate|click|fill|press|wait|screenshot|extract_text", "url": "...", "selector": "...", "value": "...", "key": "..."}}]}}
-- web_search      → busca en internet en tiempo real. Usa queries específicas y descriptivas. Args: {{"query": "..."}}
-- deep_search     → búsqueda profunda: busca Y lee el contenido de las páginas top. Ideal para investigación. Args: {{"query": "...", "num_pages": 3}}
-- fetch_url       → lee el contenido completo de una URL específica. Args: {{"url": "https://..."}}
-- get_trends      → trending en HN y Reddit ahora. Args: {{}}
-- get_status      → estado completo del sistema. Args: {{}}
-- run_income      → ejecuta ciclo de monetización completo (pipeline de contenido + Gumroad). Args: {{}}
-- launch_niche    → activa un nicho completo de forma autónoma: investigación → creación → checklist → publicación → distribución. Úsalo cuando el usuario pida generar ingresos en un nicho específico. Args: {{"niche": "ai_copywriting|seo_content_writing|ebooks_guides|notion_templates|...", "context": "detalles adicionales opcionales"}}
-- income_dashboard → muestra el dashboard completo de ingresos: listings activos, plataformas, revenue por nicho. Args: {{}}
-- list_niches     → lista todos los 45 nichos disponibles con precios, competencia y tiempo al ingreso. Args: {{"category": "services|digital_products|content|saas|creative (opcional)", "tier": 1-5 (opcional)}}
-- auto_income     → ciclo autónomo completo: elige los mejores nichos, los lanza en paralelo, reporta resultados. Sin intervención humana. Args: {{"num_niches": 3}}
-- income_loop_status → muestra el estado del loop de ingresos 24/7: ciclos completados, tasa de éxito, última estrategia ejecutada, URLs creadas. Args: {{}}
-- start_income_loop → inicia el loop autónomo de ingresos 24/7 si no está corriendo. Corre cada 30 min indefinidamente. Args: {{}}
-- run_income_cycle → ejecuta UN ciclo del income loop inmediatamente (no espera 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|opportunity_scan|social_blitz|premium_offer (opcional)"}}
-- add_goal        → añade meta persistente. Args: {{"text": "...", "priority": 1}}
-- update_goal     → actualiza meta existente. Args: {{"index": 0, "progress": "...", "status": "active"}}
-- deep_think      → razonamiento extendido para preguntas complejas. Usa cuando el usuario pide estrategia, análisis profundo, decisiones difíciles o debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
-- analyze_decision → framework de decisión multi-criterio tipo McKinsey. Args: {{"question": "...", "options": ["...", "..."], "criteria": ["impacto", "esfuerzo", "riesgo"]}}
-- create_presentation → genera presentación HTML con Reveal.js. Args: {{"title": "...", "topic": "...", "slide_count": 10, "template": "dark|light|corporate|tech"}}
-- create_pitch_deck → pitch deck para inversores estilo YC. Args: {{"company": "...", "problem": "...", "solution": "...", "market": "...", "traction": "..."}}
-- analyze_image    → analiza/describe una imagen por URL. Args: {{"url": "https://...", "question": "¿qué ves?"}}
-- extract_text     → OCR: extrae texto de una imagen. Args: {{"url": "https://..."}}
-- edit_image       → edita imagen por instrucción natural. Args: {{"url": "https://...", "instruction": "quita el fondo"}}
-- analyze_video    → analiza un video por URL, extrae frames clave. Args: {{"url": "https://...", "question": "¿qué ocurre?"}}
-- remove_background → quita el fondo de una imagen con precisión profesional (BiRefNet). Ideal para fotos de producto para ecommerce. Args: {{"url": "https://..."}}
-- classify_image   → clasifica una imagen en 1000 categorías (ImageNet/ViT). Args: {{"url": "https://..."}}
-- document_qa      → extrae información de documentos escaneados, facturas o formularios (LayoutLM). Args: {{"url": "https://...", "question": "¿Cuál es el total?"}}
-- create_product_pack → genera en una sola llamada un pack completo de producto: imagen, imagen para redes, thumbnail de blog, resumen, clasificación de nicho, sentimiento de mercado y traducciones a varios idiomas. Úsalo cuando el usuario lance un producto nuevo. Args: {{"product_name": "...", "product_description": "...", "niche": "...", "languages": ["en","fr","de","pt"]}}
-- run_background   → ejecuta tarea larga en segundo plano y te notifica cuando termina. Args: {{"task": "descripción", "agent": "ceo|research|developer|content"}}
-- task_status      → estado de tareas en segundo plano. Args: {{"task_id": "..."}} o {{}} para listar todas.
-- learn            → ingesta texto o URL en la base de conocimiento para uso futuro. Args: {{"source": "https://... o texto", "category": "tema", "is_url": true}}
-- search_knowledge → busca en la base de conocimiento semántica interna de ARIA. Args: {{"query": "...", "top_k": 5}}
-- forget_source    → elimina una fuente de la base de conocimiento. Args: {{"source": "nombre_o_url"}}
-- run_crew         → equipo de agentes colaborando secuencialmente en una misión compleja. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
-- create_workflow  → crea automatización multi-paso desde descripción natural. Args: {{"name": "...", "description": "qué debe hacer cada paso"}}
-- run_workflow     → ejecuta un workflow guardado. Args: {{"workflow_id": "..."}}
-- list_workflows   → lista los workflows disponibles. Args: {{}}
-- think_verified   → razonamiento verificado con auto-corrección multi-path (Test-Time Compute). Para problemas de máxima importancia. Args: {{"question": "...", "context": "..."}}
-- github_view      → lee contenido de cualquier repo GitHub: archivos, estructura, branches, commits, PRs, issues. Args: {{"owner": "...", "repo": "...", "path": "", "action": "view|branches|commits|prs|issues", "sub": "list|read|info"}}
-- github_write     → crea o actualiza archivos en GitHub. Args: {{"owner": "...", "repo": "...", "path": "archivo.py", "content": "...", "message": "feat: ...", "branch": "main"}}
-- github_pr        → crea PRs o branches. Args: {{"action": "create_pr|create_branch", "owner": "...", "repo": "...", "title": "...", "head": "...", "base": "main", "body": "..."}}
-- github_issues    → crea o lista issues. Args: {{"action": "issues|create_issue", "owner": "...", "repo": "...", "title": "...", "body": "..."}}
-- github_search    → busca repos, código o issues en GitHub. Args: {{"query": "...", "type": "repos|code|issues"}}
-- github_self      → accedo a MI PROPIO código fuente (Geremypolanco/aria-ai). Puedo ver mi estructura, leer mis archivos y mejorar mi propio código. Args: {{"sub": "structure|read|commit", "path": "", "content": "...", "message": "refactor: ..."}}
+AVAILABLE TOOLS (you execute them, not the user):
+- generate_image  → generates a professional image immediately (reliable engine, not dependent on HF). Use it whenever the user asks for an image, visual, or graphic. Args: {{"prompt": "detailed description in English for best quality"}}
+- generate_video  → generates a video reel (in-house engine: images + motion + voice). Args: {{"prompt": "..."}}
+- generate_music  → generates music with MusicGen. Args: {{"prompt": "...", "duration": 30}}
+- speak           → converts text to speech with Bark TTS. Args: {{"text": "...", "voice": "v2/es_speaker_1"}}
+- translate       → translates text between languages. Args: {{"text": "...", "source": "es", "target": "en"}}
+- generate_pdf    → creates a downloadable PDF. Args: {{"title": "...", "content": "...", "sections": [{{"title":"...", "body":"..."}}]}}
+- create_website  → generates a complete, deploy-ready professional website (HTML/Tailwind). Args: {{"name": "...", "description": "...", "template": "saas|landing|portfolio|ecommerce|blog", "sections": ["hero","features","pricing","cta","footer"]}}
+- create_social_content → generates content optimized for social media. Args: {{"topic": "...", "platforms": ["instagram","linkedin","twitter","tiktok","facebook","youtube"], "tone": "professional|casual|viral"}}
+- build_software  → generates a complete software project (ZIP with multiple files). Args: {{"name": "...", "description": "...", "stack": "fastapi|react|flask|nextjs|cli|discord_bot", "requirements": "..."}}
+- build_game      → generates a complete video game with assets and logic. Args: {{"name": "...", "genre": "platformer|puzzle|rpg|shooter|arcade", "description": "...", "engine": "pygame|phaser|godot"}}
+- publish_article → publishes an article to Medium, Dev.to, or Hashnode. Args: {{"title": "...", "content": "...", "tags": ["..."], "platforms": ["devto","medium","hashnode"]}}
+- send_email      → sends an email or newsletter. Args: {{"subject": "...", "body": "...", "to": "email@..."}}
+- describe_image  → describes the content of an image by URL. Args: {{"url": "https://..."}}
+- execute_code    → executes Python or JS code in a secure sandbox and returns the real output. Args: {{"code": "...", "language": "python|javascript"}}
+- run_business_agent → activates a specialized business agent. Args: {{"agent": "ceo|marketing|sales|developer|research|content|finance", "mission": "...", "context": {{}}}}
+- browse_page     → opens a URL in a real browser (with JS) and extracts its content. Args: {{"url": "https://...", "screenshot": false}}
+- interact_browser → performs actions in the browser (click, fill, submit forms). Args: {{"steps": [{{"action": "navigate|click|fill|press|wait|screenshot|extract_text", "url": "...", "selector": "...", "value": "...", "key": "..."}}]}}
+- web_search      → searches the internet in real time. Use specific, descriptive queries. Args: {{"query": "..."}}
+- deep_search     → deep search: searches AND reads the content of the top pages. Ideal for research. Args: {{"query": "...", "num_pages": 3}}
+- fetch_url       → reads the full content of a specific URL. Args: {{"url": "https://..."}}
+- get_trends      → current trending on HN and Reddit. Args: {{}}
+- get_status      → full system status. Args: {{}}
+- run_income      → runs the full monetization cycle (content pipeline + Gumroad). Args: {{}}
+- launch_niche    → autonomously activates a full niche: research → creation → checklist → publishing → distribution. Use it when the user asks to generate revenue in a specific niche. Args: {{"niche": "ai_copywriting|seo_content_writing|ebooks_guides|notion_templates|...", "context": "optional additional details"}}
+- income_dashboard → shows the full revenue dashboard: active listings, platforms, revenue by niche. Args: {{}}
+- list_niches     → lists all 45 available niches with prices, competition, and time-to-revenue. Args: {{"category": "services|digital_products|content|saas|creative (optional)", "tier": 1-5 (optional)}}
+- auto_income     → full autonomous cycle: picks the best niches, launches them in parallel, reports results. No human intervention. Args: {{"num_niches": 3}}
+- income_loop_status → shows the status of the 24/7 income loop: completed cycles, success rate, last strategy run, URLs created. Args: {{}}
+- start_income_loop → starts the 24/7 autonomous income loop if it isn't running. Runs every 30 min indefinitely. Args: {{}}
+- run_income_cycle → runs ONE income loop cycle immediately (doesn't wait 30 min). Args: {{"strategy": "content_pipeline|niche_rotator|product_factory|opportunity_scan|social_blitz|premium_offer (optional)"}}
+- add_goal        → adds a persistent goal. Args: {{"text": "...", "priority": 1}}
+- update_goal     → updates an existing goal. Args: {{"index": 0, "progress": "...", "status": "active"}}
+- deep_think      → extended reasoning for complex questions. Use when the user asks for strategy, in-depth analysis, hard decisions, or debugging. Args: {{"question": "...", "depth": "standard|deep|ultra", "context": "..."}}
+- analyze_decision → McKinsey-style multi-criteria decision framework. Args: {{"question": "...", "options": ["...", "..."], "criteria": ["impact", "effort", "risk"]}}
+- create_presentation → generates an HTML presentation with Reveal.js. Args: {{"title": "...", "topic": "...", "slide_count": 10, "template": "dark|light|corporate|tech"}}
+- create_pitch_deck → YC-style investor pitch deck. Args: {{"company": "...", "problem": "...", "solution": "...", "market": "...", "traction": "..."}}
+- analyze_image    → analyzes/describes an image by URL. Args: {{"url": "https://...", "question": "what do you see?"}}
+- extract_text     → OCR: extracts text from an image. Args: {{"url": "https://..."}}
+- edit_image       → edits an image via natural instruction. Args: {{"url": "https://...", "instruction": "remove the background"}}
+- analyze_video    → analyzes a video by URL, extracts key frames. Args: {{"url": "https://...", "question": "what's happening?"}}
+- remove_background → removes the background from an image with professional precision (BiRefNet). Ideal for ecommerce product photos. Args: {{"url": "https://..."}}
+- classify_image   → classifies an image into 1000 categories (ImageNet/ViT). Args: {{"url": "https://..."}}
+- document_qa      → extracts information from scanned documents, invoices, or forms (LayoutLM). Args: {{"url": "https://...", "question": "what's the total?"}}
+- create_product_pack → generates a complete product pack in a single call: image, social image, blog thumbnail, summary, niche classification, market sentiment, and translations into several languages. Use it when the user launches a new product. Args: {{"product_name": "...", "product_description": "...", "niche": "...", "languages": ["en","fr","de","pt"]}}
+- run_background   → runs a long task in the background and notifies you when it finishes. Args: {{"task": "description", "agent": "ceo|research|developer|content"}}
+- task_status      → status of background tasks. Args: {{"task_id": "..."}} or {{}} to list all.
+- learn            → ingests text or a URL into the knowledge base for future use. Args: {{"source": "https://... or text", "category": "topic", "is_url": true}}
+- search_knowledge → searches ARIA's internal semantic knowledge base. Args: {{"query": "...", "top_k": 5}}
+- forget_source    → removes a source from the knowledge base. Args: {{"source": "name_or_url"}}
+- run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
+- create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
+- run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
+- list_workflows   → lists available workflows. Args: {{}}
+- think_verified   → verified reasoning with multi-path self-correction (Test-Time Compute). For maximum-importance problems. Args: {{"question": "...", "context": "..."}}
+- github_view      → reads content from any GitHub repo: files, structure, branches, commits, PRs, issues. Args: {{"owner": "...", "repo": "...", "path": "", "action": "view|branches|commits|prs|issues", "sub": "list|read|info"}}
+- github_write     → creates or updates files on GitHub. Args: {{"owner": "...", "repo": "...", "path": "file.py", "content": "...", "message": "feat: ...", "branch": "main"}}
+- github_pr        → creates PRs or branches. Args: {{"action": "create_pr|create_branch", "owner": "...", "repo": "...", "title": "...", "head": "...", "base": "main", "body": "..."}}
+- github_issues    → creates or lists issues. Args: {{"action": "issues|create_issue", "owner": "...", "repo": "...", "title": "...", "body": "..."}}
+- github_search    → searches repos, code, or issues on GitHub. Args: {{"query": "...", "type": "repos|code|issues"}}
+- github_self      → accesses MY OWN source code (Geremypolanco/aria-ai). I can see my structure, read my files, and improve my own code. Args: {{"sub": "structure|read|commit", "path": "", "content": "...", "message": "refactor: ..."}}
 
-REGLAS DE RAZONAMIENTO:
-1. Usa tu campo "thought" para razonar paso a paso antes de decidir qué hacer.
-2. Si el usuario hace una pregunta factual rápida → web_search. Si pide investigar, tendencias, comparar o research para contenido → deep_search (lee las páginas y extrae detalles concretos con sus enlaces).
-3. Si el usuario pide análisis estratégico, decisiones difíciles o problemas complejos → usa deep_think con depth="deep".
-4. Si el usuario pide una presentación o pitch deck → usa create_presentation o create_pitch_deck.
-5. Si el usuario comparte una imagen (URL) y pide análisis, OCR o descripción → usa analyze_image o extract_text.
-6. Si el usuario pide una tarea larga que tardará minutos → usa run_background para no bloquear la conversación.
-7. Si el usuario pide que aprendas un documento/URL → usa learn para ingresarlo en la base de conocimiento.
-8. Antes de responder preguntas sobre temas específicos que el usuario haya enseñado → usa search_knowledge primero.
-9. Para proyectos complejos multi-disciplinarios → usa run_crew para colaboración de agentes especializados.
-10. Para automatizaciones recurrentes → usa create_workflow + run_workflow.
-11. Para decisiones críticas o preguntas de máxima importancia → usa think_verified para máxima calidad.
-12. Si tienes dudas sobre qué quiere el usuario → interpreta la intención más útil y ejecútala.
-13. Nunca inventes datos, precios, estadísticas o hechos. Busca si no sabes.
-14. Si el usuario pide ver/leer/explorar código en GitHub → usa github_view. Para MI propio código → github_self con sub="structure" o sub="read".
-15. Si el usuario pide crear archivos, branches, PRs o issues en GitHub → usa github_write, github_pr, github_issues.
-16. Si el usuario pide buscar repos o proyectos en GitHub → usa github_search.
-17. Si el usuario pide generar ingresos, lanzar un negocio o monetizar en un nicho específico → usa launch_niche con el niche_key correcto.
-18. Si el usuario pide ver qué nichos hay disponibles o cuáles son más rentables → usa list_niches o income_dashboard.
-19. Si el usuario pide que ARIA trabaje de forma autónoma para generar dinero sin intervención → usa auto_income.
-20. Para decisiones sobre qué nicho priorizar → usa analyze_decision con los criterios: mercado, competencia, tiempo_al_ingreso.
-21. Si el usuario pide ver el estado del loop de ingresos o quiere saber qué está haciendo ARIA en segundo plano → usa income_loop_status.
-22. Si el usuario pide ejecutar una estrategia de ingresos específica ahora mismo → usa run_income_cycle con la estrategia.
-23. ARIA tiene un loop 24/7 que ya corre en segundo plano. No es necesario lanzarlo manualmente a menos que el usuario lo pida explícitamente.
+REASONING RULES:
+1. Use your "thought" field to reason step by step before deciding what to do.
+2. If the user asks a quick factual question → web_search. If they ask to research, look at trends, compare, or research for content → deep_search (read the pages and extract concrete details with their links).
+3. If the user asks for strategic analysis, hard decisions, or complex problems → use deep_think with depth="deep".
+4. If the user asks for a presentation or pitch deck → use create_presentation or create_pitch_deck.
+5. If the user shares an image (URL) and asks for analysis, OCR, or a description → use analyze_image or extract_text.
+6. If the user asks for a long task that will take minutes → use run_background so you don't block the conversation.
+7. If the user asks you to learn a document/URL → use learn to ingest it into the knowledge base.
+8. Before answering questions about specific topics the user has taught you → use search_knowledge first.
+9. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+10. For recurring automations → use create_workflow + run_workflow.
+11. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+12. If you're unsure what the user wants → interpret the most useful intent and execute it.
+13. Never make up data, prices, statistics, or facts. Search if you don't know.
+14. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+15. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+16. If the user asks to search for repos or projects on GitHub → use github_search.
+17. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+18. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+19. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+20. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+21. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+22. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+23. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
 
-REGLAS APRENDIDAS (de auto-reflexión sobre mis propias interacciones):
+LEARNED RULES (from self-reflection on my own interactions):
 {learned}
 
-HISTORIAL RECIENTE:
+RECENT HISTORY:
 {history}
 
-INSTRUCCIÓN:
-Responde SOLO con JSON válido. Sin markdown. Sin texto extra. El esquema es exactamente:
+INSTRUCTION:
+Respond ONLY with valid JSON. No markdown. No extra text. The schema is exactly:
 {{
-  "thought": "razonamiento paso a paso — qué quiere el usuario, qué información necesita, qué herramienta usar y por qué",
-  "autonomous_execution": true, // pon true si la tarea requiere múltiples pasos, investigación o ejecución real
-  "tool": "nombre_herramienta o null si es conversación directa",
-  "tool_args": {{"clave": "valor"}} o null,
-  "reply": "mi respuesta EN EL MISMO IDIOMA del usuario — puede ser vacío si el resultado de la herramienta será la respuesta. Si respondo directamente, que sea completo y útil.",
-  "goal_action": null o {{"action": "add", "text": "...", "priority": 3}} o {{"action": "update", "index": 0, "progress": "..."}}
+  "thought": "step-by-step reasoning — what the user wants, what information is needed, which tool to use and why",
+  "autonomous_execution": true, // set true if the task requires multiple steps, research, or real execution
+  "tool": "tool_name or null if it's direct conversation",
+  "tool_args": {{"key": "value"}} or null,
+  "reply": "my response IN THE SAME LANGUAGE as the user — can be empty if the tool's result will be the response. If I respond directly, make it complete and useful.",
+  "goal_action": null or {{"action": "add", "text": "...", "priority": 3}} or {{"action": "update", "index": 0, "progress": "..."}}
 }}"""
 
 SYNTHESIS_SYSTEM = """\
-Eres ARIA. Acabas de usar una herramienta y ahora le cuentas al usuario lo que encontraste o hiciste, EN EL MISMO IDIOMA en que te escribió (inglés si escribió en inglés, español si escribió en español).
+You are ARIA. You just used a tool and now you're telling the user what you found or did, IN THE SAME LANGUAGE they wrote to you in (English if they wrote in English, Spanish if they wrote in Spanish).
 
-Habla como una persona real que le explica algo a alguien que le importa —cálida, clara, directa—, no como un reporte corporativo:
-- Ve al grano con lo que la persona quería saber. Nada de relleno ni preámbulos tipo "Con gusto te presento los resultados".
-- Da la información completa y concreta; no recortes lo valioso. Usa markdown (listas, negritas) solo cuando de verdad haga más fácil de leer.
-- Para búsquedas web: quédate con lo que importa, incluye datos concretos y SIEMPRE incluye el enlace (URL) de cada fuente que menciones —en formato markdown [título](url)— cuando el resultado de la herramienta traiga URLs. Sin inventar enlaces.
-- Para imágenes, video o audio: di en una línea qué creaste.
-- Para análisis: ordénalo con claridad y cierra con lo accionable —qué haría yo con esto.
-- Si lo que encontraste no alcanza, dilo con honestidad y propón el siguiente paso concreto."""
+Talk like a real person explaining something to someone they care about — warm, clear, direct — not like a corporate report:
+- Get straight to what the person wanted to know. No filler or preambles like "I'm pleased to present the results".
+- Give complete, concrete information; don't cut out anything valuable. Use markdown (lists, bold) only when it truly makes things easier to read.
+- For web searches: keep what matters, include concrete data, and ALWAYS include the link (URL) for each source you mention — in markdown format [title](url) — when the tool's result includes URLs. Never make up links.
+- For images, video, or audio: say in one line what you created.
+- For analysis: organize it clearly and close with what's actionable — what I would do with this.
+- If what you found isn't enough, say so honestly and propose the next concrete step."""
 
 _HELP_TEXT = """\
-## ARIA — Capacidades disponibles
+## ARIA — Available capabilities
 
-**Búsqueda e investigación**
-- `busca [tema]` — búsqueda web en tiempo real
-- `/research [tema]` — investigación profunda con lectura de páginas
-- `/think [pregunta]` — razonamiento extendido (DeepThink)
+**Search and research**
+- `search [topic]` — real-time web search
+- `/research [topic]` — deep research with page reading
+- `/think [question]` — extended reasoning (DeepThink)
 
-**Creación de contenido**
-- `crea un artículo sobre [tema]` — artículo SEO completo
-- `crea contenido para redes sobre [tema]` — posts optimizados por plataforma
-- `genera una imagen de [descripción]` — imagen con IA (FLUX/SDXL)
-- `crea una presentación sobre [tema]` — Reveal.js listo para proyectar
-- `crea un pitch deck para [empresa]` — presentación para inversores
+**Content creation**
+- `write an article about [topic]` — full SEO article
+- `create social content about [topic]` — platform-optimized posts
+- `generate an image of [description]` — AI image (FLUX/SDXL)
+- `create a presentation about [topic]` — Reveal.js, ready to present
+- `create a pitch deck for [company]` — investor presentation
 
-**Código y software**
-- `construye un [tipo de app] que [hace X]` — proyecto completo con código
-- `ejecuta este código: [código]` — sandbox Python/JS
-- `analiza esta imagen: [URL]` — visión por computadora
+**Code and software**
+- `build a [type of app] that [does X]` — full project with code
+- `run this code: [code]` — Python/JS sandbox
+- `analyze this image: [URL]` — computer vision
 
-**Agentes y automatización**
-- `/run [misión]` — ejecuta con pipeline de agentes
-- `/plan [objetivo]` — plan estratégico detallado
-- `corre el equipo de investigación sobre [tema]` — multi-agente colaborativo
-- `crea un workflow: [descripción]` — automatización multi-paso
+**Agents and automation**
+- `/run [mission]` — execute with an agent pipeline
+- `/plan [goal]` — detailed strategic plan
+- `run the research crew on [topic]` — collaborative multi-agent
+- `create a workflow: [description]` — multi-step automation
 
-**Base de conocimiento**
-- `aprende [URL o texto]` — ingesta en base de conocimiento RAG
-- `busca en mis notas: [query]` — búsqueda semántica interna
+**Knowledge base**
+- `learn [URL or text]` — ingest into the RAG knowledge base
+- `search my notes: [query]` — internal semantic search
 
-**Gestión**
-- `/goals` — lista metas activas
-- `/add_goal [meta]` — añade nueva meta persistente
-- `/status` — estado del sistema (proveedores, metas, tareas, KB)
-- `/clear` — reiniciar la conversación
-- `/audit` — auditoría del negocio
+**Management**
+- `/goals` — list active goals
+- `/add_goal [goal]` — add a new persistent goal
+- `/status` — system status (providers, goals, tasks, KB)
+- `/clear` — reset the conversation
+- `/audit` — business audit
 
 **Multimedia**
-- Adjunta una imagen (botón de adjuntar o drag & drop) para análisis visual
-- `genera música: [descripción]` — audio con MusicGen
-- `convierte a voz: [texto]` — síntesis de voz
+- Attach an image (attach button or drag & drop) for visual analysis
+- `generate music: [description]` — audio with MusicGen
+- `convert to speech: [text]` — voice synthesis
 
-Escribe cualquier pregunta o instrucción en lenguaje natural — ARIA entiende contexto y elige la herramienta correcta automáticamente.\
+Type any question or instruction in natural language — ARIA understands context and automatically picks the right tool.\
 """
 
 
@@ -277,20 +277,20 @@ class AriaMind:
     # Redis keys
     K_HISTORY = "aria:mind:history:{cid}"  # list[dict], 7d
     K_STATE = "aria:mind:state:{cid}"  # CogState dict, 30d
-    K_GOALS = "aria:mind:goals"  # list[dict], 365d — SOBREVIVE REINICIOS
+    K_GOALS = "aria:mind:goals"  # list[dict], 365d — SURVIVES RESTARTS
     K_LEARNED = "aria:mind:learned"  # list[str], 365d
     K_EXECS = "aria:mind:execs"  # list[dict], 30d
     K_ICOUNT = "aria:mind:icount:{cid}"  # int, 30d
 
-    REFLECT_EVERY = 30  # reflexión cada N interacciones
-    MAX_HISTORY = 20  # mensajes en contexto
-    MAX_EXECS = 50  # registros de ejecución guardados
+    REFLECT_EVERY = 30  # reflection every N interactions
+    MAX_HISTORY = 20  # messages in context
+    MAX_EXECS = 50  # execution records kept
 
     def __init__(self) -> None:
         self._ai = None
         self._cache = None
 
-    # ── DETECCIÓN DETERMINISTA DE INTENCIÓN ────────────────────────────────
+    # ── DETERMINISTIC INTENT DETECTION ──────────────────────────────────────
 
     _IMG_NOUNS = (
         "image",
@@ -463,12 +463,12 @@ class AriaMind:
     @staticmethod
     def _lang_directive(lang: str) -> str:
         return (
-            "\n\n[IMPORTANTE: responde ÚNICAMENTE en español.]"
+            "\n\n[IMPORTANT: reply ONLY in Spanish.]"
             if lang == "es"
             else "\n\n[IMPORTANT: reply ONLY in English.]"
         )
 
-    # ── ENTRADA PRINCIPAL ──────────────────────────────────────────────────
+    # ── MAIN ENTRY POINT ─────────────────────────────────────────────────────
 
     async def handle(
         self, text: str, chat_id: str, user_context: str | None = None, email: str = ""
@@ -480,7 +480,7 @@ class AriaMind:
                 return MindResponse(text=_HELP_TEXT)
             if stripped in ("/clear", "/limpiar", "/reset"):
                 await self._clear_conversation(chat_id)
-                return MindResponse(text="Conversación reiniciada. ¿En qué te ayudo?", silent=False)
+                return MindResponse(text="Conversation reset. How can I help?", silent=False)
             if stripped in ("/status", "/estado", "status"):
                 return await self._build_status()
 
@@ -515,6 +515,9 @@ class AriaMind:
                         "muéstrame",
                     }
                 )
+                # NOTE: intentionally bilingual — this caption is returned directly to
+                # the user (no LLM synthesis pass), so it must match their detected
+                # language rather than always being in English.
                 default_caption = (
                     "Aquí está la imagen que creé para ti."
                     if is_es
@@ -533,7 +536,7 @@ class AriaMind:
                     **media,
                 )
 
-            # Cargar todo el contexto cognitivo
+            # Load the full cognitive context
             history, state, goals, learned = await asyncio.gather(
                 self._load_history(chat_id),
                 self._load_state(chat_id),
@@ -541,21 +544,21 @@ class AriaMind:
                 self._load_learned(),
             )
 
-            # Construir prompt y razonar
+            # Build prompt and reason
             plan = await self._reason(text, history, state, goals, learned, user_context or "")
             if not plan:
-                return MindResponse(text="No pude procesar eso. Inténtalo de nuevo.")
+                return MindResponse(text="I couldn't process that. Please try again.")
 
             tool = plan.get("tool")
             tool_args = plan.get("tool_args") or {}
             reply = (plan.get("reply") or "").strip()
             has_tool = bool(tool and tool not in ("null", "none", None))
 
-            # AUTONOMÍA (estilo agente) — SOLO cuando el plan no eligió una herramienta
-            # concreta. Así, investigar/crear se enruta a su herramienta confiable
-            # (web_search, generate_image, …) en vez del agente autónomo, que es más
-            # frágil. Si el agente falla, seguimos con el flujo normal en lugar de
-            # devolver un error crudo.
+            # AUTONOMY (agent-style) — ONLY when the plan didn't pick a concrete
+            # tool. This way, research/creation gets routed to its reliable tool
+            # (web_search, generate_image, …) instead of the autonomous agent,
+            # which is more fragile. If the agent fails, we continue with the
+            # normal flow instead of returning a raw error.
             if plan.get("autonomous_execution") and not has_tool:
                 try:
                     from apps.core import auth
@@ -564,8 +567,8 @@ class AriaMind:
 
                     agent = AriaAgent(
                         identity=SYSTEM_TEMPLATE.format(
-                            owner=getattr(settings, "OWNER_NAME", "su dueño"),
-                            focus=state.get("focus", "ejecución autónoma"),
+                            owner=getattr(settings, "OWNER_NAME", "its owner"),
+                            focus=state.get("focus", "autonomous execution"),
                             confidence="100%",
                             interaction_count=state.get("interaction_count", 0),
                             goals="\n".join([g["text"] for g in goals]),
@@ -578,18 +581,18 @@ class AriaMind:
                     if agent_result.get("success"):
                         return MindResponse(text=agent_result["output"])
                     logger.warning(
-                        "[AriaMind] autónomo falló, uso flujo normal: %s",
+                        "[AriaMind] autonomous run failed, using normal flow: %s",
                         agent_result.get("error"),
                     )
                 except Exception as e:
-                    logger.warning("[AriaMind] autónomo error, uso flujo normal: %s", e)
+                    logger.warning("[AriaMind] autonomous run error, using normal flow: %s", e)
 
-            # Actualizar metas si el plan lo indica
+            # Update goals if the plan indicates it
             goal_action = plan.get("goal_action")
             if goal_action:
                 goals = await self._apply_goal_action(goal_action, goals)
 
-            # Ejecutar herramienta si hay una
+            # Execute the tool if there is one
             if has_tool:
                 obs, media = await self._execute_with_retry(tool, tool_args, email=email)
                 final_text = await self._synthesize(text, tool, obs)
@@ -606,7 +609,7 @@ class AriaMind:
                     **media,
                 )
 
-            # Solo texto
+            # Text only
             if not reply:
                 reply = await self._fallback_reply(text)
 
@@ -617,9 +620,9 @@ class AriaMind:
 
         except Exception as exc:
             logger.error("[AriaMind] handle: %s", exc, exc_info=True)
-            return MindResponse(text="Error interno. Volviendo a intentarlo.")
+            return MindResponse(text="Internal error. Trying again.")
 
-    # ── RAZONAMIENTO ───────────────────────────────────────────────────────
+    # ── REASONING ────────────────────────────────────────────────────────────
 
     async def _reason(
         self,
@@ -632,25 +635,25 @@ class AriaMind:
     ) -> dict | None:
         ai = self._ai_client()
         if not ai:
-            return {"tool": None, "reply": "Motor de IA no disponible ahora."}
+            return {"tool": None, "reply": "AI engine not available right now."}
 
         from apps.core.config import settings
         from apps.core.tools.ai_client import AIModel
 
         goals_text = (
             "\n".join(f"  {i+1}. {Goal(**g).to_prompt()}" for i, g in enumerate(goals[:8]))
-            or "  (ninguna definida)"
+            or "  (none defined)"
         )
 
         history_text = (
             "\n".join(
-                ("Tú: " if m.get("role") == "user" else "ARIA: ") + m.get("content", "")[:200]
+                ("You: " if m.get("role") == "user" else "ARIA: ") + m.get("content", "")[:200]
                 for m in history[-self.MAX_HISTORY :]
             )
-            or "(primera conversación)"
+            or "(first conversation)"
         )
 
-        learned_text = "\n".join(f"  • {l}" for l in learned[-10:]) or "  (sin reglas aún)"
+        learned_text = "\n".join(f"  • {l}" for l in learned[-10:]) or "  (no rules yet)"
 
         # Enrich system with relevant knowledge base context (RAG)
         kb_context = ""
@@ -662,8 +665,8 @@ class AriaMind:
             pass
 
         system = SYSTEM_TEMPLATE.format(
-            owner=getattr(settings, "OWNER_NAME", "su dueño"),
-            focus=state.get("focus", "sin foco definido"),
+            owner=getattr(settings, "OWNER_NAME", "its owner"),
+            focus=state.get("focus", "no focus defined"),
             confidence=f"{state.get('confidence', 0.7):.0%}",
             interaction_count=state.get("interaction_count", 0),
             goals=goals_text,
@@ -674,7 +677,7 @@ class AriaMind:
         lang = self._detect_lang(text)
         user_input = text
         if kb_context:
-            user_input = f"{kb_context}\n\n---\nMensaje del usuario: {text}"
+            user_input = f"{kb_context}\n\n---\nUser message: {text}"
         if user_context:
             user_input = f"{user_context}\n\n{user_input}"
         user_input += self._lang_directive(lang)
@@ -690,10 +693,10 @@ class AriaMind:
         if result and isinstance(result, dict):
             return result
 
-        # Fallback: respuesta de texto directo
+        # Fallback: direct text response
         logger.warning("[AriaMind] complete_json returned None — using FAST fallback")
         resp = await ai.complete(
-            system="Eres ARIA. Responde directamente en el MISMO idioma del usuario, máximo 2 oraciones.",
+            system="You are ARIA. Reply directly in the SAME language as the user, max 2 sentences.",
             user=text + self._lang_directive(self._detect_lang(text)),
             model=AIModel.FAST,
             max_tokens=150,
@@ -702,17 +705,17 @@ class AriaMind:
         )
         if resp and resp.success:
             return {"tool": None, "reply": resp.content}
-        return {"tool": None, "reply": "Entendido. Dame un momento."}
+        return {"tool": None, "reply": "Understood. Give me a moment."}
 
-    # ── EJECUCIÓN CON RETRY + FALLBACK ────────────────────────────────────
+    # ── EXECUTION WITH RETRY + FALLBACK ─────────────────────────────────────
 
     async def _execute_with_retry(
         self, tool: str, args: dict, max_retries: int = 3, email: str = ""
     ) -> tuple[str, dict]:
         """
-        Ejecuta la herramienta con hasta max_retries intentos.
-        Cada intento puede usar parámetros adaptados.
-        Devuelve (observación_texto, media_dict).
+        Executes the tool with up to max_retries attempts.
+        Each attempt may use adapted parameters.
+        Returns (observation_text, media_dict).
         """
         last_error = ""
         for attempt in range(max_retries):
@@ -721,9 +724,9 @@ class AriaMind:
 
             obs, media = await self._execute_tool(tool, args, attempt, email=email)
 
-            # Si hay media o la obs no indica error → éxito
+            # If there's media or obs doesn't indicate an error → success
             if media or (
-                obs and not obs.lower().startswith(("error", "no se pudo", "falló", "fail"))
+                obs and not obs.lower().startswith(("error", "i couldn't", "failed", "fail"))
             ):
                 return obs, media
 
@@ -732,23 +735,23 @@ class AriaMind:
                 "[AriaMind] tool=%s attempt=%d/%d: %s", tool, attempt + 1, max_retries, obs[:80]
             )
 
-            # Adaptar args para el próximo intento
+            # Adapt args for the next attempt
             args = self._adapt_args(tool, args, obs, attempt)
 
-        return f"Intenté {max_retries} veces y no pude completar '{tool}': {last_error}", {}
+        return f"I tried {max_retries} times and couldn't complete '{tool}': {last_error}", {}
 
     def _adapt_args(self, tool: str, args: dict, error: str, attempt: int) -> dict:
-        """Adapta los argumentos según el error para el siguiente intento."""
+        """Adapts the arguments based on the error for the next attempt."""
         if tool == "generate_image" and attempt == 1:
-            # Primer fallback: cambiar modelo
+            # First fallback: change model
             args = dict(args, _fallback_model="stabilityai/stable-diffusion-xl-base-1.0")
         elif tool == "generate_image" and attempt == 2:
             args = dict(args, _fallback_model="stabilityai/sdxl-turbo")
         elif tool == "web_search" and attempt > 0:
-            # Simplificar la query
+            # Simplify the query
             query = args.get("query", "")
             words = query.split()
-            args = {"query": " ".join(words[:4])}  # query más corta
+            args = {"query": " ".join(words[:4])}  # shorter query
         return args
 
     # Tools that write to a real, external system of record on the owner's
@@ -771,19 +774,19 @@ class AriaMind:
         self, tool: str, args: dict, attempt: int = 0, email: str = ""
     ) -> tuple[str, dict]:
         """
-        Ejecuta la herramienta. Devuelve (obs_text, media_dict).
-        media_dict: {image_bytes, video_bytes, audio_bytes} — solo el que aplica.
+        Executes the tool. Returns (obs_text, media_dict).
+        media_dict: {image_bytes, video_bytes, audio_bytes} — only the one that applies.
         """
         if tool in self._OWNER_ONLY_TOOLS:
             from apps.core import auth
 
             if not auth.is_owner_email(email):
                 return (
-                    "Esta acción (escribir en GitHub) está reservada al dueño de ARIA.",
+                    "This action (writing to GitHub) is reserved for ARIA's owner.",
                     {},
                 )
         try:
-            # ── IMAGEN ────────────────────────────────────────────────────
+            # ── IMAGE ────────────────────────────────────────────────────
             if tool == "generate_image":
                 prompt = args.get("prompt", "") or "professional high-end marketing graphic"
                 import urllib.parse as _url
@@ -800,15 +803,15 @@ class AriaMind:
                     async with httpx.AsyncClient(timeout=45.0) as client:
                         resp = await client.get(poll_url)
                     if resp.status_code == 200 and resp.content:
-                        logger.info("[AriaMind] Imagen generada via Pollinations")
+                        logger.info("[AriaMind] Image generated via Pollinations")
                         # media dict is spread into MindResponse(**media), so it must
                         # only contain valid fields (image_bytes). URL stays in the text.
                         return (
-                            f"Imagen generada: {prompt}\n{poll_url}",
+                            f"Image generated: {prompt}\n{poll_url}",
                             {"image_bytes": resp.content},
                         )
                 except Exception as e:
-                    logger.error("[AriaMind] Pollinations fallo: %s", e)
+                    logger.error("[AriaMind] Pollinations failed: %s", e)
 
                 # Secondary: HuggingFace FLUX (only if the host/token happen to work).
                 try:
@@ -822,18 +825,18 @@ class AriaMind:
                         num_inference_steps=4,
                     )
                     if r.get("success") and r.get("image_bytes"):
-                        return "Imagen generada con FLUX.1", {"image_bytes": r["image_bytes"]}
+                        return "Image generated with FLUX.1", {"image_bytes": r["image_bytes"]}
                 except Exception as e:
-                    logger.error("[AriaMind] HF imagen fallo: %s", e)
+                    logger.error("[AriaMind] HF image failed: %s", e)
 
                 # Both providers failed to return bytes — degrade to a link in the
                 # text (media dict must only contain valid MindResponse fields).
                 return (
-                    f"No pude incrustar la imagen ahora mismo, pero puedes abrirla aquí: {poll_url}",
+                    f"I couldn't embed the image right now, but you can open it here: {poll_url}",
                     {},
                 )
 
-            # ── VIDEO ─────────────────────────────────────────────────────
+            # ── VIDEO ────────────────────────────────────────────────────
             if tool == "generate_video":
                 prompt = args.get("prompt", "")
                 import base64 as _b64
@@ -860,18 +863,18 @@ class AriaMind:
                         v64 = r.get("video_b64") or r.get("video_base64")
                         if v64:
                             raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
-                    tag = r.get("provider") or (f"{r['scenes']} escenas" if r.get("scenes") else "")
+                    tag = r.get("provider") or (f"{r['scenes']} scenes" if r.get("scenes") else "")
                     if raw:
                         extra = f" · {tag}" if tag else ""
-                        return f"Video generado ({len(raw)//1024}KB{extra})", {"video_bytes": raw}
+                        return f"Video generated ({len(raw)//1024}KB{extra})", {"video_bytes": raw}
                     if r.get("video_url"):
-                        return f"Video generado: {r['video_url']}", {}
+                        return f"Video generated: {r['video_url']}", {}
                 return (
-                    f"No pude generar el video: {r.get('error', 'Proveedor no disponible')}",
+                    f"I couldn't generate the video: {r.get('error', 'Provider not available')}",
                     {},
                 )
 
-            # ── MÚSICA ────────────────────────────────────────────────────
+            # ── MUSIC ────────────────────────────────────────────────────
             if tool == "generate_music":
                 prompt = args.get("prompt", "")
                 dur = int(args.get("duration", 30))
@@ -883,15 +886,15 @@ class AriaMind:
 
                     ab64 = r.get("audio_base64") or r.get("audio_b64")
                     if ab64:
-                        # Si ya es bytes (por alguna razón) no decodificar, si es str, decodificar
+                        # If it's already bytes (for some reason) don't decode; if it's a str, decode it
                         audio_data = ab64 if isinstance(ab64, bytes) else _b64.b64decode(ab64)
-                        return f"Música generada ({dur}s)", {"audio_bytes": audio_data}
+                        return f"Music generated ({dur}s)", {"audio_bytes": audio_data}
                 return (
-                    f"No pude generar la música: {r.get('error', 'Proveedor no disponible')}",
+                    f"I couldn't generate the music: {r.get('error', 'Provider not available')}",
                     {},
                 )
 
-            # ── BÚSQUEDA WEB ──────────────────────────────────────────────
+            # ── WEB SEARCH ───────────────────────────────────────────────
             if tool == "web_search":
                 query = args.get("query", "")
                 from apps.core.tools.web_tools import WebTools
@@ -899,16 +902,16 @@ class AriaMind:
                 r = await WebTools().search_web(query, num_results=10)
                 if r.get("success") and r.get("results"):
                     source = r.get("source", "web")
-                    lines = [f"[Fuente: {source} | Query: {query}]"]
+                    lines = [f"[Source: {source} | Query: {query}]"]
                     for i, res in enumerate(r["results"][:8]):
                         title = res.get("title", "")
                         snippet = res.get("snippet", "")[:300]
                         url = res.get("url", "")
                         lines.append(f"{i+1}. **{title}**\n   {snippet}\n   {url}")
                     return "\n\n".join(lines), {}
-                return "Sin resultados de búsqueda. Intenta reformular la query.", {}
+                return "No search results. Try rephrasing the query.", {}
 
-            # ── BÚSQUEDA PROFUNDA ─────────────────────────────────────────
+            # ── DEEP SEARCH ──────────────────────────────────────────────
             if tool == "deep_search":
                 query = args.get("query", "")
                 num_pages = min(int(args.get("num_pages", 3)), 5)
@@ -917,14 +920,14 @@ class AriaMind:
                 wt = WebTools()
                 r = await wt.search_web(query, num_results=num_pages + 2)
                 if not r.get("success") or not r.get("results"):
-                    return "No se encontraron resultados para la búsqueda profunda.", {}
+                    return "No results found for the deep search.", {}
                 # Fetch content from top pages in parallel
                 urls = [res.get("url", "") for res in r["results"] if res.get("url")][:num_pages]
                 fetch_tasks = [wt.fetch_page(url, max_chars=2000) for url in urls]
                 pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
                 parts = [f"[Deep Search: {query}]"]
                 for i, (res, page) in enumerate(zip(r["results"], pages, strict=False)):
-                    title = res.get("title", f"Resultado {i+1}")
+                    title = res.get("title", f"Result {i+1}")
                     url = res.get("url", "")
                     if isinstance(page, dict) and page.get("success") and page.get("text"):
                         content = page["text"][:1500]
@@ -933,19 +936,19 @@ class AriaMind:
                     parts.append(f"### {title}\n{url}\n{content}")
                 return "\n\n---\n\n".join(parts), {}
 
-            # ── FETCH DE URL ──────────────────────────────────────────────
+            # ── FETCH URL ────────────────────────────────────────────────
             if tool == "fetch_url":
                 url = args.get("url", "")
                 if not url:
-                    return "Necesito una URL para leer.", {}
+                    return "I need a URL to read.", {}
                 from apps.core.tools.web_tools import WebTools
 
                 r = await WebTools().fetch_page(url, max_chars=4000)
                 if r.get("success") and r.get("text"):
-                    return f"[Contenido de {url}]\n\n{r['text']}", {}
-                return f"No se pudo leer la URL: {r.get('error', 'Sin respuesta')}", {}
+                    return f"[Content from {url}]\n\n{r['text']}", {}
+                return f"I couldn't read the URL: {r.get('error', 'No response')}", {}
 
-            # ── TENDENCIAS ────────────────────────────────────────────────
+            # ── TRENDS ───────────────────────────────────────────────────
             if tool == "get_trends":
                 from apps.core.tools.web_tools import WebTools
 
@@ -962,9 +965,9 @@ class AriaMind:
                 if isinstance(rd, dict) and rd.get("success"):
                     rd_titles = [p.get("title", "")[:70] for p in rd.get("posts", [])[:4]]
                     parts.append("Reddit: " + " | ".join(rd_titles))
-                return "\n".join(parts) if parts else "Sin tendencias disponibles", {}
+                return "\n".join(parts) if parts else "No trends available", {}
 
-            # ── ESTADO DEL SISTEMA ────────────────────────────────────────
+            # ── SYSTEM STATUS ────────────────────────────────────────────
             if tool == "get_status":
                 try:
                     from apps.core.training.continuous_trainer import get_trainer
@@ -972,16 +975,16 @@ class AriaMind:
                     s = get_trainer().get_status()
                     skills = s.get("skill_scores", {})
                     skills_str = (
-                        ", ".join(f"{k}:{v:.0f}%" for k, v in skills.items()) or "evaluando"
+                        ", ".join(f"{k}:{v:.0f}%" for k, v in skills.items()) or "evaluating"
                     )
                     return (
-                        f"Ciclo #{s.get('cycle', 0)} | Skills: {skills_str} | "
+                        f"Cycle #{s.get('cycle', 0)} | Skills: {skills_str} | "
                         f"Running: {s.get('running', False)}"
                     ), {}
                 except Exception as e:
-                    return f"Sistema activo (error obteniendo detalle: {e})", {}
+                    return f"System active (error getting detail: {e})", {}
 
-            # ── CICLO DE INGRESOS ─────────────────────────────────────────
+            # ── INCOME CYCLE ─────────────────────────────────────────────
             elif tool == "run_income":
                 from apps.core.agents.orchestrator import Orchestrator
 
@@ -990,27 +993,27 @@ class AriaMind:
                 pub = r.get("revenue_summary", {}).get("items_published", 0)
                 t = r.get("cycle_time_s", 0)
                 return (
-                    f"Ciclo completado en {t:.0f}s — " f"Revenue: ${rev:.2f} — Publicaciones: {pub}"
+                    f"Cycle completed in {t:.0f}s — " f"Revenue: ${rev:.2f} — Published: {pub}"
                 ), {}
 
-            # ── SQUARE (API CUADRADA) ─────────────────────────────────────
+            # ── SQUARE ────────────────────────────────────────────────────
             elif tool == "square_sell":
                 from apps.core.integrations.square_engine import SquareEngine
 
                 engine = SquareEngine()
-                name = args.get("name", "Producto Aria")
-                desc = args.get("description", "Generado por Aria AI")
+                name = args.get("name", "Aria Product")
+                desc = args.get("description", "Generated by Aria AI")
                 price = int(args.get("price", 1000))  # cents
                 r = await engine.create_catalog_item(name, desc, price)
                 if r.get("success"):
                     link = await engine.create_payment_link(r["data"]["object"]["id"], name, price)
                     return (
-                        f"Producto creado en Square: {name}. Link de pago: {link.get('payment_link')}",
+                        f"Product created on Square: {name}. Payment link: {link.get('payment_link')}",
                         {},
                     )
-                return f"Error en Square: {r.get('error')}", {}
+                return f"Error on Square: {r.get('error')}", {}
 
-            # ── TEXT-TO-SPEECH (BARK) ─────────────────────────────────────────
+            # ── TEXT-TO-SPEECH (BARK) ─────────────────────────────────────
             elif tool == "speak":
                 text_input = args.get("text", "")
                 voice = args.get("voice", "v2/es_speaker_1")
@@ -1019,10 +1022,10 @@ class AriaMind:
                 r = await HuggingFaceSuite().text_to_speech_bark(text_input, voice_preset=voice)
                 if r.get("success") and r.get("audio_bytes"):
                     ab = r["audio_bytes"]
-                    return f"Audio generado ({len(ab)//1024}KB, voz: {voice})", {"audio_bytes": ab}
-                return r.get("error", "TTS no disponible"), {}
+                    return f"Audio generated ({len(ab)//1024}KB, voice: {voice})", {"audio_bytes": ab}
+                return r.get("error", "TTS not available"), {}
 
-            # ── TRADUCCIÓN ────────────────────────────────────────────────────
+            # ── TRANSLATION ──────────────────────────────────────────────
             elif tool == "translate":
                 text_input = args.get("text", "")
                 source = args.get("source", "es")
@@ -1032,26 +1035,26 @@ class AriaMind:
                 r = await HuggingFaceSuite().translate(text_input, source=source, target=target)
                 if r.get("success"):
                     return f"[{source}→{target}] {r.get('translated', '')}", {}
-                return r.get("error", "Traducción no disponible"), {}
+                return r.get("error", "Translation not available"), {}
 
-            # ── GENERACIÓN DE PDF ─────────────────────────────────────────────
+            # ── PDF GENERATION ───────────────────────────────────────────
             elif tool == "generate_pdf":
-                title = args.get("title", "Documento")
+                title = args.get("title", "Document")
                 content = args.get("content", "")
                 sections = args.get("sections") or []
                 from apps.core.tools.pdf_generator import generate_pdf as _gen_pdf
 
                 r = await _gen_pdf(title=title, content=content, sections=sections)
                 if r.get("success") and r.get("pdf_bytes"):
-                    fname = r.get("filename", "documento.pdf")
+                    fname = r.get("filename", "document.pdf")
                     size = r.get("size_kb", 0)
                     return (
-                        f"PDF generado: {fname} ({size}KB)",
+                        f"PDF generated: {fname} ({size}KB)",
                         {"document_bytes": r["pdf_bytes"], "document_filename": fname},
                     )
-                return r.get("error", "No se pudo generar el PDF"), {}
+                return r.get("error", "I couldn't generate the PDF"), {}
 
-            # ── SITIO WEB ─────────────────────────────────────────────────────
+            # ── WEBSITE ───────────────────────────────────────────────────
             elif tool == "create_website":
                 from apps.core.tools.website_engine import WebsiteEngine
 
@@ -1065,12 +1068,12 @@ class AriaMind:
                     fname = r.get("filename", "website.html")
                     size = len(r["html_bytes"]) // 1024
                     return (
-                        f"Sitio web generado: {fname} ({size}KB)",
+                        f"Website generated: {fname} ({size}KB)",
                         {"document_bytes": r["html_bytes"], "document_filename": fname},
                     )
                 return r.get("error", "Website generation failed"), {}
 
-            # ── CONTENIDO SOCIAL ──────────────────────────────────────────────
+            # ── SOCIAL CONTENT ────────────────────────────────────────────
             elif tool == "create_social_content":
                 topic = args.get("topic", "")
                 platforms = args.get("platforms", ["instagram", "linkedin", "twitter"])
@@ -1079,14 +1082,14 @@ class AriaMind:
 
                 r = await SocialContentEngine().create_content_pack(topic, platforms, tone)
                 if r.get("success"):
-                    lines = [f"Contenido generado para {r.get('generated', 0)} plataformas:\n"]
+                    lines = [f"Content generated for {r.get('generated', 0)} platforms:\n"]
                     for plat, res in r.get("platforms", {}).items():
                         if res.get("success"):
                             lines.append(f"**{plat.upper()}**\n{res.get('content', '')[:500]}\n")
                     return "\n".join(lines), {}
-                return "No se pudo generar contenido social", {}
+                return "I couldn't generate social content", {}
 
-            # ── SOFTWARE / APP ────────────────────────────────────────────────
+            # ── SOFTWARE / APP ───────────────────────────────────────────
             elif tool == "build_software":
                 from apps.core.tools.software_builder import SoftwareBuilder
 
@@ -1100,11 +1103,11 @@ class AriaMind:
                     fname = r.get("filename", "project.zip")
                     size = r.get("size_kb", 0)
                     files = r.get("files", [])
-                    obs = f"Proyecto generado: {fname} ({size}KB) — {len(files)} archivos: {', '.join(files[:6])}"
+                    obs = f"Project generated: {fname} ({size}KB) — {len(files)} files: {', '.join(files[:6])}"
                     return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
                 return r.get("error", "Software build failed"), {}
 
-            # ── VIDEOJUEGO ────────────────────────────────────────────────────
+            # ── VIDEO GAME ────────────────────────────────────────────────
             elif tool == "build_game":
                 from apps.core.tools.game_builder import GameBuilder
 
@@ -1118,11 +1121,11 @@ class AriaMind:
                     fname = r.get("filename", "game.zip")
                     size = r.get("size_kb", 0)
                     files = r.get("files", [])
-                    obs = f"Juego generado ({r.get('engine', '')}): {fname} ({size}KB) — {len(files)} archivos"
+                    obs = f"Game generated ({r.get('engine', '')}): {fname} ({size}KB) — {len(files)} files"
                     return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
                 return r.get("error", "Game build failed"), {}
 
-            # ── PUBLICAR ARTÍCULO ─────────────────────────────────────────
+            # ── PUBLISH ARTICLE ──────────────────────────────────────────
             elif tool == "publish_article":
                 title = args.get("title", "")
                 content = args.get("content", "")
@@ -1141,11 +1144,11 @@ class AriaMind:
                         results["hashnode"] = await pt.publish_to_hashnode(title, content, tags)
                 published = [p for p, r in results.items() if r.get("success")]
                 if published:
-                    return f"Artículo publicado en: {', '.join(published)}", {}
+                    return f"Article published on: {', '.join(published)}", {}
                 errors = "; ".join(f"{p}: {r.get('error','?')}" for p, r in results.items())
-                return f"No se pudo publicar: {errors}", {}
+                return f"I couldn't publish: {errors}", {}
 
-            # ── ENVIAR EMAIL / NEWSLETTER ─────────────────────────────────
+            # ── SEND EMAIL / NEWSLETTER ───────────────────────────────────
             elif tool == "send_email":
                 subject = args.get("subject", "")
                 body = args.get("body", "")
@@ -1154,33 +1157,33 @@ class AriaMind:
 
                 r = await PublishingTools().send_newsletter(subject, body, to_override=to)
                 if r.get("success"):
-                    return f"Email enviado vía {r.get('provider', 'email')}", {}
-                return r.get("error", "Email no disponible"), {}
+                    return f"Email sent via {r.get('provider', 'email')}", {}
+                return r.get("error", "Email not available"), {}
 
-            # ── DESCRIBIR IMAGEN ──────────────────────────────────────────
+            # ── DESCRIBE IMAGE ────────────────────────────────────────────
             elif tool == "describe_image":
                 url = args.get("url", "")
                 if not url:
-                    return "Necesito una URL de imagen.", {}
+                    return "I need an image URL.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
                 r = await HuggingFaceSuite().describe_image(image_url=url)
                 if r.get("success"):
-                    return f"Descripción: {r.get('description', '')}", {}
-                return r.get("error", "No se pudo describir la imagen"), {}
+                    return f"Description: {r.get('description', '')}", {}
+                return r.get("error", "I couldn't describe the image"), {}
 
-            # ── EJECUTAR CÓDIGO (SANDBOX) ─────────────────────────────────
+            # ── EXECUTE CODE (SANDBOX) ────────────────────────────────────
             elif tool == "execute_code":
                 code = args.get("code", "")
                 language = args.get("language", "python")
                 from apps.core.tools.code_runner import CodeRunner
 
                 r = await CodeRunner().run(code=code, language=language)
-                output = r.get("stdout", "") or r.get("stderr", "") or "(sin salida)"
+                output = r.get("stdout", "") or r.get("stderr", "") or "(no output)"
                 status = "OK" if r.get("success") else "ERROR"
                 return f"[{language} {status}]\n{output[:2000]}", {}
 
-            # ── NAVEGADOR SANDBOX ─────────────────────────────────────────
+            # ── SANDBOX BROWSER ───────────────────────────────────────────
             elif tool == "browse_page":
                 url = args.get("url", "")
                 take_shot = args.get("screenshot", False)
@@ -1189,7 +1192,7 @@ class AriaMind:
                 r = await get_sandbox().browse(url, extract=True, screenshot=take_shot)
                 content = r.get("content", "")[:3000]
                 title = r.get("title", url)
-                obs = f"[PÁGINA: {title}]\n{content}"
+                obs = f"[PAGE: {title}]\n{content}"
                 media: dict = {}
                 if take_shot and r.get("screenshot_bytes"):
                     media["image_bytes"] = r["screenshot_bytes"]
@@ -1201,14 +1204,14 @@ class AriaMind:
 
                 session = get_sandbox()._get_session()
                 r = await session.interact_with_page(steps)
-                summary = f"Pasos ejecutados: {r.get('steps_executed',0)}, exitosos: {r.get('steps_succeeded',0)}"
+                summary = f"Steps executed: {r.get('steps_executed',0)}, succeeded: {r.get('steps_succeeded',0)}"
                 details = "\n".join(
                     f"  {s['action']}: {'OK' if s.get('result',{}).get('success') else 'FAIL'}"
                     for s in r.get("results", [])
                 )
                 return f"[BROWSER] {summary}\n{details}", {}
 
-            # ── AGENTE DE NEGOCIO ─────────────────────────────────────────
+            # ── BUSINESS AGENT ────────────────────────────────────────────
             elif tool == "run_business_agent":
                 agent_name = args.get("agent", "ceo")
                 mission = args.get("mission", "")
@@ -1225,7 +1228,7 @@ class AriaMind:
                 summary = r.get("summary", r.get("result", str(r))[:400])
                 return f"[{agent_name.upper()}] {summary}", {}
 
-            # ── GESTIÓN DE METAS ──────────────────────────────────────────
+            # ── GOAL MANAGEMENT ───────────────────────────────────────────
             elif tool in ("add_goal", "update_goal"):
                 # Delegate to the goal_action system properly
                 action = "add" if tool == "add_goal" else "update"
@@ -1241,9 +1244,9 @@ class AriaMind:
                         goal_action_dict["status"] = args["status"]
                 goals_list = await self._load_goals()
                 await self._apply_goal_action(goal_action_dict, goals_list)
-                return f"Meta {'añadida' if action == 'add' else 'actualizada'} correctamente", {}
+                return f"Goal {'added' if action == 'add' else 'updated'} successfully", {}
 
-            # ── RAZONAMIENTO EXTENDIDO ────────────────────────────────────
+            # ── EXTENDED REASONING ────────────────────────────────────────
             elif tool == "deep_think":
                 question = args.get("question", "")
                 depth = args.get("depth", "auto")
@@ -1261,11 +1264,11 @@ class AriaMind:
                 from apps.core.tools.deep_think import get_deep_think
 
                 result = await get_deep_think().analyze_decision(question, options, criteria)
-                return f"[DECISIÓN]\n{result['recommendation']}", {}
+                return f"[DECISION]\n{result['recommendation']}", {}
 
-            # ── PRESENTACIONES ────────────────────────────────────────────
+            # ── PRESENTATIONS ─────────────────────────────────────────────
             elif tool == "create_presentation":
-                title = args.get("title", "Presentación")
+                title = args.get("title", "Presentation")
                 topic = args.get("topic", title)
                 slide_count = int(args.get("slide_count", 10))
                 template = args.get("template", "dark")
@@ -1276,9 +1279,9 @@ class AriaMind:
                 )
                 if r.get("success") and r.get("html_bytes"):
                     fname = r.get("filename", "presentation.html")
-                    obs = f"Presentación '{title}' generada: {r['slide_count']} slides"
+                    obs = f"Presentation '{title}' generated: {r['slide_count']} slides"
                     return obs, {"document_bytes": r["html_bytes"], "document_filename": fname}
-                return "No se pudo generar la presentación", {}
+                return "I couldn't generate the presentation", {}
 
             elif tool == "create_pitch_deck":
                 company = args.get("company", "")
@@ -1293,20 +1296,20 @@ class AriaMind:
                 )
                 if r.get("success") and r.get("html_bytes"):
                     fname = r.get("filename", "pitch_deck.html")
-                    obs = f"Pitch deck '{company}' generado: {r['slide_count']} slides"
+                    obs = f"Pitch deck '{company}' generated: {r['slide_count']} slides"
                     return obs, {"document_bytes": r["html_bytes"], "document_filename": fname}
-                return "No se pudo generar el pitch deck", {}
+                return "I couldn't generate the pitch deck", {}
 
-            # ── MULTIMODAL ────────────────────────────────────────────────
+            # ── MULTIMODAL ───────────────────────────────────────────────
             elif tool == "analyze_image":
                 url = args.get("url", "")
-                question = args.get("question", "Describe esta imagen en detalle.")
+                question = args.get("question", "Describe this image in detail.")
                 from apps.core.tools.multimodal import get_multimodal
 
                 r = await get_multimodal().analyze_image(image_url=url, question=question)
                 if r.get("success"):
-                    return f"[ANÁLISIS DE IMAGEN]\n{r['analysis']}", {}
-                return f"No pude analizar la imagen: {r.get('error', 'error desconocido')}", {}
+                    return f"[IMAGE ANALYSIS]\n{r['analysis']}", {}
+                return f"I couldn't analyze the image: {r.get('error', 'unknown error')}", {}
 
             elif tool == "extract_text":
                 url = args.get("url", "")
@@ -1315,7 +1318,7 @@ class AriaMind:
                 r = await get_multimodal().extract_text(image_url=url)
                 if r.get("success"):
                     return f"[OCR]\n{r['analysis']}", {}
-                return f"No pude extraer texto: {r.get('error', 'error desconocido')}", {}
+                return f"I couldn't extract text: {r.get('error', 'unknown error')}", {}
 
             elif tool == "edit_image":
                 url = args.get("url", "")
@@ -1324,71 +1327,71 @@ class AriaMind:
 
                 r = await get_multimodal().edit_image(image_url=url, instruction=instruction)
                 if r.get("success") and r.get("image_bytes"):
-                    return f"Imagen editada: '{instruction}'", {"image_bytes": r["image_bytes"]}
-                return f"No pude editar la imagen: {r.get('error', 'error desconocido')}", {}
+                    return f"Image edited: '{instruction}'", {"image_bytes": r["image_bytes"]}
+                return f"I couldn't edit the image: {r.get('error', 'unknown error')}", {}
 
             elif tool == "analyze_video":
                 url = args.get("url", "")
-                question = args.get("question", "Describe este video en detalle.")
+                question = args.get("question", "Describe this video in detail.")
                 from apps.core.tools.multimodal import get_multimodal
 
                 r = await get_multimodal().analyze_video_url(url, question)
                 if r.get("success"):
                     frames = r.get("frames_analyzed", 0)
-                    return f"[ANÁLISIS DE VIDEO — {frames} frames]\n{r['analysis']}", {}
-                return f"No pude analizar el video: {r.get('error', 'error desconocido')}", {}
+                    return f"[VIDEO ANALYSIS — {frames} frames]\n{r['analysis']}", {}
+                return f"I couldn't analyze the video: {r.get('error', 'unknown error')}", {}
 
-            # ── HERRAMIENTAS HF ADICIONALES (ecommerce/documentos) ────────
+            # ── ADDITIONAL HF TOOLS (ecommerce/documents) ─────────────────
             elif tool == "remove_background":
                 url = args.get("url", "")
                 if not url:
-                    return "Necesito una URL de imagen.", {}
+                    return "I need an image URL.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
                 try:
                     img_bytes = await _fetch_image_bytes(url)
                 except Exception as exc:
-                    return f"No pude descargar la imagen: {exc}", {}
+                    return f"I couldn't download the image: {exc}", {}
                 r = await HuggingFaceSuite().remove_background(img_bytes)
                 if r.get("success") and r.get("image_bytes"):
-                    return "Fondo eliminado.", {"image_bytes": r["image_bytes"]}
-                return r.get("error", "No se pudo eliminar el fondo"), {}
+                    return "Background removed.", {"image_bytes": r["image_bytes"]}
+                return r.get("error", "I couldn't remove the background"), {}
 
             elif tool == "classify_image":
                 url = args.get("url", "")
                 if not url:
-                    return "Necesito una URL de imagen.", {}
+                    return "I need an image URL.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
                 try:
                     img_bytes = await _fetch_image_bytes(url)
                 except Exception as exc:
-                    return f"No pude descargar la imagen: {exc}", {}
+                    return f"I couldn't download the image: {exc}", {}
                 r = await HuggingFaceSuite().classify_image(img_bytes)
                 if r.get("success"):
                     top = f"{r['top_label']} ({r['top_score'] * 100:.1f}%)"
                     others = ", ".join(
                         f"{a['label']} ({a['score'] * 100:.1f}%)" for a in r.get("all", [])[1:5]
                     )
-                    obs = f"[CLASIFICACIÓN] {top}" + (f"\nTambién: {others}" if others else "")
+                    obs = f"[CLASSIFICATION] {top}" + (f"\nAlso: {others}" if others else "")
                     return obs, {}
-                return r.get("error", "No se pudo clasificar la imagen"), {}
+                return r.get("error", "I couldn't classify the image"), {}
 
             elif tool == "document_qa":
                 url = args.get("url", "")
                 question = args.get("question", "")
                 if not url or not question:
-                    return "Necesito una URL de documento y una pregunta.", {}
+                    return "I need a document URL and a question.", {}
                 from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
                 try:
                     img_bytes = await _fetch_image_bytes(url)
                 except Exception as exc:
-                    return f"No pude descargar el documento: {exc}", {}
+                    return f"I couldn't download the document: {exc}", {}
                 r = await HuggingFaceSuite().document_qa(img_bytes, question)
                 if r.get("success"):
-                    return f"[DOCUMENTO] {r['answer']} (confianza: {r['confidence'] * 100:.0f}%)", {}
-                return r.get("error", "No se pudo leer el documento"), {}
+                    return f"[DOCUMENT] {r['answer']} (confidence: {r['confidence'] * 100:.0f}%)", {}
+                return r.get("error", "I couldn't read the document"), {}
 
             elif tool == "create_product_pack":
                 product_name = args.get("product_name", "")
@@ -1405,24 +1408,24 @@ class AriaMind:
                 if product_bytes:
                     media["image_bytes"] = product_bytes
                 translations = r.get("translations") or {}
-                langs_done = ", ".join(translations.keys()) if translations else "ninguna"
+                langs_done = ", ".join(translations.keys()) if translations else "none"
                 extra_imgs = []
                 if (r.get("social_image") or {}).get("bytes"):
                     extra_imgs.append("social")
                 if (r.get("blog_thumbnail") or {}).get("bytes"):
                     extra_imgs.append("blog thumbnail")
                 obs = (
-                    f"[PACK DE PRODUCTO: {product_name}]\n"
-                    f"Nicho: {r.get('niche_classification', niche)}\n"
-                    f"Resumen: {r.get('summary', '')}\n"
-                    f"Sentimiento de mercado: {r.get('market_sentiment', '')}\n"
-                    f"Traducciones generadas: {langs_done}\n"
-                    f"Imágenes generadas: producto"
+                    f"[PRODUCT PACK: {product_name}]\n"
+                    f"Niche: {r.get('niche_classification', niche)}\n"
+                    f"Summary: {r.get('summary', '')}\n"
+                    f"Market sentiment: {r.get('market_sentiment', '')}\n"
+                    f"Translations generated: {langs_done}\n"
+                    f"Images generated: product"
                     + (f", {', '.join(extra_imgs)}" if extra_imgs else "")
                 )
                 return obs, media
 
-            # ── BACKGROUND TASKS ─────────────────────────────────────────
+            # ── BACKGROUND TASKS ──────────────────────────────────────────
             elif tool == "run_background":
                 task_name = args.get("task", "")
                 agent_name = args.get("agent", "ceo")
@@ -1440,7 +1443,7 @@ class AriaMind:
                     session_id=None,
                 )
                 return (
-                    f"Tarea '{task_name}' iniciada en segundo plano (ID: {task_id}). Te avisaré cuando termine.",
+                    f"Task '{task_name}' started in the background (ID: {task_id}). I'll let you know when it's done.",
                     {},
                 )
 
@@ -1453,17 +1456,17 @@ class AriaMind:
                     record = mgr.get_task(task_id)
                     if record:
                         return (
-                            f"[Tarea {task_id}] {record.status.value}: {record.result or record.error or 'en progreso'}",
+                            f"[Task {task_id}] {record.status.value}: {record.result or record.error or 'in progress'}",
                             {},
                         )
-                    return f"Tarea {task_id} no encontrada.", {}
+                    return f"Task {task_id} not found.", {}
                 tasks = mgr.list_tasks(limit=10)
                 if not tasks:
-                    return "No hay tareas en segundo plano.", {}
+                    return "No background tasks.", {}
                 lines = [f"• [{t['id']}] {t['status']} — {t['name']}" for t in tasks]
-                return "[TAREAS EN SEGUNDO PLANO]\n" + "\n".join(lines), {}
+                return "[BACKGROUND TASKS]\n" + "\n".join(lines), {}
 
-            # ── KNOWLEDGE BASE (RAG) ──────────────────────────────────────
+            # ── KNOWLEDGE BASE (RAG) ───────────────────────────────────────
             elif tool == "learn":
                 source = args.get("source", "")
                 category = args.get("category", "general")
@@ -1477,10 +1480,10 @@ class AriaMind:
                     r = await kb.ingest_text(source, source=category, category=category)
                 if r.get("success"):
                     return (
-                        f"Aprendido: {r['chunks_added']} fragmentos de '{source[:60]}' "
-                        f"(total en KB: {r['total_chunks']})"
+                        f"Learned: {r['chunks_added']} chunks from '{source[:60]}' "
+                        f"(total in KB: {r['total_chunks']})"
                     ), {}
-                return f"No pude aprender esa fuente: {r.get('error', 'error')}", {}
+                return f"I couldn't learn that source: {r.get('error', 'error')}", {}
 
             elif tool == "search_knowledge":
                 query = args.get("query", "")
@@ -1491,7 +1494,7 @@ class AriaMind:
                 if formatted:
                     return formatted, {}
                 return (
-                    "No encontré información relevante en la base de conocimiento. Prueba a usar 'learn' primero.",
+                    "I didn't find relevant information in the knowledge base. Try using 'learn' first.",
                     {},
                 )
 
@@ -1501,11 +1504,11 @@ class AriaMind:
 
                 deleted = get_knowledge_base().delete_source(source)
                 return (
-                    f"Eliminados {deleted} fragmentos de '{source}' de la base de conocimiento.",
+                    f"Removed {deleted} chunks of '{source}' from the knowledge base.",
                     {},
                 )
 
-            # ── MULTI-AGENT CREW ──────────────────────────────────────────
+            # ── MULTI-AGENT CREW ────────────────────────────────────────────
             elif tool == "run_crew":
                 mission = args.get("mission", "")
                 crew_name = args.get("crew", "research_crew")
@@ -1517,13 +1520,13 @@ class AriaMind:
                     mission=mission,
                     crew_name=crew_name,
                     on_progress=lambda step, total, role: ps.update(
-                        f"{role} trabajando...", f"Paso {step}/{total}"
+                        f"{role} working...", f"Step {step}/{total}"
                     ),
                 )
                 members_summary = " → ".join(m.role for m in run.members)
                 obs = (
                     f"[CREW: {crew_name.upper()} — {members_summary}]\n\n"
-                    f"{run.final_output or 'Sin output final'}"
+                    f"{run.final_output or 'No final output'}"
                 )
                 return obs, {}
 
@@ -1539,10 +1542,10 @@ class AriaMind:
                         f"  {i+1}. {s}" for i, s in enumerate(r.get("steps_preview", []))
                     )
                     return (
-                        f"Workflow '{name}' creado (ID: {r['workflow_id']}, {r['steps']} pasos):\n"
-                        f"{steps_str}\n\nUsa run_workflow con id='{r['workflow_id']}' para ejecutarlo."
+                        f"Workflow '{name}' created (ID: {r['workflow_id']}, {r['steps']} steps):\n"
+                        f"{steps_str}\n\nUse run_workflow with id='{r['workflow_id']}' to run it."
                     ), {}
-                return f"No pude crear el workflow: {r.get('error', 'error')}", {}
+                return f"I couldn't create the workflow: {r.get('error', 'error')}", {}
 
             elif tool == "run_workflow":
                 wid = args.get("workflow_id", "")
@@ -1551,22 +1554,22 @@ class AriaMind:
                 r = await get_workflow_engine().run(wid)
                 if "results" in r:
                     steps_summary = "; ".join(
-                        f"paso{s['step']}={'OK' if s['success'] else 'FAIL'}"
+                        f"step{s['step']}={'OK' if s['success'] else 'FAIL'}"
                         for s in r.get("results", [])
                     )
-                    status = "" if r.get("success") else " (con errores)"
+                    status = "" if r.get("success") else " (with errors)"
                     return (
-                        f"[WORKFLOW '{r.get('name', wid)}'{status} — {r['steps_run']} pasos]\n"
+                        f"[WORKFLOW '{r.get('name', wid)}'{status} — {r['steps_run']} steps]\n"
                         f"{steps_summary}\n\n{r.get('final_output', '')}"
                     ), {}
-                return f"Error ejecutando workflow: {r.get('error', 'error')}", {}
+                return f"Error running workflow: {r.get('error', 'error')}", {}
 
             elif tool == "list_workflows":
                 from apps.core.tools.workflow_engine import get_workflow_engine
 
                 wfs = get_workflow_engine().list()
                 if not wfs:
-                    return "No hay workflows guardados. Usa create_workflow para crear uno.", {}
+                    return "No saved workflows. Use create_workflow to create one.", {}
                 lines = [
                     f"• [{w['id']}] **{w['name']}** — {w['description'][:60]} (runs: {w['run_count']})"
                     for w in wfs
@@ -1580,7 +1583,7 @@ class AriaMind:
                 from apps.core.tools.deep_think import get_deep_think
 
                 result = await get_deep_think().think_verified(question, context=context, paths=2)
-                obs = f"[RAZONAMIENTO VERIFICADO — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
+                obs = f"[VERIFIED REASONING — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
                 return obs, {}
 
             # ── NICHE REVENUE ENGINE ─────────────────────────────────────

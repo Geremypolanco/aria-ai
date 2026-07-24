@@ -1,25 +1,26 @@
 """
-dynamic_workflow.py — Motor de Flujos Dinámicos de ARIA.
+dynamic_workflow.py — ARIA's Dynamic Workflow Engine.
 
-Este es el patrón que define a las IA frontera de 2026 (Claude Code Dynamic
-Workflows, GPT Multi-agent, Gemini Antigravity): en lugar de responder con una
-sola llamada al modelo, ARIA **descompone** un objetivo en subtareas, lanza
-**subagentes en paralelo** enrutando cada uno al modelo óptimo, **verifica de
-forma adversarial** cada resultado antes de aceptarlo, e integra todo en una
-respuesta final coherente.
+This is the pattern that defines frontier 2026 AI (Claude Code Dynamic
+Workflows, GPT Multi-agent, Gemini Antigravity): instead of responding with a
+single model call, ARIA **decomposes** a goal into subtasks, launches
+**subagents in parallel** routing each one to the optimal model, **verifies
+adversarially** each result before accepting it, and integrates everything
+into a coherent final response.
 
-Fases:
-    1. PLAN       — un modelo estratega descompone el objetivo en 2-6 subtareas
-                    independientes (JSON). Si falla, degrada a una sola tarea.
-    2. EXECUTE    — subagentes en paralelo (con tope de concurrencia, como el
-                    límite de 16 de Claude Code) enrutados por tipo de tarea.
-    3. VERIFY     — cada resultado se somete a un verificador adversarial; si se
-                    detecta un fallo, se hace un único intento de reparación.
-    4. SYNTHESIZE — un modelo integrador combina las salidas verificadas en la
-                    entrega final.
+Phases:
+    1. PLAN       — a strategist model decomposes the goal into 2-6
+                    independent subtasks (JSON). On failure, degrades to a
+                    single task.
+    2. EXECUTE    — subagents run in parallel (with a concurrency cap, like
+                    Claude Code's limit of 16) routed by task type.
+    3. VERIFY     — each result is submitted to an adversarial verifier; if a
+                    flaw is detected, a single repair attempt is made.
+    4. SYNTHESIZE — an integrator model combines the verified outputs into
+                    the final deliverable.
 
-El motor depende solo de la interfaz `.complete(...)` de `AriaAIClient`, por lo
-que es 100 % testeable sin red inyectando un cliente falso.
+The engine depends only on `AriaAIClient`'s `.complete(...)` interface, which
+makes it 100% testable without network access by injecting a fake client.
 """
 
 from __future__ import annotations
@@ -38,24 +39,24 @@ from apps.core.tools.ai_client import AIModel, AIResponse
 
 logger = logging.getLogger("aria.dynamic_workflow")
 
-# Tope de subagentes concurrentes. El servidor es pequeño; 6 mantiene la
-# latencia acotada sin saturar los proveedores de inferencia.
+# Cap on concurrent subagents. The server is small; 6 keeps latency bounded
+# without saturating the inference providers.
 DEFAULT_CONCURRENCY = 6
-# Cota dura de subtareas para que un plan desbocado no dispare el costo.
+# Hard cap on subtasks so a runaway plan doesn't blow up the cost.
 MAX_SUBTASKS = 6
 
 
 class TaskKind(StrEnum):
-    """Tipo de subtarea → determina a qué nivel de modelo se enruta."""
+    """Subtask type → determines which model tier it gets routed to."""
 
-    REASON = "reason"  # análisis profundo, estrategia
-    CODE = "code"  # generación / revisión de código
-    RESEARCH = "research"  # síntesis de información
-    CREATIVE = "creative"  # copy, ideas, contenido
-    FAST = "fast"  # tareas simples y de alto volumen
+    REASON = "reason"  # deep analysis, strategy
+    CODE = "code"  # code generation / review
+    RESEARCH = "research"  # information synthesis
+    CREATIVE = "creative"  # copy, ideas, content
+    FAST = "fast"  # simple, high-volume tasks
 
 
-# Mapa de tipo de tarea → nivel de modelo del router multi-proveedor.
+# Map of task type → model tier for the multi-provider router.
 _KIND_TO_MODEL: dict[TaskKind, AIModel] = {
     TaskKind.REASON: AIModel.REASONING,
     TaskKind.CODE: AIModel.CODE,
@@ -66,7 +67,7 @@ _KIND_TO_MODEL: dict[TaskKind, AIModel] = {
 
 
 class SupportsComplete(Protocol):
-    """Interfaz mínima que el motor necesita del cliente de IA."""
+    """Minimal interface the engine needs from the AI client."""
 
     async def complete(
         self,
@@ -82,7 +83,7 @@ class SupportsComplete(Protocol):
 
 @dataclass
 class SubTask:
-    """Una unidad de trabajo que ejecuta un subagente."""
+    """A unit of work executed by a subagent."""
 
     id: str
     title: str
@@ -95,7 +96,7 @@ class SubTask:
 
 @dataclass
 class SubTaskResult:
-    """Resultado de un subagente, con su traza de verificación."""
+    """Result of a subagent, with its verification trace."""
 
     task: SubTask
     output: str
@@ -127,7 +128,7 @@ class SubTaskResult:
 
 @dataclass
 class WorkflowResult:
-    """Salida completa de un flujo dinámico."""
+    """Complete output of a dynamic workflow."""
 
     goal: str
     plan: list[SubTask]
@@ -186,85 +187,86 @@ def _lang_directive(lang: str) -> str:
 
 
 _PLANNER_SYSTEM = (
-    "Eres el planificador de ARIA, un sistema de agentes autónomo. Descompones un "
-    "objetivo en subtareas INDEPENDIENTES que puedan ejecutarse en paralelo (sin que "
-    "una dependa del resultado de otra). Menos subtareas bien definidas es mejor que "
-    "muchas triviales. Cada subtarea declara su tipo: 'reason' (análisis/estrategia), "
-    "'code' (programación), 'research' (síntesis de información), 'creative' (copy/ideas) "
-    "o 'fast' (tareas simples)."
+    "You are ARIA's planner, an autonomous agent system. You decompose a "
+    "goal into INDEPENDENT subtasks that can run in parallel (none depending on another's "
+    "result). Fewer well-defined subtasks is better than many trivial ones. Each subtask "
+    "declares its type: 'reason' (analysis/strategy), "
+    "'code' (programming), 'research' (information synthesis), 'creative' (copy/ideas) "
+    "or 'fast' (simple tasks)."
 )
 
-_PLANNER_USER = """Objetivo:
+_PLANNER_USER = """Goal:
 {goal}
 {context}
-Devuelve entre 2 y {max_tasks} subtareas paralelas como JSON con esta forma exacta:
-{{"subtasks": [{{"title": "...", "prompt": "instrucción completa y autónoma para el subagente", "kind": "reason|code|research|creative|fast"}}]}}
-Cada 'prompt' debe ser autosuficiente: el subagente NO ve el objetivo global ni las otras subtareas.
-Escribe cada 'title' y 'prompt' EN EL MISMO IDIOMA del objetivo del usuario (si el objetivo está en inglés, en inglés; si está en español, en español). Cada 'prompt' debe pedir el ENTREGABLE final terminado (el texto/copy real listo para usar), no un resumen ni un plan de lo que se haría."""
+Return between 2 and {max_tasks} parallel subtasks as JSON with this exact shape:
+{{"subtasks": [{{"title": "...", "prompt": "complete, self-contained instruction for the subagent", "kind": "reason|code|research|creative|fast"}}]}}
+Each 'prompt' must be self-sufficient: the subagent does NOT see the overall goal or the other subtasks.
+Write each 'title' and 'prompt' IN THE SAME LANGUAGE as the user's goal (if the goal is in English, in English; if it's in Spanish, in Spanish). Each 'prompt' must ask for the finished final DELIVERABLE (the actual, ready-to-use text/copy), not a summary or a plan of what would be done."""
 
 _VERIFIER_SYSTEM = (
-    "Eres un verificador adversarial. Tu trabajo es encontrar fallos reales en el "
-    "resultado de un subagente: afirmaciones incorrectas, requisitos ignorados, código "
-    "que no funcionaría, alucinaciones. Sé estricto pero justo. Si el resultado cumple "
-    "razonablemente la tarea, apruébalo."
+    "You are an adversarial verifier. Your job is to find real flaws in a "
+    "subagent's result: incorrect claims, ignored requirements, code "
+    "that wouldn't work, hallucinations. Be strict but fair. If the result "
+    "reasonably fulfills the task, approve it."
 )
 
-_VERIFIER_USER = """Tarea encomendada:
+_VERIFIER_USER = """Assigned task:
 {prompt}
 
-Resultado del subagente:
+Subagent's result:
 {output}
 
-¿El resultado cumple la tarea sin fallos graves? Responde SOLO JSON:
-{{"ok": true|false, "critique": "si ok=false, explica el fallo concreto en una frase; si ok=true, deja vacío"}}"""
+Does the result fulfill the task without serious flaws? Respond ONLY with JSON:
+{{"ok": true|false, "critique": "if ok=false, explain the concrete flaw in one sentence; if ok=true, leave empty"}}"""
 
 _SYNTH_SYSTEM = (
-    "Eres ARIA integrando el trabajo de tu equipo en el ENTREGABLE FINAL para el usuario. "
-    "Hablas como una persona real: cálida, directa, con criterio —no como un reporte corporativo. "
-    "Nada de 'Como IA', ni jerga vacía, ni relleno. "
-    "REGLA CLAVE: entrega el trabajo TERMINADO y listo para usar, no una descripción de lo que "
-    "harías. Si piden 5 posts, escribe los 5 posts COMPLETOS palabra por palabra (con su hook y su "
-    "copy final), no 'compartiremos cómo…'. Si piden un artículo, escribe el artículo. El usuario "
-    "debe poder copiar y publicar sin reescribir nada. "
-    "Nada de títulos genéricos ni frases cliché de IA: hooks y copy específicos, con criterio real. "
-    "Responde SIEMPRE en el MISMO idioma del objetivo del usuario (si el objetivo está en inglés, "
-    "responde en inglés; si está en español, en español)."
+    "You are ARIA integrating your team's work into the FINAL DELIVERABLE for the user. "
+    "You speak like a real person: warm, direct, opinionated — not like a corporate report. "
+    "No 'As an AI', no empty jargon, no filler. "
+    "KEY RULE: deliver the FINISHED work, ready to use, not a description of what "
+    "you would do. If they ask for 5 posts, write the 5 COMPLETE posts word for word (with their hook and "
+    "final copy), not 'we'll share how…'. If they ask for an article, write the article. The user "
+    "must be able to copy and publish without rewriting anything. "
+    "No generic titles or AI cliché phrases: specific hooks and copy, with real judgment. "
+    "ALWAYS respond in the SAME language as the user's goal (if the goal is in English, "
+    "respond in English; if it's in Spanish, in Spanish)."
 )
 
-_SYNTH_USER = """Objetivo del usuario:
+_SYNTH_USER = """User's goal:
 {goal}
 
-Trabajo de tu equipo (subagentes):
+Your team's work (subagents):
 {parts}
 
-Entrega el resultado FINAL listo para usar —el texto completo, no un resumen ni un plan de lo que
-harías. Escríbelo en el idioma del objetivo. Si algo dependía de un dato que no teníamos, asume lo
-razonable y sigue; solo al final, en una línea, puedes ofrecer afinarlo."""
+Deliver the FINAL result ready to use — the complete text, not a summary or a plan of what
+you would do. Write it in the language of the goal. If something depended on data we didn't have, make a
+reasonable assumption and continue; only at the very end, in one line, you may offer to refine it."""
 
 _CLARIFY_SYSTEM = (
-    "Eres ARIA decidiendo si EJECUTAR ya o si —solo en casos claros— falta un dato sin el cual el "
-    "entregable saldría inútil o en la dirección equivocada. Tu sesgo por defecto es EJECUTAR y "
-    "entregar algo fuerte que la persona pueda revisar; preguntar es la excepción, no la regla. "
-    "Hablas como persona —cálido y directo—."
+    "You are ARIA deciding whether to EXECUTE right away or — only in clear cases — whether a "
+    "piece of information is missing without which the deliverable would come out useless or in the "
+    "wrong direction. Your default bias is to EXECUTE and "
+    "deliver something strong the person can review; asking is the exception, not the rule. "
+    "You speak like a person — warm and direct."
 )
 
-_CLARIFY_USER = """Pedido del usuario:
+_CLARIFY_USER = """User's request:
 {goal}
 {context}
-Por defecto EJECUTA (ready=true) y entrega un primer resultado fuerte con supuestos razonables; luego se puede refinar.
-Solo pon ready=false si SIN un dato el entregable sería genuinamente inútil o iría en dirección equivocada —el caso típico es pedir precios/tiers sin saber qué es el producto, para quién, ni su métrica de valor.
-Para tareas creativas o de contenido (posts, imágenes, artículos, guiones, research) con un tema claro → SIEMPRE ready=true: haz un primer borrador excelente y ofrece afinar después. No interrogues al usuario en el momento en que quiere ver el trabajo.
-Responde SOLO JSON:
-{{"ready": true|false, "questions": ["pregunta corta y concreta 1", "..."], "intro": "una frase humana y cálida para acompañar las preguntas; vacío si ready=true"}}
-Responde en el idioma del pedido."""
+By default EXECUTE (ready=true) and deliver a strong first result with reasonable assumptions; it can be refined afterward.
+Only set ready=false if, WITHOUT a piece of information, the deliverable would be genuinely useless or go in the wrong direction — the typical case is being asked for pricing/tiers without knowing what the product is, for whom, or its value metric.
+For creative or content tasks (posts, images, articles, scripts, research) with a clear topic → ALWAYS ready=true: produce an excellent first draft and offer to refine it afterward. Don't interrogate the user at the moment they want to see the work.
+Respond ONLY with JSON:
+{{"ready": true|false, "questions": ["short, concrete question 1", "..."], "intro": "one warm, human sentence to accompany the questions; empty if ready=true"}}
+Respond in the language of the request."""
 
 
 class DynamicWorkflow:
-    """Orquestador de flujos dinámicos multi-agente.
+    """Orchestrator for multi-agent dynamic workflows.
 
-    Uso:
+    Usage:
         wf = DynamicWorkflow(client)
-        result = await wf.run("Diseña y valida un plan de lanzamiento para X")
+        result = await wf.run("Design and validate a launch plan for X")
         print(result.synthesis)
     """
 
@@ -281,16 +283,16 @@ class DynamicWorkflow:
         # When True, an under-specified goal yields clarifying questions instead
         # of a guessed deliverable (no subagents run). The chat shows them as a turn.
         self._clarify = clarify
-        # Contadores de tokens de las fases que no viven en un SubTaskResult
-        # (planner + synthesizer). Se reinician al inicio de cada run().
+        # Token counters for the phases that don't live in a SubTaskResult
+        # (planner + synthesizer). Reset at the start of each run().
         self._plan_tokens = 0
         self._synth_tokens = 0
         self._out_lang = "en"  # set per-run from the goal in run()/run_events()
 
-    # ── ORQUESTACIÓN PRINCIPAL ────────────────────────────────────────────
+    # ── MAIN ORCHESTRATION ────────────────────────────────────────────────
 
     async def run(self, goal: str, context: str | None = None) -> WorkflowResult:
-        """Ejecuta el flujo completo: plan → paralelo → verificar → sintetizar."""
+        """Runs the full flow: plan → parallel → verify → synthesize."""
         t0 = time.time()
         goal = (goal or "").strip()
         if not goal:
@@ -302,7 +304,7 @@ class DynamicWorkflow:
         self._synth_tokens = 0
         self._out_lang = _detect_lang(goal)
 
-        # Aclarar antes de ejecutar: si falta contexto clave, pregunta en vez de adivinar.
+        # Clarify before executing: if key context is missing, ask instead of guessing.
         if self._clarify:
             clarify_msg = await self._assess(goal, context)
             if clarify_msg:
@@ -317,18 +319,18 @@ class DynamicWorkflow:
                 )
 
         plan = await self._plan(goal, context)
-        logger.info("[workflow] plan de %d subtareas para: %s", len(plan), goal[:80])
+        logger.info("[workflow] plan of %d subtasks for: %s", len(plan), goal[:80])
 
-        # Ejecutar subagentes en paralelo (con tope de concurrencia).
+        # Run subagents in parallel (with a concurrency cap).
         results = await asyncio.gather(*(self._execute(task) for task in plan))
 
-        # Verificar (y reparar una vez) de forma adversarial, también en paralelo.
+        # Verify (and repair once) adversarially, also in parallel.
         if self._verify:
             results = list(await asyncio.gather(*(self._verify_and_repair(r) for r in results)))
 
         synthesis = await self._synthesize(goal, results)
 
-        # Costo real = subagentes (incl. verify + repair) + planner + synth.
+        # Real cost = subagents (incl. verify + repair) + planner + synth.
         total_tokens = sum(r.tokens for r in results) + self._plan_tokens + self._synth_tokens
         ok = any(r.ok for r in results) and bool(synthesis)
         return WorkflowResult(
@@ -344,17 +346,17 @@ class DynamicWorkflow:
     # ── STREAMING ─────────────────────────────────────────────────────────
 
     async def run_events(self, goal: str, context: str | None = None):
-        """Igual que run(), pero emite eventos a medida que avanza — para SSE.
+        """Same as run(), but emits events as it progresses — for SSE.
 
-        Yields dicts con `type`:
+        Yields dicts with `type`:
             start        — {goal}
             plan         — {subtasks:[{id,title,kind}]}
-            subtask_done — {result:{...}}   (uno por subagente, al completar+verificar)
+            subtask_done — {result:{...}}   (one per subagent, on complete+verify)
             done         — {ok, synthesis, subtasks:[...], total_tokens, duration_ms}
-            error        — {error}          (solo si algo irrecuperable ocurre)
+            error        — {error}          (only if something unrecoverable happens)
 
-        Los subagentes se completan con as_completed → el cliente ve cada uno
-        aparecer en cuanto termina, en vez de esperar a todo el lote.
+        Subagents complete via as_completed → the client sees each one
+        appear as soon as it finishes, instead of waiting for the whole batch.
         """
         t0 = time.time()
         goal = (goal or "").strip()
@@ -369,7 +371,7 @@ class DynamicWorkflow:
         try:
             yield {"type": "start", "goal": goal}
 
-            # Aclarar antes de ejecutar: si falta contexto, pregunta (sin correr subagentes).
+            # Clarify before executing: if context is missing, ask (without running subagents).
             if self._clarify:
                 clarify_msg = await self._assess(goal, context)
                 if clarify_msg:
@@ -411,20 +413,20 @@ class DynamicWorkflow:
                 "total_tokens": total,
                 "duration_ms": int((time.time() - t0) * 1000),
             }
-        except Exception as exc:  # noqa: BLE001 — el stream nunca debe colgar sin cerrar.
-            logger.warning("[workflow] run_events falló: %s", exc)
+        except Exception as exc:  # noqa: BLE001 — the stream must never hang without closing.
+            logger.warning("[workflow] run_events failed: %s", exc)
             yield {"type": "error", "error": str(exc)[:200]}
 
-    # ── FASE 0: ACLARAR ───────────────────────────────────────────────────
+    # ── PHASE 0: CLARIFY ──────────────────────────────────────────────────
 
     async def _assess(self, goal: str, context: str | None) -> str | None:
-        """Devuelve un mensaje de aclaración (cálido, con 1-3 preguntas) si al objetivo
-        le falta contexto clave; None si ya hay suficiente para ejecutar.
+        """Returns a clarifying message (warm, with 1-3 questions) if the goal
+        is missing key context; None if there's already enough to execute.
 
-        Best-effort: ante cualquier fallo o si el modelo dice que está listo, devuelve
-        None para no bloquear un pedido bien especificado.
+        Best-effort: on any failure, or if the model says it's ready, returns
+        None so as not to block a well-specified request.
         """
-        ctx = f"\nContexto adicional:\n{context}\n" if context else "\n"
+        ctx = f"\nAdditional context:\n{context}\n" if context else "\n"
         try:
             resp = await self._client.complete(
                 system=_CLARIFY_SYSTEM,
@@ -448,16 +450,16 @@ class DynamicWorkflow:
                 return None
             intro = (
                 str(data.get("intro") or "").strip()
-                or "Antes de arrancar, cuéntame un par de cosas para que esto salga bien:"
+                or "Before we start, tell me a couple of things so this comes out right:"
             )
             return intro + "\n\n" + "\n".join("- " + q for q in questions)
-        except Exception:  # noqa: BLE001 — aclarar es best-effort; ante duda, ejecuta.
+        except Exception:  # noqa: BLE001 — clarifying is best-effort; when in doubt, execute.
             return None
 
-    # ── FASE 1: PLAN ──────────────────────────────────────────────────────
+    # ── PHASE 1: PLAN ─────────────────────────────────────────────────────
 
     async def _plan(self, goal: str, context: str | None) -> list[SubTask]:
-        ctx = f"\nContexto adicional:\n{context}\n" if context else "\n"
+        ctx = f"\nAdditional context:\n{context}\n" if context else "\n"
         try:
             resp = await self._client.complete(
                 system=_PLANNER_SYSTEM,
@@ -483,18 +485,18 @@ class DynamicWorkflow:
                 tasks.append(
                     SubTask(
                         id=f"t{i + 1}",
-                        title=str(item.get("title") or f"Subtarea {i + 1}").strip()[:120],
+                        title=str(item.get("title") or f"Subtask {i + 1}").strip()[:120],
                         prompt=prompt,
                         kind=kind,
                     )
                 )
             if tasks:
                 return tasks
-        except Exception as exc:  # noqa: BLE001 — el planner nunca debe tumbar el flujo.
-            logger.warning("[workflow] planificación falló (%s) — degradando a tarea única", exc)
+        except Exception as exc:  # noqa: BLE001 — the planner must never take down the flow.
+            logger.warning("[workflow] planning failed (%s) — degrading to a single task", exc)
 
-        # Degradación: una sola subtarea que es el objetivo tal cual.
-        return [SubTask(id="t1", title="Objetivo completo", prompt=goal, kind=TaskKind.REASON)]
+        # Degradation: a single subtask that is the goal as-is.
+        return [SubTask(id="t1", title="Full objective", prompt=goal, kind=TaskKind.REASON)]
 
     @staticmethod
     def _coerce_kind(value: Any) -> TaskKind:
@@ -503,13 +505,13 @@ class DynamicWorkflow:
         except ValueError:
             return TaskKind.RESEARCH
 
-    # ── FASE 2: EJECUTAR SUBAGENTE ────────────────────────────────────────
+    # ── PHASE 2: EXECUTE SUBAGENT ─────────────────────────────────────────
 
     async def _execute(self, task: SubTask) -> SubTaskResult:
         system = _lang_directive(self._out_lang) + (
-            "Eres un subagente especializado de ARIA. Ejecutas UNA tarea concreta con "
-            "rigor y devuelves el ENTREGABLE terminado y listo para usar (el texto/copy real, "
-            "no una descripción ni un plan), sin preámbulos ni disculpas."
+            "You are a specialized ARIA subagent. You execute ONE concrete task with "
+            "rigor and return the finished, ready-to-use DELIVERABLE (the actual text/copy, "
+            "not a description or a plan), with no preamble or apologies."
         )
         async with self._sem:
             try:
@@ -535,22 +537,22 @@ class DynamicWorkflow:
                     output="",
                     model_used=resp.model if resp else "none",
                     ok=False,
-                    error=(resp.error if resp else "sin respuesta"),
+                    error=(resp.error if resp else "no response"),
                 )
             except Exception as exc:  # noqa: BLE001
-                logger.warning("[workflow] subagente %s falló: %s", task.id, exc)
+                logger.warning("[workflow] subagent %s failed: %s", task.id, exc)
                 return SubTaskResult(
                     task=task, output="", model_used="none", ok=False, error=str(exc)[:200]
                 )
 
-    # ── FASE 3: VERIFICAR + REPARAR ───────────────────────────────────────
+    # ── PHASE 3: VERIFY + REPAIR ──────────────────────────────────────────
 
     async def _verify_and_repair(self, result: SubTaskResult) -> SubTaskResult:
         if not result.ok or not result.output:
             return result
         verdict = await self._verify_one(result)
         if verdict is None:
-            # El verificador no está disponible: no bloqueamos, aceptamos tal cual.
+            # The verifier isn't available: don't block, accept as-is.
             result.verified = True
             return result
         ok, critique = verdict
@@ -558,7 +560,7 @@ class DynamicWorkflow:
             result.verified = True
             return result
 
-        # Un único intento de reparación guiado por la crítica.
+        # A single repair attempt guided by the critique.
         result.critique = critique
         repaired = await self._repair(result, critique)
         if repaired is not None:
@@ -589,7 +591,7 @@ class DynamicWorkflow:
                 result.tokens += resp.tokens_used
                 data = json.loads(resp.content)
                 return bool(data.get("ok", True)), str(data.get("critique") or "").strip()
-            except Exception:  # noqa: BLE001 — verificación best-effort.
+            except Exception:  # noqa: BLE001 — verification is best-effort.
                 return None
 
     async def _repair(self, result: SubTaskResult, critique: str) -> SubTaskResult | None:
@@ -597,15 +599,15 @@ class DynamicWorkflow:
             try:
                 resp = await self._client.complete(
                     system=(
-                        "Eres un subagente de ARIA corrigiendo tu propio trabajo. Un revisor "
-                        "encontró un fallo. Devuelve el resultado CORREGIDO completo, no una "
-                        "explicación del cambio."
+                        "You are an ARIA subagent fixing your own work. A reviewer "
+                        "found a flaw. Return the complete CORRECTED result, not an "
+                        "explanation of the change."
                     ),
                     user=(
-                        f"Tarea:\n{result.task.prompt}\n\n"
-                        f"Tu resultado anterior:\n{result.output[:3000]}\n\n"
-                        f"Fallo detectado por el revisor:\n{critique}\n\n"
-                        "Entrega el resultado corregido:"
+                        f"Task:\n{result.task.prompt}\n\n"
+                        f"Your previous result:\n{result.output[:3000]}\n\n"
+                        f"Flaw found by the reviewer:\n{critique}\n\n"
+                        "Deliver the corrected result:"
                     ),
                     model=result.task.model(),
                     max_tokens=1800,
@@ -624,13 +626,13 @@ class DynamicWorkflow:
                 return None
         return None
 
-    # ── FASE 4: SINTETIZAR ────────────────────────────────────────────────
+    # ── PHASE 4: SYNTHESIZE ───────────────────────────────────────────────
 
     async def _synthesize(self, goal: str, results: list[SubTaskResult]) -> str:
         usable = [r for r in results if r.ok and r.output]
         if not usable:
             return ""
-        # Atajo: con un solo resultado no hay nada que integrar.
+        # Shortcut: with a single result there's nothing to integrate.
         if len(usable) == 1:
             return usable[0].output
 
@@ -648,19 +650,19 @@ class DynamicWorkflow:
                 self._synth_tokens += resp.tokens_used
                 return resp.content.strip()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("[workflow] síntesis falló: %s", exc)
+            logger.warning("[workflow] synthesis failed: %s", exc)
 
-        # Degradación: concatenar las secciones verificadas.
+        # Degradation: concatenate the verified sections.
         return "\n\n".join(f"**{r.task.title}**\n{r.output}" for r in usable)
 
 
-# ── FÁBRICA ───────────────────────────────────────────────────────────────
+# ── FACTORY ──────────────────────────────────────────────────────────────
 
 
 async def get_dynamic_workflow(
     max_concurrency: int = DEFAULT_CONCURRENCY, verify: bool = True
 ) -> DynamicWorkflow:
-    """Construye un flujo dinámico con el cliente de IA compartido de ARIA."""
+    """Builds a dynamic workflow using ARIA's shared AI client."""
     from apps.core.tools.ai_client import get_ai_client_async
 
     client = await get_ai_client_async()

@@ -1,7 +1,7 @@
 """
-Marketing Agent — SEO, contenido viral, campañas y crecimiento de marca.
+Marketing Agent — SEO, viral content, campaigns, and brand growth.
 
-Maneja: SEO research, blog posts, social media calendar, email campaigns,
+Handles: SEO research, blog posts, social media calendar, email campaigns,
         ad copy, keyword analysis, competitor analysis, content strategy.
 """
 
@@ -18,15 +18,15 @@ logger = logging.getLogger("aria.business.marketing")
 
 class MarketingAgent(BaseAgent):
     IDENTITY = (
-        "Eres el Marketing Agent de ARIA AI. Eres un CMO digital experto en growth hacking, "
-        "SEO, content marketing y viral loops. Tu objetivo: máximo alcance y conversión. "
-        "Generas y ejecutas campañas reales, no solo planes."
+        "You are ARIA AI's Marketing Agent. You are a digital CMO expert in growth hacking, "
+        "SEO, content marketing, and viral loops. Your goal: maximum reach and conversion. "
+        "You generate and execute real campaigns, not just plans."
     )
 
     def __init__(self) -> None:
         super().__init__(
             name="marketing",
-            description="SEO, contenido viral, campañas de email, redes sociales y crecimiento de marca",
+            description="SEO, viral content, email campaigns, social media, and brand growth",
             capabilities=[
                 "seo",
                 "content_creation",
@@ -39,7 +39,7 @@ class MarketingAgent(BaseAgent):
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission = context.get("mission", "Crear estrategia de marketing completa")
+        mission = context.get("mission", "Create a complete marketing strategy")
         niche = context.get("niche", "AI tools")
         context.get("budget", "bootstrap")
         channels = context.get("channels", ["social", "seo", "email"])
@@ -63,28 +63,28 @@ class MarketingAgent(BaseAgent):
         for (key, _), result in zip(tasks_to_run, task_results, strict=False):
             results[key] = result if not isinstance(result, Exception) else {"error": str(result)}
 
-        # Publicar contenido si está configurado
+        # Publish content if configured
         if context.get("auto_publish") and results.get("social_content"):
             pub_result = await self._publish_social(results["social_content"])
             results["published"] = pub_result
 
-        results["summary"] = f"Estrategia de marketing generada para '{niche}'. Canales: {channels}"
+        results["summary"] = f"Marketing strategy generated for '{niche}'. Channels: {channels}"
         return results
 
     async def _create_seo_strategy(self, niche: str, mission: str) -> dict:
         strategy = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Nicho: {niche}\nMisión: {mission}\n\n"
-                f"Genera: 10 keywords de alta intención, 5 títulos de artículos SEO, "
-                f"meta descriptions, estructura de sitio, y estrategia de backlinks. "
-                f"Formato estructurado."
+                f"Niche: {niche}\nMission: {mission}\n\n"
+                f"Generate: 10 high-intent keywords, 5 SEO article titles, "
+                f"meta descriptions, site structure, and backlink strategy. "
+                f"Structured format."
             ),
         )
         return {"strategy": strategy, "type": "seo"}
 
     async def _create_social_content(self, niche: str, mission: str) -> dict:
-        """Genera contenido para todas las plataformas principales."""
+        """Generates content for all major platforms."""
         from apps.core.tools.social_engine import SocialContentEngine
 
         engine = SocialContentEngine()
@@ -100,9 +100,9 @@ class MarketingAgent(BaseAgent):
         campaign = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Crea una campaña de email de 5 emails (secuencia de nurturing) para el nicho '{niche}'. "
-                f"Objetivo: {mission}. Incluye: asunto, preview text, cuerpo (200 palabras), CTA. "
-                f"Formato JSON array."
+                f"Create a 5-email nurturing sequence campaign for the '{niche}' niche. "
+                f"Goal: {mission}. Include: subject, preview text, body (200 words), CTA. "
+                f"JSON array format."
             ),
         )
         return {"campaign_sequence": campaign, "emails": 5}
@@ -111,16 +111,16 @@ class MarketingAgent(BaseAgent):
         strategy = await self.think(
             system=self.IDENTITY,
             user=(
-                f"Nicho: {niche}\n"
-                f"Genera 10 ideas de artículos de blog con: título (SEO-optimizado), "
-                f"intro de 50 palabras, outline de 5 secciones, keywords target. "
-                f"Ordenados por potencial de tráfico."
+                f"Niche: {niche}\n"
+                f"Generate 10 blog article ideas with: title (SEO-optimized), "
+                f"50-word intro, 5-section outline, target keywords. "
+                f"Ordered by traffic potential."
             ),
         )
         return {"blog_ideas": strategy}
 
     async def _publish_social(self, social_content: dict) -> dict:
-        """Publica contenido generado en redes sociales activas."""
+        """Publishes generated content on active social media."""
         from apps.core.tools.social_engine import SocialContentTools
 
         poster = SocialContentTools()

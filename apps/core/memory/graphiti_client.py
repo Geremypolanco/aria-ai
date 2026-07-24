@@ -1,19 +1,19 @@
 """
-graphiti_client.py — Memoria Temporal en Grafo para ARIA AI con Graphiti.
+graphiti_client.py — Temporal Knowledge Graph Memory for ARIA AI with Graphiti.
 
-Graphiti construye grafos de conocimiento temporales que permiten a ARIA:
-  - Rastrear relaciones entre entidades a lo largo del tiempo
-  - Atribuir ingresos a través de cadenas causales completas:
-      video → lead → email → venta → renovación
-  - Consultar qué era verdad en cualquier punto del tiempo
-  - Detectar cambios en relaciones y estrategias
+Graphiti builds temporal knowledge graphs that allow ARIA to:
+  - Track relationships between entities over time
+  - Attribute revenue across complete causal chains:
+      video → lead → email → sale → renewal
+  - Query what was true at any point in time
+  - Detect changes in relationships and strategies
 
-Integración con Aria:
-  - Extiende EvolutionaryMemory con capacidades de grafo temporal
-  - Se conecta a FalkorDB (vía Docker) o Neo4j
-  - Complementa la memoria Supabase/Redis existente
+Integration with Aria:
+  - Extends EvolutionaryMemory with temporal graph capabilities
+  - Connects to FalkorDB (via Docker) or Neo4j
+  - Complements the existing Supabase/Redis memory
 
-Referencia: https://github.com/getzep/graphiti
+Reference: https://github.com/getzep/graphiti
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from typing import Any
 
 logger = logging.getLogger("aria.graphiti_client")
 
-# ── Graphiti Import con fallback ─────────────────────────────────────────────
+# ── Graphiti import with fallback ────────────────────────────────────────────
 try:
     from graphiti_core import Graphiti
     from graphiti_core.nodes import EpisodeType  # noqa: F401
@@ -34,24 +34,24 @@ try:
     )
 
     GRAPHITI_AVAILABLE = True
-    logger.info("[Graphiti] Librería cargada correctamente.")
+    logger.info("[Graphiti] Library loaded successfully.")
 except ImportError:
     GRAPHITI_AVAILABLE = False
     logger.warning(
-        "[Graphiti] graphiti-core no instalado. "
-        "Usando implementación de grafo en memoria. "
-        "Instala con: pip install graphiti-core[falkordb]"
+        "[Graphiti] graphiti-core not installed. "
+        "Using in-memory graph implementation. "
+        "Install with: pip install graphiti-core[falkordb]"
     )
     Graphiti = None  # type: ignore[assignment,misc]
 
 
-# ── Implementación Fallback de Grafo en Memoria ──────────────────────────────
+# ── In-Memory Graph Fallback Implementation ──────────────────────────────────
 
 
 class InMemoryGraph:
     """
-    Grafo de conocimiento en memoria como fallback de Graphiti.
-    Mantiene la misma interfaz para compatibilidad.
+    In-memory knowledge graph used as a fallback for Graphiti.
+    Keeps the same interface for compatibility.
     """
 
     def __init__(self) -> None:
@@ -75,7 +75,7 @@ class InMemoryGraph:
             "timestamp": (reference_time or datetime.now(UTC)).isoformat(),
         }
         self._episodes.append(episode)
-        logger.debug("[InMemoryGraph] Episodio añadido: %s", name)
+        logger.debug("[InMemoryGraph] Episode added: %s", name)
 
     async def search(self, query: str, num_results: int = 5) -> list[dict]:
         query_lower = query.lower()
@@ -91,58 +91,58 @@ class InMemoryGraph:
         pass
 
 
-# ── Entidades de Negocio para ARIA AI ────────────────────────────────────────
+# ── Business Entities for ARIA AI ────────────────────────────────────────────
 
-# Tipos de entidades en el grafo de conocimiento de ARIA
+# Entity types in ARIA's knowledge graph
 ARIA_ENTITY_TYPES = {
-    "Lead": "Prospecto o cliente potencial identificado",
-    "Sale": "Venta completada con monto y fecha",
-    "Product": "Producto digital o servicio ofrecido",
-    "Campaign": "Campaña de marketing ejecutada",
-    "Content": "Contenido creado (video, post, ebook, etc.)",
-    "Revenue": "Ingreso generado con atribución",
-    "Competitor": "Competidor analizado en el mercado",
-    "Niche": "Nicho de mercado identificado",
-    "Strategy": "Estrategia ejecutada con resultados",
-    "Agent": "Agente de ARIA que ejecutó una acción",
+    "Lead": "Prospect or potential customer identified",
+    "Sale": "Completed sale with amount and date",
+    "Product": "Digital product or service offered",
+    "Campaign": "Marketing campaign executed",
+    "Content": "Content created (video, post, ebook, etc.)",
+    "Revenue": "Revenue generated with attribution",
+    "Competitor": "Competitor analyzed in the market",
+    "Niche": "Market niche identified",
+    "Strategy": "Strategy executed with results",
+    "Agent": "ARIA agent that performed an action",
 }
 
-# Tipos de relaciones temporales
+# Temporal relationship types
 ARIA_RELATION_TYPES = {
-    "GENERATED": "Una entidad generó otra (content → lead)",
-    "CONVERTED": "Una entidad se convirtió en otra (lead → sale)",
-    "ATTRIBUTED_TO": "Un ingreso se atribuye a una fuente",
-    "EXECUTED_BY": "Una acción fue ejecutada por un agente",
-    "PART_OF": "Pertenece a una campaña o estrategia",
-    "FOLLOWED_BY": "Secuencia temporal de eventos",
-    "RENEWED": "Renovación de una venta anterior",
+    "GENERATED": "One entity generated another (content → lead)",
+    "CONVERTED": "One entity converted into another (lead → sale)",
+    "ATTRIBUTED_TO": "Revenue is attributed to a source",
+    "EXECUTED_BY": "An action was performed by an agent",
+    "PART_OF": "Belongs to a campaign or strategy",
+    "FOLLOWED_BY": "Temporal sequence of events",
+    "RENEWED": "Renewal of a previous sale",
 }
 
 
-# ── Cliente Principal de Graphiti para ARIA ──────────────────────────────────
+# ── Main Graphiti Client for ARIA ────────────────────────────────────────────
 
 
 class AriaGraphitiClient:
     """
-    Cliente de Graphiti para ARIA AI.
+    Graphiti client for ARIA AI.
 
-    Construye y consulta el grafo de conocimiento temporal de ARIA,
-    permitiendo revenue attribution completa y análisis de relaciones
-    causales entre acciones y resultados.
+    Builds and queries ARIA's temporal knowledge graph, enabling
+    complete revenue attribution and analysis of causal relationships
+    between actions and outcomes.
 
-    Uso:
+    Usage:
         client = AriaGraphitiClient()
         await client.initialize()
 
-        # Registrar un evento de negocio
+        # Record a business event
         await client.record_business_event(
             event_type="sale",
-            entity_name="Ebook Fitness Pro",
-            description="Venta de $27 USD generada por campaña de TikTok",
+            entity_name="Fitness Pro Ebook",
+            description="$27 USD sale generated by TikTok campaign",
             metadata={"amount": 27.0, "source": "tiktok_campaign_001"}
         )
 
-        # Consultar atribución de ingresos
+        # Query revenue attribution
         results = await client.query_revenue_attribution("TikTok")
     """
 
@@ -167,18 +167,18 @@ class AriaGraphitiClient:
 
     async def initialize(self) -> bool:
         """
-        Inicializa la conexión con Graphiti (FalkorDB o Neo4j).
-        Retorna True si se conectó correctamente, False si usa fallback.
+        Initializes the connection to Graphiti (FalkorDB or Neo4j).
+        Returns True if it connected successfully, False if using the fallback.
         """
         if not GRAPHITI_AVAILABLE:
-            logger.warning("[Graphiti] Usando grafo en memoria como fallback")
+            logger.warning("[Graphiti] Using in-memory graph as fallback")
             self._fallback = InMemoryGraph()
             self._initialized = True
             return False
 
         try:
             if self._use_falkordb:
-                # FalkorDB es más ligero y fácil de desplegar con Docker
+                # FalkorDB is lighter and easier to deploy with Docker
                 from graphiti_core.driver.falkordb_driver import FalkorDBDriver
 
                 driver = FalkorDBDriver(
@@ -187,7 +187,7 @@ class AriaGraphitiClient:
                 )
                 self._graphiti = Graphiti.from_driver(driver)
             else:
-                # Neo4j para producción enterprise
+                # Neo4j for enterprise production
                 self._graphiti = Graphiti(
                     uri=self._neo4j_uri,
                     user=self._neo4j_user,
@@ -196,11 +196,11 @@ class AriaGraphitiClient:
 
             await self._graphiti.build_indices_and_constraints()
             self._initialized = True
-            logger.info("[Graphiti] Conexión establecida correctamente")
+            logger.info("[Graphiti] Connection established successfully")
             return True
 
         except Exception as exc:
-            logger.warning("[Graphiti] Error conectando: %s — usando fallback", exc)
+            logger.warning("[Graphiti] Error connecting: %s — using fallback", exc)
             self._fallback = InMemoryGraph()
             self._initialized = True
             return False
@@ -214,23 +214,23 @@ class AriaGraphitiClient:
         reference_time: datetime | None = None,
     ) -> bool:
         """
-        Registra un evento de negocio en el grafo temporal.
+        Records a business event in the temporal graph.
 
-        Ejemplos:
-            event_type="content_created", entity_name="Video TikTok Fitness"
+        Examples:
+            event_type="content_created", entity_name="TikTok Fitness Video"
             event_type="lead_generated", entity_name="Lead #1234"
-            event_type="sale_completed", entity_name="Ebook Fitness Pro"
+            event_type="sale_completed", entity_name="Fitness Pro Ebook"
             event_type="revenue_attributed", entity_name="$27 USD"
 
         Args:
-            event_type: Tipo de evento (content_created, lead_generated, sale_completed, etc.)
-            entity_name: Nombre de la entidad involucrada
-            description: Descripción detallada del evento
-            metadata: Datos adicionales (amount, source, agent, etc.)
-            reference_time: Timestamp del evento (default: ahora)
+            event_type: Event type (content_created, lead_generated, sale_completed, etc.)
+            entity_name: Name of the entity involved
+            description: Detailed description of the event
+            metadata: Additional data (amount, source, agent, etc.)
+            reference_time: Event timestamp (default: now)
 
         Returns:
-            True si se registró correctamente
+            True if recorded successfully
         """
         if not self._initialized:
             await self.initialize()
@@ -259,11 +259,11 @@ class AriaGraphitiClient:
                     source_description=f"ARIA AI - {event_type}",
                     reference_time=reference_time,
                 )
-            logger.info("[Graphiti] Evento registrado: %s | %s", event_type, entity_name)
+            logger.info("[Graphiti] Event recorded: %s | %s", event_type, entity_name)
             return True
 
         except Exception as exc:
-            logger.error("[Graphiti] Error registrando evento: %s", exc)
+            logger.error("[Graphiti] Error recording event: %s", exc)
             return False
 
     async def record_revenue_chain(
@@ -272,20 +272,20 @@ class AriaGraphitiClient:
         total_revenue_usd: float,
     ) -> bool:
         """
-        Registra una cadena completa de atribución de ingresos.
+        Records a complete revenue attribution chain.
 
-        Ejemplo de cadena:
+        Example chain:
             [
-                {"type": "content", "name": "Video TikTok #42", "timestamp": "..."},
-                {"type": "lead", "name": "Lead Juan García", "timestamp": "..."},
-                {"type": "email", "name": "Email Secuencia #3", "timestamp": "..."},
+                {"type": "content", "name": "TikTok Video #42", "timestamp": "..."},
+                {"type": "lead", "name": "Lead Juan Garcia", "timestamp": "..."},
+                {"type": "email", "name": "Email Sequence #3", "timestamp": "..."},
                 {"type": "sale", "name": "Ebook $27", "timestamp": "..."},
-                {"type": "renewal", "name": "Renovación Mensual", "timestamp": "..."},
+                {"type": "renewal", "name": "Monthly Renewal", "timestamp": "..."},
             ]
 
         Args:
-            chain: Lista de eventos en orden cronológico
-            total_revenue_usd: Total de ingresos atribuidos a esta cadena
+            chain: List of events in chronological order
+            total_revenue_usd: Total revenue attributed to this chain
         """
         if not chain:
             return False
@@ -297,7 +297,7 @@ class AriaGraphitiClient:
         return await self.record_business_event(
             event_type="revenue_chain",
             entity_name=f"Chain ${total_revenue_usd:.2f}",
-            description=f"Cadena de atribución: {chain_description}",
+            description=f"Attribution chain: {chain_description}",
             metadata={
                 "total_revenue_usd": total_revenue_usd,
                 "chain_length": len(chain),
@@ -312,14 +312,14 @@ class AriaGraphitiClient:
         limit: int = 10,
     ) -> list[dict[str, Any]]:
         """
-        Consulta la atribución de ingresos para una fuente específica.
+        Queries revenue attribution for a specific source.
 
         Args:
-            source: Fuente a consultar (ej: "TikTok", "email", "ebook")
-            limit: Número máximo de resultados
+            source: Source to query (e.g.: "TikTok", "email", "ebook")
+            limit: Maximum number of results
 
         Returns:
-            Lista de eventos relacionados con la fuente
+            List of events related to the source
         """
         if not self._initialized:
             await self.initialize()
@@ -345,7 +345,7 @@ class AriaGraphitiClient:
                 return await self._fallback.search(query, num_results=limit)
 
         except Exception as exc:
-            logger.error("[Graphiti] Error en query: %s", exc)
+            logger.error("[Graphiti] Error in query: %s", exc)
 
         return []
 
@@ -355,11 +355,11 @@ class AriaGraphitiClient:
         limit: int = 10,
     ) -> list[dict[str, Any]]:
         """
-        Consulta el panorama de competidores para un nicho.
+        Queries the competitor landscape for a niche.
 
         Args:
-            niche: Nicho a analizar
-            limit: Número máximo de resultados
+            niche: Niche to analyze
+            limit: Maximum number of results
         """
         return await self.query_revenue_attribution(
             source=f"competitor {niche}",
@@ -367,7 +367,7 @@ class AriaGraphitiClient:
         )
 
     async def get_knowledge_summary(self) -> dict[str, Any]:
-        """Retorna un resumen del estado del grafo de conocimiento."""
+        """Returns a summary of the knowledge graph's status."""
         if not self._initialized:
             await self.initialize()
 
@@ -385,7 +385,7 @@ class AriaGraphitiClient:
         }
 
     async def close(self) -> None:
-        """Cierra la conexión con el grafo."""
+        """Closes the connection to the graph."""
         if self._graphiti:
             await self._graphiti.close()
         elif self._fallback:
@@ -397,7 +397,7 @@ _graphiti_instance: AriaGraphitiClient | None = None
 
 
 def get_graphiti_client() -> AriaGraphitiClient:
-    """Retorna el singleton del cliente Graphiti de ARIA."""
+    """Returns ARIA's Graphiti client singleton."""
     global _graphiti_instance
     if _graphiti_instance is None:
         import os

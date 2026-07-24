@@ -9,9 +9,9 @@ logger = logging.getLogger("aria.executor")
 
 class CodeExecutor:
     """
-    Ejecutor de Código (inspirado en OpenHands).
+    Code Executor (inspired by OpenHands).
 
-    Permite a Aria ejecutar código Python, scripts y comandos de forma segura.
+    Allows Aria to safely execute Python code, scripts, and commands.
     """
 
     def __init__(self):
@@ -19,14 +19,14 @@ class CodeExecutor:
         self.sandbox_dir = tempfile.mkdtemp()
 
     async def execute_python(self, code: str, timeout: int = 30) -> dict[str, Any]:
-        """Ejecuta código Python de forma segura."""
+        """Safely executes Python code."""
         try:
-            # Crear archivo temporal
+            # Create temporary file
             script_file = os.path.join(self.sandbox_dir, "script.py")
             with open(script_file, "w") as f:
                 f.write(code)
 
-            # Ejecutar
+            # Execute
             result = subprocess.run(
                 ["python3", script_file], capture_output=True, text=True, timeout=timeout
             )
@@ -40,20 +40,20 @@ class CodeExecutor:
             }
 
             self.execution_history.append(execution)
-            logger.info(f"[CodeExecutor] Código ejecutado. Éxito: {execution['success']}")
+            logger.info(f"[CodeExecutor] Code executed. Success: {execution['success']}")
             return execution
 
         except subprocess.TimeoutExpired:
-            return {"success": False, "error": "Timeout en ejecución"}
+            return {"success": False, "error": "Execution timeout"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     async def execute_shell_command(self, command: str, timeout: int = 30) -> dict[str, Any]:
-        """Ejecuta un comando de shell."""
-        # Lista de comandos prohibidos
+        """Executes a shell command."""
+        # List of forbidden commands
         forbidden = ["rm -rf /", "mkfs", "shutdown", "reboot"]
         if any(f in command for f in forbidden):
-            return {"success": False, "error": "Comando prohibido"}
+            return {"success": False, "error": "Forbidden command"}
 
         try:
             result = subprocess.run(
@@ -75,7 +75,7 @@ class CodeExecutor:
             return {"success": False, "error": str(e)}
 
     async def analyze_repository(self, repo_path: str) -> dict[str, Any]:
-        """Analiza la estructura de un repositorio."""
+        """Analyzes the structure of a repository."""
         try:
             analysis = {"path": repo_path, "files": [], "structure": {}}
 

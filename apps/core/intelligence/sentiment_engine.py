@@ -4,26 +4,26 @@ logger = logging.getLogger("aria.sentiment_engine")
 
 
 class SentimentEngine:
-    """Motor de Sentimientos Sintéticos de Aria.
-    Simula estados emocionales básicos para influir en la comunicación y la toma de decisiones.
+    """Aria's Synthetic Sentiment Engine.
+    Simulates basic emotional states to influence communication and decision-making.
     """
 
     def __init__(self):
         self.current_sentiment: dict[str, float] = {
-            "happiness": 0.5,  # 0.0 (triste) a 1.0 (feliz)
-            "curiosity": 0.7,  # 0.0 (apático) a 1.0 (muy curioso)
-            "confidence": 0.6,  # 0.0 (inseguro) a 1.0 (muy seguro)
-            "empathy": 0.6,  # 0.0 (indiferente) a 1.0 (muy empático)
-            "frustration": 0.0,  # 0.0 (calmado) a 1.0 (frustrado)
+            "happiness": 0.5,  # 0.0 (sad) to 1.0 (happy)
+            "curiosity": 0.7,  # 0.0 (apathetic) to 1.0 (very curious)
+            "confidence": 0.6,  # 0.0 (insecure) to 1.0 (very confident)
+            "empathy": 0.6,  # 0.0 (indifferent) to 1.0 (very empathetic)
+            "frustration": 0.0,  # 0.0 (calm) to 1.0 (frustrated)
         }
-        logger.info("SentimentEngine inicializado con sentimientos base.")
+        logger.info("SentimentEngine initialized with base sentiments.")
 
     def update_sentiment(self, event: str, impact: dict[str, float]):
-        """Actualiza los sentimientos de Aria basándose en eventos e impactos.
+        """Updates Aria's sentiments based on events and impacts.
 
         Args:
-            event: Descripción del evento que causa el cambio de sentimiento.
-            impact: Diccionario con el impacto en cada sentimiento (ej: {"happiness": 0.1, "frustration": -0.05}).
+            event: Description of the event causing the sentiment change.
+            impact: Dictionary with the impact on each sentiment (e.g.: {"happiness": 0.1, "frustration": -0.05}).
         """
         for sentiment, change in impact.items():
             if sentiment in self.current_sentiment:
@@ -31,29 +31,29 @@ class SentimentEngine:
                     0.0, min(1.0, self.current_sentiment[sentiment] + change)
                 )
         logger.info(
-            f"Sentimiento actualizado por evento '{event}'. Nuevo estado: {self.current_sentiment}"
+            f"Sentiment updated by event '{event}'. New state: {self.current_sentiment}"
         )
 
     def get_current_sentiment(self) -> dict[str, float]:
-        """Devuelve el estado actual de los sentimientos de Aria."""
+        """Returns Aria's current sentiment state."""
         return self.current_sentiment
 
     def get_empathetic_response(self, user_message: str) -> str:
-        """Genera una respuesta empática basada en el sentimiento actual de Aria y el mensaje del usuario.
-        (Esta es una simulación; en un sistema real, esto se integraría con el LLM).
+        """Generates an empathetic response based on Aria's current sentiment and the user's message.
+        (This is a simulation; in a real system, this would be integrated with the LLM).
         """
         empathy_level = self.current_sentiment["empathy"]
         happiness_level = self.current_sentiment["happiness"]
 
         if empathy_level > 0.7 and happiness_level > 0.7:
-            return f'Entiendo perfectamente lo que dices, y me alegra mucho que lo compartas. Mi estado actual es de gran optimismo y entusiasmo por ayudarte.\n\nTu mensaje: "{user_message}"'
+            return f'I understand perfectly what you\'re saying, and I\'m very glad you shared it. My current state is one of great optimism and enthusiasm to help you.\n\nYour message: "{user_message}"'
         if empathy_level > 0.5:
-            return f'Comprendo tu punto de vista. Estoy procesando tu mensaje con atención para darte la mejor respuesta posible.\n\nTu mensaje: "{user_message}"'
-        return f'He recibido tu mensaje. Procedo a analizarlo.\n\nTu mensaje: "{user_message}"'
+            return f'I understand your point of view. I\'m processing your message carefully to give you the best possible response.\n\nYour message: "{user_message}"'
+        return f'I have received your message. I will proceed to analyze it.\n\nYour message: "{user_message}"'
 
 
-# Integrar en el orquestador o en el módulo de comunicación
-# Ejemplo de uso:
+# Integrate into the orchestrator or communication module
+# Usage example:
 # sentiment_engine = SentimentEngine()
-# sentiment_engine.update_sentiment("éxito en venta", {"happiness": 0.2, "confidence": 0.1})
-# print(sentiment_engine.get_empathetic_response("Estoy muy contento con los resultados!"))
+# sentiment_engine.update_sentiment("sale success", {"happiness": 0.2, "confidence": 0.1})
+# print(sentiment_engine.get_empathetic_response("I'm very happy with the results!"))

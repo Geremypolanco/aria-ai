@@ -1,12 +1,12 @@
 """
-advanced_integrations.py — Sistema de Integraciones Avanzadas para ARIA.
+advanced_integrations.py — Advanced Integrations System for ARIA.
 
-Proporciona:
-- Integración completa con GitHub
-- Gestión de APIs externas
-- Conexión a bases de datos
-- Autenticación OAuth2
-- Webhooks y eventos
+Provides:
+- Full GitHub integration
+- External API management
+- Database connectivity
+- OAuth2 authentication
+- Webhooks and events
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ logger = logging.getLogger("aria.integrations")
 
 
 class GitHubIntegration:
-    """Integración avanzada con GitHub."""
+    """Advanced integration with GitHub."""
 
     def __init__(self, token: str = None):
         self.token = token
@@ -37,7 +37,7 @@ class GitHubIntegration:
         }
 
     async def get_user_repos(self) -> dict[str, Any]:
-        """Obtiene los repositorios del usuario."""
+        """Gets the user's repositories."""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -56,7 +56,7 @@ class GitHubIntegration:
                 return {"success": False, "error": f"HTTP {response.status_code}"}
 
         except Exception as exc:
-            logger.error(f"[GitHub] Error obteniendo repositorios: {exc}")
+            logger.error(f"[GitHub] Error getting repositories: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def create_repository(
@@ -66,7 +66,7 @@ class GitHubIntegration:
         private: bool = True,
         auto_init: bool = True,
     ) -> dict[str, Any]:
-        """Crea un nuevo repositorio."""
+        """Creates a new repository."""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -90,7 +90,7 @@ class GitHubIntegration:
                 return {"success": False, "error": f"HTTP {response.status_code}"}
 
         except Exception as exc:
-            logger.error(f"[GitHub] Error creando repositorio: {exc}")
+            logger.error(f"[GitHub] Error creating repository: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def commit_and_push(
@@ -101,22 +101,22 @@ class GitHubIntegration:
         message: str,
         branch: str = "main",
     ) -> dict[str, Any]:
-        """Realiza un commit y push a un repositorio."""
+        """Performs a commit and push to a repository."""
         try:
-            # Obtener la rama actual
+            # Get the current branch
             async with httpx.AsyncClient() as client:
-                # Obtener el último commit
+                # Get the latest commit
                 ref_response = await client.get(
                     f"{self.base_url}/repos/{owner}/{repo}/git/refs/heads/{branch}",
                     headers=self.headers,
                 )
 
                 if ref_response.status_code != 200:
-                    return {"success": False, "error": "Rama no encontrada"}
+                    return {"success": False, "error": "Branch not found"}
 
                 latest_commit_sha = ref_response.json()["object"]["sha"]
 
-                # Crear blobs para cada archivo
+                # Create blobs for each file
                 blob_shas = {}
                 for filename, content in files.items():
                     blob_response = await client.post(
@@ -130,14 +130,14 @@ class GitHubIntegration:
                     if blob_response.status_code == 201:
                         blob_shas[filename] = blob_response.json()["sha"]
 
-                # Obtener el árbol del último commit
+                # Get the tree of the latest commit
                 commit_response = await client.get(
                     f"{self.base_url}/repos/{owner}/{repo}/git/commits/{latest_commit_sha}",
                     headers=self.headers,
                 )
                 tree_sha = commit_response.json()["tree"]["sha"]
 
-                # Crear nuevo árbol
+                # Create new tree
                 tree_data = {
                     "base_tree": tree_sha,
                     "tree": [
@@ -158,11 +158,11 @@ class GitHubIntegration:
                 )
 
                 if tree_response.status_code != 201:
-                    return {"success": False, "error": "Error creando árbol"}
+                    return {"success": False, "error": "Error creating tree"}
 
                 new_tree_sha = tree_response.json()["sha"]
 
-                # Crear nuevo commit
+                # Create new commit
                 commit_data = {
                     "message": message,
                     "tree": new_tree_sha,
@@ -176,11 +176,11 @@ class GitHubIntegration:
                 )
 
                 if new_commit_response.status_code != 201:
-                    return {"success": False, "error": "Error creando commit"}
+                    return {"success": False, "error": "Error creating commit"}
 
                 new_commit_sha = new_commit_response.json()["sha"]
 
-                # Actualizar referencia
+                # Update reference
                 update_response = await client.patch(
                     f"{self.base_url}/repos/{owner}/{repo}/git/refs/heads/{branch}",
                     headers=self.headers,
@@ -193,46 +193,46 @@ class GitHubIntegration:
                         "commit_sha": new_commit_sha,
                         "message": message,
                     }
-                return {"success": False, "error": "Error actualizando referencia"}
+                return {"success": False, "error": "Error updating reference"}
 
         except Exception as exc:
-            logger.error(f"[GitHub] Error en commit/push: {exc}")
+            logger.error(f"[GitHub] Error in commit/push: {exc}")
             return {"success": False, "error": str(exc)}
 
 
 class DatabaseIntegration:
-    """Integración con bases de datos."""
+    """Database integration."""
 
     def __init__(self, connection_string: str = None):
         self.connection_string = connection_string
         self.connection = None
 
     async def connect(self, db_type: str = "postgresql") -> bool:
-        """Conecta a la base de datos."""
+        """Connects to the database."""
         try:
             if db_type == "postgresql":
                 import asyncpg
 
                 self.connection = await asyncpg.connect(self.connection_string)
             elif db_type == "mysql":
-                # Parsear connection string
+                # Parse connection string
                 pass
             else:
-                logger.error(f"[Database] Tipo de BD no soportado: {db_type}")
+                logger.error(f"[Database] Unsupported DB type: {db_type}")
                 return False
 
-            logger.info("[Database] Conectado a la base de datos")
+            logger.info("[Database] Connected to the database")
             return True
 
         except Exception as exc:
-            logger.error(f"[Database] Error conectando: {exc}")
+            logger.error(f"[Database] Error connecting: {exc}")
             return False
 
     async def execute_query(self, query: str, params: list[Any] = None) -> dict[str, Any]:
-        """Ejecuta una consulta SQL."""
+        """Executes a SQL query."""
         try:
             if not self.connection:
-                return {"success": False, "error": "No conectado a la BD"}
+                return {"success": False, "error": "Not connected to the DB"}
 
             result = await self.connection.fetch(query, *(params or []))
 
@@ -243,14 +243,14 @@ class DatabaseIntegration:
             }
 
         except Exception as exc:
-            logger.error(f"[Database] Error ejecutando consulta: {exc}")
+            logger.error(f"[Database] Error executing query: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def execute_mutation(self, query: str, params: list[Any] = None) -> dict[str, Any]:
-        """Ejecuta una mutación (INSERT, UPDATE, DELETE)."""
+        """Executes a mutation (INSERT, UPDATE, DELETE)."""
         try:
             if not self.connection:
-                return {"success": False, "error": "No conectado a la BD"}
+                return {"success": False, "error": "Not connected to the DB"}
 
             result = await self.connection.execute(query, *(params or []))
 
@@ -260,21 +260,21 @@ class DatabaseIntegration:
             }
 
         except Exception as exc:
-            logger.error(f"[Database] Error ejecutando mutación: {exc}")
+            logger.error(f"[Database] Error executing mutation: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def close(self) -> None:
-        """Cierra la conexión."""
+        """Closes the connection."""
         if self.connection:
             try:
                 await self.connection.close()
-                logger.info("[Database] Conexión cerrada")
+                logger.info("[Database] Connection closed")
             except Exception as exc:
-                logger.error(f"[Database] Error cerrando conexión: {exc}")
+                logger.error(f"[Database] Error closing connection: {exc}")
 
 
 class OAuth2Integration:
-    """Integración OAuth2 para autenticación."""
+    """OAuth2 integration for authentication."""
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -283,7 +283,7 @@ class OAuth2Integration:
         self.tokens: dict[str, dict[str, Any]] = {}
 
     def generate_auth_url(self, provider: str, scope: list[str]) -> str:
-        """Genera URL de autorización."""
+        """Generates authorization URL."""
         auth_urls = {
             "github": "https://github.com/login/oauth/authorize",
             "google": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -305,7 +305,7 @@ class OAuth2Integration:
         return f"{base_url}?{query_string}"
 
     async def exchange_code(self, provider: str, code: str) -> dict[str, Any]:
-        """Intercambia un código por un token."""
+        """Exchanges a code for a token."""
         token_urls = {
             "github": "https://github.com/login/oauth/access_token",
             "google": "https://oauth2.googleapis.com/token",
@@ -314,7 +314,7 @@ class OAuth2Integration:
 
         token_url = token_urls.get(provider, "")
         if not token_url:
-            return {"success": False, "error": "Proveedor no soportado"}
+            return {"success": False, "error": "Provider not supported"}
 
         try:
             async with httpx.AsyncClient() as client:
@@ -336,18 +336,18 @@ class OAuth2Integration:
                 return {"success": False, "error": f"HTTP {response.status_code}"}
 
         except Exception as exc:
-            logger.error(f"[OAuth2] Error intercambiando código: {exc}")
+            logger.error(f"[OAuth2] Error exchanging code: {exc}")
             return {"success": False, "error": str(exc)}
 
     def generate_jwt(self, payload: dict[str, Any], secret: str, expires_in: int = 3600) -> str:
-        """Genera un JWT."""
+        """Generates a JWT."""
         payload["exp"] = datetime.now(UTC) + timedelta(seconds=expires_in)
         payload["iat"] = datetime.now(UTC)
 
         return jwt.encode(payload, secret, algorithm="HS256")
 
     def verify_jwt(self, token: str, secret: str) -> dict[str, Any] | None:
-        """Verifica un JWT."""
+        """Verifies a JWT."""
         try:
             return jwt.decode(token, secret, algorithms=["HS256"])
         except jwt.InvalidTokenError:
@@ -355,36 +355,36 @@ class OAuth2Integration:
 
 
 class WebhookIntegration:
-    """Integración de webhooks para eventos."""
+    """Webhook integration for events."""
 
     def __init__(self):
         self.webhooks: dict[str, list[str]] = {}
         self.event_history: list[dict[str, Any]] = []
 
     def register_webhook(self, event_type: str, url: str) -> bool:
-        """Registra un webhook para un tipo de evento."""
+        """Registers a webhook for an event type."""
         try:
             if event_type not in self.webhooks:
                 self.webhooks[event_type] = []
 
             self.webhooks[event_type].append(url)
-            logger.info(f"[Webhooks] Webhook registrado: {event_type} -> {url}")
+            logger.info(f"[Webhooks] Webhook registered: {event_type} -> {url}")
             return True
 
         except Exception as exc:
-            logger.error(f"[Webhooks] Error registrando webhook: {exc}")
+            logger.error(f"[Webhooks] Error registering webhook: {exc}")
             return False
 
     async def trigger_event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """Dispara un evento y notifica a los webhooks registrados."""
+        """Triggers an event and notifies registered webhooks."""
         try:
             urls = self.webhooks.get(event_type, [])
 
             if not urls:
-                logger.warning(f"[Webhooks] No hay webhooks registrados para {event_type}")
+                logger.warning(f"[Webhooks] No webhooks registered for {event_type}")
                 return {"success": True, "webhooks_triggered": 0}
 
-            # Registrar evento
+            # Log event
             self.event_history.append(
                 {
                     "event_type": event_type,
@@ -393,7 +393,7 @@ class WebhookIntegration:
                 }
             )
 
-            # Disparar webhooks
+            # Trigger webhooks
             tasks = [self._call_webhook(url, event_type, payload) for url in urls]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -407,15 +407,15 @@ class WebhookIntegration:
             }
 
         except Exception as exc:
-            logger.error(f"[Webhooks] Error disparando evento: {exc}")
+            logger.error(f"[Webhooks] Error triggering event: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def _call_webhook(
         self, url: str, event_type: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
-        """Llama a un webhook."""
+        """Calls a webhook."""
         try:
-            # Firma HMAC — la clave viene de la configuración (variable de entorno).
+            # HMAC signature — the key comes from configuration (environment variable).
             from apps.core.config import settings
 
             secret = getattr(settings, "WEBHOOK_SECRET", None) or "webhook_secret_unset"
@@ -443,5 +443,5 @@ class WebhookIntegration:
                 }
 
         except Exception as exc:
-            logger.error(f"[Webhooks] Error llamando webhook: {exc}")
+            logger.error(f"[Webhooks] Error calling webhook: {exc}")
             return {"success": False, "url": url, "error": str(exc)}

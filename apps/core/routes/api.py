@@ -84,17 +84,17 @@ class ScheduleRequest(BaseModel):
 
 @router.get("/auth/callback/{platform}")
 async def auth_callback(platform: str, code: str, state: str | None = None) -> dict:
-    """Callback para OAuth de redes sociales."""
+    """Callback for social media OAuth."""
     from apps.core.tools.social_media import SocialMediaManager
 
     sm = SocialMediaManager()
     token_data = await sm.exchange_code_for_token(platform, code)
     if not token_data:
-        return {"success": False, "error": "Fallo en el intercambio de token"}
+        return {"success": False, "error": "Token exchange failed"}
 
     profile = await sm.get_user_profile(platform, token_data["access_token"])
     if not profile:
-        return {"success": False, "error": "No se pudo obtener el perfil"}
+        return {"success": False, "error": "Could not retrieve profile"}
 
     ok = await sm.save_account(
         platform=platform,
@@ -162,7 +162,7 @@ async def api_chat(req: ChatRequest) -> dict:
             client = get_ai_client()
             description = await client.analyze_image(
                 image_base64=req.image_base64,
-                question=req.message or "Describe esta imagen en detalle.",
+                question=req.message or "Describe this image in detail.",
             )
             _log_activity("info", f"Vision [{session_id}]: {req.message[:40]}", "chat")
             return {"reply": description, "tool_used": "analyze_image"}
@@ -234,21 +234,21 @@ async def api_agents() -> list:
         business_agents = []
 
     descriptions: dict[str, str] = {
-        "ceo": "Estrategia ejecutiva, decisiones y delegación",
-        "marketing": "SEO, redes sociales, campañas y crecimiento",
-        "sales": "Revenue: productos, pagos, conversión",
-        "developer": "Código, deploy, debugging autónomo",
-        "dev": "Código, deploy, debugging autónomo (alias)",
-        "research": "Investigación profunda de mercado e internet",
-        "content": "Artículos, newsletters, publicación multi-plataforma",
-        "finance": "Revenue tracking, P&L y forecasting",
-        "cfo": "Chief Financial Officer — finanzas y reporting",
-        "cmo": "Chief Marketing Officer — marketing estratégico",
-        "cto": "Chief Technology Officer — arquitectura y desarrollo",
+        "ceo": "Executive strategy, decisions, and delegation",
+        "marketing": "SEO, social media, campaigns, and growth",
+        "sales": "Revenue: products, payments, conversion",
+        "developer": "Code, deployment, autonomous debugging",
+        "dev": "Code, deployment, autonomous debugging (alias)",
+        "research": "In-depth market and internet research",
+        "content": "Articles, newsletters, multi-platform publishing",
+        "finance": "Revenue tracking, P&L, and forecasting",
+        "cfo": "Chief Financial Officer — finance and reporting",
+        "cmo": "Chief Marketing Officer — marketing strategy",
+        "cto": "Chief Technology Officer — architecture and development",
         # system agents
-        "orchestrator": "Coordina ciclos autónomos y agentes especializados",
-        "aria_mind": "Motor cognitivo central de ARIA",
-        "continuous_trainer": "Loop de auto-mejora y evaluación 24/7",
+        "orchestrator": "Coordinates autonomous cycles and specialized agents",
+        "aria_mind": "ARIA's central cognitive engine",
+        "continuous_trainer": "24/7 self-improvement and evaluation loop",
     }
 
     seen: set[str] = set()
@@ -261,7 +261,7 @@ async def api_agents() -> list:
         agents_list.append(
             {
                 "name": name,
-                "description": descriptions.get(name, "Agente de negocio especializado"),
+                "description": descriptions.get(name, "Specialized business agent"),
                 "type": "business",
                 "available": True,
             }
@@ -274,7 +274,7 @@ async def api_agents() -> list:
         agents_list.append(
             {
                 "name": name,
-                "description": descriptions.get(name, "Agente del sistema"),
+                "description": descriptions.get(name, "System agent"),
                 "type": "system",
                 "available": True,
             }
@@ -1157,7 +1157,7 @@ async def stripe_webhook(request: Request) -> dict:
                 bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
                 chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
                 if bot_token and chat_id:
-                    msg = f"🎉 NUEVA VENTA — ${amount_usd:.2f}\n\nPago ID: {payment_id}\nCliente: {customer_email or 'anónimo'}\n\n¡ARIA lo hizo! 💪"
+                    msg = f"🎉 NEW SALE — ${amount_usd:.2f}\n\nPayment ID: {payment_id}\nCustomer: {customer_email or 'anonymous'}\n\nARIA did it! 💪"
                     async with _aio.ClientSession() as sess:
                         await sess.post(
                             f"https://api.telegram.org/bot{bot_token}/sendMessage",
@@ -1356,7 +1356,7 @@ async def gumroad_webhook(request: Request) -> dict:
             bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
             chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
             if bot_token and chat_id:
-                msg = f"🛒 VENTA EN GUMROAD — ${price:.2f}\n\n📦 Producto: {product_name}\n👤 Comprador: {buyer_name or buyer_email or 'anónimo'}\n\n¡ARIA generó ingresos reales! 🚀"
+                msg = f"🛒 GUMROAD SALE — ${price:.2f}\n\n📦 Product: {product_name}\n👤 Buyer: {buyer_name or buyer_email or 'anonymous'}\n\nARIA generated real revenue! 🚀"
                 async with _aio.ClientSession() as sess:
                     await sess.post(
                         f"https://api.telegram.org/bot{bot_token}/sendMessage",

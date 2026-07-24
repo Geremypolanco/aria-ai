@@ -1,6 +1,6 @@
 """
-square_engine.py — Motor de ejecución para Square API (Pagos y Catálogo)
-Permite a Aria vender productos físicos y digitales usando Square.
+square_engine.py — Execution engine for Square API (Payments and Catalog)
+Allows Aria to sell physical and digital products using Square.
 """
 
 import logging
@@ -31,9 +31,9 @@ class SquareEngine:
     async def create_catalog_item(
         self, name: str, description: str, price_money: int, currency: str = "USD"
     ) -> dict[str, Any]:
-        """Crea un item en el catálogo de Square."""
+        """Creates an item in the Square catalog."""
         if not self.access_token:
-            return {"success": False, "error": "SQUARE_ACCESS_TOKEN no configurado"}
+            return {"success": False, "error": "SQUARE_ACCESS_TOKEN not configured"}
 
         url = f"{self.base_url}/catalog/object"
         import uuid
@@ -72,7 +72,7 @@ class SquareEngine:
     async def create_payment_link(
         self, item_id: str, name: str, price_money: int, currency: str = "USD"
     ) -> dict[str, Any]:
-        """Crea un enlace de pago para un item."""
+        """Creates a payment link for an item."""
         url = f"{self.base_url}/online-checkout/payment-links"
         import uuid
 

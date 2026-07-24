@@ -1,19 +1,19 @@
 """
-zep_client.py — Memoria de Largo Plazo para ARIA AI con Zep.
+zep_client.py — Long-Term Memory for ARIA AI with Zep.
 
-Zep proporciona memoria de largo plazo para agentes con:
-  - Context graphs con recuperación sub-200ms
-  - Gestión de usuarios, hilos y mensajes
-  - Extracción automática de hechos y relaciones
-  - Integración con LangChain, AutoGen, CrewAI
+Zep provides long-term memory for agents with:
+  - Context graphs with sub-200ms retrieval
+  - Management of users, threads, and messages
+  - Automatic extraction of facts and relationships
+  - Integration with LangChain, AutoGen, CrewAI
 
-Integración con Aria:
-  - Complementa la EvolutionaryMemory (Mem0-inspired) existente
-  - Proporciona memoria persistente entre sesiones de Telegram
-  - Almacena el historial de interacciones por usuario/agente
-  - Recupera contexto relevante para cada nueva tarea
+Integration with Aria:
+  - Complements the existing EvolutionaryMemory (Mem0-inspired)
+  - Provides persistent memory across Telegram sessions
+  - Stores the interaction history per user/agent
+  - Retrieves relevant context for each new task
 
-Referencia: https://github.com/getzep/zep
+Reference: https://github.com/getzep/zep
 """
 
 from __future__ import annotations
@@ -24,37 +24,37 @@ from typing import Any
 
 logger = logging.getLogger("aria.zep_client")
 
-# ── Zep Import con fallback ──────────────────────────────────────────────────
+# ── Zep import with fallback ─────────────────────────────────────────────────
 try:
     from zep_cloud.client import AsyncZep
     from zep_cloud.types import Message, RoleType  # noqa: F401
 
     ZEP_AVAILABLE = True
-    logger.info("[Zep] Librería zep-cloud cargada correctamente.")
+    logger.info("[Zep] zep-cloud library loaded successfully.")
 except ImportError:
     try:
-        # Intentar zep-python (versión community)
+        # Try zep-python (community version)
         from zep_python.client import AsyncZep  # type: ignore[no-redef]
 
         ZEP_AVAILABLE = True
-        logger.info("[Zep] Librería zep-python cargada correctamente.")
+        logger.info("[Zep] zep-python library loaded successfully.")
     except ImportError:
         ZEP_AVAILABLE = False
         logger.warning(
-            "[Zep] zep-cloud no instalado. "
-            "Usando memoria en Supabase como fallback. "
-            "Instala con: pip install zep-cloud"
+            "[Zep] zep-cloud not installed. "
+            "Using Supabase memory as fallback. "
+            "Install with: pip install zep-cloud"
         )
         AsyncZep = None  # type: ignore[assignment,misc]
 
 
-# ── Implementación Fallback con Supabase ─────────────────────────────────────
+# ── Supabase Fallback Implementation ─────────────────────────────────────────
 
 
 class SupabaseMemoryFallback:
     """
-    Fallback de memoria usando Supabase (ya disponible en Aria).
-    Mantiene la misma interfaz que Zep para compatibilidad.
+    Memory fallback using Supabase (already available in Aria).
+    Keeps the same interface as Zep for compatibility.
     """
 
     def __init__(self) -> None:
@@ -65,7 +65,7 @@ class SupabaseMemoryFallback:
             self._sessions[session_id] = []
         self._sessions[session_id].extend(messages)
 
-        # Persistir en Supabase si está disponible
+        # Persist to Supabase if available
         try:
             from apps.core.memory.supabase_client import get_db
 
@@ -89,33 +89,33 @@ class SupabaseMemoryFallback:
         return results[-limit:]
 
 
-# ── Cliente Principal de Zep para ARIA ──────────────────────────────────────
+# ── Main Zep Client for ARIA ─────────────────────────────────────────────────
 
 
 class AriaZepClient:
     """
-    Cliente de Zep para ARIA AI.
+    Zep client for ARIA AI.
 
-    Gestiona la memoria de largo plazo de los agentes, permitiendo:
-    - Recordar conversaciones pasadas con usuarios de Telegram
-    - Mantener contexto de campañas y estrategias entre sesiones
-    - Recuperar hechos relevantes para nuevas tareas
-    - Construir perfiles de usuarios y clientes
+    Manages the agents' long-term memory, enabling:
+    - Recalling past conversations with Telegram users
+    - Maintaining campaign and strategy context across sessions
+    - Retrieving relevant facts for new tasks
+    - Building user and customer profiles
 
-    Uso:
+    Usage:
         client = AriaZepClient()
 
-        # Añadir mensajes a la memoria
+        # Add messages to memory
         await client.add_interaction(
             session_id="user_123",
             role="user",
-            content="Quiero crear un ebook sobre fitness"
+            content="I want to create an ebook about fitness"
         )
 
-        # Recuperar contexto relevante
+        # Retrieve relevant context
         context = await client.get_relevant_context(
             session_id="user_123",
-            query="estrategia de monetización"
+            query="monetization strategy"
         )
     """
 
@@ -127,12 +127,12 @@ class AriaZepClient:
 
     async def initialize(self) -> bool:
         """
-        Inicializa la conexión con Zep Cloud o usa fallback.
-        Returns True si Zep está disponible, False si usa fallback.
+        Initializes the connection to Zep Cloud or uses the fallback.
+        Returns True if Zep is available, False if using the fallback.
         """
         if not ZEP_AVAILABLE or not self._api_key:
             logger.info(
-                "[Zep] Usando fallback Supabase (ZEP_API_KEY no configurado o zep-cloud no instalado)"
+                "[Zep] Using Supabase fallback (ZEP_API_KEY not configured or zep-cloud not installed)"
             )
             self._fallback = SupabaseMemoryFallback()
             self._initialized = True
@@ -141,21 +141,21 @@ class AriaZepClient:
         try:
             self._client = AsyncZep(api_key=self._api_key)
             self._initialized = True
-            logger.info("[Zep] Conexión con Zep Cloud establecida")
+            logger.info("[Zep] Connection to Zep Cloud established")
             return True
         except Exception as exc:
-            logger.warning("[Zep] Error conectando a Zep Cloud: %s — usando fallback", exc)
+            logger.warning("[Zep] Error connecting to Zep Cloud: %s — using fallback", exc)
             self._fallback = SupabaseMemoryFallback()
             self._initialized = True
             return False
 
     async def ensure_session(self, session_id: str, user_id: str | None = None) -> bool:
         """
-        Asegura que existe una sesión en Zep.
+        Ensures a session exists in Zep.
 
         Args:
-            session_id: ID único de la sesión (ej: telegram_chat_id)
-            user_id: ID del usuario (opcional)
+            session_id: Unique session ID (e.g.: telegram_chat_id)
+            user_id: User ID (optional)
         """
         if not self._initialized:
             await self.initialize()
@@ -168,7 +168,7 @@ class AriaZepClient:
                 )
                 return True
             except Exception:
-                # La sesión ya puede existir
+                # The session may already exist
                 return True
         return True
 
@@ -180,16 +180,16 @@ class AriaZepClient:
         metadata: dict[str, Any] | None = None,
     ) -> bool:
         """
-        Añade una interacción a la memoria de largo plazo.
+        Adds an interaction to long-term memory.
 
         Args:
-            session_id: ID de la sesión (ej: telegram_chat_id, agent_name)
-            role: "user", "assistant", "system", o nombre del agente
-            content: Contenido del mensaje
-            metadata: Datos adicionales (agent_name, task_type, roi, etc.)
+            session_id: Session ID (e.g.: telegram_chat_id, agent_name)
+            role: "user", "assistant", "system", or the agent's name
+            content: Message content
+            metadata: Additional data (agent_name, task_type, roi, etc.)
 
         Returns:
-            True si se añadió correctamente
+            True if added successfully
         """
         if not self._initialized:
             await self.initialize()
@@ -219,11 +219,11 @@ class AriaZepClient:
             elif self._fallback:
                 await self._fallback.add_memory(session_id, [message_dict])
 
-            logger.debug("[Zep] Interacción añadida: session=%s role=%s", session_id, role)
+            logger.debug("[Zep] Interaction added: session=%s role=%s", session_id, role)
             return True
 
         except Exception as exc:
-            logger.error("[Zep] Error añadiendo interacción: %s", exc)
+            logger.error("[Zep] Error adding interaction: %s", exc)
             return False
 
     async def get_relevant_context(
@@ -233,15 +233,15 @@ class AriaZepClient:
         limit: int = 5,
     ) -> list[dict[str, Any]]:
         """
-        Recupera contexto relevante de la memoria para una query.
+        Retrieves relevant context from memory for a query.
 
         Args:
-            session_id: ID de la sesión
-            query: Query de búsqueda semántica
-            limit: Número máximo de resultados
+            session_id: Session ID
+            query: Semantic search query
+            limit: Maximum number of results
 
         Returns:
-            Lista de mensajes/hechos relevantes
+            List of relevant messages/facts
         """
         if not self._initialized:
             await self.initialize()
@@ -265,7 +265,7 @@ class AriaZepClient:
                 return await self._fallback.search_memory(session_id, query, limit)
 
         except Exception as exc:
-            logger.error("[Zep] Error buscando contexto: %s", exc)
+            logger.error("[Zep] Error searching context: %s", exc)
 
         return []
 
@@ -275,14 +275,14 @@ class AriaZepClient:
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         """
-        Obtiene el historial completo de una sesión.
+        Gets the full history of a session.
 
         Args:
-            session_id: ID de la sesión
-            limit: Número máximo de mensajes
+            session_id: Session ID
+            limit: Maximum number of messages
 
         Returns:
-            Lista de mensajes en orden cronológico
+            List of messages in chronological order
         """
         if not self._initialized:
             await self.initialize()
@@ -305,7 +305,7 @@ class AriaZepClient:
                 return await self._fallback.get_memory(session_id, limit)
 
         except Exception as exc:
-            logger.error("[Zep] Error obteniendo historial: %s", exc)
+            logger.error("[Zep] Error retrieving history: %s", exc)
 
         return []
 
@@ -318,20 +318,20 @@ class AriaZepClient:
         roi: float = 0.0,
     ) -> bool:
         """
-        Registra una acción de agente en la memoria de largo plazo.
-        Permite a ARIA aprender de sus propias acciones pasadas.
+        Records an agent action in long-term memory.
+        Allows ARIA to learn from its own past actions.
 
         Args:
-            agent_name: Nombre del agente (orchestrator, cfo, marketing, etc.)
-            action: Descripción de la acción ejecutada
-            result: Resultado obtenido
-            success: Si la acción fue exitosa
-            roi: ROI generado en USD
+            agent_name: Agent name (orchestrator, cfo, marketing, etc.)
+            action: Description of the action performed
+            result: Result obtained
+            success: Whether the action was successful
+            roi: ROI generated in USD
         """
         session_id = f"agent_{agent_name}"
         content = (
             f"[{'✓' if success else '✗'}] {action} | "
-            f"Resultado: {result[:200]} | "
+            f"Result: {result[:200]} | "
             f"ROI: ${roi:.2f}"
         )
         return await self.add_interaction(
@@ -353,18 +353,18 @@ class AriaZepClient:
         limit: int = 5,
     ) -> list[dict[str, Any]]:
         """
-        Recupera aprendizajes pasados de un agente específico.
+        Retrieves past learnings from a specific agent.
 
         Args:
-            agent_name: Nombre del agente
-            query: Tema a buscar en la memoria
-            limit: Número máximo de resultados
+            agent_name: Agent name
+            query: Topic to search for in memory
+            limit: Maximum number of results
         """
         session_id = f"agent_{agent_name}"
         return await self.get_relevant_context(session_id, query, limit)
 
     async def get_status(self) -> dict[str, Any]:
-        """Retorna el estado del cliente Zep."""
+        """Returns the Zep client's status."""
         return {
             "backend": "zep_cloud" if self._client else "supabase_fallback",
             "zep_available": ZEP_AVAILABLE,
@@ -378,7 +378,7 @@ _zep_instance: AriaZepClient | None = None
 
 
 def get_zep_client() -> AriaZepClient:
-    """Retorna el singleton del cliente Zep de ARIA."""
+    """Returns ARIA's Zep client singleton."""
     global _zep_instance
     if _zep_instance is None:
         import os

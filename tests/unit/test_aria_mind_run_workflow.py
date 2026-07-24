@@ -40,8 +40,8 @@ async def test_run_workflow_shows_step_breakdown_even_on_partial_failure():
         mind = AriaMind()
         obs, _ = await mind._execute_tool("run_workflow", {"workflow_id": "wf1"})
 
-    assert "paso1=OK" in obs
-    assert "paso2=FAIL" in obs
+    assert "step1=OK" in obs
+    assert "step2=FAIL" in obs
 
 
 async def test_run_workflow_still_reports_hard_error_for_missing_workflow():

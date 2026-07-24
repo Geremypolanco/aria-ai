@@ -1,11 +1,11 @@
 """
-deployment_orchestrator.py — Orquestador de Despliegues Multi-Cloud para ARIA.
+deployment_orchestrator.py — Multi-Cloud Deployment Orchestrator for ARIA.
 
-Proporciona:
-- Despliegue a múltiples plataformas (Vercel, Fly.io, AWS, GCP, Azure)
-- Monitoreo en tiempo real del estado de despliegues
-- Rollback automático en caso de fallo
-- Gestión de versiones y canarios
+Provides:
+- Deployment to multiple platforms (Vercel, Fly.io, AWS, GCP, Azure)
+- Real-time monitoring of deployment status
+- Automatic rollback on failure
+- Version and canary management
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ logger = logging.getLogger("aria.deployment")
 
 
 class DeploymentStatus(Enum):
-    """Estados posibles de un despliegue."""
+    """Possible states of a deployment."""
 
     PENDING = "pending"
     BUILDING = "building"
@@ -31,7 +31,7 @@ class DeploymentStatus(Enum):
 
 
 class DeploymentPlatform(Enum):
-    """Plataformas de despliegue soportadas."""
+    """Supported deployment platforms."""
 
     VERCEL = "vercel"
     FLY_IO = "fly_io"
@@ -42,7 +42,7 @@ class DeploymentPlatform(Enum):
 
 
 class Deployment:
-    """Representa un despliegue individual."""
+    """Represents an individual deployment."""
 
     def __init__(
         self,
@@ -66,14 +66,14 @@ class Deployment:
         self.error: str | None = None
 
     def add_log(self, message: str):
-        """Añade un mensaje al log de despliegue."""
+        """Adds a message to the deployment log."""
         timestamp = datetime.now(UTC).isoformat()
         log_entry = f"[{timestamp}] {message}"
         self.logs.append(log_entry)
         logger.info(f"[Deployment {self.deployment_id}] {message}")
 
     def to_dict(self) -> dict[str, Any]:
-        """Convierte el despliegue a diccionario."""
+        """Converts the deployment to a dictionary."""
         return {
             "deployment_id": self.deployment_id,
             "platform": self.platform.value,
@@ -85,12 +85,12 @@ class Deployment:
             "version": self.version,
             "previous_version": self.previous_version,
             "error": self.error,
-            "logs": self.logs[-50:],  # Últimos 50 logs
+            "logs": self.logs[-50:],  # Last 50 logs
         }
 
 
 class DeploymentOrchestrator:
-    """Orquestador de despliegues multi-cloud."""
+    """Multi-cloud deployment orchestrator."""
 
     def __init__(self):
         self.deployments: dict[str, Deployment] = {}
@@ -102,12 +102,12 @@ class DeploymentOrchestrator:
         project_path: str,
         config: dict[str, Any],
     ) -> dict[str, Any]:
-        """Inicia un despliegue."""
+        """Starts a deployment."""
         deployment_id = f"{platform.value}_{datetime.now(UTC).timestamp()}"
         deployment = Deployment(deployment_id, platform, project_path, config)
 
         self.deployments[deployment_id] = deployment
-        deployment.add_log(f"Iniciando despliegue a {platform.value}")
+        deployment.add_log(f"Starting deployment to {platform.value}")
 
         try:
             deployment.status = DeploymentStatus.BUILDING
@@ -126,17 +126,17 @@ class DeploymentOrchestrator:
             elif platform == DeploymentPlatform.DOCKER:
                 result = await self._deploy_docker(deployment)
             else:
-                raise ValueError(f"Plataforma no soportada: {platform}")
+                raise ValueError(f"Unsupported platform: {platform}")
 
             if result.get("success"):
                 deployment.status = DeploymentStatus.RUNNING
                 deployment.url = result.get("url")
                 deployment.version = result.get("version")
-                deployment.add_log(f"Despliegue completado. URL: {deployment.url}")
+                deployment.add_log(f"Deployment completed. URL: {deployment.url}")
             else:
                 deployment.status = DeploymentStatus.FAILED
                 deployment.error = result.get("error")
-                deployment.add_log(f"Despliegue fallido: {deployment.error}")
+                deployment.add_log(f"Deployment failed: {deployment.error}")
 
             deployment.completed_at = datetime.now(UTC)
             self.deployment_history.append(deployment.to_dict())
@@ -150,7 +150,7 @@ class DeploymentOrchestrator:
             }
 
         except Exception as exc:
-            logger.error(f"[Deployment] Error durante despliegue: {exc}")
+            logger.error(f"[Deployment] Error during deployment: {exc}")
             deployment.status = DeploymentStatus.FAILED
             deployment.error = str(exc)
             deployment.completed_at = datetime.now(UTC)
@@ -161,11 +161,11 @@ class DeploymentOrchestrator:
             }
 
     async def _deploy_vercel(self, deployment: Deployment) -> dict[str, Any]:
-        """Despliega a Vercel."""
-        deployment.add_log("Preparando despliegue a Vercel...")
+        """Deploys to Vercel."""
+        deployment.add_log("Preparing deployment to Vercel...")
 
         try:
-            # Usar Vercel CLI
+            # Use Vercel CLI
             token = deployment.config.get("vercel_token")
             project_name = deployment.config.get("project_name", "aria-project")
 
@@ -184,7 +184,7 @@ class DeploymentOrchestrator:
             deployment.add_log(f"Vercel CLI output: {result.stdout}")
 
             if result.returncode == 0:
-                # Extraer URL de la salida
+                # Extract URL from the output
                 url = self._extract_vercel_url(result.stdout)
                 return {
                     "success": True,
@@ -200,8 +200,8 @@ class DeploymentOrchestrator:
             return {"success": False, "error": str(exc)}
 
     async def _deploy_fly_io(self, deployment: Deployment) -> dict[str, Any]:
-        """Despliega a Fly.io."""
-        deployment.add_log("Preparando despliegue a Fly.io...")
+        """Deploys to Fly.io."""
+        deployment.add_log("Preparing deployment to Fly.io...")
 
         try:
             app_name = deployment.config.get("app_name", "aria-app")
@@ -234,16 +234,16 @@ class DeploymentOrchestrator:
             return {"success": False, "error": str(exc)}
 
     async def _deploy_aws(self, deployment: Deployment) -> dict[str, Any]:
-        """Despliega a AWS."""
-        deployment.add_log("Preparando despliegue a AWS...")
+        """Deploys to AWS."""
+        deployment.add_log("Preparing deployment to AWS...")
 
         try:
-            # Usar AWS CLI o boto3
+            # Use AWS CLI or boto3
             region = deployment.config.get("region", "us-east-1")
             stack_name = deployment.config.get("stack_name", "aria-stack")
 
-            # Placeholder para implementación real
-            deployment.add_log(f"Desplegando a AWS {region}...")
+            # Placeholder for real implementation
+            deployment.add_log(f"Deploying to AWS {region}...")
 
             return {
                 "success": True,
@@ -255,8 +255,8 @@ class DeploymentOrchestrator:
             return {"success": False, "error": str(exc)}
 
     async def _deploy_gcp(self, deployment: Deployment) -> dict[str, Any]:
-        """Despliega a Google Cloud Platform."""
-        deployment.add_log("Preparando despliegue a GCP...")
+        """Deploys to Google Cloud Platform."""
+        deployment.add_log("Preparing deployment to GCP...")
 
         try:
             project_id = deployment.config.get("project_id")
@@ -300,8 +300,8 @@ class DeploymentOrchestrator:
             return {"success": False, "error": str(exc)}
 
     async def _deploy_azure(self, deployment: Deployment) -> dict[str, Any]:
-        """Despliega a Microsoft Azure."""
-        deployment.add_log("Preparando despliegue a Azure...")
+        """Deploys to Microsoft Azure."""
+        deployment.add_log("Preparing deployment to Azure...")
 
         try:
             resource_group = deployment.config.get("resource_group")
@@ -343,14 +343,14 @@ class DeploymentOrchestrator:
             return {"success": False, "error": str(exc)}
 
     async def _deploy_docker(self, deployment: Deployment) -> dict[str, Any]:
-        """Despliega usando Docker."""
-        deployment.add_log("Preparando despliegue Docker...")
+        """Deploys using Docker."""
+        deployment.add_log("Preparing Docker deployment...")
 
         try:
             image_name = deployment.config.get("image_name", "aria-app")
             registry = deployment.config.get("registry", "docker.io")
 
-            # Construir imagen
+            # Build image
             cmd_build = [
                 "docker",
                 "build",
@@ -363,9 +363,9 @@ class DeploymentOrchestrator:
             if result.returncode != 0:
                 return {"success": False, "error": result.stderr}
 
-            deployment.add_log("Imagen Docker construida")
+            deployment.add_log("Docker image built")
 
-            # Pushear imagen
+            # Push image
             cmd_push = ["docker", "push", f"{registry}/{image_name}:latest"]
             result = subprocess.run(cmd_push, capture_output=True, text=True, timeout=300)
 
@@ -381,29 +381,29 @@ class DeploymentOrchestrator:
             return {"success": False, "error": str(exc)}
 
     def _extract_vercel_url(self, output: str) -> str:
-        """Extrae la URL de despliegue de Vercel."""
+        """Extracts the Vercel deployment URL."""
         for line in output.split("\n"):
             if "https://" in line:
                 return line.strip()
         return "https://deployment.vercel.app"
 
     def _extract_gcp_url(self, output: str) -> str:
-        """Extrae la URL de despliegue de GCP."""
+        """Extracts the GCP deployment URL."""
         for line in output.split("\n"):
             if "https://" in line and "run.app" in line:
                 return line.strip()
         return "https://deployment.run.app"
 
     async def rollback(self, deployment_id: str) -> dict[str, Any]:
-        """Revierte un despliegue a la versión anterior."""
+        """Reverts a deployment to the previous version."""
         deployment = self.deployments.get(deployment_id)
         if not deployment:
-            return {"success": False, "error": "Despliegue no encontrado"}
+            return {"success": False, "error": "Deployment not found"}
 
         if not deployment.previous_version:
-            return {"success": False, "error": "No hay versión anterior para revertir"}
+            return {"success": False, "error": "No previous version to revert to"}
 
-        deployment.add_log(f"Revirtiendo a versión anterior: {deployment.previous_version}")
+        deployment.add_log(f"Reverting to previous version: {deployment.previous_version}")
         deployment.status = DeploymentStatus.ROLLED_BACK
 
         return {
@@ -413,14 +413,14 @@ class DeploymentOrchestrator:
         }
 
     def get_deployment_status(self, deployment_id: str) -> dict[str, Any] | None:
-        """Obtiene el estado de un despliegue."""
+        """Gets the status of a deployment."""
         deployment = self.deployments.get(deployment_id)
         if deployment:
             return deployment.to_dict()
         return None
 
     def get_all_deployments(self) -> list[dict[str, Any]]:
-        """Obtiene todos los despliegues."""
+        """Gets all deployments."""
         return [d.to_dict() for d in self.deployments.values()]
 
 

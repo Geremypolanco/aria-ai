@@ -9,8 +9,8 @@ logger = logging.getLogger("aria.market_scanner")
 
 class MarketScanner:
     """
-    Motor de Escaneo de Mercado.
-    Busca oportunidades económicas reales en el mercado.
+    Market Scanning Engine.
+    Searches for real economic opportunities in the market.
     """
 
     def __init__(self):
@@ -18,44 +18,44 @@ class MarketScanner:
         self.ai = get_ai_client()
 
     async def scan_opportunities(self) -> list[dict[str, Any]]:
-        """Escanea el mercado y retorna oportunidades ordenadas por ROI potencial."""
+        """Scans the market and returns opportunities sorted by potential ROI."""
         opportunities = []
 
-        # 1. Buscar tendencias en Google Trends
+        # 1. Search for trends on Google Trends
         trends = await self._scan_google_trends()
         opportunities.extend(trends)
 
-        # 2. Buscar productos de alto valor en Shopify
+        # 2. Search for high-value products on Shopify
         shopify_opps = await self._scan_shopify_opportunities()
         opportunities.extend(shopify_opps)
 
-        # 3. Buscar nichos de LinkedIn con alto engagement
+        # 3. Search for high-engagement LinkedIn niches
         linkedin_opps = await self._scan_linkedin_niches()
         opportunities.extend(linkedin_opps)
 
-        # Ordenar por ROI esperado
+        # Sort by expected ROI
         opportunities.sort(key=lambda x: x.get("expected_roi", 0), reverse=True)
         return opportunities
 
     async def _scan_google_trends(self) -> list[dict[str, Any]]:
-        """Busca tendencias emergentes en Google."""
+        """Searches for emerging trends on Google."""
         query = "trending topics 2026 high demand products"
         results = await self.web.search_web(query, num_results=5)
 
         if not results.get("success"):
             return []
 
-        # Analizar tendencias con IA
+        # Analyze trends with AI
         analysis = await self.ai.complete_json(
-            system="Eres un analista de mercado. Identifica oportunidades de venta.",
-            user=f"Analiza estas tendencias: {results.get('results')}. Responde con lista de oportunidades: [{{topic, market_size, competition_level, expected_roi}}]",
+            system="You are a market analyst. Identify sales opportunities.",
+            user=f"Analyze these trends: {results.get('results')}. Respond with a list of opportunities: [{{topic, market_size, competition_level, expected_roi}}]",
             model=AIModel.STRATEGY,
         )
 
         return analysis if isinstance(analysis, list) else []
 
     async def _scan_shopify_opportunities(self) -> list[dict[str, Any]]:
-        """Busca productos de alto valor en Shopify que Aria pueda replicar."""
+        """Searches for high-value Shopify products Aria can replicate."""
         query = "best selling digital products shopify 2026 high ticket"
         results = await self.web.search_web(query, num_results=5)
 
@@ -74,7 +74,7 @@ class MarketScanner:
         ]
 
     async def _scan_linkedin_niches(self) -> list[dict[str, Any]]:
-        """Busca nichos de alto engagement en LinkedIn."""
+        """Searches for high-engagement niches on LinkedIn."""
         query = "top performing LinkedIn content 2026 engagement rate"
         results = await self.web.search_web(query, num_results=5)
 

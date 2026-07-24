@@ -1,25 +1,25 @@
 """
-mcp_agent.py — Cliente MCP (Model Context Protocol) para ARIA.
+mcp_agent.py — MCP (Model Context Protocol) Client for ARIA.
 
-Convierte a ARIA en un **Cliente MCP** usando el SDK oficial de Anthropic
-(`anthropic`) y el SDK oficial de MCP (`mcp`). Permite que ARIA:
+Turns ARIA into an **MCP Client** using the official Anthropic SDK
+(`anthropic`) and the official MCP SDK (`mcp`). It allows ARIA to:
 
-  1. Se conecte a servidores MCP externos por STDIO (local) o SSE / HTTP (remoto).
-  2. Ejecute la fase de "Protocol Initialization" y liste dinámicamente las
-     herramientas que expone cada servidor.
-  3. Mapee el JSON Schema de cada herramienta MCP al formato de *function
-     calling* que espera Claude (`{name, description, input_schema}`).
-  4. Corra el bucle agéntico: cuando Claude pide una herramienta, ARIA la
-     ejecuta en el servidor MCP y devuelve el resultado al modelo.
+  1. Connect to external MCP servers via STDIO (local) or SSE / HTTP (remote).
+  2. Run the "Protocol Initialization" phase and dynamically list the
+     tools each server exposes.
+  3. Map each MCP tool's JSON Schema to the *function
+     calling* format Claude expects (`{name, description, input_schema}`).
+  4. Run the agentic loop: when Claude requests a tool, ARIA
+     executes it on the MCP server and returns the result to the model.
 
-Diseño:
-  - `MCPServerConfig`   → describe un servidor (transporte + parámetros).
-  - `MCPConnection`     → una sesión MCP viva (initialize + list_tools + call_tool).
-  - `MCPAgent`          → agrega herramientas de N servidores y ejecuta el loop
-                          de function calling contra Claude.
+Design:
+  - `MCPServerConfig`   → describes a server (transport + parameters).
+  - `MCPConnection`     → a live MCP session (initialize + list_tools + call_tool).
+  - `MCPAgent`          → aggregates tools from N servers and runs the
+                          function calling loop against Claude.
 
-El SDK de Anthropic se usa siempre a través de `AsyncAnthropic` — nunca por HTTP
-crudo — de acuerdo con la guía oficial de la API de Claude.
+The Anthropic SDK is always used through `AsyncAnthropic` — never raw HTTP —
+in accordance with the official Claude API guide.
 """
 
 from __future__ import annotations
@@ -32,31 +32,31 @@ from typing import Any, Literal
 
 logger = logging.getLogger("aria.mcp_agent")
 
-# Modelo por defecto: el más capaz de Anthropic (ver guía claude-api).
+# Default model: Anthropic's most capable (see the claude-api guide).
 DEFAULT_MODEL = "claude-opus-4-8"
 
 DEFAULT_SYSTEM = (
-    "Eres ARIA, una IA autónoma que resuelve tareas usando las herramientas "
-    "disponibles vía MCP. Cuando una herramienta pueda responder mejor que tu "
-    "conocimiento interno, úsala. Explica brevemente qué hiciste al terminar."
+    "You are ARIA, an autonomous AI that solves tasks using the tools "
+    "available via MCP. When a tool can answer better than your "
+    "internal knowledge, use it. Briefly explain what you did when finished."
 )
 
-# Anthropic exige nombres de herramienta que casen con ^[a-zA-Z0-9_-]{1,64}$
+# Anthropic requires tool names matching ^[a-zA-Z0-9_-]{1,64}$
 _TOOL_NAME_RE = re.compile(r"[^a-zA-Z0-9_-]")
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Configuración de un servidor MCP
+# MCP server configuration
 # ──────────────────────────────────────────────────────────────────────────
 @dataclass
 class MCPServerConfig:
-    """Describe cómo conectarse a un servidor MCP.
+    """Describes how to connect to an MCP server.
 
-    STDIO (servidores locales — prioritario):
+    STDIO (local servers — preferred):
         MCPServerConfig(name="mem", transport="stdio",
                         command="python3", args=["server.py"])
 
-    SSE / HTTP (servidores remotos):
+    SSE / HTTP (remote servers):
         MCPServerConfig(name="remote", transport="sse",
                         url="https://host/sse", headers={"Authorization": "..."})
     """
@@ -74,33 +74,33 @@ class MCPServerConfig:
     def validate(self) -> None:
         if self.transport == "stdio":
             if not self.command:
-                raise ValueError(f"[{self.name}] transporte stdio requiere 'command'")
+                raise ValueError(f"[{self.name}] stdio transport requires 'command'")
         elif self.transport in ("sse", "http"):
             if not self.url:
-                raise ValueError(f"[{self.name}] transporte {self.transport} requiere 'url'")
+                raise ValueError(f"[{self.name}] {self.transport} transport requires 'url'")
         else:
-            raise ValueError(f"[{self.name}] transporte no soportado: {self.transport}")
+            raise ValueError(f"[{self.name}] unsupported transport: {self.transport}")
 
 
 def _sanitize_tool_name(server: str, tool: str) -> str:
-    """Nombre único y válido para Anthropic: `server__tool`, <=64 chars."""
+    """Unique, valid name for Anthropic: `server__tool`, <=64 chars."""
     raw = f"{server}__{tool}"
     safe = _TOOL_NAME_RE.sub("_", raw)
     return safe[:64]
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Una conexión MCP viva
+# A live MCP connection
 # ──────────────────────────────────────────────────────────────────────────
 class MCPConnection:
-    """Envuelve una sesión MCP (ClientSession) manteniendo vivo el transporte."""
+    """Wraps an MCP session (ClientSession) keeping the transport alive."""
 
     def __init__(self, config: MCPServerConfig):
         config.validate()
         self.config = config
         self._stack = AsyncExitStack()
         self._session: Any = None  # mcp.ClientSession
-        self.tools: list[Any] = []  # lista de mcp.types.Tool
+        self.tools: list[Any] = []  # list of mcp.types.Tool
 
     @property
     def name(self) -> str:
@@ -111,11 +111,11 @@ class MCPConnection:
         return self._session is not None
 
     async def connect(self) -> list[Any]:
-        """Abre el transporte, ejecuta el handshake `initialize` y lista tools."""
+        """Opens the transport, runs the `initialize` handshake, and lists tools."""
         from mcp import ClientSession
 
         cfg = self.config
-        logger.info("[MCP:%s] Conectando vía %s...", cfg.name, cfg.transport)
+        logger.info("[MCP:%s] Connecting via %s...", cfg.name, cfg.transport)
 
         if cfg.transport == "stdio":
             from mcp import StdioServerParameters
@@ -137,28 +137,28 @@ class MCPConnection:
             )
 
         session = await self._stack.enter_async_context(ClientSession(read, write))
-        # Protocol Initialization — handshake MCP.
+        # Protocol Initialization — MCP handshake.
         init = await session.initialize()
         self._session = session
 
         server_name = getattr(getattr(init, "serverInfo", None), "name", cfg.name)
-        logger.info("[MCP:%s] Inicializado (servidor: %s)", cfg.name, server_name)
+        logger.info("[MCP:%s] Initialized (server: %s)", cfg.name, server_name)
 
-        # Descubrimiento dinámico de herramientas.
+        # Dynamic tool discovery.
         listed = await session.list_tools()
         self.tools = list(listed.tools)
         logger.info(
-            "[MCP:%s] %d herramientas descubiertas: %s",
+            "[MCP:%s] %d tools discovered: %s",
             cfg.name,
             len(self.tools),
-            ", ".join(t.name for t in self.tools) or "(ninguna)",
+            ", ".join(t.name for t in self.tools) or "(none)",
         )
         return self.tools
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
-        """Invoca una herramienta en el servidor MCP. Devuelve CallToolResult."""
+        """Invokes a tool on the MCP server. Returns CallToolResult."""
         if not self._session:
-            raise RuntimeError(f"[MCP:{self.name}] no conectado")
+            raise RuntimeError(f"[MCP:{self.name}] not connected")
         logger.info("[MCP:%s] call_tool %s(%s)", self.name, tool_name, arguments)
         return await self._session.call_tool(tool_name, arguments or {})
 
@@ -168,17 +168,17 @@ class MCPConnection:
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Mapeo de esquema MCP → herramienta Anthropic (function calling)
+# MCP schema → Anthropic tool mapping (function calling)
 # ──────────────────────────────────────────────────────────────────────────
 def mcp_tool_to_anthropic(tool: Any, *, override_name: str | None = None) -> dict[str, Any]:
-    """Convierte una herramienta MCP en la definición que espera Claude.
+    """Converts an MCP tool into the definition Claude expects.
 
-    MCP expone: tool.name, tool.description, tool.inputSchema (JSON Schema).
-    Anthropic espera: {"name", "description", "input_schema"} donde
-    input_schema es un JSON Schema de tipo objeto.
+    MCP exposes: tool.name, tool.description, tool.inputSchema (JSON Schema).
+    Anthropic expects: {"name", "description", "input_schema"} where
+    input_schema is an object-type JSON Schema.
     """
     schema = getattr(tool, "inputSchema", None) or {"type": "object", "properties": {}}
-    # Anthropic requiere un schema de objeto; normalizamos si falta.
+    # Anthropic requires an object schema; normalize if missing.
     if not isinstance(schema, dict):
         schema = {"type": "object", "properties": {}}
     if schema.get("type") != "object":
@@ -193,7 +193,7 @@ def mcp_tool_to_anthropic(tool: Any, *, override_name: str | None = None) -> dic
 
 
 def _result_to_text(result: Any) -> tuple[str, bool]:
-    """Aplana un CallToolResult de MCP a texto para el tool_result de Anthropic."""
+    """Flattens an MCP CallToolResult into text for Anthropic's tool_result."""
     is_error = bool(getattr(result, "isError", False))
     parts: list[str] = []
     for block in getattr(result, "content", []) or []:
@@ -206,12 +206,12 @@ def _result_to_text(result: Any) -> tuple[str, bool]:
             parts.append(text if text is not None else str(res))
         else:
             parts.append(str(block))
-    text = "\n".join(p for p in parts if p) or ("(sin contenido)" if not is_error else "error")
+    text = "\n".join(p for p in parts if p) or ("(no content)" if not is_error else "error")
     return text, is_error
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Agente: N conexiones MCP + bucle de function calling con Claude
+# Agent: N MCP connections + function calling loop with Claude
 # ──────────────────────────────────────────────────────────────────────────
 @dataclass
 class MCPToolResult:
@@ -230,13 +230,13 @@ class MCPAgentResult:
 
 
 class MCPAgent:
-    """Cliente MCP + puente de function calling hacia Claude.
+    """MCP client + function calling bridge to Claude.
 
-    Uso:
+    Usage:
         agent = MCPAgent([MCPServerConfig(name="mem", command="python3",
                                           args=["server.py"])])
         async with agent:
-            result = await agent.run("Guarda que me llamo Geremy y recupéralo.")
+            result = await agent.run("Save that my name is Geremy and retrieve it.")
             print(result.text)
     """
 
@@ -253,11 +253,11 @@ class MCPAgent:
         self.system = system
         self._api_key = api_key
         self._connections: list[MCPConnection] = []
-        # nombre_anthropic -> (conexión, nombre_real_mcp)
+        # anthropic_name -> (connection, real_mcp_name)
         self._routing: dict[str, tuple[MCPConnection, str]] = {}
         self._anthropic: Any = None
 
-    # ── ciclo de vida ─────────────────────────────────────────────
+    # ── lifecycle ─────────────────────────────────────────────
     async def __aenter__(self) -> MCPAgent:
         await self.connect()
         return self
@@ -266,7 +266,7 @@ class MCPAgent:
         await self.aclose()
 
     async def connect(self) -> None:
-        """Conecta a todos los servidores y construye la tabla de ruteo."""
+        """Connects to all servers and builds the routing table."""
         for cfg in self.servers:
             conn = MCPConnection(cfg)
             await conn.connect()
@@ -280,13 +280,13 @@ class MCPAgent:
             try:
                 await conn.aclose()
             except Exception as exc:  # noqa: BLE001
-                logger.warning("[MCP:%s] error al cerrar: %s", conn.name, exc)
+                logger.warning("[MCP:%s] error closing: %s", conn.name, exc)
         self._connections.clear()
         self._routing.clear()
 
-    # ── herramientas expuestas a Claude ──────────────────────────
+    # ── tools exposed to Claude ──────────────────────────
     def anthropic_tools(self) -> list[dict[str, Any]]:
-        """Todas las herramientas MCP mapeadas al formato de Claude."""
+        """All MCP tools mapped to Claude's format."""
         tools: list[dict[str, Any]] = []
         for anth_name, (conn, real) in self._routing.items():
             tool = next((t for t in conn.tools if t.name == real), None)
@@ -297,14 +297,14 @@ class MCPAgent:
     async def _dispatch_tool(self, anth_name: str, arguments: dict[str, Any]) -> tuple[str, bool]:
         route = self._routing.get(anth_name)
         if route is None:
-            return f"Herramienta desconocida: {anth_name}", True
+            return f"Unknown tool: {anth_name}", True
         conn, real = route
         try:
             result = await conn.call_tool(real, arguments)
             return _result_to_text(result)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("[MCP] fallo ejecutando %s: %s", anth_name, exc)
-            return f"Error ejecutando {anth_name}: {exc}", True
+            logger.warning("[MCP] failed executing %s: %s", anth_name, exc)
+            return f"Error executing {anth_name}: {exc}", True
 
     def _client(self) -> Any:
         if self._anthropic is None:
@@ -313,7 +313,7 @@ class MCPAgent:
             self._anthropic = AsyncAnthropic(api_key=self._api_key)
         return self._anthropic
 
-    # ── bucle agéntico de function calling ───────────────────────
+    # ── agentic function calling loop ───────────────────────
     async def run(
         self,
         user_message: str,
@@ -321,7 +321,7 @@ class MCPAgent:
         max_tokens: int = 4096,
         max_turns: int = 8,
     ) -> MCPAgentResult:
-        """Corre el loop: Claude ↔ herramientas MCP hasta que Claude termina."""
+        """Runs the loop: Claude ↔ MCP tools until Claude finishes."""
         client = self._client()
         tools = self.anthropic_tools()
         messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
@@ -349,7 +349,7 @@ class MCPAgent:
                     turns=turn,
                 )
 
-            # Preservamos el turno del asistente (incluye los bloques tool_use).
+            # Preserve the assistant's turn (includes the tool_use blocks).
             messages.append({"role": "assistant", "content": response.content})
 
             tool_result_blocks: list[dict[str, Any]] = []
@@ -377,7 +377,7 @@ class MCPAgent:
             messages.append({"role": "user", "content": tool_result_blocks})
 
         return MCPAgentResult(
-            text="(límite de turnos alcanzado sin respuesta final)",
+            text="(turn limit reached without a final response)",
             tool_calls=collected,
             stop_reason=stop_reason,
             turns=max_turns,

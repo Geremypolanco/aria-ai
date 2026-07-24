@@ -1,5 +1,5 @@
 """
-Investor Agent — Búsqueda de capital, outreach a VCs/Angels y pitch decks.
+Investor Agent — Fundraising, outreach to VCs/Angels, and pitch decks.
 """
 
 from __future__ import annotations
@@ -14,17 +14,17 @@ logger = logging.getLogger("aria.business.investor")
 
 class InvestorAgent(BaseAgent):
     IDENTITY = (
-        "Eres el Investor Agent de ARIA AI. Tu misión es asegurar capital real para el proyecto. "
-        "Identificas inversionistas ángeles, VCs y socios estratégicos. Redactas pitches "
-        "irresistibles y ejecutas campañas de outreach en LinkedIn y email. "
-        "No pides permiso, buscas dinero real. Eres agresivo, directo y enfocado en resultados. "
-        "Garantizas que el valor de Aria sea evidente para cualquier inversor serio."
+        "You are ARIA AI's Investor Agent. Your mission is to secure real capital for the project. "
+        "You identify angel investors, VCs, and strategic partners. You write irresistible pitches "
+        "and run outreach campaigns on LinkedIn and email. "
+        "You don't ask for permission, you go after real money. You are aggressive, direct, and results-focused. "
+        "You make sure Aria's value is obvious to any serious investor."
     )
 
     def __init__(self) -> None:
         super().__init__(
             name="investor",
-            description="Búsqueda de capital, outreach a inversores, pitch decks y gestión de equity",
+            description="Fundraising, investor outreach, pitch decks, and equity management",
             capabilities=[
                 "investor_research",
                 "outreach",
@@ -34,34 +34,34 @@ class InvestorAgent(BaseAgent):
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        mission = context.get("mission", "Buscar inversionistas para Aria AI")
+        mission = context.get("mission", "Find investors for Aria AI")
         niche = context.get("niche", "AI SaaS / E-commerce")
         target_amount = context.get("target_amount", "$100k - $500k")
 
         results: dict[str, Any] = {"success": True, "agent": "investor", "mission": mission}
 
-        # 1. Investigar inversionistas potenciales
+        # 1. Research potential investors
         investors = await self._research_investors(niche)
         results["potential_investors"] = investors
 
-        # 2. Generar Pitch y Outreach
+        # 2. Generate Pitch and Outreach
         pitches = await self._generate_pitches(investors, target_amount)
         results["outreach_campaign"] = pitches
 
-        # 3. Ejecutar Outreach si está activado — SIEMPRE requiere aprobación
-        # humana explícita: _research_investors() no es investigación en
-        # tiempo real (ver su docstring), así que un outreach automático
-        # enviaría mensajes personalizados dirigidos a firmas reales
-        # (Sequoia, Y Combinator, etc.) redactados a partir de una lista
-        # fija de ejemplo, no de verificación real. Nunca se auto-aprueba
-        # sin importar `auto_outreach` — el dueño debe confirmar por Telegram.
+        # 3. Execute Outreach if enabled — ALWAYS requires explicit human
+        # approval: _research_investors() is not real-time research (see its
+        # docstring), so automatic outreach would send personalized messages
+        # targeting real firms (Sequoia, Y Combinator, etc.) drafted from a
+        # fixed example list, not real verification. This never
+        # auto-approves regardless of `auto_outreach` — the owner must
+        # confirm via Telegram.
         if context.get("auto_outreach", False):
             approval = await self.request_human_approval(
-                action="Enviar outreach de inversión en LinkedIn",
+                action="Send investment outreach on LinkedIn",
                 details=(
-                    f"Pitches listos para: {', '.join(p['investor'] for p in pitches)}. "
-                    "Nota: la lista de inversores es un ejemplo de referencia, no "
-                    "investigación verificada — revisar contenido antes de aprobar."
+                    f"Pitches ready for: {', '.join(p['investor'] for p in pitches)}. "
+                    "Note: the investor list is a reference example, not "
+                    "verified research — review the content before approving."
                 ),
             )
             if approval.get("success") and approval.get("status") != "pending":
@@ -71,21 +71,21 @@ class InvestorAgent(BaseAgent):
                 results["outreach_results"] = approval
 
         results["summary"] = (
-            f"Encontrados {len(investors)} inversionistas potenciales. Campaña de outreach lista."
+            f"Found {len(investors)} potential investors. Outreach campaign ready."
         )
         return results
 
     async def _research_investors(self, niche: str) -> list[dict]:
-        """Placeholder de ejemplo — NO es investigación real ni verificada.
+        """Example placeholder — NOT real or verified research.
 
-        Antes esto se devolvía como si fuera el resultado de una búsqueda,
-        con nombres de firmas reales (Sequoia, Y Combinator...), y se usaba
-        para generar pitches personalizados dirigidos a esas firmas por
-        nombre. _execute() ahora bloquea cualquier outreach real detrás de
-        aprobación humana explícita precisamente porque estos datos no son
-        investigación verificada — ver la nota en request_human_approval().
+        This used to be returned as if it were the result of a search,
+        with real firm names (Sequoia, Y Combinator...), and was used to
+        generate pitches personalized to those firms by name. _execute()
+        now blocks any real outreach behind explicit human approval
+        precisely because this data is not verified research — see the
+        note in request_human_approval().
         """
-        # En una ejecución real, esto llamaría a AriaMind.execute_tool("web_search", ...)
+        # In a real run, this would call AriaMind.execute_tool("web_search", ...)
         return [
             {
                 "name": "TechStars AI",
@@ -118,23 +118,23 @@ class InvestorAgent(BaseAgent):
         for inv in investors:
             pitch = await self.think(
                 system=self.IDENTITY,
-                user=f"Redacta un mensaje de LinkedIn personalizado para {inv['name']} ({inv['type']}). "
-                f"Estamos buscando {amount} para escalar Aria AI, una IA autónoma enfocada en generar "
-                f"revenue en Shopify. No inventes cifras de tracción, clientes o ingresos específicos — "
-                f"si no tienes datos verificados a mano, habla del producto y la visión sin afirmar "
-                f"métricas concretas no confirmadas.",
+                user=f"Write a personalized LinkedIn message for {inv['name']} ({inv['type']}). "
+                f"We're seeking {amount} to scale Aria AI, an autonomous AI focused on generating "
+                f"revenue on Shopify. Don't make up traction figures, customers, or specific revenue — "
+                f"if you don't have verified data on hand, talk about the product and the vision without "
+                f"claiming unconfirmed concrete metrics.",
             )
             pitches.append({"investor": inv["name"], "pitch": pitch})
         return pitches
 
     async def _execute_outreach(self, pitches: list[dict]) -> dict:
-        """Ejecuta el posteo en LinkedIn o envío de mensajes."""
+        """Executes posting on LinkedIn or sending messages."""
         from apps.core.tools.social_media import SocialMediaManager
 
         sm = SocialMediaManager()
         results = []
         for p in pitches:
-            # Enviar como post o mensaje privado si la API lo permite
+            # Send as a post or private message if the API allows it
             res = await sm.post_content("linkedin", p["pitch"])
             results.append({"investor": p["investor"], "status": res})
         return {"sent_count": len(results), "details": results}

@@ -1,7 +1,7 @@
 """
-shopify_engine.py — Motor de ejecución real para Shopify Admin API v2.0
-Capacidades: Creación de productos, listings optimizados, inventario,
-imágenes, videos, metafields SEO, colecciones y reportes de ventas.
+shopify_engine.py — Real execution engine for Shopify Admin API v2.0
+Capabilities: Product creation, optimized listings, inventory,
+images, videos, SEO metafields, collections, and sales reports.
 """
 
 import logging
@@ -14,9 +14,9 @@ logger = logging.getLogger("aria.shopify_engine")
 
 class ShopifyEngine:
     """
-    Motor de ejecución real para Shopify Admin API.
-    Aria usa este motor para gestionar de forma autónoma toda la operación
-    de e-commerce: productos, listings, inventario, imágenes, videos y SEO.
+    Real execution engine for Shopify Admin API.
+    Aria uses this engine to autonomously manage the entire
+    e-commerce operation: products, listings, inventory, images, videos, and SEO.
     """
 
     def __init__(self, shop_name: str, access_token: str):
@@ -28,19 +28,19 @@ class ShopifyEngine:
             self.base_url = f"https://{shop_name}.myshopify.com/admin/api/2024-01"
         self.headers = {"X-Shopify-Access-Token": access_token, "Content-Type": "application/json"}
 
-    # ── INVESTIGACIÓN Y ANÁLISIS ──────────────────────────────────
+    # ── RESEARCH AND ANALYSIS ──────────────────────────────────
 
     def get_all_products(self) -> list[dict[str, Any]]:
-        """Obtiene todos los productos de la tienda para análisis."""
+        """Gets all products from the store for analysis."""
         url = f"{self.base_url}/products.json?limit=250"
         response = requests.get(url, headers=self.headers)
         if response.status_code == 200:
             return response.json().get("products", [])
-        logger.error(f"Error obteniendo productos: {response.text}")
+        logger.error(f"Error getting products: {response.text}")
         return []
 
     def get_orders_report(self, limit: int = 100) -> dict[str, Any]:
-        """Genera un reporte de ventas para análisis de rendimiento."""
+        """Generates a sales report for performance analysis."""
         url = f"{self.base_url}/orders.json?limit={limit}&status=any"
         response = requests.get(url, headers=self.headers)
         if response.status_code == 200:
@@ -53,17 +53,17 @@ class ShopifyEngine:
             }
         return {"total_orders": 0, "total_revenue_usd": 0.0, "orders": []}
 
-    # ── CREACIÓN Y OPTIMIZACIÓN DE PRODUCTOS ─────────────────────
+    # ── PRODUCT CREATION AND OPTIMIZATION ─────────────────────
 
     def create_optimized_product(self, product_data: dict[str, Any]) -> str | None:
         """
-        Crea un producto con listing completamente optimizado para SEO y conversión.
-        Incluye: título SEO, descripción HTML persuasiva, imágenes, variantes,
-        inventario, tags, metafields y datos estructurados.
+        Creates a product with a listing fully optimized for SEO and conversion.
+        Includes: SEO title, persuasive HTML description, images, variants,
+        inventory, tags, metafields, and structured data.
         """
         url = f"{self.base_url}/products.json"
 
-        # Construir variantes con control de inventario
+        # Build variants with inventory tracking
         variants = []
         for variant in product_data.get("variants", []):
             variants.append(
@@ -117,10 +117,10 @@ class ShopifyEngine:
             product = response.json().get("product", {})
             product_id = product.get("id")
             logger.info(
-                f"[ShopifyEngine] Producto creado: {product_data['title']} (ID: {product_id})"
+                f"[ShopifyEngine] Product created: {product_data['title']} (ID: {product_id})"
             )
 
-            # Añadir metafields SEO si se proporcionan
+            # Add SEO metafields if provided
             if product_data.get("seo_title") or product_data.get("seo_description"):
                 self.update_product_seo(
                     str(product_id),
@@ -129,11 +129,11 @@ class ShopifyEngine:
                 )
 
             return str(product_id)
-        logger.error(f"[ShopifyEngine] Error creando producto: {response.text}")
+        logger.error(f"[ShopifyEngine] Error creating product: {response.text}")
         return None
 
     def update_product_seo(self, product_id: str, seo_title: str, seo_description: str):
-        """Actualiza los metafields de SEO de un producto (título y descripción para Google)."""
+        """Updates a product's SEO metafields (title and description for Google)."""
         url = f"{self.base_url}/products/{product_id}.json"
         payload = {
             "product": {
@@ -144,12 +144,12 @@ class ShopifyEngine:
         }
         response = requests.put(url, json=payload, headers=self.headers)
         if response.status_code == 200:
-            logger.info(f"[ShopifyEngine] SEO actualizado para producto {product_id}")
+            logger.info(f"[ShopifyEngine] SEO updated for product {product_id}")
         else:
-            logger.warning(f"[ShopifyEngine] No se pudo actualizar SEO: {response.text}")
+            logger.warning(f"[ShopifyEngine] Could not update SEO: {response.text}")
 
     def add_product_images(self, product_id: str, image_urls: list[str]) -> list[str]:
-        """Añade imágenes a un producto existente con alt text optimizado."""
+        """Adds images to an existing product with optimized alt text."""
         added_ids = []
         for img_url in image_urls:
             url = f"{self.base_url}/products/{product_id}/images.json"
@@ -158,15 +158,15 @@ class ShopifyEngine:
             if response.status_code == 200:
                 img_id = response.json().get("image", {}).get("id")
                 added_ids.append(str(img_id))
-                logger.info(f"[ShopifyEngine] Imagen añadida al producto {product_id}")
+                logger.info(f"[ShopifyEngine] Image added to product {product_id}")
             else:
-                logger.warning(f"[ShopifyEngine] Error añadiendo imagen: {response.text}")
+                logger.warning(f"[ShopifyEngine] Error adding image: {response.text}")
         return added_ids
 
     def add_product_video(self, product_id: str, video_url: str, alt_text: str = "") -> bool:
         """
-        Añade un video a un producto via metafield (Shopify almacena videos como media).
-        Para videos en Shopify Plus se usa la GraphQL Media API.
+        Adds a video to a product via metafield (Shopify stores videos as media).
+        For videos on Shopify Plus, the GraphQL Media API is used.
         """
         url = f"{self.base_url}/products/{product_id}/metafields.json"
         payload = {
@@ -179,15 +179,15 @@ class ShopifyEngine:
         }
         response = requests.post(url, json=payload, headers=self.headers)
         if response.status_code == 200:
-            logger.info(f"[ShopifyEngine] Video URL guardado para producto {product_id}")
+            logger.info(f"[ShopifyEngine] Video URL saved for product {product_id}")
             return True
-        logger.warning(f"[ShopifyEngine] Error guardando video: {response.text}")
+        logger.warning(f"[ShopifyEngine] Error saving video: {response.text}")
         return False
 
-    # ── GESTIÓN DE INVENTARIO ─────────────────────────────────────
+    # ── INVENTORY MANAGEMENT ─────────────────────────────────────
 
     def update_inventory(self, inventory_item_id: str, location_id: str, quantity: int) -> bool:
-        """Actualiza el inventario de un producto en una ubicación específica."""
+        """Updates a product's inventory at a specific location."""
         url = f"{self.base_url}/inventory_levels/set.json"
         payload = {
             "location_id": location_id,
@@ -196,13 +196,13 @@ class ShopifyEngine:
         }
         response = requests.post(url, json=payload, headers=self.headers)
         if response.status_code == 200:
-            logger.info(f"[ShopifyEngine] Inventario actualizado: {quantity} unidades")
+            logger.info(f"[ShopifyEngine] Inventory updated: {quantity} units")
             return True
-        logger.error(f"[ShopifyEngine] Error actualizando inventario: {response.text}")
+        logger.error(f"[ShopifyEngine] Error updating inventory: {response.text}")
         return False
 
     def get_inventory_levels(self) -> list[dict[str, Any]]:
-        """Obtiene los niveles de inventario actuales de todos los productos."""
+        """Gets the current inventory levels for all products."""
         url = f"{self.base_url}/inventory_levels.json"
         response = requests.get(url, headers=self.headers)
         if response.status_code == 200:
@@ -210,17 +210,17 @@ class ShopifyEngine:
         return []
 
     def get_locations(self) -> list[dict[str, Any]]:
-        """Obtiene las ubicaciones de inventario de la tienda."""
+        """Gets the store's inventory locations."""
         url = f"{self.base_url}/locations.json"
         response = requests.get(url, headers=self.headers)
         if response.status_code == 200:
             return response.json().get("locations", [])
         return []
 
-    # ── COLECCIONES Y CATEGORÍAS ──────────────────────────────────
+    # ── COLLECTIONS AND CATEGORIES ──────────────────────────────────
 
     def create_collection(self, title: str, description: str, image_url: str = "") -> str | None:
-        """Crea una colección (categoría) en la tienda para organizar productos."""
+        """Creates a collection (category) in the store to organize products."""
         url = f"{self.base_url}/custom_collections.json"
         payload = {
             "custom_collection": {
@@ -235,24 +235,24 @@ class ShopifyEngine:
         response = requests.post(url, json=payload, headers=self.headers)
         if response.status_code == 201:
             collection_id = response.json().get("custom_collection", {}).get("id")
-            logger.info(f"[ShopifyEngine] Colección creada: {title} (ID: {collection_id})")
+            logger.info(f"[ShopifyEngine] Collection created: {title} (ID: {collection_id})")
             return str(collection_id)
-        logger.error(f"[ShopifyEngine] Error creando colección: {response.text}")
+        logger.error(f"[ShopifyEngine] Error creating collection: {response.text}")
         return None
 
     def add_product_to_collection(self, collection_id: str, product_id: str) -> bool:
-        """Añade un producto a una colección."""
+        """Adds a product to a collection."""
         url = f"{self.base_url}/collects.json"
         payload = {"collect": {"collection_id": collection_id, "product_id": product_id}}
         response = requests.post(url, json=payload, headers=self.headers)
         return response.status_code == 201
 
-    # ── PROMOCIONES Y DESCUENTOS ──────────────────────────────────
+    # ── PROMOTIONS AND DISCOUNTS ──────────────────────────────────
 
     def create_discount_code(
         self, title: str, code: str, percentage: float, usage_limit: int = 100
     ) -> str | None:
-        """Crea un código de descuento para promociones."""
+        """Creates a discount code for promotions."""
         url = f"{self.base_url}/price_rules.json"
         payload = {
             "price_rule": {
@@ -270,36 +270,36 @@ class ShopifyEngine:
         response = requests.post(url, json=payload, headers=self.headers)
         if response.status_code == 201:
             rule_id = response.json().get("price_rule", {}).get("id")
-            # Crear el código asociado a la regla
+            # Create the code associated with the rule
             code_url = f"{self.base_url}/price_rules/{rule_id}/discount_codes.json"
             code_payload = {"discount_code": {"code": code}}
             code_response = requests.post(code_url, json=code_payload, headers=self.headers)
             if code_response.status_code == 201:
-                logger.info(f"[ShopifyEngine] Código de descuento creado: {code} ({percentage}%)")
+                logger.info(f"[ShopifyEngine] Discount code created: {code} ({percentage}%)")
                 return str(rule_id)
-        logger.error(f"[ShopifyEngine] Error creando descuento: {response.text}")
+        logger.error(f"[ShopifyEngine] Error creating discount: {response.text}")
         return None
 
-    # ── TEMA Y STOREFRONT ─────────────────────────────────────────
+    # ── THEME AND STOREFRONT ─────────────────────────────────────────
 
     def update_storefront_theme(self, theme_id: str, assets: dict[str, str]):
-        """Actualiza el diseño de la tienda modificando los assets del tema."""
+        """Updates the store's design by modifying theme assets."""
         for asset_key, content in assets.items():
             url = f"{self.base_url}/themes/{theme_id}/assets.json"
             payload = {"asset": {"key": asset_key, "value": content}}
             requests.put(url, json=payload, headers=self.headers)
-            logger.info(f"[ShopifyEngine] Asset actualizado: {asset_key}")
+            logger.info(f"[ShopifyEngine] Asset updated: {asset_key}")
 
-    # ── OPERACIONES DESTRUCTIVAS (CON PRECAUCIÓN) ─────────────────
+    # ── DESTRUCTIVE OPERATIONS (USE WITH CAUTION) ─────────────────
 
     def delete_all_products(self):
         """
-        Elimina todos los productos de la tienda.
-        ADVERTENCIA: Acción irreversible. Solo ejecutar tras evaluación ética.
+        Deletes all products from the store.
+        WARNING: Irreversible action. Only run after ethical evaluation.
         """
         products = self.get_all_products()
         for product in products:
             delete_url = f"{self.base_url}/products/{product['id']}.json"
             requests.delete(delete_url, headers=self.headers)
-            logger.info(f"[ShopifyEngine] Producto eliminado: {product['title']}")
+            logger.info(f"[ShopifyEngine] Product deleted: {product['title']}")
         return len(products)

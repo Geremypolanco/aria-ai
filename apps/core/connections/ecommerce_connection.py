@@ -1,6 +1,6 @@
 """
-Ecommerce connection para ARIA AI.
-Soporta Amazon (Product Advertising API), Etsy (OAuth), WooCommerce (API key).
+Ecommerce connection for ARIA AI.
+Supports Amazon (Product Advertising API), Etsy (OAuth), WooCommerce (API key).
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ ETSY_REDIRECT = "https://aria-ai.fly.dev/oauth/callback/etsy"
 ETSY_SCOPES = "listings_r listings_w shops_r transactions_r"
 
 
-@register_connector("etsy", display_name="Etsy (tienda artesanal)")
+@register_connector("etsy", display_name="Etsy (artisan shop)")
 class EtsyConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
@@ -72,7 +72,7 @@ class EtsyConnection(BaseConnector):
     async def exchange_code(self, code: str, chat_id: str) -> dict | None:
         cid = self._client_id()
         if not cid:
-            raise ValueError("ETSY_CLIENT_ID no configurado")
+            raise ValueError("ETSY_CLIENT_ID not configured")
         verifier = self._pkce_verifiers.pop(chat_id, "")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
@@ -150,7 +150,7 @@ class EtsyConnection(BaseConnector):
 
 
 class WooCommerceConnection:
-    """WooCommerce usando Consumer Key + Secret (no OAuth web flow necesario)."""
+    """WooCommerce using Consumer Key + Secret (no OAuth web flow needed)."""
 
     def _creds(self) -> tuple[str, str, str]:
         from apps.core.config import settings
@@ -163,7 +163,7 @@ class WooCommerceConnection:
     async def list_products(self, per_page: int = 20, status: str = "publish") -> list[dict]:
         url, key, secret = self._creds()
         if not url or not key:
-            return [{"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY no configurados"}]
+            return [{"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY not configured"}]
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{url}/wp-json/wc/v3/products",
@@ -186,7 +186,7 @@ class WooCommerceConnection:
     async def list_orders(self, per_page: int = 20, status: str = "any") -> list[dict]:
         url, key, secret = self._creds()
         if not url or not key:
-            return [{"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY no configurados"}]
+            return [{"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY not configured"}]
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{url}/wp-json/wc/v3/orders",
@@ -209,7 +209,7 @@ class WooCommerceConnection:
     async def get_sales_report(self) -> dict:
         url, key, secret = self._creds()
         if not url or not key:
-            return {"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY no configurados"}
+            return {"error": "WOOCOMMERCE_URL / WOOCOMMERCE_CONSUMER_KEY not configured"}
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"{url}/wp-json/wc/v3/reports/sales",
@@ -224,7 +224,7 @@ class WooCommerceConnection:
 
 
 class AmazonConnection:
-    """Amazon Product Advertising API 5.0 — búsqueda de productos."""
+    """Amazon Product Advertising API 5.0 — product search."""
 
     ENDPOINT = "webservices.amazon.com"
     URI = "/paapi5/searchitems"
@@ -242,7 +242,7 @@ class AmazonConnection:
         if not key or not secret or not tag:
             return [
                 {
-                    "error": "AMAZON_ACCESS_KEY / AMAZON_SECRET_KEY / AMAZON_ASSOCIATE_TAG no configurados"
+                    "error": "AMAZON_ACCESS_KEY / AMAZON_SECRET_KEY / AMAZON_ASSOCIATE_TAG not configured"
                 }
             ]
         payload = {

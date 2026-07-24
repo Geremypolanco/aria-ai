@@ -1,6 +1,6 @@
 """
-Aria Universal Modules — Soporte multi-industria para Aria v3.0.0
-Integra capacidades de Diseño, Finanzas, Ciberseguridad y más.
+Aria Universal Modules — Multi-industry support for Aria v3.0.0
+Integrates Design, Finance, Cybersecurity, and more capabilities.
 """
 
 import logging
@@ -9,7 +9,7 @@ logger = logging.getLogger("aria.universal_modules")
 
 
 class UniversalAria:
-    """Sistema modular que expande las capacidades de Aria a todas las industrias."""
+    """Modular system that expands Aria's capabilities to all industries."""
 
     def __init__(self):
         self.modules = {
@@ -25,13 +25,13 @@ class UniversalAria:
 
 
 class DesignModule:
-    """Capacidades de Diseño Gráfico y Multimedia."""
+    """Graphic Design and Multimedia capabilities."""
 
     def __init__(self):
         self.capabilities = ["Image Processing", "Video Editing", "UI/UX Analysis", "Branding"]
 
     def analyze_design(self, image_url: str):
-        logger.info(f"Analizando diseño de: {image_url}")
+        logger.info(f"Analyzing design of: {image_url}")
         return {
             "balance": "excellent",
             "color_palette": "modern",
@@ -40,7 +40,7 @@ class DesignModule:
 
 
 class FinanceModule:
-    """Capacidades de Finanzas y Gestión de Activos."""
+    """Finance and Asset Management capabilities."""
 
     def __init__(self):
         self.capabilities = [
@@ -55,7 +55,7 @@ class FinanceModule:
 
 
 class CybersecurityModule:
-    """Capacidades de Ciberseguridad (Defensiva y Análisis)."""
+    """Cybersecurity capabilities (Defensive and Analysis)."""
 
     def __init__(self):
         self.capabilities = [
@@ -74,7 +74,7 @@ class CybersecurityModule:
 
 
 class BusinessModule:
-    """Capacidades de Business Development y Management."""
+    """Business Development and Management capabilities."""
 
     def __init__(self):
         self.capabilities = [
@@ -92,7 +92,7 @@ class BusinessModule:
 
 
 class SoftwareModule:
-    """Capacidades de Desarrollo de Software y DevOps."""
+    """Software Development and DevOps capabilities."""
 
     def __init__(self):
         self.capabilities = [

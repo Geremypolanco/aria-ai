@@ -1,15 +1,15 @@
 """
-workflow_manager.py — Orquestación de Procesos de Larga Duración para ARIA AI.
+workflow_manager.py — Long-Running Process Orchestration for ARIA AI.
 
-Integra Temporal, Prefect y Kestra para gestionar workflows tipo CEO:
-  - Procesos que duran días o semanas (campañas, lanzamientos)
-  - Persistencia de estado entre reinicios
-  - Reintentos automáticos y manejo de errores complejo
-  - Visibilidad completa del progreso de la organización
+Integrates Temporal, Prefect, and Kestra to manage CEO-style workflows:
+  - Processes that last days or weeks (campaigns, launches)
+  - State persistence across restarts
+  - Automatic retries and complex error handling
+  - Full visibility into the organization's progress
 
-ARIA ya no solo ejecuta tareas atómicas, ahora gestiona procesos de negocio completos.
+ARIA no longer just executes atomic tasks — it now manages complete business processes.
 
-Referencia:
+Reference:
   - Temporal: https://temporal.io/
   - Prefect: https://www.prefect.io/
   - Kestra: https://kestra.io/
@@ -22,32 +22,32 @@ from typing import Any
 
 logger = logging.getLogger("aria.workflow_manager")
 
-# ── Temporal Import con fallback ─────────────────────────────────────────────
+# ── Temporal Import with fallback ────────────────────────────────────────────
 try:
     from temporalio import workflow  # noqa: F401
     from temporalio.client import Client as TemporalClient
 
     TEMPORAL_AVAILABLE = True
-    logger.info("[Temporal] SDK cargado correctamente.")
+    logger.info("[Temporal] SDK loaded successfully.")
 except ImportError:
     TEMPORAL_AVAILABLE = False
-    logger.warning("[Temporal] temporalio no instalado.")
+    logger.warning("[Temporal] temporalio not installed.")
 
-# ── Prefect Import con fallback ──────────────────────────────────────────────
+# ── Prefect Import with fallback ─────────────────────────────────────────────
 try:
     from prefect import flow, task  # noqa: F401
 
     PREFECT_AVAILABLE = True
-    logger.info("[Prefect] SDK cargado correctamente.")
+    logger.info("[Prefect] SDK loaded successfully.")
 except ImportError:
     PREFECT_AVAILABLE = False
-    logger.warning("[Prefect] prefect no instalado.")
+    logger.warning("[Prefect] prefect not installed.")
 
 
 class AriaWorkflowManager:
     """
-    Gestor de Workflows de ARIA.
-    Permite definir y ejecutar procesos persistentes y resilientes.
+    ARIA's Workflow Manager.
+    Allows defining and running persistent, resilient processes.
     """
 
     def __init__(self, temporal_host: str = "localhost:7233") -> None:
@@ -55,32 +55,32 @@ class AriaWorkflowManager:
         self._temporal_client = None
 
     async def connect(self):
-        """Conecta con el servidor de Temporal."""
+        """Connects to the Temporal server."""
         if not TEMPORAL_AVAILABLE:
             return
         try:
             self._temporal_client = await TemporalClient.connect(self.temporal_host)
-            logger.info("[WorkflowManager] Conectado a Temporal en %s", self.temporal_host)
+            logger.info("[WorkflowManager] Connected to Temporal at %s", self.temporal_host)
         except Exception as exc:
-            logger.error("[WorkflowManager] Error conectando a Temporal: %s", exc)
+            logger.error("[WorkflowManager] Error connecting to Temporal: %s", exc)
 
     async def start_long_process(self, workflow_name: str, input_data: dict[str, Any]):
-        """Inicia un proceso de larga duración."""
+        """Starts a long-running process."""
         if self._temporal_client:
-            # Lógica para iniciar un workflow en Temporal
-            logger.info("[WorkflowManager] Iniciando workflow Temporal: %s", workflow_name)
+            # Logic to start a Temporal workflow
+            logger.info("[WorkflowManager] Starting Temporal workflow: %s", workflow_name)
             # await self._temporal_client.start_workflow(...)
-            return f"Workflow {workflow_name} iniciado en Temporal."
+            return f"Workflow {workflow_name} started on Temporal."
 
         if PREFECT_AVAILABLE:
-            # Fallback a Prefect si Temporal no está disponible
-            logger.info("[WorkflowManager] Iniciando flow en Prefect: %s", workflow_name)
-            return f"Flow {workflow_name} iniciado en Prefect."
+            # Fallback to Prefect if Temporal isn't available
+            logger.info("[WorkflowManager] Starting Prefect flow: %s", workflow_name)
+            return f"Flow {workflow_name} started on Prefect."
 
-        return "No hay orquestador de workflows disponible (Temporal/Prefect)."
+        return "No workflow orchestrator available (Temporal/Prefect)."
 
     def define_ceo_process(self, name: str):
-        """Decorador para definir un proceso de alto nivel."""
+        """Decorator for defining a high-level process."""
         if PREFECT_AVAILABLE:
             return flow(name=name)
         return lambda x: x
@@ -91,7 +91,7 @@ _workflow_manager_instance: AriaWorkflowManager | None = None
 
 
 def get_workflow_manager() -> AriaWorkflowManager:
-    """Retorna el singleton del gestor de workflows."""
+    """Returns the singleton of the workflow manager."""
     global _workflow_manager_instance
     if _workflow_manager_instance is None:
         _workflow_manager_instance = AriaWorkflowManager()

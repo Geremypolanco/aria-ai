@@ -1,6 +1,6 @@
 """
-Media connection para ARIA AI.
-Soporta Spotify (OAuth), YouTube (Google OAuth), TikTok (OAuth), Twitch (OAuth).
+Media connection for ARIA AI.
+Supports Spotify (OAuth), YouTube (Google OAuth), TikTok (OAuth), Twitch (OAuth).
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ TWITCH_SCOPES = (
 )
 
 
-@register_connector("spotify", display_name="Spotify (música, playlists)")
+@register_connector("spotify", display_name="Spotify (music, playlists)")
 class SpotifyConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
@@ -76,7 +76,7 @@ class SpotifyConnection(BaseConnector):
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
-            raise ValueError("SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET no configurados")
+            raise ValueError("SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET not configured")
         import base64
 
         creds = base64.b64encode(f"{cid}:{sec}".encode()).decode()
@@ -168,7 +168,7 @@ class SpotifyConnection(BaseConnector):
             return r.json()
 
 
-@register_connector("youtube", display_name="YouTube (videos, canal)")
+@register_connector("youtube", display_name="YouTube (videos, channel)")
 class YouTubeConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
@@ -199,7 +199,7 @@ class YouTubeConnection(BaseConnector):
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
-            raise ValueError("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET no configurados")
+            raise ValueError("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 YOUTUBE_TOKEN_URL,
@@ -292,7 +292,7 @@ class YouTubeConnection(BaseConnector):
             ]
 
 
-@register_connector("tiktok", display_name="TikTok (videos, cuenta)")
+@register_connector("tiktok", display_name="TikTok (videos, account)")
 class TikTokConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
@@ -325,7 +325,7 @@ class TikTokConnection(BaseConnector):
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
-            raise ValueError("TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET no configurados")
+            raise ValueError("TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 TIKTOK_TOKEN_URL,
@@ -384,7 +384,7 @@ class TikTokConnection(BaseConnector):
             return r.json().get("data", {}).get("videos", [])
 
 
-@register_connector("twitch", display_name="Twitch (streams, canal)")
+@register_connector("twitch", display_name="Twitch (streams, channel)")
 class TwitchConnection(BaseConnector):
 
     def _client_id(self) -> str | None:
@@ -414,7 +414,7 @@ class TwitchConnection(BaseConnector):
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
-            raise ValueError("TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET no configurados")
+            raise ValueError("TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 TWITCH_TOKEN_URL,

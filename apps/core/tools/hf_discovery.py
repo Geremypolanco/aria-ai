@@ -447,15 +447,15 @@ class HFDiscovery:
             return {"success": False, "model_used": model, "error": f"HTTP {res.status_code}"}
 
         except Exception as exc:
-            logger.error("[HFDiscovery] Error con %s: %s", model, exc)
+            logger.error("[HFDiscovery] Error with %s: %s", model, exc)
             return {"success": False, "model_used": model, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # MÉTODOS DE ALTO NIVEL (ARIA los usa directamente)
+    # HIGH-LEVEL METHODS (ARIA uses these directly)
     # ══════════════════════════════════════════════════════════════
 
     async def summarize(self, text: str, max_length: int = 200) -> dict[str, Any]:
-        """Resume texto largo. Ideal para artículos, informes."""
+        """Summarizes long text. Ideal for articles, reports."""
         result = await self.discover_and_run(
             "summarization",
             {"inputs": text[:2000], "parameters": {"max_length": max_length, "min_length": 40}},
@@ -467,11 +467,11 @@ class HFDiscovery:
     async def translate(
         self, text: str, source_lang: str = "en", target_lang: str = "es"
     ) -> dict[str, Any]:
-        """Traduce texto. Soporta 100+ pares de idiomas via Helsinki-NLP."""
+        """Translates text. Supports 100+ language pairs via Helsinki-NLP."""
         model_key = f"Helsinki-NLP/opus-mt-{source_lang}-{target_lang}"
         result = await self._run_model(model_key, {"inputs": text})
         if not result["success"]:
-            # Fallback: buscar modelo de traducción alternativo
+            # Fallback: look up an alternative translation model
             result = await self.discover_and_run(
                 "translation",
                 {"inputs": text},
@@ -481,7 +481,7 @@ class HFDiscovery:
         return result
 
     async def analyze_sentiment(self, text: str) -> dict[str, Any]:
-        """Analiza el sentimiento de un texto. Útil para monitorear menciones."""
+        """Analyzes the sentiment of a text. Useful for monitoring mentions."""
         result = await self.discover_and_run(
             "sentiment-analysis",
             {"inputs": text[:512]},
@@ -498,8 +498,8 @@ class HFDiscovery:
 
     async def classify_text(self, text: str, labels: list[str]) -> dict[str, Any]:
         """
-        Clasifica texto en categorías personalizadas sin entrenamiento previo.
-        Útil para categorizar contenido, leads, oportunidades.
+        Classifies text into custom categories with no prior training.
+        Useful for categorizing content, leads, opportunities.
         """
         result = await self.discover_and_run(
             "zero-shot-classification",
@@ -518,8 +518,8 @@ class HFDiscovery:
 
     async def extract_entities(self, text: str) -> dict[str, Any]:
         """
-        Extrae personas, organizaciones, lugares de un texto.
-        Útil para análisis de mercado, leads, competidores.
+        Extracts people, organizations, and places from a text.
+        Useful for market analysis, leads, competitors.
         """
         result = await self.discover_and_run(
             "named-entity-recognition",
@@ -539,7 +539,7 @@ class HFDiscovery:
         return result
 
     async def transcribe_audio(self, audio_bytes: bytes) -> dict[str, Any]:
-        """Transcribe audio a texto usando Whisper."""
+        """Transcribes audio to text using Whisper."""
         result = await self.discover_and_run(
             "automatic-speech-recognition",
             audio_bytes,
@@ -550,7 +550,7 @@ class HFDiscovery:
         return result
 
     async def generate_image(self, prompt: str) -> dict[str, Any]:
-        """Genera imagen a partir de texto usando FLUX o SDXL."""
+        """Generates an image from text using FLUX or SDXL."""
         result = await self.discover_and_run(
             "image-generation",
             {"inputs": prompt},
@@ -562,7 +562,7 @@ class HFDiscovery:
         return result
 
     async def describe_image(self, image_bytes: bytes) -> dict[str, Any]:
-        """Genera descripción textual de una imagen (BLIP-2)."""
+        """Generates a text description of an image (BLIP-2)."""
         result = await self.discover_and_run(
             "image-to-text",
             image_bytes,
@@ -573,7 +573,7 @@ class HFDiscovery:
         return result
 
     async def detect_language(self, text: str) -> dict[str, Any]:
-        """Detecta el idioma de un texto."""
+        """Detects the language of a text."""
         result = await self.discover_and_run(
             "language-detection",
             {"inputs": text[:200]},
@@ -591,8 +591,8 @@ class HFDiscovery:
 
     async def get_embeddings(self, texts: list[str]) -> dict[str, Any]:
         """
-        Genera embeddings de texto para búsqueda semántica, similitud.
-        Útil para comparar contenido, detectar duplicados, recomendar.
+        Generates text embeddings for semantic search, similarity.
+        Useful for comparing content, detecting duplicates, recommending.
         """
         result = await self.discover_and_run(
             "feature-extraction",
@@ -601,7 +601,7 @@ class HFDiscovery:
         return result
 
     async def answer_question(self, question: str, context: str) -> dict[str, Any]:
-        """Responde una pregunta dado un contexto de texto."""
+        """Answers a question given a text context."""
         result = await self.discover_and_run(
             "question-answering",
             {"inputs": {"question": question[:200], "context": context[:1000]}},
@@ -612,7 +612,7 @@ class HFDiscovery:
         return result
 
     async def generate_speech(self, text: str) -> dict[str, Any]:
-        """Convierte texto a voz (Bark/MMS)."""
+        """Converts text to speech (Bark/MMS)."""
         result = await self.discover_and_run(
             "text-to-speech",
             {"inputs": text[:500]},
@@ -623,7 +623,7 @@ class HFDiscovery:
         return result
 
     async def detect_objects(self, image_bytes: bytes) -> dict[str, Any]:
-        """Detecta objetos en una imagen (DETR, YOLO)."""
+        """Detects objects in an image (DETR, YOLO)."""
         result = await self.discover_and_run(
             "object-detection",
             image_bytes,
@@ -641,20 +641,20 @@ class HFDiscovery:
         return result
 
     # ══════════════════════════════════════════════════════════════
-    # DISCOVERY INTELIGENTE — ARIA busca herramientas nuevas
+    # SMART DISCOVERY — ARIA looks up new tools
     # ══════════════════════════════════════════════════════════════
 
     async def find_tool_for_capability(self, capability_description: str) -> dict[str, Any]:
         """
-        ARIA describe qué necesita hacer en lenguaje natural.
-        Este método encuentra el modelo más apropiado en HF Hub.
+        ARIA describes what it needs to do in natural language.
+        This method finds the most appropriate model on the HF Hub.
 
-        Ejemplo:
-            "quiero detectar spam en emails"
-            "necesito traducir chino a inglés"
-            "quiero analizar si una imagen tiene texto"
+        Example:
+            "I want to detect spam in emails"
+            "I need to translate Chinese to English"
+            "I want to check whether an image contains text"
         """
-        # Mapeo de keywords a tareas HF
+        # Keyword-to-HF-task mapping (bilingual — matches user input in Spanish or English, do not translate the keyword strings below)
         keyword_task_map = [
             (["traduc", "translat"], "translation"),
             (["resume", "summar", "resumen"], "summarization"),
@@ -686,14 +686,14 @@ class HFDiscovery:
                 break
 
         if not matched_task:
-            # Búsqueda genérica en Hub por keyword
+            # Generic Hub search by keyword
             search_result = await self.search_models_by_keyword(capability_description, limit=5)
             return {
                 "success": search_result.get("success", False),
                 "capability": capability_description,
                 "recommended_task": "unknown",
                 "models_found": search_result.get("models", []),
-                "note": "No encontré tarea exacta. Busqué por keyword en HF Hub.",
+                "note": "Couldn't find an exact task match. Searched by keyword on the HF Hub instead.",
             }
 
         models_result = await self.search_models_for_task(matched_task, limit=5)
@@ -708,14 +708,14 @@ class HFDiscovery:
 
     async def capability_report(self) -> dict[str, Any]:
         """
-        Reporta qué puede hacer ARIA con HuggingFace ahora mismo.
-        ARIA usa esto para saber qué herramientas tiene disponibles.
+        Reports what ARIA can do with HuggingFace right now.
+        ARIA uses this to know which tools it has available.
         """
         if not self._available():
             return {
                 "available": False,
-                "error": "HF_TOKEN no configurado",
-                "how_to_fix": "Obtén token gratis en huggingface.co → Settings → Access Tokens",
+                "error": "HF_TOKEN not configured",
+                "how_to_fix": "Get a free token at huggingface.co → Settings → Access Tokens",
             }
 
         all_tasks = list(PREFERRED_MODELS.keys())
@@ -729,7 +729,7 @@ class HFDiscovery:
             "cached_models": dict(self._model_cache.items()),
             "cached_count": len(cached),
             "categories": {
-                "texto": [
+                "text": [
                     "summarization",
                     "translation",
                     "sentiment-analysis",
@@ -739,7 +739,7 @@ class HFDiscovery:
                     "fill-mask",
                     "language-detection",
                 ],
-                "imagen": [
+                "image": [
                     "image-generation",
                     "image-to-text",
                     "object-detection",
@@ -749,14 +749,14 @@ class HFDiscovery:
                 ],
                 "audio": ["automatic-speech-recognition", "text-to-speech", "audio-classification"],
                 "embeddings": ["feature-extraction"],
-                "codigo": ["text-generation"],
-                "sectores_economia_circular": [
-                    "finanzas",
+                "code": ["text-generation"],
+                "specialized_sectors": [
+                    "finance",
                     "legal",
-                    "logística",
-                    "manufactura",
-                    "agricultura",
-                    "bioquímica",
+                    "logistics",
+                    "manufacturing",
+                    "agriculture",
+                    "biochemistry",
                 ],
             },
         }

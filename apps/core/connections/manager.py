@@ -1,8 +1,8 @@
 """
-ConnectionManager — gestión central de conexiones OAuth para ARIA AI.
+ConnectionManager — central management of OAuth connections for ARIA AI.
 
-Equivalente al sistema MCP de Claude: cada servicio es una conexión que
-expone herramientas. Los tokens se guardan en Redis por chat_id.
+Equivalent to Claude's MCP system: each service is a connection that
+exposes tools. Tokens are stored in Redis per chat_id.
 """
 
 from __future__ import annotations
@@ -16,79 +16,79 @@ logger = logging.getLogger("aria.connections")
 
 class ConnectionManager:
     """
-    Gestiona conexiones OAuth a servicios externos.
-    Cada conexión: {access_token, refresh_token, expires_at, scope, service_user}
+    Manages OAuth connections to external services.
+    Each connection: {access_token, refresh_token, expires_at, scope, service_user}
     """
 
-    K_CONN = "aria:conn:{chat_id}:{service}"  # Redis key por usuario y servicio
-    TTL = 86400 * 90  # 90 días
+    K_CONN = "aria:conn:{chat_id}:{service}"  # Redis key per user and service
+    TTL = 86400 * 90  # 90 days
 
     AVAILABLE: dict[str, str] = {
-        # Productividad / comunicación
+        # Productivity / communication
         "google": "Google (Gmail, Calendar, Drive)",
-        "slack": "Slack (mensajes, canales)",
+        "slack": "Slack (messages, channels)",
         "microsoft": "Microsoft (Outlook, Teams, OneDrive)",
-        "zoom": "Zoom (meetings, grabaciones)",
+        "zoom": "Zoom (meetings, recordings)",
         "discord": "Discord (webhooks)",
-        "notion": "Notion (páginas, bases de datos)",
-        "airtable": "Airtable (bases, registros)",
-        # Búsqueda / empleo
-        "indeed": "Indeed (búsqueda de empleo)",
-        # CRM / ventas
-        "hubspot": "HubSpot (contactos, deals, pipelines)",
+        "notion": "Notion (pages, databases)",
+        "airtable": "Airtable (bases, records)",
+        # Search / jobs
+        "indeed": "Indeed (job search)",
+        # CRM / sales
+        "hubspot": "HubSpot (contacts, deals, pipelines)",
         "salesforce": "Salesforce (CRM enterprise)",
-        # Almacenamiento
-        "dropbox": "Dropbox (archivos, carpetas)",
-        "box": "Box (almacenamiento empresarial)",
-        # Finanzas
-        "quickbooks": "QuickBooks (facturas, contabilidad)",
-        # Agenda / scheduling
-        "calendly": "Calendly (agenda, reuniones)",
-        "calcom": "Cal.com (scheduling open-source)",
-        # Diseño
-        "figma": "Figma (diseño UI/UX, prototipos)",
-        "canva": "Canva (diseño gráfico)",
+        # Storage
+        "dropbox": "Dropbox (files, folders)",
+        "box": "Box (enterprise storage)",
+        # Finance
+        "quickbooks": "QuickBooks (invoices, accounting)",
+        # Scheduling
+        "calendly": "Calendly (scheduling, meetings)",
+        "calcom": "Cal.com (open-source scheduling)",
+        # Design
+        "figma": "Figma (UI/UX design, prototypes)",
+        "canva": "Canva (graphic design)",
         # E-commerce
-        "etsy": "Etsy (tienda artesanal)",
-        "woocommerce": "WooCommerce (tienda WordPress)",
+        "etsy": "Etsy (artisan shop)",
+        "woocommerce": "WooCommerce (WordPress store)",
         "amazon": "Amazon (Product Advertising)",
         # Analytics
         "google_analytics": "Google Analytics 4",
         "mixpanel": "Mixpanel (product analytics)",
         "amplitude": "Amplitude (analytics)",
-        "datadog": "DataDog (infraestructura, logs)",
+        "datadog": "DataDog (infrastructure, logs)",
         # Email marketing
         "klaviyo": "Klaviyo (email, SMS marketing)",
         "activecampaign": "ActiveCampaign (email automation)",
         "convertkit": "ConvertKit/Kit (newsletter)",
-        "brevo": "Brevo / Sendinblue (email transaccional)",
-        "postmark": "Postmark (email transaccional)",
+        "brevo": "Brevo / Sendinblue (transactional email)",
+        "postmark": "Postmark (transactional email)",
         # DevOps
         "netlify": "Netlify (deploy, sites)",
         "cloudflare": "Cloudflare (DNS, CDN, analytics)",
         "firebase": "Firebase / Firestore",
-        "aws_s3": "AWS S3 (almacenamiento)",
+        "aws_s3": "AWS S3 (storage)",
         # CMS
-        "wordpress": "WordPress (posts, páginas)",
+        "wordpress": "WordPress (posts, pages)",
         "webflow": "Webflow (sites, collections)",
         "contentful": "Contentful (headless CMS)",
         "sanity": "Sanity (structured content)",
         # Media
-        "spotify": "Spotify (música, playlists)",
-        "youtube": "YouTube (videos, canal)",
-        "tiktok": "TikTok (videos, cuenta)",
-        "twitch": "Twitch (streams, canal)",
-        # Gestión de proyectos
-        "asana": "Asana (tareas, proyectos)",
-        "trello": "Trello (tableros, tarjetas)",
+        "spotify": "Spotify (music, playlists)",
+        "youtube": "YouTube (videos, channel)",
+        "tiktok": "TikTok (videos, account)",
+        "twitch": "Twitch (streams, channel)",
+        # Project management
+        "asana": "Asana (tasks, projects)",
+        "trello": "Trello (boards, cards)",
         "linear": "Linear (issues, sprints)",
         "jira": "Jira (tickets, sprints)",
-        "monday": "Monday.com (proyectos)",
+        "monday": "Monday.com (projects)",
     }
 
-    # Servicios que no requieren OAuth (usan API key/webhook directamente)
-    # "quickbooks" removido: QuickBooksConnection implementa OAuth2 real
-    # (get_auth_url/exchange_code), registrado en ConnectorFactory.
+    # Services that don't require OAuth (use API key/webhook directly)
+    # "quickbooks" removed: QuickBooksConnection implements real OAuth2
+    # (get_auth_url/exchange_code), registered in ConnectorFactory.
     NO_OAUTH = {
         "indeed",
         "discord",
@@ -131,7 +131,7 @@ class ConnectionManager:
             key = self.K_CONN.format(chat_id=chat_id, service=service)
             blob = token_crypto.encrypt(json.dumps(tokens))
             await cache.set(key, blob, ttl_seconds=self.TTL)
-            logger.info("[Connections] %s conectado para chat %s", service, chat_id)
+            logger.info("[Connections] %s connected for chat %s", service, chat_id)
 
     async def get(self, chat_id: str, service: str) -> dict | None:
         cache = self._cache()
@@ -156,7 +156,7 @@ class ConnectionManager:
         if cache:
             key = self.K_CONN.format(chat_id=chat_id, service=service)
             await cache.delete(key)
-            logger.info("[Connections] %s desconectado para chat %s", service, chat_id)
+            logger.info("[Connections] %s disconnected for chat %s", service, chat_id)
 
     async def is_connected(self, chat_id: str, service: str) -> bool:
         if service in self.NO_OAUTH:
@@ -208,7 +208,7 @@ class ConnectionManager:
         return connected
 
     def get_auth_url(self, service: str, chat_id: str) -> str | None:
-        """Genera URL de autenticación OAuth para el servicio.
+        """Generates the OAuth authentication URL for the service.
 
         Dispatched entirely through ConnectorFactory — adding connector #23
         (or #300) never touches this method. See apps/core/connections/base.py
@@ -221,7 +221,7 @@ class ConnectionManager:
         """Exchange authorization code for tokens and store them."""
         connector = ConnectorFactory.create(service)
         if not connector:
-            logger.warning("[Connections] Servicio desconocido: %s", service)
+            logger.warning("[Connections] Unknown service: %s", service)
             return False
         try:
             tokens = await connector.exchange_code(code, chat_id)

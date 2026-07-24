@@ -1,14 +1,14 @@
 """
-self_improvement.py — Sistemas de Auto-Mejora para ARIA AI.
+self_improvement.py — Self-Improvement Systems for ARIA AI.
 
-Implementa los patrones Self-Refine y Reflexion:
-  - Aria genera una respuesta o estrategia.
-  - Aria critica su propia generación buscando fallos o mejoras.
-  - Aria refina el resultado basándose en la crítica.
+Implements the Self-Refine and Reflexion patterns:
+  - Aria generates a response or strategy.
+  - Aria critiques its own output looking for flaws or improvements.
+  - Aria refines the result based on the critique.
 
-Este ciclo permite que ARIA aprenda de sus propios errores en tiempo real.
+This cycle allows ARIA to learn from its own mistakes in real time.
 
-Referencia:
+Reference:
   - Self-Refine: https://arxiv.org/abs/2303.17651
   - Reflexion: https://arxiv.org/abs/2303.11366
 """
@@ -23,8 +23,8 @@ logger = logging.getLogger("aria.self_improvement")
 
 class AriaSelfImprovement:
     """
-    Motor de Auto-Mejora de ARIA.
-    Implementa bucles de retroalimentación interna para agentes.
+    ARIA's Self-Improvement Engine.
+    Implements internal feedback loops for agents.
     """
 
     def __init__(self, ai_client: Any = None) -> None:
@@ -34,39 +34,39 @@ class AriaSelfImprovement:
         self, initial_output: str, critique_prompt: str, refine_prompt: str, iterations: int = 1
     ) -> str:
         """
-        Aplica el patrón Self-Refine.
+        Applies the Self-Refine pattern.
 
         Args:
-            initial_output: La primera versión de la tarea.
-            critique_prompt: Instrucciones para que la IA se critique a sí misma.
-            refine_prompt: Instrucciones para que la IA mejore el resultado.
+            initial_output: The first version of the task.
+            critique_prompt: Instructions for the AI to critique itself.
+            refine_prompt: Instructions for the AI to improve the result.
         """
         current_output = initial_output
 
         for i in range(iterations):
-            logger.info("[SelfImprovement] Iniciando iteración de refinamiento %d", i + 1)
+            logger.info("[SelfImprovement] Starting refinement iteration %d", i + 1)
 
-            # 1. Criticar
-            # critique = await self.ai_client.generate(f"{critique_prompt}\n\nContenido: {current_output}")
+            # 1. Critique
+            # critique = await self.ai_client.generate(f"{critique_prompt}\n\nContent: {current_output}")
 
-            # 2. Refinar
-            # current_output = await self.ai_client.generate(f"{refine_prompt}\n\nCrítica: {critique}\n\nOriginal: {current_output}")
+            # 2. Refine
+            # current_output = await self.ai_client.generate(f"{refine_prompt}\n\nCritique: {critique}\n\nOriginal: {current_output}")
             current_output = (
-                f"{current_output}\n\n[Refinado v{i+1}] Mejora aplicada basada en la crítica."
+                f"{current_output}\n\n[Refined v{i+1}] Improvement applied based on critique."
             )
 
         return current_output
 
     async def reflexion_loop(self, task: str, action: str, result: str) -> str:
         """
-        Aplica el patrón Reflexion basado en el resultado de una acción.
+        Applies the Reflexion pattern based on the outcome of an action.
         """
-        logger.info("[SelfImprovement] Iniciando bucle de Reflexion para la tarea: %s", task)
+        logger.info("[SelfImprovement] Starting Reflexion loop for task: %s", task)
 
-        # Analizar por qué falló o cómo mejorar
-        # reflection = await self.ai_client.generate(f"Tarea: {task}\nAcción: {action}\nResultado: {result}\nReflexiona sobre cómo hacerlo mejor.")
+        # Analyze why it failed or how to improve
+        # reflection = await self.ai_client.generate(f"Task: {task}\nAction: {action}\nResult: {result}\nReflect on how to do it better.")
         reflection = (
-            "Simulación de reflexión: Debería haber verificado los selectores CSS antes de navegar."
+            "Reflection simulation: Should have verified the CSS selectors before navigating."
         )
 
         return reflection
@@ -77,7 +77,7 @@ _self_improvement_instance: AriaSelfImprovement | None = None
 
 
 def get_self_improvement() -> AriaSelfImprovement:
-    """Retorna el singleton del motor de auto-mejora."""
+    """Returns the self-improvement engine singleton."""
     global _self_improvement_instance
     if _self_improvement_instance is None:
         _self_improvement_instance = AriaSelfImprovement()

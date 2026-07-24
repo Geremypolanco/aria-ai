@@ -23,7 +23,7 @@ pytestmark = pytest.mark.asyncio
 async def test_infra_tools_rejected_for_non_owner(tool):
     agent = AriaAgent(is_owner=False)
     result = await agent._execute_tool(tool, {})
-    assert "reservada al dueño" in result["error"]
+    assert "reserved for ARIA's owner" in result["error"]
 
 
 async def test_infra_tool_lookup_allowed_for_owner_but_not_dispatchable_yet():
@@ -33,4 +33,4 @@ async def test_infra_tool_lookup_allowed_for_owner_but_not_dispatchable_yet():
     tool actually works end-to-end (that's a separate, non-security gap)."""
     agent = AriaAgent(is_owner=True)
     result = await agent._execute_tool("infra", {})
-    assert "reservada al dueño" not in str(result)
+    assert "reserved for ARIA's owner" not in str(result)

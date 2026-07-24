@@ -1,11 +1,11 @@
 """
-Google OAuth connection para ARIA AI.
+Google OAuth connection for ARIA AI.
 Scopes: Gmail (read+send), Calendar (read+write), Drive (read).
 
-Requiere en Fly.io secrets:
-  GOOGLE_CLIENT_ID     → desde console.cloud.google.com → Credentials → OAuth 2.0
-  GOOGLE_CLIENT_SECRET → mismo lugar
-  (GOOGLE_API_KEY ya existe — esto es DIFERENTE, es OAuth para cuentas de usuario)
+Requires in Fly.io secrets:
+  GOOGLE_CLIENT_ID     → from console.cloud.google.com → Credentials → OAuth 2.0
+  GOOGLE_CLIENT_SECRET → same place
+  (GOOGLE_API_KEY already exists — this is DIFFERENT, it's OAuth for user accounts)
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ class GoogleConnection(BaseConnector):
         cid = self._client_id()
         sec = self._client_secret()
         if not cid or not sec:
-            raise ValueError("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET no configurados")
+            raise ValueError("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not configured")
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
                 TOKEN_URL,
@@ -126,7 +126,7 @@ class GoogleConnection(BaseConnector):
     # ── GMAIL ──────────────────────────────────────────────────────────────
 
     async def gmail_list(self, tokens: dict, max_results: int = 10, query: str = "") -> list[dict]:
-        """Lista mensajes recientes de Gmail."""
+        """Lists recent Gmail messages."""
         async with httpx.AsyncClient(timeout=15.0) as http:
             params = {"maxResults": max_results, "q": query or "is:unread"}
             r = await http.get(
@@ -152,7 +152,7 @@ class GoogleConnection(BaseConnector):
                     results.append(
                         {
                             "id": m["id"],
-                            "subject": headers.get("Subject", "(sin asunto)"),
+                            "subject": headers.get("Subject", "(no subject)"),
                             "from": headers.get("From", ""),
                             "date": headers.get("Date", ""),
                             "snippet": d.get("snippet", ""),
@@ -161,7 +161,7 @@ class GoogleConnection(BaseConnector):
             return results
 
     async def gmail_send(self, tokens: dict, to: str, subject: str, body: str) -> dict:
-        """Envía un email via Gmail."""
+        """Sends an email via Gmail."""
         msg = MIMEText(body, "plain", "utf-8")
         msg["to"] = to
         msg["subject"] = subject
@@ -176,7 +176,7 @@ class GoogleConnection(BaseConnector):
             return {"success": True, "message_id": r.json().get("id")}
 
     async def gmail_read(self, tokens: dict, message_id: str) -> dict:
-        """Lee el cuerpo completo de un email."""
+        """Reads the full body of an email."""
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
@@ -210,7 +210,7 @@ class GoogleConnection(BaseConnector):
     # ── CALENDAR ──────────────────────────────────────────────────────────
 
     async def calendar_list(self, tokens: dict, max_results: int = 10) -> list[dict]:
-        """Lista próximos eventos del calendario."""
+        """Lists upcoming calendar events."""
         from datetime import datetime
 
         now = datetime.now(UTC).isoformat()
@@ -231,7 +231,7 @@ class GoogleConnection(BaseConnector):
             return [
                 {
                     "id": e.get("id"),
-                    "title": e.get("summary", "(sin título)"),
+                    "title": e.get("summary", "(no title)"),
                     "start": e.get("start", {}).get("dateTime") or e.get("start", {}).get("date"),
                     "end": e.get("end", {}).get("dateTime") or e.get("end", {}).get("date"),
                     "description": e.get("description", "")[:200],
@@ -249,7 +249,7 @@ class GoogleConnection(BaseConnector):
         description: str = "",
         location: str = "",
     ) -> dict:
-        """Crea un evento en Google Calendar."""
+        """Creates an event in Google Calendar."""
         event = {
             "summary": title,
             "description": description,
@@ -270,7 +270,7 @@ class GoogleConnection(BaseConnector):
     # ── DRIVE ─────────────────────────────────────────────────────────────
 
     async def drive_search(self, tokens: dict, query: str, max_results: int = 10) -> list[dict]:
-        """Busca archivos en Google Drive."""
+        """Searches for files in Google Drive."""
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.get(
                 "https://www.googleapis.com/drive/v3/files",

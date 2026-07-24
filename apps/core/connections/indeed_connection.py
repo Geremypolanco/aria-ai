@@ -1,7 +1,7 @@
 """
-Indeed connection para ARIA AI.
-Búsqueda de empleo via SerpAPI (usa el SERP_API_KEY existente — sin OAuth).
-También soporta búsqueda directa via Indeed RSS cuando SerpAPI no está disponible.
+Indeed connection for ARIA AI.
+Job search via SerpAPI (uses the existing SERP_API_KEY — no OAuth).
+Also supports direct search via Indeed RSS when SerpAPI is unavailable.
 """
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ logger = logging.getLogger("aria.connections.indeed")
 
 class IndeedConnection:
     """
-    Búsqueda de empleos en Indeed. No requiere OAuth de Indeed.
-    Usa SerpAPI (existing SERP_API_KEY) como motor de búsqueda.
-    Fallback: RSS público de Indeed.
+    Job search on Indeed. Does not require Indeed OAuth.
+    Uses SerpAPI (existing SERP_API_KEY) as the search engine.
+    Fallback: Indeed's public RSS.
     """
 
     SERP_URL = "https://serpapi.com/search"
@@ -37,7 +37,7 @@ class IndeedConnection:
         employment_type: str = "",
     ) -> list[dict]:
         """
-        Busca empleos en Indeed.
+        Searches for jobs on Indeed.
         Args:
           query: "software engineer Python"
           location: "New York" | "Remote" | "Miami, FL"
@@ -119,7 +119,7 @@ class IndeedConnection:
                 return []
 
     async def get_job_details(self, job_url: str) -> dict:
-        """Obtiene detalles completos de un job via scraping básico."""
+        """Gets full job details via basic scraping."""
         try:
             async with httpx.AsyncClient(
                 timeout=20.0, headers={"User-Agent": "Mozilla/5.0"}
@@ -145,4 +145,4 @@ class IndeedConnection:
                     }
         except Exception as exc:
             logger.warning("[Indeed] get_job_details error: %s", exc)
-        return {"url": job_url, "description": "No disponible", "source": "indeed"}
+        return {"url": job_url, "description": "Not available", "source": "indeed"}

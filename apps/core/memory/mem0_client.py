@@ -1,13 +1,13 @@
 """
-mem0_client.py — Memoria Inteligente y Adaptativa para ARIA AI.
+mem0_client.py — Intelligent, Adaptive Memory for ARIA AI.
 
-Integra Mem0 para que ARIA pueda:
-  - Recordar preferencias de usuario de forma persistente
-  - Aprender de cada interacción pasada
-  - Personalizar respuestas basadas en el historial histórico
-  - Gestionar una memoria a largo plazo que evoluciona con el usuario
+Integrates Mem0 so that ARIA can:
+  - Persistently remember user preferences
+  - Learn from every past interaction
+  - Personalize responses based on historical context
+  - Manage a long-term memory that evolves with the user
 
-Referencia: https://github.com/mem0ai/mem0
+Reference: https://github.com/mem0ai/mem0
 """
 
 from __future__ import annotations
@@ -17,21 +17,21 @@ from typing import Any
 
 logger = logging.getLogger("aria.mem0")
 
-# ── Mem0 Import con fallback ─────────────────────────────────────────────────
+# ── Mem0 import with fallback ────────────────────────────────────────────────
 try:
     from mem0 import Memory
 
     MEM0_AVAILABLE = True
-    logger.info("[Mem0] Librería cargada correctamente.")
+    logger.info("[Mem0] Library loaded successfully.")
 except ImportError:
     MEM0_AVAILABLE = False
-    logger.warning("[Mem0] mem0 no instalado. Usando fallback.")
+    logger.warning("[Mem0] mem0 not installed. Using fallback.")
 
 
 class AriaMem0Client:
     """
-    Cliente de Memoria Mem0 para ARIA.
-    Permite el aprendizaje continuo sobre el usuario.
+    Mem0 Memory client for ARIA.
+    Enables continuous learning about the user.
     """
 
     def __init__(self, config: dict[str, Any] | None = None) -> None:
@@ -43,42 +43,42 @@ class AriaMem0Client:
         if MEM0_AVAILABLE:
             try:
                 self._memory = Memory.from_config(self.config)
-                logger.info("[Mem0] Inicializado con éxito.")
+                logger.info("[Mem0] Initialized successfully.")
             except Exception as exc:
-                logger.error("[Mem0] Error inicializando: %s", exc)
+                logger.error("[Mem0] Error initializing: %s", exc)
 
     async def add_memory(self, user_id: str, content: str, metadata: dict[str, Any] | None = None):
-        """Añade un hecho o interacción a la memoria del usuario."""
+        """Adds a fact or interaction to the user's memory."""
         if not self._memory:
-            logger.debug("[Mem0] Memoria no disponible. Saltando guardado.")
+            logger.debug("[Mem0] Memory not available. Skipping save.")
             return
 
         try:
             self._memory.add(content, user_id=user_id, metadata=metadata or {})
-            logger.info("[Mem0] Memoria añadida para usuario %s", user_id)
+            logger.info("[Mem0] Memory added for user %s", user_id)
         except Exception as exc:
-            logger.error("[Mem0] Error añadiendo memoria: %s", exc)
+            logger.error("[Mem0] Error adding memory: %s", exc)
 
     async def search_memories(self, user_id: str, query: str) -> list[dict[str, Any]]:
-        """Busca en la memoria del usuario basada en una consulta."""
+        """Searches the user's memory based on a query."""
         if not self._memory:
             return []
 
         try:
             return self._memory.search(query, user_id=user_id)
         except Exception as exc:
-            logger.error("[Mem0] Error buscando en memoria: %s", exc)
+            logger.error("[Mem0] Error searching memory: %s", exc)
             return []
 
     async def get_all_memories(self, user_id: str) -> list[dict[str, Any]]:
-        """Retorna todos los hechos recordados para un usuario."""
+        """Returns all remembered facts for a user."""
         if not self._memory:
             return []
 
         try:
             return self._memory.get_all(user_id=user_id)
         except Exception as exc:
-            logger.error("[Mem0] Error obteniendo memorias: %s", exc)
+            logger.error("[Mem0] Error retrieving memories: %s", exc)
             return []
 
 
@@ -87,7 +87,7 @@ _mem0_instance: AriaMem0Client | None = None
 
 
 def get_mem0_client() -> AriaMem0Client:
-    """Retorna el singleton del cliente Mem0."""
+    """Returns the Mem0 client singleton."""
     global _mem0_instance
     if _mem0_instance is None:
         _mem0_instance = AriaMem0Client()

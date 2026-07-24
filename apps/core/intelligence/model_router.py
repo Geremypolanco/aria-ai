@@ -1,20 +1,20 @@
 """
-model_router.py — Motor de Descubrimiento de Modelos y Enrutamiento Inteligente.
+model_router.py — Model Discovery and Intelligent Routing Engine.
 
-ARIA descubre automáticamente:
-  1. Todas sus propias funciones y agentes
-  2. Todos los modelos HF disponibles para cada tipo de tarea
-  3. Cuál modelo es el más adecuado para cada función/tarea
+ARIA automatically discovers:
+  1. All of its own functions and agents
+  2. All HF models available for each task type
+  3. Which model is best suited for each function/task
 
-El ModelRouter actualiza HF_MODEL_ROTATION dinámicamente en Redis,
-de forma que AriaAIClient cargue siempre la configuración óptima.
+The ModelRouter dynamically updates HF_MODEL_ROTATION in Redis,
+so that AriaAIClient always loads the optimal configuration.
 
-Ciclo de descubrimiento (corre cada 24h via scheduler):
-  1. Escanear funciones de Aria → mapear a task_type de HF
-  2. Para cada task_type, buscar top modelos en HF Hub
-  3. Benchmarkear candidatos con prompts reales y medir: latencia, tasa de éxito, calidad
-  4. Actualizar tabla de enrutamiento en Redis
-  5. ai_client.py carga la tabla actualizada al arrancar o cada ciclo
+Discovery cycle (runs every 24h via scheduler):
+  1. Scan Aria's functions → map to HF task_type
+  2. For each task_type, look up top models on the HF Hub
+  3. Benchmark candidates with real prompts and measure: latency, success rate, quality
+  4. Update the routing table in Redis
+  5. ai_client.py loads the updated table on startup or each cycle
 """
 
 from __future__ import annotations
@@ -29,175 +29,175 @@ from typing import Any
 
 logger = logging.getLogger("aria.model_router")
 
-# ── CLAVES REDIS ─────────────────────────────────────────────
+# ── REDIS KEYS ───────────────────────────────────────────────
 ROUTING_TABLE_KEY = "aria:model_router:routing_table:v3"
 BENCHMARK_KEY = "aria:model_router:benchmark:{model_id}"
 DISCOVERY_LOG_KEY = "aria:model_router:discovery_log"
 LAST_DISCOVERY_KEY = "aria:model_router:last_discovery"
-ROUTING_TTL = 60 * 60 * 24 * 7  # 7 días
-DISCOVERY_INTERVAL = 60 * 60 * 24  # 24 horas
+ROUTING_TTL = 60 * 60 * 24 * 7  # 7 days
+DISCOVERY_INTERVAL = 60 * 60 * 24  # 24 hours
 
 
-# ── MAPA DE FUNCIONES DE ARIA ─────────────────────────────────
-# Cada función/agente de Aria → task_type HF más adecuado + descripción
+# ── ARIA FUNCTION MAP ─────────────────────────────────────────
+# Each Aria function/agent → best-suited HF task_type + description
 ARIA_FUNCTION_MAP: dict[str, dict] = {
-    # Conversación y comprensión
+    # Conversation and comprehension
     "telegram_conversation": {
         "hf_task": "text-generation",
         "priority": "speed",
-        "desc": "Respuestas conversacionales libres",
+        "desc": "Free-form conversational responses",
     },
     "telegram_analysis": {
         "hf_task": "text-generation",
         "priority": "quality",
-        "desc": "Análisis interno antes de responder",
+        "desc": "Internal analysis before responding",
     },
     "support_agent": {
         "hf_task": "text-generation",
         "priority": "quality",
-        "desc": "Soporte y resolución de problemas",
+        "desc": "Support and troubleshooting",
     },
-    # Análisis y clasificación
+    # Analysis and classification
     "intent_detection": {
         "hf_task": "zero-shot-classification",
         "priority": "speed",
-        "desc": "Detectar intención del usuario",
+        "desc": "Detect user intent",
     },
     "topic_classification": {
         "hf_task": "zero-shot-classification",
         "priority": "speed",
-        "desc": "Clasificar tema de una interacción",
+        "desc": "Classify the topic of an interaction",
     },
     "sentiment_analysis": {
         "hf_task": "sentiment-analysis",
         "priority": "speed",
-        "desc": "Analizar sentimiento de textos",
+        "desc": "Analyze sentiment of text",
     },
     "compliance_check": {
         "hf_task": "zero-shot-classification",
         "priority": "quality",
-        "desc": "Verificar cumplimiento ético",
+        "desc": "Verify ethical compliance",
     },
-    # Generación y contenido
+    # Generation and content
     "content_agent": {
         "hf_task": "text-generation",
         "priority": "creative",
-        "desc": "Crear contenido para redes sociales",
+        "desc": "Create content for social media",
     },
     "creative_engine": {
         "hf_task": "text-generation",
         "priority": "creative",
-        "desc": "Generación de ideas y creatividad",
+        "desc": "Idea generation and creativity",
     },
     "marketing_agent": {
         "hf_task": "text-generation",
         "priority": "quality",
-        "desc": "Estrategia y copy de marketing",
+        "desc": "Marketing strategy and copy",
     },
-    # Código y técnico
+    # Code and technical
     "dev_agent": {
         "hf_task": "text-generation",
         "priority": "code",
-        "desc": "Desarrollo y revisión de código",
+        "desc": "Development and code review",
     },
     "enhanced_dev_agent": {
         "hf_task": "text-generation",
         "priority": "code",
-        "desc": "Desarrollo avanzado con refactoring",
+        "desc": "Advanced development with refactoring",
     },
     "code_reflector": {
         "hf_task": "text-generation",
         "priority": "code",
-        "desc": "Análisis y mejora del propio código",
+        "desc": "Analysis and improvement of its own code",
     },
-    # Investigación y datos
+    # Research and data
     "research_agent": {
         "hf_task": "summarization",
         "priority": "quality",
-        "desc": "Investigación y síntesis de información",
+        "desc": "Research and information synthesis",
     },
     "market_intelligence": {
         "hf_task": "zero-shot-classification",
         "priority": "quality",
-        "desc": "Análisis de tendencias de mercado",
+        "desc": "Market trend analysis",
     },
     "web_search_synthesis": {
         "hf_task": "summarization",
         "priority": "speed",
-        "desc": "Resumir resultados de búsqueda web",
+        "desc": "Summarize web search results",
     },
-    # Finanzas y negocio
+    # Finance and business
     "cfo_agent": {
         "hf_task": "text-generation",
         "priority": "quality",
-        "desc": "Análisis financiero y CFO",
+        "desc": "Financial analysis and CFO duties",
     },
     "pm_agent": {
         "hf_task": "text-generation",
         "priority": "quality",
-        "desc": "Gestión de producto y roadmap",
+        "desc": "Product management and roadmap",
     },
     "ecommerce_agent": {
         "hf_task": "text-generation",
         "priority": "quality",
-        "desc": "E-commerce y shopify",
+        "desc": "E-commerce and Shopify",
     },
-    # Procesamiento de texto especializado
+    # Specialized text processing
     "entity_extraction": {
         "hf_task": "named-entity-recognition",
         "priority": "speed",
-        "desc": "Extraer personas, empresas, lugares",
+        "desc": "Extract people, companies, places",
     },
     "text_summarization": {
         "hf_task": "summarization",
         "priority": "quality",
-        "desc": "Resumir documentos largos",
+        "desc": "Summarize long documents",
     },
     "translation": {
         "hf_task": "translation",
         "priority": "speed",
-        "desc": "Traducción entre idiomas",
+        "desc": "Translation between languages",
     },
     "document_qa": {
         "hf_task": "document-question-answering",
         "priority": "quality",
-        "desc": "Preguntas sobre documentos",
+        "desc": "Questions about documents",
     },
     # Multimedia
     "image_description": {
         "hf_task": "image-to-text",
         "priority": "quality",
-        "desc": "Describir imágenes",
+        "desc": "Describe images",
     },
     "image_generation": {
         "hf_task": "image-generation",
         "priority": "quality",
-        "desc": "Generar imágenes con IA",
+        "desc": "Generate images with AI",
     },
     "audio_transcription": {
         "hf_task": "automatic-speech-recognition",
         "priority": "quality",
-        "desc": "Transcribir audio (Whisper)",
+        "desc": "Transcribe audio (Whisper)",
     },
     "text_to_speech": {
         "hf_task": "text-to-speech",
         "priority": "quality",
-        "desc": "Convertir texto a voz",
+        "desc": "Convert text to speech",
     },
-    # Embeddings y similitud
+    # Embeddings and similarity
     "semantic_search": {
         "hf_task": "feature-extraction",
         "priority": "speed",
-        "desc": "Búsqueda semántica y similitud",
+        "desc": "Semantic search and similarity",
     },
     "knowledge_retrieval": {
         "hf_task": "feature-extraction",
         "priority": "speed",
-        "desc": "Recuperar conocimiento relevante",
+        "desc": "Retrieve relevant knowledge",
     },
 }
 
-# Modelos candidatos extra por tipo de prioridad (para benchmarking)
+# Extra candidate models by priority type (for benchmarking)
 BENCHMARK_CANDIDATES: dict[str, list[str]] = {
     "text-generation": [
         "Qwen/Qwen2.5-72B-Instruct",
@@ -238,27 +238,27 @@ BENCHMARK_CANDIDATES: dict[str, list[str]] = {
     ],
 }
 
-# Prompts de benchmark por tarea
+# Benchmark prompts by task
 BENCHMARK_PROMPTS: dict[str, Any] = {
     "text-generation": {
-        "inputs": "Explica en 2 oraciones por qué el marketing de contenidos es importante para un negocio.",
+        "inputs": "Explain in 2 sentences why content marketing is important for a business.",
         "parameters": {"max_new_tokens": 80, "temperature": 0.7},
     },
     "summarization": {
-        "inputs": "El marketing digital es el componente de marketing que utiliza internet y tecnología digital online como computadoras de escritorio, teléfonos móviles y otros medios y plataformas digitales para promover productos y servicios.",
+        "inputs": "Digital marketing is the component of marketing that uses the internet and online digital technology such as desktop computers, mobile phones, and other digital media and platforms to promote products and services.",
     },
     "zero-shot-classification": {
-        "inputs": "¿Cuánto dinero generé esta semana?",
-        "parameters": {"candidate_labels": ["finanzas", "marketing", "soporte", "desarrollo"]},
+        "inputs": "How much money did I generate this week?",
+        "parameters": {"candidate_labels": ["finance", "marketing", "support", "development"]},
     },
     "sentiment-analysis": {
-        "inputs": "Estoy muy satisfecho con los resultados de hoy, todo funcionó perfectamente.",
+        "inputs": "I'm very satisfied with today's results, everything worked perfectly.",
     },
     "named-entity-recognition": {
-        "inputs": "Amazon y Google son las principales empresas de tecnología en Estados Unidos.",
+        "inputs": "Amazon and Google are the leading technology companies in the United States.",
     },
     "feature-extraction": {
-        "inputs": "estrategia de monetización y crecimiento de ingresos",
+        "inputs": "revenue growth and monetization strategy",
     },
 }
 
@@ -276,7 +276,7 @@ class ModelScore:
     def composite_score(self) -> float:
         if not self.success:
             return 0.0
-        # Penalizar latencia > 5000ms, premiar respuestas no vacías
+        # Penalize latency > 5000ms, reward non-empty responses
         latency_penalty = min(1.0, self.latency_ms / 5000)
         return round(
             self.quality_score * 0.5
@@ -303,18 +303,18 @@ class RoutingEntry:
 
 class ModelRouter:
     """
-    Motor de descubrimiento y enrutamiento inteligente de modelos HF.
+    Intelligent HF model discovery and routing engine.
 
-    Uso:
+    Usage:
         router = get_model_router()
 
-        # Obtener mejor modelo para una función de Aria
+        # Get the best model for an Aria function
         model = await router.get_best_model("content_agent")
 
-        # Correr ciclo completo de descubrimiento (llamado por scheduler)
+        # Run the full discovery cycle (called by the scheduler)
         report = await router.run_discovery_cycle()
 
-        # Ver tabla completa de enrutamiento
+        # View the full routing table
         table = await router.get_routing_table()
     """
 
@@ -338,37 +338,37 @@ class ModelRouter:
             self._hf = HFDiscovery()
         return self._hf
 
-    # ── API PÚBLICA ──────────────────────────────────────────
+    # ── PUBLIC API ───────────────────────────────────────────
 
     async def get_best_model(self, function_name: str) -> str | None:
         """
-        Retorna el mejor modelo HF para una función de Aria.
-        Si no hay benchmark, retorna el modelo preferido por defecto.
+        Returns the best HF model for an Aria function.
+        If there is no benchmark, returns the default preferred model.
         """
         await self._ensure_table_loaded()
         entry = self._routing_table.get(function_name)
         if entry and entry.best_model:
             return entry.best_model
-        # Fallback a configuración estática
+        # Fallback to static configuration
         func_def = ARIA_FUNCTION_MAP.get(function_name, {})
         task = func_def.get("hf_task", "text-generation")
         candidates = BENCHMARK_CANDIDATES.get(task, [])
         return candidates[0] if candidates else None
 
     async def get_routing_table(self) -> dict[str, Any]:
-        """Retorna la tabla de enrutamiento completa."""
+        """Returns the full routing table."""
         await self._ensure_table_loaded()
         return {k: v.to_dict() for k, v in self._routing_table.items()}
 
     async def get_hf_rotation_config(self) -> dict[str, list[str]]:
         """
-        Genera el diccionario HF_MODEL_ROTATION actualizado
-        basándose en benchmarks reales. ai_client.py puede usar esto.
+        Generates the updated HF_MODEL_ROTATION dictionary
+        based on real benchmarks. ai_client.py can use this.
         """
         await self._ensure_table_loaded()
         from apps.core.tools.ai_client import AIModel
 
-        # Mapear prioridades a AIModel
+        # Map priorities to AIModel
         priority_to_model = {
             "speed": AIModel.FAST,
             "quality": AIModel.STRATEGY,
@@ -389,7 +389,7 @@ class ModelRouter:
             if priority not in priority_to_model:
                 continue
             model_key = priority_to_model[priority].value
-            # Agregar modelo si no está ya y es un modelo text-generation
+            # Add model if not already present and it's a text-generation model
             if (
                 entry.hf_task == "text-generation"
                 and entry.best_model
@@ -400,27 +400,27 @@ class ModelRouter:
                     if fb not in rotation[model_key]:
                         rotation[model_key].append(fb)
 
-        # Eliminar listas vacías
+        # Remove empty lists
         return {k: v for k, v in rotation.items() if v}
 
-    # ── CICLO DE DESCUBRIMIENTO ───────────────────────────────
+    # ── DISCOVERY CYCLE ───────────────────────────────────────
 
     async def run_discovery_cycle(self) -> dict:
         """
-        Ciclo completo de descubrimiento. Llamado por el scheduler cada 24h.
+        Full discovery cycle. Called by the scheduler every 24h.
         """
         t0 = time.time()
-        logger.info("[ModelRouter] ═══ Iniciando ciclo de descubrimiento ═══")
+        logger.info("[ModelRouter] ═══ Starting discovery cycle ═══")
 
-        # Verificar si es momento
+        # Check whether it's time
         cache = self._get_cache()
         last_raw = await cache.get(LAST_DISCOVERY_KEY)
         if last_raw:
             elapsed = time.time() - float(last_raw)
             if elapsed < DISCOVERY_INTERVAL:
                 remaining_h = (DISCOVERY_INTERVAL - elapsed) / 3600
-                logger.info("[ModelRouter] Próximo ciclo en %.1fh", remaining_h)
-                return {"skipped": True, "reason": f"Próximo ciclo en {remaining_h:.1f}h"}
+                logger.info("[ModelRouter] Next cycle in %.1fh", remaining_h)
+                return {"skipped": True, "reason": f"Next cycle in {remaining_h:.1f}h"}
 
         results = {
             "functions_discovered": len(ARIA_FUNCTION_MAP),
@@ -431,7 +431,7 @@ class ModelRouter:
             "duration_s": 0,
         }
 
-        # Agrupar funciones por task_type para no benchmarkear el mismo task dos veces
+        # Group functions by task_type to avoid benchmarking the same task twice
         task_groups: dict[str, list[str]] = {}
         for func_name, func_def in ARIA_FUNCTION_MAP.items():
             task = func_def["hf_task"]
@@ -439,24 +439,24 @@ class ModelRouter:
                 task_groups[task] = []
             task_groups[task].append(func_name)
 
-        # Benchmarkear cada task_type
+        # Benchmark each task_type
         task_results: dict[str, list[ModelScore]] = {}
         for task_type, func_names in task_groups.items():
             logger.info(
-                "[ModelRouter] Benchmarkeando task: %s (%d funciones)", task_type, len(func_names)
+                "[ModelRouter] Benchmarking task: %s (%d functions)", task_type, len(func_names)
             )
             scores = await self._benchmark_task(task_type)
             task_results[task_type] = scores
             results["tasks_benchmarked"] += 1
             results["models_evaluated"] += len(scores)
-            await asyncio.sleep(1)  # rate limiting entre tareas
+            await asyncio.sleep(1)  # rate limiting between tasks
 
-        # Construir tabla de enrutamiento
+        # Build the routing table
         new_table: dict[str, RoutingEntry] = {}
         for func_name, func_def in ARIA_FUNCTION_MAP.items():
             task = func_def["hf_task"]
             scores = task_results.get(task, [])
-            # Ordenar por composite_score
+            # Sort by composite_score
             ranked = sorted(scores, key=lambda s: s.composite_score(), reverse=True)
             successful = [s for s in ranked if s.success]
 
@@ -478,11 +478,11 @@ class ModelRouter:
             new_table[func_name] = entry
             results["routing_entries_updated"] += 1
 
-        # Persistir en Redis
+        # Persist to Redis
         self._routing_table = new_table
         await self._save_routing_table()
 
-        # Actualizar HF_MODEL_ROTATION en Redis para que ai_client lo use
+        # Update HF_MODEL_ROTATION in Redis so ai_client uses it
         rotation = await self.get_hf_rotation_config()
         if rotation:
             await cache.set(
@@ -490,9 +490,9 @@ class ModelRouter:
                 json.dumps(rotation),
                 ttl_seconds=ROUTING_TTL,
             )
-            logger.info("[ModelRouter] HF_MODEL_ROTATION actualizado: %s", list(rotation.keys()))
+            logger.info("[ModelRouter] HF_MODEL_ROTATION updated: %s", list(rotation.keys()))
 
-        # Log de descubrimiento
+        # Discovery log
         log_entry = {
             "ts": datetime.now(UTC).isoformat(),
             "functions": results["functions_discovered"],
@@ -502,11 +502,11 @@ class ModelRouter:
         }
         await cache.set(LAST_DISCOVERY_KEY, str(time.time()), ttl_seconds=ROUTING_TTL)
         await cache.lpush(DISCOVERY_LOG_KEY, json.dumps(log_entry))
-        await cache.ltrim(DISCOVERY_LOG_KEY, 0, 29)  # mantener últimos 30
+        await cache.ltrim(DISCOVERY_LOG_KEY, 0, 29)  # keep last 30
 
         results["duration_s"] = round(time.time() - t0, 1)
         logger.info(
-            "[ModelRouter] ═══ Descubrimiento completado: %d funciones, %d modelos evaluados en %.1fs ═══",
+            "[ModelRouter] ═══ Discovery completed: %d functions, %d models evaluated in %.1fs ═══",
             results["functions_discovered"],
             results["models_evaluated"],
             results["duration_s"],
@@ -514,7 +514,7 @@ class ModelRouter:
         return results
 
     async def _benchmark_task(self, task_type: str) -> list[ModelScore]:
-        """Benchmarkea modelos candidatos para un tipo de tarea."""
+        """Benchmarks candidate models for a task type."""
         hf = self._get_hf()
         candidates = BENCHMARK_CANDIDATES.get(task_type, [])
         prompt = BENCHMARK_PROMPTS.get(task_type)
@@ -524,7 +524,7 @@ class ModelRouter:
 
         scores: list[ModelScore] = []
 
-        for model_id in candidates[:6]:  # max 6 candidatos por task
+        for model_id in candidates[:6]:  # max 6 candidates per task
             t0 = time.time()
             success = False
             quality = 0.0
@@ -559,7 +559,7 @@ class ModelRouter:
                         text = json.dumps(raw)[:200]
 
                     response_len = len(text)
-                    # Calidad básica: respuesta no vacía, no es solo el prompt, longitud razonable
+                    # Basic quality: non-empty response, not just the prompt, reasonable length
                     quality = min(1.0, response_len / 100) if response_len > 10 else 0.1
                 else:
                     latency_ms = int((time.time() - t0) * 1000)
@@ -568,7 +568,7 @@ class ModelRouter:
                 latency_ms = 25000
             except Exception as exc:
                 latency_ms = int((time.time() - t0) * 1000)
-                logger.debug("[ModelRouter] Benchmark %s/%s falló: %s", task_type, model_id, exc)
+                logger.debug("[ModelRouter] Benchmark %s/%s failed: %s", task_type, model_id, exc)
 
             score = ModelScore(
                 model_id=model_id,
@@ -581,7 +581,7 @@ class ModelRouter:
             )
             scores.append(score)
 
-            # Cachear benchmark individual
+            # Cache individual benchmark
             try:
                 cache = self._get_cache()
                 safe_id = model_id.replace("/", "_")
@@ -605,7 +605,7 @@ class ModelRouter:
 
         return scores
 
-    # ── PERSISTENCIA ─────────────────────────────────────────
+    # ── PERSISTENCE ──────────────────────────────────────────
 
     async def _save_routing_table(self) -> None:
         try:
@@ -615,10 +615,10 @@ class ModelRouter:
                 ROUTING_TABLE_KEY, json.dumps(serialized, ensure_ascii=False), ttl_seconds=ROUTING_TTL
             )
             logger.info(
-                "[ModelRouter] Tabla de enrutamiento guardada (%d entradas)", len(serialized)
+                "[ModelRouter] Routing table saved (%d entries)", len(serialized)
             )
         except Exception as exc:
-            logger.error("[ModelRouter] Error guardando tabla: %s", exc)
+            logger.error("[ModelRouter] Error saving table: %s", exc)
 
     async def _ensure_table_loaded(self) -> None:
         if self._table_loaded:
@@ -631,24 +631,24 @@ class ModelRouter:
                 self._routing_table = {k: RoutingEntry(**v) for k, v in data.items()}
                 self._table_loaded = True
                 logger.info(
-                    "[ModelRouter] Tabla de enrutamiento cargada: %d entradas",
+                    "[ModelRouter] Routing table loaded: %d entries",
                     len(self._routing_table),
                 )
         except Exception as exc:
             logger.warning(
-                "[ModelRouter] No se pudo cargar tabla: %s — se generará en próximo ciclo", exc
+                "[ModelRouter] Could not load table: %s — will be generated on next cycle", exc
             )
-            self._table_loaded = True  # evitar reintentos en bucle
+            self._table_loaded = True  # avoid retry loop
 
-    # ── REPORTE ──────────────────────────────────────────────
+    # ── REPORT ───────────────────────────────────────────────
 
     async def get_discovery_report(self) -> dict:
-        """Genera un reporte del estado del motor de descubrimiento."""
+        """Generates a report of the discovery engine's state."""
         await self._ensure_table_loaded()
         cache = self._get_cache()
 
         last_raw = await cache.get(LAST_DISCOVERY_KEY)
-        last_disc = "Nunca"
+        last_disc = "Never"
         if last_raw:
             dt = datetime.fromtimestamp(float(last_raw), tz=UTC)
             last_disc = dt.strftime("%Y-%m-%d %H:%M UTC")
@@ -675,7 +675,7 @@ class ModelRouter:
         }
 
 
-# ── SINGLETON ────────────────────────────────────────────────
+# ── SINGLETON ──────────────────────────────────────────────────
 _router: ModelRouter | None = None
 
 

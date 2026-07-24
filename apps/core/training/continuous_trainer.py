@@ -1,11 +1,11 @@
 """
-continuous_trainer.py — Loop de auto-mejora real de ARIA AI.
+continuous_trainer.py — ARIA AI's real self-improvement loop.
 
-Corre en background 24/7. Evalúa las capacidades del sistema,
-detecta degradación de APIs, registra aprendizajes y mantiene
-ARIA funcional y actualizada.
+Runs in the background 24/7. Evaluates system capabilities,
+detects API degradation, logs learnings, and keeps
+ARIA functional and up to date.
 
-Sin placeholders. Todo basado en llamadas reales.
+No placeholders. Everything based on real calls.
 """
 
 from __future__ import annotations
@@ -21,11 +21,11 @@ logger = logging.getLogger("aria.trainer")
 
 class ContinuousTrainer:
     """
-    Evaluador continuo de capacidades de ARIA.
-    Detecta qué funciona, qué no, y actualiza el estado interno.
+    Continuous evaluator of ARIA's capabilities.
+    Detects what works, what doesn't, and updates internal state.
     """
 
-    CYCLE_INTERVAL = 1800  # 30 minutos entre ciclos
+    CYCLE_INTERVAL = 1800  # 30 minutes between cycles
     STATUS_KEY = "aria:trainer:status"
     SKILLS_KEY = "aria:trainer:skills"
 
@@ -36,23 +36,23 @@ class ContinuousTrainer:
         self._skills: dict[str, float] = {}  # skill → score 0-100
         self._cache = None
 
-    # ── LOOP PRINCIPAL ────────────────────────────────────────────────────
+    # ── MAIN LOOP ─────────────────────────────────────────────────────────
 
     async def run_forever(self) -> None:
-        """Loop de evaluación continua. Llamar con asyncio.create_task()."""
+        """Continuous evaluation loop. Call with asyncio.create_task()."""
         self._running = True
-        logger.info("[Trainer] Loop de auto-mejora iniciado")
+        logger.info("[Trainer] Self-improvement loop started")
         while self._running:
             try:
                 await self._run_cycle()
             except Exception as exc:
-                logger.error("[Trainer] Ciclo falló: %s", exc)
+                logger.error("[Trainer] Cycle failed: %s", exc)
             await asyncio.sleep(self.CYCLE_INTERVAL)
 
     async def _run_cycle(self) -> None:
         self._cycle += 1
         self._last_cycle = time.time()
-        logger.info("[Trainer] Ciclo #%d", self._cycle)
+        logger.info("[Trainer] Cycle #%d", self._cycle)
 
         await asyncio.gather(
             self._eval_ai_client(),
@@ -63,22 +63,22 @@ class ContinuousTrainer:
 
         await self._persist_status()
         logger.info(
-            "[Trainer] Ciclo #%d completo. Skills: %s",
+            "[Trainer] Cycle #%d complete. Skills: %s",
             self._cycle,
             {k: f"{v:.0f}%" for k, v in self._skills.items()},
         )
 
-    # ── EVALUACIONES ─────────────────────────────────────────────────────
+    # ── EVALUATIONS ───────────────────────────────────────────────────────
 
     async def _eval_ai_client(self) -> None:
-        """Verifica que el cliente de IA responda correctamente."""
+        """Verifies that the AI client responds correctly."""
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
             resp = await ai.complete(
-                system="Responde solo con: OK",
-                user="Test de conectividad",
+                system="Reply only with: OK",
+                user="Connectivity test",
                 model=AIModel.FAST,
                 max_tokens=5,
                 temperature=0.0,
@@ -88,10 +88,10 @@ class ContinuousTrainer:
             logger.debug("[Trainer] ai_client: %.0f%%", score)
         except Exception as exc:
             self._skills["ai_client"] = 0.0
-            logger.warning("[Trainer] ai_client falló: %s", exc)
+            logger.warning("[Trainer] ai_client failed: %s", exc)
 
     async def _eval_huggingface(self) -> None:
-        """Verifica acceso a HuggingFace Inference API."""
+        """Verifies access to the HuggingFace Inference API."""
         try:
             import httpx
 
@@ -112,7 +112,7 @@ class ContinuousTrainer:
             logger.debug("[Trainer] HuggingFace eval: %s", exc)
 
     async def _eval_memory(self) -> None:
-        """Verifica Redis (Upstash)."""
+        """Verifies Redis (Upstash)."""
         try:
             cache = self._get_cache()
             if not cache:
@@ -125,7 +125,7 @@ class ContinuousTrainer:
         except Exception:
             self._skills["memory"] = 0.0
 
-    # ── PERSISTENCIA ─────────────────────────────────────────────────────
+    # ── PERSISTENCE ───────────────────────────────────────────────────────
 
     async def _persist_status(self) -> None:
         try:
@@ -140,7 +140,7 @@ class ContinuousTrainer:
             await cache.set(self.STATUS_KEY, status, ttl_seconds=7200)
             await cache.set(self.SKILLS_KEY, self._skills, ttl_seconds=7200)
         except Exception as exc:
-            logger.debug("[Trainer] persist falló: %s", exc)
+            logger.debug("[Trainer] persist failed: %s", exc)
 
     def get_status(self) -> dict[str, Any]:
         return {

@@ -8,8 +8,8 @@ logger = logging.getLogger("aria.experiment")
 
 class ExperimentEngine:
     """
-    Motor de Experimentación.
-    Diseña y ejecuta pruebas A/B para validar hipótesis de venta.
+    Experimentation Engine.
+    Designs and runs A/B tests to validate sales hypotheses.
     """
 
     def __init__(self):
@@ -17,54 +17,54 @@ class ExperimentEngine:
 
     async def design_ab_test(self, hypothesis: str, context: dict[str, Any]) -> dict[str, Any]:
         """
-        Diseña un test A/B para validar una hipótesis.
+        Designs an A/B test to validate a hypothesis.
 
-        Ejemplo:
-        Hipótesis: "Si cambio el precio de $99 a $79, la conversión subirá 30%"
+        Example:
+        Hypothesis: "If I change the price from $99 to $79, conversion will rise 30%"
         """
         prompt = f"""
-        HIPÓTESIS: {hypothesis}
-        CONTEXTO: {context}
+        HYPOTHESIS: {hypothesis}
+        CONTEXT: {context}
 
-        Diseña un test A/B riguroso:
+        Design a rigorous A/B test:
 
-        1. VARIANTE A (Control): Describe el estado actual
-        2. VARIANTE B (Test): Describe el cambio propuesto
-        3. MÉTRICA PRINCIPAL: ¿Qué mediremos?
-        4. DURACIÓN: ¿Cuánto tiempo debe durar?
-        5. TAMAÑO DE MUESTRA: ¿Cuántas personas necesitamos?
-        6. CRITERIO DE ÉXITO: ¿Cuándo consideramos que ganó?
+        1. VARIANT A (Control): Describe the current state
+        2. VARIANT B (Test): Describe the proposed change
+        3. PRIMARY METRIC: What will we measure?
+        4. DURATION: How long should it run?
+        5. SAMPLE SIZE: How many people do we need?
+        6. SUCCESS CRITERIA: When do we consider it a win?
 
-        Responde en JSON con: variant_a, variant_b, metric, duration_days, sample_size, success_criteria
+        Respond in JSON with: variant_a, variant_b, metric, duration_days, sample_size, success_criteria
         """
 
         test_design = await self.ai.complete_json(
-            system="Eres un experto en Experimentación y Estadística.",
+            system="You are an expert in Experimentation and Statistics.",
             user=prompt,
             model=AIModel.STRATEGY,
         )
 
-        return test_design if test_design else {"error": "Diseño fallido"}
+        return test_design if test_design else {"error": "Design failed"}
 
     async def run_experiment(self, test_id: str, results: dict[str, Any]) -> dict[str, Any]:
-        """Analiza los resultados de un experimento."""
+        """Analyzes the results of an experiment."""
         prompt = f"""
-        RESULTADOS DEL TEST {test_id}:
+        RESULTS OF TEST {test_id}:
         {results}
 
-        Analiza:
-        1. ¿Ganó A o B?
-        2. ¿Es estadísticamente significativo?
-        3. ¿Cuál es el impacto esperado si lo escalamos?
-        4. ¿Qué aprendimos?
+        Analyze:
+        1. Did A or B win?
+        2. Is it statistically significant?
+        3. What is the expected impact if we scale it?
+        4. What did we learn?
 
-        Responde en JSON con: winner, significance, impact_if_scaled, learnings
+        Respond in JSON with: winner, significance, impact_if_scaled, learnings
         """
 
         analysis = await self.ai.complete_json(
-            system="Eres un experto en análisis de datos experimentales.",
+            system="You are an expert in experimental data analysis.",
             user=prompt,
             model=AIModel.STRATEGY,
         )
 
-        return analysis if analysis else {"error": "Análisis fallido"}
+        return analysis if analysis else {"error": "Analysis failed"}

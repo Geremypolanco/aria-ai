@@ -49,5 +49,5 @@ async def test_execute_code_is_owner_only():
     obs, media = await mind._execute_tool(
         "execute_code", {"code": "print(1)"}, email="random-user@example.com"
     )
-    assert "reservada al dueño" in obs
+    assert "reserved for ARIA's owner" in obs
     assert media == {}
