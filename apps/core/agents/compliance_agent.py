@@ -382,10 +382,10 @@ class ComplianceAgent(BaseAgent):
         }
 
 
-# ══════════════════════════════════════════════════════════════
-# SINGLETON — the emergency brake's violation counter must persist
-# across calls, so every caller shares the same instance.
-# ══════════════════════════════════════════════════════════════
+# ── SINGLETON ─────────────────────────────────────────────
+# A fresh instance per call would silently reset _violation_count each time,
+# defeating the 5-strikes emergency-brake escalation in _review_action() —
+# callers (base_agent.py's execute_with_approval) must share one instance.
 _compliance_agent: ComplianceAgent | None = None
 
 

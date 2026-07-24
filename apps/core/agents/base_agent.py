@@ -327,20 +327,39 @@ class BaseAgent(ABC):
         fn: Callable[[], Coroutine],
         amount_usd: float = 0.0,
     ) -> dict[str, Any]:
-        """Runs the action past ComplianceAgent first, then either executes fn()
-        directly or requests human approval depending on the amount."""
+        """Runs the action through ComplianceAgent first, then executes fn()
+        directly or requests human approval depending on the outcome and amount.
+
+        ComplianceAgent used to be unreachable from any live code path — every
+        caller (just cfo_agent.py today) went straight from "how much does
+        this cost" to fn()/request_human_approval, with no legal/ethical/policy
+        screen at all. That gap was concrete: cfo_agent.py calls this with
+        amount_usd=0.0 for "Publish ebook to Gumroad" (the ebook's own price is
+        passed separately, in `details`, not as amount_usd) — a $0 amount never
+        clears APPROVAL_THRESHOLD_USD, so a paid product's publish action
+        would run unreviewed. ComplianceAgent's own category check catches
+        "publish" regardless of amount_usd and routes it through review.
+        """
         from apps.core.agents.compliance_agent import get_compliance_agent
 
         review = await get_compliance_agent().run(
-            {"action_type": action, "description": details, "amount_usd": amount_usd}
+            {
+                "mode": "review",
+                "action_type": action,
+                "description": details,
+                "amount_usd": amount_usd,
+            }
         )
-        if not review.get("approved", True):
+        if review.get("success") and not review.get("approved", True):
             return {
                 "success": False,
+                "error": review.get("reason", "Blocked by compliance review."),
+                "reason": review.get("reason", "Blocked by compliance review."),
                 "compliance_blocked": True,
-                "reason": review.get("reason", "Blocked by compliance review"),
+                "risk_level": review.get("risk_level"),
             }
-
+        if review.get("success") and review.get("needs_human_review"):
+            return await self.request_human_approval(action, details, amount_usd)
         if amount_usd <= self.APPROVAL_THRESHOLD_USD and not self.REQUIRE_APPROVAL_FOR_PAYMENTS:
             return await fn()
         return await self.request_human_approval(action, details, amount_usd)
