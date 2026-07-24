@@ -419,7 +419,7 @@ class TestFlow6SupportAndLegal:
         assert "if(!ack||!ack.checked)" in html
         assert "agreed=1" in html
         # Mandatory acknowledgement text present.
-        assert "no reembolso" in html
+        assert "no-refund policy" in html
 
     def test_checkout_server_gate_shows_confirmation(self, client):
         """Even a direct link cannot reach Stripe without the acknowledgement."""
@@ -427,5 +427,5 @@ class TestFlow6SupportAndLegal:
         # Signed-in but not yet agreed → interstitial with the mandatory checkbox.
         assert r.status_code == 200
         assert 'type="checkbox"' in r.text
-        assert "política estricta de no reembolso" in r.text
+        assert "strict no-refund policy" in r.text
         assert "agreed=1" in r.text
