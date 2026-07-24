@@ -441,6 +441,15 @@ async def api_team():
     }
 
 
+@app.get("/api/v1/team/recommend")
+async def api_team_recommend(task: str = "", limit: int = 3):
+    """Suggest the specialists best suited to a free-text task."""
+    from apps.core import team
+
+    limit = max(1, min(int(limit or 3), 8))
+    return {"task": task, "matches": team.recommend(task, limit=limit)}
+
+
 @app.get("/api/v1/team/{member_id}")
 async def api_team_member(member_id: str):
     """Full profile for one professional — résumé, cover letter, track record."""

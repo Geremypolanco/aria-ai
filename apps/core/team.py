@@ -31,12 +31,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 _DATA_PATH = os.path.join(os.path.dirname(__file__), "team_data.json")
 
 # Department display order in the dashboard.
 DEPARTMENTS: list[str] = [
+    "Strategy & Leadership",
     "Content & Creative",
     "Marketing & Growth",
     "Research & Data",
@@ -117,6 +119,76 @@ def member_profile(member_id: str) -> dict[str, Any] | None:
         "metrics": m.get("metrics", []),
         "illustrative": True,
     }
+
+
+# Words too common to help match a task to a specialist.
+_STOPWORDS = frozenset(
+    [
+        "a",
+        "an",
+        "and",
+        "or",
+        "the",
+        "to",
+        "for",
+        "of",
+        "in",
+        "on",
+        "with",
+        "my",
+        "our",
+        "your",
+        "you",
+        "me",
+        "i",
+        "need",
+        "want",
+        "help",
+        "make",
+        "create",
+        "build",
+        "write",
+        "get",
+        "some",
+        "please",
+        "can",
+        "could",
+        "would",
+        "should",
+        "how",
+        "what",
+        "who",
+    ]
+)
+
+
+def _tokens(text: str) -> set[str]:
+    return {
+        w for w in re.findall(r"[a-z]+", (text or "").lower()) if w not in _STOPWORDS and len(w) > 2
+    }
+
+
+def recommend(task: str, limit: int = 3) -> list[dict[str, Any]]:
+    """Suggest the specialists best suited to a free-text task.
+
+    Deterministic keyword/skill overlap — no LLM — so it is fast and predictable.
+    Title and skill hits are weighted above specialty/department mentions. Returns
+    public cards (with a ``score``); empty list if the task has no usable words.
+    """
+    query = _tokens(task)
+    if not query:
+        return []
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for m in TEAM:
+        skills = " ".join(m.get("resume", {}).get("skills", []))
+        title_t = _tokens(m["title"])
+        skill_t = _tokens(skills)
+        body_t = _tokens(f"{m['specialty']} {m.get('department', '')}")
+        score = 3 * len(query & title_t) + 2 * len(query & skill_t) + len(query & body_t)
+        if score > 0:
+            scored.append((score, m))
+    scored.sort(key=lambda pair: (-pair[0], pair[1]["name"]))
+    return [{**_public_card(m), "score": s} for s, m in scored[:limit]]
 
 
 def persona_context(member_id: str) -> str:
