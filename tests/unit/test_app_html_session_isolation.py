@@ -169,10 +169,17 @@ console.log(JSON.stringify({{
 
 
 def test_logout_route_is_paired_with_client_side_cleanup():
-    """/logout only clears the server-side cookie (apps/core/main.py) — the
-    sign-out link must call signOutCleanup() to clear localStorage too."""
+    """/logout only clears the server-side cookie (apps/core/main.py) — every
+    sign-out link (there's more than one: settings panel + account menu) must
+    call signOutCleanup() to clear localStorage too, or a browser can leak
+    one user's chat history to the next person who signs in on it."""
     html = APP_HTML.read_text(encoding="utf-8")
-    assert 'href="/logout"' in html
-    assert 'onclick="signOutCleanup()"' in html
-    logout_line = next(line for line in html.splitlines() if 'href="/logout"' in line)
-    assert "signOutCleanup()" in logout_line
+    logout_lines = [
+        line
+        for line in html.splitlines()
+        for m in [re.search(r'<a\b[^>]*href="/logout"', line)]
+        if m and "//" not in line[: m.start()]
+    ]
+    assert logout_lines, "app.html must contain at least one /logout link"
+    for line in logout_lines:
+        assert "signOutCleanup()" in line, f"logout link missing signOutCleanup(): {line.strip()}"

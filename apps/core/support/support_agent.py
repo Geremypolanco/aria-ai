@@ -22,33 +22,32 @@ import logging
 
 logger = logging.getLogger("aria.support")
 
-# Fast tier: the user asked for a "fast sub-agent" (low-latency support).
 # Haiku is Anthropic's fast model — the right fit for a real-time support widget.
 SUPPORT_MODEL = "claude-haiku-4-5"
 
 CONTACT_EMAIL = "litesaraph@gmail.com"
 
 SUPPORT_SYSTEM_PROMPT = (
-    "You are ARIA Support, the 24/7 assistant for the ARIA platform (SARAPH brand). "
-    "You help users resolve billing questions, mission failures, or connector "
-    "configuration issues. Maintain a professional, courteous, elite technical "
-    "support tone.\n\n"
+    "You are ARIA Support, the 24/7 assistant for the ARIA platform (built by "
+    "SARAPH). You help users with billing questions, mission failures, or "
+    "connector setup. Keep a professional, courteous, elite-technical-support "
+    "tone.\n\n"
     "Rules:\n"
     "- Be concise and actionable: concrete steps, no filler.\n"
     "- Never invent account-specific data (charges, order numbers, mission "
-    "statuses, tickets). If you need specific account information you don't "
-    "have, say so and direct the user to Settings or to write to "
+    "status, tickets). If you need account-specific information you don't "
+    "have, say so and point the user to Settings or to email "
     f"{CONTACT_EMAIL}.\n"
     "- Billing: plans (Free, Pro, Business) are managed via Stripe and renew "
-    "monthly. Tactfully remind users of the strict no-refund policy for "
-    "immediate AI compute costs, and link to /legal/refund-policy.\n"
+    "monthly. Tactfully remind users of the strict no-refund policy due to "
+    "the immediate cost of AI compute, and link to /legal/refund-policy.\n"
     "- Missions: if a mission fails, ARIA automatically retries transient "
-    "failures; suggest reviewing the error message, retrying, and checking the "
-    "connectors involved.\n"
-    "- Connectors: configuration lives under Settings → Connectors; if one "
-    "shows red, it's usually an expired token that needs to be reauthorized.\n"
+    "failures; suggest checking the error message, retrying, and verifying "
+    "the connectors involved.\n"
+    "- Connectors: setup lives in Settings → Connectors; if one shows red, "
+    "it's usually an expired token that needs re-authorizing.\n"
     "- Never promise features that don't exist or share internal system "
-    "information. Respond in the user's language."
+    "details. Reply in the user's own language."
 )
 
 # Keyword → topic intent, used only by the offline responder.
@@ -59,6 +58,11 @@ _BILLING = (
     "pagos",
     "cobro",
     "cobra",
+    "charge",
+    "charged",
+    "payment",
+    "billed",
+    "price",
     "refund",
     "reembolso",
     "devoluc",
@@ -133,39 +137,39 @@ _OFFLINE_ANSWERS = {
         "Happy to help with billing. Key points:\n"
         "• Plans (Free, Pro, Business) are managed via Stripe and renew "
         "monthly; you can cancel anytime and keep access until the end of "
-        "the current period.\n"
-        "• ARIA enforces a **strict no-refund policy** for immediate rendering "
-        "and AI compute costs — you can read it at "
+        "the current billing period.\n"
+        "• ARIA has a **strict no-refund policy** due to the immediate cost "
+        "of rendering and AI compute — you can read it at "
         "/legal/refund-policy.\n"
         "• To manage your plan, go to the menu → Upgrade, or Settings.\n"
-        "If your question is about a specific charge on your account, email us at "
-        f"{CONTACT_EMAIL} from your account's email and we'll look into it."
+        "If your question is about a specific charge on your account, email "
+        f"us at {CONTACT_EMAIL} from your account's email and we'll look into it."
     ),
     "missions": (
         "Let's look at your mission failure. Recommended steps:\n"
-        "1. Open the mission and review the error message in the live logs.\n"
-        "2. Transient failures (network, temporary limits, timeouts) are "
-        "retried automatically; wait a few minutes and check the status again.\n"
-        "3. If the failure persists, retry the mission manually.\n"
-        "4. Verify that the connectors this mission needs are green "
+        "1. Open the mission and check the error message in the live logs.\n"
+        "2. Transient failures (network, rate limits, timeouts) are retried "
+        "automatically; wait a few minutes and check the status again.\n"
+        "3. If it keeps failing, retry the mission manually.\n"
+        "4. Make sure the connectors that mission needs are green "
         "(Settings → Connectors).\n"
-        "If it's still failing after this, tell me the exact error message and I'll "
-        "help you interpret it."
+        "If it's still failing after that, tell me the exact error message "
+        "and I'll help you interpret it."
     ),
     "connectors": (
-        "I'll help with your connector configuration:\n"
-        "• All your connectors live under Settings → Connectors.\n"
-        "• If one shows red, it's almost always an expired token: reauthorize "
-        "the connection and it'll turn green.\n"
-        "• After reconnecting, retry the mission that was using it.\n"
-        "Tell me which specific connector is giving you trouble (LinkedIn, Shopify, "
+        "Happy to help with connector setup:\n"
+        "• All your connectors live in Settings → Connectors.\n"
+        "• If one shows red, it's almost always an expired token: "
+        "re-authorize the connection and it'll turn green.\n"
+        "• After reconnecting, retry the mission that used it.\n"
+        "Tell me which connector is giving you trouble (LinkedIn, Shopify, "
         "Instagram, YouTube…) and I'll give you the specific steps."
     ),
     "general": (
         "I'm ARIA Support and I can help with three main areas: "
-        "**billing**, **mission failures**, and **connector configuration**. "
-        "Tell me in one sentence what's going on and I'll guide you step by step. "
-        f"For account-specific matters, you can also email {CONTACT_EMAIL}."
+        "**billing**, **mission failures**, and **connector setup**. "
+        "Tell me in a sentence what's going on and I'll guide you step by "
+        f"step. For anything account-specific, you can also email {CONTACT_EMAIL}."
     ),
 }
 
@@ -183,7 +187,7 @@ async def answer(message: str, *, api_key: str | None = None) -> tuple[str, str]
     """
     message = (message or "").strip()
     if not message:
-        return ("How can I help you? I can assist with billing, missions, or connectors.", "offline")
+        return ("How can I help? I can assist with billing, missions, or connectors.", "offline")
 
     if not api_key:
         return (offline_answer(message), "offline")

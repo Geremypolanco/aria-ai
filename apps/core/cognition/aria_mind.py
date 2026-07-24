@@ -218,27 +218,27 @@ Talk like a real person explaining something to someone they care about — warm
 _HELP_TEXT = """\
 ## ARIA — Available capabilities
 
-**Search and research**
+**Search & research**
 - `search [topic]` — real-time web search
-- `/research [topic]` — deep research with page reading
+- `/research [topic]` — deep research with full page reading
 - `/think [question]` — extended reasoning (DeepThink)
 
 **Content creation**
-- `write an article about [topic]` — full SEO article
+- `write an article about [topic]` — full SEO-ready article
 - `create social content about [topic]` — platform-optimized posts
 - `generate an image of [description]` — AI image (FLUX/SDXL)
-- `create a presentation about [topic]` — Reveal.js, ready to present
-- `create a pitch deck for [company]` — investor presentation
+- `create a presentation about [topic]` — presentation-ready Reveal.js deck
+- `create a pitch deck for [company]` — investor-ready presentation
 
-**Code and software**
-- `build a [type of app] that [does X]` — full project with code
+**Code & software**
+- `build a [type of app] that [does X]` — complete project with code
 - `run this code: [code]` — Python/JS sandbox
 - `analyze this image: [URL]` — computer vision
 
-**Agents and automation**
-- `/run [mission]` — execute with an agent pipeline
+**Agents & automation**
+- `/run [mission]` — execute with the agent pipeline
 - `/plan [goal]` — detailed strategic plan
-- `run the research crew on [topic]` — collaborative multi-agent
+- `run the research team on [topic]` — collaborative multi-agent run
 - `create a workflow: [description]` — multi-step automation
 
 **Knowledge base**
@@ -257,7 +257,7 @@ _HELP_TEXT = """\
 - `generate music: [description]` — audio with MusicGen
 - `convert to speech: [text]` — voice synthesis
 
-Type any question or instruction in natural language — ARIA understands context and automatically picks the right tool.\
+Type any question or instruction in natural language — ARIA understands context and picks the right tool automatically.\
 """
 
 
@@ -489,6 +489,12 @@ class AriaMind:
                 await self._clear_conversation(chat_id)
                 return MindResponse(text="Conversation reset. How can I help?", silent=False)
             if stripped in ("/status", "/estado", "status"):
+                from apps.core import auth
+
+                if not auth.is_owner_email(email):
+                    return MindResponse(
+                        text="That's an internal diagnostic command — not available on this account."
+                    )
                 return await self._build_status()
 
             # Deterministic fast-path for image generation.
@@ -627,7 +633,7 @@ class AriaMind:
 
         except Exception as exc:
             logger.error("[AriaMind] handle: %s", exc, exc_info=True)
-            return MindResponse(text="Internal error. Trying again.")
+            return MindResponse(text="Internal error. Please try again.")
 
     # ── REASONING ────────────────────────────────────────────────────────────
 
@@ -642,7 +648,7 @@ class AriaMind:
     ) -> dict | None:
         ai = self._ai_client()
         if not ai:
-            return {"tool": None, "reply": "AI engine not available right now."}
+            return {"tool": None, "reply": "AI engine isn't available right now."}
 
         from apps.core.config import settings
         from apps.core.tools.ai_client import AIModel
@@ -1756,9 +1762,9 @@ class AriaMind:
 
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
-            return f"No pude completar la herramienta '{tool}' — inténtalo de nuevo.", {}
+            return f"I couldn't complete the '{tool}' action — please try again.", {}
 
-        return "Herramienta desconocida", {}
+        return "Unknown tool", {}
 
     # ── SÍNTESIS ───────────────────────────────────────────────────────────
 
@@ -2054,7 +2060,7 @@ class AriaMind:
 
     async def _build_status(self) -> MindResponse:
         """Fast-path /status command — returns rich system status without an LLM call."""
-        lines: list[str] = ["## Estado del Sistema ARIA\n"]
+        lines: list[str] = ["## ARIA System Status\n"]
 
         # AI providers
         try:
@@ -2063,18 +2069,18 @@ class AriaMind:
             health = get_ai_client().get_health_summary()
             providers = {k: v for k, v in health.items() if k != "_totals"}
             totals = health.get("_totals", {})
-            lines.append("**Proveedores de IA:**")
+            lines.append("**AI providers:**")
             for name, info in providers.items():
-                status = "activo" if info.get("available") else "caído"
+                status = "up" if info.get("available") else "down"
                 rate = info.get("success_rate_pct", 100)
                 calls = info.get("total_calls", 0)
-                lines.append(f"  - **{name}** ({status}) — {rate:.0f}% éxito · {calls} llamadas")
+                lines.append(f"  - **{name}** ({status}) — {rate:.0f}% success · {calls} calls")
             if totals:
                 lines.append(
-                    f"\n  Tokens totales: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`"
+                    f"\n  Total tokens: `{totals.get('tokens_used', 0):,}` · Fallbacks: `{totals.get('fallbacks_triggered', 0)}`"
                 )
         except Exception:
-            lines.append("  Sin datos de proveedores")
+            lines.append("  No provider data")
 
         # Goals
         try:
@@ -2082,12 +2088,12 @@ class AriaMind:
             active = [
                 g for g in goals if isinstance(g, dict) and g.get("status", "active") == "active"
             ]
-            lines.append(f"\n**Metas activas:** {len(active)}")
+            lines.append(f"\n**Active goals:** {len(active)}")
             for g in active[:5]:
                 p = g.get("priority", "")
                 lines.append(f"  - {'[P'+str(p)+'] ' if p else ''}{g.get('text','')[:70]}")
             if len(active) > 5:
-                lines.append(f"  … y {len(active)-5} más")
+                lines.append(f"  … and {len(active)-5} more")
         except Exception:
             pass
 
@@ -2100,7 +2106,7 @@ class AriaMind:
             queued = stats.get("queued", 0)
             completed = stats.get("completed", 0)
             lines.append(
-                f"\n**Tareas en segundo plano:** {running} activas · {queued} en cola · {completed} completadas"
+                f"\n**Background tasks:** {running} running · {queued} queued · {completed} completed"
             )
         except Exception:
             pass
@@ -2112,13 +2118,13 @@ class AriaMind:
             kb = get_knowledge_base()
             kstats = kb.stats()
             lines.append(
-                f"\n**Base de conocimiento:** {kstats.get('total_chunks', 0)} fragmentos en {len(kstats.get('by_category', {}))} categorías"
+                f"\n**Knowledge base:** {kstats.get('total_chunks', 0)} chunks across {len(kstats.get('by_category', {}))} categories"
             )
         except Exception:
             pass
 
         lines.append(f"\n**Timestamp:** `{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}`")
-        lines.append("\nUsa `/help` para ver todas las capacidades disponibles.")
+        lines.append("\nUse `/help` to see all available capabilities.")
         return MindResponse(text="\n".join(lines))
 
 

@@ -197,6 +197,6 @@ def persona_context(member_id: str) -> str:
     if not m:
         return ""
     return (
-        f"[Actúa como {m['name']}, {m['title']} del equipo de ARIA. {m['persona']} "
-        f"Mantén tu especialidad y entrega el trabajo terminado.]"
+        f"[Act as {m['name']}, ARIA's {m['title']}. {m['persona']} "
+        f"Stay in your specialty and deliver the finished work.]"
     )

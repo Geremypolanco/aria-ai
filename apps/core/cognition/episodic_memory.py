@@ -1,19 +1,29 @@
 """
-episodic_memory.py — ARIA AI's persistent episodic memory.
+episodic_memory.py — ARIA's persistent, per-user memory across sessions.
 
-ARIA remembers real events across sessions:
-  - Previous conversations (compressed and retrievable)
-  - Actions executed and their results
-  - Mistakes it made and how it resolved them
-  - Preferences it learned from the user
+This is what lets a returning user pick up where they left off in a DIFFERENT
+chat thread, days later — the gap between this and aria_mind.py's own
+K_HISTORY (which only remembers within a single chat_id) and K_LEARNED (a
+global, not per-user, rule bank). Neither of those carries "what did this
+specific person tell me last week" across a new conversation.
 
-Cross-session: persists in Supabase. Cached in Redis.
-Semantic retrieval via embeddings (HF sentence-transformers).
+Storage: one Redis list per user (``aria:memory:{user_id}``), capped and
+TTL'd — the same pattern apps/core/cognition/aria_mind.py already uses for
+its own history, and the only path guaranteed to work today. Supabase is a
+best-effort secondary write for durability/analytics; its absence (no
+migration run yet) must never break the Redis path, which is why every
+Supabase call is wrapped and its failure is silently swallowed.
+
+This module used to keep episodes in a plain Python list on the instance.
+That's wrong for this deployment: fly.toml autoscales the `web` group across
+multiple machines, so any two requests can land on different processes with
+no shared memory — an in-process list would silently "forget" whatever the
+other machine wrote. Redis (Upstash, shared over REST) is the only thing
+here that's actually cross-process.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from datetime import UTC, datetime
@@ -26,25 +36,40 @@ logger = logging.getLogger("aria.episodic_memory")
 
 HF_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
+_MAX_EPISODES_PER_USER = 200
+_TTL_SECONDS = 86400 * 180  # ~6 months of retained memory
+
 
 class EpisodicMemory:
-    """
-    ARIA's real episodic memory.
-    Stores, retrieves, and relates events across time.
-    """
+    """Per-user episodic memory: stores, recalls, and summarizes past episodes."""
 
     def __init__(self) -> None:
-        self._episodes: list[dict] = []
         self._hf_token = getattr(settings, "HF_TOKEN", None) or getattr(
             settings, "HF_API_KEY", None
         )
         self._http = httpx.AsyncClient(timeout=15.0)
-        self._loaded = False
 
-    # ── STORE EPISODES ──────────────────────────────────────────
+    @staticmethod
+    def _key(user_id: str) -> str:
+        return f"aria:memory:{user_id}"
 
-    async def store(self, episode_type: str, content: str, metadata: dict = None) -> str:
-        """Stores a new episode in memory."""
+    def _cache_client(self):
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            return get_cache()
+        except Exception:
+            return None
+
+    # ── STORE EPISODES ────────────────────────────────────────────
+
+    async def store(
+        self, user_id: str, episode_type: str, content: str, metadata: dict | None = None
+    ) -> str | None:
+        """Store a new episode for this user. No-ops (returns None) without a user_id —
+        there is nothing sensible to scope anonymous memory to."""
+        if not user_id:
+            return None
         episode_id = f"{int(time.time() * 1000)}"
         episode = {
             "id": episode_id,
@@ -52,10 +77,8 @@ class EpisodicMemory:
             "content": content[:2000],
             "metadata": metadata or {},
             "timestamp": datetime.now(UTC).isoformat(),
-            "session": getattr(settings, "APP_VERSION", "unknown"),
         }
 
-        # Generate embedding for semantic retrieval
         try:
             embedding = await self._embed(content[:512])
             if embedding:
@@ -63,56 +86,72 @@ class EpisodicMemory:
         except Exception:
             pass
 
-        self._episodes.append(episode)
-        if len(self._episodes) > 300:
-            self._episodes = self._episodes[-200:]
+        cache = self._cache_client()
+        if cache:
+            key = self._key(user_id)
+            episodes = await cache.get(key) or []
+            if not isinstance(episodes, list):
+                episodes = []
+            episodes.append(episode)
+            episodes = episodes[-_MAX_EPISODES_PER_USER:]
+            await cache.set(key, episodes, ttl_seconds=_TTL_SECONDS)
 
-        # Persist to Supabase
-        await self._persist_episode(episode)
+        await self._persist_episode(user_id, episode)
         return episode_id
 
     async def store_conversation(self, user_id: str, user_msg: str, aria_response: str) -> None:
-        """Stores a conversation exchange."""
+        """Store one conversation turn."""
         await self.store(
+            user_id,
             "conversation",
             f"User: {user_msg[:500]}\nARIA: {aria_response[:500]}",
-            {"user_id": user_id, "turns": 1},
+            {"turns": 1},
         )
 
-    async def store_action(self, action: str, result: str, success: bool) -> None:
-        """Stores an executed action and its result."""
+    async def store_action(self, user_id: str, action: str, result: str, success: bool) -> None:
+        """Store an executed action and its result."""
         await self.store(
+            user_id,
             "action",
             f"Action: {action[:300]}\nResult: {result[:300]}",
             {"success": success},
         )
 
-    async def store_error(self, error: str, context: str, resolution: str = None) -> None:
-        """Stores an error and how it was resolved."""
+    async def store_error(
+        self, user_id: str, error: str, context: str, resolution: str | None = None
+    ) -> None:
+        """Store an error and how it was resolved."""
         await self.store(
+            user_id,
             "error",
             f"Error: {error[:300]}\nContext: {context[:200]}\nResolution: {resolution or 'pending'}",
             {"resolved": resolution is not None},
         )
 
-    # ── RETRIEVE EPISODES ───────────────────────────────────────
+    # ── RECALL EPISODES ───────────────────────────────────────────
 
-    async def recall(self, query: str, n: int = 5, episode_type: str = None) -> list[dict]:
-        """
-        Retrieves the most relevant episodes for a query.
-        Uses embedding similarity if available, otherwise keyword search.
-        """
-        if not self._loaded:
-            await self.load()
-
-        candidates = self._episodes
+    async def _load_episodes(self, user_id: str, episode_type: str | None = None) -> list[dict]:
+        if not user_id:
+            return []
+        cache = self._cache_client()
+        if not cache:
+            return []
+        episodes = await cache.get(self._key(user_id)) or []
+        if not isinstance(episodes, list):
+            return []
         if episode_type:
-            candidates = [e for e in candidates if e.get("type") == episode_type]
+            episodes = [e for e in episodes if e.get("type") == episode_type]
+        return episodes
 
+    async def recall(
+        self, user_id: str, query: str, n: int = 5, episode_type: str | None = None
+    ) -> list[dict]:
+        """Retrieve the episodes most relevant to a query for this user.
+        Uses embedding similarity when available, else keyword search."""
+        candidates = await self._load_episodes(user_id, episode_type)
         if not candidates:
             return []
 
-        # Semantic search via embeddings
         try:
             query_emb = await self._embed(query[:512])
             if query_emb and any(e.get("embedding") for e in candidates):
@@ -127,7 +166,6 @@ class EpisodicMemory:
         except Exception:
             pass
 
-        # Fallback: keyword search
         query_lower = query.lower()
         scored = []
         for ep in candidates:
@@ -135,33 +173,29 @@ class EpisodicMemory:
             score = sum(1 for word in query_lower.split() if word in text and len(word) > 3)
             scored.append((score, ep))
         scored.sort(key=lambda x: x[0], reverse=True)
-        return [ep for _, ep in scored[:n] if scored[0][0] > 0]
+        return [ep for score, ep in scored[:n] if score > 0]
 
-    async def get_recent(self, n: int = 10, episode_type: str = None) -> list[dict]:
-        """Gets the most recent episodes."""
-        if not self._loaded:
-            await self.load()
-        eps = self._episodes
-        if episode_type:
-            eps = [e for e in eps if e.get("type") == episode_type]
-        return eps[-n:]
+    async def get_recent(
+        self, user_id: str, n: int = 10, episode_type: str | None = None
+    ) -> list[dict]:
+        """Get this user's most recent episodes."""
+        episodes = await self._load_episodes(user_id, episode_type)
+        return episodes[-n:]
 
-    async def summarize_session(self) -> str:
-        """Generates a summary of the current session to include in context."""
-        recent = await self.get_recent(20)
+    async def summarize_session(self, user_id: str) -> str:
+        """A short summary of recent episodes, meant to be folded into the
+        system context so ARIA can reference earlier sessions."""
+        recent = await self.get_recent(user_id, 20)
         if not recent:
-            return "No recent episodes."
-
+            return ""
         lines = []
         for ep in recent[-10:]:
             ts = ep.get("timestamp", "")[:16]
-            content = ep.get("content", "")[:100]
+            content = ep.get("content", "")[:160]
             lines.append(f"[{ts}] {ep['type']}: {content}")
+        return "\n".join(lines)
 
-        summary = "\n".join(lines)
-        return summary
-
-    # ── EMBEDDINGS ───────────────────────────────────────────────
+    # ── EMBEDDINGS ────────────────────────────────────────────────
 
     async def _embed(self, text: str) -> list[float] | None:
         if not self._hf_token:
@@ -192,20 +226,21 @@ class EpisodicMemory:
             return 0.0
         return dot / (na * nb)
 
-    # ── PERSISTENCE ──────────────────────────────────────────────
+    # ── SUPABASE (best-effort secondary durability, never load-bearing) ────
 
-    async def _persist_episode(self, episode: dict) -> None:
+    async def _persist_episode(self, user_id: str, episode: dict) -> None:
         try:
             from apps.core.memory.supabase_client import get_db
 
             db = get_db()
             if db:
-                # create_client() returns a SYNC supabase client — its
-                # .execute() is a regular method, not a coroutine. Awaiting
-                # it raised TypeError on every call, silently swallowed.
+                # supabase-py's client is synchronous — .execute() is a plain call,
+                # not a coroutine; awaiting it raises TypeError, which the except
+                # below would otherwise swallow silently.
                 db.table("aria_episodic_memory").insert(
                     {
                         "episode_id": episode["id"],
+                        "user_id": user_id,
                         "episode_type": episode["type"],
                         "content": episode["content"],
                         "metadata": episode.get("metadata", {}),
@@ -215,57 +250,6 @@ class EpisodicMemory:
         except Exception:
             pass
 
-        try:
-            from apps.core.memory.redis_client import get_cache
-
-            cache = get_cache()
-            if cache:
-                key = f"aria:episode:{episode['id']}"
-                # value/ttl_seconds were transposed — the episode content was
-                # never actually stored (the cached value was the literal
-                # string "604800"), and the malformed ttl broke Redis's EX arg.
-                await cache.set(
-                    key,
-                    json.dumps({k: v for k, v in episode.items() if k != "embedding"}),
-                    ttl_seconds=86400 * 7,
-                )
-        except Exception:
-            pass
-
-    async def load(self) -> None:
-        """Loads recent episodes from Supabase on startup."""
-        try:
-            from apps.core.memory.supabase_client import get_db
-
-            db = get_db()
-            if db:
-                # create_client() returns a SYNC supabase client — its
-                # .execute() is a regular method, not a coroutine.
-                result = (
-                    db.table("aria_episodic_memory")
-                    .select("*")
-                    .order("created_at", desc=True)
-                    .limit(100)
-                    .execute()
-                )
-                if result.data:
-                    self._episodes = [
-                        {
-                            "id": r["episode_id"],
-                            "type": r["episode_type"],
-                            "content": r["content"],
-                            "metadata": r.get("metadata", {}),
-                            "timestamp": r["created_at"],
-                        }
-                        for r in reversed(result.data)
-                    ]
-                    logger.info(
-                        "[EpisodicMemory] %d episodes loaded from Supabase", len(self._episodes)
-                    )
-        except Exception as exc:
-            logger.warning("[EpisodicMemory] Load failed: %s", exc)
-        self._loaded = True
-
     async def close(self) -> None:
         await self._http.aclose()
 
@@ -274,6 +258,8 @@ _memory: EpisodicMemory | None = None
 
 
 def get_episodic_memory() -> EpisodicMemory:
+    """Process-wide singleton — safe because all actual state lives in Redis,
+    not on this object (see the module docstring)."""
     global _memory
     if _memory is None:
         _memory = EpisodicMemory()

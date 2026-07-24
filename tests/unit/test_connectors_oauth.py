@@ -185,7 +185,7 @@ class TestRoutes:
         r = client.get("/api/v1/connectors/status", cookies=_cookie())
         assert r.status_code == 200
         conns = r.json()["connectors"]
-        assert len(conns) == 12
+        assert len(conns) == len(hub.ORDER)
         assert all({"id", "name", "state"} <= set(c) for c in conns)
         # with no creds configured, everything is "setup"
         assert all(c["state"] in ("setup", "ready", "connected") for c in conns)

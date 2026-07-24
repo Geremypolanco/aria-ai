@@ -159,13 +159,16 @@ async def test_world_state_persist_and_load_round_trip():
     fake_table.upsert.assert_called_once()
 
 
-async def test_episodic_memory_persists_actual_content_not_swapped_args():
+async def test_episodic_memory_persist_episode_does_not_await_sync_execute():
+    """_persist_episode used to do `await db.table(...).insert(...).execute()` —
+    but create_client() returns a SYNCHRONOUS supabase client, so .execute()
+    isn't a coroutine. Awaiting a plain APIResponse object raised TypeError on
+    every call, silently swallowed, so episodes were never actually persisted
+    to Supabase."""
     from apps.core.cognition.episodic_memory import EpisodicMemory
 
-    cache = FakeCache()
     fake_db = MagicMock()
     fake_table = MagicMock()
-    # Sync client — see note above on the WorldState test.
     fake_table.insert.return_value.execute = MagicMock(return_value=None)
     fake_db.table.return_value = fake_table
 
@@ -176,49 +179,41 @@ async def test_episodic_memory_persists_actual_content_not_swapped_args():
         "timestamp": "2026-01-01T00:00:00Z",
     }
 
-    with (
-        patch("apps.core.memory.redis_client.get_cache", return_value=cache),
-        patch("apps.core.memory.supabase_client.get_db", return_value=fake_db),
-    ):
-        mem = EpisodicMemory()
-        await mem._persist_episode(episode)
-
-    stored_raw = cache._store["aria:episode:ep1"]
-    stored = json.loads(stored_raw)
-    assert stored["content"] == "user asked about pricing"
-
-
-async def test_episodic_memory_load_does_not_await_sync_execute():
-    """load() used to do `await db.table(...)....execute()` — but
-    create_client() returns a SYNCHRONOUS supabase client, so .execute()
-    isn't a coroutine. Awaiting a plain APIResponse object raised TypeError
-    on every startup, silently swallowed, so episodes were never actually
-    loaded from Supabase."""
-    from apps.core.cognition.episodic_memory import EpisodicMemory
-
-    fake_result = MagicMock()
-    fake_result.data = [
-        {
-            "episode_id": "ep1",
-            "episode_type": "conversation",
-            "content": "hello",
-            "metadata": {},
-            "created_at": "2026-01-01T00:00:00Z",
-        }
-    ]
-    fake_query = MagicMock()
-    fake_query.select.return_value.order.return_value.limit.return_value.execute = MagicMock(
-        return_value=fake_result
-    )
-    fake_db = MagicMock()
-    fake_db.table.return_value = fake_query
-
     with patch("apps.core.memory.supabase_client.get_db", return_value=fake_db):
         mem = EpisodicMemory()
-        await mem.load()
+        await mem._persist_episode("user-1", episode)
 
-    assert mem._episodes
-    assert mem._episodes[0]["id"] == "ep1"
+    fake_db.table.assert_called_with("aria_episodic_memory")
+    inserted = fake_table.insert.call_args[0][0]
+    assert inserted["user_id"] == "user-1"
+    assert inserted["content"] == "user asked about pricing"
+    fake_table.insert.return_value.execute.assert_called_once()
+
+
+async def test_episodic_memory_store_and_recall_round_trip_is_per_user():
+    """Storage moved from a per-process Python list (which doesn't survive
+    Fly.io's multi-machine autoscaling — a different request can land on a
+    different machine with no shared memory) to per-user Redis keys. Verify
+    the round trip actually works, and that one user's episodes never leak
+    into another user's recall."""
+    from apps.core.cognition.episodic_memory import EpisodicMemory
+
+    cache = FakeCache()
+    with (
+        patch("apps.core.memory.redis_client.get_cache", return_value=cache),
+        patch("apps.core.memory.supabase_client.get_db", return_value=None),
+    ):
+        mem = EpisodicMemory()
+        await mem.store_conversation("user-a", "what's the pricing?", "here's our pricing...")
+        await mem.store_conversation("user-b", "how's the weather?", "sunny today")
+
+        a_recent = await mem.get_recent("user-a", n=10)
+        b_recent = await mem.get_recent("user-b", n=10)
+
+    assert len(a_recent) == 1
+    assert "pricing" in a_recent[0]["content"]
+    assert len(b_recent) == 1
+    assert "weather" in b_recent[0]["content"]
 
 
 async def test_semantic_memory_load_fact_round_trips():
