@@ -315,7 +315,15 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .tm-card:hover .tm-more{gap:7px;color:var(--green-ink)}
 .tm-card:focus-visible{outline:2px solid var(--neon);outline-offset:2px}
 .tm-more{display:inline-flex;align-items:center;gap:4px;margin-top:11px;font-size:12.5px;font-weight:700;color:var(--green-ink);transition:gap .2s}
-.tm-av{width:54px;height:54px;border-radius:13px;flex:none;object-fit:cover;background:var(--soft);border:1px solid var(--line)}
+.tm-av-wrap{position:relative;width:54px;height:54px;flex:none}
+.tm-av-ini{position:absolute;inset:0;border-radius:13px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;letter-spacing:.02em}
+.tm-av{position:absolute;inset:0;width:54px;height:54px;border-radius:13px;object-fit:cover;background:var(--soft);border:1px solid var(--line)}
+.tm-dept{display:flex;align-items:center;gap:9px;margin:24px 0 12px;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tm-dept-ct{background:var(--soft);border:1px solid var(--line);border-radius:20px;padding:1px 8px;font-size:10.5px;font-weight:700;color:var(--muted)}
+.tm-dept-ln{flex:1;height:1px;background:var(--line)}
+#teamGrid>.tm-dept:first-child{margin-top:2px}
+.pf-av-wrap{position:relative;width:66px;height:66px;flex:none}
+.pf-av-ini{position:absolute;inset:0;border-radius:15px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:23px}
 .tm-body{min-width:0;flex:1}
 .tm-name{font-size:15px;font-weight:700;color:var(--ink)}
 .tm-title{font-size:12px;font-weight:600;color:var(--green-ink);margin-top:1px}
@@ -324,7 +332,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .tm-hire:hover{filter:brightness(1.03)}
 /* profile modal */
 .pf-hero{display:flex;gap:14px;align-items:center}
-.pf-av{width:66px;height:66px;border-radius:15px;flex:none;object-fit:cover;background:var(--soft);border:1px solid var(--line)}
+.pf-av{position:absolute;inset:0;width:66px;height:66px;border-radius:15px;object-fit:cover;background:var(--soft);border:1px solid var(--line)}
 .pf-name{font-size:19px;font-weight:800;color:var(--ink)}
 .pf-role{font-size:13px;font-weight:600;color:var(--green-ink);margin-top:1px}
 .pf-illus{font-size:11px;color:var(--muted);margin-top:4px}
@@ -568,7 +576,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h2>Your AI team</h2><p class="lead">A team of specialists — give one a goal and it does the work, end to end. Each is powered by ARIA.</p></div>
       <button onclick="closeTeam()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
-    <div id="teamGrid" class="team-grid" style="margin-top:18px"></div>
+    <div id="teamGrid" style="margin-top:6px"></div>
   </div>
 </div>
 
@@ -1223,28 +1231,59 @@ function closeConnectors(){ const o=document.getElementById('connOv'); o.classLi
 
 // ── Team of AI professionals ──
 let TEAM_CACHE = null;
+let TEAM_GROUPS = null;
+const DEPT_COLORS = {
+  'Content & Creative':'#0ea5e9','Marketing & Growth':'#d97706','Research & Data':'#8b5cf6',
+  'Engineering & Product':'#10b981','Legal & Compliance':'#475569','Finance & Operations':'#0d9488',
+  'Sales & Customer Success':'#e11d48'
+};
+function deptColor(d){ return DEPT_COLORS[d] || '#15b866'; }
+function teamInitials(name){
+  return (name||'').split(/\s+/).filter(Boolean).slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();
+}
+// Avatar with an initials fallback: the portrait sits over a colored initials
+// tile and removes itself if it 404s (most specialists have no portrait yet).
+function teamAvatar(m, avCls, iniCls){
+  return '<span class="'+avCls+'-wrap">'
+    +'<span class="'+iniCls+'" style="background:'+deptColor(m.department)+'">'+esc(teamInitials(m.name))+'</span>'
+    +'<img class="'+avCls+'" src="'+m.avatar+'" alt="" onerror="this.remove()">'
+    +'</span>';
+}
 async function openTeam(){
   document.getElementById('menu').classList.add('hidden'); toggleSide(false);
   const o=document.getElementById('teamOv'); o.classList.remove('hidden'); o.classList.add('flex');
   const grid=document.getElementById('teamGrid');
   if(!TEAM_CACHE){
     grid.innerHTML='<div class="cn-loading">Loading your team…</div>';
-    try{ const r=await fetch('/api/v1/team',{credentials:'same-origin'}); TEAM_CACHE=(await r.json()).team||[]; }
-    catch(e){ TEAM_CACHE=[]; }
+    try{
+      const j=await (await fetch('/api/v1/team',{credentials:'same-origin'})).json();
+      TEAM_CACHE=j.team||[]; TEAM_GROUPS=j.departments||null;
+    }
+    catch(e){ TEAM_CACHE=[]; TEAM_GROUPS=null; }
   }
   renderTeam();
 }
+function teamCard(m){
+  return '<div class="tm-card" onclick="openProfile(\''+m.id+'\')" role="button" tabindex="0" '
+    +'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openProfile(\''+m.id+'\')}">'
+    +teamAvatar(m,'tm-av','tm-av-ini')
+    +'<div class="tm-body"><div class="tm-name">'+esc(m.name)+'</div>'
+    +'<div class="tm-title">'+esc(m.title)+'</div>'
+    +'<div class="tm-spec">'+esc(m.specialty)+'</div>'
+    +'<span class="tm-more">View more'
+    +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
+    +'</span></div></div>';
+}
 function renderTeam(){
-  document.getElementById('teamGrid').innerHTML = (TEAM_CACHE||[]).map(function(m){
-    return '<div class="tm-card" onclick="openProfile(\''+m.id+'\')" role="button" tabindex="0" '
-      +'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openProfile(\''+m.id+'\')}">'
-      +'<img class="tm-av" src="'+m.avatar+'" alt="" onerror="this.style.visibility=\'hidden\'">'
-      +'<div class="tm-body"><div class="tm-name">'+esc(m.name)+'</div>'
-      +'<div class="tm-title">'+esc(m.title)+'</div>'
-      +'<div class="tm-spec">'+esc(m.specialty)+'</div>'
-      +'<span class="tm-more">View more'
-      +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
-      +'</span></div></div>';
+  var groups = (TEAM_GROUPS && TEAM_GROUPS.length)
+    ? TEAM_GROUPS
+    : [{department:'', members:(TEAM_CACHE||[])}];
+  document.getElementById('teamGrid').innerHTML = groups.map(function(g){
+    var head = g.department
+      ? '<div class="tm-dept"><span>'+esc(g.department)+'</span>'
+        +'<span class="tm-dept-ct">'+g.members.length+'</span><span class="tm-dept-ln"></span></div>'
+      : '';
+    return head+'<div class="team-grid">'+(g.members||[]).map(teamCard).join('')+'</div>';
   }).join('');
 }
 async function openProfile(id){
@@ -1267,7 +1306,7 @@ async function openProfile(id){
   var sk=(rs.skills||[]).map(function(s){return '<div class="pf-skill">'+esc(s)+'</div>';}).join('');
   body.innerHTML=
     '<div class="pf-hero">'
-    +'<img class="pf-av" src="'+m.avatar+'" alt="" onerror="this.style.visibility=\'hidden\'">'
+    +teamAvatar(m,'pf-av','pf-av-ini')
     +'<div><div class="pf-name">'+esc(m.name)+'</div>'
     +'<div class="pf-role">'+esc(m.title)+'</div>'
     +(m.illustrative?'<div class="pf-illus">Illustrative profile — an AI specialist powered by ARIA.</div>':'')
@@ -1283,7 +1322,9 @@ function closeProfile(){ const o=document.getElementById('profileOv'); o.classLi
 function hire(id){
   const m=(TEAM_CACHE||[]).find(function(x){return x.id===id;}); if(!m) return;
   activePersona=m;
-  document.getElementById('pbAv').src=m.avatar;
+  var pbav=document.getElementById('pbAv');
+  pbav.onerror=function(){ this.style.display='none'; };
+  pbav.style.display=''; pbav.src=m.avatar;
   document.getElementById('pbName').textContent=m.name;
   document.getElementById('pbTitle').textContent=m.title;
   document.getElementById('personaBar').classList.add('show');
