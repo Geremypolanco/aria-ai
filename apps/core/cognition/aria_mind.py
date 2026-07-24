@@ -2117,9 +2117,7 @@ class AriaMind:
                 )
 
                 segment = AudienceSegment(estimated_cpm=estimated_cpm, platforms=[platform])
-                result = get_audience_segmenter().cac_estimate(
-                    segment, product_price, expected_cvr
-                )
+                result = get_audience_segmenter().cac_estimate(segment, product_price, expected_cvr)
                 verdict = "profitable" if result["profitable"] else "NOT profitable"
                 return (
                     f"**CAC estimate ({platform}): {verdict}**\n"
@@ -2217,7 +2215,10 @@ class AriaMind:
                 analytics = engine.campaign_analytics()
                 top = engine.top_performing_campaigns(limit)
                 if analytics["total_campaigns"] == 0:
-                    return "No retargeting campaigns yet. Use create_retargeting_campaign first.", {}
+                    return (
+                        "No retargeting campaigns yet. Use create_retargeting_campaign first.",
+                        {},
+                    )
                 lines = [
                     f"**Retargeting performance** ({analytics['active_campaigns']}/{analytics['total_campaigns']} active)\n"
                     f"Spend ${analytics['total_spend']:,.0f} → Revenue ${analytics['total_revenue']:,.0f} "
