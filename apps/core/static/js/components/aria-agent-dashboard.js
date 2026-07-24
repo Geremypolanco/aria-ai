@@ -26,7 +26,11 @@ const WORKERS = [
       { label: 'Drafting LLC formation documents', ms: 1500 },
       { label: 'Filing incorporation with Delaware', ms: 1700 },
       { label: 'Drafting founder equity agreement', ms: 1400 },
-      { label: 'Filing the trademark application', ms: 1300 },
+      {
+        label: 'Filing the trademark application',
+        ms: 1300,
+        spend: { amount: 350, vendor: 'USPTO', item: 'trademark filing fee' },
+      },
     ],
   },
   {
@@ -52,7 +56,11 @@ const WORKERS = [
     icon: `<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
     steps: [
       { label: 'Drafting the Lab Ops Lead job description', ms: 1400 },
-      { label: 'Sourcing candidates on LinkedIn', ms: 1900 },
+      {
+        label: 'Sourcing candidates on LinkedIn',
+        ms: 1900,
+        spend: { amount: 99.99, vendor: 'LinkedIn', item: 'Recruiter Lite seat' },
+      },
       { label: 'Scheduling 5 interviews', ms: 1200 },
       { label: 'Sending the offer letter', ms: 1000 },
     ],
@@ -74,7 +82,10 @@ class AriaAgentDashboard extends HTMLElement {
     this._paused = false;
     this._timers = [];
     this._balance = START_BALANCE;
+    this._displayedBalance = START_BALANCE;
+    this._balanceRaf = null;
     this._activityGen = 0;
+    this._laneCompleted = {}; // worker.id -> steps finished in the current lap
     this._pendingApproval = null; // { resolve } while the HITL card is showing
 
     this._onEnter = () => { this._paused = true; };
@@ -97,6 +108,7 @@ class AriaAgentDashboard extends HTMLElement {
 
   disconnectedCallback() {
     this._timers.forEach(clearTimeout);
+    if (this._balanceRaf) cancelAnimationFrame(this._balanceRaf);
     document.removeEventListener('visibilitychange', this._onVisibility);
   }
 
@@ -116,13 +128,21 @@ class AriaAgentDashboard extends HTMLElement {
   render() {
     this.className = 'block p-6';
     this.innerHTML = `
-      <div class="flex flex-wrap items-center gap-2 border-b border-stone-100 pb-4">
-        <span class="h-2 w-2 flex-none rounded-full bg-emerald-500"></span>
-        <span class="font-mono text-xs text-stone-500">${MISSION_LABEL}</span>
-        <span data-wallet-chip class="ml-auto inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-900 px-3 py-1 text-[11px] font-bold text-white">
-          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h2"/></svg>
-          <span data-wallet-amount>${fmt(this._balance)}</span> available
-        </span>
+      <div class="border-b border-stone-100 pb-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="h-2 w-2 flex-none rounded-full bg-emerald-500"></span>
+          <span class="font-mono text-xs text-stone-500">${MISSION_LABEL}</span>
+          <span data-wallet-chip class="ml-auto inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-900 px-3 py-1 text-[11px] font-bold text-white">
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h2"/></svg>
+            <span data-wallet-amount>${fmt(this._balance)}</span> available
+          </span>
+        </div>
+        <div class="mt-3 flex items-center gap-2.5">
+          <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-100">
+            <div data-mission-bar class="h-full rounded-full bg-gradient-to-r from-sky-400 via-emerald-500 to-amber-400 transition-[width] duration-500 ease-out" style="width:0%"></div>
+          </div>
+          <span data-mission-pct class="font-mono text-[11px] font-bold text-stone-500">0%</span>
+        </div>
       </div>
 
       <div data-lanes class="relative mt-4 space-y-4"></div>
@@ -171,6 +191,8 @@ class AriaAgentDashboard extends HTMLElement {
     this.$balance = this.querySelector('[data-balance]');
     this.$walletAmount = this.querySelector('[data-wallet-amount]');
     this.$activity = this.querySelector('[data-activity]');
+    this.$missionBar = this.querySelector('[data-mission-bar]');
+    this.$missionPct = this.querySelector('[data-mission-pct]');
     this.$live = this.querySelector('[data-live]');
     this.$hitl = this.querySelector('[data-hitl]');
     this.$hitlMsg = this.querySelector('[data-hitl-msg]');
@@ -223,6 +245,7 @@ class AriaAgentDashboard extends HTMLElement {
 
   async runLane(worker) {
     const el = this._laneEls[worker.id];
+    this._laneCompleted[worker.id] = 0;
     this.setPill(worker, 'running');
     for (;;) {
       for (const step of worker.steps) {
@@ -246,11 +269,25 @@ class AriaAgentDashboard extends HTMLElement {
         } else {
           await this.holdFor(step.ms);
         }
+
+        this._laneCompleted[worker.id]++;
+        this.updateMissionProgress();
       }
       this.setPill(worker, 'done');
       await this.holdFor(2600);
+      this._laneCompleted[worker.id] = 0;
+      this.updateMissionProgress();
       this.setPill(worker, 'running');
     }
+  }
+
+  updateMissionProgress() {
+    const fractions = WORKERS.map(
+      (w) => (this._laneCompleted[w.id] || 0) / w.steps.length
+    );
+    const pct = Math.round((fractions.reduce((a, b) => a + b, 0) / fractions.length) * 100);
+    this.$missionBar.style.width = `${pct}%`;
+    this.$missionPct.textContent = `${pct}%`;
   }
 
   requestApproval(worker, step) {
@@ -279,6 +316,30 @@ class AriaAgentDashboard extends HTMLElement {
     this._timers.push(setTimeout(() => { this.$live.textContent = text; }, 30));
   }
 
+  // Ticks both balance displays from their current value to `to` — a flat
+  // text swap reads as a glitch for a number a visitor is watching change.
+  animateBalance(to) {
+    const from = this._displayedBalance ?? this._balance;
+    const duration = 550;
+    const start = performance.now();
+    const ease = (t) => 1 - (1 - t) * (1 - t); // ease-out quad
+
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const value = from + (to - from) * ease(t);
+      const text = fmt(Math.max(0, value));
+      this.$balance.textContent = text;
+      this.$walletAmount.textContent = text;
+      if (t < 1) {
+        this._balanceRaf = requestAnimationFrame(tick);
+      } else {
+        this._displayedBalance = to;
+      }
+    };
+    if (this._balanceRaf) cancelAnimationFrame(this._balanceRaf);
+    this._balanceRaf = requestAnimationFrame(tick);
+  }
+
   _resolveApproval(approved) {
     const pending = this._pendingApproval;
     if (!pending || pending.settled) return;
@@ -297,8 +358,7 @@ class AriaAgentDashboard extends HTMLElement {
       if (this._balance < pending.step.spend.amount) {
         this._balance = START_BALANCE;
       }
-      this.$balance.textContent = fmt(this._balance);
-      this.$walletAmount.textContent = fmt(this._balance);
+      this.animateBalance(this._balance);
       this.$activity.textContent = `−${fmt(pending.step.spend.amount)} · ${pending.step.spend.item}`;
       this.announce(`Approved. ${fmt(pending.step.spend.amount)} spent on ${pending.step.spend.item}.`);
       this._timers.push(setTimeout(() => {
@@ -324,13 +384,19 @@ class AriaAgentDashboard extends HTMLElement {
       el.step.textContent = lastStep.label + ' — done';
       el.bar.style.width = '100%';
     });
-    // Reduced-motion visitors never see the animated approval — still tell
-    // the wallet/spend part of the story as a static fact.
-    const opsSpend = WORKERS.find((w) => w.id === 'ops').steps.find((s) => s.spend).spend;
-    this._balance -= opsSpend.amount;
+    this.$missionBar.style.width = '100%';
+    this.$missionPct.textContent = '100%';
+
+    // Reduced-motion visitors never see the animated approvals — still tell
+    // the wallet/spend part of the story as a static fact, across every
+    // worker's spend, not just the one that used to exist here.
+    const spends = WORKERS.flatMap((w) => w.steps.filter((s) => s.spend).map((s) => s.spend));
+    const total = spends.reduce((sum, s) => sum + s.amount, 0);
+    this._balance -= total;
+    this._displayedBalance = this._balance;
     this.$balance.textContent = fmt(this._balance);
     this.$walletAmount.textContent = fmt(this._balance);
-    this.$activity.textContent = `−${fmt(opsSpend.amount)} · ${opsSpend.item} (approved)`;
+    this.$activity.textContent = `−${fmt(total)} across ${spends.length} approved spends`;
   }
 }
 
